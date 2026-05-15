@@ -1,0 +1,42 @@
+// Benchmark workload — binary search find-min on a rotated sorted array.
+//
+// N=2_000_000 deterministic input: sorted [1..N], then rotated by pivot
+// R=N/3. K=2_000_000 outer iterations because each O(log n) call is only
+// ~21 comparisons; large K gets total inner work into the same order as
+// the linear-scan workload (~42 M comparisons vs ~20 M). The same data is
+// re-used across calls — the bench measures how cheaply each frontend
+// dispatches one find_min, not how quickly it sorts.
+// Tune N / K in step with ../README.md § Benchmarks.
+
+fn find_min(nums: Slice[i64]) -> i64 {
+    let n = nums.len();
+    let mut lo = 0;
+    let mut hi = n - 1;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if nums[mid] > nums[hi] {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    nums[lo]
+}
+
+fn main() {
+    let n = 2000000i64;
+    let r = 666666i64;
+    let mut data: Vec[i64] = Vec.new();
+    for i in 0..n {
+        // data[i] = ((i + r) mod n) + 1  →  sorted [1..n] rotated by r.
+        // Values land in [1, n]; the minimum is 1, located at index n - r.
+        data.push(((i + r) % n) + 1);
+    }
+
+    // Sum-of-results sink so the optimizer cannot elide the K calls.
+    let mut sum = 0i64;
+    for _ in 0..2000000 {
+        sum = sum + find_min(data.as_slice());
+    }
+    println(sum);
+}

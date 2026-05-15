@@ -1,0 +1,52 @@
+// LeetCode #3: Longest Substring Without Repeating Characters — sliding window
+// with a last-index map. O(n) time, O(min(n, alphabet)) space.
+//
+// Maintain a half-open window [left, right). As we extend right by one
+// character, look up its last seen index. If that index lies inside the
+// window, jump `left` to one past it — every duplicate is removed by a
+// single pointer jump, never by a shrink loop. Each character is visited
+// exactly once; the running maximum of (right - left + 1) is the answer.
+
+fn length_of_longest_substring(s: ref String) -> i64 {
+    let mut last_idx: Map[char, i64] = Map.new();
+    let mut left = 0i64;
+    let mut best = 0i64;
+    let mut right = 0i64;
+    for c in s.chars() {
+        match last_idx.get(c) {
+            Some(prev) => {
+                if prev >= left {
+                    left = prev + 1;
+                }
+            },
+            None => {},
+        }
+        last_idx.insert(c, right);
+        let window = right - left + 1;
+        if window > best {
+            best = window;
+        }
+        right = right + 1;
+    }
+    best
+}
+
+fn report(s: ref String) {
+    println(length_of_longest_substring(s));
+}
+
+fn main() {
+    // Each case is bound to a local rather than passed inline because
+    // `report` takes `ref String` and karac's call-site `ref T` coercion
+    // currently only fires for identifier arguments — string-literal
+    // rvalues hit a calling-convention mismatch at codegen time. Trivial
+    // sugar gap to close; tracked in phase-7-codegen.md.
+    let c1 = "abcabcbb"; report(c1);   // expect: 3   ("abc")
+    let c2 = "bbbbb";    report(c2);   // expect: 1   ("b")
+    let c3 = "pwwkew";   report(c3);   // expect: 3   ("wke" — "pwke" is a subsequence, not substring)
+    let c4 = "";         report(c4);   // expect: 0
+    let c5 = " ";        report(c5);   // expect: 1
+    let c6 = "au";       report(c6);   // expect: 2
+    let c7 = "dvdf";     report(c7);   // expect: 3   ("vdf"; "dv" length 2 comes first, then "vdf")
+    let c8 = "tmmzuxt";  report(c8);   // expect: 5   ("mzuxt"; the trailing t collides with the leading t but only after the m's collide has already advanced left past it)
+}
