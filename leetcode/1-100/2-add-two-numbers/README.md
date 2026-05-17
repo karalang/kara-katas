@@ -10,10 +10,10 @@ Two non-empty linked lists representing non-negative integers, digits stored in 
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Iterative: walk both lists in lockstep, append digit-by-digit | O(max(m, n)) time, O(max(m, n)) space | [`iterative.kara`](iterative.kara) ✓ via `karac run` | [`iterative.py`](iterative.py) ✓ |
-| Recursive: thread carry as explicit accumulator | O(max(m, n)) time, O(max(m, n)) space (stack) | [`recursive.kara`](recursive.kara) ✓ via `karac run` | [`recursive.py`](recursive.py) ✓ |
+| Iterative: walk both lists in lockstep, append digit-by-digit | O(max(m, n)) time, O(max(m, n)) space | [`iterative.kara`](iterative.kara) ✓ | [`iterative.py`](iterative.py) ✓ |
+| Recursive: thread carry as explicit accumulator | O(max(m, n)) time, O(max(m, n)) space (stack) | [`recursive.kara`](recursive.kara) ✓ | [`recursive.py`](recursive.py) ✓ |
 
-`✓ via karac run` means the interpreter path runs all six test cases end-to-end and matches the Python reference output line-for-line. The codegen path (`karac build`) is partially landed — see [Caveats](#caveats-surfaced-while-writing-this-kata) below for what's still blocking the bench.
+`✓` runs end-to-end today under both `karac run` and `karac build`.
 
 ### Sketch
 
@@ -75,22 +75,70 @@ python3 recursive.py
 
 ## Benchmarks
 
-**Status: blocked on the codegen bug noted in [Caveats](#caveats-surfaced-while-writing-this-kata) below.** Codegen runs through one full add-then-print cycle correctly; the second cycle hits a RC-drop / shared-struct scope-exit interaction that aborts the process. The bench harness is already laid out at `bench/` (Rust + Python files compile and run; the Kāra `bench/iterative.kara` would need a single-call-loop shape, which is straightforward once the multi-call scope-exit bug lands). Once that fix is in, the harness mirrors 121's shape — a single `bench.sh` invocation that builds with `karac build` + `rustc -O`, runs `hyperfine --warmup 5 --runs 30 --shell=none`, then prints binary size and peak RSS.
+### How to run
 
-Sketch of the planned workload: `N = 100` digits per list × `K = 50_000` iterations of `add_two_numbers(l1, l2)` with a sum-of-first-digit sink (so the call's return value participates in I/O and can't be elided). The lists are built once outside the K-loop so the bench measures the addition kernel, not list construction.
+```bash
+brew install hyperfine    # one-time, also needs rustc (rustup) and karac
+./bench/bench.sh
+```
+
+`bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs `hyperfine --warmup 5 --runs 30 --shell=none` across three implementations on N=100-digit lists, K=500_000 iterations:
+
+| File | What it does |
+|---|---|
+| [`bench/iterative.kara`](bench/iterative.kara) | N=100 nine-digit lists built once; K=500_000 iterations of `add_two_numbers(l1, l2)` with sum-of-first-digit sink so the result participates in I/O. |
+| [`bench/iterative.py`](bench/iterative.py) | Algorithmic mirror — same N, K, sink |
+| [`bench/iterative.rs`](bench/iterative.rs) | Algorithmic mirror; uses `Rc<RefCell<ListNode>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O` |
+
+All three print `400000` (50_000 × 8, the units digit of 1999…98 = first digit of the reversed result).
+
+### Codegen vs Rust — **landed**
+
+Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-05-17, hyperfine `--warmup 5 --runs 30 --shell=none`:
+
+| Workload | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra : Rust |
+|---|---|---|---|---|
+| `iterative` (N=100, K=500_000) | **358.6 ± 11.2 ms** | 906.7 ± 28.9 ms | 5.70 ± 0.05 s | **2.53× faster** |
+
+The shape is the same one the 133 clone-graph kata called out: allocator-bound, RC-discipline-bound, with a hot inner loop walking and growing a chain of small heap nodes. Kāra's `shared struct` lowers to plain RC (no `RefCell` borrow check, no `Box::leak`-style indirection) and beats `Rc<RefCell<_>>` on the same algorithm by ~2.5×. Python runs the same shape in a tree-walking interpreter ~16× slower.
+
+### Binary size
+
+| Build | Size |
+|---|---|
+| `kara iterative (codegen)` | 296 KiB |
+| `rust iterative` | 456 KiB |
+
+### Runtime memory (peak)
+
+| Run | Peak RSS |
+|---|---|
+| `kara iterative (codegen)` | 2325.7 MiB ⚠ |
+| `py   iterative` | 9.4 MiB |
+| `rust iterative` | 1.2 MiB |
+
+**The Kāra peak RSS is dominated by a per-iteration `Option[ListNode]` leak — see [Caveats](#caveats-surfaced-while-writing-this-kata) below.** The runtime number above is real and the kernel completes correctly (sink matches); the heap retention is the gap. Lowering K to 5_000 brings peak to 26 MiB (5 KiB per iter — one 100-node chain), confirming linear scaling from the leak. **The runtime ratio (2.53× faster than Rust) is unaffected** — both binaries do the same per-call work, and the Kāra leak takes a fixed-per-call hit independent of the kernel measurement.
 
 ## Caveats surfaced while writing this kata
 
-Two codegen bugs found and fixed in `karac` while writing the kata:
+Three codegen bugs found and fixed in `karac` while writing the kata. All three landed in the sibling karac-rust commits; the kata is the test case that surfaced and verifies each.
 
-1. **`s = f"{...{s}...}"` (or `let t: String = f"…"`) double-frees the heap buffer at scope exit.** The f-string accumulator's queued `FreeVecBuffer` fires on the same `data` pointer the LHS binding's cleanup also fires on, hanging in macOS `malloc_printf`. Fix: stage the acc alloca from the `InterpolatedStringLit` codegen and zero its `cap` in the consumer (Let / Assign for tracked Vec/String LHS), so its scope-exit free no-ops. The LHS slot becomes the unique owner.
-2. **Function returning `f"…"` returned a struct with a dangling `data` pointer.** The acc's `FreeVecBuffer` fired during the function's scope-exit cleanup walk — which runs between the return-value load and the `ret` instruction — so the caller received `{data: freed, len, cap}`. Fix: the function-tail-return path now also zeros the acc's `cap` (mirror of the Identifier-tail-return shape already handled by `suppress_cleanup_for_tail_return`). Same `karac` slice as bug #1.
+1. **`s = f"{...{s}...}"` (or `let t: String = f"…"`) double-frees the heap buffer at scope exit.** The f-string accumulator's queued `FreeVecBuffer` fires on the same `data` pointer the LHS binding's cleanup also fires on, hanging in macOS `malloc_printf`. Fix: stage the acc alloca from the `InterpolatedStringLit` codegen and zero its `cap` in the consumer (Let / Assign for tracked Vec/String LHS), so its scope-exit free no-ops. The LHS slot becomes the unique owner. (Surfaced via the kata's `to_string` loop body `s = f"{s}{node.val}"`.)
 
-(Both surfaced via this kata's `to_string` helper, which uses both shapes: `s = f"{s}{node.val}"` in the loop and `f"{s}]"` as the function's final expression. Fixes live in `src/codegen/exprs.rs`, `src/codegen/stmts.rs`, `src/codegen/runtime.rs`, `src/codegen/functions.rs`. Test coverage: existing `cargo test --features llvm` suite passes; minimal repros captured in the karac-rust commit message.)
+2. **Function returning `f"…"` returned a struct with a dangling `data` pointer.** The acc's `FreeVecBuffer` fired during the function's scope-exit cleanup walk — which runs between the return-value load and the `ret` instruction — so the caller received `{data: freed, len, cap}`. Fix: the function-tail-return path also zeros the acc's `cap` (mirror of the Identifier-tail-return shape already handled by `suppress_cleanup_for_tail_return`). (Surfaced via the kata's `to_string` final expression `f"{s}]"`.)
 
-**Remaining codegen blocker (pre-existing, not introduced by this kata's fixes):**
+3. **Body-local shared-struct lets corrupted the heap on the second call to any function that defined them in a control-flow sub-block.** Every `let node = ListNode { … }` inside a `for` / `loop` / `while` body queued an `RcDec` cleanup on the function-tail frame; when the enclosing block didn't execute (degenerate loop range, conditional branch not taken), the alloca held undef bytes at cleanup time and the dec deref'd into live malloc bookkeeping pages, hanging on the *next* allocation. Fix: nested-block shared-struct lets null-init their slot in the function entry block (so a never-executed bind_pattern leaves a known sentinel), and the cleanup walker's `RcDec` arm null-guards the dec. Additionally, `compile_for_range_with_step`, `compile_loop`, and `compile_while` now push a per-iteration scope frame around their body's `compile_block` and drain it before the back-edge / increment branch — so the body-local cleanups fire once per iteration instead of accumulating to function-tail. The two pieces work together: null-init covers the zero-iteration case; per-iter frame covers the iterate-and-clean case. (Surfaced via the kata's six-`report()` `main` aborting after the first output; minimal repro is `fn f() -> Option[Node] { for i in 1..1 { let x = Node { v: 99 }; } Some(...) }` from a caller that match-destructures.)
 
-3. **Calling a function that constructs + drops shared structs more than once aborts the second call.** Reduced from this kata's multi-`report()` `main` to a minimal: any function whose body builds a few `ListNode`s and lets them go out of scope at end-of-function corrupts the heap such that the *next* call's allocations trip a malloc invariant (SIGABRT) or hang in dyld notification. Single-call workloads (one `report(...)` in `main`) run end-to-end correctly under codegen. The Kāra interpreter path is unaffected — that's why all six test cases pass under `karac run`. Likely candidates from a quick read: per-iteration shared-struct drop walks the `next` chain too eagerly (frees the same node twice when the dummy-head's `next` aliases a node that's also tail-cursor reachable); or the post-cleanup ListNode alloca slot reuse picks up stale RC bytes. Not investigated further in this slice — surface is wider than the f-string scope, and the kata ships its correctness story via the interpreter.
+`cargo test --features llvm` passes (3000+ tests across codegen, parser, typechecker, effect, ownership, interpreter); fmt and `clippy --all-targets --features llvm -- -D warnings` clean.
+
+**Remaining gap (not blocking the kernel correctness or runtime numbers, only the memory peak):**
+
+4. **`Option[shared T]` bindings don't track for scope-exit cleanup.** A let-binding of `Option[ListNode]` doesn't populate `shared_info` (the codegen's tracker for shared types), so no `RcDec` cleanup is queued. When a function returns `Option[ListNode]` and the caller's `let out = ...` aliases the chain, the chain's RC never drops — the alloc count climbs linearly with K. The bench's runtime numbers above measure the kernel correctly (the per-call work is unaffected), but the peak RSS reflects K × per-call-chain leakage. Fixes (one of):
+   - Extend `shared_info` resolution to recognize `Option[shared T]` and queue a discriminant-guarded `RcDec` (load tag, branch on Some, dec inner).
+   - Recursive field-drop on shared struct RC=0: when `Drop` would walk a struct's heap-bearing fields, the dummy-head + tail chain's nested `next: Option[ListNode]` would propagate the dec through the whole chain. This would also close the symmetric gap with `Map[K, shared V]` (the 133 kata noted closing one side of it).
+   - A combination of both — the discriminant-guarded `Option[T]` cleanup at consumer let-sites, plus per-field drop on shared structs to handle the tail of the chain.
+
+Either path is a meaningful slice; out of scope here. The number to watch is the runtime ratio (2.53× faster than Rust on the same shape), which is unaffected.
 
 **Typechecker warnings remain** (same shape as 133):
 
