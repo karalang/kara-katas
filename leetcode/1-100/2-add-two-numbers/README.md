@@ -90,7 +90,7 @@ brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 | [`bench/iterative.py`](bench/iterative.py) | Algorithmic mirror — same N, K, sink |
 | [`bench/iterative.rs`](bench/iterative.rs) | Algorithmic mirror; uses `Rc<RefCell<ListNode>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O` |
 
-All three print `400000` (50_000 × 8, the units digit of 1999…98 = first digit of the reversed result).
+All three print `4000000` (500_000 × 8 — the units digit of 999…9 + 999…9 = 1999…98 is 8, and that's the first digit of the reversed-storage result).
 
 ### Codegen vs Rust — **landed**
 
@@ -98,9 +98,11 @@ Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-05-17, hype
 
 | Workload | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra : Rust |
 |---|---|---|---|---|
-| `iterative` (N=100, K=500_000) | **358.6 ± 11.2 ms** | 906.7 ± 28.9 ms | 5.70 ± 0.05 s | **2.53× faster** |
+| `iterative` (N=100, K=500_000) | **832.7 ± 38.4 ms** | 883.1 ± 6.8 ms | 5.71 ± 0.09 s | **1.06× faster** |
 
-The shape is the same one the 133 clone-graph kata called out: allocator-bound, RC-discipline-bound, with a hot inner loop walking and growing a chain of small heap nodes. Kāra's `shared struct` lowers to plain RC (no `RefCell` borrow check, no `Box::leak`-style indirection) and beats `Rc<RefCell<_>>` on the same algorithm by ~2.5×. Python runs the same shape in a tree-walking interpreter ~16× slower.
+Allocator-bound, RC-discipline-bound shape: a hot inner loop walking and growing a chain of small heap nodes, then recursively dropping the chain when the result goes out of scope. Kāra's `shared struct` does the same per-field recursive drop as Rust's `Rc<RefCell<>>` — both pay one rc-dec per node along the chain — and the ratio narrows to a modest 1.06× edge, driven by Kāra skipping `RefCell`'s runtime borrow check on each `borrow()` / `borrow_mut()`. Python runs the same shape in a tree-walking interpreter ~6.9× slower.
+
+(An earlier snapshot of this kata reported 358 ms / 2.53× faster than Rust; that number measured the kernel correctly but the `karac` runtime was leaking the result chain on every iteration — peak RSS climbed to 2.3 GiB. After closing that leak in the Caveats Cluster 3 commits below — recursive drop on shared struct RC=0, plus Option[shared T] cleanup tracking — Kāra now does the same drop walk Rust does. The 1.06× number is the memory-correct apples-to-apples comparison; the 2.53× number was apples-to-leaky-apples.)
 
 ### Binary size
 
@@ -113,32 +115,43 @@ The shape is the same one the 133 clone-graph kata called out: allocator-bound, 
 
 | Run | Peak RSS |
 |---|---|
-| `kara iterative (codegen)` | 2325.7 MiB ⚠ |
-| `py   iterative` | 9.4 MiB |
+| `kara iterative (codegen)` | 1.5 MiB |
+| `py   iterative` | 9.5 MiB |
 | `rust iterative` | 1.2 MiB |
 
-**The Kāra peak RSS is dominated by a per-iteration `Option[ListNode]` leak — see [Caveats](#caveats-surfaced-while-writing-this-kata) below.** The runtime number above is real and the kernel completes correctly (sink matches); the heap retention is the gap. Lowering K to 5_000 brings peak to 26 MiB (5 KiB per iter — one 100-node chain), confirming linear scaling from the leak. **The runtime ratio (2.53× faster than Rust) is unaffected** — both binaries do the same per-call work, and the Kāra leak takes a fixed-per-call hit independent of the kernel measurement.
+Peak RSS is bounded and comparable to Rust's. Lowering K does not significantly affect peak (the runtime keeps one 100-node chain live at any time).
 
 ## Caveats surfaced while writing this kata
 
-Three codegen bugs found and fixed in `karac` while writing the kata. All three landed in the sibling karac-rust commits; the kata is the test case that surfaced and verifies each.
+Six codegen bugs found and fixed in `karac` while writing this kata, across three sibling karac-rust commit clusters. The kata is the test case that surfaced and verifies each. All landed; none remain open.
+
+### Cluster 1 — f-string cleanup discipline (`a345e15`)
 
 1. **`s = f"{...{s}...}"` (or `let t: String = f"…"`) double-frees the heap buffer at scope exit.** The f-string accumulator's queued `FreeVecBuffer` fires on the same `data` pointer the LHS binding's cleanup also fires on, hanging in macOS `malloc_printf`. Fix: stage the acc alloca from the `InterpolatedStringLit` codegen and zero its `cap` in the consumer (Let / Assign for tracked Vec/String LHS), so its scope-exit free no-ops. The LHS slot becomes the unique owner. (Surfaced via the kata's `to_string` loop body `s = f"{s}{node.val}"`.)
 
 2. **Function returning `f"…"` returned a struct with a dangling `data` pointer.** The acc's `FreeVecBuffer` fired during the function's scope-exit cleanup walk — which runs between the return-value load and the `ret` instruction — so the caller received `{data: freed, len, cap}`. Fix: the function-tail-return path also zeros the acc's `cap` (mirror of the Identifier-tail-return shape already handled by `suppress_cleanup_for_tail_return`). (Surfaced via the kata's `to_string` final expression `f"{s}]"`.)
 
-3. **Body-local shared-struct lets corrupted the heap on the second call to any function that defined them in a control-flow sub-block.** Every `let node = ListNode { … }` inside a `for` / `loop` / `while` body queued an `RcDec` cleanup on the function-tail frame; when the enclosing block didn't execute (degenerate loop range, conditional branch not taken), the alloca held undef bytes at cleanup time and the dec deref'd into live malloc bookkeeping pages, hanging on the *next* allocation. Fix: nested-block shared-struct lets null-init their slot in the function entry block (so a never-executed bind_pattern leaves a known sentinel), and the cleanup walker's `RcDec` arm null-guards the dec. Additionally, `compile_for_range_with_step`, `compile_loop`, and `compile_while` now push a per-iteration scope frame around their body's `compile_block` and drain it before the back-edge / increment branch — so the body-local cleanups fire once per iteration instead of accumulating to function-tail. The two pieces work together: null-init covers the zero-iteration case; per-iter frame covers the iterate-and-clean case. (Surfaced via the kata's six-`report()` `main` aborting after the first output; minimal repro is `fn f() -> Option[Node] { for i in 1..1 { let x = Node { v: 99 }; } Some(...) }` from a caller that match-destructures.)
+### Cluster 2 — body-local shared-struct cleanup (`2bd2dba`)
 
-`cargo test --features llvm` passes (3000+ tests across codegen, parser, typechecker, effect, ownership, interpreter); fmt and `clippy --all-targets --features llvm -- -D warnings` clean.
+3. **Body-local shared-struct lets corrupted the heap on the second call to any function that defined them in a control-flow sub-block.** Every `let node = ListNode { … }` inside a `for` / `loop` / `while` body queued an `RcDec` cleanup on the function-tail frame; when the enclosing block didn't execute (degenerate loop range, conditional branch not taken), the alloca held undef bytes at cleanup time and the dec deref'd into live malloc bookkeeping pages, hanging on the *next* allocation. Fix: nested-block shared-struct lets null-init their slot in the function entry block (so a never-executed `bind_pattern` leaves a known sentinel), and the cleanup walker's `RcDec` arm null-guards the dec. Additionally, `compile_for_range_with_step`, `compile_loop`, and `compile_while` now push a per-iteration scope frame around their body's `compile_block` and drain it before the back-edge / increment branch — so the body-local cleanups fire once per iteration instead of accumulating to function-tail. The two pieces work together: null-init covers the zero-iteration case; per-iter frame covers the iterate-and-clean case. (Surfaced via the kata's six-`report()` `main` aborting after the first output; minimal repro is `fn f() -> Option[Node] { for i in 1..1 { let x = Node { v: 99 }; } Some(...) }` from a caller that match-destructures.)
 
-**Remaining gap (not blocking the kernel correctness or runtime numbers, only the memory peak):**
+### Cluster 3 — Option[shared T] cleanup surface (`79a7db8` + `9cc1a74` + `53a6c4e` + `f541131`)
 
-4. **`Option[shared T]` bindings don't track for scope-exit cleanup.** A let-binding of `Option[ListNode]` doesn't populate `shared_info` (the codegen's tracker for shared types), so no `RcDec` cleanup is queued. When a function returns `Option[ListNode]` and the caller's `let out = ...` aliases the chain, the chain's RC never drops — the alloc count climbs linearly with K. The bench's runtime numbers above measure the kernel correctly (the per-call work is unaffected), but the peak RSS reflects K × per-call-chain leakage. Fixes (one of):
-   - Extend `shared_info` resolution to recognize `Option[shared T]` and queue a discriminant-guarded `RcDec` (load tag, branch on Some, dec inner).
-   - Recursive field-drop on shared struct RC=0: when `Drop` would walk a struct's heap-bearing fields, the dummy-head + tail chain's nested `next: Option[ListNode]` would propagate the dec through the whole chain. This would also close the symmetric gap with `Map[K, shared V]` (the 133 kata noted closing one side of it).
-   - A combination of both — the discriminant-guarded `Option[T]` cleanup at consumer let-sites, plus per-field drop on shared structs to handle the tail of the chain.
+4. **`Option[shared T]` let-bindings didn't track for scope-exit cleanup, and `shared struct` RC=0 didn't recursively drop heap-bearing fields.** Two intertwined gaps that together caused the kata's bench to peak at 2.3 GiB at K=500_000 even though the runtime kernel was correct. A let-binding of `Option[ListNode]` didn't populate `shared_info` (so no `RcDec` queued), and even if it had, `emit_rc_dec`'s base case was a bare `free(ptr)` with no field walk — so dropping the chain head wouldn't propagate dec through the 99 transitive `next` nodes. Fix lands in `79a7db8`:
+   - New `CleanupAction::RcDecOption` variant with discriminant-guarded inner-pointer dec (load tag, branch on Some, dec inner).
+   - New `__karac_rc_drop_<Name>` per-shared-struct synth fn that walks heap-bearing fields (recursively, for `Option[shared T]` fields via the same discriminant guard) before `free`.
+   - `Option[shared T]` Assign-arm refcount management (dec old inner, inc new inner unless fresh) — without this, `next_a = n.next;` in the recursive kata strands the old ref and use-after-frees on the next deref.
+   - Tail-return defuse for `var.option_field` returns (`dummy.next`-style patterns) — recursive drop would otherwise walk the field and free the chain before the caller received it.
 
-Either path is a meaningful slice; out of scope here. The number to watch is the runtime ratio (2.53× faster than Rust on the same shape), which is unaffected.
+5. **`Option[shared T]` parameters didn't track at the callee, and call-site arg-passing didn't share the inner ref.** Follow-up in `9cc1a74`: parameter-binding loop registers `track_rc_option_var` for `Option[shared T]` params; call site emits a discriminant- and null-guarded `rc_inc` on the inner pointer for each `Option[shared T]` arg (mirror of `suppress_source_vec_cleanup_for_arg`'s shared-T branch). Caller's slot is unchanged across calls — multi-call patterns like the bench's K-loop preserve `l1` / `l2` identity. (An earlier shape used move semantics that zeroed caller args to None after each call; correctness regression caught by the bench's output dropping from `4000000` to `8` after one call.)
+
+6. **`var.opt_field = X` field-store didn't dec the old Option-field ref or inc the new one.** Follow-up in `53a6c4e`: `compile_field_store` for an `Option[shared T]` field emits the 3-step dec-old / store-new / inc-new (if `!rhs_is_fresh`) IR. (Surfaced as a latent leak on `tail.next = Some(node); tail = node;`-style tail-chain construction inside loops.)
+
+7. **Chained `call().opt_field` access on a function returning a struct with an `Option[shared T]` field didn't preserve ref discipline.** Follow-up in `f541131`: `compile_field_access`'s call-chain branch emits the same discriminant-guarded inc on the inner ptr BEFORE dec'ing the outer call temp, so the recursive drop's field dec is balanced. New case in `shared_option_info` detection for `FieldAccess` RHS whose object is a call-like or Identifier-bound shared struct.
+
+### Validation
+
+`cargo test --features llvm` passes (4500+ tests across codegen, parser, typechecker, effect, ownership, interpreter — no regressions across all three cluster slices); fmt and `clippy --all-targets --features llvm -- -D warnings` clean. The kata's six-test `main` runs end-to-end under both `karac run` and `karac build`; the bench at N=100, K=500_000 produces `4000000` with a bounded 1.5 MiB peak RSS.
 
 **Typechecker warnings remain** (same shape as 133):
 
