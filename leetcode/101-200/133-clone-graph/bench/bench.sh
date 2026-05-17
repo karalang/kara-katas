@@ -61,7 +61,7 @@ hyperfine \
     --warmup 5 \
     --runs 30 \
     --shell=none \
-    --command-name 'kara clone_bfs (par 8-way)' './target/clone_bfs_par_kara' \
+    --command-name 'kara clone_bfs (par 18-way)' './target/clone_bfs_par_kara' \
     --command-name 'kara clone_bfs (codegen)'   './target/clone_bfs_kara' \
     --command-name 'py   clone_bfs'             'python3 clone_bfs.py' \
     --command-name 'rust clone_bfs'             './target/clone_bfs'
@@ -69,7 +69,7 @@ hyperfine \
 echo
 echo "=== binary size ==="
 for spec in \
-    'kara clone_bfs (par 8-way):target/clone_bfs_par_kara' \
+    'kara clone_bfs (par 18-way):target/clone_bfs_par_kara' \
     'kara clone_bfs (codegen):target/clone_bfs_kara' \
     'rust clone_bfs:target/clone_bfs'; do
     label="${spec%%:*}"
@@ -81,7 +81,7 @@ done
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara clone_bfs (par 8-way)' "$(mem_peak ./target/clone_bfs_par_kara)"
+print_mem 'kara clone_bfs (par 18-way)' "$(mem_peak ./target/clone_bfs_par_kara)"
 print_mem 'kara clone_bfs (codegen)'   "$(mem_peak ./target/clone_bfs_kara)"
 print_mem 'py   clone_bfs'             "$(mem_peak python3 clone_bfs.py)"
 print_mem 'rust clone_bfs'             "$(mem_peak ./target/clone_bfs)"

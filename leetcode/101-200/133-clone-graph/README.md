@@ -99,7 +99,7 @@ brew install hyperfine    # one-time, also needs rustc (rustup)
 | File | What it does |
 |---|---|
 | [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Serial baseline mirroring `clone_bfs.rs` line-for-line — `curr_clone` hoisted out of the inner for-nb loop to match Rust's shape. |
-| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **8 par-block branches** (62 × 7 + 66 = 500). M1 has 4 perf + 4 efficiency cores; the two-phase Rc→Arc algorithm promotes shared-struct handles when they escape across the par barrier. |
+| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500), one per core on M5 Pro. The two-phase Rc→Arc algorithm promotes shared-struct handles when they escape across the par barrier. |
 | [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator |
 | [`bench/clone_bfs.rs`](bench/clone_bfs.rs) | Algorithmic mirror; uses `Rc<RefCell<Node>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O`; `black_box(&nodes[0])` keeps LLVM from hoisting the K loop |
 
@@ -109,26 +109,26 @@ Both Rust and Python print `500` (sum of K root vals = 500 × 1).
 
 Three codegen gaps surfaced while writing this kata blocked the bench path. All three landed in karac; the headline `kara codegen` row now sits at the top of the table (details in § Caveats below).
 
-Snapshot — M1, 2026-05-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-05-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Workload | Kāra (par 8-way) | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra par : Rust |
+| Workload | Kāra (par 18-way) | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra par : Rust |
 |---|---|---|---|---|---|
-| `clone_bfs` (N=2000, K=500) | **35.0 ± 1.3 ms** | 155.0 ± 2.2 ms | 230.1 ± 1.8 ms | 599.0 ± 5.2 ms | **6.58× faster** |
+| `clone_bfs` (N=2000, K=500) | **22.7 ± 1.4 ms** | 155.6 ± 7.5 ms | 230.2 ± 2.5 ms | 588.3 ± 2.4 ms | **10.16× faster** |
 
-The serial codegen row is 48% faster than Rust on its own — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>`. The 8-way par row then folds in the K=500 outer loop's iteration-level parallelism: K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 8 branches lets all eight M1 cores work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Effective parallel speedup is ~4.4× (8-branch fork-join, not 8× linear because of branch-startup cost, Arc atomics, and the perf/efficiency-core split).
+The serial codegen row is 48% faster than Rust on its own — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>`. The 18-way par row then folds in the K=500 outer loop's iteration-level parallelism: K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Effective parallel speedup is ~6.9× wall-clock (not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice). A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription.
 
-`karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in ~527 s on the same hardware — ~2400× slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
+`karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in hundreds of seconds on the same hardware — orders of magnitude slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
-| `kara clone_bfs (par 8-way)` | 172.3 MiB |
-| `kara clone_bfs (codegen)` | 171.0 MiB |
+| `kara clone_bfs (par 18-way)` | 173.8 MiB |
+| `kara clone_bfs (codegen)` | 170.9 MiB |
 | `py   clone_bfs` | 33.8 MiB |
 | `rust clone_bfs` | 185.8 MiB |
 
-Kāra's peak is 8% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). The par row's overhead vs serial is +1.3 MiB (the eight branch stacks + Arc-promoted handle metadata) — negligible. Python's number is much smaller because CPython's tracing GC walks the cycles and reclaims them between iterations; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
+Kāra's peak is 7% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). The par row's overhead vs serial is +2.9 MiB (the eighteen branch stacks + Arc-promoted handle metadata) — negligible. Python's number is much smaller because CPython's tracing GC walks the cycles and reclaims them between iterations; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
 
 ## Caveats surfaced while writing this kata
 

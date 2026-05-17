@@ -1,12 +1,15 @@
 // Parallel-K variant — same per-clone BFS as clone_bfs.kara, but split the
-// K=500 outer clones into 8 par-block branches so each runs on a separate
-// thread. M1 has 4 performance + 4 efficiency cores; an 8-way split reaches
-// further into the efficiency tier than a 4-way and shaves ~30% off the
-// 4-way time at ~6× user time vs ~3× for 4-way.
+// K=500 outer clones into 18 par-block branches so each runs on a separate
+// thread. Calibrated for M5 Pro (6 performance + 12 efficiency = 18 cores);
+// 18-way reaches every core. A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on
+// this machine shows N=18 as the wall-clock optimum: par-24 slightly
+// regresses because oversubscription costs more than the marginal core
+// utilization saves.
 //
-// 500 doesn't divide cleanly by 8 — 7 branches do 62 clones each (434 total)
-// and the 8th does 66 to reach 500. The 6% imbalance is small enough that
-// the longest branch still determines wall-clock.
+// 500 doesn't divide cleanly by 18 — 14 branches do 28 clones each (392
+// total), the remaining 4 do 27 (108 total), summing to 500. The 4% load
+// imbalance is small enough that the longest branch still determines
+// wall-clock.
 //
 // Kara's two-phase Rc→Arc algorithm promotes shared-struct handles to Arc
 // when they escape across a parallel region, so the input `root` and the
@@ -72,17 +75,29 @@ fn main() {
 
     let root = nodes[0];
 
-    // K=500 split 8-way: 62 × 7 + 66 = 500.
-    let (s1, s2, s3, s4, s5, s6, s7, s8) = par {
-        let s1 = sum_clones(root, 62);
-        let s2 = sum_clones(root, 62);
-        let s3 = sum_clones(root, 62);
-        let s4 = sum_clones(root, 62);
-        let s5 = sum_clones(root, 62);
-        let s6 = sum_clones(root, 62);
-        let s7 = sum_clones(root, 62);
-        let s8 = sum_clones(root, 66);
-        (s1, s2, s3, s4, s5, s6, s7, s8)
+    // K=500 split 18-way: 28 × 14 + 27 × 4 = 500.
+    let (s1, s2, s3, s4, s5, s6, s7, s8, s9,
+         s10, s11, s12, s13, s14, s15, s16, s17, s18) = par {
+        let s1 = sum_clones(root, 28);
+        let s2 = sum_clones(root, 28);
+        let s3 = sum_clones(root, 28);
+        let s4 = sum_clones(root, 28);
+        let s5 = sum_clones(root, 28);
+        let s6 = sum_clones(root, 28);
+        let s7 = sum_clones(root, 28);
+        let s8 = sum_clones(root, 28);
+        let s9 = sum_clones(root, 28);
+        let s10 = sum_clones(root, 28);
+        let s11 = sum_clones(root, 28);
+        let s12 = sum_clones(root, 28);
+        let s13 = sum_clones(root, 28);
+        let s14 = sum_clones(root, 28);
+        let s15 = sum_clones(root, 27);
+        let s16 = sum_clones(root, 27);
+        let s17 = sum_clones(root, 27);
+        let s18 = sum_clones(root, 27);
+        (s1, s2, s3, s4, s5, s6, s7, s8, s9,
+         s10, s11, s12, s13, s14, s15, s16, s17, s18)
     };
-    println(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
+    println(s1+s2+s3+s4+s5+s6+s7+s8+s9+s10+s11+s12+s13+s14+s15+s16+s17+s18);
 }
