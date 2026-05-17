@@ -112,9 +112,9 @@ Snapshot — M1, 2026-05-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Workload | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra:Rust |
 |---|---|---|---|---|
-| `clone_bfs` (N=2000, K=500) | **189.1 ± 3.4 ms** | 230.8 ± 0.9 ms | 602.9 ± 2.7 ms | **1.22× faster** |
+| `clone_bfs` (N=2000, K=500) | **160.6 ± 4.0 ms** | 231.9 ± 1.3 ms | 610.4 ± 18.2 ms | **1.44× faster** |
 
-Kāra is 22% faster than Rust on this collection-heavy workload, 3.19× faster than Python. Python is only ~2.6× behind Rust because the workload is allocator-and-hashtable-bound, not inner-loop-bound — the regime where CPython's bytecode dispatch tax matters least. (Compare the 19–29× gap on `linear_scan` in the 153 bench, where the inner body is one compare and CPython's per-iteration cost dominates.)
+Kāra is 44% faster than Rust on this collection-heavy workload, 3.80× faster than Python. Python is only ~2.6× behind Rust because the workload is allocator-and-hashtable-bound, not inner-loop-bound — the regime where CPython's bytecode dispatch tax matters least. (Compare the 19–29× gap on `linear_scan` in the 153 bench, where the inner body is one compare and CPython's per-iteration cost dominates.)
 
 `karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in ~527 s on the same hardware — ~2400× slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 
