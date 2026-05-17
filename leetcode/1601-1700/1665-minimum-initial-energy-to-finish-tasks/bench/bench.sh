@@ -60,9 +60,12 @@ build_rust greedy.rs
 build_kara greedy.kara
 
 echo "=== runtime ==="
+# Workload is ~2-5ms — process-startup variance dominates per-run jitter, so
+# we need more samples than the default to make the kara-vs-rust gap legible.
+# 10 runs gives ~25%+ RSD here; 30 runs + 5 warmups brings it under 10%.
 hyperfine \
-    --warmup 2 \
-    --runs 10 \
+    --warmup 5 \
+    --runs 30 \
     --shell=none \
     --command-name 'kara greedy (codegen)' './target/greedy_kara' \
     --command-name 'py   greedy'           'python3 greedy.py' \

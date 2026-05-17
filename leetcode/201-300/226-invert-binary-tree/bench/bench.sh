@@ -62,8 +62,8 @@ build_kara recursive.kara
 build_kara iterative.kara
 
 hyperfine \
-    --warmup 3 \
-    --runs 10 \
+    --warmup 5 \
+    --runs 30 \
     --shell=none \
     --command-name 'kara recursive (codegen)' './target/recursive_kara' \
     --command-name 'kara iterative (codegen)' './target/iterative_kara' \

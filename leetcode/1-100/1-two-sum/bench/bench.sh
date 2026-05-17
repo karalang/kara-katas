@@ -61,18 +61,31 @@ build_rust hash_map.rs
 build_kara brute_force.kara
 build_kara hash_map.kara
 
+# Two batches because the workloads span ~5 orders of magnitude. Short
+# workloads (codegen + py hash_map + rust, all <50ms) need 30 runs to drown
+# out startup jitter — at 10 runs the kara-vs-rust gap is in the noise.
+# Long workloads (interp + py brute_force, 1.5s–45s) are already <2% RSD
+# at 10 runs, and bumping them to 30 runs would add ~15min to the bench.
+echo "=== runtime — short workloads ==="
 hyperfine \
-    --warmup 3 \
-    --runs 10 \
+    --warmup 5 \
+    --runs 30 \
     --shell=none \
     --command-name 'kara brute_force (codegen)' './target/brute_force_kara' \
     --command-name 'kara hash_map (codegen)'    './target/hash_map_kara' \
-    --command-name 'kara brute_force (interp)'  'karac run brute_force.kara' \
-    --command-name 'kara hash_map (interp)'     'karac run hash_map.kara' \
-    --command-name 'py   brute_force'           'python3 brute_force.py' \
     --command-name 'py   hash_map'              'python3 hash_map.py' \
     --command-name 'rust brute_force'           './target/brute_force' \
     --command-name 'rust hash_map'              './target/hash_map'
+
+echo
+echo "=== runtime — long workloads (interp + py brute_force) ==="
+hyperfine \
+    --warmup 2 \
+    --runs 10 \
+    --shell=none \
+    --command-name 'kara brute_force (interp)'  'karac run brute_force.kara' \
+    --command-name 'kara hash_map (interp)'     'karac run hash_map.kara' \
+    --command-name 'py   brute_force'           'python3 brute_force.py'
 
 echo
 echo "=== runtime memory (peak) ==="
