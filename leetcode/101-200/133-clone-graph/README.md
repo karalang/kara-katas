@@ -98,7 +98,8 @@ brew install hyperfine    # one-time, also needs rustc (rustup)
 
 | File | What it does |
 |---|---|
-| [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Codegens via `karac build` and runs to completion (~185 ms steady-state on M1). |
+| [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Serial baseline mirroring `clone_bfs.rs` line-for-line — `curr_clone` hoisted out of the inner for-nb loop to match Rust's shape. |
+| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **8 par-block branches** (62 × 7 + 66 = 500). M1 has 4 perf + 4 efficiency cores; the two-phase Rc→Arc algorithm promotes shared-struct handles when they escape across the par barrier. |
 | [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator |
 | [`bench/clone_bfs.rs`](bench/clone_bfs.rs) | Algorithmic mirror; uses `Rc<RefCell<Node>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O`; `black_box(&nodes[0])` keeps LLVM from hoisting the K loop |
 
@@ -110,11 +111,11 @@ Three codegen gaps surfaced while writing this kata blocked the bench path. All 
 
 Snapshot — M1, 2026-05-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Workload | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra:Rust |
-|---|---|---|---|---|
-| `clone_bfs` (N=2000, K=500) | **160.6 ± 4.0 ms** | 231.9 ± 1.3 ms | 610.4 ± 18.2 ms | **1.44× faster** |
+| Workload | Kāra (par 8-way) | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra par : Rust |
+|---|---|---|---|---|---|
+| `clone_bfs` (N=2000, K=500) | **35.0 ± 1.3 ms** | 155.0 ± 2.2 ms | 230.1 ± 1.8 ms | 599.0 ± 5.2 ms | **6.58× faster** |
 
-Kāra is 44% faster than Rust on this collection-heavy workload, 3.80× faster than Python. Python is only ~2.6× behind Rust because the workload is allocator-and-hashtable-bound, not inner-loop-bound — the regime where CPython's bytecode dispatch tax matters least. (Compare the 19–29× gap on `linear_scan` in the 153 bench, where the inner body is one compare and CPython's per-iteration cost dominates.)
+The serial codegen row is 48% faster than Rust on its own — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>`. The 8-way par row then folds in the K=500 outer loop's iteration-level parallelism: K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 8 branches lets all eight M1 cores work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Effective parallel speedup is ~4.4× (8-branch fork-join, not 8× linear because of branch-startup cost, Arc atomics, and the perf/efficiency-core split).
 
 `karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in ~527 s on the same hardware — ~2400× slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 
@@ -122,11 +123,12 @@ Kāra is 44% faster than Rust on this collection-heavy workload, 3.80× faster t
 
 | Run | Peak RSS |
 |---|---|
+| `kara clone_bfs (par 8-way)` | 172.3 MiB |
 | `kara clone_bfs (codegen)` | 171.0 MiB |
 | `py   clone_bfs` | 33.8 MiB |
 | `rust clone_bfs` | 185.8 MiB |
 
-Kāra's peak is 8% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). Python's number is much smaller because CPython's tracing GC walks the cycles and reclaims them between iterations; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
+Kāra's peak is 8% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). The par row's overhead vs serial is +1.3 MiB (the eight branch stacks + Arc-promoted handle metadata) — negligible. Python's number is much smaller because CPython's tracing GC walks the cycles and reclaims them between iterations; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
 
 ## Caveats surfaced while writing this kata
 
@@ -143,9 +145,13 @@ Three pre-existing typechecker warnings remain (orthogonal to this kata; flagged
 - `expected 'Vec<i64>', found 'Vec<?T1>'` on the empty-graph test case's outer `Vec.new()` annotation — the constructor inference issue noted in the v62 brainstorm where empty-Vec element typevars don't propagate from the annotation back to the constructor call.
 - `Option is implicitly #[must_use]` on `Map.insert(...)` returns when the prior value isn't needed — silenced in this kata with `let _ = visited.insert(...)`.
 
-Codegen blockers (see § Codegen vs Rust — landed above) — all four cleared during this kata's bench-enablement:
+Codegen blockers and enablers (see § Codegen vs Rust — landed above). Bugs 1–4 blocked the kata from compiling or running at all; 5–6 unblocked the **par 8-way** bench row by closing receiver-dispatch and par-block branch-binding gaps.
 
 - **Landed** in [`6b44c54`](../../../../karac-rust/src/codegen/calls.rs) — `compile_method_call` FieldAccess-receiver arm (FR slice, sibling to MR). `obj.field.method(...)` now dispatches for both shared and plain structs via a synth-identifier route through the existing identifier-receiver flow.
 - **Landed** in [`0439a5f`](../../../../karac-rust/src/codegen/calls.rs) — `Option`/`Result` `unwrap` / `expect` / `is_some` / `is_none` / `is_ok` / `is_err` codegen surface (new receiver-shape-agnostic arm + Index→FieldAccess→method dispatch chains). The `visited.get(curr.val).unwrap()` shape now compiles end-to-end.
 - **Landed** in [`9e2a71c`](../../../../karac-rust/src/codegen/types_lowering.rs) — `VecDeque[T]` type-lowering registered with the right `{ptr, len, cap}` shape (was hitting i64's default, overflowing 16 bytes into adjacent `Map` handle's alloca) plus effect-seeds for VecDeque mutating methods so auto-par captures them by reference. The "let-bound `SharedStruct{...}` + `Map.insert(k, x)` followed by additional inserts hangs at runtime" symptom resolved as a side-effect of the layout fix.
 - **Landed** in [`394cd64`](../../../../karac-rust/src/codegen/control_flow_for.rs) — for-loop struct-binding registration (struct-typed `x` in `for x in xs.iter() { ... x.val ... }` was folding to constant 0 because `var_type_names` wasn't populated for for-bindings) plus `obj.field.iter()` for-receiver dispatch (the inner `for nb in curr.neighbors.iter()` body was silently never emitted). Both gaps prevented the BFS body from actually executing once the queue advanced past iter 1.
+- **Landed** in [`3c69c5c`](../../../../karac-rust/src/codegen/functions.rs) — `ref T` / `mut ref T` collection parameter receiver method dispatch. Unified the per-shape ad-hoc param registration cascade through `register_var_from_type_expr`; made Map/Set handle loads ref-aware via a `get_data_ptr` helper; routed the typechecker's stdlib named-type checks through a derefed view. Incidentally unblocks `mut ref Set[T]`, `mut ref VecDeque[T]`, `mut ref String` as parameter types — broader receiver-dispatch coverage. Surfaced while attempting a recursive DFS variant of this kata.
+- **Landed** in [`f9ff988`](../../../../karac-rust/src/codegen/par_blocks.rs) — explicit `par {}` block-result + branch-binding propagation. `compile_par_block` was passing an empty `return_slots` list and unconditionally returning `i64 0` regardless of the block's final expression; branches' `let` bindings stayed branch-local and the join expression's identifier reads found nothing. The slot mechanism already existed for the auto-par dispatch path — the explicit-par path just hadn't engaged it. With this in, `bench/clone_bfs_par.kara` builds, runs, and shows the 4.43× iteration-parallelism speedup over serial.
+
+One adjacent bug (#7) noted but not yet fixed: a Map+shared-struct refcount/ownership interaction where returning an owned `Node` from a helper while discarding the local `Map` (which holds the only other RC reference) hangs at runtime. Independent of bugs 1–6; not blocking any existing bench row. Minimal repros saved alongside the bug-5 work; intended for a follow-up slice.

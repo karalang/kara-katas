@@ -1,0 +1,88 @@
+// Parallel-K variant — same per-clone BFS as clone_bfs.kara, but split the
+// K=500 outer clones into 8 par-block branches so each runs on a separate
+// thread. M1 has 4 performance + 4 efficiency cores; an 8-way split reaches
+// further into the efficiency tier than a 4-way and shaves ~30% off the
+// 4-way time at ~6× user time vs ~3× for 4-way.
+//
+// 500 doesn't divide cleanly by 8 — 7 branches do 62 clones each (434 total)
+// and the 8th does 66 to reach 500. The 6% imbalance is small enough that
+// the longest branch still determines wall-clock.
+//
+// Kara's two-phase Rc→Arc algorithm promotes shared-struct handles to Arc
+// when they escape across a parallel region, so the input `root` and the
+// per-branch cloned graphs are thread-safe without any annotation.
+
+shared struct Node {
+    val: i64,
+    mut neighbors: Vec[Node],
+}
+
+fn clone_graph(root: Node) -> Node {
+    let mut visited: Map[i64, Node] = Map.new();
+    let mut queue: VecDeque[Node] = VecDeque.new();
+
+    let root_clone = Node { val: root.val, neighbors: Vec.new() };
+    let _ = visited.insert(root.val, root_clone);
+    queue.push_back(root);
+
+    loop {
+        if let Some(curr) = queue.pop_front() {
+            let curr_clone = visited.get(curr.val).unwrap();
+            for nb in curr.neighbors.iter() {
+                if let None = visited.get(nb.val) {
+                    let fresh = Node { val: nb.val, neighbors: Vec.new() };
+                    let _ = visited.insert(nb.val, fresh);
+                    queue.push_back(nb);
+                }
+                let nb_clone = visited.get(nb.val).unwrap();
+                curr_clone.neighbors.push(nb_clone);
+            }
+        } else {
+            break;
+        }
+    }
+
+    visited.get(root.val).unwrap()
+}
+
+fn sum_clones(root: Node, count: i64) -> i64 {
+    let mut s: i64 = 0;
+    for _ in 0..count {
+        let c = clone_graph(root);
+        s = s + c.val;
+    }
+    s
+}
+
+fn main() {
+    let n: i64 = 2000;
+    let half_deg: i64 = 5;
+
+    let mut nodes: Vec[Node] = Vec.new();
+    for i in 0..n {
+        nodes.push(Node { val: i + 1, neighbors: Vec.new() });
+    }
+    for i in 0..n {
+        for d in 1..(half_deg + 1) {
+            let j = (i + d) % n;
+            nodes[i as u64].neighbors.push(nodes[j as u64]);
+            nodes[j as u64].neighbors.push(nodes[i as u64]);
+        }
+    }
+
+    let root = nodes[0];
+
+    // K=500 split 8-way: 62 × 7 + 66 = 500.
+    let (s1, s2, s3, s4, s5, s6, s7, s8) = par {
+        let s1 = sum_clones(root, 62);
+        let s2 = sum_clones(root, 62);
+        let s3 = sum_clones(root, 62);
+        let s4 = sum_clones(root, 62);
+        let s5 = sum_clones(root, 62);
+        let s6 = sum_clones(root, 62);
+        let s7 = sum_clones(root, 62);
+        let s8 = sum_clones(root, 66);
+        (s1, s2, s3, s4, s5, s6, s7, s8)
+    };
+    println(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
+}
