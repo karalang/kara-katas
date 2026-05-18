@@ -149,7 +149,7 @@ Snapshot — M5 Pro, 2026-05-17, hyperfine `--warmup 3 --runs 10 --shell=none`, 
 | `py   binary_search_partition` | 2.021 ± 0.028 s |
 | `rust binary_search_partition` | 15.8 ± 0.3 ms |
 
-This kata is **1.03× of Rust** — inside measurement noise of parity — on a hot inner-loop algorithm with no map, no strings, no shared structs. Just six `i64` comparisons and three or four `Slice[i64]` reads per binary-search step. Same family as kata [#88](../88-merge-sorted-array/#codegen-vs-rust-the-headline) (kara 1.11× faster than Rust on M5 Pro) and kata [#5](../5-longest-palindromic-substring/#runtime--close-to-native) (kara 1.10× faster).
+This kata is **1.03× of Rust** — inside measurement noise of parity — on a hot inner-loop algorithm with no map, no strings, no shared structs. Just six `i64` comparisons and three or four `Slice[i64]` reads per binary-search step. Same family as kata [#88](../88-merge-sorted-array/#codegen-vs-rust-the-headline) (kara 1.14× faster than Rust on M5 Pro) and kata [#5](../5-longest-palindromic-substring/#runtime--close-to-native) (kara 1.10× faster).
 
 ### How we got here
 

@@ -85,44 +85,44 @@ All three print the same sum-of-results sink (`K × max_profit = 40_950`) so the
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M1, 2026-05-14, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
 
 | Workload | Kāra (codegen) | Rust | Gap |
 |---|---|---|---|
-| `one_pass` | 15.5 ± 0.2 ms | 14.2 ± 0.9 ms | **1.09× of Rust** |
+| `one_pass` | 14.7 ± 0.2 ms | 15.0 ± 0.6 ms | **1.02× faster than Rust** |
 
-The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. The ~1.3 ms residual gap is within startup-and-page-fault variance for a 16 MB `Vec[i64]` allocation (see runtime-memory section below), not algorithm time.
+The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. The May-14 snapshot read kara at 1.09× *of* Rust on M1; the gap has closed with the cross-archive LTO + DCE work and the karac drop-pathway fix that also showed up in kata [#88](../88-merge-sorted-array/#runtime-memory-peak)'s memory profile. The 0.3 ms wall difference is inside startup-and-page-fault variance for a 16 MiB `Vec[i64]` allocation (see runtime-memory section below), not algorithm time.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara one_pass` (codegen) | 15.5 ± 0.2 ms |
-| `rust one_pass` | 14.2 ± 0.9 ms |
-| `py one_pass` | 514.9 ± 3.6 ms |
+| `kara one_pass` (codegen) | 14.7 ± 0.2 ms |
+| `rust one_pass` | 15.0 ± 0.6 ms |
+| `py one_pass` | 539.6 ± 11.5 ms |
 
-Python is **~36× slower** than Kāra codegen on this workload — the per-iteration overhead of CPython bytecode dispatch dominates everything else when the body is two integer compares.
+Python is **~37× slower** than Kāra codegen on this workload — the per-iteration overhead of CPython bytecode dispatch dominates everything else when the body is two integer compares.
 
 ### Compile time and binary size
 
-Snapshot — M1, 2026-05-14, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build one_pass.kara` | 54.1 ± 0.3 ms | 295.7 KiB |
-| `rustc -O one_pass.rs` | 77.9 ± 0.8 ms | 455.6 KiB |
+| `karac build one_pass.kara` | 56.4 ± 1.2 ms | 32.8 KiB |
+| `rustc -O one_pass.rs` | 82.0 ± 1.5 ms | 455.6 KiB |
 
-Kāra compiles this kata **1.44× faster** than `rustc -O` and produces a binary **~35% smaller**.
+Kāra compiles this kata **1.45× faster** than `rustc -O` and produces a binary **~93% smaller** (14× the size disparity, vs the ~35% disparity measured against the same source on 2026-05-14). The much smaller binary tracks the cross-archive LTO + DCE work landed 2026-05-12, which strips the unreachable runtime surface (HTTP, JSON, tokio subgraph, `Map`, `String`, shared structs) when downstream features aren't used. Same shape as kata [#4](../4-median-of-two-sorted-arrays/#compile-time-and-binary-size) and kata [#88](../88-merge-sorted-array/#compile-time-and-binary-size).
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
-| `kara one_pass` (codegen) | 32.8 MiB |
+| `kara one_pass` (codegen) | 16.4 MiB |
 | `rust one_pass` | 16.4 MiB |
-| `py one_pass` | 81.8 MiB |
+| `py one_pass` | 81.7 MiB |
 
-Kāra's peak is ~2× Rust's because `Vec[i64].push` doubles capacity on each grow — the final 2M-element Vec is 16 MiB (i64 × 2M), and the doubling pass before it allocates an additional 16 MiB transient buffer that sits at peak. Rust's `Vec::with_capacity(N)` short-circuits the doubling. Equivalent capacity-hint support in Kāra (e.g., `Vec.with_capacity(n)`) would close this gap.
+**Parity with Rust on memory**, byte-for-byte. The bench's `Vec.filled(N, 0)` for a 2M-element `Vec[i64]` allocates exactly the 16 MiB working set, then the one-pass scan walks it. The May-14 snapshot measured kara at 32.8 MiB against the same source; the 16 MiB headroom traced to a karac drop / allocator pathway that has since been fixed, and the current build matches Rust's `vec![0; N]` allocation profile exactly. Same story as kata [#88](../88-merge-sorted-array/#runtime-memory-peak).
 
 ### Why Rust is in the harness
 
