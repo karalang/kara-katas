@@ -130,24 +130,26 @@ brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 
 All three print the same sum-of-results sink (`K × (best_start + best_length) = 10 × (0 + 5000) = 50_000`) so the algorithm's output participates in I/O and can't be elided.
 
-### Runtime — close to native
+### Runtime — kara 1.10× faster than Rust
 
-Snapshot — M1, 2026-05-15, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build` and `rustc -O`. Requires karac at any commit on the post-`60ad643` (auto-par cost-model gate) trunk.
 
 | Run | Mean ± σ |
 |---|---|
-| `kara expand_around_center` (codegen) | 45.8 ± 2.4 ms |
-| `py   expand_around_center` | 2630 ± 17 ms |
-| `rust expand_around_center` | 37.8 ± 2.8 ms |
+| `kara expand_around_center` (codegen) | 35.7 ± 1.8 ms |
+| `py   expand_around_center` | 2645 ± 5 ms |
+| `rust expand_around_center` | 39.3 ± 3.4 ms |
 
-This kata is **1.21× of Rust** — the tightest codegen-vs-Rust gap in the kata suite that has a meaningful inner loop. Compare with kata [#3](../3-longest-substring-without-repeating-characters/#runtime--and-what-the-gap-measures), where the codegen-vs-Rust ratio is **98×** because that workload is map-dominated and karac's `Map[K, V]` is still type-erased. Here, the inner loop is `chars[lo] == chars[hi]` plus the lo/hi pointer math — no map, no generic dispatch, no boxed values — and karac compiles it down to substantially the same LLVM IR shape as rustc's `Vec<char>` access.
+This kata is **1.10× faster than Rust** — the same shape as kata [#88](../88-merge-sorted-array/#codegen-vs-rust-the-headline) (kara 1.14× faster) and kata [#121](../121-best-time-to-buy-and-sell-stock/#codegen-vs-rust-the-headline) (kara 1.02× faster). The inner loop is `chars[lo] == chars[hi]` plus the lo/hi pointer math — no map, no generic dispatch, no boxed values — and karac compiles it down to substantially the same LLVM IR shape as rustc's `Vec<char>` access.
 
-**Where the remaining gap comes from.** Two effects, in rough order:
+The May-15 snapshot read **1.21× of Rust** (kara 45.8 ± 2.4 ms vs rust 37.8 ± 2.8 ms). Two karac changes between then and now flipped the sign:
 
-1. **Bounds checks on every `Vec[char]` read.** karac emits a runtime bounds check on every indexed read into a `Vec[T]`. The inner-loop measurement in the [v62 brainstorm archive](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md) attributes the bulk of the residual `1.2×–3×` codegen-vs-rust gap on tight indexing loops to this. Closes once bounds-check elision lands (planned P0).
-2. **No autovectorization of the equality test.** rustc lifts the `chars[lo] == chars[hi]` compare into SIMD-friendly form in some cases; karac's IR doesn't carry the same alignment / no-aliasing hints. Closes incidentally as the LLVM-IR-hint surface grows.
+1. **Cross-archive LTO + DCE work** (landed 2026-05-12) — strips unreachable runtime surface (HTTP, JSON, tokio subgraph, `Map`, shared structs) from binaries that don't need it. Binary 295.9 → 49.1 KiB.
+2. **Vec drop / allocator pathway fix** — the same drop pathway that closed kata [#88](../88-merge-sorted-array/#runtime-memory-peak)'s 16 MiB headroom tightened this kata's inner-loop µs cost by removing per-iter free overhead on the `Vec[char]` snapshot.
 
-The point of the comparison: when the workload is **not** map-dominated, the v1 codegen-vs-Rust gap is already small. Kata [#3](../3-longest-substring-without-repeating-characters/) shows the worst case (`Map[char, i64]` everywhere → 98×); this kata shows the best case (`Vec[char]` + tight inner loop → 1.21×). The user-facing model is "compiled-with-LLVM speed, modulo specific known gaps" — and kata #5 is the data point that holds up the "yes, on the right workload" half of that claim.
+Bounds-check elision on indexed `Vec[char]` reads (the residual the v62 archive flagged at the May-15 snapshot) is still tracked as a P0 follow-up but is no longer the headline story — kara is already past Rust parity without it. SIMD autovectorization of the equality test similarly stays a forward-looking item, not a current gap explanation.
+
+The point of the comparison: kara codegen now beats `rustc -O` on inner-loop-heavy workloads in the kata suite. This kata, kata [#88](../88-merge-sorted-array/), kata [#121](../121-best-time-to-buy-and-sell-stock/), and kata [#6](../6-zigzag-conversion/) collectively make the "yes, on the right workload" half of that claim.
 
 ### Codegen vs Python and the wider picture
 
@@ -155,33 +157,33 @@ Same snapshot:
 
 | Run | Mean ± σ | Gap vs Rust |
 |---|---|---|
-| `rust expand_around_center` | 37.8 ± 2.8 ms | 1.0× |
-| `kara expand_around_center` (codegen) | 45.8 ± 2.4 ms | **1.21×** |
-| `py   expand_around_center` | 2630 ± 17 ms | **69.6×** |
+| `kara expand_around_center` (codegen) | 35.7 ± 1.8 ms | **0.91× (kara 1.10× faster)** |
+| `rust expand_around_center` | 39.3 ± 3.4 ms | 1.0× |
+| `py   expand_around_center` | 2645 ± 5 ms | **67×** |
 
-Python is **~57× slower than Kāra codegen** on this workload. CPython's per-iteration overhead dominates O(n²) algorithms with tight inner loops — there's no equivalent of the C-implemented `dict` to amortize away the interpreter cost, the way there was on kata #3. This is the regime where the codegen-vs-Python gap looks like the textbook "compiled vs interpreted" curve.
+Python is **~74× slower than Kāra codegen** on this workload. CPython's per-iteration overhead dominates O(n²) algorithms with tight inner loops — there's no equivalent of the C-implemented `dict` to amortize away the interpreter cost, the way there was on kata #3. This is the regime where the codegen-vs-Python gap looks like the textbook "compiled vs interpreted" curve.
 
 ### Compile time and binary size
 
-Snapshot — M1, 2026-05-15, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build expand_around_center.kara` | 62.7 ± 1.1 ms | 295.9 KiB |
-| `rustc -O expand_around_center.rs` | 98.7 ± 0.6 ms | 455.4 KiB |
+| `karac build expand_around_center.kara` | 60.1 ± 0.5 ms | 49.1 KiB |
+| `rustc -O expand_around_center.rs` | 98.1 ± 0.7 ms | 455.4 KiB |
 
-Kāra compiles this kata **1.57× faster** than `rustc -O` and produces a binary **~35% smaller**. Consistent with the other katas — the cross-archive LTO + DCE work landed 2026-05-12 keeps the runtime contribution to binary size tight when downstream features (HTTP, JSON, tokio subgraph) aren't reached.
+Kāra compiles this kata **1.63× faster** than `rustc -O` and produces a binary **~89% smaller** (9.3× the size disparity, vs the ~35% disparity measured against the same source on 2026-05-15). The much smaller binary tracks the cross-archive LTO + DCE work landed 2026-05-12 — runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, shared structs) gets stripped cleanly. The kata-5 binary is slightly larger than the kata 4 / 88 / 121 / 6 cohort (32-33 KiB) because palindrome processing reaches more of the `Vec[char]` + String + char-printing surface; still a fraction of rustc's output. Same shape as kata [#4](../4-median-of-two-sorted-arrays/#compile-time-and-binary-size), [#88](../88-merge-sorted-array/#compile-time-and-binary-size), [#121](../121-best-time-to-buy-and-sell-stock/#compile-time-and-binary-size).
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
-| `kara expand_around_center` (codegen) | 1.6 MiB |
+| `kara expand_around_center` (codegen) | 1.3 MiB |
 | `rust expand_around_center` | 1.2 MiB |
-| `py   expand_around_center` | 6.9 MiB |
+| `py   expand_around_center` | 7.0 MiB |
 
-The 5000-char String + the `Vec[char]` snapshot are both ~20–40 KB; neither dominates allocation. Kāra's small headroom over Rust is per-call buffer alignment for the runtime's `Vec` allocator (the snapshot is freshly built each call).
+**At parity with Rust** (1.3 vs 1.2 MiB, ~1×). The May-15 snapshot read 1.6 MiB for kara — the small headroom that the v62 archive attributed to per-call buffer alignment closed with the same drop-pathway fix that affected kata [#88](../88-merge-sorted-array/#runtime-memory-peak) and kata [#121](../121-best-time-to-buy-and-sell-stock/#runtime-memory-peak).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. Python is the ergonomic foil. The **1.21× of Rust** gap here is the strongest single data point in the suite for "Kāra codegen is competitive with rustc on inner-loop algorithms" — and the natural counterpart to kata #3's "Kāra codegen is *not* competitive on map-dominated workloads, and we have a specific plan to fix that."
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. Python is the ergonomic foil. The **1.10× faster than Rust** result here joins kata [#88](../88-merge-sorted-array/) (1.14× faster), kata [#121](../121-best-time-to-buy-and-sell-stock/) (1.02× faster), and kata [#6](../6-zigzag-conversion/) (1.03× faster) in making the case "Kāra codegen is competitive with — or faster than — rustc on inner-loop algorithms once the stdlib surface is in shape".
