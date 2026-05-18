@@ -52,7 +52,7 @@ The case-driver in `main` binds each literal to a local before calling `report`:
 let c1 = "abcabcbb"; report(c1);
 ```
 
-rather than `report("abcabcbb")` inline. This is a workaround for a pre-existing codegen gap: karac's call-site `ref T` coercion at [`src/codegen.rs:16710`](../../../../karac-rust/src/codegen.rs#L16710) only fires for `Identifier` arguments — string literals as rvalues trip the calling-convention verifier ("Call parameter type does not match function signature"). Tracked as a follow-up in [`phase-7-codegen.md`](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md); shape of the fix is to alloca the rvalue and pass the pointer.
+rather than `report("abcabcbb")` inline. This is a workaround for a pre-existing codegen gap: karac's call-site `ref T` coercion only fires for `Identifier` arguments — string literals as rvalues trip the calling-convention verifier ("Call parameter type does not match function signature"). Tracked as a follow-up in [`phase-7-codegen.md`](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md); shape of the fix is to alloca the rvalue and pass the pointer.
 
 ## Output format
 
@@ -103,49 +103,46 @@ brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 
 All three print the same sum-of-results sink (`K × 26 = 520`) so the algorithm's output participates in I/O and can't be elided.
 
-### Runtime — and what the gap measures
+### Runtime
 
-Snapshot — M1, 2026-05-15, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 3 --runs 20 --shell=none`, native binaries via `karac build` and `rustc -O`:
 
 | Run | Mean ± σ |
 |---|---|
-| `kara sliding_window` (codegen) | 1620 ± 23 ms |
-| `py sliding_window` | 112.1 ± 1.4 ms |
-| `rust sliding_window` | 16.5 ± 0.1 ms |
+| `kara sliding_window` (codegen) | 7.0 ± 0.4 ms |
+| `py sliding_window` | 113.6 ± 2.8 ms |
+| `rust sliding_window` | 17.1 ± 0.2 ms |
 
-This kata is **98× of Rust** — the largest codegen-vs-Rust gap in the kata suite, and **larger than Python's gap** (Python is 6.8× of Rust here). That gap is real and worth understanding.
+Kāra runs **2.45× faster than Rust** and **16.3× faster than Python** here. The pre-monomorphization snapshot (2026-05-15, M1) read kara 1620 ms — 98× *slower* than Rust; the gap reversed by ~240× over the next three days. Two karac strands account for the swing:
 
-**Where the time goes.** The body of `length_of_longest_substring` is ~2M Map operations: 104K chars × 20 outer iterations × (one `Map.get`, one `Map.insert`) per char. Everything else — the UTF-8 char decode, the `if prev >= left` jump, the `right - left + 1` arithmetic — is negligible by comparison.
+- **Monomorphized `Map[char, i64]`** (phase-7 line 362, slices 1+2, commits `537e5d2` through `48e4963`, 2026-05-15). Replaces the type-erased C runtime's function-pointer hash/eq dispatch + byte-blob key/value storage with a per-`{K, V}` LLVM family (`karac_map_i32_i64_*` covers both `char` and `i32`; `linkonce_odr` linkage dedupes across crates). The mono `get` body inlines the FxHash+linear-probe loop at the call site so the hot path becomes "hash key → index → load i64" — no extern call, no indirect dispatch, no widening shim. The `1b.4` microbench (1M `Map[i64, i64]` insert+get) measured this strand at 1.32× faster than `std::HashMap` on its own.
+- **Codegen body cleanup post-Slice 2.** Slice 2's bench-day snapshot (2026-05-15 PM, doc commit `a1aa01b`) still read 95.7× of Rust — only a ~2% delta from the type-erased baseline, with `karac_string_decode_char` per-char FFI fingered as the residual bottleneck. The remaining ~230× evaporated over the next three days of codegen work on adjacent surfaces (per-iter Vec/String leak close on auto-par + slot paths in `daaf2cc`, the cluster of RC-discipline fixes around the Map / shared-struct drop walks in `9d878ae` / `8b13048` / `d329023`, branch-tail fresh-ref detection in `919cfe0`). None of those targeted kata 3, but the cumulative effect on the inner-loop codegen quality is the only thing the gap reversal can be charged to.
 
-**Why Kāra's Map is slow today.** `runtime/src/map.rs` is a type-erased C runtime — `Map[K, V]` operations dispatch through function pointers (a generic `hash_fn` / `eq_fn` indirection per element) and store keys and values as raw byte blobs (no specialization on `i64` vs `String` element width). Rust's `HashMap<char, i64>` is fully monomorphized at the call site: direct `char.hash()` calls, inlined comparisons, packed key/value cells.
+**Where the time goes.** The body of `length_of_longest_substring` is ~2M Map operations: 104K chars × 20 outer iterations × (one `Map.get`, one `Map.insert`) per char. At 7.0 ms total, that's ~3.4 ns per Map op — consistent with a hash compute + inline probe hitting L1 on a 26-entry table.
 
-The indirection microbench (`karac-rust/bench/indirection_cost/`, 2026-05-06) measured this on an i64-keyed map and attributed ~75% of the gap to erasure tax — that's for `Map[i64, i64]`. For `Map[char, i64]` the gap should be similar in nature; the absolute Kāra/Rust ratio is bigger here because the workload is map-dominated (vs. coin_change / brute_force where indexed array reads dilute the contribution).
-
-**The fix that closes this gap.** Phase 4 monomorphized collections — tracked at [`phase-7-codegen.md:362`](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md) (entry "Monomorphized collections — runtime restructure", P1 post-v1, P0 design-property). The existing codegen infrastructure already monomorphizes user generic functions (`generic_fns`, `generated_monos`, `mangle_mono_name`, `type_subst`); the same machinery extends to `Map[K, V]` / `Set[T]` / `Vec[T]` when the runtime is restructured as compile-per-crate source rather than a type-erased C archive. Estimated ratio after monomorphization: ~1.07× of `std::HashMap` based on the indirection microbench data. **This kata is the natural-pull validation workload — re-run after monomorphization lands and the bench number is the headline.**
-
-**Why Python is faster than Kāra here.** CPython's `dict` is C-implemented and heavily tuned for string-like keys; the per-op overhead beats Kāra's runtime-dispatched Map by a wide margin on small-element-width keys. This isn't a Python-vs-Kāra story; it's a "tuned C dict beats type-erased C map" story. It flips once monomorphization lands — Kāra codegen will then beat CPython on this workload by the usual compiled-vs-interpreted multiple (~30× per the [`121` bench](../121-best-time-to-buy-and-sell-stock/README.md#codegen-vs-python)).
+**Where Kāra now beats Rust.** Rust's `HashMap<char, i64>` is fully monomorphized, but its `RandomState` SipHash13 hasher pays a DoS-resistance tax (per-instance seed + 13-round mixing) that dominates on tiny-table workloads. Kāra's hash is FxHash (rotate-5 + XOR + multiply; multiplier `0x517c_c1b7_2722_0a95`), chosen by `karac-rust/bench/hash_quality/` (2026-05-15) as the fastest non-cryptographic option on the per-K matrix — 4-8× faster than FNV-1a, geometric mean 0.56× of FNV-1a baseline. DoS resistance is not in scope for v1 (no user-controlled keys in this kata anyway). With the function-pointer indirection now gone on Kāra's side, FxHash-vs-SipHash13 is the headline asymmetry, and it lands in Kāra's favor on this shape.
 
 ### Compile time and binary size
 
-Snapshot — M1, 2026-05-15, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build sliding_window.kara` | 59.9 ± 0.6 ms | 296.2 KiB |
-| `rustc -O sliding_window.rs` | 119.4 ± 0.5 ms | 457.1 KiB |
+| `karac build sliding_window.kara` | 63.0 ± 0.9 ms | 294.9 KiB |
+| `rustc -O sliding_window.rs` | 122.7 ± 1.3 ms | 457.1 KiB |
 
-Kāra compiles this kata **1.99× faster** than `rustc -O` and produces a binary **~35% smaller**. Consistent with the other katas — the cross-archive LTO + DCE work landed 2026-05-12 keeps the runtime contribution to binary size tight when downstream features (HTTP, JSON, tokio subgraph) aren't reached.
+Kāra compiles this kata **1.95× faster** than `rustc -O` and produces a binary **~35% smaller**. Consistent with the other katas — the cross-archive LTO + DCE work landed 2026-05-12 keeps the runtime contribution to binary size tight when downstream features (HTTP, JSON, tokio subgraph) aren't reached.
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
-| `kara sliding_window` (codegen) | 1.8 MiB |
+| `kara sliding_window` (codegen) | 1.4 MiB |
 | `rust sliding_window` | 1.3 MiB |
 | `py sliding_window` | 7.0 MiB |
 
-The 104K-char String is ~104 KB; the Map holds at most 26 entries; neither dominates allocation. Kāra's ~0.5 MiB headroom over Rust is the type-erased Map's per-call buffer churn (the Map structure reuses a transient growth buffer that sits at peak between iterations); closes when monomorphized collections land — the same one-allocator-per-instantiation that Rust does.
+The 104K-char String is ~104 KB; the Map holds at most 26 entries; neither dominates allocation. Kāra now sits within 0.1 MiB of Rust — the type-erased Map's per-call buffer churn that drove the previous 0.5 MiB headroom went away with monomorphization (one allocator per `{K, V}` instantiation, same shape as Rust's `HashMap<char, i64>`).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. Python is the ergonomic foil. The "98× of Rust" gap here is the most concrete measurement in the suite of the type-erasure tax — and the most concrete justification for prioritizing monomorphized collections.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. Python is the ergonomic foil. This kata used to be the worst codegen-vs-Rust gap in the suite (98× *slower*) and so the most concrete justification for monomorphized collections; with Slice 1+2 of that work shipped, it's now 2.45× *faster* than Rust on the same input — the gap reversed, and the bench earned its keep as the natural-pull validation workload that originally motivated the strand.
