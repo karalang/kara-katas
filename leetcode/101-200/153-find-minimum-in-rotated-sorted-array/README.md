@@ -42,6 +42,7 @@ return nums[lo]
 - **`for i in 1..n`** (linear) and **`while lo < hi`** (binary) — both loop forms with mutable accumulators.
 - **Mutable integer locals updated by guarded `if`** — `m`, `lo`, `hi`.
 - **`%` and `/` on `i64`** — bench workload generates the rotated array via `((i + r) % n) + 1`.
+- **`u64` indices in `binary_search.kara`** — `lo`/`hi`/`mid` are carried as `u64` so the backend emits the unsigned mid-compute (`sub + add ..., lsr #1` — two instructions, fused shift-add) instead of the signed-rounding `subs + cinc + add ..., asr #1` shape. Mirrors Rust's `let mut lo: usize`.
 
 No `Map`, no strings, no shared structs.
 
@@ -97,56 +98,56 @@ All six print the same sum-of-results sink per workload (linear: `10`; binary: `
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M1, 2026-05-14, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-19, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
 
 | Workload | Kāra (codegen) | Rust | Gap |
 |---|---|---|---|
-| `linear_scan` (K=10) | 9.4 ± 0.4 ms | 5.3 ± 1.3 ms | **1.77× of Rust** |
-| `binary_search` (K=2M) | 72.1 ± 1.6 ms | 52.9 ± 1.8 ms | **1.36× of Rust** |
+| `linear_scan` (K=10) | 5.0 ± 0.6 ms | 5.6 ± 0.2 ms | **kāra 1.11× faster** |
+| `binary_search` (K=2M) | 48.0 ± 0.6 ms | 52.0 ± 1.2 ms | **kāra 1.08× faster** |
 
-The two workloads expose different regimes:
+Both workloads now run at parity-or-faster than `rustc -O`. The two have different inner-loop shapes:
 
-- **`linear_scan` is inner-loop-dominated** — 20 M indexed reads, one compare each. Kāra's gap here is the same shape as 1-two-sum's `brute_force` row: the per-element bounds check blocks LLVM's autovectorizer, so Rust's tighter (or elided-bounds) inner loop wins by ~2×. Closes once bounds-check elision lands (planned P0, path (a) `llvm.assume` reshape; rationale in the [v62 brainstorm archive](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md)).
-- **`binary_search` is call-overhead-dominated** — each call is only ~21 iterations, so we measure how cheaply 2 M function dispatches happen, not how the inner compares vectorize. Kāra's gap narrows to **1.36×** here; the residual is per-call setup (slice header materialization, prologue/epilogue) where Kāra's calling convention has slightly more overhead than Rust's. Captured but not P0 v1 — closes after the call-convention pass in the [v62 brainstorm archive](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md) lands (currently P2 deferred).
+- **`linear_scan` is inner-loop-dominated** — 20 M indexed reads, one compare each. Closed once karac's TargetMachine started passing the host CPU baseline (apple-m1 on macOS arm64) instead of `generic`/`""`, which is what unlocked LLVM's autovectorizer cost-model to interleave by 4 (matching Rust). See [`karac-rust/docs/implementation_checklist/phase-10-targets.md`](../../../../karac-rust/docs/implementation_checklist/phase-10-targets.md) for the CPU-baseline-per-target table mirroring rustc.
+- **`binary_search` is call-overhead-dominated** — each call is only ~21 iterations, so we measure how cheaply 2 M function dispatches happen plus the mid-compute inside. Closing the gap took two changes: source-level `Vec.with_capacity(n)` (eliminated the doubling-realloc transient 2× RSS and ~22% of the fill cost), then type-aware operator dispatch in karac (LLVM was emitting `cinc`-rounded signed mid-compute on the `(hi + lo) / 2` shape because karac codegen unconditionally used signed div/cmp/shr ops; once primitive trait-method dispatch threaded operand signedness through `compile_binop_typed`, switching `lo`/`hi`/`mid` to `u64` made LLVM emit the fused `sub + add ..., lsr #1` mid-point and `b.lo` loop guard — two instructions instead of three in the hot block).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ | Slower than Kāra codegen |
 |---|---|---|
-| `kara linear_scan` (codegen) | 9.4 ± 0.4 ms | — |
-| `rust linear_scan` | 5.3 ± 1.3 ms | — |
-| `py linear_scan` | 270.8 ± 2.0 ms | **~29×** |
-| `kara binary_search` (codegen) | 72.1 ± 1.6 ms | — |
-| `rust binary_search` | 52.9 ± 1.8 ms | — |
-| `py binary_search` | 1369 ± 87 ms | **~19×** |
+| `kara linear_scan` (codegen) | 5.0 ± 0.6 ms | — |
+| `rust linear_scan` | 5.6 ± 0.2 ms | — |
+| `py linear_scan` | 271.6 ± 4.1 ms | **~54×** |
+| `kara binary_search` (codegen) | 48.0 ± 0.6 ms | — |
+| `rust binary_search` | 52.0 ± 1.2 ms | — |
+| `py binary_search` | 1329 ± 12 ms | **~28×** |
 
-Python is 19–29× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
+Python is 28–54× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
 
 ### Compile time and binary size
 
-Snapshot — M1, 2026-05-14, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-19, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build linear_scan.kara` | 64.4 ± 1.4 ms | 295.8 KiB |
-| `rustc -O linear_scan.rs` | 89.4 ± 1.5 ms | 455.7 KiB |
-| `karac build binary_search.kara` | 56.2 ± 1.1 ms | 295.8 KiB |
-| `rustc -O binary_search.rs` | 76.4 ± 1.3 ms | 455.7 KiB |
+| `karac build linear_scan.kara` | 62.0 ± 1.1 ms | 49.0 KiB |
+| `rustc -O linear_scan.rs` | 90.8 ± 0.8 ms | 455.6 KiB |
+| `karac build binary_search.kara` | 55.5 ± 1.0 ms | 49.1 KiB |
+| `rustc -O binary_search.rs` | 78.3 ± 2.2 ms | 455.7 KiB |
 
-Kāra compiles both files **1.36–1.39× faster** than `rustc -O` and produces binaries **~35% smaller**. Further size headroom is locked-P0 for v1 but not yet shipped: `strip -x` + `panic = "abort"` (Phase 1, ~−35% on Map binaries) and `-Wl,-dead_strip` / `--gc-sections` + thin LTO (Phase 2, another 100–300 KB on Linux) — both staged in lines 107–120 of the [v62 brainstorm archive](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
+Kāra compiles both files **1.41–1.46× faster** than `rustc -O` and produces binaries **~9× smaller** — `strip -x` plus the size-targeted post-link passes have landed since the earlier snapshot.
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
-| `kara linear_scan` (codegen) | 32.8 MiB |
+| `kara linear_scan` (codegen) | 16.4 MiB |
 | `rust linear_scan` | 16.4 MiB |
-| `py linear_scan` | 85.4 MiB |
-| `kara binary_search` (codegen) | 32.8 MiB |
+| `py linear_scan` | 85.5 MiB |
+| `kara binary_search` (codegen) | 16.4 MiB |
 | `rust binary_search` | 16.4 MiB |
 | `py binary_search` | 85.4 MiB |
 
-Same story as 121: Kāra's peak is ~2× Rust's because `Vec[i64].push` doubles capacity on each grow — the final 2M-element Vec is 16 MiB (`i64 × 2M`), and the doubling pass before it allocates an additional 16 MiB transient buffer that sits at peak. Rust's `Vec::with_capacity(N)` short-circuits the doubling. Equivalent capacity-hint support in Kāra (e.g., `Vec.with_capacity(n)`) would close this gap — scoped post-v1 follow-up to the bounds-check elision work in the [v62 brainstorm archive](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
+Kāra now matches Rust's peak RSS — both bench files use `Vec.with_capacity(n)` to pre-allocate the 2M-element fill, so neither the kāra nor the rust path goes through the doubling-realloc transient that left the old kāra peak at 32.8 MiB.
 
 ### Why Rust is in the harness
 
