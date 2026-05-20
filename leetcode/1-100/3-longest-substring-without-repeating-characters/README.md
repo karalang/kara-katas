@@ -46,13 +46,13 @@ No `Vec`, no slices, no shared structs.
 
 Each Kāra solution exposes a pure `length_of_longest_substring(s: ref String) -> i64` and a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `length_of_longest_substring(s: str) -> int` and the same `report` / `main` shape.
 
-The case-driver in `main` binds each literal to a local before calling `report`:
+The case-driver in `main` passes each literal directly to `report`:
 
 ```rust
-let c1 = "abcabcbb"; report(c1);
+report("abcabcbb");
 ```
 
-rather than `report("abcabcbb")` inline. This is a workaround for a pre-existing codegen gap: karac's call-site `ref T` coercion only fires for `Identifier` arguments — string literals as rvalues trip the calling-convention verifier ("Call parameter type does not match function signature"). Tracked as a follow-up in [`phase-7-codegen.md`](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md); shape of the fix is to alloca the rvalue and pass the pointer.
+per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically (the `let c1 = "..."; report(c1)` workaround earlier versions of this kata used is no longer needed).
 
 ## Output format
 
