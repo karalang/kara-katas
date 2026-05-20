@@ -151,7 +151,7 @@ Same snapshot:
 | `kara reverse` (codegen) | 1.4 MiB |
 | `rust reverse` | 1.1 MiB |
 
-Kara is ~0.3 MiB above Rust now (was at parity pre-auto-par). The delta is the worker thread stacks — `karac_par_reduce` spawns N threads via `thread::scope` for the K-iter loop; each stack reservation adds to peak RSS, even when most of the stack is never touched. Acceptable cost for the 10× speedup; pool-sharing with the long-lived `karac_par_run` workers (deferred to a follow-up slice tracked in `docs/implementation_checklist/phase-7-codegen.md` § Auto-par reduction recognition) would amortize the stack reservation across reductions and bring this back near parity.
+Kara is ~0.3 MiB above Rust (was at parity pre-auto-par). The delta is the worker thread stacks — `karac_par_reduce` dispatches onto the long-lived `karac_par_run` pool (slice 3b.7), which holds N OS-thread stack reservations regardless of how many reductions actually fire. The pool's lazy-init creates N = `available_parallelism()` threads on the first auto-par call; each stack reservation adds to peak RSS even when most of the stack is never touched. Acceptable cost for the 10× speedup; the residual delta lives at the runtime-pool layer and would close (or reverse) only by tuning the pool's default thread count downward (separate slice — needs a knob for users running on memory-constrained targets). Pool sizing is currently `max(2, available_parallelism)`, which is the standard pool-API default; trimming to (say) the P-core count would cut the reservation in half on big.LITTLE hardware like the M5 Pro, at the cost of leaving E-cores unused under heavy load.
 
 ### Compile time and binary size
 
