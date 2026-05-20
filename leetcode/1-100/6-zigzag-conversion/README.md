@@ -73,13 +73,13 @@ No `Map`, no `Set`, no shared structs.
 
 Each Kāra solution exposes `convert(s: ref String, num_rows: i64) -> Vec[char]` returning the zigzag-rewritten chars in row-major order, plus a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `convert(s, num_rows) -> list[str]` and the same `report` / `main` shape.
 
-The case-driver in `main` binds each literal to a local before calling `report`:
+The case-driver in `main` passes each literal directly to `report`:
 
 ```rust
-let c1 = "PAYPALISHIRING"; report(c1, 3);
+report("PAYPALISHIRING", 3);
 ```
 
-rather than `report("PAYPALISHIRING", 3)` inline — same `ref T` rvalue-coercion sugar gap as katas [#3](../3-longest-substring-without-repeating-characters/#api-shape) and [#5](../5-longest-palindromic-substring/#api-shape).
+per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically (the `let c1 = "..."; report(c1, 3)` workaround earlier versions of this kata used is no longer needed).
 
 ## Output format
 
