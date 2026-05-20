@@ -10,9 +10,9 @@ Given a string `s`, return *a* longest palindromic substring of `s`.
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Expand around center | O(n²) time, O(n) space | [`expand_around_center.kara`](expand_around_center.kara) ✓ via `karac run` / `karac build` | [`expand_around_center.py`](expand_around_center.py) ✓ |
+| Expand around center | O(n²) time, O(1) extra space | [`expand_around_center.kara`](expand_around_center.kara) ✓ via `karac run` / `karac build` | [`expand_around_center.py`](expand_around_center.py) ✓ |
 
-`✓` runs end-to-end today. The O(n) space is a one-shot `Vec[char]` snapshot used for O(1) indexed access (Pattern 3 from [`valid_palindrome.kara`](../../../../karac-rust/examples/leetcode/valid_palindrome.kara)); the algorithm itself uses O(1) auxiliary memory.
+`✓` runs end-to-end today. The algorithm uses O(1) auxiliary memory; positional access into `s` goes through a zero-copy `s.bytes()` view (`Slice[u8]`), so no snapshot Vec is allocated. The LeetCode input alphabet is ASCII (digits + English letters), so byte-equality is character-equality.
 
 ### Why expand-around-center
 
@@ -21,10 +21,10 @@ Every palindromic substring has a unique **center**: a single character for odd 
 ```
 for each center (odd at i, even between i and i+1):
     lo, hi = seed
-    while lo >= 0 and hi < n and chars[lo] == chars[hi]:
+    while lo >= 0 and hi < n and bytes[lo] == bytes[hi]:
         lo -= 1
         hi += 1
-    # palindrome is chars[lo+1 ..= hi-1]
+    # palindrome is bytes[lo+1 ..= hi-1]
     # start = lo + 1, length = hi - lo - 1
 ```
 
@@ -32,19 +32,18 @@ The inner loop runs at most `min(i, n−1−i)` iterations per odd center and `m
 
 ### Why the loop's exit-state arithmetic is `[lo + 1, hi - lo - 1]`
 
-When the while loop exits, `lo` and `hi` are *one step past* the last matching pair. So the actual matched range is `chars[lo + 1 ..= hi − 1]`, giving:
+When the while loop exits, `lo` and `hi` are *one step past* the last matching pair. So the actual matched range is `bytes[lo + 1 ..= hi − 1]`, giving:
 - `start = lo + 1`
 - `length = hi − (lo + 1) = hi − lo − 1`
 
-For the even seed where `chars[i] != chars[i+1]`, the loop body never executes and this evaluates to `length = (i+1) − i − 1 = 0` — correctly rejected by the strict `> best_len` update on the caller side. The same arithmetic falls out cleanly for the empty-input case: `n = 0`, the outer `while i < n` never enters, and `(best_start, best_len) = (0, 0)` is returned.
+For the even seed where `bytes[i] != bytes[i+1]`, the loop body never executes and this evaluates to `length = (i+1) − i − 1 = 0` — correctly rejected by the strict `> best_len` update on the caller side. The same arithmetic falls out cleanly for the empty-input case: `n = 0`, the outer `while i < n` never enters, and `(best_start, best_len) = (0, 0)` is returned.
 
 ## Kāra features exercised
 
-- **`ref String` parameter + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. Same character-iteration backbone as kata [#3](../3-longest-substring-without-repeating-characters/) — codegen lowers `chars()` to an inline byte-offset loop with a runtime UTF-8 decode helper (`karac_string_decode_char`).
-- **`Vec[char]` built via `Vec.new()` + `push`** — explicit snapshot loop in place of `s.chars().collect()`, because `collect()` on a method-chain receiver currently hits a codegen dispatcher gap (the same shape that [`valid_palindrome.kara`](../../../../karac-rust/examples/leetcode/valid_palindrome.kara) trips on). Writing the snapshot as an explicit `for c in s.chars() { chars.push(c) }` works on both backends.
-- **`ref Vec[char]` parameter on a helper** — the `expand` helper takes the snapshot by immutable borrow so it can run repeatedly per center without copying. The body-level ownership analysis sees the borrow used only for `.len()` and indexed reads, and the codegen lowers it as a plain pointer + length pair.
+- **`ref String` parameter + `s.bytes()`** — read-only string borrow plus a zero-copy `Slice[u8]` view (design.md § Character type pins `s.bytes()[i]` as the O(1) byte-positional primitive). The codegen lowers `bytes()` to a `{ptr, len}` slice header against the String's existing storage — no allocation, no copy, no element-by-element walk. Replaced the explicit `Vec[char]` snapshot pattern earlier versions used in place of `s.chars().collect()`.
+- **`Slice[u8]` parameter on a helper** — the `expand` helper takes the byte view by value (Slice is a borrow form, no `ref` prefix needed). The body uses only `.len()` and indexed reads, both O(1) over the slice header.
 - **`Array[i64, 2]` return + tuple-style indexing on the caller** — the same `[start, length]` shape that kata [#1](../1-two-sum/) uses for `Two Sum`'s `[i, j]` result. Once `Option[(i64, i64)]` is solid in the interpreter, this can become a real tuple.
-- **`while ... and ... and ...` short-circuit** — three-way conjunction in the loop guard, with the bounds check before the character compare so that out-of-range indexing never happens.
+- **`while ... and ... and ...` short-circuit** — three-way conjunction in the loop guard, with the bounds check before the byte compare so that out-of-range indexing never happens.
 - **Mutable accumulator pattern** — `let mut best_start`, `let mut best_len` updated by guarded `if`. Strict `>` (not `>=`) preserves the left-to-right tiebreak: among equal-length palindromes, the leftmost wins.
 
 No `Map`, no `Set`, no shared structs.
@@ -53,13 +52,13 @@ No `Map`, no `Set`, no shared structs.
 
 Each Kāra solution exposes a pure `longest_palindrome(s: ref String) -> Array[i64, 2]` returning `[start, length]`, plus a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `longest_palindrome(s: str) -> tuple[int, int]` and the same `report` / `main` shape.
 
-The case-driver in `main` binds each literal to a local before calling `report`:
+The case-driver in `main` passes each literal directly to `report`:
 
 ```rust
-let c1 = "babad"; report(c1);
+report("babad");
 ```
 
-rather than `report("babad")` inline — same `ref T` rvalue-coercion sugar gap as kata [#3](../3-longest-substring-without-repeating-characters/#api-shape).
+per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically.
 
 ## Output format
 
@@ -115,6 +114,8 @@ python3 expand_around_center.py
 brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 ./bench/bench.sh
 ```
+
+The bench binaries use the earlier `Vec[char]` snapshot shape (matching Rust's `Vec<char>`) for apples-to-apples comparison; the shipped `expand_around_center.kara` uses `s.bytes()` instead. A future bench refresh can switch both languages to byte-array equivalents — the headline numbers below would shift downward correspondingly.
 
 `bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs three passes:
 
