@@ -155,24 +155,20 @@ brew install hyperfine    # one-time, also needs rustc (rustup), clang, and kara
 
 The N = 8 inputs are picked to exercise every transition path through the DFA so no single branch dominates the predictor's history — single-byte accept (`"0"`), sign + bare-dot + fractional (`"-.9"`), full grammar (`"53.5e93"`), exponent with sign (`"+6e-1"`), early reject at state 0 (`"abc"`), accept-prefix-into-non-accepting-EOF (`"1e"`), mid-stream reject inside exponent (`"99e2.5"`), and the longest valid case (`"-123.456e789"`). 5 of the 8 are valid numbers so each 8-input cycle adds 5 to the sink; K = 10M / 8 cycles × 5 = **6,250,000** at the default parameters. All four impls print the same sink before timing.
 
-### Runtime — single-thread codegen, within 1.15× of Rust
+### Runtime — 6.21× ahead of Rust, 7.12× ahead of C, via auto-par reduction
 
-Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build`, `rustc -O`, and `clang -O3`. Auto-par reduction did **not** fire on this workload (see the next subsection); these are single-thread numbers across the board.
+Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build`, `rustc -O`, and `clang -O3`. Requires karac at commit [`3294e50`](../../../../karac-rust/) (analyzer extension that recognizes the conditional accumulator-update shape `if cond { acc = acc + delta }`, landed 2026-05-20) or later.
 
 | Run | Mean ± σ | User |
 |---|---|---|
-| `rust valid` | 56.1 ± 0.8 ms | 54.7 ms |
-| `c    valid` | 63.6 ± 1.6 ms | 62.3 ms |
-| `kara valid` (codegen) | 64.3 ± 1.1 ms | 62.5 ms |
-| `py   valid` | 3,227 ± 48 ms | 3,205 ms |
+| `kara valid` (codegen) | 8.9 ± 0.2 ms | 67.1 ms |
+| `rust valid` | 55.6 ± 0.6 ms | 54.2 ms |
+| `c    valid` | 63.6 ± 1.1 ms | 62.1 ms |
+| `py   valid` | 3,241 ± 35 ms | 3,220 ms |
 
-Ratios: rust is **1.13× faster than c**, **1.15× faster than kara**, **57× faster than python**. Kara is ~tied with C on the per-call work and ~15% behind Rust — the gap to Rust is driven by Rust's tighter inlining of `is_ascii_digit()` plus the `&str` `.as_bytes()` no-op, where Kara still pays for `s.bytes()` returning a `Slice[u8]` view object. The kata 8 single-thread perf commits (const-prop captures, assume non-neg loop var, BCE-hoist via modulo) all apply equally here — they're general per-worker codegen wins, not par-reduce-specific.
+Ratios: kara is **6.21× faster than rust**, **7.12× faster than c**, **362× faster than python**.
 
-User ≈ wall (User 62.5 ms / wall 64.3 ms ≈ 1.0× CPU usage) — confirming the workload ran fully serial on a single core.
-
-### Why auto-par didn't fire — analyzer doesn't recognize conditional accumulator updates
-
-`karac build --concurrency-report bench/valid.kara` reports `<no parallelization opportunities detected>`. The body of the outer loop is:
+CPU utilization tells the parallelism story: hyperfine's reading is **User 67.1 ms / wall 8.9 ms ≈ 7.5× CPU usage** — close to perfect parallel scaling on the per-iter call shape. The outer loop body is
 
 ```kara
 let r: bool = is_number(inputs[idx]);
@@ -181,30 +177,34 @@ if r {
 }
 ```
 
-The slice-1 analyzer's reduction-pattern matcher recognizes `acc = acc + EXPR` as a reducible add-accumulator but does not recognize the **conditional accumulator update** `if cond { acc = acc + DELTA }` — even though it's semantically equivalent to `acc = acc + (if cond { DELTA } else { 0 })`, which the analyzer **does** accept.
+— a conditional accumulator update. The slice-1 analyzer recognizes this as a `+`-reduction with `sum` as the accumulator (treating it as semantically equivalent to `sum = sum + (if r { 1i64 } else { 0i64 })` for the associative+commutative `+` op), then the slice-3b codegen lowers it to a `karac_par_reduce` call that fans the iteration space across the M5 Pro's 6 P-cores + 12 E-cores. The reduction op is associative + commutative, so combine order doesn't matter — every run produces the same sink (`6_250_000`).
 
-Verified via a 22-line probe (single bool function + a sum loop): rewriting the same workload as `let val: i64 = if r { 1i64 } else { 0i64 }; sum = sum + val;` produces `reduction { op: +, accumulator: sum }` and triggers the auto-par lowering. So the gap is purely in the assignment-site shape matcher: it looks at the syntactic form of the accumulator update rather than the data-flow contribution per iteration.
+Rust and C stay single-threaded — neither `rustc -O` nor `clang -O3` auto-parallelizes the analogous for-loop without explicit rayon / OpenMP annotation. The kata 8 per-worker single-thread perf commits (const-prop captures, assume non-neg loop var, BCE-hoist via modulo) all apply equally here, so the per-worker user-time-divided-by-CPU-count tracks kata 8's shape.
 
-Closing this gap is a karac slice (extend the analyzer to lift single-arm `if cond { acc = acc + delta }` and `if cond { acc = acc + delta } else { /* nothing */ }` to the unconditional reduction shape). Once that lands, this kata should pick up the same ~9-10× wall-clock multiplier kata [#8](../8-string-to-integer-atoi/#benchmarks) gets — the per-iter work shape is similar (single-call body over an 8-input table) and the call cost is enough to amortize thread-spawn overhead.
+### Pre-fix snapshot — how the auto-par gap surfaced
 
-The README intentionally **does not** rewrite the source to the `if cond { delta } else { 0 }` workaround. Per the project's `no workarounds — fix the compiler` discipline, the workload's natural shape is the test case; the analyzer extends to recognize it.
+**Pre-2026-05-20 snapshot** (same hardware, same workload, karac before commit [`3294e50`](../../../../karac-rust/)): kara 64.3 ± 1.1 ms wall / User 62.5 ms (User ≈ wall — no parallelism). The analyzer reported `<no parallelization opportunities detected>` because its reduction-pattern matcher recognized `acc = acc + EXPR` but rejected the conditional shape `if cond { acc = acc + DELTA }`, even though the two forms are semantically equivalent for any associative+commutative op with a known identity. The gap was purely in the assignment-site syntactic matcher — verified via a 22-line probe where rewriting the workload to `let val: i64 = if r { 1i64 } else { 0i64 }; sum = sum + val;` *did* trigger recognition.
+
+Per the project's `no workarounds — fix the compiler` discipline, the workload kept its natural shape and the analyzer was extended (commit [`3294e50`](../../../../karac-rust/)) with a new `conditional_acc_update_shape` matcher that lifts single-arm `if cond { acc = acc + delta }` (and the trivially-equivalent two-arm form with an empty else) to the unconditional reduction. Three guards prevent unsoundness: the else branch must be empty, the then-block must be exactly one update statement of the recognized shape, and the condition must not read the accumulator (otherwise the per-iter decision is order-dependent and not preserved by the fan-out / combine model).
+
+Closing the gap dropped this kata's wall from 64.3 ms → 8.9 ms (**7.2× speedup from a single analyzer extension**), moving kara from 1.15× slower than rust to 6.21× faster.
 
 ### Codegen vs Python
 
-Python is **57× slower than Kāra codegen** at the same K (3,227 ms vs 64.3 ms). The per-iter body has a function call per byte (`categorize`) plus state-machine dispatch, all at the CPython bytecode-dispatch level — every `cat = categorize(c)` is an attribute lookup + frame push, and each `state == N` compare boxes both sides into PyObjects. Even with no auto-par advantage on the kara side, the codegen single-thread baseline beats CPython by ~57× on this shape. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~2,220×) because (a) the inner body there is even shorter and (b) auto-par fanned the work across cores there; the serial-vs-serial slice (kara user time vs python wall) was ~151×.
+Python is **362× slower than Kāra codegen** at the same K (3,241 ms vs 8.9 ms). The per-iter body has a function call per byte (`categorize`) plus state-machine dispatch, all at the CPython bytecode-dispatch level — every `cat = categorize(c)` is an attribute lookup + frame push, and each `state == N` compare boxes both sides into PyObjects. The serial-vs-serial slice (kara user time 67.1 ms vs python wall 3,241 ms) is **~48×**; the auto-par lowering widens that to 362× on wall by fanning across cores while CPython runs the GIL-locked single-threaded loop. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~2,220×) because the inner body there is even shorter — interpreter overhead dominates a larger fraction of CPython's cost.
 
-### Runtime memory — at parity with C/Rust
+### Runtime memory — slightly above Rust (worker thread overhead)
 
 Same snapshot:
 
 | Run | Peak RSS |
 |---|---|
-| `kara valid` (codegen) | 1.1 MiB |
+| `kara valid` (codegen) | 1.5 MiB |
 | `rust valid` | 1.1 MiB |
 | `c    valid` | 1.1 MiB |
-| `py   valid` | 7.3 MiB |
+| `py   valid` | 7.2 MiB |
 
-Kara is at parity with rust and c here — no worker thread stacks because auto-par didn't fire. (Kata [#8](../8-string-to-integer-atoi/#runtime-memory--slightly-above-rust-worker-thread-overhead) and [#7](../7-reverse-integer/#runtime-memory--slightly-above-rust-worker-thread-overhead) both carry a +0.3 to +0.4 MiB delta for the `karac_par_reduce` pool reservations.) Closing the analyzer gap above will move kara to that +0.3 MiB shape; that's an acceptable cost for the wall-clock win.
+Kara is ~0.4 MiB above the C/Rust baseline. Same root cause as kata [#7](../7-reverse-integer/#runtime-memory--slightly-above-rust-worker-thread-overhead) and kata [#8](../8-string-to-integer-atoi/#runtime-memory--slightly-above-rust-worker-thread-overhead): the `karac_par_reduce` call dispatches onto the long-lived `karac_par_run` pool, which reserves N = `available_parallelism()` OS-thread stacks regardless of how many reductions fire. Acceptable cost for the 6.21× wall-clock win — pre-fix this kata was at 1.1 MiB parity with C/Rust precisely *because* auto-par didn't fire and the pool wasn't initialized.
 
 ### Compile time and binary size
 
@@ -212,16 +212,16 @@ Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build valid.kara` | 55.7 ± 0.4 ms | **49.0 KiB** |
-| `rustc -O valid.rs` | 76.4 ± 1.5 ms | 455.4 KiB |
-| `clang -O3 valid.c` | 38.8 ± 0.4 ms | 32.7 KiB |
+| `karac build valid.kara` | 58.0 ± 0.3 ms | 311.9 KiB |
+| `rustc -O valid.rs` | 75.5 ± 0.5 ms | 455.4 KiB |
+| `clang -O3 valid.c` | 39.1 ± 0.5 ms | 32.7 KiB |
 
-Kāra compiles this kata **1.37× faster** than `rustc -O` and produces a binary **9.3× smaller**. Clang is **1.44× faster** and produces a binary **1.5× smaller** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-time-and-binary-size).
+Kāra compiles this kata **1.30× faster** than `rustc -O` and produces a binary **1.46× smaller**. Clang is **1.48× faster** and produces a binary **9.5× smaller** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-time-and-binary-size).
 
-The 49 KiB kara binary is notably small because **auto-par didn't fire** so the `karac_par_reduce` runtime + thread-pool helpers are dead-code-eliminated out. Compare kata [#8](../8-string-to-integer-atoi/) (312 KiB) and kata [#7](../7-reverse-integer/) (312 KiB), which both link in the par-reduce runtime. Once the analyzer gap above is closed, this binary will grow to a similar ~312 KiB — the runtime weight is the cost of the auto-par win.
+The kara binary is 311.9 KiB — same shape as kata [#8](../8-string-to-integer-atoi/) (312 KiB) and kata [#7](../7-reverse-integer/) (312 KiB), all linking in the `karac_par_reduce` runtime + thread-pool helpers. Pre-fix snapshot (auto-par didn't fire): the binary was 49 KiB because the runtime got dead-code-eliminated. The +263 KiB delta is the runtime weight, and the cost of the 6.21× wall-clock win.
 
-Compile memory: karac peaks at **9.6 MiB** vs rustc's **26.8 MiB** vs clang's **2.6 MiB** — ~2.8× lower compile-time RAM than rustc, ~3.7× higher than clang. Same ordering as kata [#8](../8-string-to-integer-atoi/#compile-time-and-binary-size).
+Compile memory: karac peaks at **9.8 MiB** vs rustc's **26.8 MiB** vs clang's **2.6 MiB** — ~2.7× lower compile-time RAM than rustc, ~3.8× higher than clang. Same ordering as kata [#8](../8-string-to-integer-atoi/#compile-time-and-binary-size).
 
 ### Why Rust and C are in the harness
 
-Same rationale as kata [#8](../8-string-to-integer-atoi/#why-rust-and-c-are-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no String type and no length-prefixed slice. The current result — **1.15× slower than Rust on wall (no auto-par), ~tied with C on wall, 9.3× smaller binary than Rust, 1.37× faster compile than Rust, ~2.8× lower compile RAM than Rust, at-parity peak RSS** — is the first kata where kara's auto-par analyzer **misses** a workload that should reduce. Closing the analyzer gap is tracked as a separate karac slice; once it lands this README's `runtime` table will move to the `kara dominant on wall, ~1.3× of c on single-thread user` shape kata [#8](../8-string-to-integer-atoi/#runtime--692-ahead-of-rust-750-ahead-of-c-via-auto-par-reduction) lands.
+Same rationale as kata [#8](../8-string-to-integer-atoi/#why-rust-and-c-are-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no String type and no length-prefixed slice. The current result — **6.21× faster than Rust on wall, 7.12× faster than C on wall, 1.46× smaller binary than Rust, 1.30× faster compile than Rust, ~2.7× lower compile RAM than Rust, +0.4 MiB peak RSS for the worker thread pool** — is the third kata in the suite where kara's auto-par lights up against serial baselines (after kata [#7](../7-reverse-integer/#benchmarks) at 11.18× and kata [#8](../8-string-to-integer-atoi/#benchmarks) at 6.92×). Surfaced as the *first* kata whose conditional-update body shape wasn't recognized by the slice-1 matcher — the analyzer extension that fixed it (commit [`3294e50`](../../../../karac-rust/), 2026-05-20) generalizes to any counts-of-truthy-results workload, a common per-iter-predicate shape.
