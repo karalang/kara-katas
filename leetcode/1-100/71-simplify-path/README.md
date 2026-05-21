@@ -61,29 +61,32 @@ The length is part of the discriminator on purpose. `"..."` is a three-character
 
 ## The pop saturates at root
 
-`'..'` from an empty stack is a no-op, not an error. That's how `/../` and `/../../../` both reduce to `/`. The guard
+`'..'` from an empty stack is a no-op, not an error. That's how `/../` and `/../../../` both reduce to `/`. `Vec.pop` is safe-on-empty by design — it returns `None` and leaves the Vec unchanged — so the saturating-at-root rule falls out for free:
 
 ```
-if top > 0 { top = top - 1 }
+} else if is_dotdot {
+    let _ = starts.pop();
+    let _ = ends.pop();
+}
 ```
 
-handles both: the stack stays empty across however many `'..'`s the input throws at it.
+No explicit "if not empty" guard, no underflow path. The two pops stay in lockstep because pushes always go to both vecs together.
 
-## `top`-counter pop, not `Vec.pop`
+## What this kata uncovered
 
-The interpreter doesn't yet have a `Vec.pop` dispatch arm (the typechecker accepts it and codegen lowers it, but `karac run` panics with "method 'pop' not found" — surfaced by the first probe of this kata). Instead, this solution keeps a `top: i64` counter as the live stack size and *reuses* slots past `top` with indexed writes, growing the underlying `Vec` only when `top` reaches its length. Same big-O, same semantics, runs under both `karac run` and `karac build` from one source.
+The first version of this kata couldn't call `Vec.pop` at all — the typechecker accepted it and codegen lowered it, but `karac run` panicked with "method 'pop' not found on type 'unknown'": the interpreter's Vec-method dispatch arm covered `pop_back` / `pop_front` but not the bare `pop` synonym. The kata was the first thing in the corpus to want stack-style push/pop on a `Vec[i64]`, so it surfaced the gap on its first probe.
 
-If the interpreter's `Vec.pop` lands later, the algorithm shape doesn't change — pop becomes `starts.pop(); ends.pop();` and the `top < starts.len()` branch goes away. The (start, end) representation is the bigger structural choice.
+Per the project's `no workarounds — fix the compiler` discipline, the interpreter dispatch was extended (commit [`7ebb8dd`](../../../../karac-rust/) — `pop` aliased to `pop_back` in `src/interpreter/method_call_seq.rs:207` plus a matching arm in `eval_vec_deque_method`) rather than the kata staying on a `top`-counter simulation of pop. This kata is now the natural integration test for that arm — drop the dispatch and the `'..'` cases (`/../`, `/a/../../b`, `/a/b/c/../..`) immediately panic.
 
 ## Kāra features exercised
 
 - **`ref String` parameter + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. The kata's input alphabet is ASCII per LeetCode #71, so `chars` and `bytes` would both work; `chars` is chosen so the per-character output append (`f"{out}{c}"`) gets a `char` directly without a `u8 as char` round-trip.
 - **`Vec[char]` snapshot via `push` in a `for` loop** — `s.chars()` is a forward iterator with no `len()`, but the algorithm needs random access (`cs[i + 1]` for the second dot of `'..'`) and post-scan position-indexed reads, so one pass into a `Vec[char]` pays for itself immediately.
-- **Parallel `Vec[i64]` start/end stacks + a `top` counter** — the (start, end) representation is 16 bytes per entry regardless of component length; the `top` counter is the live size, and indexed writes (`starts[top] = i`) reuse stale slots so `Vec.push` only fires when the stack grows past its all-time-high. Same shape as the bench-style "single-allocation hot loop" used elsewhere in the kata corpus.
+- **Parallel `Vec[i64]` start/end stacks with `push` + `pop`** — the (start, end) representation is 16 bytes per entry regardless of component length; `Vec.pop` is safe-on-empty (returns `None`, leaves the Vec unchanged) so the saturate-at-root rule needs no explicit guard. The two stacks stay in lockstep because pushes and pops always go to both together.
 - **`char` equality and arithmetic on `i64` indices** — `cs[i] == dot` / `cs[i + 1i64] == dot` compare `char` to a `char`-typed constant; the `i64` arithmetic is the standard kata-style index type.
 - **`and` short-circuit inside `while` and compound `let` conditions** — `while i < n and cs[i] == slash` is the boundary-safe slash-skip; `let is_dotdot = len == 2 and cs[i] == dot and cs[i + 1] == dot` shortcuts the second `cs[]` read when the length doesn't match.
-- **`return` from the empty-stack root special case** — `if top == 0i64 { return "/"; }` exits before the output loop runs; the literal materializes as a fresh `String` per design.md § Part 1½ Rule 4.
-- **f-string interpolation as the String-builder** — `out = f"{out}/"` and `out = f"{out}{c}"` are the available append shape (kara doesn't have `String + String` concatenation today and has no `substring` method either, so f-string append is the per-character build path). Total cost is O(n) over the output length, since each character is appended exactly once.
+- **`Vec.is_empty()` for the root special case + `return` of a string literal** — `if starts.is_empty() { return "/"; }` exits before the output loop runs; the literal materializes as a fresh `String` per design.md § Part 1½ Rule 4.
+- **f-string interpolation as the String-builder** — `out = f"{out}/"` and `out = f"{out}{c}"` are the available append shape (kara doesn't have `String + String` concatenation accepted by the typechecker today and has no `substring` method either — both tracked in [`karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md`](../../../../karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md), surfaced from this same kata). Total cost is O(n) over the output length, since each character is appended exactly once.
 
 No `Map`, no shared structs, no `Vec[String]`.
 
@@ -109,7 +112,7 @@ No `Map`, no shared structs, no `Vec[String]`.
 | `"/./"` | `"/"` | Single dot in the middle of slashes — skips, leaves the stack empty. |
 | `"/a/./b/./c/."` | `"/a/b/c"` | Dot at end + interior — both skipped. |
 | `"/a/b/c/../.."` | `"/a"` | Two pops at the end shrink the stack by exactly two. |
-| `"/a/b/../c/../../d"` | `"/d"` | Pop / push / pop / pop / push churn — the (start, end) reuse path. |
+| `"/a/b/../c/../../d"` | `"/d"` | Pop / push / pop / pop / push churn — the `Vec.pop` then re-`push` path. |
 | `"/home/user/Documents/../Pictures"` | `"/home/user/Pictures"` | Canonical "user navigates up then sideways" example. |
 | `"/.../a/../b/c/../d/./"` | `"/.../b/d"` | The LeetCode-spec example that catches "leading-byte-only" implementations. |
 

@@ -14,12 +14,10 @@
 // of the discriminator, not just the leading byte.
 //
 // The stack stores positions into the snapshotted `Vec[char]` rather
-// than fresh `String` allocations. The interpreter doesn't yet have a
-// `Vec.pop` dispatch arm (see the `top`-counter pattern below), and
-// kara has no substring method on `String`, so the (start, end) pair
-// shape sidesteps both gaps in one move — it's also the cheapest
-// representation: 16 bytes per stack entry independent of the
-// component's length.
+// than fresh `String` allocations — 16 bytes per stack entry regardless
+// of how long the component is, and no per-component allocation. The
+// output walk reads characters back out of `cs` at the recorded
+// positions.
 //
 // LeetCode #71's input alphabet is English letters, digits, `'.'`,
 // `'/'`, `'_'` — all ASCII, all single-`char` under any encoding the
@@ -42,16 +40,12 @@ fn simplify(s: ref String) -> String {
     let dot:   char = '.';
     let slash: char = '/';
 
-    // Parallel start/end stacks, both indexing into `cs`. A separate
-    // `top` counter is the live size — entries past `top` are stale
-    // but reused on the next push (indexed write avoids a fresh
-    // allocation). The interpreter currently doesn't dispatch
-    // `Vec.pop` (only the typechecker + codegen do), so simulating
-    // pop with `top = top - 1` keeps the kata runnable under both
-    // `karac run` and `karac build` from the same source.
+    // Parallel start/end stacks, both indexing into `cs`. `pop` on an
+    // empty Vec returns `None` and leaves the Vec unchanged, so the
+    // "/../" saturating-at-root rule falls out for free — no explicit
+    // `if !empty` guard needed.
     let mut starts: Vec[i64] = Vec.new();
     let mut ends:   Vec[i64] = Vec.new();
-    let mut top: i64 = 0i64;
 
     let mut i = 0i64;
     while i < n {
@@ -77,28 +71,21 @@ fn simplify(s: ref String) -> String {
         if is_dot {
             // skip — '.' is the current directory
         } else if is_dotdot {
-            // pop one entry, or stay at root if already empty. This
-            // is the "/../" saturating-at-root rule.
-            if top > 0i64 {
-                top = top - 1i64;
-            }
+            // Pop one entry. `pop` is safe-on-empty (returns `None`),
+            // so the saturate-at-root rule is implicit. The two pops
+            // stay in lockstep because pushes always go to both vecs
+            // together.
+            let _ = starts.pop();
+            let _ = ends.pop();
         } else {
-            // push the component. Reuse the slot at index `top` if
-            // we've shrunk past it before; otherwise grow the vec.
-            if top < starts.len() {
-                starts[top] = i;
-                ends[top]   = j;
-            } else {
-                starts.push(i);
-                ends.push(j);
-            }
-            top = top + 1i64;
+            starts.push(i);
+            ends.push(j);
         }
         i = j;
     }
 
     // Empty stack means the canonical path is the root.
-    if top == 0i64 {
+    if starts.is_empty() {
         return "/";
     }
 
@@ -108,7 +95,7 @@ fn simplify(s: ref String) -> String {
     // total because n is bounded by the original input length.
     let mut out: String = "";
     let mut k = 0i64;
-    while k < top {
+    while k < starts.len() {
         out = f"{out}/";
         let a = starts[k];
         let b = ends[k];
