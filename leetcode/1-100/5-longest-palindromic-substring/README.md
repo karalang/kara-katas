@@ -10,90 +10,25 @@ Given a string `s`, return *a* longest palindromic substring of `s`.
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Expand around center | O(n²) time, O(1) extra space | [`expand_around_center.kara`](expand_around_center.kara) ✓ via `karac run` / `karac build` | [`expand_around_center.py`](expand_around_center.py) ✓ |
-
-`✓` runs end-to-end today. The algorithm uses O(1) auxiliary memory; positional access into `s` goes through a zero-copy `s.bytes()` view (`Slice[u8]`), so no snapshot Vec is allocated. The LeetCode input alphabet is ASCII (digits + English letters), so byte-equality is character-equality.
+| Expand around center | O(n²) time, O(1) extra space | [`expand_around_center.kara`](expand_around_center.kara) ✓ | [`expand_around_center.py`](expand_around_center.py) ✓ |
 
 ### Why expand-around-center
 
 Every palindromic substring has a unique **center**: a single character for odd lengths, a gap between two characters for even lengths. There are exactly `2n − 1` centers in a string of length `n` (`n` odd centers + `n − 1` even centers). For each center, the maximal palindrome around it is found by walking two pointers outward in lockstep and stopping as soon as they go out of range or disagree. The overall answer is the longest palindrome found across all centers.
 
-```
-for each center (odd at i, even between i and i+1):
-    lo, hi = seed
-    while lo >= 0 and hi < n and bytes[lo] == bytes[hi]:
-        lo -= 1
-        hi += 1
-    # palindrome is bytes[lo+1 ..= hi-1]
-    # start = lo + 1, length = hi - lo - 1
-```
+There is no faster *general* algorithm in this complexity class with constant auxiliary memory — Manacher's algorithm gets you to O(n), but at the cost of significantly more code and a transformed-string scratch array. For Kāra's current shape (no fancy string types, no `&str` slicing) expand-around-center is the most direct expression.
 
-The inner loop runs at most `min(i, n−1−i)` iterations per odd center and `min(i, n−2−i)` per even, summing to O(n²) total. There is no faster *general* algorithm in this complexity class with constant auxiliary memory — Manacher's algorithm gets you to O(n), but at the cost of significantly more code and a transformed-string scratch array. For Kāra's current shape (no fancy string types, no `&str` slicing) expand-around-center is the most direct expression.
-
-### Why the loop's exit-state arithmetic is `[lo + 1, hi - lo - 1]`
-
-When the while loop exits, `lo` and `hi` are *one step past* the last matching pair. So the actual matched range is `bytes[lo + 1 ..= hi − 1]`, giving:
-- `start = lo + 1`
-- `length = hi − (lo + 1) = hi − lo − 1`
-
-For the even seed where `bytes[i] != bytes[i+1]`, the loop body never executes and this evaluates to `length = (i+1) − i − 1 = 0` — correctly rejected by the strict `> best_len` update on the caller side. The same arithmetic falls out cleanly for the empty-input case: `n = 0`, the outer `while i < n` never enters, and `(best_start, best_len) = (0, 0)` is returned.
+**LeetCode admits multiple valid answers** when palindromes tie for the maximum length. For `"babad"`, both `"bab"` (start=0) and `"aba"` (start=1) are accepted; this kata's strict `>` tiebreak picks the leftmost (`(0, 3)`). The Python and Kāra implementations make the same choice, so the diff stays clean across all cases.
 
 ## Kāra features exercised
 
-- **`ref String` parameter + `s.bytes()`** — read-only string borrow plus a zero-copy `Slice[u8]` view (design.md § Character type pins `s.bytes()[i]` as the O(1) byte-positional primitive). The codegen lowers `bytes()` to a `{ptr, len}` slice header against the String's existing storage — no allocation, no copy, no element-by-element walk. Replaced the explicit `Vec[char]` snapshot pattern earlier versions used in place of `s.chars().collect()`.
-- **`Slice[u8]` parameter on a helper** — the `expand` helper takes the byte view by value (Slice is a borrow form, no `ref` prefix needed). The body uses only `.len()` and indexed reads, both O(1) over the slice header.
-- **`Array[i64, 2]` return + tuple-style indexing on the caller** — the same `[start, length]` shape that kata [#1](../1-two-sum/) uses for `Two Sum`'s `[i, j]` result. Once `Option[(i64, i64)]` is solid in the interpreter, this can become a real tuple.
-- **`while ... and ... and ...` short-circuit** — three-way conjunction in the loop guard, with the bounds check before the byte compare so that out-of-range indexing never happens.
-- **Mutable accumulator pattern** — `let mut best_start`, `let mut best_len` updated by guarded `if`. Strict `>` (not `>=`) preserves the left-to-right tiebreak: among equal-length palindromes, the leftmost wins.
+- **`ref String` + `s.bytes()`** — read-only string borrow plus a zero-copy `Slice[u8]` view; LeetCode alphabet is ASCII so byte == codepoint and indexing is O(1) with no `Vec[char]` snapshot.
+- **`Slice[u8]` parameter on a helper** — the `expand` helper takes the byte view by value; `.len()` and indexed reads are both O(1) over the slice header.
+- **`Array[i64, 2]` return + tuple-style indexing** — same `[start, length]` shape kata [#1](../1-two-sum/) uses; can become a real tuple once `Option[(i64, i64)]` is solid in the interpreter.
+- **`while ... and ... and ...` short-circuit** — three-way conjunction with bounds check before byte compare, so out-of-range indexing never happens.
+- **Mutable accumulator pattern** — strict `>` (not `>=`) preserves the left-to-right tiebreak among equal-length palindromes.
 
 No `Map`, no `Set`, no shared structs.
-
-## API shape
-
-Each Kāra solution exposes a pure `longest_palindrome(s: ref String) -> Array[i64, 2]` returning `[start, length]`, plus a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `longest_palindrome(s: str) -> tuple[int, int]` and the same `report` / `main` shape.
-
-The case-driver in `main` passes each literal directly to `report`:
-
-```rust
-report("babad");
-```
-
-per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically.
-
-## Output format
-
-**Two lines per test case** — start index, then length — rather than the substring itself. The substring is fully identified by `(start, length)` over the input, and the integer shape:
-
-1. Diffs line-for-line between Kāra and Python without depending on encoding choices.
-2. Doesn't hit the codegen path's char-printing gap (`println(c)` for a `char` currently prints the integer codepoint instead of the glyph; tracked separately, doesn't matter for this kata because we never print chars).
-3. Mirrors kata [#1](../1-two-sum/)'s `Array[i64, 2]` → "two lines per case" shape, so the output convention across the suite is consistent.
-
-Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-0
-3
-1
-2
-0
-1
-0
-1
-0
-0
-0
-7
-0
-3
-0
-9
-3
-10
-0
-3
-```
-
-**LeetCode admits multiple valid answers** when palindromes tie for the maximum length. For `"babad"`, both `"bab"` (start=0) and `"aba"` (start=1) are accepted; this kata's strict `>` tiebreak picks the leftmost (`(0, 3)`). The Python and Kāra implementations make the same choice, so the diff stays clean across all cases.
 
 ## Running
 

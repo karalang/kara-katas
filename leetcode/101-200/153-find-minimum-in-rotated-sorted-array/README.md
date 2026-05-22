@@ -15,52 +15,15 @@ Given an array of unique integers that was originally sorted in ascending order 
 
 `✓` runs end-to-end today. Binary search is the canonical solution — linear scan is a baseline to compare codegen against.
 
-### Why comparing against `hi` works
-
-A rotated sorted array has at most one "drop" — the index where the minimum lives. With the invariant *the minimum is in `[lo, hi]`*, comparing `nums[mid]` against `nums[hi]` partitions cleanly:
-
-- `nums[mid] > nums[hi]` → the drop is strictly right of `mid`, so the minimum is too: `lo := mid + 1`.
-- `nums[mid] ≤ nums[hi]` → `mid` and everything to its right is already sorted, so the minimum is at or left of `mid`: `hi := mid`.
-
-Comparing against `hi` (not `lo`) lets the no-rotation case (e.g., `[11, 13, 15, 17]`) terminate cleanly without a special-case first/last guard — every iteration takes the second branch and `hi` shrinks down to 0.
-
-```
-lo, hi = 0, n - 1
-while lo < hi:
-    mid = lo + (hi - lo) / 2
-    if nums[mid] > nums[hi]:
-        lo = mid + 1
-    else:
-        hi = mid
-return nums[lo]
-```
+The header comment in [`binary_search.kara`](binary_search.kara) covers why comparing `nums[mid]` against `nums[hi]` (rather than `nums[lo]`) lets the no-rotation case terminate without a special-case first/last guard.
 
 ## Kāra features exercised
 
-- **`Slice[i64]` parameter** — function takes an immutable slice; the LeetCode case-driver passes `Array[i64, N]` literals, the bench passes `Vec[i64].as_slice()`.
+- **`Slice[i64]` parameter** — function takes an immutable slice; LeetCode case-driver passes `Array[i64, N]` literals, bench passes `Vec[i64].as_slice()`.
 - **Indexed slice access** — `nums[0]`, `nums[mid]`, `nums[hi]` inside the loops.
 - **`for i in 1..n`** (linear) and **`while lo < hi`** (binary) — both loop forms with mutable accumulators.
-- **Mutable integer locals updated by guarded `if`** — `m`, `lo`, `hi`.
 - **`%` and `/` on `i64`** — bench workload generates the rotated array via `((i + r) % n) + 1`.
-- **`u64` indices in `binary_search.kara`** — `lo`/`hi`/`mid` are carried as `u64` so the backend emits the unsigned mid-compute (`sub + add ..., lsr #1` — two instructions, fused shift-add) instead of the signed-rounding `subs + cinc + add ..., asr #1` shape. Mirrors Rust's `let mut lo: usize`.
-
-No `Map`, no strings, no shared structs.
-
-## API shape
-
-Each solution exposes a pure `find_min(nums) -> i64` (Python: `-> int`) and a thin `report` that prints. `main` calls `report` per test case. Logic is separate from I/O so the function is testable once a harness exists.
-
-## Output format
-
-One integer per line — the minimum for each test case. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-1
-0
-11
-5
-1
-```
+- **`u64` indices in `binary_search.kara`** — `lo`/`hi`/`mid` carried as `u64` so the backend emits the unsigned mid-compute (`sub + add ..., lsr #1`) instead of the signed-rounding `subs + cinc + add ..., asr #1` shape.
 
 ## Running
 

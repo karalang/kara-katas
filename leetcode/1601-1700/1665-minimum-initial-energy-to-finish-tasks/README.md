@@ -32,40 +32,14 @@ Exchange argument over an adjacent pair `(i, j)`: swapping them changes only the
 
 The cross-terms dominate (since `actual + minimum > minimum`), so order `i, j` wins iff `actual_i + minimum_j ≤ actual_j + minimum_i`, i.e. `minimum_j - actual_j ≤ minimum_i - actual_i`. So put the task with the larger `minimum - actual` *first* — it needs the largest "buffer" beyond its own cost, and that buffer is cheapest to provide when no other task has eaten into the reserve yet.
 
-Once sorted, the running-max simulation reads cleanly:
-
-```
-energy = 0
-spent  = 0
-for (actual, minimum) in ordered:
-    energy = max(energy, spent + minimum)
-    spent += actual
-return energy
-```
-
 ## Kāra features exercised
 
 - **Tuple element type** — `Slice[(i64, i64)]` parameter, `Array[(i64, i64), N]` literal, coercion between the two.
 - **Tuple field access inside a closure** — `(b.1 - b.0).cmp(a.1 - a.0)` as the `Vec.sort_by` comparator.
-- **Tuple destructuring** — `let (actual, minimum) = t;` inside the simulation loop.
+- **Tuple destructuring** — `let (actual, minimum) = t;` inside the running-max loop.
 - **`Vec[T]` with closure-taking sort** — `ordered.sort_by(|a, b| ...)` mutates in place.
-- **`for x in slice.iter()`** — both for the copy-in and for the running-max pass.
 
 No `Map`, no strings, no shared structs.
-
-## API shape
-
-Each solution exposes a pure `minimum_effort(tasks) -> i64` (Python: `-> int`) and a thin `report` that prints. `main` calls `report` per test case. Logic is separate from I/O so the function is testable once a harness exists.
-
-## Output format
-
-One integer per line — the minimum initial energy for each test case. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-8
-32
-27
-```
 
 ## Running
 

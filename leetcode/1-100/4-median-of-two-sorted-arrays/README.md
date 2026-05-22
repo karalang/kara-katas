@@ -18,90 +18,16 @@ Given two sorted arrays `nums1` and `nums2` of size `m` and `n` respectively, re
 
 The naive "merge then index" answer is O(m + n) and misses the problem's stated bound. The trick is that *we don't need the merged sequence* — only the value(s) at the middle index. Choosing a partition point `i` in `nums1` and the matching `j = (m + n + 1) / 2 − i` in `nums2` carves the two inputs into a "left half" of size `(m + n + 1) / 2` and a "right half" of size `(m + n) / 2`. The partition is **correct** when every value on the left is `≤` every value on the right — checked with two cross-comparisons, `nums1[i − 1] ≤ nums2[j]` and `nums2[j − 1] ≤ nums1[i]`.
 
-```
-half = (m + n + 1) / 2          // size of left partition (ceiling for odd T)
-lo, hi = 0, m
-while lo <= hi:
-    i = (lo + hi) / 2
-    j = half - i
-    left_a, right_a  = a[i-1] or -∞,  a[i] or +∞
-    left_b, right_b  = b[j-1] or -∞,  b[j] or +∞
-    if   left_a > right_b: hi = i - 1         // too many a's on the left
-    elif left_b > right_a: lo = i + 1         // too few  a's on the left
-    else: lower = max(left_a, left_b); upper = min(right_a, right_b); done
-```
-
 Only `i` is searched — `j` is derived from the invariant — so the loop bounds are `[0, m]` and the runtime is `O(log m)`. Ensuring `m ≤ n` (by swapping inputs at the entry) makes it `O(log min(m, n))`, which also keeps `j` non-negative for every `i`.
-
-### Why ±∞ sentinels
-
-Treating `a[-1] = b[-1] = −∞` and `a[m] = b[n] = +∞` collapses the four boundary cases (`i = 0`, `i = m`, `j = 0`, `j = n`) into the same cross-check shape as the interior. Without sentinels the loop body would need a four-way branch on `(i ∈ {0, m}, j ∈ {0, n})` and a separate "one array fully consumed" path. With them, the cross-checks never spuriously fail at a boundary because `−∞ ≤ x ≤ +∞` is always true. `i64.MIN` / `i64.MAX` are wide enough (≈ ±9.2e18) to serve as sentinels for any value in the problem's `±10⁶` range.
-
-### Why the ceiling on `half`
-
-`half = (m + n + 1) / 2` (integer division) sizes the left partition so that for odd totals the *extra* element falls on the left side. That makes `max(left_a, left_b)` directly equal to the median when `m + n` is odd. For even totals the left and right halves are equal-sized, and the median is `(max(left_a, left_b) + min(right_a, right_b)) / 2` — the arithmetic mean of the two middle elements. The same `half` works for both parities, no branching on `m + n` during the search.
 
 ## Kāra features exercised
 
-- **`Slice[i64]` parameter** — `middle_pair` takes both inputs by immutable slice. The LeetCode case-driver passes fresh `Array[i64, N]` literals, which coerce to `Slice[i64]` at the call site (same coercion exercised by kata [#88](../88-merge-sorted-array/)).
-- **Recursion across the `Slice[i64]` boundary** — the `m > n` swap is implemented as a one-deep self-call with the arguments reversed (`middle_pair(b, a)`). The second invocation has `m ≤ n` and skips the branch, so the recursion is bounded.
-- **`i64.MIN` / `i64.MAX` as ±∞ sentinels** — primitive-type associated constants resolved by the typechecker and lowered to the corresponding LLVM constants. Lets the partition cross-checks treat boundary cases uniformly without branching.
-- **`if cond { x } else { y }` as expression** — used to materialise the four sentinel-guarded values (`left_a`, `right_a`, `left_b`, `right_b`) into local `i64` bindings in one line each, same shape as kata [#322 (`coin_change.kara`)](../../../../karac-rust/examples/leetcode/coin_change.kara).
-- **`else if` chain** — three-way branch on the cross-check outcome (`left_a > right_b`, `left_b > right_a`, else). Parser desugars to nested `if`/`else` blocks.
-- **`Array[i64, 2]` return** — the same `[lower, upper]` pair-shape used by kata [#1](../1-two-sum/) for `[i, j]` and kata [#5](../5-longest-palindromic-substring/) for `[start, length]`. Once `Option[(i64, i64)]` is solid in the interpreter, this can become a real tuple.
-
-No `Map`, no `Vec`, no strings, no shared structs. The hot loop is six `i64` comparisons plus three or four `Slice[i64]` reads per iteration.
-
-## API shape
-
-Each Kāra solution exposes `middle_pair(a: Slice[i64], b: Slice[i64]) -> Array[i64, 2]` returning `[lower_median, upper_median]`, plus a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `middle_pair(a, b) -> tuple[int, int]` and the same `report` / `main` shape.
-
-The case-driver in `main` binds each pair of array literals to locals before calling `report`:
-
-```rust
-let a1: Array[i64, 2] = [1, 3];  let b1: Array[i64, 1] = [2];  report(a1, b1);
-```
-
-rather than `report([1, 3], [2])` inline — same `ref T` rvalue-coercion sugar gap as kata [#5](../5-longest-palindromic-substring/#api-shape) and kata [#3](../3-longest-substring-without-repeating-characters/#api-shape). The `let` for each fresh `Array[i64, N]` binds the rvalue so the slice coercion has a stable place to point at.
-
-## Output format
-
-**Two lines per test case** — the *lower median* and the *upper median*, where the median is `(lower + upper) / 2`. For odd-total cases the two values are equal (the median is a single element); for even-total cases they are the two middle elements. Concretely:
-
-- `(T + 1) / 2`-th smallest element of the merged sequence → `lower`
-- `(T + 2) / 2`-th smallest element of the merged sequence → `upper`
-- `median = (lower + upper) / 2`
-
-The integer-pair shape rather than a printed float:
-
-1. Diffs line-for-line between Kāra and Python without depending on float-formatting choices (`2.0` vs `2.00000` vs `2`).
-2. Sidesteps any `f64` printing convention differences across the two runtimes.
-3. Mirrors kata [#1](../1-two-sum/)'s and kata [#5](../5-longest-palindromic-substring/)'s `Array[i64, 2]` → "two lines per case" shape, so the output convention across the suite is consistent.
-
-Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-2
-2
-2
-3
-1
-1
-2
-2
-1
-2
-2
-3
-4
-4
-1
-1
-5
-6
--2
--2
-```
+- **`Slice[i64]` parameter** — `middle_pair` takes both inputs by immutable slice; fresh `Array[i64, N]` literals at the call site coerce to `Slice[i64]` (same coercion as kata [#88](../88-merge-sorted-array/)).
+- **Recursion across the `Slice[i64]` boundary** — the `m > n` swap is a one-deep self-call with arguments reversed; the second invocation skips the branch.
+- **`i64.MIN` / `i64.MAX` as ±∞ sentinels** — primitive-type associated constants lowered to LLVM constants, used to collapse the four boundary cases into the interior cross-check shape.
+- **`if cond { x } else { y }` as expression** — materialises the four sentinel-guarded values into `i64` bindings in one line each.
+- **`else if` chain** — three-way branch on the cross-check outcome; parser desugars to nested `if`/`else`.
+- **`Array[i64, 2]` return** — the same pair-shape used by kata [#1](../1-two-sum/) and kata [#5](../5-longest-palindromic-substring/); will become a real tuple once `Option[(i64, i64)]` is solid in the interpreter.
 
 ## Running
 

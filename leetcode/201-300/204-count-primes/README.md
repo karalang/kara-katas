@@ -29,43 +29,20 @@ The textbook solution to "count primes < n" is the Sieve of Eratosthenes — O(n
 
 A future sieve-based kata for the *count-only* version of LC #204 (where the optimal algorithm is the sieve, parallelism is moot, and the comparison is purely per-core compiler quality on a memory-streaming workload) is filed separately.
 
-## Implementation
+## Kāra features exercised
 
-```kara
-fn is_prime(n: i64) -> bool {
-    if n < 2i64 { return false; }
-    if n == 2i64 { return true; }
-    if (n % 2i64) == 0i64 { return false; }
-    let mut i: i64 = 3i64;
-    while (i * i) <= n {
-        if (n % i) == 0i64 { return false; }
-        i = i + 2i64;
-    }
-    return true;
-}
+- **`Vec[i64]` + `push`** — growable buffer holds the primes list; the bench workload uses this shape so the parallel-collect codegen path fires.
+- **Integer-typed literals** — `2i64`, `0i64`, `3i64` keep the inner loop in `i64` end-to-end without coercion.
+- **`while` with composite guard** — `while (i * i) <= n` avoids the sqrt call and stays in integer arithmetic.
+- **`#[par_unordered]`** (bench only) — opts the outer collect-loop into auto-par codegen (see `bench/count.kara`).
 
-fn list_primes_under(n: i64) -> Vec[i64] {
-    let mut primes: Vec[i64] = Vec.new();
-    let mut k: i64 = 0i64;
-    while k < n {
-        if is_prime(k) {
-            primes.push(k);
-        }
-        k = k + 1i64;
-    }
-    return primes;
-}
+## Running
 
-fn count_primes(n: i64) -> i64 {
-    return list_primes_under(n).len();
-}
+```bash
+karac run count.kara
+python3 count.py
+diff <(karac run count.kara) <(python3 count.py) && echo OK
 ```
-
-Two helpers exposed at the top level:
-
-- **`is_prime(n)`** — trial division up to `√n`. Early-exits on divisibility by 2, then walks only odd factors. This keeps the inner loop's work proportional to `√n / 2` per *prime* candidate; composites are typically rejected after one or two trial divisions, so the average per-iter cost across `[0, n)` is much lower than the worst case.
-- **`list_primes_under(n)`** — collects primes into a `Vec[i64]`. The bench workload uses this shape so the parallel-collect codegen path fires.
-- **`count_primes(n)`** — LC #204's contract: returns the count. Built on `list_primes_under(n).len()` so the LC test cases share a single codepath with the bench.
 
 ## Benchmarks
 
@@ -158,7 +135,4 @@ Kāra's compiler holds a much smaller working set than `rustc -O` (no incrementa
 ## Caveats
 
 - **N = 10⁷ is well above LC's max** (`n ≤ 5×10⁶`). The bench uses a larger N so the timed loop dominates startup/teardown overhead in hyperfine. At LC's actual limit (5M), wall times halve uniformly — same ratios within each lane, just less measurement headroom.
-- **Cross-lane wall-time ratios are not the comparison this kata is for.** "Auto-par Kāra is N× faster than single-threaded Rust" is technically true at any N, but it's apples-to-oranges (parallel dispatch vs single-core codegen) and would silently let a parallel win hide a per-core regression. Both lanes have their own comparator in the table; readers checking compiler quality should look at the **seq lane** (kara vs rust vs c vs go), and readers checking parallel-runtime quality should look at the **par lane** (kara `#[par_unordered]` vs `rayon` vs Go goroutines). Mixing them is the user-CPU vs wall-clock confusion that earlier showed up while drafting the bench.
-- **`rayon` beats Kāra par by 1.31× today.** Not a defeat — a concrete optimization target. `rayon` ships a per-worker-deque work-stealing scheduler; Kāra's runtime currently uses a single global queue + Condvar (the v1 MVP per `karac-rust/runtime/src/lib.rs § Pool`); Go's goroutine runtime sits at a comparable distribution efficiency to karac's MVP. Closing the gap to rayon is tracked in `karac-rust/docs/implementation_checklist/phase-7-codegen.md` line 163. The codegen work that *did* land (Phase 3 + 3.1) gets within 31% of mature hand-tuned `rayon` on the first iteration of the feature, while slightly beating Go's goroutine runtime.
-- **Go beats Kāra/C/Rust by 11% on single-thread.** Not a defeat either — see *Why is Go single-thread faster?* above. The 510 ms Kāra / 511 ms C / 513 ms Rust three-way parity is the load-bearing finding for compiler quality. The Go-edge is a real per-core optimization opportunity worth investigating but not a "Kāra is broken" signal.
 - **Order across the result `Vec` is unspecified** in the par lane. That's exactly why `#[par_unordered]` is required — it's the user's explicit opt-in to "I don't care about output order" semantics. For LC #204 (count only) and our bench (sum is order-invariant), this costs nothing. Workloads that need order-preservation would use a different reduction primitive (filed as a future karac-rust tracker entry).

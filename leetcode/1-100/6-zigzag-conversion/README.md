@@ -31,85 +31,18 @@ The math/stride form is *constant-factor* better on memory but requires reasonin
 
 ### Why flip direction *before* the step
 
-```
-if cur == 0 or cur == num_rows - 1 {
-    going_down = not going_down;
-}
-if going_down {
-    cur = cur + 1;
-} else {
-    cur = cur - 1;
-}
-```
-
 Flipping before stepping makes the seed state `(cur = 0, going_down = false)` work: on the first iteration we hit `cur == 0`, flip `going_down` to `true`, and step down to row 1. The alternative ("seed `going_down = true`, flip after the step") leaves a subtle off-by-one on the very first step when `numRows == 2` (the only case where the bottom rail is also row 1). With the pre-flip ordering the same loop body works for every `numRows ≥ 2` without a special case.
-
-### Edge cases collapsed by the guard
-
-```
-if num_rows <= 1 or num_rows >= n {
-    // return s unchanged
-}
-```
-
-- `num_rows == 1` — no zigzag shape; the answer is `s`. The main loop would also handle it (every char goes to row 0), but the row-flip logic divides by `num_rows - 1 == 0` conceptually if you ever read it as a period. Bailing early is clearer.
-- `num_rows >= n` — every char gets its own row, so reading by row returns the input. The main loop also handles this correctly, but exits with `num_rows − n` empty rows, which we'd just skip in the flatten. Bailing early avoids the allocation of the empty buffers.
-
-Both cases are exercised in the test driver (`"A", 1`, `"AB", 1`, `"ABCDEFG", 100`).
 
 ## Kāra features exercised
 
-- **`Vec[Vec[char]]`** — per-row character buffers built explicitly with `Vec.new()` + `push` rather than a vec literal. The literal form would need to clone an empty inner Vec for each row, which hits the same coercion gap as kata [#5]'s `chars().collect()`. The explicit form lowers to a straightforward `karac_vec_with_capacity` + per-element write loop.
-- **`ref String` parameter + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. Same backbone as katas [#3](../3-longest-substring-without-repeating-characters/) and [#5](../5-longest-palindromic-substring/) — codegen lowers `chars()` to an inline byte-offset loop with a runtime UTF-8 decode helper (`karac_string_decode_char`).
-- **Snapshot pattern** — `for c in s.chars() { chars.push(c); }` snapshots into a `Vec[char]` so we can ask for `len()` once and index in O(1). The iterator returned by `s.chars()` doesn't expose a `len()` and re-iterating `ref String` is cheap but wouldn't help for the indexed reads later. Same pattern as kata [#5].
-- **`if cond or cond` short-circuit** — used in the early-return guard (`num_rows <= 1 or num_rows >= n`) and the rail check (`cur == 0 or cur == num_rows - 1`). Lowered to `select` over both branches with a short-circuit branch when the LHS is true.
-- **Mutable boolean accumulator (`let mut going_down`)** — flipped with `not going_down` at each rail. Same shape as the mutable counters in kata [#5]'s expand loops, just on `bool`.
-- **`Vec[char]` indexed read + push** — both the per-row buffer fills (`rows[cur].push(chars[i])`) and the flatten loop (`out.push(rows[r2][k])`). Bounds checks fire on each indexed read; the codegen-vs-Rust ratio for this shape is the kata-[#5] data point (1.21× of Rust on a tight indexed loop) — see [#5 § Runtime](../5-longest-palindromic-substring/README.md#runtime--close-to-native) for the gap breakdown.
-- **`println(c)` glyph print** — direct char printing renders the UTF-8 glyph. Same shape as the Python `print(c)` mirror. The char-display arm in `compile_print` routes the i32 codepoint through `karac_string_encode_char` and prints the 1–4 byte UTF-8 sequence — see the karac commit message at [`61b1bf3`](../../../../karac-rust/) for the codegen-side detection and dispatch.
+- **`Vec[Vec[char]]`** — per-row buffers built explicitly with `Vec.new()` + `push`; the literal form hits the same coercion gap as kata [#5]'s `chars().collect()`.
+- **`ref String` + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. Same backbone as katas [#3](../3-longest-substring-without-repeating-characters/) and [#5](../5-longest-palindromic-substring/).
+- **Snapshot pattern** — `for c in s.chars() { chars.push(c); }` lets us ask for `len()` once and index in O(1).
+- **`if cond or cond` short-circuit** — used in the early-return guard and the rail check.
+- **`Vec[char]` indexed read + push** — per-row buffer fills and the flatten loop; bounds checks fire on each indexed read.
+- **`println(c)` glyph print** — the char-display arm in `compile_print` routes the i32 codepoint through `karac_string_encode_char` and prints the 1–4 byte UTF-8 sequence (karac [`61b1bf3`](../../../../karac-rust/)).
 
 No `Map`, no `Set`, no shared structs.
-
-## API shape
-
-Each Kāra solution exposes `convert(s: ref String, num_rows: i64) -> Vec[char]` returning the zigzag-rewritten chars in row-major order, plus a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `convert(s, num_rows) -> list[str]` and the same `report` / `main` shape.
-
-The case-driver in `main` passes each literal directly to `report`:
-
-```rust
-report("PAYPALISHIRING", 3);
-```
-
-per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically (the `let c1 = "..."; report(c1, 3)` workaround earlier versions of this kata used is no longer needed).
-
-## Output format
-
-**One glyph per line, then `---` as a case separator.** The result of zigzag conversion is a string; we print it one char per line rather than as a single line for two reasons:
-
-1. **Empty-input visibility** — case 5 (`""`, `numRows = 3`) has an empty result. A whole-string print would emit a single blank line that visually merges with surrounding output; the separator-after-each-case shape makes the empty case unambiguously `---` alone.
-2. **No `String.push(char)` dependency** — building the zigzag result as a single `String` would need to push individual chars into a `String`, which currently has no method on the codegen side. `Vec[char]` + per-element `println(c)` works today and matches the Python side directly.
-
-The `---` separator is an arbitrary sentinel that doesn't collide with the LeetCode constraint set (English letters, `','`, `'.'`); it could also be a blank line, but `---` is more obvious when scanning long output.
-
-```
-P                 ← case 1: "PAYPALISHIRING", 3  →  PAHNAPLSIIGYIR
-A
-H
-…
-R
----
-P                 ← case 2: "PAYPALISHIRING", 4  →  PINALSIGYAHRPI
-…
----
-A                 ← case 3: "A", 1
----
-A                 ← case 4: "AB", 1
-B
----
----               ← case 5: ""     (empty result, separator alone)
-…
-```
-
-The Kāra binary (codegen or interpreter) and the Python reference produce identical output (64 lines total across the nine test cases) so `diff ./row_buffers <(python3 row_buffers.py)` is silent.
 
 ## Running
 

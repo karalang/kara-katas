@@ -23,18 +23,6 @@ Given a signed 32-bit integer `x`, return `x` with its digits reversed. If rever
 
 ## Why pop-and-push
 
-The textbook formulation walks digits least-significant first:
-
-```
-digit  = x % 10
-result = result * 10 + digit
-x      = x / 10
-```
-
-Three operations per digit, all in registers, no allocation. The interesting part is the overflow check, not the digit walk.
-
-### The overflow rails
-
 Doing the multiply first and checking after won't work — the multiply itself is the overflow event. The check has to fire *before* the multiply, against `INT_MAX / 10` and `INT_MIN / 10`:
 
 ```
@@ -59,34 +47,13 @@ So a single `while x != 0` loop walks negatives correctly without a sign flip �
 
 ## Kāra features exercised
 
-- **`i32` arithmetic end-to-end** — `let result: i32 = 0i32`, `let digit: i32 = x % 10i32`, comparisons against typed constants like `7i32` and `-8i32`. The LeetCode constraint ("the environment does not allow 64-bit integers") maps directly to keeping every variable in `i32`; the kata refuses to widen to `i64` even for the check.
-- **Truncated `%` and `/`** — Kāra inherits Rust's sign-of-dividend modulo, which is what the algorithm needs. The Python mirror has to emulate this with `c_div` / `c_mod` because Python's operators floor instead.
-- **Compound boolean guards** — `result > max_div or (result == max_div and digit > 7i32)`. Mixed `or`/`and` with parens parses as expected; the lowering short-circuits both `or` and `and` arms.
-- **Early `return` with typed literal** — `return 0i32` inside a function declared `-> i32`. The literal suffix is load-bearing here — bare `0` would be inferred as `i64` and trip a codegen type-mismatch.
-- **`println(r)` on a narrow signed int** — direct print of an `i32` renders the signed decimal in both the interpreter and the codegen path. Pre-fix, codegen formatted the value as unsigned (e.g. `-123` printed as `4_294_967_173`) because the printf arm passed the raw `i32` to `%lld` and LLVM zero-padded the varargs slot. The 2026-05-19 codegen fix routes narrow ints through `sext + %lld` (signed) or `zext + %llu` (unsigned) based on the source-level type — surfaced while writing this kata, landed alongside it.
+- **`i32` arithmetic end-to-end** — typed literals like `7i32` and `-8i32` keep every variable in `i32`, honoring the "no 64-bit storage" constraint.
+- **Truncated `%` and `/`** — sign-of-dividend modulo is what the algorithm needs; the Python mirror has to emulate this via `c_div` / `c_mod`.
+- **Compound boolean guards** — `result > max_div or (result == max_div and digit > 7i32)` short-circuits both `or` and `and` arms.
+- **Early `return` with typed literal** — `return 0i32` inside a `-> i32` function; the suffix avoids an `i64`-inference codegen mismatch.
+- **`println(r)` on a narrow signed int** — codegen renders signed decimals correctly via sign-extension into `%lld` (fix landed 2026-05-19).
 
 No `Vec`, no `String`, no `Map`, no shared structs — pure scalar arithmetic.
-
-## Edge cases worth exercising
-
-| Input | Expected | Why it's interesting |
-|---|---|---|
-| `0` | `0` | The `while x != 0` loop body never runs; `result` stays at its `0` init. |
-| `1` / `-1` | `1` / `-1` | Single iteration; tests the negative path skips no rail. |
-| `10` / `-10` | `1` / `-1` | Trailing-zero drop — `10 % 10 == 0` so the first iter contributes `0`, second iter contributes `1`. |
-| `120` | `21` | Trailing-zero drop on a multi-digit input. |
-| `1463847412` | `2147483641` | Just under `INT_MAX` — exercises the boundary without tripping it. |
-| `1463847413` | `0` | Same shape, last digit increments — should trip the `digit > 7` rail at the boundary. |
-| `1534236469` | `0` | Overflows comfortably — trips the `result > max_div` rail before the boundary check. |
-| `2147483647` | `0` | `INT_MAX` itself — reversed is `7463847412`, overflows. |
-| `-2147483648` | `0` | `INT_MIN` — reversed is `-8463847412`, trips the `min_div` rail. |
-| `-1463847412` | `-2147483641` | Mirror of the just-under-INT_MAX case, against the negative rail. |
-
-All 14 cases run in `main` and the output is diffed against [`reverse.py`](reverse.py).
-
-## API shape
-
-`reverse(x: i32) -> i32` is the algorithm; `report(x: i32)` prints the result; `main` calls `report` per test case. Logic is separated from I/O so the function would slot into a future test harness unchanged. The Python file mirrors this with `reverse(x: int) -> int` and the same `report` / `main` shape.
 
 ## Running
 

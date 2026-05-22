@@ -4,87 +4,32 @@
 
 You are given two integer arrays `nums1` and `nums2`, sorted in non-decreasing order, and integers `m` and `n` representing the number of valid elements in each. `nums1` has length `m + n` — the first `m` slots are the sorted prefix, the last `n` are scratch. Merge so that `nums1` ends up sorted in non-decreasing order. The merge must be in-place; no value is returned.
 
-**Constraints:** `0 ≤ m, n ≤ 200`, `nums1.length == m + n`, `nums2.length == n`, `-10⁹ ≤ nums1[i], nums2[i] ≤ 10⁹`.
+**Constraints:** `0 ≤ m, n ≤ 200`, `nums1.length == m + n`, `-10⁹ ≤ nums1[i], nums2[i] ≤ 10⁹`.
 
 ## Approaches
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Two pointers from the back | O(m + n) time, O(1) extra space | [`two_pointer.kara`](two_pointer.kara) ✓ via `karac run` | [`two_pointer.py`](two_pointer.py) ✓ |
+| Two pointers from the back | O(m + n) time, O(1) extra space | [`two_pointer.kara`](two_pointer.kara) ✓ | [`two_pointer.py`](two_pointer.py) ✓ |
 
-`✓` runs end-to-end today.
+## Why write from the back
 
-### Why write from the back
-
-A forward merge would have to shift `nums1`'s prefix out of the way before reading it, costing O((m + n)²) or requiring an O(m + n) auxiliary buffer. Writing from the back side-steps this: the write head `k = m + n − 1` is always at or past both read heads `i` and `j` — every cell is written before it would be read, so no shifting and no aux buffer.
-
-```
-i = m - 1
-j = n - 1
-k = m + n - 1
-while j >= 0:
-    if i >= 0 and nums1[i] > nums2[j]:
-        nums1[k] = nums1[i]
-        i -= 1
-    else:
-        nums1[k] = nums2[j]
-        j -= 1
-    k -= 1
-```
-
-The loop runs while `j >= 0` rather than while both heads are valid: once `j` falls below zero, any remaining `nums1[0..=i]` entries are already in place. The opposite exhaustion (when `i` falls below zero with `j` still valid) is handled by the `i >= 0 and …` guard, which forces the else-branch to drain `nums2`.
+A forward merge would have to shift `nums1`'s prefix out of the way before reading it, costing O((m + n)²) or requiring an O(m + n) auxiliary buffer. Writing from the back side-steps this: the write head `k = m + n − 1` is always at or past both read heads `i` and `j` — every cell is written before it would be read, so no shifting and no aux buffer. The loop runs while `j >= 0` rather than while both heads are valid: once `j` falls below zero, any remaining `nums1[0..=i]` entries are already in place. The opposite exhaustion (when `i` falls below zero with `j` still valid) is handled by the `i >= 0 and …` guard, which forces the else-branch to drain `nums2`.
 
 ## Kāra features exercised
 
-- **`mut Slice[i64]` parameter** — `merge` mutates the caller's buffer in place. The LeetCode case-driver passes `Array[i64, N]` literals via `mut`; the bench passes a `Vec[i64]` via the same coercion.
-- **Call-site `mut` marker** — `report(mut a1, 3, b1, 3)` marks the fresh `let mut` binding. Inside `report`, the call `merge(nums1, m, nums2, n)` forwards a `mut Slice` already in scope without the marker (design.md Feature 4 Part 1½, Rule 2).
+- **`mut Slice[i64]` parameter** — `merge` mutates the caller's buffer in place.
+- **Call-site `mut` marker** — `report(mut a1, 3, b1, 3)` marks the fresh `let mut`; inside `report`, the `merge` call forwards an in-scope `mut Slice` without the marker (design.md Feature 4 Part 1½, Rule 2).
 - **Mixed `mut` and read-only slice params on one function** — `merge` takes one of each.
 - **Short-circuit `and`** — the `i >= 0 and nums1[i] > nums2[j]` guard relies on left-to-right evaluation to keep `nums1[i]` from indexing with a negative `i`.
-- **`while` loop with signed `i64` indices that can go negative** — the loop guards on `j >= 0` and decrements all three counters past zero before exit; this requires signed indexing throughout.
-
-No `Map`, no strings, no shared structs.
-
-## API shape
-
-Each Kāra solution exposes `merge(nums1: mut Slice[i64], m: i64, nums2: Slice[i64], n: i64)` and a thin `report` that calls `merge` then prints the merged prefix. `main` calls `report` per test case. Logic is separate from I/O so the function is testable once a harness exists.
-
-The Python file mirrors this with `merge(nums1, m, nums2, n) -> None` and the same `report` / `main` shape.
-
-## Output format
-
-One integer per line — every element of the merged array in order, one test case after another. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-1
-2
-2
-3
-5
-6
-1
-1
-1
-2
-3
-4
-5
-6
-1
-2
-3
-4
-5
-6
-```
+- **Signed `i64` indices that go negative** — all three counters decrement past zero before exit.
 
 ## Running
 
 ```bash
-# Kāra
 karac run two_pointer.kara
-
-# Python
 python3 two_pointer.py
+diff <(karac run two_pointer.kara) <(python3 two_pointer.py) && echo OK
 ```
 
 ## Benchmarks

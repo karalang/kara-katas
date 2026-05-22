@@ -18,37 +18,13 @@ You are given an array `prices` where `prices[i]` is the price of a given stock 
 
 The best profit ending on day `k` is `prices[k] - min(prices[0..=k])`. Walking left to right while maintaining `min_so_far` makes that an O(1) update per step, and the overall answer is the running maximum of those daily candidates. No DP table, no sort.
 
-```
-min_price = prices[0]
-best      = 0
-for p in prices[1..]:
-    min_price = min(min_price, p)
-    best      = max(best, p - min_price)
-return best
-```
-
 ## Kāra features exercised
 
-- **`Slice[i64]` parameter** — function takes an immutable slice; the LeetCode case-driver passes `Array[i64, N]` literals, the bench passes `Vec[i64].as_slice()`.
-- **Indexed slice access** — `prices[0]` for the seed, `prices[i]` inside the for-by-index loop.
-- **`for i in 1..n`** — half-open integer range.
+- **`Slice[i64]` parameter** — read-only slice; LeetCode driver passes `Array[i64, N]` literals, bench passes `Vec[i64].as_slice()`.
+- **Indexed slice access** with `for i in 1..n` half-open range.
 - **Mutable local accumulators** — `let mut min_price`, `let mut best`, updated by guarded `if`.
 
 No `Map`, no strings, no shared structs.
-
-## API shape
-
-Each solution exposes a pure `max_profit(prices) -> i64` (Python: `-> int`) and a thin `report` that prints. `main` calls `report` per test case. Logic is separate from I/O so the function is testable once a harness exists.
-
-## Output format
-
-One integer per line — the maximum profit for each test case. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-5
-0
-0
-```
 
 ## Running
 

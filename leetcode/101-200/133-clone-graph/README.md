@@ -13,65 +13,14 @@ Given a reference to a node in a connected undirected graph, return a deep copy 
 | DFS recursive: clone-on-visit, memoize by val | O(N + M) time, O(N) space | [`dfs.kara`](dfs.kara) ✓ via `karac run` | [`dfs.py`](dfs.py) ✓ |
 | BFS iterative: queue + visited map | O(N + M) time, O(N) space | [`bfs.kara`](bfs.kara) ✓ via `karac run` | [`bfs.py`](bfs.py) ✓ |
 
-`✓` runs end-to-end today.
-
-### Why a visited map breaks cycles
-
-The graph is undirected so every edge appears twice, and any cycle hits a back-reference on its second visit. Without memoization the recursive clone would unfold forever. Keying the visited map by `val` is cheap and unambiguous (LeetCode guarantees unique vals); a more general implementation would key by node identity, but Kāra's shared-struct equality is opt-in and the val key is sufficient for this problem.
-
-```
-clone_graph(root):
-    if root is None: return None
-    visited = {}             # val → cloned-node
-    dfs(root, visited)
-
-dfs(node, visited):
-    if node.val in visited:
-        return visited[node.val]
-    copy = Node(node.val, neighbors=[])
-    visited[node.val] = copy
-    for nb in node.neighbors:
-        copy.neighbors.push(dfs(nb, visited))
-    return copy
-```
-
-The BFS variant is structurally the same — it just iterates a queue instead of the call stack. Both ship the same per-node work (clone-once, link-once) and the same complexity.
+`✓` runs end-to-end today. Both variants ship the same per-node work (clone-once, link-once) and the same complexity; BFS just iterates a queue instead of the call stack.
 
 ## Kāra features exercised
 
-- **`shared struct Node { val: i64, mut neighbors: Vec[Node] }`** — self-referential RC-backed graph node with a mutable adjacency list. Mutability on the field is what lets the cloned node's neighbors be appended to *after* the node has been inserted into the visited map.
-- **`Map[i64, Node]` for memoization** — keys the clone-cache by val. The shared-struct value semantics mean re-fetching `visited.get(node.val).unwrap()` returns another RC handle to the same heap object, so mutations through the re-fetched handle are visible to every other handle.
+- **`shared struct Node { val: i64, mut neighbors: Vec[Node] }`** — self-referential RC-backed node; mutable adjacency lets neighbors be appended *after* insertion into the visited map.
+- **`Map[i64, Node]` memoization** — re-fetching a stored handle returns another RC alias to the same heap object, so mutations are visible across handles.
 - **`VecDeque[Node]`** (BFS variant) — `push_back` / `pop_front` for level-order traversal.
-- **`Option[Node]` return shape** — the LeetCode signature already returns a nullable handle; the empty-graph case threads through cleanly.
-- **`for` over `Vec.iter()`, `match` on `Option`, `if let` destructuring** — standard traversal idioms.
-
-## API shape
-
-Each solution exposes `clone_graph(root: Option[Node]) -> Option[Node]` plus a small test harness (`build_graph`, `print_graph`, `report`). `main` calls `report` per test case. The Python files mirror the same names so the files diff line-for-line.
-
-## Output format
-
-Each `report` BFS-walks the *cloned* graph and emits `val: [neighbor_vals]` per line, with `---` between test cases. The BFS order is deterministic (push neighbors in stored order, mark visited by val), so DFS-clone and BFS-clone produce identical output for every input.
-
-```
-1: [2, 4]
-2: [1, 3]
-4: [1, 3]
-3: [2, 4]
----
-1: []
----
-(empty)
----
-1: [2]
-2: [1]
----
-1: [2]
-2: [1, 3]
-3: [2, 4]
-4: [3]
----
-```
+- **`Option[Node]` return shape** — LeetCode's nullable handle threads the empty-graph case cleanly.
 
 ## Running
 

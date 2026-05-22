@@ -17,26 +17,13 @@ You may assume each input has exactly one solution, and you may not use the same
 
 ## Kāra features exercised
 
-`brute_force.kara` uses fixed-size `Array[i64, N]`, `Slice[i64]` parameter coercion, `Slice.len()`, indexed access, `for` loops over half-open `0..n` / `(i+1)..n` range expressions, and array-literal tail returns. No `Vec`, `Map`, or strings yet.
+- **Fixed-size `Array[i64, N]`** — stack-allocated array literals at the call site.
+- **`Slice[i64]` parameter coercion** — `Array[i64, N]` arguments pass as `Slice[i64]` without an explicit conversion.
+- **`Slice.len()` + indexed access** — O(1) length and O(1) indexed read.
+- **Half-open range `for`** — `0..n` and `(i+1)..n` drive the nested loops.
+- **Array-literal tail return** — `[i, j]` and `[-1, -1]` flow out as the function's last expression.
 
-## API shape
-
-Each Kāra solution exposes a pure `two_sum(nums, target) -> Array[i64, 2]` (or equivalent return type) and a thin `report` that prints. `main` calls `report` with the test cases. The Python files mirror this with `two_sum` / `report` / `main`. This keeps logic separate from I/O so the functions are testable once a harness exists.
-
-The Kāra brute force currently returns `Array[i64, 2]` with `[-1, -1]` as the "not found" sentinel. The Python equivalents return `tuple[int, int] | None`. When `Option[T]` is solid in the Kāra interpreter, refactor to `Option[(i64, i64)]` and drop the sentinel.
-
-## Output format
-
-Each `report` call emits two integers, one per line — the two indices, or two `-1`s if no pair is found. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-0
-1
-1
-2
-0
-1
-```
+No `Vec`, `Map`, or strings yet. The brute force returns `[-1, -1]` as a sentinel until `Option[T]` lands in the interpreter.
 
 ## Running
 

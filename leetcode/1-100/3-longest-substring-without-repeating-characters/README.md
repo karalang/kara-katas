@@ -16,58 +16,18 @@ Given a string `s`, find the length of the longest substring without duplicate c
 
 ### Why one map jump is enough
 
-A naive sliding window expands `right` by one, and when a duplicate appears, shrinks `left` one step at a time until the offender is removed — that's O(n) amortized but with a real factor-of-two penalty in practice. The last-index variant turns each contraction into a single pointer jump: when we see a character `c` whose previously-recorded index `prev` lies inside the current window (`prev >= left`), set `left = prev + 1` directly. Each character is visited *exactly once* and the running maximum of `right − left + 1` is the answer.
+The naive sliding window shrinks `left` one step at a time on a duplicate — O(n) amortized but with a real factor-of-two penalty. The last-index variant turns each contraction into a single pointer jump: when character `c`'s previously-recorded index `prev` lies inside the current window (`prev >= left`), set `left = prev + 1` directly.
 
-```
-left = 0
-best = 0
-last_idx = {}
-for right, c in enumerate(s):
-    prev = last_idx.get(c)
-    if prev is not None and prev >= left:
-        left = prev + 1
-    last_idx[c] = right
-    best = max(best, right - left + 1)
-return best
-```
-
-The `prev >= left` guard is the key invariant: a previous occurrence outside the current window is irrelevant — it can't make the new window invalid — so we don't shrink in that case. Without that guard, you'd shrink too aggressively on the second `a` in `"abba"` and return 2 instead of the correct 3 (`"bba"`).
+The `prev >= left` guard is the key invariant: a previous occurrence outside the current window is irrelevant and must not shrink the window. Without that guard, the second `a` in `"abba"` shrinks too aggressively and returns 2 instead of 3 (`"bba"`).
 
 ## Kāra features exercised
 
-- **`ref String` parameter + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. Codegen lowers chars iteration to an inline byte-offset loop with a runtime UTF-8 decode helper (`karac_string_decode_char`); see [`phase-7-codegen.md`](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md) for the slice that landed this.
-- **`Map[char, i64]`** — `char` as a hash key works through the typechecker (`type_supports_hash` / `type_supports_eq` both list `Type::Char`) and the type-erased runtime Map. The whole algorithm is a single Map.
-- **`match Option[i64]` on `Map.get()`** — the canonical idiom for "lookup and act on present/absent." `Some(prev)` binds the previous index; `None => {}` is the no-op arm.
+- **`ref String` + `s.chars()`** — read-only string borrow, iterated per Unicode scalar value via an inline byte-offset loop with a runtime UTF-8 decode helper.
+- **`Map[char, i64]`** — `char` works as a hash key through the typechecker and the (now monomorphized) runtime Map; the whole algorithm is one Map.
+- **`match Option[i64]` on `Map.get()`** — canonical "lookup and act on present/absent" idiom; `None => {}` is the no-op arm.
 - **Mutable local accumulators** — `let mut left`, `let mut best`, `let mut right` updated by guarded `if` / `match`.
 
 No `Vec`, no slices, no shared structs.
-
-## API shape
-
-Each Kāra solution exposes a pure `length_of_longest_substring(s: ref String) -> i64` and a thin `report` that prints. `main` calls `report` per test case. The Python file mirrors this with `length_of_longest_substring(s: str) -> int` and the same `report` / `main` shape.
-
-The case-driver in `main` passes each literal directly to `report`:
-
-```rust
-report("abcabcbb");
-```
-
-per design.md § Part 1½ Rule 4 — `ref String` accepts any source unmarked, and the codegen materializes the literal into a stack temp at the call site automatically (the `let c1 = "..."; report(c1)` workaround earlier versions of this kata used is no longer needed).
-
-## Output format
-
-One integer per line — the answer for each test case. Kāra and Python output is line-for-line identical so the files can be diffed directly.
-
-```
-3
-1
-3
-0
-1
-2
-3
-5
-```
 
 ## Running
 
