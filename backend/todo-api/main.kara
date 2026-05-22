@@ -4,9 +4,9 @@
 // backend-service kata category — closes axis-1 in
 // `kara-katas/PLAN.md`. v1 surface:
 //
-//   GET  /todos       → 200, fixed JSON array of 3 TODOs
-//   GET  /todos/1..3  → 200, fixed JSON object for that TODO
-//   POST /echo        → 200, echoes the request body (exercises Slice 1)
+//   GET  /todos       → 200, JSON array of all TODOs
+//   GET  /todos/:id   → 200, single TODO (or 404 if id not found)
+//   POST /echo        → 200, echoes the request body (Slice 1 round-trip)
 //   any other route   → 404, "not found"
 //   non-GET non-POST  → 405, "method not allowed"
 //
@@ -20,42 +20,86 @@
 //     C-ABI exports exist but the Kāra→FFI wiring is deferred per
 //     phase-8 line 431.
 //
-// (A second codegen gap — `match` over a String scrutinee panicking
-// at `expr_ops.rs:1138` — was filed and shipped 2026-05-21 in
-// karac-rust commit `b763340`; the route dispatcher below uses the
-// natural `match req.path() { ... }` form rather than per-branch
-// `if req.path() == "..."` chains.)
+// Three codegen gaps surfaced + shipped 2026-05-21 while building
+// this kata:
+//   - `match` over a String scrutinee (karac-rust `b763340`)
+//   - `String.starts_with` (karac-rust `a32a0a8`)
+//   - `String.substring` (karac-rust `a0e1a99`)
+//   - `i64.parse` (karac-rust `0a95228`)
 //
-// Combined with the earlier `String == String` ownership rule, the
-// missing String typechecker arms (`parse`/`substring`/`starts_with`),
-// and the module-level `let mut` gap, these block the full PLAN.md
-// Priority 1 spec — see README.md for the full chain.
+// The dispatcher below now uses the natural `match req.path() { ... }`
+// shape and extracts `:id` dynamically via the `starts_with` +
+// `substring` + `i64.parse` trio. Combined with the earlier
+// `String == String` ownership rule and the module-level `let mut`
+// gap, only `Json.stringify` codegen and `let mut` remain before
+// this kata reaches the full PLAN.md Priority 1 spec.
 
 struct Response {
     status: i64,
     body: String,
 }
 
+// Look up a TODO by id from the fixed three-item set. Returns a
+// pre-formatted JSON object string on hit, an empty String on miss.
+// (Once `Option[String]` typechecker-flows cleanly across `match`
+// arms, this returns `Option[String]`; v1 uses an empty String
+// sentinel.)
+fn lookup_todo(id: i64) -> String {
+    if id == 1 {
+        return "{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false}";
+    }
+    if id == 2 {
+        return "{\"id\":2,\"title\":\"Write a kata\",\"completed\":true}";
+    }
+    if id == 3 {
+        return "{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}";
+    }
+    ""
+}
+
+fn not_found() -> Response {
+    Response { status: 404, body: "not found" }
+}
+
+// Extract :id from `/todos/:id` and look it up. Returns 404 for
+// any path that doesn't match `/todos/<integer>` or for an integer
+// that isn't one of the three known ids.
+fn handle_get_todo_by_id(path: String) -> Response {
+    if not path.starts_with("/todos/") {
+        return not_found();
+    }
+    let rest = path.substring(7);
+    match i64.parse(rest) {
+        Some(id) => {
+            let body = lookup_todo(id);
+            if body == "" {
+                return not_found();
+            }
+            Response { status: 200, body: body }
+        }
+        None => not_found(),
+    }
+}
+
 fn handle(req: Request) -> Response {
     let m = req.method();
     if m == "GET" {
-        return match req.path() {
-            "/todos" => Response {
+        let p = req.path();
+        if p == "/todos" {
+            return Response {
                 status: 200,
                 body: "[{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false},{\"id\":2,\"title\":\"Write a kata\",\"completed\":true},{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}]",
-            },
-            "/todos/1" => Response { status: 200, body: "{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false}" },
-            "/todos/2" => Response { status: 200, body: "{\"id\":2,\"title\":\"Write a kata\",\"completed\":true}" },
-            "/todos/3" => Response { status: 200, body: "{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}" },
-            _ => Response { status: 404, body: "not found" },
-        };
+            };
+        }
+        return handle_get_todo_by_id(p);
     }
     if m == "POST" {
         // Exercise Slice 1's `req.body()` round-trip end-to-end.
-        return match req.path() {
-            "/echo" => Response { status: 200, body: req.body() },
-            _ => Response { status: 404, body: "not found" },
-        };
+        let p = req.path();
+        if p == "/echo" {
+            return Response { status: 200, body: req.body() };
+        }
+        return not_found();
     }
     Response { status: 405, body: "method not allowed" }
 }
