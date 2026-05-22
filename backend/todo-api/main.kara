@@ -1,0 +1,75 @@
+// kara-katas/backend/todo-api/main.kara
+//
+// Read-only TODO list service over HTTP/JSON. First entry in the
+// backend-service kata category — closes axis-1 in
+// `kara-katas/PLAN.md`. v1 surface:
+//
+//   GET  /todos       → 200, fixed JSON array of 3 TODOs
+//   GET  /todos/1..3  → 200, fixed JSON object for that TODO
+//   POST /echo        → 200, echoes the request body (exercises Slice 1)
+//   any other route   → 404, "not found"
+//   non-GET non-POST  → 405, "method not allowed"
+//
+// **v1 implementation note: response bodies are static string literals.**
+// The TODO data is baked into the source as pre-formatted JSON
+// strings, not built per-request from `Vec[Todo]` via JSON
+// serialization. Two karac codegen gaps surfaced during this kata's
+// build (2026-05-21) — both filed in karac's phase trackers — blocked
+// the more general form:
+//
+//   1. `Json.stringify()` has no codegen-side dispatch — the runtime
+//      C-ABI exports exist but the Kāra→FFI wiring is deferred per
+//      phase-8 line 431.
+//
+//   2. `match p { "/x" => ... }` over a String scrutinee panics in
+//      codegen at `expr_ops.rs:1138` ("Found StructValue but expected
+//      IntValue" — match-codegen assumes int-tag, String is
+//      `{ptr,len,cap}`). Per-branch `req.path() == "..."` is the
+//      shippable workaround.
+//
+// Combined with the earlier `String == String` ownership rule, the
+// missing String typechecker arms (`parse`/`substring`/`starts_with`),
+// and the module-level `let mut` gap, these block the full PLAN.md
+// Priority 1 spec — see README.md for the full chain.
+
+struct Response {
+    status: i64,
+    body: String,
+}
+
+fn handle(req: Request) -> Response {
+    let m = req.method();
+    if m != "POST" {
+        // GET or other — fall through to path routing.
+        if m != "GET" {
+            return Response { status: 405, body: "method not allowed" };
+        }
+        // Per-branch `req.path()` calls — see file header for the
+        // ownership / match-codegen rationale.
+        if req.path() == "/todos" {
+            return Response {
+                status: 200,
+                body: "[{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false},{\"id\":2,\"title\":\"Write a kata\",\"completed\":true},{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}]",
+            };
+        }
+        if req.path() == "/todos/1" {
+            return Response { status: 200, body: "{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false}" };
+        }
+        if req.path() == "/todos/2" {
+            return Response { status: 200, body: "{\"id\":2,\"title\":\"Write a kata\",\"completed\":true}" };
+        }
+        if req.path() == "/todos/3" {
+            return Response { status: 200, body: "{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}" };
+        }
+        return Response { status: 404, body: "not found" };
+    }
+    // POST path: exercise Slice 1's `req.body()` round-trip.
+    if req.path() == "/echo" {
+        return Response { status: 200, body: req.body() };
+    }
+    Response { status: 404, body: "not found" }
+}
+
+fn main() {
+    let _ = Server.serve("127.0.0.1:8080", handle);
+}
