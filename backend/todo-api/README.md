@@ -70,25 +70,33 @@ gate that target:
    static JSON strings baked into source. Required to drop the static
    strings and build responses from `Vec[Todo]` per request.
 
-4. **`match` over a String scrutinee in codegen** — panics at
-   `src/codegen/expr_ops.rs:1138` with `Found StructValue but expected
-   IntValue` (match-codegen assumes int-tag-shape; String is a
-   `{ptr, len, cap}` struct). Surfaced 2026-05-21 by this kata.
-   Workaround: per-branch `req.path() == "..."` instead of a single
-   `match req.path() { ... }`.
+4. **`match` over a String scrutinee in codegen** — ✓ **shipped
+   2026-05-21** as karac-rust commit `b763340`. Originally surfaced
+   by this kata's build (panicked at
+   `src/codegen/expr_ops.rs:1138` with `Found StructValue but
+   expected IntValue`). Root cause was narrower than first framed
+   — `compile_pattern_condition` was emitting only a `*const i8`
+   for `LiteralPattern::String`, then `compile_binop(scrutinee_struct,
+   pointer)` fell into the int path. Fix: build a full String struct
+   for the literal pattern, both operands route through the existing
+   `compile_string_binop` length-check + `memcmp` path. The route
+   dispatcher in `main.kara` now uses the natural `match req.path()
+   { ... }` form rather than the per-branch `if req.path() == "..."`
+   chain.
 
 5. **`Request.query()` / `.header()`** —
    `phase-7-codegen.md` line 266 calls these "deferred — additive
    when a real consumer needs them." Required for content-type
    negotiation, query-string filtering.
 
-(3) and (4) are codegen gaps I should file as their own karac
-tracker entries in the same pattern as the module-let-mut entry.
+(3) is filed at `phase-8-stdlib-floor.md` (next to the shipped
+`std.json` minimal-surface entry); (4) is filed AND shipped at
+`phase-7-codegen.md` (commit `b763340`).
 
-When all five land, this kata grows into the full PLAN.md Priority 1
-spec in-place — the static-response dispatch becomes the read path of
-a real CRUD surface, with `Vec[Todo]` + JSON serialization + path-
-param extraction.
+When the remaining four prereqs land, this kata grows into the full
+PLAN.md Priority 1 spec in-place — the static-response dispatch
+becomes the read path of a real CRUD surface, with `Vec[Todo]` +
+JSON serialization + path-param extraction.
 
 ## Comparison targets
 
