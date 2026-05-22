@@ -27,6 +27,7 @@ require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
 require cargo     "rustup (https://rustup.rs)  — needed for the rayon-parallel Rust variant"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
+require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 mem_peak() {
@@ -84,6 +85,20 @@ echo "building rayon variant (cargo) ..." >&2
 ( cd rayon && cargo build --release --quiet )
 cp -f rayon/target/release/count_rayon target/count_rayon
 
+# Go variants — `go build` requires a module root, so each lives in its
+# own subdir with its own go.mod. Go's default build is already release-
+# mode (no -O flag exists); the compiler always inlines + optimizes.
+build_go() {
+    local dir="$1"
+    local out="target/$(basename "$dir" | tr '-' '_')"
+    if [ ! -x "$out" ] || [ "$dir/main.go" -nt "$out" ]; then
+        echo "compiling $dir ..." >&2
+        ( cd "$dir" && go build -o "../$out" . )
+    fi
+}
+build_go go-seq
+build_go go-par
+
 # Sanity: all four impls must agree on the (count, sum) sink before we
 # time them. Python skipped from sink check by default — at N=10M it
 # takes ~30s and bench.sh would block waiting on it. Set
@@ -93,11 +108,21 @@ kara_seq_sink=$(./target/count_seq_kara)
 rust_sink=$(./target/count)
 c_sink=$(./target/count_c)
 rayon_sink=$(./target/count_rayon)
-if [ "$kara_sink" != "$rust_sink" ] || [ "$kara_sink" != "$c_sink" ] || [ "$kara_sink" != "$rayon_sink" ] || [ "$kara_sink" != "$kara_seq_sink" ]; then
-    echo "sink mismatch: kara=$kara_sink kara_seq=$kara_seq_sink rust=$rust_sink c=$c_sink rayon=$rayon_sink" >&2
+go_seq_sink=$(./target/go_seq)
+go_par_sink=$(./target/go_par)
+mismatch=""
+for pair in "kara_seq:$kara_seq_sink" "rust:$rust_sink" "c:$c_sink" "rayon:$rayon_sink" "go_seq:$go_seq_sink" "go_par:$go_par_sink"; do
+    name="${pair%%:*}"
+    sink="${pair#*:}"
+    if [ "$sink" != "$kara_sink" ]; then
+        mismatch="$mismatch $name=$(echo "$sink" | tr '\n' ',')"
+    fi
+done
+if [ -n "$mismatch" ]; then
+    echo "sink mismatch (vs kara=$(echo "$kara_sink" | tr '\n' ',')):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara == kara-seq == rust == c == rust+rayon): $(echo "$kara_sink" | tr '\n' ' ' | sed 's/ $//')"
+echo "sink (kara == kara-seq == rust == c == rust+rayon == go-seq == go-par): $(echo "$kara_sink" | tr '\n' ' ' | sed 's/ $//')"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_sink=$(python3 count.py)
     if [ "$kara_sink" != "$py_sink" ]; then
@@ -117,6 +142,8 @@ hyperfine \
     --command-name 'kara count (codegen, single-threaded)'  './target/count_seq_kara' \
     --command-name 'rust count (single-threaded)'           './target/count' \
     --command-name 'rust count (rayon par_iter)'            './target/count_rayon' \
+    --command-name 'go   count (single-threaded)'           './target/go_seq' \
+    --command-name 'go   count (goroutines)'                './target/go_par' \
     --command-name 'c    count (single-threaded)'           './target/count_c'
 
 echo
@@ -133,7 +160,7 @@ hyperfine \
 
 echo
 echo "=== binary size ==="
-for spec in 'kara count:target/count_kara' 'kara count (seq):target/count_seq_kara' 'rust count:target/count' 'rust+rayon count:target/count_rayon' 'c    count:target/count_c'; do
+for spec in 'kara count:target/count_kara' 'kara count (seq):target/count_seq_kara' 'rust count:target/count' 'rust+rayon count:target/count_rayon' 'go   count (seq):target/go_seq' 'go   count (par):target/go_par' 'c    count:target/count_c'; do
     label="${spec%%:*}"
     path="${spec##*:}"
     bytes=$(wc -c < "$path" | tr -d ' ')
@@ -147,6 +174,8 @@ print_mem 'kara count (codegen)' "$(mem_peak ./target/count_kara)"
 print_mem 'kara count (seq)'     "$(mem_peak ./target/count_seq_kara)"
 print_mem 'rust count'           "$(mem_peak ./target/count)"
 print_mem 'rust+rayon count'     "$(mem_peak ./target/count_rayon)"
+print_mem 'go   count (seq)'     "$(mem_peak ./target/go_seq)"
+print_mem 'go   count (par)'     "$(mem_peak ./target/go_par)"
 print_mem 'c    count'           "$(mem_peak ./target/count_c)"
 
 echo
