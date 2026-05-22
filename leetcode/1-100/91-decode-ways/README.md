@@ -72,12 +72,12 @@ Snapshot — M5 Pro, 2026-05-22, hyperfine `--warmup 2 --runs 10 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| rust decode_ways (rustc -O)  | **371.3 ms ± 13.3 ms** | 367.6 ms | 99% |
-| c    decode_ways (clang -O3) | **453.2 ms ± 42.0 ms** | 441.7 ms | 97% |
-| go   decode_ways             | **496.2 ms ± 18.0 ms** | 489.2 ms | 99% |
-| **kāra decode_ways**         | **501.1 ms ± 23.6 ms** | 492.6 ms | 98% |
+| rust decode_ways (rustc -O)  | **368.1 ms ± 7.4 ms** | 360.6 ms | 99% |
+| **kāra decode_ways**         | **415.2 ms ± 7.4 ms** | 406.6 ms | 98% |
+| c    decode_ways (clang -O3) | **424.3 ms ± 4.1 ms** | 415.9 ms | 97% |
+| go   decode_ways             | **477.1 ms ± 13.7 ms** | 467.6 ms | 99% |
 
-All four codegen langs land within 1.35× of each other. Kāra is at parity with Go on this workload (501 ms vs 496 ms — within one σ) and ~1.35× slower than the rustc-O baseline. C's wide σ comes from a single 566 ms outlier in the 10-run sample; the median is closer to 425 ms.
+Kāra now sits between rust and C: ~1.13× the rustc-O baseline and ~1.02× faster than `clang -O3`. The pre-2026-05-22 snapshot had kāra at 501 ms (1.35× rust, behind C); the cast-codegen fix in karac commit `5eac110` (zero-extend on widening cast from unsigned source) was disassembled out of this very kata — `(bytes[i] as i32)` for `bytes: Vec[u8]` was emitting `ldrsb`+`sxtb`+`and #0xff` where rust emitted a single `ldrb`. Inner-loop instruction count went 16 → 14, matching rust.
 
 ### Compile elapsed (cold)
 
@@ -85,7 +85,7 @@ All four codegen langs land within 1.35× of each other. Kāra is at parity with
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `decode_ways` | **61.2 ms ± 1.6 ms** | 83.5 ms ± 9.4 ms | 43.0 ms ± 1.5 ms |
+| `decode_ways` | **61.0 ms ± 0.8 ms** | 77.6 ms ± 0.6 ms | 41.6 ms ± 0.5 ms |
 
 Single-file invocations only — the Go module's `go build` mixes module resolution + std-lib link with codegen and is deliberately excluded per BENCH.md.
 
@@ -107,7 +107,7 @@ Go's binary is ~8× larger than Kāra's because `go build` statically links the 
 | c    decode_ways  | 1,114,448 | 1.1 |
 | rust decode_ways  | 1,163,600 | 1.1 |
 | **kāra decode_ways** | **1,540,456** | **1.5** |
-| go   decode_ways  | 3,097,176 | 3.0 |
+| go   decode_ways  | 3,080,768 | 2.9 |
 
 A single 80-byte buffer + scalar accumulator; the algorithm itself is O(1) extra space. The numbers above are dominated by runtime/loader overhead, not working set.
 
@@ -116,8 +116,8 @@ A single 80-byte buffer + scalar accumulator; the algorithm itself is O(1) extra
 | Compiler invocation | Bytes | MiB |
 |---|---|---|
 | `clang -O3 decode_ways.c`     | 2,720,104 | 2.6 |
-| **`karac build decode_ways.kara`** | **9,568,736** | **9.1** |
-| `rustc -O decode_ways.rs`     | 28,426,888 | 27.1 |
+| **`karac build decode_ways.kara`** | **9,552,352** | **9.1** |
+| `rustc -O decode_ways.rs`     | 28,361,328 | 27.0 |
 
 Kāra's compile-memory footprint is ~3× clang's and ~3× lower than rustc's on this kata.
 
