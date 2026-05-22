@@ -21,9 +21,9 @@ Return the number of ways to decode `s`. The answer is guaranteed to fit in a 32
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Bottom-up DP with a 2-cell rolling window | O(n) time, O(1) extra space | [`decode_ways.kara`](decode_ways.kara) ✓ via `karac run` | [`decode_ways.py`](decode_ways.py) ✓ |
+| Bottom-up DP with a 2-cell rolling window | O(n) time, O(1) extra space | [`src/main.kara`](src/main.kara) ✓ — runs via `karac test` (22-case suite) and `karac run src/main.kara` (report loop). | [`decode_ways.py`](decode_ways.py) ✓ |
 
-`✓` runs end-to-end today. Output is byte-for-byte identical to the Python mirror across all 22 test cases.
+`✓` runs end-to-end today. The 22-case correctness suite in [`src/main_test.kara`](src/main_test.kara) asserts the expected count for each input inline (`assert_eq(decode_ways("226"), 3)`) — `karac test` is the primary correctness loop. The `karac run` report loop and the Python mirror are preserved for cross-language reading and as a paper-trail of the recurrence; they no longer drive the correctness check, which is why a single `karac test` invocation is sufficient to verify the algorithm.
 
 ## Why a rolling window, not a full DP table
 
@@ -96,17 +96,19 @@ No `Vec`, no `Map`, no shared structs — `Slice[u8]` view + two scalar `i64` ce
 | `"1234567"` | `3` | Only the first two pairs are two-digit-valid; the rest are forced one-digit. |
 | `"2611055971756562"` | `4` | Long mixed string — exercises the rolling window over many steps, including a mid-stream `'0'` at position 5. |
 
-All 22 cases run in `main` and the output is diffed against [`decode_ways.py`](decode_ways.py).
+All 22 cases run as block-form test declarations in [`src/main_test.kara`](src/main_test.kara). Each case names the input + expected count in its title and asserts the same number in the body, so a `karac test` run reports per-case pass/fail in JSONL with the case-name string verbatim.
 
 ## API shape
 
-`decode_ways(s: ref String) -> i64` is the algorithm; `report(s: ref String)` prints the result; `main` calls `report` per case. Logic is separated from I/O so the function would slot into a future test harness unchanged. The Python file mirrors this with `decode_ways(s: str) -> int` and the same `report` / `main` shape.
+`decode_ways(s: ref String) -> i64` is the algorithm; `report(s: ref String)` prints the result; `main` calls `report` per case (used by the `karac run` report loop, not by `karac test`). Logic is separated from I/O so the function slots into the block-form test harness in `src/main_test.kara` unchanged. The Python file mirrors this with `decode_ways(s: str) -> int` and the same `report` / `main` shape, preserved as a peer reference impl.
 
-Each Kāra `main` case passes its string literal directly to `report` — `ref String` accepts any source per design.md § Part 1½ Rule 4, and the codegen materializes the literal into a stack temp at the call site automatically.
+Each `main` case passes its string literal directly to `report` — `ref String` accepts any source per design.md § Part 1½ Rule 4, and the codegen materializes the literal into a stack temp at the call site automatically. Each `test` block passes its string literal to `decode_ways` directly, no `report` wrapper.
 
 ## Output format
 
-One line per case in the form `decode_ways "<input>": <count>`. Kāra and Python output is line-for-line identical so the files can be diffed directly.
+`karac test` emits one JSONL event per case in the form `{"type":"test_pass","test":"<case-name>","duration_ms":<n>}`. The case-name string is the title of the `test` block verbatim — e.g. `"226 → 3 (BBF | BZ | VF)"` — so a failure surfaces both the input and the expected count without consulting the test source. The full schema is documented in `karac-rust/docs/design.md § Testing`.
+
+For the `karac run` report loop, output is one line per case in the form `decode_ways "<input>": <count>` (kept line-for-line identical to the Python mirror so the files can still be diffed):
 
 ```
 decode_ways "12": 2
@@ -135,13 +137,19 @@ decode_ways "2611055971756562": 4
 
 ## Running
 
+The kata ships as a karac project — the directory contains `kara.toml`, `src/main.kara`, and `src/main_test.kara`. The two workflows below run side by side.
+
 ```bash
-# Kāra
-karac run decode_ways.kara
+# Primary correctness loop — 22-case block-form suite, expected values
+# inline. JSONL on stdout, one event per case. Exit non-zero on any
+# failed assertion.
+karac test
 
-# Python
+# Cross-language reference — keeps the historical `report + python-diff`
+# shape as a paper-trail. Run from the kata root.
+karac run src/main.kara
 python3 decode_ways.py
-
-# Verify they agree
-diff <(karac run decode_ways.kara) <(python3 decode_ways.py) && echo OK
+diff <(karac run src/main.kara) <(python3 decode_ways.py) && echo OK
 ```
+
+`karac test --filter <substring>` runs only cases whose name contains the substring (e.g. `karac test "leading"` runs just `"leading zero is invalid"`).
