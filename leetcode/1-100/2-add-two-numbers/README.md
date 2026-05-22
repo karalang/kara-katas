@@ -43,45 +43,95 @@ python3 recursive.py
 ### How to run
 
 ```bash
-brew install hyperfine    # one-time, also needs rustc (rustup) and karac
+brew install hyperfine    # also needs rustc, clang, go, karac
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs `hyperfine --warmup 5 --runs 30 --shell=none` across three implementations on N=100-digit lists, K=500_000 iterations:
+`bench/bench.sh` follows the [kara-katas bench protocol](../../../BENCH.md): builds same-algorithm mirrors in Kāra, Rust, C, Go (and Python, optional), checks they print the same stdout sink, then times them with hyperfine. Seq-only — each `add_two_numbers` call is independent but per-call work (~100 small heap allocs + linear walk) is too small to amortize par-dispatch, so the kata measures pure codegen quality.
 
 | File | What it does |
 |---|---|
-| [`bench/iterative.kara`](bench/iterative.kara) | N=100 nine-digit lists built once; K=500_000 iterations of `add_two_numbers(l1, l2)` with sum-of-first-digit sink so the result participates in I/O. |
-| [`bench/iterative.py`](bench/iterative.py) | Algorithmic mirror — same N, K, sink |
+| [`bench/iterative.kara`](bench/iterative.kara) | N=100 nine-digit lists built once; K=500_000 iterations of `add_two_numbers(l1, l2)` with sum-of-first-digit sink |
 | [`bench/iterative.rs`](bench/iterative.rs) | Algorithmic mirror; uses `Rc<RefCell<ListNode>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O` |
+| [`bench/iterative.c`](bench/iterative.c) | Algorithmic mirror; plain `malloc`/`free` per-node — no RC, no GC; compiled with `clang -O3` |
+| [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; GC-managed pointer-linked nodes; compiled with `go build` |
+| [`bench/iterative.py`](bench/iterative.py) | Algorithmic mirror — same N, K, sink |
 
-All three print `4000000` (500_000 × 8 — the units digit of 999…9 + 999…9 = 1999…98 is 8, and that's the first digit of the reversed-storage result).
+All mirrors print `4000000` (500_000 × 8 — the units digit of 999…9 + 999…9 = 1999…98 is 8, and that's the first digit of the reversed-storage result).
 
-### Codegen vs Rust — **landed**
+### Runtime — seq lane
 
-Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-05-17, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro, 2026-05-22, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O`, `clang -O3`, `go build`:
 
-| Workload | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra : Rust |
-|---|---|---|---|---|
-| `iterative` (N=100, K=500_000) | **832.7 ± 38.4 ms** | 883.1 ± 6.8 ms | 5.71 ± 0.09 s | **1.06× faster** |
+| Implementation | Wall time | User-CPU | Within-workload ratio |
+|---|---|---|---|
+| c    iterative (clang -O3)       | **425.0 ms ± 3.6 ms** | 415.8 ms | 0.78× of Kāra |
+| go   iterative                   | 491.3 ms ± 5.8 ms     | 492.1 ms | 0.90× of Kāra |
+| **kāra iterative (codegen)**     | **545.4 ms ± 3.4 ms** | 533.6 ms | **1.00×** (baseline) |
+| rust iterative (`Rc<RefCell>`)   | 886.0 ms ± 8.5 ms     | 868.4 ms | 1.62× of Kāra |
 
-Allocator-bound, RC-discipline-bound shape: a hot inner loop walking and growing a chain of small heap nodes, then recursively dropping the chain when the result goes out of scope. Kāra's `shared struct` does the same per-field recursive drop as Rust's `Rc<RefCell<>>` — both pay one rc-dec per node along the chain — and the ratio narrows to a modest 1.06× edge, driven by Kāra skipping `RefCell`'s runtime borrow check on each `borrow()` / `borrow_mut()`. Python runs the same shape in a tree-walking interpreter ~6.9× slower.
+Allocator-bound + RC-discipline-bound shape: a hot inner loop walking and growing a chain of ~100 small heap nodes, then dropping the chain when the result goes out of scope. **Kāra is 1.62× faster than Rust's `Rc<RefCell<>>`** and sits between Go and C on this lane. The win over Rust comes from two karac codegen optimizations specifically targeting `Option[shared T]` linked-list shapes:
 
-(An earlier snapshot of this kata reported 358 ms / 2.53× faster than Rust; that number measured the kernel correctly but the `karac` runtime was leaking the result chain on every iteration — peak RSS climbed to 2.3 GiB. After closing that leak — recursive drop on shared struct RC=0, plus Option[shared T] cleanup tracking — Kāra now does the same drop walk Rust does. The 1.06× number is the memory-correct apples-to-apples comparison; the 2.53× number was apples-to-leaky-apples.)
+1. **Niche layout for `Option[shared T]` struct fields** (2026-05-22): the field stores a single nullable pointer (null = `None`, non-null = `Some`) instead of the conventional 4-i64 `{tag, w0, w1, w2}` enum. Per-node heap size for `ListNode { val: i64, mut next: Option[ListNode] }` drops from 48 bytes to 24 bytes — same shape Rust gets for free on `Option<Rc<T>>` but `Rc<RefCell<>>` doesn't (the `RefCell` borrow-counter inflates the inner type past pointer-sized).
+2. **Iterative drop for self-referential single-field shapes** (2026-05-22): the drop function for a shared struct whose only heap-owning field is `Option[Self]` (niche-optimized) emits a while-loop with inlined rc-dec on the chain pointer instead of one recursive `dec_ref` call per link. For a 100-node chain freed 500K times that's 50M function calls collapsed into 50M loop iterations of straight-line IR. **This is what closed the gap on this kata.**
+
+C still leads by 1.28× — that's the cost of `shared struct`'s refcount header (8 bytes per node + the inline dec arithmetic) vs C's single-owner `malloc`/`free`, on a workload where every alloc is paired with a drop and the chain head is the sole owner. Go's bump-pointer young-generation allocator + amortized GC sweep lands between C and Kāra. Python runs the same shape in a tree-walking interpreter ~10× slower than Kāra.
+
+(An even earlier snapshot of this kata reported 358 ms / 2.53× faster than Rust; that number measured the kernel correctly but the `karac` runtime was leaking the result chain on every iteration — peak RSS climbed to 2.3 GiB. After closing that leak the memory-correct number was 832 ms / 1.06× faster than Rust; the niche-layout + iterative-drop pair brings it to the 545 ms / 1.62× number above.)
+
+### Runtime — long workloads (Python)
+
+Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`:
+
+| Run | Mean ± σ |
+|---|---|
+| `py iterative` | 5.705 s ± 0.062 s |
+
+Python is **10.5× slower** than Kāra codegen on this workload — the gap CPython opens against any compiled-with-codegen language at workload sizes where algorithm time dominates interpreter-startup floors.
+
+### Compile elapsed (cold)
+
+Snapshot — M5 Pro, 2026-05-22, hyperfine `--warmup 1 --runs 10 --shell=none` with `--prepare` deleting the artifact before each run:
+
+| Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
+|---|---|---|---|
+| `iterative` | **74.9 ± 0.5 ms** | 112.3 ± 0.6 ms | 47.4 ± 0.6 ms |
+
+`karac build` is **1.50× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
 ### Binary size
 
-| Build | Size |
+| Implementation | Size |
 |---|---|
-| `kara iterative (codegen)` | 296 KiB |
-| `rust iterative` | 456 KiB |
+| c    iterative | 32.9 KiB |
+| kāra iterative | 311.9 KiB |
+| rust iterative | 456.3 KiB |
+| go   iterative | 2434.1 KiB |
 
-### Runtime memory (peak)
+The `kara iterative` row is heavier than the two-sum brute-force binary (~49 KiB) because the runtime statically links the `shared struct` machinery (RC inc/dec, recursive drop, finalizer plumbing) whenever any shared type is in the program. Rust pays the same kind of `Rc`/`RefCell` static-link cost but at a higher baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
 
-| Run | Peak RSS |
+### Runtime memory (peak, RSS)
+
+| Implementation | Peak |
 |---|---|
-| `kara iterative (codegen)` | 1.5 MiB |
-| `py   iterative` | 9.5 MiB |
-| `rust iterative` | 1.2 MiB |
+| c    iterative | 1.1 MiB |
+| rust iterative | 1.1 MiB |
+| kāra iterative (codegen) | 1.5 MiB |
+| go   iterative | 9.1 MiB |
+| py   iterative | 9.3 MiB |
 
-Peak RSS is bounded and comparable to Rust's. Lowering K does not significantly affect peak (the runtime keeps one 100-node chain live at any time).
+Peak RSS is bounded and comparable to Rust's; the per-iteration allocate-then-drop discipline keeps one ~100-node chain live at a time. Go's baseline includes the runtime + GC; Python's includes the CPython interpreter.
+
+### Compile memory (cold)
+
+| Compiler invocation | Peak |
+|---|---|
+| clang -O3 iterative.c | 2.6 MiB |
+| karac build iterative.kara | 9.7 MiB |
+| rustc -O iterative.rs | 31.9 MiB |
+
+`karac` compiles this file in **~10 MiB peak** — between clang and rustc, with no algorithmic blowup signature. Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
+
+### Why this kata is in the harness
+
+Add Two Numbers is the canonical "small-object allocator and reference-semantics" entry: a tight inner loop that walks one heap chain, builds another, and drops it. This is where `shared struct` vs `Rc<RefCell<>>` vs raw `malloc` vs GC actually show up — not in tight numeric kernels (where they all compile to the same instructions) but in workloads where heap discipline dominates. The seq lane here is the load-bearing reference-semantics measurement; the C row is what the same algorithm costs without RC at all.
