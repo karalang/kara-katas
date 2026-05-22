@@ -74,6 +74,7 @@ build_kara() {
 build_rust count.rs
 build_c    count.c
 build_kara count.kara
+build_kara count_seq.kara
 
 # Rayon variant lives in its own Cargo project under bench/rayon/ because
 # rayon is a third-party crate (no rustc single-file path for that).
@@ -88,14 +89,15 @@ cp -f rayon/target/release/count_rayon target/count_rayon
 # takes ~30s and bench.sh would block waiting on it. Set
 # `KARA_BENCH_INCLUDE_PY=1` to opt in.
 kara_sink=$(./target/count_kara)
+kara_seq_sink=$(./target/count_seq_kara)
 rust_sink=$(./target/count)
 c_sink=$(./target/count_c)
 rayon_sink=$(./target/count_rayon)
-if [ "$kara_sink" != "$rust_sink" ] || [ "$kara_sink" != "$c_sink" ] || [ "$kara_sink" != "$rayon_sink" ]; then
-    echo "sink mismatch: kara=$kara_sink rust=$rust_sink c=$c_sink rayon=$rayon_sink" >&2
+if [ "$kara_sink" != "$rust_sink" ] || [ "$kara_sink" != "$c_sink" ] || [ "$kara_sink" != "$rayon_sink" ] || [ "$kara_sink" != "$kara_seq_sink" ]; then
+    echo "sink mismatch: kara=$kara_sink kara_seq=$kara_seq_sink rust=$rust_sink c=$c_sink rayon=$rayon_sink" >&2
     exit 1
 fi
-echo "sink (kara == rust == c == rust+rayon): $(echo "$kara_sink" | tr '\n' ' ' | sed 's/ $//')"
+echo "sink (kara == kara-seq == rust == c == rust+rayon): $(echo "$kara_sink" | tr '\n' ' ' | sed 's/ $//')"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_sink=$(python3 count.py)
     if [ "$kara_sink" != "$py_sink" ]; then
@@ -112,6 +114,7 @@ hyperfine \
     --runs 10 \
     --shell=none \
     --command-name 'kara count (codegen, #[par_unordered])' './target/count_kara' \
+    --command-name 'kara count (codegen, single-threaded)'  './target/count_seq_kara' \
     --command-name 'rust count (single-threaded)'           './target/count' \
     --command-name 'rust count (rayon par_iter)'            './target/count_rayon' \
     --command-name 'c    count (single-threaded)'           './target/count_c'
@@ -130,7 +133,7 @@ hyperfine \
 
 echo
 echo "=== binary size ==="
-for spec in 'kara count:target/count_kara' 'rust count:target/count' 'rust+rayon count:target/count_rayon' 'c    count:target/count_c'; do
+for spec in 'kara count:target/count_kara' 'kara count (seq):target/count_seq_kara' 'rust count:target/count' 'rust+rayon count:target/count_rayon' 'c    count:target/count_c'; do
     label="${spec%%:*}"
     path="${spec##*:}"
     bytes=$(wc -c < "$path" | tr -d ' ')
@@ -141,6 +144,7 @@ done
 echo
 echo "=== runtime memory (peak) ==="
 print_mem 'kara count (codegen)' "$(mem_peak ./target/count_kara)"
+print_mem 'kara count (seq)'     "$(mem_peak ./target/count_seq_kara)"
 print_mem 'rust count'           "$(mem_peak ./target/count)"
 print_mem 'rust+rayon count'     "$(mem_peak ./target/count_rayon)"
 print_mem 'c    count'           "$(mem_peak ./target/count_c)"

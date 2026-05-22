@@ -73,38 +73,39 @@ Bench harness lives in [`bench/`](bench/). All four mirrors solve the same N = 1
 
 ### Comparison framing
 
-Four mirrors, two framings worth measuring:
+Five mirrors covering three framings:
 
 1. **"What does a programmer write?"** — Rust and C mirrors are idiomatic single-threaded. This shows the win when auto-par triggers on code a programmer would write without reaching for a parallelism library.
 2. **"What if they do reach for a library?"** — A `rayon` Rust mirror (`bench/rayon/`) uses `.into_par_iter().filter(...).collect()`, the canonical hand-parallelized form. This shows the gap between Kāra's auto-par and a mature, hand-tuned Rust parallelism library.
+3. **"Is Kāra's per-core throughput competitive with Rust/C?"** — A Kāra single-threaded mirror (`bench/count_seq.kara`) drops the `#[par_unordered]` attribute so the analyzer falls through and codegen emits the inline serial-push path. This isolates per-core codegen quality from the parallel-dispatch speedup. If Kāra is much slower per-core, the parallel win would just be "Kāra needed 12 cores to barely catch up to Rust on one core." If Kāra matches Rust/C per-core, the parallel win is real scaling on top of competitive single-thread perf.
 
-Both rows are in the table below.
+All five rows are in the table below.
 
 ### Runtime
 
-| Implementation | Wall time | User-CPU | CPU% | vs Kāra |
+| Implementation | Wall time | User-CPU | CPU% | vs Kāra par |
 |---|---|---|---|---|
-| rust count (rayon par_iter)                 | **36.3 ms ± 1.0 ms** | 561.8 ms | ~1500% (~15 cores) | 1.26× faster |
-| **kāra count (codegen, #[par_unordered])** | **45.8 ms ± 0.5 ms** | 549.6 ms | ~1200% (~12 cores) | 1.00× |
-| rust count (single-threaded)                | 501.5 ms ± 4.1 ms    | 495.9 ms | 99%   | 10.95× slower |
-| c    count (single-threaded, clang -O3)     | 504.3 ms ± 13.8 ms   | 497.3 ms | 99%   | 11.01× slower |
+| rust count (rayon par_iter)                 | **38.7 ms ± 1.9 ms** | 561.5 ms | ~1450% (~15 cores) | 1.38× faster |
+| **kāra count (codegen, #[par_unordered])** | **53.4 ms ± 2.7 ms** | 552.5 ms | ~1030% (~10 cores) | 1.00× |
+| c    count (single-threaded, clang -O3)     | 518.0 ms ± 7.2 ms    | 513.7 ms | 99%   | 9.70× slower |
+| rust count (single-threaded)                | 527.3 ms ± 6.9 ms    | 523.0 ms | 99%   | 9.87× slower |
+| kāra count (codegen, single-threaded)       | 530.1 ms ± 54.6 ms   | 513.2 ms | 97%   | 9.93× slower |
 
-Run `bench/bench.sh` to reproduce.
+Run `bench/bench.sh` to reproduce. Hyperfine, 10 runs after 3 warmups, M5 Pro under typical desktop load (the Kāra-seq stddev is wide because one run caught a system hiccup; mean is the load-bearing number).
 
-**The two stories.** Kāra's auto-par is **10.95× faster than idiomatic single-threaded Rust** and **1.26× slower than hand-parallelized `rayon` Rust**. Both are honest finds:
+**The three stories.**
 
-- The 10.95× number is the *transparency* story: the same source code an LC #204 solver writes happens to be the parallel implementation, no library import or restructuring required.
-- The 1.26× number is the *competitiveness* story: brand-new auto-par (Phase 3 of karac's reduction codegen, shipped 2026-05-21) lands within 26% of `rayon`, a mature library with years of work-stealing-scheduler tuning. The gap is concentrated in worker-fan-out efficiency (rayon distributes across ~15 cores; karac across ~12) — see karac's `phase-7-codegen.md` line 163 ("real work-stealing scheduler" follow-up) for the codegen-side optimization target.
-
-User-CPU numbers tell the underlying mechanics: idiomatic Rust and C each spend ~500 ms on a single core. Both Kāra and `rayon` spend ~555 ms of CPU total — they do the same total work — but the wall time depends on how widely that work spreads. Kāra's `karac_par_reduce` runtime currently uses a single global queue + Condvar (the v1 MVP); rayon uses per-worker deques with work-stealing. The codegen path itself (worker fn, per-worker private `Vec[i64]`, amortized-doubling merge) is competitive with rayon's equivalent.
+- **Per-core parity (~3% spread across C, Rust, Kāra single-thread).** Kāra's single-thread codegen sits within ~3% of Rust's `rustc -O` and C's `clang -O3` on the same workload — same algorithm, same trial-division shape, same `Vec[i64]` push path. The 10× win over Rust/C in the parallel rows is *not* a language-design advantage at the per-core level; it's the auto-par dispatch built on top of competitive per-core throughput. (Kāra would lose any "we're faster because the language is smarter" claim a careful reader would otherwise check — there isn't one.)
+- **Transparency.** Kāra's auto-par is **9.87× faster than idiomatic single-threaded Rust** (and 9.70× ahead of single-threaded C). Same source code an LC #204 solver writes happens to be the parallel implementation, no library import or restructuring.
+- **Competitiveness.** Kāra's auto-par is **1.38× slower than hand-parallelized `rayon` Rust**. Brand-new auto-par (Phase 3 of karac's reduction codegen, shipped 2026-05-21) lands within 38% of `rayon`, a mature library with years of work-stealing-scheduler tuning. The gap is concentrated in scheduler efficiency: rayon distributes across ~15 cores via per-worker deques with work-stealing; karac currently uses a single global queue + Condvar (the v1 MVP per `karac-rust/runtime/src/lib.rs § Pool`) and distributes across ~10. Both implementations spend the same ~555 ms of total user-CPU — same total work, different scheduler — see karac's `phase-7-codegen.md` line 163 ("real work-stealing scheduler" follow-up) for the optimization target the rayon comparison empirically validates.
 
 ### Compile (cold)
 
 | Implementation | Wall time |
 |---|---|
-| karac build count.kara | 55.7 ms ± 0.4 ms |
-| rustc -O count.rs      | 80.2 ms ± 1.5 ms |
-| clang -O3 count.c      | 39.8 ms ± 0.6 ms |
+| karac build count.kara | 60.1 ms ± 2.7 ms |
+| rustc -O count.rs      | 85.3 ms ± 4.1 ms |
+| clang -O3 count.c      | 42.5 ms ± 1.7 ms |
 
 Kāra compiles ~1.4× slower than `clang -O3`, ~1.4× faster than `rustc -O`. Single-file builds aren't a stress test for the compiler — this number is dominated by LLVM mid-end passes (Kāra runs `default<O2>` per `src/codegen/optimization.rs`). The `rayon` row isn't included here because it's a multi-file Cargo project (incremental dep compile dominates and is a different measurement).
 
@@ -112,23 +113,25 @@ Kāra compiles ~1.4× slower than `clang -O3`, ~1.4× faster than `rustc -O`. Si
 
 | Implementation | Size |
 |---|---|
-| kara count        | 311.9 KiB |
+| kara count (par)  | 311.9 KiB |
+| kara count (seq)  |  49.0 KiB |
 | rust count        | 455.6 KiB |
 | rust+rayon count  | 451.8 KiB |
 | c    count        |  32.8 KiB |
 
-Kāra's binary is larger than C's because it links `libkarac_runtime.a` (the par-reduce dispatch + worker pool + descriptor machinery). Rust's binary is larger than Kāra's because `rustc -O` defaults include the panic-unwind machinery + `std`. Adding `rayon` barely changes Rust's size (Rust's runtime overhead dominates over the rayon scheduler). With `-C panic=abort -C strip=symbols` Rust binaries shrink considerably, but those aren't the default profile.
+Kāra's parallel binary is larger than C's because it links the parts of `libkarac_runtime.a` the par-reduce path needs (dispatch + worker pool + descriptor machinery). The single-threaded Kāra binary drops to 49 KiB — the runtime's par-reduce surface isn't linked in when nothing references it, leaving only the minimal startup + libc-glue archive code. Rust's binary is larger than either Kāra variant because `rustc -O` defaults include the panic-unwind machinery + `std`. Adding `rayon` barely changes Rust's size (Rust's runtime overhead dominates over the rayon scheduler). With `-C panic=abort -C strip=symbols` Rust binaries shrink considerably, but those aren't the default profile.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak RSS |
 |---|---|
-| kara count (codegen) | 22.6 MiB |
+| kara count (par)     | 23.2 MiB |
+| kara count (seq)     | 14.2 MiB |
 | rust count           |  8.3 MiB |
-| rust+rayon count     | 15.9 MiB |
+| rust+rayon count     | 15.8 MiB |
 | c    count           |  6.2 MiB |
 
-Kāra's higher peak comes from the 12-worker thread pool (each with ~1 MiB stack reserved) + per-worker partial Vec slots during the merge. `rayon` sits in between for the same reason (15-worker thread pool + per-worker partials). Rust/C single-threaded each hold a single contiguous `Vec[i64]` / `int64_t[]` of ~5 MiB (664k × 8 bytes + headroom) and no thread pool.
+Kāra's parallel peak comes from the 10-worker thread pool (each with ~1 MiB stack reserved) + per-worker partial Vec slots during the merge. `rayon` sits in similar territory for the same reason (15-worker thread pool + per-worker partials). Kāra single-threaded skips the thread pool but still uses ~14 MiB — that's the `Vec[i64]` of 664k primes (~5 MiB live) plus the realloc-doubling overhead during the growth phase (the final doubling allocates 2× the final size before the previous buffer is freed). Rust single-threaded hits a smaller peak because Rust's `Vec::push` releases the old buffer mid-growth via a different path. C single-threaded is the smallest because its bench pre-sizes the buffer at `cap = 700_000` and skips realloc entirely.
 
 ### Compile memory (cold)
 
@@ -142,7 +145,7 @@ Kāra's compiler holds a much smaller working set than `rustc -O` (no incrementa
 
 ## Caveats
 
-- **N = 10⁷ is well above LC's max** (`n ≤ 5×10⁶`). The bench uses a larger N so the timed loop dominates startup/teardown overhead in hyperfine. At LC's actual limit (5M), the runtime would be ~25 ms Kāra vs ~250 ms Rust — same ratios, just less measurement headroom.
+- **N = 10⁷ is well above LC's max** (`n ≤ 5×10⁶`). The bench uses a larger N so the timed loop dominates startup/teardown overhead in hyperfine. At LC's actual limit (5M), the runtime would be ~26 ms Kāra par vs ~265 ms Kāra seq vs ~264 ms Rust seq — same ratios, just less measurement headroom.
 - **Order across the result `Vec` is unspecified.** That's exactly why `#[par_unordered]` is required — it's the user's explicit opt-in to "I don't care about output order" semantics. For LC #204 (count only) and our bench (sum is order-invariant), this costs nothing. Workloads that need order-preservation would use a different reduction primitive (filed as a future tracker entry).
-- **`rayon` beats Kāra by 1.26× today.** That's not a defeat — it's a concrete optimization target. `rayon` ships a per-worker-deque work-stealing scheduler; Kāra's runtime currently uses a single global queue (the v1 MVP per `karac-rust/runtime/src/lib.rs § Pool`). Closing the gap is tracked in `phase-7-codegen.md` line 163. The codegen work that *did* land (Phase 3 + 3.1) gets within 26% of mature hand-tuned parallel Rust on the first iteration — the headline isn't "Kāra beats rayon," it's "Kāra's auto-par is competitive with rayon while requiring zero source-level changes vs the single-threaded version."
-- **The single-threaded baselines aren't a strawman.** Most LC #204 solutions in any language are written as a serial loop — that's the audience the 10.95× framing speaks to. The `rayon` framing speaks to a different audience: parallelism specialists. Both audiences exist and both numbers matter.
+- **`rayon` beats Kāra by 1.38× today.** That's not a defeat — it's a concrete optimization target. `rayon` ships a per-worker-deque work-stealing scheduler; Kāra's runtime currently uses a single global queue (the v1 MVP per `karac-rust/runtime/src/lib.rs § Pool`). Closing the gap is tracked in `phase-7-codegen.md` line 163. The codegen work that *did* land (Phase 3 + 3.1) gets within 38% of mature hand-tuned parallel Rust on the first iteration — the headline isn't "Kāra beats rayon," it's "Kāra's auto-par is competitive with rayon while requiring zero source-level changes vs the single-threaded version."
+- **The three baselines aren't a strawman.** Single-threaded Rust/C is what most LC #204 solutions look like in any language — the 9.87× framing speaks to that audience. The `rayon` row speaks to parallelism specialists. The Kāra single-thread row is for skeptics who'd otherwise wonder if the auto-par win was just hiding a per-core regression behind 12 cores; per-core parity with Rust/C is the load-bearing answer.
