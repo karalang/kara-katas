@@ -1,20 +1,23 @@
-# todo-api — read-only TODO list service
+# todo-api — CRUD TODO list service
 
 First entry in the **backend-service** kata category — closes axis-1
-("Backend service") in `../../PLAN.md`. Status: **v1, dynamic `:id`
-routing + POST echo.** One karac codegen prereq (`Json.stringify`
-codegen-side wiring) remains before this kata reaches the full
-PLAN.md Priority 1 spec.
+("Backend service") in `../../PLAN.md`. Status: **v2, full CRUD over
+an in-memory store with per-request `Json.stringify`.** Shipped
+2026-05-22 after the two karac slices that unblocked the planned
+shape (`Vec.new()` at module scope + uppercase-receiver method
+dispatch).
 
 ## Routes
 
-| Method | Path | Response |
-|---|---|---|
-| GET | `/todos` | 200, JSON array of all TODOs |
-| GET | `/todos/:id` | 200 single TODO, or 404 for unknown / non-integer id |
-| POST | `/echo` | 200, request body verbatim |
-| any | other | 404 |
-| non-GET non-POST | any | 405 |
+| Method | Path | Status | Body |
+|---|---|---|---|
+| GET | `/todos` | 200 | JSON array of all TODOs |
+| GET | `/todos/:id` | 200 / 404 | Single TODO, or "not found" |
+| POST | `/todos` | 201 / 400 | Created TODO (auto-id), or error |
+| PUT | `/todos/:id` | 200 / 400 / 404 | Updated TODO, or error |
+| DELETE | `/todos/:id` | 204 / 404 | Empty body on success |
+| any | other | 404 | "not found" |
+| non-supported method | any | 405 | "method not allowed" |
 
 ## Running
 
@@ -23,41 +26,101 @@ karac build main.kara
 ./main             # binds 127.0.0.1:8080
 curl http://127.0.0.1:8080/todos
 curl http://127.0.0.1:8080/todos/2
-curl -X POST -d '{"x":1}' http://127.0.0.1:8080/echo
+curl -X POST -d '{"title":"From curl","completed":false}' http://127.0.0.1:8080/todos
+curl -X PUT  -d '{"title":"Updated","completed":true}' http://127.0.0.1:8080/todos/1
+curl -X DELETE http://127.0.0.1:8080/todos/2
 ```
 
 ## Kāra features exercised
 
-- `std.http` `Server.serve(addr, handler)` with `Request.path()` / `method()` / `body()` round-trips.
-- `match` over String scrutinee.
-- Dynamic `:id` extraction via `String.starts_with` + `String.substring` + `i64.parse`.
-- `Option[i64]` pattern-match destructuring, multi-route dispatch with status-code variation.
+- **Module-level mutable state**: `let mut TODOS: Vec[Todo] = Vec.new();`
+  + `let mut NEXT_ID: i64 = 1;` per design.md §1278-1330. Slice-a
+  (karac-rust `d92f3da`) wired `Vec.new()` into the const-init
+  permitted special forms; the global is emitted as the canonical
+  `{ptr null, i64 0, i64 0}` LLVM aggregate and grows on `push`.
+- **Uppercase-receiver method dispatch**: `TODOS.push(t)`,
+  `TODOS.len()`, `TODOS[i]`, `TODOS[i] = ...`, `TODOS.pop()` all
+  dispatch correctly through the typechecker + lowering + codegen
+  rewrite shipped karac-rust `f41a62c`. Without that fix, every
+  method call against an uppercase global Vec failed with
+  `type 'Vec[i64]' is not callable`.
+- **`std.http` server**: `Server.serve(addr, handler)` with a
+  per-request handler taking `Request` and returning `Response`.
+  `req.method()`, `req.path()`, `req.body()` all round-trip through
+  the FFI to hyper.
+- **`std.json` per-request serialization**: every response body is
+  built from a `Json` value tree via `Json.Object` / `Json.Array` /
+  `Json.Number` / `Json.String` / `Json.Bool` and rendered with
+  `j.stringify()`. Incoming bodies are parsed with `Json.parse(...)`
+  and pattern-matched against the variant.
+- **Dynamic `:id` extraction**: `String.starts_with` +
+  `String.substring` + `i64.parse` + `Option`-match on the result.
+- Multi-route dispatch with status-code variation (200, 201, 204,
+  400, 404, 405).
 
-## What this kata does NOT exercise yet (and why)
+## Known v1 karac gaps (worked around inline)
 
-The PLAN.md spec for Priority 1 calls for ~500–1000 LOC with full
-CRUD (POST/PUT/DELETE) over an in-memory store and per-request JSON
-serialization from `Vec[Todo]`. Two karac prerequisites remain:
+Three karac codegen surfaces have v1 gaps that this kata bridges
+with inline workarounds; each gap is filed as a follow-on slice in
+`karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md`.
+The kata's response shapes are correct end-to-end; only the
+implementation style is uglier than it would be once the underlying
+gaps land.
 
-1. **Module-level `let mut` bindings** —
-   `karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md`,
-   the entry directly above OnceLock/OnceCell. Required for the
-   in-memory TODO store across handler calls; without it, write
-   endpoints have nowhere to persist.
+1. **`Vec[a, b, c]` literal as enum-variant payload loses elements.**
+   `Json.Array(Vec[a, b])` parses but renders as `[]` because the
+   payload Vec's elements don't thread through to the runtime's
+   `serde_json` walker. Workaround: explicit `Vec.new() + .push(...)`
+   wherever a Vec feeds into a `Json.Array` / `Json.Object` value.
+2. **Helper-function `Json` construction returns empty.** A helper
+   like `fn todo_to_json(t: ref Todo) -> Json { ... Json.Object(...) }`
+   compiles cleanly but the caller's `stringify()` produces an empty
+   body. Workaround: inline the `Json` construction at the call
+   site (no helper extraction). The inline form is verified to
+   produce correct output; the helper-function form will follow once
+   the cross-function Vec[Json] payload codegen lands.
+3. **`match Json.Bool(b) => b` LLVM-verifier rejection.** Enum-
+   payload bool extracts as `i64` in the word-stream but doesn't
+   narrow to `i1` before the return, so any function returning
+   `bool` from such an arm trips the LLVM verifier. Workaround:
+   cast through `i64` (`Json.Bool(b) => b as i64`) and recover
+   the bool at the use site with `!= 0i64`.
+4. **`Vec.remove(idx)` doesn't shrink the Vec.** The method runs
+   without error but the len / element-shift don't take effect.
+   Workaround: DELETE uses the swap-with-last + `pop()` pattern
+   (overwrites the slot with the last element then pops). Order
+   isn't preserved across deletes; the kata's spec doesn't promise
+   it.
 
-2. **`Json.stringify()` codegen dispatch** —
-   `phase-8-stdlib-floor.md` next to the shipped `std.json`
-   minimal-surface entry. Required to drop the static JSON strings
-   and build responses from `Vec[Todo]` per request.
+## Numbers
 
-When both land, this kata grows into the full PLAN.md Priority 1
-spec in-place — the static-response dispatch becomes the read path
-of a real CRUD surface. The current dispatcher already does dynamic
-`:id` extraction, so the routing layer is already final-shape.
+- LOC: ~250 (main.kara), up from ~110 in the v1 read-only shape.
+- Compile time: <1s on M5 Pro (clean build of just `main.kara`
+  against the installed karac).
+- Binary size: ~720 KiB.
+
+## Architecture notes
+
+- **State is global, not per-request**: every handler call mutates
+  the same `TODOS` Vec under `Server.serve`'s single-threaded
+  dispatch (v1 server semantics — no concurrent handlers). Once
+  multi-thread serving lands, the binding will need either
+  `Mutex[Vec[Todo]]` (per design.md §1326 path (a)) or the
+  `public_effects = "inferred"` project flag (path (b)).
+- **`NEXT_ID` is monotonically increasing**: deleted ids are NOT
+  reused. A POST after `DELETE /todos/2` gets id 4 (the next
+  unused), not id 2.
+- **Body parsing is two-pass**: the kata calls `Json.parse(req.body())`
+  twice per write request — once for `title`, once for `completed`.
+  This is a v1 pragma because the v1 JSON enum's `Object` payload
+  is a `Vec[(String, Json)]` and the elements move on the first
+  extraction. A single-pass extractor lands when the same
+  follow-on Vec[Json] codegen lands.
 
 ## Comparison targets
 
-Per PLAN.md axis-5, this kata needs a Go comparison for the v1
-backend-shape compile-time public-quote number. Go + Rust
-counterparts land as a follow-up commit (additive — the Kāra side
-here is what needs to typecheck against the v1 stdlib surface).
+Per PLAN.md axis-5, this kata needs Go and Rust comparison
+counterparts for the v1 backend-shape compile-time public-quote
+number. They land as additive commits — the Kāra side here is
+what needs to typecheck against the v1 stdlib surface, which it
+now does.

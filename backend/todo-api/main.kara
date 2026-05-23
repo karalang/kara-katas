@@ -1,109 +1,304 @@
 // kara-katas/backend/todo-api/main.kara
 //
-// Read-only TODO list service over HTTP/JSON. First entry in the
+// CRUD TODO list service over HTTP/JSON. First entry in the
 // backend-service kata category — closes axis-1 in
-// `kara-katas/PLAN.md`. v1 surface:
+// `kara-katas/PLAN.md`. v2 surface (Slice 4):
 //
-//   GET  /todos       → 200, JSON array of all TODOs
-//   GET  /todos/:id   → 200, single TODO (or 404 if id not found)
-//   POST /echo        → 200, echoes the request body (Slice 1 round-trip)
-//   any other route   → 404, "not found"
-//   non-GET non-POST  → 405, "method not allowed"
+//   GET    /todos        → 200, JSON array of all TODOs
+//   GET    /todos/:id    → 200, single TODO (or 404 if id not found)
+//   POST   /todos        → 201, the created TODO (auto-assigned id)
+//   PUT    /todos/:id    → 200, the updated TODO (or 404 if id not found)
+//   DELETE /todos/:id    → 204 (no body) on success, 404 if id not found
+//   any other route      → 404, "not found"
+//   non-supported method → 405, "method not allowed"
 //
-// **v1 implementation note: response bodies are static string literals.**
-// The TODO data is baked into the source as pre-formatted JSON
-// strings, not built per-request from `Vec[Todo]` via JSON
-// serialization. One karac codegen gap still blocks the more
-// general form:
+// State lives in module-level `let mut TODOS: Vec[Todo]` per
+// design.md §1278-1330 (module-level bindings) — phase-8 mod-let
+// umbrella + the `Vec.new()` const-init follow-on shipped
+// karac-rust `d92f3da`. Method calls on the uppercase global
+// (`TODOS.push`, `TODOS.len`, `TODOS[i]`, `TODOS.remove`) dispatch
+// through the uppercase-receiver method-dispatch fix shipped
+// karac-rust `f41a62c`.
 //
-//   - `Json.stringify()` has no codegen-side dispatch — the runtime
-//     C-ABI exports exist but the Kāra→FFI wiring is deferred per
-//     phase-8 line 431.
-//
-// Three codegen gaps surfaced + shipped 2026-05-21 while building
-// this kata:
-//   - `match` over a String scrutinee (karac-rust `b763340`)
-//   - `String.starts_with` (karac-rust `a32a0a8`)
-//   - `String.substring` (karac-rust `a0e1a99`)
-//   - `i64.parse` (karac-rust `0a95228`)
-//
-// The dispatcher below now uses the natural `match req.path() { ... }`
-// shape and extracts `:id` dynamically via the `starts_with` +
-// `substring` + `i64.parse` trio. Combined with the earlier
-// `String == String` ownership rule and the module-level `let mut`
-// gap, only `Json.stringify` codegen and `let mut` remain before
-// this kata reaches the full PLAN.md Priority 1 spec.
+// JSON response bodies build a `Json` value tree per request via
+// `Vec.new() + push` (the `Vec[a, b, c]` literal form as an
+// enum-variant payload loses its elements in v1 codegen — filed
+// as a follow-on slice in phase-8). The Json walks live inline in
+// the handler rather than in helper functions because the
+// inter-function `Vec` payload codegen path has a different
+// surface issue that surfaces as empty response bodies; the
+// inline form sidesteps it. Refactor into helpers once the
+// inter-function path lands its own slice.
 
 struct Response {
     status: i64,
     body: String,
 }
 
-// Look up a TODO by id from the fixed three-item set. Returns a
-// pre-formatted JSON object string on hit, an empty String on miss.
-// (Once `Option[String]` typechecker-flows cleanly across `match`
-// arms, this returns `Option[String]`; v1 uses an empty String
-// sentinel.)
-fn lookup_todo(id: i64) -> String {
-    if id == 1 {
-        return "{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false}";
+struct Todo {
+    id: i64,
+    title: String,
+    completed: bool,
+}
+
+let mut TODOS: Vec[Todo] = Vec.new();
+let mut NEXT_ID: i64 = 1;
+
+fn seed_initial_todos() {
+    TODOS.push(Todo { id: 1, title: "Learn Kāra", completed: false });
+    TODOS.push(Todo { id: 2, title: "Write a kata", completed: true });
+    TODOS.push(Todo { id: 3, title: "Ship Slice 4", completed: false });
+    NEXT_ID = 4;
+}
+
+// Linear-scan find-by-id. Returns the matching index or `None`.
+fn find_index_by_id(target: i64) -> Option[i64] {
+    let mut i: i64 = 0;
+    let n: i64 = TODOS.len();
+    while i < n {
+        let t: Todo = TODOS[i];
+        if t.id == target {
+            return Some(i);
+        }
+        i = i + 1;
     }
-    if id == 2 {
-        return "{\"id\":2,\"title\":\"Write a kata\",\"completed\":true}";
+    None
+}
+
+// Extract a String field from a parsed JSON object body. v1 has
+// no `==` on `Json` (no derived Eq) and the `Json.Bool(b)` arm hits
+// a separate codegen gap where `b` extracts as i64 but the inner
+// match expects i1 — both routed around inline here. Returns the
+// empty String on missing key / wrong shape so callers can
+// emit a 400 response.
+fn extract_title(j: Json) -> String {
+    let mut result: String = "";
+    match j {
+        Json.Object(fields) => {
+            let mut i: i64 = 0;
+            let n: i64 = fields.len();
+            while i < n {
+                let entry: (String, Json) = fields[i];
+                if entry.0 == "title" {
+                    match entry.1 {
+                        Json.String(s) => return s,
+                        _ => return "",
+                    }
+                }
+                i = i + 1;
+            }
+            return "";
+        }
+        _ => return "",
     }
-    if id == 3 {
-        return "{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}";
-    }
-    ""
+    result
+}
+
+// Same shape as `extract_title` but for the `completed` field.
+// Returns false on missing / wrong-shape. The `Json.Bool(b) => b`
+// arm hits a karac codegen gap (enum-payload bool extracts as i64
+// in the word-stream but doesn't narrow back to i1 before the
+// return — LLVM verifier rejects). Bridges through `as i64`
+// throughout the whole function; the final `!= 0i64` recovers the
+// bool surface at the return point.
+fn extract_completed(j: Json) -> bool {
+    let raw: i64 = match j {
+        Json.Object(fields) => {
+            let mut found: i64 = 0i64;
+            let mut i: i64 = 0;
+            let n: i64 = fields.len();
+            while i < n {
+                let entry: (String, Json) = fields[i];
+                if entry.0 == "completed" {
+                    let v: i64 = match entry.1 {
+                        Json.Bool(b) => b as i64,
+                        _ => 0i64,
+                    };
+                    return v != 0i64;
+                }
+                i = i + 1;
+            }
+            found
+        }
+        _ => 0i64,
+    };
+    raw != 0i64
 }
 
 fn not_found() -> Response {
     Response { status: 404, body: "not found" }
 }
 
-// Extract :id from `/todos/:id` and look it up. Returns 404 for
-// any path that doesn't match `/todos/<integer>` or for an integer
-// that isn't one of the three known ids.
-fn handle_get_todo_by_id(path: String) -> Response {
-    if not path.starts_with("/todos/") {
-        return not_found();
-    }
-    let rest = path.substring(7);
-    match i64.parse(rest) {
-        Some(id) => {
-            let body = lookup_todo(id);
-            if body == "" {
-                return not_found();
-            }
-            Response { status: 200, body: body }
-        }
-        None => not_found(),
-    }
+fn bad_request(msg: String) -> Response {
+    Response { status: 400, body: msg }
 }
 
 fn handle(req: Request) -> Response {
-    let m = req.method();
+    let m: String = req.method();
+    let p: String = req.path();
+
+    // GET /todos — render every TODO as JSON. Vec[Json] is built
+    // inline (helper-function routing of Vec[Json] payloads loses
+    // elements in v1).
     if m == "GET" {
-        let p = req.path();
         if p == "/todos" {
-            return Response {
-                status: 200,
-                body: "[{\"id\":1,\"title\":\"Learn Kāra\",\"completed\":false},{\"id\":2,\"title\":\"Write a kata\",\"completed\":true},{\"id\":3,\"title\":\"Ship slice 1\",\"completed\":true}]",
-            };
+            let mut items: Vec[Json] = Vec.new();
+            let mut i: i64 = 0;
+            let n: i64 = TODOS.len();
+            while i < n {
+                let t: Todo = TODOS[i];
+                let mut fields: Vec[(String, Json)] = Vec.new();
+                fields.push(("id", Json.Number(t.id as f64)));
+                fields.push(("title", Json.String(t.title.clone())));
+                fields.push(("completed", Json.Bool(t.completed)));
+                items.push(Json.Object(fields));
+                i = i + 1;
+            }
+            let arr: Json = Json.Array(items);
+            let body: String = arr.stringify();
+            return Response { status: 200, body: body };
         }
-        return handle_get_todo_by_id(p);
-    }
-    if m == "POST" {
-        // Exercise Slice 1's `req.body()` round-trip end-to-end.
-        let p = req.path();
-        if p == "/echo" {
-            return Response { status: 200, body: req.body() };
+        // GET /todos/:id
+        if p.starts_with("/todos/") {
+            let rest = p.substring(7);
+            match i64.parse(rest) {
+                Some(id) => {
+                    match find_index_by_id(id) {
+                        Some(idx) => {
+                            let t: Todo = TODOS[idx];
+                            let mut fields: Vec[(String, Json)] = Vec.new();
+                            fields.push(("id", Json.Number(t.id as f64)));
+                            fields.push(("title", Json.String(t.title.clone())));
+                            fields.push(("completed", Json.Bool(t.completed)));
+                            let obj: Json = Json.Object(fields);
+                            let body: String = obj.stringify();
+                            return Response { status: 200, body: body };
+                        }
+                        None => return not_found(),
+                    }
+                }
+                None => return not_found(),
+            }
         }
         return not_found();
     }
+
+    // POST /todos — parse body, push a new Todo with auto-id.
+    if m == "POST" {
+        if p == "/todos" {
+            match Json.parse(req.body()) {
+                Err(_) => return bad_request("invalid JSON body"),
+                Ok(j) => {
+                    let title: String = extract_title(j);
+                    if title == "" {
+                        return bad_request("missing or empty 'title' field");
+                    }
+                    // Re-parse to read `completed` (parse consumes Json on
+                    // each branch's path — `j` is moved by `extract_title`).
+                    // The double-parse is a v1 pragma; a single-pass
+                    // extractor lands once helper-function Vec[Json] routes
+                    // through codegen cleanly.
+                    let completed: bool = match Json.parse(req.body()) {
+                        Ok(j2) => extract_completed(j2),
+                        Err(_) => false,
+                    };
+                    let id: i64 = NEXT_ID;
+                    NEXT_ID = NEXT_ID + 1;
+                    let title_for_response: String = title.clone();
+                    let new_todo: Todo = Todo { id: id, title: title, completed: completed };
+                    TODOS.push(new_todo);
+                    // Build response body inline against the captured
+                    // values (the Todo we just pushed is now owned by
+                    // TODOS — easier to render from the scalars than
+                    // re-index).
+                    let mut fields: Vec[(String, Json)] = Vec.new();
+                    fields.push(("id", Json.Number(id as f64)));
+                    fields.push(("title", Json.String(title_for_response)));
+                    fields.push(("completed", Json.Bool(completed)));
+                    let obj: Json = Json.Object(fields);
+                    let body: String = obj.stringify();
+                    return Response { status: 201, body: body };
+                }
+            }
+        }
+        return not_found();
+    }
+
+    // PUT /todos/:id — replace title + completed for the existing
+    // todo (id is taken from the path).
+    if m == "PUT" {
+        if p.starts_with("/todos/") {
+            let rest = p.substring(7);
+            match i64.parse(rest) {
+                Some(id) => {
+                    match find_index_by_id(id) {
+                        Some(idx) => {
+                            match Json.parse(req.body()) {
+                                Err(_) => return bad_request("invalid JSON body"),
+                                Ok(j) => {
+                                    let title: String = extract_title(j);
+                                    if title == "" {
+                                        return bad_request("missing or empty 'title' field");
+                                    }
+                                    let completed: bool = match Json.parse(req.body()) {
+                                        Ok(j2) => extract_completed(j2),
+                                        Err(_) => false,
+                                    };
+                                    let title_for_response: String = title.clone();
+                                    TODOS[idx] = Todo { id: id, title: title, completed: completed };
+                                    let mut fields: Vec[(String, Json)] = Vec.new();
+                                    fields.push(("id", Json.Number(id as f64)));
+                                    fields.push(("title", Json.String(title_for_response)));
+                                    fields.push(("completed", Json.Bool(completed)));
+                                    let obj: Json = Json.Object(fields);
+                                    let body: String = obj.stringify();
+                                    return Response { status: 200, body: body };
+                                }
+                            }
+                        }
+                        None => return not_found(),
+                    }
+                }
+                None => return not_found(),
+            }
+        }
+        return not_found();
+    }
+
+    // DELETE /todos/:id — find and remove, 204 on success.
+    // `Vec.remove(idx)` has a v1 codegen gap that doesn't actually
+    // shift / shrink the Vec, so DELETE uses the swap-with-last +
+    // pop_back pattern instead. Element order is not preserved by
+    // this operation — fine for the kata's spec because the v1
+    // GET /todos doesn't promise insertion order.
+    if m == "DELETE" {
+        if p.starts_with("/todos/") {
+            let rest = p.substring(7);
+            match i64.parse(rest) {
+                Some(id) => {
+                    match find_index_by_id(id) {
+                        Some(idx) => {
+                            let last_idx: i64 = TODOS.len() - 1;
+                            if idx < last_idx {
+                                let last_todo: Todo = TODOS[last_idx];
+                                TODOS[idx] = last_todo;
+                            }
+                            let _ = TODOS.pop();
+                            return Response { status: 204, body: "" };
+                        }
+                        None => return not_found(),
+                    }
+                }
+                None => return not_found(),
+            }
+        }
+        return not_found();
+    }
+
     Response { status: 405, body: "method not allowed" }
 }
 
 fn main() {
+    seed_initial_todos();
     let _ = Server.serve("127.0.0.1:8080", handle);
 }
