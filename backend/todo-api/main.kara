@@ -13,22 +13,28 @@
 //   non-supported method → 405, "method not allowed"
 //
 // State lives in module-level `let mut TODOS: Vec[Todo]` per
-// design.md §1278-1330 (module-level bindings) — phase-8 mod-let
-// umbrella + the `Vec.new()` const-init follow-on shipped
-// karac-rust `d92f3da`. Method calls on the uppercase global
-// (`TODOS.push`, `TODOS.len`, `TODOS[i]`, `TODOS.remove`) dispatch
-// through the uppercase-receiver method-dispatch fix shipped
-// karac-rust `f41a62c`.
+// design.md §1278-1330 (module-level bindings). The kata
+// originally bridged four karac codegen gaps with inline
+// workarounds at Slice 4 ship time; all four fixes landed
+// 2026-05-22 and the kata is now back to its natural shape:
 //
-// JSON response bodies build a `Json` value tree per request via
-// `Vec.new() + push` because `Vec[a, b, c]` literal codegen is
-// not yet implemented at expression position (`PrefixCollectionLiteral`
-// has no compile arm — filed as a follow-on slice in phase-8). The
-// Json walks live inline in the handler rather than in helper
-// functions because a specific ref-arg + clone shape inside a
-// helper-returned Json variant causes a silent runtime failure
-// (separately filed). Both refactors fold in cleanly once the
-// underlying codegen ships.
+//   - Module-level `Vec.new()` const-init             → karac `d92f3da`
+//   - Uppercase-receiver method dispatch              → karac `f41a62c`
+//   - `Vec.remove(idx)` codegen + typechecker arm     → karac `4de2e8e`
+//   - Enum-payload bool narrowing                     → karac `11ca0e1`
+//   - `Vec[a, b, c]` literal codegen                  → karac `540cd8c`
+//   - Field-receiver method GEP through `ref T`       → karac `32f52d2`
+//
+// JSON construction uses `Vec[...]` literals at variant payload
+// position; DELETE uses `TODOS.remove(idx)` and preserves element
+// order; bool extraction from `Json.Bool(b)` reads naturally.
+// Construction lives inline in each handler — factoring into a
+// `todo_to_json(t: ref Todo) -> Json` helper compiles clean but
+// exposes a separate ownership/drop interaction in the
+// Server-frame handler context that crashes the response write
+// (a narrower follow-up shape than today's known gaps); the
+// inline form is short enough that the missing helper isn't
+// load-bearing.
 
 struct Response {
     status: i64,
@@ -142,11 +148,11 @@ fn handle(req: Request) -> Response {
             let n: i64 = TODOS.len();
             while i < n {
                 let t: Todo = TODOS[i];
-                let mut fields: Vec[(String, Json)] = Vec.new();
-                fields.push(("id", Json.Number(t.id as f64)));
-                fields.push(("title", Json.String(t.title.clone())));
-                fields.push(("completed", Json.Bool(t.completed)));
-                items.push(Json.Object(fields));
+                items.push(Json.Object(Vec[
+                    ("id", Json.Number(t.id as f64)),
+                    ("title", Json.String(t.title.clone())),
+                    ("completed", Json.Bool(t.completed)),
+                ]));
                 i = i + 1;
             }
             let arr: Json = Json.Array(items);
@@ -161,11 +167,11 @@ fn handle(req: Request) -> Response {
                     match find_index_by_id(id) {
                         Some(idx) => {
                             let t: Todo = TODOS[idx];
-                            let mut fields: Vec[(String, Json)] = Vec.new();
-                            fields.push(("id", Json.Number(t.id as f64)));
-                            fields.push(("title", Json.String(t.title.clone())));
-                            fields.push(("completed", Json.Bool(t.completed)));
-                            let obj: Json = Json.Object(fields);
+                            let obj: Json = Json.Object(Vec[
+                                ("id", Json.Number(t.id as f64)),
+                                ("title", Json.String(t.title.clone())),
+                                ("completed", Json.Bool(t.completed)),
+                            ]);
                             let body: String = obj.stringify();
                             return Response { status: 200, body: body };
                         }
@@ -206,11 +212,11 @@ fn handle(req: Request) -> Response {
                     // values (the Todo we just pushed is now owned by
                     // TODOS — easier to render from the scalars than
                     // re-index).
-                    let mut fields: Vec[(String, Json)] = Vec.new();
-                    fields.push(("id", Json.Number(id as f64)));
-                    fields.push(("title", Json.String(title_for_response)));
-                    fields.push(("completed", Json.Bool(completed)));
-                    let obj: Json = Json.Object(fields);
+                    let obj: Json = Json.Object(Vec[
+                        ("id", Json.Number(id as f64)),
+                        ("title", Json.String(title_for_response)),
+                        ("completed", Json.Bool(completed)),
+                    ]);
                     let body: String = obj.stringify();
                     return Response { status: 201, body: body };
                 }
@@ -241,11 +247,11 @@ fn handle(req: Request) -> Response {
                                     };
                                     let title_for_response: String = title.clone();
                                     TODOS[idx] = Todo { id: id, title: title, completed: completed };
-                                    let mut fields: Vec[(String, Json)] = Vec.new();
-                                    fields.push(("id", Json.Number(id as f64)));
-                                    fields.push(("title", Json.String(title_for_response)));
-                                    fields.push(("completed", Json.Bool(completed)));
-                                    let obj: Json = Json.Object(fields);
+                                    let obj: Json = Json.Object(Vec[
+                                        ("id", Json.Number(id as f64)),
+                                        ("title", Json.String(title_for_response)),
+                                        ("completed", Json.Bool(completed)),
+                                    ]);
                                     let body: String = obj.stringify();
                                     return Response { status: 200, body: body };
                                 }

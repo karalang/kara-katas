@@ -58,50 +58,33 @@ curl -X DELETE http://127.0.0.1:8080/todos/2
 - Multi-route dispatch with status-code variation (200, 201, 204,
   400, 404, 405).
 
-## Known v1 karac gaps (worked around inline)
+## v1 karac gaps the kata surfaced (all fixed)
 
-Two karac codegen surfaces still have v1 gaps that this kata bridges
-with inline workarounds; each is filed as a follow-on slice in
-`karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md`.
-The kata's response shapes are correct end-to-end; the implementation
-style is uglier than it would be once the underlying gaps land.
+All four karac codegen gaps the kata bridged with inline
+workarounds at Slice 4 ship time have shipped fixes in karac.
+The kata is now back to its natural shape — JSON construction
+uses `Vec[a, b, c]` literals at variant payload position,
+`extract_completed` reads the bool directly, DELETE uses
+`Vec.remove(idx)` and preserves order.
 
-Two earlier gaps in this list have shipped and the kata is back to
-the natural shape for those — see the "Resolved" subsection below.
+| Gap | Fix |
+|---|---|
+| Enum-payload bool narrowing — `match Json.Bool(b) => b` LLVM verifier rejection | karac `11ca0e1` |
+| `Vec.remove(idx)` doesn't shrink the Vec | karac `4de2e8e` |
+| `Vec[a, b, c]` literal codegen — `PrefixCollectionLiteral` has no compile arm | karac `540cd8c` |
+| Field-receiver method GEP through a `ref T` parameter | karac `32f52d2` |
 
-1. **`Vec[a, b, c]` literal codegen — `PrefixCollectionLiteral` has
-   no compile arm.** `Json.Array(Vec[a, b])` parses, the binary
-   builds, but the literal evaluates to a null Vec at runtime
-   (codegen's `compile_expr` falls through to `i64 0` for
-   `PrefixCollectionLiteral`). Workaround: explicit `Vec.new() +
-   .push(...)` wherever a Vec value is needed at expression
-   position. Affects every use site, not just enum-variant
-   payloads; the standalone `let xs: Vec[i64] = Vec[1, 2, 3];`
-   form is also broken.
-2. **Helper-function `Json` construction silently fails when
-   chaining `ref Todo` + `t.title.clone()` into a variant payload.**
-   The minimal `fn build() -> Json { Json.Array(items) }` shape
-   works; the failure mode is the specific shape that takes
-   `t: ref Todo`, calls `t.title.clone()` through the ref, and
-   embeds the clone in a Json variant payload returned to the
-   caller. The kata's response handlers build their Json inline
-   rather than extracting `todo_to_json(t)` helpers — the inline
-   form is verified correct.
-
-### Resolved
-
-These were on the gap list at Slice 4 ship time and have since
-been fixed in karac:
-
-- **`match Json.Bool(b) => b` LLVM-verifier rejection** — fixed
-  karac `11ca0e1`. The bool-narrowing trunc is now inserted at
-  pattern reconstruction time, so `extract_completed` returns
-  the bool directly without the prior `as i64` / `!= 0i64`
-  cast workaround.
-- **`Vec.remove(idx)` doesn't shrink the Vec** — fixed karac
-  `4de2e8e`. DELETE now uses `TODOS.remove(idx)` directly and
-  preserves element order across deletes (replacing the prior
-  swap-with-last + `pop()` workaround that scrambled order).
+One small style choice the kata makes: JSON construction lives
+inline in each handler rather than factored into a
+`todo_to_json(t: ref Todo) -> Json` helper. The helper compiles
+clean and works in isolation, but inside the Server-frame handler
+context — combined with the `match Json.parse(req.body())` outer
+binding and the per-request lifetime — exposes a separate
+ownership/drop interaction that crashes the response write. The
+shape is narrower than today's known gaps and would file as a
+separate follow-up; the inline JSON in each handler is short
+enough that the missing helper isn't load-bearing for the kata's
+demo value.
 
 ## Numbers
 
