@@ -42,55 +42,43 @@ python3 binary_search_partition.py
 
 ## Benchmarks
 
-### How to run
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`binary_search_partition.{kara,rs,c}`, `go-seq/main.go`). The Python mirror [`bench/binary_search_partition.py`](bench/binary_search_partition.py) is gated behind `KARA_BENCH_INCLUDE_PY=1` — at K=10M calls it lands at ~2s and would block the bench by default.
 
-```bash
-brew install hyperfine    # one-time, also needs rustc (rustup), clang, go, karac
-./bench/bench.sh
-```
+Per [`../../../BENCH.md`](../../../BENCH.md), the workload is the binary-search inner loop carried by `middle_pair_off` over 1M-element inputs with `K = 10_000_000` outer iterations rotated by `off = k % R` (`R = 1000`) so per-iter inputs vary and CSE can't hoist. The outer reduction (`sum += pair[0] + pair[1]`) has a strict cross-iteration dependency — karac's auto-par-on-reduction recognizes it and emits a `karac_par_reduce` dispatch by default. The bench builds two kara binaries to keep the BENCH.md two-lane discipline honest:
 
-`bench/bench.sh` builds the Rust file with `rustc -O`, the C file with `clang -O3`, the Kāra file with `karac build`, and the Go module with `go build` (all cached in `bench/target/`, gitignored), then runs five passes per the [BENCH.md protocol](../../../BENCH.md):
+- **`binary_search_partition_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — documented mechanism for side-by-side seq-vs-par benchmarking of the same workload). The within-lane row directly comparable to rustc-O / clang-O3 / go build.
+- **`binary_search_partition_kara`** — default `karac build` output. Picks up auto-par dispatch (~3.3 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
 
-1. **Sink agreement** — every compiled mirror's stdout must equal `20_019_970_000_000` (Python opt-in via `KARA_BENCH_INCLUDE_PY=1`).
-2. **Runtime (short, compiled)** — `hyperfine --warmup 5 --runs 30 --shell=none` across kara/rust/c/go. Inputs are `M = N = 1_000_000` perfectly-alternating sorted prefixes; each outer iter picks `off = k % R` with `R = 1000` and runs `middle_pair_off(base_a, off, M, base_b, off, N)`. `K = 10_000_000` outer iterations. The rotation makes each iter's inputs unique, defeating the cross-iteration CSE that would otherwise hoist the pure `middle_pair_off` call out of the loop and reduce the bench to a multiply-by-`K`.
-3. **Runtime (long, py)** — `hyperfine --warmup 2 --runs 10` for the Python mirror in its own batch.
-4. **Compile elapsed (cold)** — `hyperfine` with a `--prepare` step that deletes the artifact before every run, so each measurement is a fresh `karac build` / `rustc -O` / `clang -O3` invocation. Go is excluded per BENCH.md.
-5. **Binary size, runtime memory, compile memory** — one row per comparator.
+**Workload.** Two `Vec[i64]` inputs of `M + R = N + R = 1_001_000` elements built once: `base_a = [0, 2, 4, ...]` (alternating evens), `base_b = [1, 3, 5, ...]` (alternating odds). The hot loop calls `middle_pair_off(base_a, off, M, base_b, off, N)` 10M times where `off = k % R`; per-iter contribution to the sink is `4*off + (2M - 1)`. All five mirrors agree on `20_019_970_000_000` before any timing runs — `bench.sh` fails loudly on mismatch.
 
-| File | What it does |
-|---|---|
-| [`bench/binary_search_partition.kara`](bench/binary_search_partition.kara) | M = N = 1_000_000, R = 1000, K = 10_000_000, rotated alternating-evens / alternating-odds inputs |
-| [`bench/binary_search_partition.rs`](bench/binary_search_partition.rs) | Algorithmic mirror; compiled with `rustc -O` |
-| [`bench/binary_search_partition.c`](bench/binary_search_partition.c) | Algorithmic mirror; raw `int64_t*` arrays; compiled with `clang -O3` |
-| [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; `[]int64` slices; `math.MinInt64`/`MaxInt64` sentinels; built with `go build` |
-| [`bench/binary_search_partition.py`](bench/binary_search_partition.py) | Algorithmic mirror — same M, N, R, K, same offset+length API |
+Note the bench's `middle_pair_off(a, a_off, a_len, b, b_off, b_len)` signature differs from the kata file's `middle_pair(a, b)`. The offset+length form lets the bench rotate inputs without sub-slicing on the inner loop, which would be zero-cost in Kāra/Rust/C/Go but `O(len)` per iter in Python (`list[a:b]` copies). All five languages use the same offset form so the per-iter work stays comparable.
 
-All five print the same sum-of-results sink (`Σ_{k<K} (lower + upper) = 20_019_970_000_000`) so the algorithm's output participates in I/O and can't be elided.
-
-Note the bench's `middle_pair_off(a, a_off, a_len, b, b_off, b_len)` signature differs from the kata file's `middle_pair(a, b)`. The offset+length form lets the bench rotate inputs without sub-slicing on the inner loop, which would be zero-cost in Kāra/Rust/C/Go (slices are pointer + length) but `O(len)` per iter in Python (`list[a:b]` copies). All five languages here use the same offset form so the per-iter work stays comparable.
-
-### Runtime — Kāra auto-par lands on top of the comparators
+### Runtime — seq lane
 
 Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Run | Mean ± σ | CPU% |
-|---|---|---|
-| **`kara binary_search_partition` (codegen, auto-par on reduction)** | **4.6 ± 0.4 ms** | ~410% (~3.3 cores) |
-| `c    binary_search_partition` (clang -O3, single-thread) | 13.0 ± 0.3 ms | ~85% |
-| `rust binary_search_partition` (rustc -O, single-thread)  | 16.8 ± 0.4 ms | ~86% |
-| `go   binary_search_partition` (go build, single-thread)  | 29.5 ± 1.0 ms | ~91% |
-| `py   binary_search_partition` (CPython, separate batch)  | 2.066 ± 0.032 s | ~99% |
+| Implementation | Wall time | User-CPU | CPU% |
+|---|---|---|---|
+| c    binary_search_partition (clang -O3) | **12.1 ms ± 0.2 ms** | 10.6 ms | 95% |
+| **kāra binary_search_partition** (`KARAC_AUTO_PAR=0`) | **15.3 ms ± 0.2 ms** | 13.7 ms | 96% |
+| rust binary_search_partition (rustc -O)  | **15.4 ms ± 0.2 ms** | 13.8 ms | 95% |
+| go   binary_search_partition             | **28.4 ms ± 0.7 ms** | 26.0 ms | 94% |
 
-**Caveat — the headline is cross-lane.** Karac auto-parallelizes the `sum +=` reduction in `main`'s K = 10M loop (binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~3.3 cores active during the run). The kata source has no `#[par_unordered]` — this is implicit, codegen-driven auto-par from the post-`74f81cd` reduction-recognition work (gated by the `181b0ad` memory-bound rejection check). The C / Rust / Go mirrors here run single-threaded as written, so the per BENCH.md framing makes Kāra's 4.6 ms a **par-lane number** measured against **seq-lane comparators**.
+Kāra matches rustc-O within σ (15.3 vs 15.4 ms — measurement-noise parity), runs ~1.27× of `clang -O3`, and ~1.85× faster than `go build`. This is the cleanest per-core "is karac's codegen at parity with rustc?" answer for this workload. The earlier snapshot (2026-05-17, kara 16.2 ± 0.2 ms vs rust 15.8 ± 0.3 ms, 1.03× of Rust) was the same story; the ~1 ms improvement since reflects the `bdac0d8` internal-linkage fix (see *How we got here* below) plus general codegen drift, not a regression elsewhere.
 
-**The honest within-lane reads.** Two reasonable ways to bracket this:
+The C win (~1.27×) is consistent across this kata family: clang's `int64_t*` + struct-return Pair maps to one fewer load + one register pair vs Rust's tuple-return + Kāra's `Array[i64, 2]` return — a constant per-call gap on top of the same algorithm. Go's 28.4 ms reflects per-iter slice-bounds checks + no SROA equivalent on the tuple return.
 
-- **Single-thread snapshot (pre-auto-par regime, 2026-05-17):** kara 16.2 ms, rust 15.8 ms, py 2.021 s. Within the seq lane, kara was at **1.03× of Rust** — measurement-noise parity. That's still the cleanest "is karac's codegen at per-core parity with rustc?" answer for this workload, and the answer is yes.
-- **Today's auto-par regime (2026-05-23):** kara 4.6 ms is what `karac build` produces for the source as written. Production code shipped to users runs *this* binary, not the hypothetical single-threaded one. The 3.5× speedup over the pre-auto-par snapshot is real and bankable for the use case where Kāra is the only compiler in the harness.
+### Runtime — auto-par regime (kara default, multi-core)
 
-The right comparison framing depends on the question being asked. For "codegen-vs-Rust on a per-core basis" the 2026-05-17 snapshot stays load-bearing. For "how fast is Kāra on this kata as written" the 2026-05-23 4.6 ms is the answer.
+Same snapshot, default `karac build` output:
 
-A follow-up CR can add a true par lane (rayon + goroutines variants of `main`'s outer reduction) so the auto-par result lands against in-lane comparators; until then, the seq-lane numbers below treat C / Rust / Go as the within-lane comparator set, and Kāra's row stands apart with the par caveat.
+| Implementation | Wall time | User-CPU | CPU% |
+|---|---|---|---|
+| **kāra binary_search_partition** (auto-par on reduction) | **3.9 ms ± 0.2 ms** | 18.5 ms | ~480% (~3.9 cores) |
+
+Karac's auto-par-on-reduction recognizes the `sum +=` reduction in `main`'s K=10M loop and emits a `karac_par_reduce` dispatch — binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~3.9 cores active during the run. The wall-time win over the seq-lane Kāra row is **3.9×** (15.3 / 3.9); total CPU time goes up 35% (13.7 → 18.5 ms user) as the cost of dispatch + per-worker fixed overhead. Net: real production wall-time speedup, paid for in additional CPU and a +263 KiB binary footprint.
+
+**Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 3× faster than rust" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq lane above is the within-lane comparison; this row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline. A follow-up CR can add a true par lane (rayon + goroutines variants of `main`'s outer reduction) so this number lands against in-lane comparators.
 
 ### How we got here
 
@@ -106,36 +94,51 @@ Fix shipped in karac [`bdac0d8`](../../../../karac-rust/): non-`pub`, non-FFI-ma
 
 The lesson worth keeping: **don't pre-bake explanations for perf gaps.** The first three suspects ("bounds checks", "no autovectorization", "branch prediction") were all plausible — and all wrong. The actual cause was visible in five minutes of `objdump --syms` once we looked, but the rhetorical framing on the README would have buried it indefinitely.
 
-### Compile time and binary size
+### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+`--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
 
-| Compiler | Compile time | Binary size |
+| Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
+|---|---|---|---|
+| `binary_search_partition` | **59.5 ms ± 1.1 ms** | 84.4 ms ± 0.7 ms | 42.0 ms ± 1.0 ms |
+
+Single-file invocations only — the Go module's `go build` mixes module resolution + std-lib link with codegen and is deliberately excluded per BENCH.md. Karac is 1.42× faster than rustc and 1.42× slower than clang.
+
+### Binary size
+
+| Implementation | Bytes | KiB |
 |---|---|---|
-| `clang -O3 binary_search_partition.c`      | 43.5 ± 1.0 ms | 32.7 KiB |
-| **`karac build binary_search_partition.kara`** | **60.8 ± 0.6 ms** | **312.0 KiB** |
-| `rustc -O binary_search_partition.rs`      | 87.9 ± 0.6 ms | 455.4 KiB |
-| `go build` (Go module)                     | — (excluded; mixes module + std-lib link) | 2434.1 KiB |
+| c    binary_search_partition | 33,528 | 32.7 |
+| **kāra binary_search_partition (seq)** | **50,232** | **49.1** |
+| kāra binary_search_partition (auto-par) | 319,448 | 312.0 |
+| rust binary_search_partition | 466,344 | 455.4 |
+| go   binary_search_partition | 2,492,546 | 2,434.1 |
 
-Kāra compiles this kata **1.45× faster** than `rustc -O` and produces a binary **~31% smaller than Rust**. The Kāra binary grew from the 2026-05-17 snapshot's 32.9 KiB to today's 312.0 KiB — that's the auto-par runtime worker-pool + reduction infrastructure (`karac_par_reduce`, `karac_reduce_combine_add_i64`, `karac_reduce_worker_0`, plus the thread-pool init) getting linked in once the codegen reduction-recognition pass started selecting it for this source. The runtime contribution is still well below Rust's full stdlib footprint; `clang -O3` is 1.40× faster at compile and 9.5× smaller because C carries no language runtime, just libc.
+The seq-lane Kāra binary sits within ~1.5× of clang's. The auto-par variant grows +263 KiB to carry the par_reduce machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — the same +263 KiB ballast kata [#91](../91-decode-ways/#binary-size) saw when it was inappropriately auto-paring. Here the ballast is paid for in a real 3.9× wall-time win, so it stays in.
 
 ### Runtime memory (peak)
 
-| Run | Peak RSS |
-|---|---|
-| `rust binary_search_partition` | 16.4 MiB |
-| `c    binary_search_partition` | 16.4 MiB |
-| **`kara binary_search_partition` (codegen, auto-par)** | **16.8 MiB** |
-| `go   binary_search_partition` | 19.0 MiB |
-| `py   binary_search_partition` | 85.7 MiB |
+| Implementation | Bytes | MiB |
+|---|---|---|
+| c    binary_search_partition | 17,187,176 | 16.4 |
+| **kāra binary_search_partition (seq)** | **17,203,560** | **16.4** |
+| rust binary_search_partition | 17,236,328 | 16.4 |
+| kāra binary_search_partition (auto-par) | 17,613,184 | 16.8 |
+| go   binary_search_partition | 19,956,336 | 19.0 |
+| py   binary_search_partition | 89,866,720 | 85.7 |
 
-**Parity with Rust and C on memory** (within 0.4 MiB). All three compiled comparators hold two int64 buffers of `M + R = 1_001_000` elements (~8 MiB each, ~16 MiB total), and that dominates the steady state. Kāra's auto-par worker stacks add ~0.4 MiB on top — well-behaved given the ~3× wall-time win. Go's 19.0 MiB carries its GC roots + scheduler arena overhead. Python's 85.7 MiB is the CPython object-per-int representation on a 1M-element list.
+Kāra-seq is at C/Rust parity (within 0.05 MiB). Each compiled comparator holds two int64 buffers of `M + R = 1_001_000` elements (~8 MiB each, ~16 MiB total) which dominates the steady state. Auto-par Kāra adds ~0.4 MiB for worker stacks. Go's 19.0 MiB carries its GC roots + scheduler arena overhead. Python's 85.7 MiB is the CPython object-per-int representation on a 1M-element list.
 
-### Why Rust / C / Go / Python are in the harness
+### Compile memory (cold)
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness) and the [BENCH.md comparator policy](../../../BENCH.md#comparison-baselines):
+| Compiler invocation | Bytes | MiB |
+|---|---|---|
+| `clang -O3 binary_search_partition.c`      | 2,703,720  | 2.6 |
+| **`karac build binary_search_partition.kara`** | **9,978,336** | **9.5** |
+| `rustc -O binary_search_partition.rs`      | 31,015,560 | 29.6 |
 
-- **Rust** is Kāra's semantic peer (compiled, ownership-aware, LLVM-backed). The pre-auto-par snapshot (1.03× of Rust on 2026-05-17) is the cleanest per-core codegen-vs-rustc data point on this kata; today's 3.68×-faster wall-time is the consequence of karac's auto-par discovering a reduction in the kata's `main`, and the comparison is cross-lane.
-- **C** is the codegen calibration point — same LLVM backend as Kāra and Rust, no language runtime overhead. C beats Rust here (13.0 ms vs 16.8 ms) by a small margin attributable to its struct-return pair layout vs Rust's tuple return; both are single-thread, and the Kāra-single-thread story sits with them at the 16 ms band per the 2026-05-17 snapshot.
-- **Go** is the cross-runtime data point — GC + scheduler + statically-linked runtime, but a thoroughly-tuned native compiler. Standing baseline since 2026-05-21 (BENCH.md update). Go's 29.5 ms here is consistent with its 2× tax over single-thread Kāra/Rust on tight integer loops (per-iter slice-bounds-check, no scalar-replacement-of-aggregates equivalent on the tuple return).
-- **Python** is the ergonomic foil. The 2.066 s landing (~450× slower than auto-par Kāra) is the textbook "compiled vs interpreted" cliff this workload hits hard — bytecode dispatch per `if/elif` arm + four conditional indexed reads + min/max calls dominate the algorithm's actual work.
+Kāra's compile-memory footprint is ~3.6× clang's and ~3.1× smaller than rustc's on this kata.
+
+### Numbers published here are reference data
+
+The CI gate's source-of-truth aggregate lives in [`karac-rust/bench/compile_speed/`](../../../../karac-rust/bench/compile_speed/README.md) (different corpus: curated subset + synthetic 10K-LOC stress program).
