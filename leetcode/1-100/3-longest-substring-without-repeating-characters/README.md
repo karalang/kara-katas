@@ -71,22 +71,22 @@ This is a **seq-only kata**: the inner walk is data-dependent on `left` / `last_
 
 ### Runtime
 
-Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O`, `clang -O3`, and `go build`:
+Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O`, `clang -O3`, and `go build`. Kara binary verified seq via `nm -gU target/sliding_window_kara | grep karac_par_reduce` (no auto-par symbols present) per BENCH.md § Implicit auto-par.
 
 | Run | Mean ± σ |
 |---|---|
-| `c    sliding_window` (clang -O3) | **4.0 ± 0.1 ms** |
-| **`kara sliding_window` (codegen)** | **7.0 ± 0.1 ms** |
-| `rust sliding_window` (rustc -O)  | 17.4 ± 0.1 ms |
-| `go   sliding_window` (go build)  | 21.2 ± 2.5 ms |
-| `py   sliding_window` (CPython, separate batch) | 117.8 ± 4.8 ms |
+| `c    sliding_window` (clang -O3) | **3.8 ± 0.2 ms** |
+| **`kara sliding_window` (codegen)** | **6.6 ± 0.3 ms** |
+| `rust sliding_window` (rustc -O)  | 16.2 ± 0.2 ms |
+| `go   sliding_window` (go build)  | 19.4 ± 0.4 ms |
+| `py   sliding_window` (CPython, separate batch) | 108.8 ± 2.8 ms |
 
-Within the seq lane (all four compiled langs): Kāra runs **2.49× faster than Rust**, **3.03× faster than Go**, and **16.8× faster than Python**; C runs **1.73× faster than Kāra** — see "Where C wins" below for why that gap is a workload-shape gap, not a codegen gap. The pre-monomorphization snapshot (2026-05-15, M1) read kara 1620 ms — 98× *slower* than Rust; the gap reversed by ~240× over the next three days. Two karac strands account for the swing:
+Within the seq lane (all four compiled langs): Kāra runs **2.45× faster than Rust**, **2.94× faster than Go**, and **16.5× faster than Python**; C runs **1.76× faster than Kāra** — see "Where C wins" below for why that gap is a workload-shape gap, not a codegen gap. The pre-monomorphization snapshot (2026-05-15, M1) read kara 1620 ms — 98× *slower* than Rust; the gap reversed by ~240× over the next three days. Two karac strands account for the swing:
 
 - **Monomorphized `Map[char, i64]`** (phase-7 line 362, slices 1+2, commits `537e5d2` through `48e4963`, 2026-05-15). Replaces the type-erased C runtime's function-pointer hash/eq dispatch + byte-blob key/value storage with a per-`{K, V}` LLVM family (`karac_map_i32_i64_*` covers both `char` and `i32`; `linkonce_odr` linkage dedupes across crates). The mono `get` body inlines the FxHash+linear-probe loop at the call site so the hot path becomes "hash key → index → load i64" — no extern call, no indirect dispatch, no widening shim. The `1b.4` microbench (1M `Map[i64, i64]` insert+get) measured this strand at 1.32× faster than `std::HashMap` on its own.
 - **Codegen body cleanup post-Slice 2.** Slice 2's bench-day snapshot (2026-05-15 PM, doc commit `a1aa01b`) still read 95.7× of Rust — only a ~2% delta from the type-erased baseline, with `karac_string_decode_char` per-char FFI fingered as the residual bottleneck. The remaining ~230× evaporated over the next three days of codegen work on adjacent surfaces (per-iter Vec/String leak close on auto-par + slot paths in `daaf2cc`, the cluster of RC-discipline fixes around the Map / shared-struct drop walks in `9d878ae` / `8b13048` / `d329023`, branch-tail fresh-ref detection in `919cfe0`). None of those targeted kata 3, but the cumulative effect on the inner-loop codegen quality is the only thing the gap reversal can be charged to.
 
-**Where the time goes.** The body of `length_of_longest_substring` is ~2M Map operations: 104K chars × 20 outer iterations × (one `Map.get`, one `Map.insert`) per char. At 7.0 ms total, that's ~3.4 ns per Map op — consistent with a hash compute + inline probe hitting L1 on a 26-entry table.
+**Where the time goes.** The body of `length_of_longest_substring` is ~2M Map operations: 104K chars × 20 outer iterations × (one `Map.get`, one `Map.insert`) per char. At 6.6 ms total, that's ~3.2 ns per Map op — consistent with a hash compute + inline probe hitting L1 on a 26-entry table.
 
 **Where Kāra now beats Rust and Go.** Rust's `HashMap<char, i64>` is fully monomorphized, but its `RandomState` SipHash13 hasher pays a DoS-resistance tax (per-instance seed + 13-round mixing) that dominates on tiny-table workloads. Go's `map[rune]int64` runtime carries a similar (AES-NI-backed memhash) per-bucket dispatch tax plus per-call map-header alloc on `make(map[...])`. Kāra's hash is FxHash (rotate-5 + XOR + multiply; multiplier `0x517c_c1b7_2722_0a95`), chosen by `karac-rust/bench/hash_quality/` (2026-05-15) as the fastest non-cryptographic option on the per-K matrix — 4-8× faster than FNV-1a, geometric mean 0.56× of FNV-1a baseline. DoS resistance is not in scope for v1 (no user-controlled keys in this kata anyway). With the function-pointer indirection now gone on Kāra's side, the hasher asymmetry is the headline gap, and it lands in Kāra's favor on this shape.
 
@@ -98,12 +98,12 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `clang -O3 sliding_window.c`      | 47.9 ± 0.4 ms | 32.8 KiB |
-| **`karac build sliding_window.kara`** | **66.5 ± 0.6 ms** | **294.9 KiB** |
-| `rustc -O sliding_window.rs`      | 127.4 ± 7.2 ms | 457.1 KiB |
+| `clang -O3 sliding_window.c`      | 44.0 ± 1.1 ms | 32.8 KiB |
+| **`karac build sliding_window.kara`** | **63.8 ± 4.0 ms** | **294.9 KiB** |
+| `rustc -O sliding_window.rs`      | 120.1 ± 4.0 ms | 457.1 KiB |
 | `go build` (Go module)            | — (excluded; mixes module + std-lib link) | 2434.4 KiB |
 
-Kāra compiles this kata **1.92× faster** than `rustc -O` and produces a binary **~35% smaller than Rust** (the cross-archive LTO + DCE work landed 2026-05-12 keeps the runtime contribution tight when downstream features (HTTP, JSON, tokio subgraph) aren't reached). `clang -O3` is 1.39× faster still — C carries no stdlib runtime to link, just libc; Kāra's gap to clang here is the inherent cost of the karac runtime support functions (Map mono, String UTF-8 walker, panic infrastructure) that show up linked even when LTO trims hard.
+Kāra compiles this kata **1.88× faster** than `rustc -O` and produces a binary **~35% smaller than Rust** (the cross-archive LTO + DCE work landed 2026-05-12 keeps the runtime contribution tight when downstream features (HTTP, JSON, tokio subgraph) aren't reached). `clang -O3` is 1.45× faster still — C carries no stdlib runtime to link, just libc; Kāra's gap to clang here is the inherent cost of the karac runtime support functions (Map mono, String UTF-8 walker, panic infrastructure) that show up linked even when LTO trims hard.
 
 ### Runtime memory (peak)
 
@@ -131,7 +131,7 @@ Kāra's cold-compile footprint is **4.1× smaller than rustc** and 3.6× larger 
 
 Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness) and the [BENCH.md comparator policy](../../../BENCH.md#comparison-baselines):
 
-- **Rust** is Kāra's semantic peer (compiled, ownership-aware, LLVM-backed), so the headline ratio for v1 is the codegen-vs-Rust gap above. This kata used to be the worst codegen-vs-Rust gap in the suite (98× *slower*) and so the most concrete justification for monomorphized collections; with Slice 1+2 of that work shipped, it's now 2.49× *faster* than Rust on the same input — the gap reversed, and the bench earned its keep as the natural-pull validation workload that originally motivated the strand.
+- **Rust** is Kāra's semantic peer (compiled, ownership-aware, LLVM-backed), so the headline ratio for v1 is the codegen-vs-Rust gap above. This kata used to be the worst codegen-vs-Rust gap in the suite (98× *slower*) and so the most concrete justification for monomorphized collections; with Slice 1+2 of that work shipped, it's now 2.45× *faster* than Rust on the same input — the gap reversed, and the bench earned its keep as the natural-pull validation workload that originally motivated the strand.
 - **C** is the codegen calibration point — same LLVM backend as Kāra and Rust, no language runtime overhead. Kāra's gap to C is the cost of using `Map[K, V]` as a generic abstraction (allocator round-trip per call, capacity not proven static); Rust pays the same cost. The Kāra-vs-Rust ratio is the meaningful one *within* the abstraction level both pick.
-- **Go** is the cross-runtime data point — GC + scheduler + statically-linked runtime, but a thoroughly-tuned native compiler. Standing baseline since 2026-05-21 (BENCH.md update). The 3.03× Kāra-over-Go gap on this kata is the FxHash-vs-Go-memhash + per-call map-header alloc combination.
+- **Go** is the cross-runtime data point — GC + scheduler + statically-linked runtime, but a thoroughly-tuned native compiler. Standing baseline since 2026-05-21 (BENCH.md update). The 2.94× Kāra-over-Go gap on this kata is the FxHash-vs-Go-memhash + per-call map-header alloc combination.
 - **Python** is the ergonomic foil — the "is the perf cliff worth the syntax?" framing. Gated behind `KARA_BENCH_INCLUDE_PY=1` in the sink check; always run in its own hyperfine batch so it doesn't slow feedback on the compiled lane.
