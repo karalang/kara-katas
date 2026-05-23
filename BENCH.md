@@ -49,6 +49,56 @@ A **lane** is a comparator class within which apples-to-apples wall-clock compar
 
 The two-lane discipline locked in after kata #204 (2026-05-21) — see [`leetcode/201-300/204-count-primes/README.md § Comparison framing`](leetcode/201-300/204-count-primes/README.md) for the worked example.
 
+### Implicit auto-par — when karac parallelizes the seq mirror
+
+The par-lane subsection above describes *explicit* opt-in via `#[par_unordered]`. Karac also has **implicit** auto-par paths that fire on a seq-mirror source without any attribute — most prominently the post-`74f81cd` reduction-recognition pass that rewrites `let mut acc = 0; while … { acc += f(…); }` shapes into a `karac_par_reduce` dispatch when the body is non-memory-bound and per-iter cost clears the runtime gate. The seq mirror is silently elevated into a par-flavored binary; the seq-lane comparator set (rustc-O / clang-O3 / `go build`) stays single-threaded, and the resulting wall-time ratio is **cross-lane**.
+
+This protocol locked in 2026-05-23 after kata #91 and kata #4 hit it in opposite ways — see [`leetcode/1-100/91-decode-ways/README.md`](leetcode/1-100/91-decode-ways/) (wasteful activation, karac-fixed) and [`leetcode/1-100/4-median-of-two-sorted-arrays/README.md`](leetcode/1-100/4-median-of-two-sorted-arrays/) (legitimate win, both numbers reported) for the worked examples.
+
+**Detection.** Two signals at the bench-output level:
+
+- `nm -gU target/<approach>_kara | grep karac_par_reduce` — if the symbol is present, the binary picked up auto-par dispatch. `karac_reduce_init_<op>_<ty>`, `karac_reduce_combine_<op>_<ty>`, `karac_reduce_worker_<N>` all show up alongside.
+- Hyperfine's `User-CPU` row substantially exceeds `Wall time` (CPU% well above 100% — typically 200–600% on M-class hardware) for a kata whose `.kara` source has no `par` keyword.
+
+If both fire, the run is cross-lane against single-threaded comparators. Treat the result as par-lane data, not seq-lane.
+
+**Decision — wasteful activation vs legitimate win.** Two outcomes are possible:
+
+- **Wasteful (kata #91 path).** Auto-par fires but produces *no* wall-time win (or a regression) on top of a hot single-threaded baseline. Typically caused by a cost-model false-positive — e.g. the kata-91 prologue's `let zero: u8 = b'0';` mis-classified as non-constant pushed the prologue into a 4-branch `karac_par_run`, the captured `let l = 80` became an opaque load downstream, and LLVM lost a constant-propagation chain costing tens of ms. **The fix lives in karac, not in the kata** — per the project's "no workarounds — fix the compiler" discipline, file a karac CR that closes the cost-model gap; the kata's bench.sh stays single-binary. Kata 91's `1f3f498` is the worked example: added `ExprKind::ByteLit` to `stmt_is_constant_init`, par activation stopped firing, the kata's binary dropped 263 KiB and wall dropped 34 ms.
+- **Legitimate (kata #4 path).** Auto-par fires *and* produces a real wall-time speedup (typically 2–4× on M-class hardware) at the cost of additional total CPU and a +263 KiB binary footprint for the `karac_par_reduce` machinery. This is the language-level value-add karac is designed to deliver. The protocol below covers reporting it honestly without misleading cross-lane headlines.
+
+**Dual-binary bench.sh pattern (legitimate-win case).** When auto-par delivers a real speedup, the kata's `bench/bench.sh` builds two kara binaries so the seq-lane comparison stays apples-to-apples:
+
+```bash
+build_kara() {
+    # default — picks up implicit auto-par via reduction-recognition path
+    karac build "$src" >/dev/null
+    mv "$stem" "target/${stem}_kara"
+}
+
+build_kara_seq() {
+    # KARAC_AUTO_PAR=0 — codegen.rs Slice 6 gate that short-circuits all
+    # auto-par dispatch back to plain sequential compile_block. The documented
+    # mechanism for side-by-side seq-vs-par benchmarking of the same workload.
+    KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
+    mv "$stem" "target/${stem}_kara_seq"
+}
+
+build_kara     <approach>.kara
+build_kara_seq <approach>.kara
+```
+
+Both binaries participate in sink agreement. Two separate hyperfine runs:
+
+- `=== runtime — seq lane (apples-to-apples, single-threaded) ===` — the four single-thread comparators (kara_seq + rust + c + go).
+- `=== runtime — auto-par regime (kara default, multi-core) ===` — the default-build kara alone, with the explicit "not headlined against the C/Rust/Go rows above" framing in the README.
+
+Binary-size and runtime-memory tables also grow a `kāra (seq)` row alongside `kāra (auto-par)` so the par-machinery ballast (~+263 KiB binary, ~+0.4 MiB peak RSS on M5 Pro) is visible.
+
+**README dual-table pattern.** Lead with the seq-lane table so the within-lane headline (e.g. "Kāra matches rustc-O within σ") is the first thing a reader sees. Auto-par regime gets a separate sub-section directly below, with the explicit cross-lane caveat. Both tables show CPU% so the regime distinction is unambiguous (seq lane rows all ~95–100% CPU; auto-par row substantially higher).
+
+**One-binary fallback (wasteful-activation case).** If the karac fix has shipped and auto-par no longer fires on the workload, the kata reverts to a single `binary_search_partition_kara` build with no `_seq` variant. Kata 91 lives here today; its bench.sh has one kara binary, and the seq lane table is the only runtime table.
+
 ## Template `bench.sh` structure
 
 Each kata's `bench/bench.sh` follows this skeleton. The seq-only and seq+par variants share most of the structure; par-lane additions are flagged inline.
