@@ -60,37 +60,48 @@ curl -X DELETE http://127.0.0.1:8080/todos/2
 
 ## Known v1 karac gaps (worked around inline)
 
-Three karac codegen surfaces have v1 gaps that this kata bridges
-with inline workarounds; each gap is filed as a follow-on slice in
+Two karac codegen surfaces still have v1 gaps that this kata bridges
+with inline workarounds; each is filed as a follow-on slice in
 `karac-rust/docs/implementation_checklist/phase-8-stdlib-floor.md`.
-The kata's response shapes are correct end-to-end; only the
-implementation style is uglier than it would be once the underlying
-gaps land.
+The kata's response shapes are correct end-to-end; the implementation
+style is uglier than it would be once the underlying gaps land.
 
-1. **`Vec[a, b, c]` literal as enum-variant payload loses elements.**
-   `Json.Array(Vec[a, b])` parses but renders as `[]` because the
-   payload Vec's elements don't thread through to the runtime's
-   `serde_json` walker. Workaround: explicit `Vec.new() + .push(...)`
-   wherever a Vec feeds into a `Json.Array` / `Json.Object` value.
-2. **Helper-function `Json` construction returns empty.** A helper
-   like `fn todo_to_json(t: ref Todo) -> Json { ... Json.Object(...) }`
-   compiles cleanly but the caller's `stringify()` produces an empty
-   body. Workaround: inline the `Json` construction at the call
-   site (no helper extraction). The inline form is verified to
-   produce correct output; the helper-function form will follow once
-   the cross-function Vec[Json] payload codegen lands.
-3. **`match Json.Bool(b) => b` LLVM-verifier rejection.** Enum-
-   payload bool extracts as `i64` in the word-stream but doesn't
-   narrow to `i1` before the return, so any function returning
-   `bool` from such an arm trips the LLVM verifier. Workaround:
-   cast through `i64` (`Json.Bool(b) => b as i64`) and recover
-   the bool at the use site with `!= 0i64`.
-4. **`Vec.remove(idx)` doesn't shrink the Vec.** The method runs
-   without error but the len / element-shift don't take effect.
-   Workaround: DELETE uses the swap-with-last + `pop()` pattern
-   (overwrites the slot with the last element then pops). Order
-   isn't preserved across deletes; the kata's spec doesn't promise
-   it.
+Two earlier gaps in this list have shipped and the kata is back to
+the natural shape for those — see the "Resolved" subsection below.
+
+1. **`Vec[a, b, c]` literal codegen — `PrefixCollectionLiteral` has
+   no compile arm.** `Json.Array(Vec[a, b])` parses, the binary
+   builds, but the literal evaluates to a null Vec at runtime
+   (codegen's `compile_expr` falls through to `i64 0` for
+   `PrefixCollectionLiteral`). Workaround: explicit `Vec.new() +
+   .push(...)` wherever a Vec value is needed at expression
+   position. Affects every use site, not just enum-variant
+   payloads; the standalone `let xs: Vec[i64] = Vec[1, 2, 3];`
+   form is also broken.
+2. **Helper-function `Json` construction silently fails when
+   chaining `ref Todo` + `t.title.clone()` into a variant payload.**
+   The minimal `fn build() -> Json { Json.Array(items) }` shape
+   works; the failure mode is the specific shape that takes
+   `t: ref Todo`, calls `t.title.clone()` through the ref, and
+   embeds the clone in a Json variant payload returned to the
+   caller. The kata's response handlers build their Json inline
+   rather than extracting `todo_to_json(t)` helpers — the inline
+   form is verified correct.
+
+### Resolved
+
+These were on the gap list at Slice 4 ship time and have since
+been fixed in karac:
+
+- **`match Json.Bool(b) => b` LLVM-verifier rejection** — fixed
+  karac `11ca0e1`. The bool-narrowing trunc is now inserted at
+  pattern reconstruction time, so `extract_completed` returns
+  the bool directly without the prior `as i64` / `!= 0i64`
+  cast workaround.
+- **`Vec.remove(idx)` doesn't shrink the Vec** — fixed karac
+  `4de2e8e`. DELETE now uses `TODOS.remove(idx)` directly and
+  preserves element order across deletes (replacing the prior
+  swap-with-last + `pop()` workaround that scrambled order).
 
 ## Numbers
 

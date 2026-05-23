@@ -21,14 +21,14 @@
 // karac-rust `f41a62c`.
 //
 // JSON response bodies build a `Json` value tree per request via
-// `Vec.new() + push` (the `Vec[a, b, c]` literal form as an
-// enum-variant payload loses its elements in v1 codegen — filed
-// as a follow-on slice in phase-8). The Json walks live inline in
-// the handler rather than in helper functions because the
-// inter-function `Vec` payload codegen path has a different
-// surface issue that surfaces as empty response bodies; the
-// inline form sidesteps it. Refactor into helpers once the
-// inter-function path lands its own slice.
+// `Vec.new() + push` because `Vec[a, b, c]` literal codegen is
+// not yet implemented at expression position (`PrefixCollectionLiteral`
+// has no compile arm — filed as a follow-on slice in phase-8). The
+// Json walks live inline in the handler rather than in helper
+// functions because a specific ref-arg + clone shape inside a
+// helper-returned Json variant causes a silent runtime failure
+// (separately filed). Both refactors fold in cleanly once the
+// underlying codegen ships.
 
 struct Response {
     status: i64,
@@ -95,34 +95,29 @@ fn extract_title(j: Json) -> String {
 }
 
 // Same shape as `extract_title` but for the `completed` field.
-// Returns false on missing / wrong-shape. The `Json.Bool(b) => b`
-// arm hits a karac codegen gap (enum-payload bool extracts as i64
-// in the word-stream but doesn't narrow back to i1 before the
-// return — LLVM verifier rejects). Bridges through `as i64`
-// throughout the whole function; the final `!= 0i64` recovers the
-// bool surface at the return point.
+// Returns false on missing / wrong-shape. The enum-payload bool
+// narrowing in karac's pattern-bind reconstruction now inserts the
+// `trunc i64 → i1` automatically (karac `11ca0e1`), so `Json.Bool(b)
+// => b` returns the bool directly without the prior cast workaround.
 fn extract_completed(j: Json) -> bool {
-    let raw: i64 = match j {
+    match j {
         Json.Object(fields) => {
-            let mut found: i64 = 0i64;
             let mut i: i64 = 0;
             let n: i64 = fields.len();
             while i < n {
                 let entry: (String, Json) = fields[i];
                 if entry.0 == "completed" {
-                    let v: i64 = match entry.1 {
-                        Json.Bool(b) => b as i64,
-                        _ => 0i64,
-                    };
-                    return v != 0i64;
+                    match entry.1 {
+                        Json.Bool(b) => return b,
+                        _ => return false,
+                    }
                 }
                 i = i + 1;
             }
-            found
+            false
         }
-        _ => 0i64,
-    };
-    raw != 0i64
+        _ => false,
+    }
 }
 
 fn not_found() -> Response {
@@ -265,12 +260,9 @@ fn handle(req: Request) -> Response {
         return not_found();
     }
 
-    // DELETE /todos/:id — find and remove, 204 on success.
-    // `Vec.remove(idx)` has a v1 codegen gap that doesn't actually
-    // shift / shrink the Vec, so DELETE uses the swap-with-last +
-    // pop_back pattern instead. Element order is not preserved by
-    // this operation — fine for the kata's spec because the v1
-    // GET /todos doesn't promise insertion order.
+    // DELETE /todos/:id — find and remove, 204 on success. Uses
+    // `Vec.remove(idx)` directly (karac `4de2e8e` shipped the
+    // codegen + typechecker arm); element ordering is preserved.
     if m == "DELETE" {
         if p.starts_with("/todos/") {
             let rest = p.substring(7);
@@ -278,12 +270,7 @@ fn handle(req: Request) -> Response {
                 Some(id) => {
                     match find_index_by_id(id) {
                         Some(idx) => {
-                            let last_idx: i64 = TODOS.len() - 1;
-                            if idx < last_idx {
-                                let last_todo: Todo = TODOS[last_idx];
-                                TODOS[idx] = last_todo;
-                            }
-                            let _ = TODOS.pop();
+                            let _ = TODOS.remove(idx);
                             return Response { status: 204, body: "" };
                         }
                         None => return not_found(),
