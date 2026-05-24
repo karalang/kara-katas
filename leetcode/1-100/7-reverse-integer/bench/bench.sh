@@ -2,10 +2,12 @@
 # Wall-clock comparison across implementations of LeetCode #7.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Requires: hyperfine (`brew install hyperfine`), rustc (rustup), karac.
+# Seq-only kata. Requires: hyperfine, rustc, clang, go, karac.
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+STEM=reverse
 
 require() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -16,6 +18,8 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require clang     "xcode-select --install (macOS) or your distro's clang package"
+require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 mem_peak() {
@@ -26,7 +30,7 @@ print_mem() {
     local label="$1" bytes="$2"
     local mib
     mib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576}')
-    printf '  %-32s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
+    printf '  %-34s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
 }
 
 mkdir -p target
@@ -37,6 +41,15 @@ build_rust() {
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         rustc -O "$src" -o "$out"
+    fi
+}
+
+build_c() {
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src ..." >&2
+        clang -O3 "$src" -o "$out"
     fi
 }
 
@@ -51,82 +64,116 @@ build_kara() {
     fi
 }
 
-build_rust reverse.rs
-build_kara reverse.kara
+build_go_seq() {
+    local out="target/${STEM}_go_seq"
+    local src="go-seq/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-seq ..." >&2
+        ( cd go-seq && go build -o "../$out" . )
+    fi
+}
 
-# Sanity: all three impls must agree on the sink before we time them.
-# Python is slow at K=50M (multi-minute), so we skip it from the
-# runtime hyperfine pass and just verify the codegen + rust sinks.
-kara_sink=$(./target/reverse_kara)
-rust_sink=$(./target/reverse)
-if [ "$kara_sink" != "$rust_sink" ]; then
-    echo "sink mismatch: kara=$kara_sink rust=$rust_sink" >&2
+build_rust "${STEM}.rs"
+build_c    "${STEM}.c"
+build_kara "${STEM}.kara"
+build_go_seq
+
+expected=$(./target/${STEM}_kara)
+mismatch=""
+for pair in \
+    "rust:./target/${STEM}" \
+    "c:./target/${STEM}_c" \
+    "go:./target/${STEM}_go_seq"; do
+    name="${pair%%:*}"
+    cmd="${pair#*:}"
+    out=$("$cmd")
+    if [ "$out" != "$expected" ]; then
+        mismatch="$mismatch ${name}=${out}"
+    fi
+done
+if [ -n "$mismatch" ]; then
+    echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara == rust): $kara_sink"
+echo "sink (kara/rust/c/go): $expected"
 echo
 
-echo "=== runtime (codegen + rust; py runs separately, see below) ==="
+echo "=== runtime — short workloads (compiled) ==="
 hyperfine \
-    --warmup 3 \
-    --runs 10 \
+    --warmup 5 \
+    --runs 30 \
     --shell=none \
-    --command-name 'kara reverse (codegen)' './target/reverse_kara' \
-    --command-name 'rust reverse'           './target/reverse'
+    --command-name "kara ${STEM} (codegen)" "./target/${STEM}_kara" \
+    --command-name "rust ${STEM}"           "./target/${STEM}" \
+    --command-name "c    ${STEM}"           "./target/${STEM}_c" \
+    --command-name "go   ${STEM}"           "./target/${STEM}_go_seq"
 
 echo
-echo "=== compile (cold, no cache) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --prepare 'rm -f target/reverse_kara reverse' \
-    --command-name 'karac build reverse.kara' 'sh -c "karac build reverse.kara >/dev/null && mv reverse target/reverse_kara"' \
-    --prepare 'rm -f target/reverse' \
-    --command-name 'rustc -O reverse.rs'      'rustc -O reverse.rs -o target/reverse'
-
-echo
-echo "=== binary size ==="
-for spec in 'kara reverse:target/reverse_kara' 'rust reverse:target/reverse'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %8s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
-
-echo
-echo "=== runtime memory (peak) ==="
-print_mem 'kara reverse (codegen)' "$(mem_peak ./target/reverse_kara)"
-print_mem 'rust reverse'           "$(mem_peak ./target/reverse)"
-
-echo
-echo "=== compile memory (cold) ==="
-rm -f target/reverse_kara reverse
-print_mem 'karac build reverse.kara' "$(mem_peak karac build reverse.kara)"
-mv reverse target/reverse_kara 2>/dev/null || true
-rm -f target/reverse
-print_mem 'rustc -O reverse.rs' "$(mem_peak rustc -O reverse.rs -o target/reverse)"
-
-# Python sink + a short single-K=1M timing in a separate stanza — the
-# bench's K=50M would take ~10 minutes per python sample, well past the
-# patience floor for an iterative dev loop. We sample a 50× smaller K
-# and quote the ratio in the README so the kara-vs-py number stays
-# anchored even if the headline kara-vs-rust comparison is the focus.
-echo
-echo "=== python (K=1M, scaled-down) ==="
+echo "=== runtime — long workloads (py, K=1M scaled-down) ==="
+# Python at K=50M takes multi-minute per sample; sample 50× smaller K
+# and quote the ratio in the README.
 python3 -c '
 import sys
 sys.path.insert(0, ".")
 import reverse as r
-r.k_iters_override = 1_000_000
-# Reach into the module: we run a local copy of main with the scaled K.
 inputs = [r.to_i32(i * 2_654_435_769 + 305_419_896) for i in range(1024)]
-import time
-t0 = time.perf_counter()
 total = 0
 for k in range(1_000_000):
     total += r.reverse(inputs[k % 1024])
-t1 = time.perf_counter()
-print(f"  py reverse (K=1M)               {(t1-t0)*1000:.1f} ms   sink={total}")
-print(f"  -> projected K=50M              {(t1-t0)*50*1000:.0f} ms")
+print(f"  py reverse (K=1M) sink={total}")
+print(f"  -> projected K=50M scale=50×")
 '
+
+echo
+echo "=== compile elapsed (cold) ==="
+hyperfine \
+    --warmup 1 \
+    --runs 10 \
+    --shell=none \
+    --prepare "rm -f target/${STEM}_kara ${STEM}" \
+    --command-name "karac build ${STEM}.kara" "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara\"" \
+    --prepare "rm -f target/${STEM}" \
+    --command-name "rustc -O ${STEM}.rs"      "rustc -O ${STEM}.rs -o target/${STEM}" \
+    --prepare "rm -f target/${STEM}_c" \
+    --command-name "clang -O3 ${STEM}.c"      "clang -O3 ${STEM}.c -o target/${STEM}_c"
+
+echo
+echo "=== binary size ==="
+for spec in \
+    "kara ${STEM}:target/${STEM}_kara" \
+    "rust ${STEM}:target/${STEM}" \
+    "c    ${STEM}:target/${STEM}_c" \
+    "go   ${STEM}:target/${STEM}_go_seq"; do
+    label="${spec%%:*}"
+    path="${spec##*:}"
+    bytes=$(wc -c < "$path" | tr -d ' ')
+    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
+    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
+done
+
+echo
+echo "=== runtime memory (peak) ==="
+print_mem "kara ${STEM} (codegen)" "$(mem_peak ./target/${STEM}_kara)"
+print_mem "rust ${STEM}"           "$(mem_peak ./target/${STEM})"
+print_mem "c    ${STEM}"           "$(mem_peak ./target/${STEM}_c)"
+print_mem "go   ${STEM}"           "$(mem_peak ./target/${STEM}_go_seq)"
+
+echo
+echo "=== compile memory (cold) ==="
+for src in "${STEM}.kara"; do
+    stem="$(basename "$src" .kara)"
+    rm -f "target/${stem}_kara" "$stem"
+    bytes=$(mem_peak karac build "$src")
+    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    print_mem "karac build $src" "$bytes"
+done
+for src in "${STEM}.rs"; do
+    out="target/$(basename "$src" .rs)"
+    rm -f "$out"
+    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+done
+for src in "${STEM}.c"; do
+    out="target/$(basename "$src" .c)_c"
+    rm -f "$out"
+    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+done

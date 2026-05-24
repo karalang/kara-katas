@@ -2,7 +2,7 @@
 # Wall-clock comparison across implementations of LeetCode #8.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Requires: hyperfine (`brew install hyperfine`), rustc (rustup), karac.
+# Seq-only kata. Requires: hyperfine, rustc, clang, go, karac.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -17,6 +17,7 @@ require() {
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
+require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 mem_peak() {
@@ -27,7 +28,7 @@ print_mem() {
     local label="$1" bytes="$2"
     local mib
     mib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576}')
-    printf '  %-30s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
+    printf '  %-34s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
 }
 
 mkdir -p target
@@ -61,37 +62,72 @@ build_kara() {
     fi
 }
 
+build_go_seq() {
+    local out="target/atoi_go_seq"
+    local src="go-seq/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-seq ..." >&2
+        ( cd go-seq && go build -o "../$out" . )
+    fi
+}
+
 build_rust atoi.rs
 build_c    atoi.c
 build_kara atoi.kara
+build_go_seq
 
-# Sanity: all four impls must agree on the sink before we time them.
-kara_sink=$(./target/atoi_kara)
-rust_sink=$(./target/atoi)
-c_sink=$(./target/atoi_c)
-py_sink=$(python3 atoi.py)
-if [ "$kara_sink" != "$rust_sink" ] || [ "$kara_sink" != "$c_sink" ] || [ "$kara_sink" != "$py_sink" ]; then
-    echo "sink mismatch: kara=$kara_sink rust=$rust_sink c=$c_sink py=$py_sink" >&2
+expected=$(./target/atoi_kara)
+mismatch=""
+for pair in \
+    'rust:./target/atoi' \
+    'c:./target/atoi_c' \
+    'go:./target/atoi_go_seq'; do
+    name="${pair%%:*}"
+    cmd="${pair#*:}"
+    out=$("$cmd")
+    if [ "$out" != "$expected" ]; then
+        mismatch="$mismatch ${name}=${out}"
+    fi
+done
+if [ -n "$mismatch" ]; then
+    echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara == rust == c == py): $kara_sink"
+echo "sink (kara/rust/c/go): $expected"
+if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
+    py_out=$(python3 atoi.py)
+    if [ "$py_out" != "$expected" ]; then
+        echo "python sink mismatch: py=$py_out" >&2
+        exit 1
+    fi
+    echo "python: matches"
+fi
 echo
 
-echo "=== runtime ==="
+echo "=== runtime — short workloads (compiled) ==="
 hyperfine \
-    --warmup 3 \
-    --runs 10 \
+    --warmup 5 \
+    --runs 30 \
     --shell=none \
     --command-name 'kara atoi (codegen)' './target/atoi_kara' \
-    --command-name 'py   atoi'           'python3 atoi.py' \
     --command-name 'rust atoi'           './target/atoi' \
-    --command-name 'c    atoi'           './target/atoi_c'
+    --command-name 'c    atoi'           './target/atoi_c' \
+    --command-name 'go   atoi'           './target/atoi_go_seq'
 
 echo
-echo "=== compile (cold, no cache) ==="
+echo "=== runtime — long workloads (py) ==="
+hyperfine \
+    --warmup 2 \
+    --runs 10 \
+    --shell=none \
+    --command-name 'py   atoi'           'python3 atoi.py'
+
+echo
+echo "=== compile elapsed (cold) ==="
 hyperfine \
     --warmup 1 \
     --runs 10 \
+    --shell=none \
     --prepare 'rm -f target/atoi_kara atoi' \
     --command-name 'karac build atoi.kara' 'sh -c "karac build atoi.kara >/dev/null && mv atoi target/atoi_kara"' \
     --prepare 'rm -f target/atoi' \
@@ -101,27 +137,42 @@ hyperfine \
 
 echo
 echo "=== binary size ==="
-for spec in 'kara atoi:target/atoi_kara' 'rust atoi:target/atoi' 'c    atoi:target/atoi_c'; do
+for spec in \
+    'kara atoi:target/atoi_kara' \
+    'rust atoi:target/atoi' \
+    'c    atoi:target/atoi_c' \
+    'go   atoi:target/atoi_go_seq'; do
     label="${spec%%:*}"
     path="${spec##*:}"
     bytes=$(wc -c < "$path" | tr -d ' ')
     kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %8s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
+    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
 done
 
 echo
 echo "=== runtime memory (peak) ==="
 print_mem 'kara atoi (codegen)' "$(mem_peak ./target/atoi_kara)"
-print_mem 'py   atoi'           "$(mem_peak python3 atoi.py)"
 print_mem 'rust atoi'           "$(mem_peak ./target/atoi)"
 print_mem 'c    atoi'           "$(mem_peak ./target/atoi_c)"
+print_mem 'go   atoi'           "$(mem_peak ./target/atoi_go_seq)"
+print_mem 'py   atoi'           "$(mem_peak python3 atoi.py)"
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/atoi_kara atoi
-print_mem 'karac build atoi.kara' "$(mem_peak karac build atoi.kara)"
-mv atoi target/atoi_kara 2>/dev/null || true
-rm -f target/atoi
-print_mem 'rustc -O atoi.rs' "$(mem_peak rustc -O atoi.rs -o target/atoi)"
-rm -f target/atoi_c
-print_mem 'clang -O3 atoi.c' "$(mem_peak clang -O3 atoi.c -o target/atoi_c)"
+for src in atoi.kara; do
+    stem="$(basename "$src" .kara)"
+    rm -f "target/${stem}_kara" "$stem"
+    bytes=$(mem_peak karac build "$src")
+    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    print_mem "karac build $src" "$bytes"
+done
+for src in atoi.rs; do
+    out="target/$(basename "$src" .rs)"
+    rm -f "$out"
+    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+done
+for src in atoi.c; do
+    out="target/$(basename "$src" .c)_c"
+    rm -f "$out"
+    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+done

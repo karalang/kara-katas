@@ -2,10 +2,12 @@
 # Wall-clock comparison across implementations of LeetCode #121.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Requires: hyperfine (`brew install hyperfine`), rustc (rustup), karac.
+# Seq-only kata. Requires: hyperfine, rustc, clang, go, karac.
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+STEM=one_pass
 
 require() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -16,6 +18,8 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require clang     "xcode-select --install (macOS) or your distro's clang package"
+require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 mem_peak() {
@@ -26,7 +30,7 @@ print_mem() {
     local label="$1" bytes="$2"
     local mib
     mib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576}')
-    printf '  %-30s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
+    printf '  %-34s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
 }
 
 mkdir -p target
@@ -37,6 +41,15 @@ build_rust() {
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         rustc -O "$src" -o "$out"
+    fi
+}
+
+build_c() {
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src ..." >&2
+        clang -O3 "$src" -o "$out"
     fi
 }
 
@@ -51,48 +64,117 @@ build_kara() {
     fi
 }
 
-build_rust one_pass.rs
-build_kara one_pass.kara
+build_go_seq() {
+    local out="target/${STEM}_go_seq"
+    local src="go-seq/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-seq ..." >&2
+        ( cd go-seq && go build -o "../$out" . )
+    fi
+}
 
-echo "=== runtime ==="
+build_rust "${STEM}.rs"
+build_c    "${STEM}.c"
+build_kara "${STEM}.kara"
+build_go_seq
+
+expected=$(./target/${STEM}_kara)
+mismatch=""
+for pair in \
+    "rust:./target/${STEM}" \
+    "c:./target/${STEM}_c" \
+    "go:./target/${STEM}_go_seq"; do
+    name="${pair%%:*}"
+    cmd="${pair#*:}"
+    out=$("$cmd")
+    if [ "$out" != "$expected" ]; then
+        mismatch="$mismatch ${name}=${out}"
+    fi
+done
+if [ -n "$mismatch" ]; then
+    echo "sink mismatch (expected=$expected):$mismatch" >&2
+    exit 1
+fi
+echo "sink (kara/rust/c/go): $expected"
+if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
+    py_out=$(python3 "${STEM}.py")
+    if [ "$py_out" != "$expected" ]; then
+        echo "python sink mismatch: py=$py_out" >&2
+        exit 1
+    fi
+    echo "python: matches"
+fi
+echo
+
+echo "=== runtime — short workloads (compiled) ==="
 hyperfine \
     --warmup 5 \
     --runs 30 \
     --shell=none \
-    --command-name 'kara one_pass (codegen)' './target/one_pass_kara' \
-    --command-name 'py   one_pass'           'python3 one_pass.py' \
-    --command-name 'rust one_pass'           './target/one_pass'
+    --command-name "kara ${STEM} (codegen)" "./target/${STEM}_kara" \
+    --command-name "rust ${STEM}"           "./target/${STEM}" \
+    --command-name "c    ${STEM}"           "./target/${STEM}_c" \
+    --command-name "go   ${STEM}"           "./target/${STEM}_go_seq"
 
 echo
-echo "=== compile (cold, no cache) ==="
+echo "=== runtime — long workloads (py) ==="
+hyperfine \
+    --warmup 2 \
+    --runs 10 \
+    --shell=none \
+    --command-name "py   ${STEM}"           "python3 ${STEM}.py"
+
+echo
+echo "=== compile elapsed (cold) ==="
 hyperfine \
     --warmup 1 \
     --runs 10 \
-    --prepare 'rm -f target/one_pass_kara one_pass' \
-    --command-name 'karac build one_pass.kara' 'sh -c "karac build one_pass.kara >/dev/null && mv one_pass target/one_pass_kara"' \
-    --prepare 'rm -f target/one_pass' \
-    --command-name 'rustc -O one_pass.rs'      'rustc -O one_pass.rs -o target/one_pass'
+    --shell=none \
+    --prepare "rm -f target/${STEM}_kara ${STEM}" \
+    --command-name "karac build ${STEM}.kara" "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara\"" \
+    --prepare "rm -f target/${STEM}" \
+    --command-name "rustc -O ${STEM}.rs"      "rustc -O ${STEM}.rs -o target/${STEM}" \
+    --prepare "rm -f target/${STEM}_c" \
+    --command-name "clang -O3 ${STEM}.c"      "clang -O3 ${STEM}.c -o target/${STEM}_c"
 
 echo
 echo "=== binary size ==="
-for spec in 'kara one_pass:target/one_pass_kara' 'rust one_pass:target/one_pass'; do
+for spec in \
+    "kara ${STEM}:target/${STEM}_kara" \
+    "rust ${STEM}:target/${STEM}" \
+    "c    ${STEM}:target/${STEM}_c" \
+    "go   ${STEM}:target/${STEM}_go_seq"; do
     label="${spec%%:*}"
     path="${spec##*:}"
     bytes=$(wc -c < "$path" | tr -d ' ')
     kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-14s %8s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
+    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
 done
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara one_pass (codegen)' "$(mem_peak ./target/one_pass_kara)"
-print_mem 'py   one_pass'           "$(mem_peak python3 one_pass.py)"
-print_mem 'rust one_pass'           "$(mem_peak ./target/one_pass)"
+print_mem "kara ${STEM} (codegen)" "$(mem_peak ./target/${STEM}_kara)"
+print_mem "rust ${STEM}"           "$(mem_peak ./target/${STEM})"
+print_mem "c    ${STEM}"           "$(mem_peak ./target/${STEM}_c)"
+print_mem "go   ${STEM}"           "$(mem_peak ./target/${STEM}_go_seq)"
+print_mem "py   ${STEM}"           "$(mem_peak python3 ${STEM}.py)"
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/one_pass_kara one_pass
-print_mem 'karac build one_pass.kara' "$(mem_peak karac build one_pass.kara)"
-mv one_pass target/one_pass_kara 2>/dev/null || true
-rm -f target/one_pass
-print_mem 'rustc -O one_pass.rs' "$(mem_peak rustc -O one_pass.rs -o target/one_pass)"
+for src in "${STEM}.kara"; do
+    stem="$(basename "$src" .kara)"
+    rm -f "target/${stem}_kara" "$stem"
+    bytes=$(mem_peak karac build "$src")
+    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    print_mem "karac build $src" "$bytes"
+done
+for src in "${STEM}.rs"; do
+    out="target/$(basename "$src" .rs)"
+    rm -f "$out"
+    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+done
+for src in "${STEM}.c"; do
+    out="target/$(basename "$src" .c)_c"
+    rm -f "$out"
+    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+done

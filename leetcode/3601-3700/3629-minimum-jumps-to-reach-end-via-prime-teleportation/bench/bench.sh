@@ -2,7 +2,7 @@
 # Wall-clock comparison across implementations of LeetCode #3629.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Requires: hyperfine (`brew install hyperfine`), rustc (rustup), karac.
+# Seq-only kata. Long workload (~1s+). Requires: hyperfine, rustc, clang, go, karac.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -16,13 +16,10 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require clang     "xcode-select --install (macOS) or your distro's clang package"
+require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
-# /usr/bin/time -l (macOS BSD time) prints a "peak memory footprint" line on
-# stderr. We capture its stderr through a brace-group redirect, discard the
-# wrapped command's own stdout, and parse the bytes column. Memory is much
-# more stable run-to-run than wall-time (no scheduling/cache variance), so a
-# single sample is honest — no hyperfine-style averaging needed.
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -31,7 +28,7 @@ print_mem() {
     local label="$1" bytes="$2"
     local mib
     mib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576}')
-    printf '  %-30s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
+    printf '  %-34s %12s bytes (%6s MiB)\n' "$label" "$bytes" "$mib"
 }
 
 mkdir -p target
@@ -42,6 +39,15 @@ build_rust() {
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         rustc -O "$src" -o "$out"
+    fi
+}
+
+build_c() {
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src ..." >&2
+        clang -O3 "$src" -o "$out"
     fi
 }
 
@@ -56,39 +62,117 @@ build_kara() {
     fi
 }
 
-build_rust bfs_sieve.rs
-build_kara bfs_sieve.kara
+build_go_seq() {
+    local out="target/bfs_sieve_go_seq"
+    local src="go-seq/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-seq ..." >&2
+        ( cd go-seq && go build -o "../$out" . )
+    fi
+}
 
+build_rust bfs_sieve.rs
+build_c    bfs_sieve.c
+build_kara bfs_sieve.kara
+build_go_seq
+
+expected=$(./target/bfs_sieve_kara)
+mismatch=""
+for pair in \
+    'rust:./target/bfs_sieve' \
+    'c:./target/bfs_sieve_c' \
+    'go:./target/bfs_sieve_go_seq'; do
+    name="${pair%%:*}"
+    cmd="${pair#*:}"
+    out=$("$cmd")
+    if [ "$out" != "$expected" ]; then
+        mismatch="$mismatch ${name}=${out}"
+    fi
+done
+if [ -n "$mismatch" ]; then
+    echo "sink mismatch (expected=$expected):$mismatch" >&2
+    exit 1
+fi
+echo "sink (kara/rust/c/go): $expected"
+if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
+    py_out=$(python3 bfs_sieve.py)
+    if [ "$py_out" != "$expected" ]; then
+        echo "python sink mismatch: py=$py_out" >&2
+        exit 1
+    fi
+    echo "python: matches"
+fi
+echo
+
+echo "=== runtime — long workloads (compiled) ==="
 hyperfine \
     --warmup 2 \
     --runs 10 \
     --shell=none \
     --command-name 'kara bfs_sieve (codegen)' './target/bfs_sieve_kara' \
-    --command-name 'py   bfs_sieve'           'python3 bfs_sieve.py' \
-    --command-name 'rust bfs_sieve'           './target/bfs_sieve'
+    --command-name 'rust bfs_sieve'           './target/bfs_sieve' \
+    --command-name 'c    bfs_sieve'           './target/bfs_sieve_c' \
+    --command-name 'go   bfs_sieve'           './target/bfs_sieve_go_seq'
+
+echo
+echo "=== runtime — long workloads (py) ==="
+hyperfine \
+    --warmup 2 \
+    --runs 10 \
+    --shell=none \
+    --command-name 'py   bfs_sieve'           'python3 bfs_sieve.py'
+
+echo
+echo "=== compile elapsed (cold) ==="
+hyperfine \
+    --warmup 1 \
+    --runs 10 \
+    --shell=none \
+    --prepare 'rm -f target/bfs_sieve_kara bfs_sieve' \
+    --command-name 'karac build bfs_sieve.kara' 'sh -c "karac build bfs_sieve.kara >/dev/null && mv bfs_sieve target/bfs_sieve_kara"' \
+    --prepare 'rm -f target/bfs_sieve' \
+    --command-name 'rustc -O bfs_sieve.rs'      'rustc -O bfs_sieve.rs -o target/bfs_sieve' \
+    --prepare 'rm -f target/bfs_sieve_c' \
+    --command-name 'clang -O3 bfs_sieve.c'      'clang -O3 bfs_sieve.c -o target/bfs_sieve_c'
+
+echo
+echo "=== binary size ==="
+for spec in \
+    'kara bfs_sieve:target/bfs_sieve_kara' \
+    'rust bfs_sieve:target/bfs_sieve' \
+    'c    bfs_sieve:target/bfs_sieve_c' \
+    'go   bfs_sieve:target/bfs_sieve_go_seq'; do
+    label="${spec%%:*}"
+    path="${spec##*:}"
+    bytes=$(wc -c < "$path" | tr -d ' ')
+    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
+    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
+done
 
 echo
 echo "=== runtime memory (peak) ==="
-# python's number includes ~10 MB CPython runtime baseline regardless of N;
-# kara/rust are standalone compiled binaries. The cap-=10^6 sieve buffer
-# dominates the working set across all three implementations.
 print_mem 'kara bfs_sieve (codegen)' "$(mem_peak ./target/bfs_sieve_kara)"
-print_mem 'py   bfs_sieve'           "$(mem_peak python3 bfs_sieve.py)"
 print_mem 'rust bfs_sieve'           "$(mem_peak ./target/bfs_sieve)"
+print_mem 'c    bfs_sieve'           "$(mem_peak ./target/bfs_sieve_c)"
+print_mem 'go   bfs_sieve'           "$(mem_peak ./target/bfs_sieve_go_seq)"
+print_mem 'py   bfs_sieve'           "$(mem_peak python3 bfs_sieve.py)"
 
 echo
 echo "=== compile memory (cold) ==="
-# Artifact deleted before each measurement so the karac/rustc invocation is a
-# full cold compile. karac's number covers lex → … → ownership → codegen IR
-# build → LLVM optimization passes. Regression detection: a sudden 10× spike
-# on `karac build` here is the signature of an algorithmic blowup in a
-# frontend phase (cf. 2026-05-12 Array[T, N] Maranget O(N²) fix — bfs_sieve
-# is the workload that surfaced that bug, OOM'd at >41 GB RSS pre-fix).
-# karac and rustc are invoked directly under /usr/bin/time so rusage
-# measures the compiler process itself, not a wrapping shell.
-rm -f target/bfs_sieve_kara bfs_sieve
-bytes=$(mem_peak karac build bfs_sieve.kara)
-mv bfs_sieve target/bfs_sieve_kara 2>/dev/null || true
-print_mem 'karac build bfs_sieve.kara' "$bytes"
-rm -f target/bfs_sieve
-print_mem 'rustc -O bfs_sieve.rs' "$(mem_peak rustc -O bfs_sieve.rs -o target/bfs_sieve)"
+for src in bfs_sieve.kara; do
+    stem="$(basename "$src" .kara)"
+    rm -f "target/${stem}_kara" "$stem"
+    bytes=$(mem_peak karac build "$src")
+    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    print_mem "karac build $src" "$bytes"
+done
+for src in bfs_sieve.rs; do
+    out="target/$(basename "$src" .rs)"
+    rm -f "$out"
+    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+done
+for src in bfs_sieve.c; do
+    out="target/$(basename "$src" .c)_c"
+    rm -f "$out"
+    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+done

@@ -147,10 +147,11 @@ hyperfine \
     --command-name 'c    count (single-threaded)'           './target/count_c'
 
 echo
-echo "=== compile (cold, no cache) ==="
+echo "=== compile elapsed (cold) ==="
 hyperfine \
     --warmup 1 \
     --runs 10 \
+    --shell=none \
     --prepare 'rm -f target/count_kara count' \
     --command-name 'karac build count.kara' 'sh -c "karac build count.kara >/dev/null && mv count target/count_kara"' \
     --prepare 'rm -f target/count' \
