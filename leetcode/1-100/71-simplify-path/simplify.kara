@@ -90,19 +90,23 @@ fn simplify(s: ref String) -> String {
     }
 
     // Reconstruct the output: "/" prefix per component, then each
-    // component's characters from `cs[start..end]`. f-string append
-    // is the available String-builder shape; per-char append is O(n)
-    // total because n is bounded by the original input length.
+    // component's characters from `cs[start..end]`. `String.push_str`
+    // for the "/" separator and `String.push(char)` for each component
+    // byte both mutate `out` in place with amortized O(1) per call —
+    // the shape this kata was the trigger for adding to the stdlib
+    // (karac commit 7ef42b9, 2026-05-25). Pre-fix the available shape
+    // was f-string self-append `out = f"{out}{c}"` which allocated a
+    // fresh String per call (O(n²) total per simplify); see the
+    // README's § Benchmarks for the pre/post bench numbers.
     let mut out: String = "";
     let mut k = 0i64;
     while k < starts.len() {
-        out = f"{out}/";
+        out.push_str("/");
         let a = starts[k];
         let b = ends[k];
         let mut p = a;
         while p < b {
-            let c = cs[p];
-            out = f"{out}{c}";
+            out.push(cs[p]);
             p = p + 1i64;
         }
         k = k + 1i64;
