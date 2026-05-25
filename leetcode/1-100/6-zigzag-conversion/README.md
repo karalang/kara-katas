@@ -18,7 +18,7 @@ Y   I   R
 |---|---|---|---|
 | Row buffers (visit-by-row) | O(n) time, O(n) space | [`row_buffers.kara`](row_buffers.kara) ✓ via `karac run` / `karac build` | [`row_buffers.py`](row_buffers.py) ✓ |
 
-`✓` runs end-to-end today. Both interpreter and codegen render `println(c)` for a `char` as the UTF-8 glyph; Python mirrors with `print(c)`. The char-printing parity here landed in karac [`61b1bf3`](../../../../karac-rust/) (`render char as glyph in println / f-string, fix CharLit zero`); pre-fix the kata had to round-trip through integer codepoints to stay diff-clean.
+`✓` runs end-to-end today. Both interpreter and codegen render `println(c)` for a `char` as the UTF-8 glyph; Python mirrors with `print(c)`.
 
 ### Why row buffers
 
@@ -27,27 +27,27 @@ Two textbook approaches exist:
 1. **Row buffers (this kata).** Walk the input left-to-right, tracking a `cur` row index that bounces between `0` and `numRows - 1`. Each character is appended to its row's `Vec[char]`. After the walk, concatenating the rows row-major yields the answer. O(n) time, O(n) extra space.
 2. **Direct math/stride.** For each row `r`, characters in that row sit at positions `r, r + 2(numRows−1), r + 2(numRows−1) − 2r, r + 2(numRows−1), ...` — a two-stride alternating pattern. O(n) time, O(1) extra space (you can write the result directly).
 
-The math/stride form is *constant-factor* better on memory but requires reasoning about two interleaved arithmetic progressions per row, including the special-case handling for the top and bottom rows (which have only one stride, not two). Row buffers express the same algorithm as a one-pass walk with a single direction flag, which is easier to read, easier to test, and matches LeetCode's canonical "Approach 1" almost line for line. For the problem's `n ≤ 1000` constraint, the O(n) extra space is negligible.
+The math/stride form is *constant-factor* better on memory but requires reasoning about two interleaved arithmetic progressions per row, including the special-case handling for the top and bottom rows (which have only one stride, not two). Row buffers express the same algorithm as a one-pass walk with a single direction flag, which is easier to read, easier to test, and matches LeetCode's canonical "Approach 1" almost line for line.
 
 ### Why flip direction *before* the step
 
-Flipping before stepping makes the seed state `(cur = 0, going_down = false)` work: on the first iteration we hit `cur == 0`, flip `going_down` to `true`, and step down to row 1. The alternative ("seed `going_down = true`, flip after the step") leaves a subtle off-by-one on the very first step when `numRows == 2` (the only case where the bottom rail is also row 1). With the pre-flip ordering the same loop body works for every `numRows ≥ 2` without a special case.
+Flipping before stepping makes the seed state `(cur = 0, going_down = false)` work: on the first iteration we hit `cur == 0`, flip `going_down` to `true`, and step down to row 1. The alternative ("seed `going_down = true`, flip after the step") leaves a subtle off-by-one on the very first step when `numRows == 2`. With the pre-flip ordering the same loop body works for every `numRows ≥ 2` without a special case.
 
 ## Kāra features exercised
 
-- **`Vec[Vec[char]]`** — per-row buffers built explicitly with `Vec.new()` + `push`; the literal form hits the same coercion gap as kata [#5]'s `chars().collect()`.
+- **`Vec[Vec[char]]`** — per-row buffers built explicitly with `Vec.new()` + `push`; nested-vec indexed access `rows[cur].push(...)` survives the typechecker's element-type pinning.
 - **`ref String` + `for c in s.chars()`** — read-only string borrow, iterated per Unicode scalar value. Same backbone as katas [#3](../3-longest-substring-without-repeating-characters/) and [#5](../5-longest-palindromic-substring/).
-- **Snapshot pattern** — `for c in s.chars() { chars.push(c); }` lets us ask for `len()` once and index in O(1).
+- **`Vec.with_capacity` + `Vec.extend_from_slice`** — the pre-allocated push form mirrors rust's `Vec::with_capacity` + `extend_from_slice` line-for-line. The check-mode short-circuit for `let mut out: Vec[char] = Vec.with_capacity(len)` landed in karac [`092180e`](../../../../karac-rust/) (the synth-mode arm returned `Vec[?T0]` which didn't unify against the declared element type; the new check-mode arm adopts the expected type directly).
 - **`if cond or cond` short-circuit** — used in the early-return guard and the rail check.
 - **`Vec[char]` indexed read + push** — per-row buffer fills and the flatten loop; bounds checks fire on each indexed read.
-- **`println(c)` glyph print** — the char-display arm in `compile_print` routes the i32 codepoint through `karac_string_encode_char` and prints the 1–4 byte UTF-8 sequence (karac [`61b1bf3`](../../../../karac-rust/)).
+- **`println(c)` glyph print** — the char-display arm in `compile_print` routes the i32 codepoint through `karac_string_encode_char` and prints the 1–4 byte UTF-8 sequence.
 
 No `Map`, no `Set`, no shared structs.
 
 ## Running
 
 ```bash
-# Kāra — codegen and interpreter both print glyphs since karac 61b1bf3.
+# Kāra — codegen and interpreter both print glyphs.
 karac run   row_buffers.kara
 karac build row_buffers.kara && ./row_buffers
 
@@ -60,115 +60,112 @@ diff <(./row_buffers) <(python3 row_buffers.py) && echo OK
 
 ## Benchmarks
 
-### How to run
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`row_buffers.{kara,rs,c}`, `go-seq/main.go`). The Python mirror [`bench/row_buffers.py`](bench/row_buffers.py) is gated behind `KARA_BENCH_INCLUDE_PY=1` — at K=10K calls it lands at ~3.3s and would block the bench by default.
 
-```bash
-brew install hyperfine    # one-time, also needs rustc (rustup) and karac
-./bench/bench.sh
-```
+Per [`../../../BENCH.md`](../../../BENCH.md), the workload's per-call `convert_off` work (one push per input char + one flatten copy = 2N ops, ~20 µs at N=10K) is large enough that the K=10K outer loop's reduction (`sum += result[0] + result[N-1]`) amortizes par-dispatch overhead cleanly — karac's auto-par-on-reduction recognizes the shape and emits a `karac_par_reduce` dispatch by default. The bench ships two kara binaries to keep the BENCH.md two-lane discipline honest:
 
-`bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs three passes:
+- **`row_buffers_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — the documented mechanism for side-by-side seq-vs-par benchmarking). The within-lane row directly comparable to rustc-O / clang-O3 / go build.
+- **`row_buffers_kara`** — default `karac build` output. Picks up auto-par dispatch (~14 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
 
-1. **Runtime** — `hyperfine --warmup 3 --runs 10` across the three binaries. Inputs: N = 10,000 ASCII chars from a repeating `"PAYPALISHIRING"` pattern; `num_rows = 4`; K = 10,000 outer iterations; per-iter rotation `off = k % R` with R = 1,000 to defeat the cross-iteration CSE that would otherwise hoist the pure `convert_off` call out of the loop and reduce the bench to `multiply by K`.
-2. **Compile (cold)** — `hyperfine` with a `--prepare` step that deletes the artifact before every run, so each measurement is a fresh `karac build` / `rustc -O` invocation.
-3. **Binary size + runtime memory + compile memory** — straight `wc` / `time -l` reads.
+**Workload.** N = 10,000 ASCII chars from a repeating `"PAYPALISHIRING"` pattern, num_rows = 4, R = 1,000 rotation period, K = 10,000 outer iterations. Per-iter rotation `off = k % R` defeats the cross-iteration CSE that would otherwise hoist the pure `convert_off` call out of the loop. Sink is the sum of (first + last codepoint) across all iterations. All five mirrors agree on `1514240` before any timing runs — `bench.sh` fails loudly on mismatch.
 
 | File | What it does |
 |---|---|
-| [`bench/row_buffers.kara`](bench/row_buffers.kara) | N = 10,000, num_rows = 4, R = 1,000, K = 10,000, rotated 14-char ASCII pattern |
-| [`bench/row_buffers.py`](bench/row_buffers.py) | Algorithmic mirror — same N, num_rows, R, K, same offset+length API |
-| [`bench/row_buffers.rs`](bench/row_buffers.rs) | Algorithmic mirror; compiled with `rustc -O` |
+| [`bench/row_buffers.kara`](bench/row_buffers.kara) | N = 10K, num_rows = 4, R = 1K, K = 10K, rotated 14-char ASCII pattern |
+| [`bench/row_buffers.rs`](bench/row_buffers.rs) | Algorithmic mirror; `Vec<char>` per-row buffers; compiled with `rustc -O` |
+| [`bench/row_buffers.c`](bench/row_buffers.c) | Algorithmic mirror; raw `int32_t*` per-row buffers; compiled with `clang -O3` |
+| [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; `[][]rune` per-row buffers; compiled with `go build` |
+| [`bench/row_buffers.py`](bench/row_buffers.py) | Algorithmic mirror — same N, num_rows, R, K, sink |
 
-All three print the same sum-of-(first + last codepoint) sink (`1_514_240` at the default parameters) so the algorithm's output participates in I/O and can't be elided.
+### Runtime — seq lane
 
-### Runtime — parity with Rust (within run-to-run variance)
+Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-Snapshot — M5 Pro, 2026-05-19, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build` and `rustc -O`. Requires karac at commit [`2370935`](../../../../karac-rust/) (per-target CPU baseline) or later, on top of [`9d9c3ce`](../../../../karac-rust/) (`Vec.extend_from_slice`), [`c8fd7c4`](../../../../karac-rust/) (`Vec.with_capacity`), and [`60ad643`](../../../../karac-rust/) (auto-par cost-model gate).
+| Implementation | Wall time | User-CPU | Within-workload ratio |
+|---|---|---|---|
+| rust row_buffers (rustc -O)  | **98.5 ms ± 0.9 ms** | 96.3 ms | 0.95× of Kāra |
+| c    row_buffers (clang -O3) | **98.6 ms ± 0.9 ms** | 96.4 ms | 0.95× of Kāra |
+| **kāra row_buffers** (`KARAC_AUTO_PAR=0`) | **103.6 ms ± 3.4 ms** | 101.3 ms | **1.00×** (baseline) |
+| go   row_buffers             | 247.3 ms ± 3.6 ms      | 288.8 ms | 2.39× of Kāra |
+
+Inner-loop-bound shape: per-iter allocates a `Vec[Vec[char]]` outer + 4 inner `Vec[char]` row buffers, walks N=10K chars distributing into the rails, then flattens via 4 `extend_from_slice` calls into an output `Vec[char]`. **Kāra matches rustc-O / clang-O3 within ~5%** (parity within run-to-run variance) and 2.39× faster than Go. Where C and Rust edge ahead by ~5 ms: per-char bounds-check overhead on `Vec[char]` indexed reads — C's raw `int32_t*` pointer arithmetic skips that check entirely, and Rust's `Vec<char>` indexing benefits from a tighter inliner pass than karac's current bounds-elision proves. The headline within the seq lane is parity, not gap.
+
+### Runtime — auto-par regime (kara default, multi-core)
+
+Same snapshot, default `karac build` output:
+
+| Implementation | Wall time | User-CPU | CPU% |
+|---|---|---|---|
+| **kāra row_buffers** (auto-par on reduction) | **23.0 ms ± 0.3 ms** | 319.4 ms | ~1390% (~14 cores) |
+
+Karac's auto-par-on-reduction recognizes the `sum +=` reduction in `main`'s K=10K loop and emits a `karac_par_reduce` dispatch — binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~14 cores active during the run. The wall-time win over the seq-lane Kāra row is **4.5×** (103.6 / 23.0); total CPU time goes up 3.2× (101.3 → 319.4 ms user) as the cost of dispatch + per-worker fixed overhead.
+
+**Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 4× faster than rust" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq lane above is the within-lane comparison; this row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline.
+
+### Two karac fixes landed today for this kata
+
+The bench wouldn't compile this morning, and the auto-par regime would have read 474 MiB peak RSS without intervention. Both surfaced building / running this bench, both shipped before the snapshot above:
+
+1. **Typecheck check-mode propagation for `Vec.with_capacity`** (karac [`092180e`](../../../../karac-rust/), 2026-05-24). `let mut out: Vec[char] = Vec.with_capacity(len);` was rejected at typecheck with "expected Vec&lt;char&gt;, found Vec&lt;?T0&gt;": the synth-mode arm returned `Vec[?T]` (fresh typevar) so untyped-let `let v = Vec.with_capacity(8); v.push(x);` could pin from the downstream push, but at an annotated check-mode position the typevar wasn't unified against the declared element type. Latent since the `with_capacity` arm landed; surfaced when the CLI typecheck-error gate added at `db573a4` stopped letting CLI builds proceed past the typechecker. Fix: parallel check-mode arm in `check_expr` adopts the expected type directly, same shape as the existing `Vec.new()` short-circuit.
+2. **Per-iteration cleanup frame in `emit_reduce_worker_fn`** (karac [`0567170`](../../../../karac-rust/), 2026-05-24). The first auto-par run of this kata read **498 MiB** peak RSS (322× the seq-lane Kāra row, 333× Rust). Root cause: `emit_reduce_worker_fn` was calling `compile_block(body)` for the loop body without wrapping it in a per-iteration scope frame. Body-local lets like `let result = convert_off(...)` (returning `Vec[char]`) registered drop cleanup against the worker's top frame — pushed once at the start of the worker fn, drained once at `exit_bb` after the loop fully iterated. Effect: only the LAST iteration's `result` ever got freed; every earlier iteration's heap allocation leaked. The seq path correctly pushes a per-iteration frame in `compile_while` / `compile_loop` / `compile_for_range` and drains it via `drain_top_frame_with_emit` before the back-edge; the par_reduce worker now mirrors that discipline. Validated: kata 6 auto-par peak RSS **498 MiB → 5.2 MiB** (~95× reduction); wall time also dropped from 30.7 ms → 23.0 ms because drops now distribute across worker threads instead of serializing at worker exit.
+
+(Note: this is structurally the *same* leak shape as the 2026-05-17 leak in `emit_par_branch_fn` fixed at `daaf2cc` — that one closed a per-iter leak in the `karac_par_run` codegen path; today's fix closes the per-iter leak in the `karac_par_reduce` codegen path. Two codegen paths, same per-iteration-frame discipline.)
+
+### Runtime — long workloads (Python)
+
+Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`:
 
 | Run | Mean ± σ |
 |---|---|
-| `kara row_buffers` (codegen) | 99.9 ± 0.4 ms |
-| `py   row_buffers` | 3201 ± 23 ms |
-| `rust row_buffers` | 98.9 ± 1.0 ms |
+| `py row_buffers` | 3.259 s ± 24 ms |
 
-This kata is **at parity with Rust** within run-to-run variance. Three readings across two days on the same rust binary (unchanged across all three) and current kara binary landed at: **kara 1.03× faster** (2026-05-18 morning, kara 101.9 / rust 104.8 ms), **rust 1.03× faster** (2026-05-18, hot system after batched benches, kara 97.9 / rust 95.1 ms), and **rust 1.01× faster** (2026-05-19 clean, the snapshot above). The directional ratio bounces between samples; the honest claim is parity. Within-batch σ (≤1.0 ms) is tight, but thermal/scheduler effects on a ~100 ms workload accumulate across runs more than within-batch σ implies.
+Python is **31.5× slower** than Kāra codegen on the seq lane (and **142× slower** than the auto-par regime). CPython's per-iter overhead (function-call + `list.append` + per-char bytecode dispatch) dominates, even though Python's underlying `list` is C-implemented.
 
-The trajectory from initial measurement to parity lands in three steps, in order of magnitude:
+### Compile elapsed (cold)
 
-1. **Cost-model fix** ([`60ad643`](../../../../karac-rust/), 2026-05-17) — the analyzer was firing a spurious par-dispatch on the constant-init `let r2 = 0i64` paired with the outer `while` loop, turning a tight sequential algorithm into a per-iter dispatch that paid scheduling overhead without delivering parallelism. The gate now skips par-dispatch when N−1 stmts in the group are constant-init. **361.9 → 143.9 ms.**
-2. **Vec drop / allocator pathway fix** — the same drop pathway that closed kata [#88](../88-merge-sorted-array/#runtime-memory-peak)'s 16 MiB headroom and kata [#121](../121-best-time-to-buy-and-sell-stock/#runtime-memory-peak)'s 16 MiB headroom also tightened this kata's σ from ±22 ms to ±1 ms.
-3. **`Vec.with_capacity` + `Vec.extend_from_slice` stdlib additions** ([`c8fd7c4`](../../../../karac-rust/) + [`9d9c3ce`](../../../../karac-rust/), 2026-05-18) — let the kata source mirror its rust source line-for-line: `let mut out: Vec[char] = Vec.with_capacity(len);` instead of `Vec.new()`, and `out.extend_from_slice(rows[r2])` instead of a per-char `while k < row_len { out.push(rows[r2][k]); }` loop. **143.9 → 101.9 ms.**
+Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 1 --runs 10 --shell=none` with `--prepare` deleting the artifact before each run:
 
-Total: **361.9 → ~100 ms (~3.6× speedup)**, ending at rough parity with Rust. See § How we got here below.
+| Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
+|---|---|---|---|
+| `row_buffers` | **65.7 ms ± 1.7 ms** | 111.0 ms ± 0.5 ms | 44.9 ms ± 0.5 ms |
 
-### How we got here
+`karac build` is **1.69× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
-The first measurement on this bench (2026-05-17) read **3.6× of Rust** at 360.2 ± 3.8 ms vs 100.3 ± 0.5 ms. After the cost-model fix landed, the kara number dropped to **1.43× of Rust** at 143.9 ± 1.0 ms — a 2.5× speedup that closed the auto-par scheduling overhead but left a real residual gap.
+### Binary size
 
-Empirical investigation of that 1.43× residual:
-
-1. **`sample row_buffers_kara 1`** — time concentrated in `main` (karac inlines `convert_off` via the internal-linkage fix), with hot stacks at `_platform_memmove` and `_xzm_free`. Signature points at reallocation + free churn, not algorithm time.
-2. **Source diff vs `row_buffers.rs`** — two idiom asymmetries surfaced:
-   - **Output buffer growth.** Rust used `Vec::with_capacity(len)` for `out` — zero reallocations. Kara used `Vec.new()` then `out.push(...)` len times — log₂(len) ≈ 14 reallocations per outer iter, ~140K across the full bench.
-   - **Flatten step.** Rust used `out.extend_from_slice(row)` per row — 4 memcpys per outer iter. Kara used an inner `while k < row_len { out.push(rows[r2][k]); k = k + 1; }` — 10K per-char pushes per outer iter, ~10⁸ total push calls across the run.
-3. **Stdlib surface audit** — neither `Vec.with_capacity` nor `Vec.extend_from_slice` existed in kara's stdlib (verified against the dispatch tables in `src/codegen/vec_method.rs` and `src/interpreter/method_call_seq.rs`). The kata source was forced into the slower idiom because the fast idiom wasn't available, not because karac's codegen was emitting slow code.
-
-Two experimental variants quantified the gap before the stdlib work shipped:
-
-| Variant | Mean ± σ | vs Rust |
-|---|---|---|
-| `kara orig` (`Vec.new` + push everywhere) | 142.5 ± 1.0 ms | 1.43× |
-| `kara fast` (`Vec.filled` + indexed write — `out` only) | 109.0 ± 0.4 ms | 1.10× |
-| `kara faster` (`Vec.filled` + indexed write — `out` AND rows, flat layout) | 99.2 ± 0.9 ms | 1.00× (parity) |
-| `rust` | 99.6 ± 0.8 ms | 1.0× |
-
-The `_fast` variant (only `out` pre-allocated) closed 76% of the gap with one source change. The `_faster` variant (both `out` and rows pre-allocated via a flat single-buffer workaround for the karac limitation that `rows[cur][end] = X` nested indexed-assign errors with "Index assignment target must be a variable") reached exact parity with Rust. Both demonstrated that the gap was 100% allocator pressure, not codegen quality.
-
-The stdlib additions ([`c8fd7c4`](../../../../karac-rust/) for `Vec.with_capacity`, [`9d9c3ce`](../../../../karac-rust/) for `Vec.extend_from_slice`) let the kata source switch to the natural push-based form that mirrors rust line-for-line. The resulting binary lands **at parity with Rust** — the 2026-05-18 capture read 1.03× ahead (101.9 vs 104.8 ms, within noise) and a 2026-05-19 clean re-bench read 1.01× behind (99.9 vs 98.9 ms, also within noise). Both readings agree the gap is below the run-to-run variance floor; the kata reaches rust on the metric, neither systematically ahead nor behind.
-
-The lesson worth keeping: **investigate before assuming codegen quality**. The 1.43× gap looked like a hard codegen ceiling but was a stdlib surface gap; two methods totaling ~880 lines of karac changes (incl. 18 tests across interpreter + codegen + ASAN) turned a 43% deficit into parity.
-
-### Runtime memory — parity with Rust
-
-Same snapshot:
-
-| Run | Peak RSS |
+| Implementation | Size |
 |---|---|
-| `kara row_buffers` (codegen) | 1.7 MiB |
-| `py   row_buffers` | 8.0 MiB |
-| `rust row_buffers` | 1.6 MiB |
+| c    row_buffers | 33.0 KiB |
+| **kāra row_buffers (seq)** | **49.2 KiB** |
+| kāra row_buffers (auto-par) | 312.0 KiB |
+| rust row_buffers | 455.8 KiB |
+| go   row_buffers | 2434.1 KiB |
 
-Kāra peak RSS is **at parity with Rust** (1.7 vs 1.6 MiB, ~1× — within steady-state expectations of the 11K-char `chars` buffer + one iter's working set). Karac beats Python by a ~4.7× margin because Python's interpreter base RSS is heavier than the kata's allocator pressure. The May-17 snapshot read 2.3 MiB for kara; the drop to 1.7 MiB came from the same drop-pathway fix that closed kata [#88](../88-merge-sorted-array/#runtime-memory-peak) and kata [#121](../121-best-time-to-buy-and-sell-stock/#runtime-memory-peak).
+The seq-lane Kāra binary sits within ~1.5× of clang's. The auto-par variant grows +263 KiB to carry the par_reduce machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — the same +263 KiB ballast kata [#4](../4-median-of-two-sorted-arrays/#binary-size) carries for the same auto-par mechanism. Here the ballast is paid for in a real 4.5× wall-time win, so it stays in.
 
-The first revision of this bench measured **474 MiB** peak RSS (316× Rust). The arithmetic at that revision was 474 MiB / 10K iter = 47 KiB / iter, which lined up with one iter's full allocation pool (4 inner `Vec[char]` + 1 outer `Vec[Vec[char]]` + 1 output `Vec[char]`). The leak rooted in two places in karac's auto-par codegen — see commit [`daaf2cc`](../../../../karac-rust/) (`codegen: close per-iter Vec/String leak on auto-par branch + slot paths`) for the full diagnosis: (1) `emit_par_branch_fn` was running branch-body compile against an empty `scope_cleanup_actions` stack, so `track_vec_var` silently no-op'd for every let inside the branch; (2) the parent-function's slot-load alloca wasn't `track_vec_var`-registered (a prior pass had disabled it to avoid a `Holder { items: a }`-followed-by-`return` double-free in a shape no test exercises). The fix re-enabled both, with a cap-zero suppression on slot-source allocas to avoid double-freeing the heap data the slot-write loop has already moved.
+### Runtime memory (peak, RSS)
 
-A follow-up fix ([`3c77a10`](../../../../karac-rust/), `codegen: suppress RC dec for par-branch return-slot sources`) extended that suppression to RC-bearing types (shared structs / `Option[shared T]`), which had hit a separate hang on kata [#2](../2-add-two-numbers/) before this kata exposed it.
+| Implementation | Peak |
+|---|---|
+| c    row_buffers | 1.3 MiB |
+| **kāra row_buffers (seq)** | **1.5 MiB** |
+| rust row_buffers | 1.7 MiB |
+| kāra row_buffers (auto-par) | 5.2 MiB |
+| py   row_buffers | 8.0 MiB |
+| go   row_buffers | 10.4 MiB |
 
-Three new ASAN regression tests in `tests/memory_sanitizer.rs` (`asan_auto_par_*`) cover the function-local Vec, Vec[Vec[char]], and Vec[char]-return shapes — all built from this bench's minimal repro.
+Kāra-seq is at C/Rust parity (within 0.2 MiB). The auto-par variant lands at 5.2 MiB — the cost of per-worker stack + per-worker partial accumulator slot + worker-pool initialization, against a workload that allocates K=10K per-call `Vec[Vec[char]]` chains that the per-iteration cleanup frame fix at `0567170` now drops correctly each iteration. Pre-fix this read 498 MiB. Go's 10.4 MiB carries its GC roots + scheduler arena. Python's 8.0 MiB is the CPython interpreter base + the per-char allocations the algorithm builds.
 
-### Codegen vs Python
+### Compile memory (cold)
 
-Same snapshot:
+| Compiler invocation | Peak |
+|---|---|
+| clang -O3 row_buffers.c | 2.6 MiB |
+| karac build row_buffers.kara | 9.5 MiB |
+| rustc -O row_buffers.rs | 31.6 MiB |
 
-| Run | Mean ± σ | Gap vs Rust |
-|---|---|---|
-| `kara row_buffers` (codegen) | 99.9 ± 0.4 ms | **1.01× (parity within σ)** |
-| `rust row_buffers` | 98.9 ± 1.0 ms | 1.0× |
-| `py   row_buffers` | 3201 ± 23 ms | **32×** |
+`karac` compiles this file in **~10 MiB peak** — between clang and rustc, with no algorithmic blowup signature. Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
 
-Python is **~32× slower than Kāra codegen**. CPython's per-iter overhead (function-call + `list.append` + per-char bytecode dispatch) dominates, even though Python's underlying `list` is C-implemented. The kara-vs-python ratio widened from the May-17 snapshot's ~9× as the cost-model fix and the stdlib additions landed; the python side is essentially unchanged.
+### Why this kata is in the harness
 
-### Compile time and binary size
-
-Snapshot — M5 Pro, 2026-05-18, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
-
-| Compiler | Compile time | Binary size |
-|---|---|---|
-| `karac build row_buffers.kara` | 67.1 ± 1.5 ms | 33.0 KiB |
-| `rustc -O row_buffers.rs` | 110.3 ± 1.8 ms | 455.8 KiB |
-
-Kāra compiles this kata **1.64× faster** than `rustc -O` and produces a binary **~93% smaller** (14× the size disparity, vs the ~35% disparity measured against the same source on 2026-05-17). The much smaller binary tracks the cross-archive LTO + DCE work landed 2026-05-12. Consistent with kata [#4](../4-median-of-two-sorted-arrays/#compile-time-and-binary-size), [#88](../88-merge-sorted-array/#compile-time-and-binary-size), and [#121](../121-best-time-to-buy-and-sell-stock/#compile-time-and-binary-size).
-
-### Why Rust is in the harness
-
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. The current result — **parity with Rust, within run-to-run variance** — caps a ~3.6× speedup from the initial 360 ms / 3.6× of-Rust measurement, achieved via three karac changes (auto-par cost-model gate, Vec drop pathway fix, `Vec.with_capacity` + `Vec.extend_from_slice` stdlib additions). The directional ratio bounces between samples (kara 1.03× faster, rust 1.03× faster, rust 1.01× faster across three readings); the load-bearing claim is parity. See § How we got here.
+Zigzag Conversion is the "nested-vec allocator pressure + amortizable parallel reduction" entry: each `convert_off` call builds a `Vec[Vec[char]]` outer + 4 inner `Vec[char]` rails + an output `Vec[char]`, then drops all of them at end of call; the K=10K outer loop runs that allocate-walk-flatten-drop cycle 10K times and sums two codepoints out of each result. This is where the seq lane measures per-call allocator + Vec discipline (kara at parity with C/Rust within 5%, ahead of Go by 2.4×) and the auto-par lane measures whether the reduction recognizer can absorb that whole nested-alloc shape cleanly across worker threads without leaking per-iteration heap (5.2 MiB steady-state post-`0567170` — at parity with the per-iter allocate-then-drop steady-state footprint the algorithm requires).
