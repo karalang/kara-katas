@@ -168,7 +168,20 @@ Same snapshot:
 | `go   simplify` | 8.5 MiB |
 | `py   simplify` | 6.9 MiB |
 
-Kara seq at 1.3 MiB is now slightly **below** Rust's 1.5 MiB — both 0.2-0.4 MiB above C's stack-buffer baseline, the cost of the heap String/Vec churn. Auto-par adds ~2.5 MiB on top because each worker thread holds its own per-thread allocator state for the per-call allocation rate; pre-fix this delta was ~2.7 MiB so closing the O(n²) hole pulled it down marginally (the per-iter alloc count dropped from ~L+5 to ~5). Acceptable cost for the 5.90× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the worker pool isn't worth paying for. Go's 8.5 MiB reflects GC heap reservation overhead independent of the actual working set.
+Kara seq at 1.3 MiB is now slightly **below** Rust's 1.5 MiB — both 0.2-0.4 MiB above C's stack-buffer baseline, the cost of the heap String/Vec churn. Auto-par adds ~2.5 MiB on top because each worker thread holds its own per-thread allocator state (libmalloc tcache) for the per-call allocation rate; pre-fix this delta was ~2.7 MiB so closing the O(n²) hole pulled it down marginally (the per-iter alloc count dropped from ~L+5 to ~5). Acceptable cost for the 5.90× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the worker pool isn't worth paying for. Go's 8.5 MiB reflects GC heap reservation overhead independent of the actual working set.
+
+The +2.5 MiB delta is **steady-state**, not a leak — verified by running at K=100K, 1M, 10M (RSS 3.5 / 3.6 / 4.1 MiB; only 0.7 MiB of growth across a 100× K-increase, which is steady-state allocator metadata + minor heap fragmentation). Users who need to trade parallelism for memory can dial the worker count down via `KARAC_PAR_WORKERS=N` (karac commit [`d33b389`](../../../../karac-rust/), 2026-05-25 — same ergonomic shape as `RAYON_NUM_THREADS` / `OMP_NUM_THREADS` / `GOMAXPROCS`):
+
+| Setting | Auto-par RSS | Wall (relative) |
+|---|---|---|
+| (default, ~13 workers) | 3.8 MiB | 1.0× |
+| `KARAC_PAR_WORKERS=4` | 1.8 MiB | ~2.5× slower |
+| `KARAC_PAR_WORKERS=2` | 1.5 MiB | ~5× slower |
+| `KARAC_PAR_WORKERS=1` | 1.3 MiB | matches seq lane (single-worker fast path) |
+
+`KARAC_PAR_WORKERS=1` engages `karac_par_reduce`'s single-worker fast path, so the worker pool's per-thread tcache disappears entirely and RSS lands exactly at the seq lane's 1.3 MiB — useful for container CPU quotas, multi-tenant servers, or M-series battery-aware runs (`KARAC_PAR_WORKERS=6` keeps work off the E-cores). Invalid or `0` values fall back to the auto-detect default.
+
+The deeper fix — per-worker scratch buffers in `karac_par_reduce` so the worker pool stops paying the per-iter allocation cost in the first place — is queued under [phase-7-codegen.md § Auto-par runtime: per-worker scratch buffers](../../../../karac-rust/docs/implementation_checklist/phase-7-codegen.md). That one addresses the root cause (closing the alloc-rate-driven tcache scaling) rather than masking it via reduced parallelism.
 
 ### Compile time and binary size
 
