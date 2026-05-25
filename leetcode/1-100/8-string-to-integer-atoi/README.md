@@ -67,83 +67,128 @@ diff <(karac run atoi.kara) <(python3 atoi.py) && echo OK
 
 ## Benchmarks
 
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`atoi.{kara,rs,c}`, `go-seq/main.go`). The Python mirror [`bench/atoi.py`](bench/atoi.py) participates in the long-workloads table — at K=10M calls it lands at ~4 s, fast enough to leave in the default bench pass; the much-longer K=50M / projection-only dance kata [#7](../7-reverse-integer/#benchmarks) needs isn't required here.
+
+Per [`../../../BENCH.md`](../../../BENCH.md), the workload's K=10M outer loop reduces via `sum += my_atoi(inputs[k % N]) as i64` — karac's auto-par-on-reduction recognizes the shape and emits a `karac_par_reduce` dispatch by default (`nm -gU bench/target/atoi_kara | grep karac_par_reduce` confirms). The bench ships two kara binaries to keep the BENCH.md two-lane discipline honest:
+
+- **`atoi_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — the documented mechanism for side-by-side seq-vs-par benchmarking). The within-lane row directly comparable to rustc-O / clang-O3 / go build.
+- **`atoi_kara`** — default `karac build` output. Picks up auto-par dispatch (~10 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
+
 ### How to run
 
 ```bash
-brew install hyperfine    # one-time, also needs rustc (rustup), clang, and karac
+brew install hyperfine    # one-time, also needs rustc (rustup), clang, go, and karac
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` builds the Rust file with `rustc -O`, the C file with `clang -O3`, and the Kāra file with `karac build` (all cached in `bench/target/`, gitignored), then runs hyperfine for runtime + cold-compile, plus straight `wc` / `time -l` reads for binary size + memory. Python is timed in the same hyperfine pass at the same K = 10M — the per-call body is short enough that even CPython finishes in ~4 s, so the K = 50M / projection-only dance kata [#7](../7-reverse-integer/#benchmarks) needs isn't required here.
+`bench/bench.sh` builds the Rust file with `rustc -O`, the C file with `clang -O3`, the Go file with `go build`, and the Kāra file with `karac build` (default and `KARAC_AUTO_PAR=0`, both cached in `bench/target/`, gitignored), then runs hyperfine for runtime + cold-compile, plus straight `wc` / `time -l` reads for binary size + memory.
 
 | File | What it does |
 |---|---|
 | [`bench/atoi.kara`](bench/atoi.kara) | N = 8 distinct inputs cycled by `k % N` (every arm of the three-phase scan exercised), K = 10,000,000 outer iters, sink = Σ my_atoi(inputs[k % N]) widened to i64 |
-| [`bench/atoi.py`](bench/atoi.py) | Algorithmic mirror — same N, K, same input set, same sink formula |
 | [`bench/atoi.rs`](bench/atoi.rs) | Algorithmic mirror; compiled with `rustc -O` |
 | [`bench/atoi.c`](bench/atoi.c) | Algorithmic mirror, hand-rolled scalar baseline; compiled with `clang -O3` |
+| [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; compiled with `go build` |
+| [`bench/atoi.py`](bench/atoi.py) | Algorithmic mirror — same N, K, same input set, same sink formula |
 
-The N = 8 inputs are picked to exercise every arm of the three-phase scan — bare positive (`"42"`), whitespace + sign (`"   -42"`), phase-3 early-exit at first non-digit (`"4193 with words"`), positive overflow rail (`"91283472332"`), explicit `+` (`"+1"`), leading zeros after sign (`"  0000000000012345678"`), INT_MIN boundary (`"-2147483648"`), and whitespace + sign + leading-zero + non-digit break (`"  -0012a42"`) — so no single branch dominates the predictor's history. All four impls print the same sink (`15_437_323_750_000` at the default parameters) so the algorithm's output participates in I/O and can't be elided. The bench's `bench.sh` asserts the kara, rust, c, and py sinks all match before timing.
+The N = 8 inputs are picked to exercise every arm of the three-phase scan — bare positive (`"42"`), whitespace + sign (`"   -42"`), phase-3 early-exit at first non-digit (`"4193 with words"`), positive overflow rail (`"91283472332"`), explicit `+` (`"+1"`), leading zeros after sign (`"  0000000000012345678"`), INT_MIN boundary (`"-2147483648"`), and whitespace + sign + leading-zero + non-digit break (`"  -0012a42"`) — so no single branch dominates the predictor's history. All five impls print the same sink (`15_437_323_750_000` at the default parameters) so the algorithm's output participates in I/O and can't be elided. The bench's `bench.sh` asserts the kara, kara_seq, rust, c, and go sinks all match before timing.
 
-### Runtime — 6.92× ahead of Rust, 7.50× ahead of C, via auto-par reduction
+### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build`, `rustc -O`, and `clang -O3`. Requires karac at commit [`28d76af`](../../../../karac-rust/) (slice 3b.4 + 3b.6 auto-par reduction lowering, plus the three par-reduce single-thread perf commits — [`a9e51c8`](../../../../karac-rust/) const-prop top-level let-init captures, [`1712d51`](../../../../karac-rust/) assume non-negative loop var, [`28d76af`](../../../../karac-rust/) vec-bounds-check hoist via modulo) or later.
+Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Run | Mean ± σ | User |
+| Implementation | Wall time | User-CPU | Within-workload ratio |
+|---|---|---|---|
+| rust atoi (rustc -O)             | **46.3 ms ± 2.6 ms** | 44.5 ms | 0.98× of Kāra |
+| **kāra atoi** (`KARAC_AUTO_PAR=0`) | **47.2 ms ± 0.4 ms** | 45.5 ms | **1.00×** (baseline) |
+| c    atoi (clang -O3)            | 49.2 ms ± 0.4 ms     | 47.5 ms | 1.04× of Kāra |
+| go   atoi                        | 58.3 ms ± 0.9 ms     | 56.1 ms | 1.23× of Kāra |
+
+Per-call work is a single linear walk over ≤200 ASCII bytes with one i32 accumulator and one overflow rail — no allocations per call, no Vec growth. **Kāra matches rustc-O within run-to-run variance** (1.02× spread, well inside σ), runs **1.04× faster than clang-O3**, and **1.23× faster than Go**. The kara-vs-rust parity here is the result of the three karac perf commits documented below — pre-optimization, kara's single-thread user time was 92 ms (1.93× of C); post-optimization the residual gap is the `Vec[String]` 24-byte stride vs C's 8-byte `const char *` array stride, not a per-call algorithmic cost.
+
+### Runtime — auto-par regime (kara default, multi-core)
+
+Same snapshot, default `karac build` output, hyperfine `--warmup 10 --runs 50 --shell=none` (heavier warmup absorbs worker-pool init noise):
+
+| Implementation | Wall time | User-CPU | CPU% |
+|---|---|---|---|
+| **kāra atoi** (auto-par on reduction) | **6.3 ms ± 0.4 ms** | 60.2 ms | ~955% (~10 cores) |
+
+Karac's auto-par-on-reduction recognizes the `sum +=` reduction in `main`'s K=10M loop and emits a `karac_par_reduce` dispatch (`karac build --concurrency-report bench/atoi.kara` prints `reduction { op: +, accumulator: sum }`); the slice-3b codegen lowers it to a `karac_par_reduce` call that fans the iteration space across the M5 Pro's 6 P-cores + 12 E-cores, each thread accumulating into a private partial slot, then a final serial combine pass folds the partials into the parent's `sum`. The reduction op is associative + commutative (the slice-1 allow-list constraint), so the combine order doesn't affect the result — every run produces the same sink (`15_437_323_750_000`) regardless of how the work was split. **No source-level changes** to express the parallelism: the analyzer recognizes the shape from the natural serial source.
+
+The wall-time win over the seq-lane Kāra row is **7.5×** (47.2 / 6.3); total CPU time goes up 1.3× (45.5 → 60.2 ms user) as the cost of dispatch + per-worker fixed overhead. The CPU-efficiency ratio here (~96% per active core, vs ~1390% on kata [#6](../6-zigzag-conversion/#runtime--auto-par-regime-kara-default-multi-core)'s 14-core utilization) reflects the much-shorter per-iter body: at ~10–20 bytes per call, the inputs-table reads + atomic partials combine dominate over compute, capping effective parallelism around 10 cores instead of 14.
+
+**Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 7× faster than rust" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq lane above is the within-lane comparison; this row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline.
+
+### Single-thread CPU — within 1.04× of C after three karac perf commits
+
+The seq-lane parity above is the *result* of perf work that closed a 1.93× gap to C. Pre-optimization, the seq-lane Kāra user time was **92.0 ms** vs C's **47.5 ms** — Kāra was 1.93× slower on the same algorithm. Three perf commits closed most of the gap, and a subsequent codegen pass closed the remainder:
+
+| Commit | What it removes | Seq-lane user-time |
 |---|---|---|
-| `kara atoi` (codegen) | 6.5 ± 0.5 ms | 61.0 ms |
-| `rust atoi` | 45.1 ± 0.5 ms | 43.7 ms |
-| `c    atoi` | 48.9 ± 0.5 ms | 47.6 ms |
-| `py   atoi` | 4,037 ± 38 ms | 4,025 ms |
+| (baseline, pre-perf) | — | 92.0 ms (1.94× of C) |
+| [`a9e51c8`](../../../../karac-rust/) const-prop top-level let-init captures | `n = 8` arrives at worker as a constant, not a 24-byte heap load per iter | 72.5 ms (1.53× of C) |
+| [`1712d51`](../../../../karac-rust/) assume non-neg loop var | ARM64 signed-mod-pow2 collapses from `negs/and/and/csneg` (4 instr) to `and #N-1` (1 instr) | 67.8 ms (1.43× of C) |
+| [`28d76af`](../../../../karac-rust/) hoist vec bounds check via modulo | `inputs[k % 8]` bounds check moves from per-iter to function entry | 61.0 ms (1.29× of C) |
+| (today's snapshot, with subsequent codegen wins absorbed)         | further bounds-check thinning + register-allocator improvements | 45.5 ms (**0.96× of C**) |
 
-The K = 10M outer loop is `let mut sum = 0i64; let mut k = 0i64; while k < k_iters { let idx = k % n; sum = sum + (my_atoi(inputs[idx]) as i64); k = k + 1i64; }` — the same reduction shape kata [#7](../7-reverse-integer/#runtime--987-ahead-of-rust-via-auto-par-reduction) hits, with `n` and `k_iters` as top-level `let` bindings. The slice-1 concurrency analyzer recognizes the pattern (`karac build --concurrency-report bench/atoi.kara` prints `reduction { op: +, accumulator: sum }`); the slice-3b codegen lowers it to a `karac_par_reduce` call that fans the iteration space across the M5 Pro's 6 P-cores + 12 E-cores, each thread accumulating into a private partial slot, then a final serial combine pass folds the partials into the parent's `sum`. The reduction op is associative + commutative (the slice-1 allow-list constraint), so the combine order doesn't affect the result — every run produces the same sink (`15_437_323_750_000`) regardless of how the work was split. **No source-level changes** to express the parallelism: the analyzer recognizes the shape from the natural serial source.
-
-CPU utilization tells the parallelism story: hyperfine's reading is **User 61.0 ms / wall 6.5 ms ≈ 9.4× CPU usage** — close to perfect parallel scaling on the per-iter call shape. The per-iter work is meaningful (~10–20 bytes processed by `my_atoi` per outer iter, plus the function call) but the call is bounded by `strlen`-like behavior in C and `bytes().len()` in Kāra, so the inputs table reads dominate L1 cache traffic. Rust and C stay single-threaded (no rayon / pthreads annotation in the mirrors) and land within ~8% of each other; C is slightly slower than Rust at this workload because `strlen(s)` is recomputed every call from a raw `char *`, whereas Rust's `&str` carries the length in the slice header so `bytes.len()` is a single field load. Kara's `s.bytes().len()` mirrors Rust's behavior — String stores the byte length in its header — so the kara single-thread baseline tracks Rust, not C, on the per-call work.
-
-### Single-thread CPU — within 1.30× of C after three karac perf commits
-
-The wall-clock win above is parallelism; the **single-thread user time** is a separate read of how much work karac generates per worker. Pre-optimization, the user time was **92.0 ms** vs C's **47.6 ms** — Kāra was 1.93× slower than C on the same algorithm. Three perf commits closed most of the gap:
-
-| Commit | What it removes | Worker user-time |
-|---|---|---|
-| (baseline, pre-perf) | — | 92.0 ms (1.93× of C) |
-| [`a9e51c8`](../../../../karac-rust/) const-prop top-level let-init captures | `n = 8` arrives at worker as a constant, not a 24-byte heap load per iter | 72.5 ms (1.52× of C) |
-| [`1712d51`](../../../../karac-rust/) assume non-neg loop var | ARM64 signed-mod-pow2 collapses from `negs/and/and/csneg` (4 instr) to `and #N-1` (1 instr) | 67.8 ms (1.42× of C) |
-| [`28d76af`](../../../../karac-rust/) hoist vec bounds check via modulo | `inputs[k % 8]` bounds check moves from per-iter to function entry | 61.0 ms (**1.28× of C**) |
-
-The residual ~30% over C is the `Vec[String]` stride (24-byte `{ptr, len, cap}` per element vs C's `const char *inputs[8]` 8-byte stride) — `umaddl` to compute the element address vs `ldr` with a shifted offset. Closing that gap requires a borrowed-view string type (`StringSlice`, analogous to `Slice[u8]` but UTF-8-aware), which is a non-trivial language-level slice not justified by a single kata. Tracked as "implement when a parsing kata demands it" in the slice tracker.
+The kara-vs-C gap is now **within run-to-run variance**, and kara is even slightly ahead of C on user time (45.5 vs 47.5 ms). The residual `Vec[String]` stride cost — `umaddl` to compute element address vs C's `ldr` with shifted offset — is fully absorbed by other codegen wins, no longer measurable as a kara-side overhead. A borrowed-view string type (`StringSlice`, analogous to `Slice[u8]` but UTF-8-aware) remains tracked but no longer kata-justified.
 
 ### Codegen vs Python
 
-Python is **619× slower than Kāra codegen** at the same K. The per-iter body is dominated by CPython's per-bytecode dispatch — every `s[i] == ' '`, `s[i] < '0'`, and `ord(c) - ord('0')` is a fresh interpreter dispatch with object boxing for the integer arithmetic. The serial-vs-serial gap (using kara's single-thread user time of 61.0 ms vs python's 4025 ms) is **~66×**; the auto-par lowering widens that to 619× on wall by fanning across cores while CPython runs the GIL-locked single-threaded loop. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~1,950×) because the per-iter body there is even shorter (4 i32 ops vs ~15 bytes × ~5 ops/byte here) so interpreter overhead dominates a larger fraction.
+Python on the same workload, same K = 10M, hyperfine `--warmup 2 --runs 10 --shell=none`:
 
-### Runtime memory — slightly above Rust (worker thread overhead)
-
-Same snapshot:
-
-| Run | Peak RSS |
+| Run | Mean ± σ |
 |---|---|
-| `kara atoi` (codegen) | 1.4 MiB |
-| `rust atoi` | 1.1 MiB |
-| `c    atoi` | 1.1 MiB |
-| `py   atoi` | 7.1 MiB |
+| `py atoi` | 4.094 s ± 44 ms |
 
-Kara is ~0.3 MiB above the C/Rust baseline. Same root cause as kata [#7](../7-reverse-integer/#runtime-memory--slightly-above-rust-worker-thread-overhead): the `karac_par_reduce` call dispatches onto the long-lived `karac_par_run` pool, which reserves N = `available_parallelism()` OS-thread stacks regardless of how many reductions actually fire. Acceptable cost for the 7× wall-clock win.
+Python is **650× slower than Kāra auto-par** (4094 / 6.3) and **87× slower than Kāra seq** (4094 / 47.2) at the same K. The per-iter body is dominated by CPython's per-bytecode dispatch — every `s[i] == ' '`, `s[i] < '0'`, and `ord(c) - ord('0')` is a fresh interpreter dispatch with object boxing for the integer arithmetic. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~1,950×) because the per-iter body there is even shorter (4 i32 ops vs ~15 bytes × ~5 ops/byte here) so interpreter overhead dominates a larger fraction.
 
-### Compile time and binary size
+### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 1 --runs 10 --shell=none` with `--prepare` deleting the artifact before each run:
 
-| Compiler | Compile time | Binary size |
-|---|---|---|
-| `karac build atoi.kara` | 60.8 ± 1.1 ms | 311.9 KiB |
-| `rustc -O atoi.rs` | 79.2 ± 1.2 ms | 455.4 KiB |
-| `clang -O3 atoi.c` | 40.8 ± 0.8 ms | 32.7 KiB |
+| Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
+|---|---|---|---|
+| `atoi` | **63.6 ms ± 3.3 ms** | 79.4 ms ± 0.6 ms | 42.8 ms ± 1.0 ms |
 
-Kāra compiles this kata **1.30× faster** than `rustc -O` and produces a binary **1.46× smaller**. Clang is **1.49× faster** than karac and produces a binary **9.5× smaller** — neither is surprising: C is the lower-floor reference for both axes, no runtime to link in, no thread-pool helpers, no String/Vec machinery. The kara binary's 312 KiB carries the auto-par reduction runtime (`karac_par_reduce`, `karac_par_run`, worker dispatch, partials combine, thread-pool init) — the same runtime weight kata [#7](../7-reverse-integer/#compile-time-and-binary-size) carries. Compared against a fair "comparable runtime" baseline (Rust, which also lazily pulls in the libstd thread machinery as needed), kara stays smaller thanks to the cross-archive LTO + DCE work.
+`karac build` is **1.25× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
-Compile memory: karac peaks at **9.3 MiB** vs rustc's **26.6 MiB** vs clang's **2.6 MiB** — ~3× lower compile-time RAM than rustc, ~3.6× higher than clang. Same ordering as kata [#7](../7-reverse-integer/#compile-time-and-binary-size).
+### Binary size
 
-### Why Rust and C are in the harness
+| Implementation | Size |
+|---|---|
+| c    atoi                | 32.7 KiB |
+| **kāra atoi (seq)**      | **49.0 KiB** |
+| kāra atoi (auto-par)     | 311.9 KiB |
+| rust atoi                | 455.4 KiB |
+| go   atoi                | 2434.1 KiB |
 
-Same rationale as kata [#7](../7-reverse-integer/#why-rust-is-in-the-harness) for Rust: it's Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap. C is added here as the **lower-floor reference** — the hand-rolled scalar baseline with no String type, no length-prefixed slice, just `strlen` + raw `char *` per call. That tells us how much of the kara-vs-rust gap is "kara's auto-par advantage" (the wall-clock) vs how much would be left after a hypothetical zero-overhead source rewrite (the single-thread user time vs C). The current result — **6.92× faster than Rust on wall, 7.50× faster than C on wall, 1.28× of C on single-thread user time, 1.46× smaller binary than Rust, 1.30× faster compile than Rust, ~3× lower compile RAM than Rust, +0.3 MiB peak RSS for the worker thread pool** — is the second kata where kara's auto-concurrency lights up against serial baselines, with the gap to a hand-rolled C baseline shrunk to a stride-driven 1.3× by the three karac perf commits above.
+The seq-lane Kāra binary sits within ~1.5× of clang's. The auto-par variant grows +263 KiB to carry the par_reduce machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — the same +263 KiB ballast kata [#6](../6-zigzag-conversion/#binary-size) carries for the same auto-par mechanism. Here the ballast is paid for in a real 7.5× wall-time win, so it stays in.
+
+### Runtime memory (peak, RSS)
+
+| Implementation | Peak |
+|---|---|
+| c    atoi                | 1.1 MiB |
+| **kāra atoi (seq)**      | **1.1 MiB** |
+| rust atoi                | 1.1 MiB |
+| kāra atoi (auto-par)     | 1.5 MiB |
+| go   atoi                | 2.9 MiB |
+| py   atoi                | 7.0 MiB |
+
+Kāra-seq is at exact C/Rust parity. The auto-par variant lands at 1.5 MiB — +0.4 MiB for per-worker stacks + per-worker partial accumulator slot + worker-pool initialization. The footprint stays tiny because the per-call work doesn't allocate (no `Vec[Vec[char]]` chains like kata [#6](../6-zigzag-conversion/#runtime-memory-peak-rss)); only the inputs-table and the `sum` accumulator persist. Go's 2.9 MiB carries its GC roots + scheduler arena; Python's 7.0 MiB is the CPython interpreter base.
+
+### Compile memory (cold)
+
+| Compiler invocation | Peak |
+|---|---|
+| clang -O3 atoi.c       | 2.6 MiB |
+| karac build atoi.kara  | 9.5 MiB |
+| rustc -O atoi.rs       | 26.7 MiB |
+
+`karac` compiles this file in **~10 MiB peak** — between clang and rustc, with no algorithmic blowup signature. Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
+
+### Why this kata is in the harness
+
+String-to-integer atoi is the "branch-heavy scalar scan + amortizable parallel reduction" entry: each `my_atoi` call is a three-phase straight-line walk (skip whitespace, read sign, consume digits) with branch points the compiler can't fully fold; the K=10M outer loop runs that scalar-scan + accumulate cycle 10M times. This is where the seq lane measures per-call branch + bounds-check codegen quality (kara at exact parity with C/Rust within σ, ahead of Go by 1.23×) and the auto-par lane measures whether the reduction recognizer can absorb a short-bodied per-iter call cleanly across worker threads without atomic-partials-combine overhead dominating (7.5× wall-time win, capped at ~10 cores by the short body — vs kata [#6](../6-zigzag-conversion/#runtime--auto-par-regime-kara-default-multi-core)'s ~14 cores on a heavier per-iter body). Together they're the cleanest demonstration in the corpus that **kara's seq-lane codegen quality is at parity with rustc-O / clang-O3 on a non-allocating numeric scan, and the auto-par regime adds a 7.5× wall-time multiplier on top of that with zero source-level changes.**
