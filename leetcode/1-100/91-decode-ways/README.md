@@ -97,11 +97,11 @@ Single-file invocations only — the Go module's `go build` mixes module resolut
 | Implementation | Bytes | KiB |
 |---|---|---|
 | c    decode_ways  | 33,456 | 32.7 |
-| **kāra decode_ways** | **50,184** | **49.0** |
+| **kāra decode_ways** | **33,656** | **32.9** |
 | rust decode_ways  | 466,488 | 455.6 |
 | go   decode_ways  | 2,492,546 | 2,434.1 |
 
-Kāra now sits within ~1.5× of clang's binary — down from 312 KiB pre-fix because the prologue's wasteful `karac_par_run` was bloating the binary by 263 KiB of par-block machinery (per-branch trampolines + return-slot struct + cancel-check globals). Rust's 456 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection).
+Kāra is now within **~200 bytes of clang's binary** — basically at parity. Two consecutive karac fixes brought it down from the original 312 KiB: the auto-par cost-model fix (commit `1f3f498`) stripped 263 KiB of par-block machinery (per-branch trampolines + return-slot struct + cancel-check globals) when there's no actual par work to run, and the `__TEXT,__jittmpl` segment re-scope (commit `e76f42b`) reclaimed the final 16 KiB by parking the 4-byte JIT-template manifest inside `__TEXT` instead of a fresh page-aligned `__KARA` segment. Rust's 456 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection).
 
 ### Runtime memory (peak)
 
@@ -119,10 +119,10 @@ A single 80-byte buffer + scalar accumulator; the algorithm itself is O(1) extra
 | Compiler invocation | Bytes | MiB |
 |---|---|---|
 | `clang -O3 decode_ways.c`     | 2,687,336 | 2.6 |
-| **`karac build decode_ways.kara`** | **10,994,192** | **10.5** |
+| **`karac build decode_ways.kara`** | **9,434,392** | **9.0** |
 | `rustc -O decode_ways.rs`     | 28,361,304 | 27.0 |
 
-Kāra's compile-memory footprint is ~3× clang's and ~3× lower than rustc's on this kata.
+Kāra's compile-memory footprint is ~3.5× clang's and ~3× lower than rustc's on this kata. Re-measured 2026-05-25 (5-sample mean, range 8.8–9.1 MiB) after the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`) — the prior 10.5 MiB single-sample read shrank to ~9.0 MiB, plausibly from less Mach-O metadata being tracked during link when the JIT-template manifest no longer demands its own segment.
 
 ### Numbers published here are reference data
 
