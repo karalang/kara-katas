@@ -117,7 +117,18 @@ require karac     "cargo install --path . --features llvm  (from karac-rust)"
 # Par-lane only:
 require cargo     "rustup (https://rustup.rs) — needed for the rayon variant"
 
-# Build (cached, only rebuilds on source change)
+# Build (cached). The `build_kara` helper's freshness check is
+# `if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]`
+# — the third clause rebuilds when the installed `karac` binary itself
+# is newer than the cached artifact, so a karac upgrade that changes
+# binary content (e.g. the 2026-05-25 `__TEXT,__jittmpl` segment
+# re-scope in `karac-rust e76f42b` that reclaimed 16 KiB per
+# Mach-O binary) invalidates stale cached binaries automatically. Without
+# this check, kata sources whose mtime hasn't changed since the previous
+# bench keep the pre-fix binary on disk, and the bench reports stale
+# numbers despite running against a newer compiler. Other compilers
+# (rustc, clang, go) don't get this treatment because they're stable
+# baselines, not the moving target.
 build_rust <each>.rs
 build_c    <each>.c
 build_kara <each>.kara

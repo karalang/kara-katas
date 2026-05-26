@@ -57,7 +57,7 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         karac build "$src" >/dev/null
         mv "$stem" "$out"
@@ -67,7 +67,7 @@ build_kara() {
 build_go_seq() {
     local out="target/${STEM}_go_seq"
     local src="go-seq/main.go"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling go-seq ..." >&2
         ( cd go-seq && go build -o "../$out" . )
     fi
