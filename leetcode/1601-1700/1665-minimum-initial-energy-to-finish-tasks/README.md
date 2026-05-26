@@ -76,34 +76,34 @@ All three print the same sum-of-results sink so the algorithm's output participa
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M1, 2026-05-12, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
 
 | Workload | Kāra (codegen) | Rust | Gap |
 |---|---|---|---|
-| `greedy` | 3.6 ± 0.3 ms | 2.7 ± 0.1 ms | **1.37× of Rust** |
+| `greedy` | 3.2 ± 0.1 ms | 2.7 ± 0.0 ms | **1.19× of Rust** |
 
-This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. Codegen already does the cheapest fix on its own side — `emit_sort_by_inline_thunk` fuses the closure body into the bridge thunk so the function pointer points directly at the comparator code rather than going through a fat-pointer indirect call. Closing the remaining FFI-boundary cost is tracked in [`deferred.md` § *Vec.sort_by FFI-Boundary Comparator Inlining*](../../../../karac-rust/docs/deferred.md); promotion gate fires once ≥2 distinct non-synthetic workloads show >1.3× perf gap from this specific cause.
+This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. Codegen already does the cheapest fix on its own side — `emit_sort_by_inline_thunk` fuses the closure body into the bridge thunk so the function pointer points directly at the comparator code rather than going through a fat-pointer indirect call. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracks the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro. Closing the remaining FFI-boundary cost is tracked in [`deferred.md` § *Vec.sort_by FFI-Boundary Comparator Inlining*](../../../../karac-rust/docs/deferred.md); promotion gate fires once ≥2 distinct non-synthetic workloads show >1.3× perf gap from this specific cause.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara greedy` (codegen) | 3.6 ± 0.3 ms |
-| `rust greedy` | 2.7 ± 0.1 ms |
-| `py greedy` | ~36 ms |
+| `kara greedy` (codegen) | 3.2 ± 0.1 ms |
+| `rust greedy` | 2.7 ± 0.0 ms |
+| `py greedy` | 38.3 ± 0.6 ms |
 
-Python is ~10× slower than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size.
+Python is **~12× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size.
 
 ### Compile time and binary size
 
-Snapshot — M1, 2026-05-12, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build greedy.kara` | 54.7 ± 0.4 ms | 311.9 KiB |
-| `rustc -O greedy.rs` | 111.4 ± 0.4 ms | 472.1 KiB |
+| `karac build greedy.kara` | 58.9 ± 0.9 ms | 294.7 KiB |
+| `rustc -O greedy.rs` | 119.7 ± 1.1 ms | 472.1 KiB |
 
-Kāra compiles this kata **~2× faster** than `rustc -O` and produces a binary **~34% smaller**. The size gap widened on 2026-05-12 when the runtime crate's release profile was upgraded from `thin` → `fat` LTO (workspace [`Cargo.toml § [profile.release]`](../../../../karac-rust/Cargo.toml)). Fat LTO merges all runtime-crate bitcode into one module before optimization, exposing more dead `Vec.sort_by` / `Map` plumbing to the link-time `-Wl,-dead_strip` pass than thin's per-module summaries can reach — shaving ~17% off binaries that use heavy runtime subsystems while leaving minimal-runtime binaries (~33 KB floor) unchanged.
+Kāra compiles this kata **~2× faster** than `rustc -O` and produces a binary **~38% smaller** — the cumulative effect of the 2026-05-12 fat-LTO runtime rebuild that exposed dead `Vec.sort_by` / `Map` plumbing to `-Wl,-dead_strip` (shaving ~17%), plus the 2026-05-25 `__TEXT,__jittmpl` segment re-scope (`karac-rust e76f42b`) that reclaimed an additional 16 KiB per Mach-O binary (311.9 KiB → 294.7 KiB on this kata).
 
 ### Why Rust is in the harness
 
