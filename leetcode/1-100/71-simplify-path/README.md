@@ -189,11 +189,11 @@ Snapshot — M5 Pro, 2026-05-25 post-fix, hyperfine `--warmup 1 --runs 10` with 
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build simplify.kara` (auto-par default) | 71.6 ± 0.2 ms | 312.0 KiB |
+| `karac build simplify.kara` (auto-par default) | 71.6 ± 0.2 ms | 295.9 KiB |
 | `rustc -O simplify.rs` | 123.2 ± 1.8 ms | 455.7 KiB |
 | `clang -O3 simplify.c` | 45.8 ± 0.5 ms | 32.8 KiB |
 
-Kāra compiles this kata **1.72× faster** than `rustc -O` and produces an auto-par binary **1.46× smaller** than `rustc -O`'s. Clang is **1.56× faster** and produces a binary **9.5× smaller** — the same lower-floor C reference shape as kata [#65](../65-valid-number/#compile-time-and-binary-size). The seq-build kara binary is **49.2 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **9.3× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers — identical in shape to kata [#65](../65-valid-number/), [#7](../7-reverse-integer/), and [#8](../8-string-to-integer-atoi/), and the cost of the 5.90× wall-clock win.
+Kāra compiles this kata **1.72× faster** than `rustc -O` and produces an auto-par binary **1.46× smaller** than `rustc -O`'s. Clang is **1.56× faster** and produces a binary **9.5× smaller** — the same lower-floor C reference shape as kata [#65](../65-valid-number/#compile-time-and-binary-size). The seq-build kara binary is **33.1 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **9.3× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers — identical in shape to kata [#65](../65-valid-number/), [#7](../7-reverse-integer/), and [#8](../8-string-to-integer-atoi/), and the cost of the 5.90× wall-clock win.
 
 Compile memory: karac peaks at **10.3 MiB** vs rustc's **32.3 MiB** vs clang's **2.6 MiB** — ~3.1× lower compile-time RAM than rustc, ~4.0× higher than clang. Same ordering as the rest of the suite.
 

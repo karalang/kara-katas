@@ -159,8 +159,8 @@ Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 1 --runs 10 --shell=none` w
 | Implementation | Size |
 |---|---|
 | c    atoi                | 32.7 KiB |
-| **kāra atoi (seq)**      | **49.0 KiB** |
-| kāra atoi (auto-par)     | 311.9 KiB |
+| **kāra atoi (seq)**      | **32.8 KiB** |
+| kāra atoi (auto-par)     | 295.8 KiB |
 | rust atoi                | 455.4 KiB |
 | go   atoi                | 2434.1 KiB |
 

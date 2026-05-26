@@ -126,10 +126,10 @@ Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build reverse.kara` | 57.7 ± 0.5 ms | 311.9 KiB |
+| `karac build reverse.kara` | 57.7 ± 0.5 ms | 295.8 KiB |
 | `rustc -O reverse.rs` | 79.6 ± 0.6 ms | 455.6 KiB |
 
-Kāra compiles this kata **1.38× faster** than `rustc -O` and produces a binary **1.46× smaller**. The kara binary grew from 49 KiB (pre-auto-par) to 311.9 KiB because the par_reduce lowering links in the karac-runtime's thread-pool + worker-dispatch code; rust's binary is unchanged because it doesn't pull in `std::sync::mpsc` / `std::thread::scope` for a single-threaded loop. Even with the new runtime weight, kara stays smaller than rust thanks to the cross-archive LTO + DCE work (landed 2026-05-12). The three perf commits added negligible compile overhead — the const-prop, assume, and BCE-hoist passes are bounded constant work per recognized site.
+Kāra compiles this kata **1.38× faster** than `rustc -O` and produces a binary **1.46× smaller**. The kara binary grew from 49 KiB (pre-auto-par) to 295.8 KiB because the par_reduce lowering links in the karac-runtime's thread-pool + worker-dispatch code; rust's binary is unchanged because it doesn't pull in `std::sync::mpsc` / `std::thread::scope` for a single-threaded loop. Even with the new runtime weight, kara stays smaller than rust thanks to the cross-archive LTO + DCE work (landed 2026-05-12). The three perf commits added negligible compile overhead — the const-prop, assume, and BCE-hoist passes are bounded constant work per recognized site.
 
 Compile memory: karac peaks at **8.8 MiB** vs rustc's **26.9 MiB** — ~3× lower compile-time RAM, essentially unchanged from the pre-auto-par snapshot (the reduction lowering is bounded constant work per recognized site).
 

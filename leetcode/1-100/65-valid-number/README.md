@@ -158,11 +158,11 @@ Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build valid.kara` (auto-par default) | 63.5 ± 0.9 ms | 311.9 KiB |
+| `karac build valid.kara` (auto-par default) | 63.5 ± 0.9 ms | 295.8 KiB |
 | `rustc -O valid.rs` | 80.1 ± 0.8 ms | 455.4 KiB |
 | `clang -O3 valid.c` | 43.4 ± 0.7 ms | 32.7 KiB |
 
-Kāra compiles this kata **1.26× faster** than `rustc -O` and produces an auto-par binary **1.46× smaller** than `rustc -O`'s. Clang is **1.47× faster** and produces a binary **9.5× smaller** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-elapsed-cold). The seq-build kara binary is **49.0 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **9.3× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers — identical in shape to kata [#7](../7-reverse-integer/) and kata [#8](../8-string-to-integer-atoi/), and the cost of the 7.89× wall-clock win.
+Kāra compiles this kata **1.26× faster** than `rustc -O` and produces an auto-par binary **1.46× smaller** than `rustc -O`'s. Clang is **1.47× faster** and produces a binary **9.5× smaller** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-elapsed-cold). The seq-build kara binary is **32.8 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **9.3× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers — identical in shape to kata [#7](../7-reverse-integer/) and kata [#8](../8-string-to-integer-atoi/), and the cost of the 7.89× wall-clock win.
 
 Compile memory: karac peaks at **9.9 MiB** vs rustc's **26.8 MiB** vs clang's **2.6 MiB** — ~2.7× lower compile-time RAM than rustc, ~3.8× higher than clang. Same ordering as kata [#8](../8-string-to-integer-atoi/#compile-memory-cold).
 

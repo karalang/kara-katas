@@ -104,11 +104,11 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10 --shell=none` w
 | Implementation | Size |
 |---|---|
 | c    iterative | 32.9 KiB |
-| **kāra iterative** | **49.0 KiB** |
+| **kāra iterative** | **32.9 KiB** |
 | rust iterative | 456.3 KiB |
 | go   iterative | 2434.1 KiB |
 
-Kāra now sits within ~1.5× of clang's binary — down from 311.9 KiB pre-fix (the wasteful 2-stmt par-group activation was bloating the binary by ~263 KiB of `karac_par_run` machinery + thread-pool init; the karac cost gate at `1a26792` elides the activation at codegen). The `shared struct` machinery (RC inc/dec, niche-optimized `Option[shared T]`, iterative drop walker) is still statically linked; Rust pays the same kind of `Rc`/`RefCell` static-link cost but at a higher baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
+Kāra now sits **within ~80 bytes of clang's binary** — essentially at parity. Down from 311.9 KiB → 49.0 KiB after the karac cost gate (`1a26792`) elided a wasteful 2-stmt par-group activation that was carrying ~263 KiB of `karac_par_run` machinery + thread-pool init, then down to 32.9 KiB after the `__TEXT,__jittmpl` segment re-scope (`e76f42b`, 2026-05-25) reclaimed an additional 16 KiB per Mach-O binary. The `shared struct` machinery (RC inc/dec, niche-optimized `Option[shared T]`, iterative drop walker) is still statically linked; Rust pays the same kind of `Rc`/`RefCell` static-link cost but at a higher baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
 
 ### Runtime memory (peak, RSS)
 

@@ -116,8 +116,8 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10 --shell=none` w
 |---|---|
 | c    brute_force | 32.8 KiB |
 | c    hash_map    | 32.9 KiB |
-| kāra brute_force | 48.9 KiB |
-| kāra hash_map    | 294.8 KiB |
+| kāra brute_force | 32.8 KiB |
+| kāra hash_map    | 278.6 KiB |
 | rust brute_force | 455.4 KiB |
 | rust hash_map    | 457.0 KiB |
 | go   brute_force | 2434.1 KiB |

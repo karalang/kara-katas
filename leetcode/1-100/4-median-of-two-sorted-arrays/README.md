@@ -109,8 +109,8 @@ Single-file invocations only — the Go module's `go build` mixes module resolut
 | Implementation | Bytes | KiB |
 |---|---|---|
 | c    binary_search_partition | 33,528 | 32.7 |
-| **kāra binary_search_partition (seq)** | **50,232** | **49.1** |
-| kāra binary_search_partition (auto-par) | 319,448 | 312.0 |
+| **kāra binary_search_partition (seq)** | **33,720** | **32.9** |
+| kāra binary_search_partition (auto-par) | 302,920 | 295.8 |
 | rust binary_search_partition | 466,344 | 455.4 |
 | go   binary_search_partition | 2,492,546 | 2,434.1 |
 

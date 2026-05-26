@@ -99,7 +99,7 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10` with `--prepar
 | Compiler | Compile time | Binary size |
 |---|---|---|
 | `clang -O3 sliding_window.c`      | 44.0 ± 1.1 ms | 32.8 KiB |
-| **`karac build sliding_window.kara`** | **63.8 ± 4.0 ms** | **294.9 KiB** |
+| **`karac build sliding_window.kara`** | **63.8 ± 4.0 ms** | **278.7 KiB** |
 | `rustc -O sliding_window.rs`      | 120.1 ± 4.0 ms | 457.1 KiB |
 | `go build` (Go module)            | — (excluded; mixes module + std-lib link) | 2434.4 KiB |
 

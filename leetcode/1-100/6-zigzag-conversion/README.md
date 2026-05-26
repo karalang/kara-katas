@@ -136,8 +136,8 @@ Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 1 --runs 10 --shell=none` w
 | Implementation | Size |
 |---|---|
 | c    row_buffers | 33.0 KiB |
-| **kāra row_buffers (seq)** | **49.2 KiB** |
-| kāra row_buffers (auto-par) | 312.0 KiB |
+| **kāra row_buffers (seq)** | **33.1 KiB** |
+| kāra row_buffers (auto-par) | 295.9 KiB |
 | rust row_buffers | 455.8 KiB |
 | go   row_buffers | 2434.1 KiB |
 

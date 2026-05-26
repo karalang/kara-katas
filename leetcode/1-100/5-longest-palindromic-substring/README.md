@@ -99,11 +99,11 @@ Snapshot — M5 Pro, 2026-05-24, hyperfine `--warmup 1 --runs 10 --shell=none` w
 | Implementation | Size |
 |---|---|
 | c    expand_around_center | 32.8 KiB |
-| **kāra expand_around_center** | **49.1 KiB** |
+| **kāra expand_around_center** | **33.0 KiB** |
 | rust expand_around_center | 455.4 KiB |
 | go   expand_around_center | 2434.4 KiB |
 
-Kāra sits within ~1.5× of clang's binary — the cross-archive LTO + DCE pass strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, shared structs) cleanly. Rust's 455 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection) on every single-file binary.
+Kāra sits **within ~200 bytes of clang's binary** — essentially at parity. The cross-archive LTO + DCE pass strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, shared structs) cleanly, and the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`, 2026-05-25) reclaimed the final 16 KiB per Mach-O binary that had kept this kara at 49.1 KiB pre-fix. Rust's 455 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection) on every single-file binary.
 
 ### Runtime memory (peak, RSS)
 
