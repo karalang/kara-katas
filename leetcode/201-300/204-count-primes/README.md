@@ -98,15 +98,15 @@ Kāra compiles ~1.4× slower than `clang -O3`, ~1.5× faster than `rustc -O`. Si
 
 | Implementation | Size |
 |---|---|
-| kara count (par)   |  311.9 KiB |
-| kara count (seq)   |   49.0 KiB |
+| kara count (par)   |  295.7 KiB |
+| kara count (seq)   |   32.9 KiB |
 | rust count         |  455.6 KiB |
 | rust+rayon count   |  451.8 KiB |
 | go   count (seq)   | 2434.1 KiB |
 | go   count (par)   | 2451.0 KiB |
 | c    count         |   32.8 KiB |
 
-C is the smallest (no runtime). Kāra single-thread is next at 49 KiB — the par-reduce surface only links in when something references it. Kāra parallel + Rust + Rust+rayon all sit in the 300-500 KiB range (Kāra is *smaller* than both Rust variants — `rustc -O` defaults include panic-unwind + `std` overhead that Kāra doesn't). Go binaries are an order of magnitude larger (~2.4 MiB) because the Go runtime statically links the goroutine scheduler + GC + reflection metadata into every binary — that's a deliberate Go design choice for deployment simplicity.
+C is the smallest (no runtime). Kāra single-thread is **within ~150 bytes of clang** at 32.9 KiB — the par-reduce surface only links in when something references it. Kāra parallel + Rust + Rust+rayon all sit in the 295-455 KiB range (Kāra is *smaller* than both Rust variants — `rustc -O` defaults include panic-unwind + `std` overhead that Kāra doesn't). Go binaries are an order of magnitude larger (~2.4 MiB) because the Go runtime statically links the goroutine scheduler + GC + reflection metadata into every binary — that's a deliberate Go design choice for deployment simplicity. (Both kara binaries dropped ~16 KiB each from the recorded snapshot after the 2026-05-25 `__TEXT,__jittmpl` segment re-scope in karac `e76f42b`.)
 
 ### Runtime memory (peak)
 
