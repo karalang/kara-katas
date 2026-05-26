@@ -20,7 +20,11 @@ fn find_min(nums: Slice[i64]) -> i64 {
 fn main() {
     let n = 2000000i64;
     let r = 666666i64;
-    let mut data: Vec[i64] = Vec.new();
+    // Pre-allocate to avoid log₂(N) realloc + copy churn during fill. The
+    // doubling-realloc pattern of Vec.new + push leaves old+new heap regions
+    // alive at the final doubling (transient 2× peak RSS); Vec.with_capacity
+    // takes one allocation. Mirrors rust's Vec::with_capacity(N).
+    let mut data: Vec[i64] = Vec.with_capacity(n);
     for i in 0..n {
         // data[i] = ((i + r) mod n) + 1  →  sorted [1..n] rotated by r.
         // Values land in [1, n]; the minimum is 1, located at index n - r.

@@ -92,12 +92,12 @@ Snapshot — M5 Pro, 2026-05-19, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build linear_scan.kara` | 62.0 ± 1.1 ms | 49.0 KiB |
+| `karac build linear_scan.kara` | 62.0 ± 1.1 ms | 32.9 KiB |
 | `rustc -O linear_scan.rs` | 90.8 ± 0.8 ms | 455.6 KiB |
-| `karac build binary_search.kara` | 55.5 ± 1.0 ms | 49.1 KiB |
+| `karac build binary_search.kara` | 55.5 ± 1.0 ms | 33.0 KiB |
 | `rustc -O binary_search.rs` | 78.3 ± 2.2 ms | 455.7 KiB |
 
-Kāra compiles both files **1.41–1.46× faster** than `rustc -O` and produces binaries **~9× smaller** — `strip -x` plus the size-targeted post-link passes have landed since the earlier snapshot.
+Kāra compiles both files **1.41–1.46× faster** than `rustc -O` and produces binaries **~14× smaller** — `strip -x` plus the size-targeted post-link passes have landed since the earlier snapshot, and the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`, 2026-05-25) reclaimed an additional 16 KiB per Mach-O binary that the original 2026-05-19 snapshot's 49 KiB figures still carried.
 
 ### Runtime memory (peak)
 

@@ -9,13 +9,19 @@
 // Tune N / K in step with ../README.md § Benchmarks.
 
 fn find_min(nums: Slice[i64]) -> i64 {
-    let n = nums.len();
-    let mut lo = 0;
-    let mut hi = n - 1;
+    // Indices carried as u64: `lo`, `hi` are non-negative and `lo <= hi`
+    // throughout, so signed arithmetic does no useful work and forces the
+    // backend to emit a sign-rounding `cinc` plus arithmetic shift for the
+    // mid-point. With u64 the mid-compute folds to `sub + add ..., lsr #1`
+    // (two instructions, fused shift-add) and the loop guard uses `b.lo`
+    // (unsigned) instead of `b.lt`. Mirrors Rust's `let mut lo: usize`.
+    let n: u64 = nums.len() as u64;
+    let mut lo: u64 = 0u64;
+    let mut hi: u64 = n - 1u64;
     while lo < hi {
-        let mid = lo + (hi - lo) / 2;
+        let mid = lo + (hi - lo) / 2u64;
         if nums[mid] > nums[hi] {
-            lo = mid + 1;
+            lo = mid + 1u64;
         } else {
             hi = mid;
         }
@@ -26,7 +32,11 @@ fn find_min(nums: Slice[i64]) -> i64 {
 fn main() {
     let n = 2000000i64;
     let r = 666666i64;
-    let mut data: Vec[i64] = Vec.new();
+    // Pre-allocate to avoid log₂(N) realloc + copy churn during fill. The
+    // doubling-realloc pattern of Vec.new + push leaves old+new heap regions
+    // alive at the final doubling (transient 2× peak RSS); Vec.with_capacity
+    // takes one allocation. Mirrors rust's Vec::with_capacity(N).
+    let mut data: Vec[i64] = Vec.with_capacity(n);
     for i in 0..n {
         // data[i] = ((i + r) mod n) + 1  →  sorted [1..n] rotated by r.
         // Values land in [1, n]; the minimum is 1, located at index n - r.
