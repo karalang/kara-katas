@@ -1,0 +1,105 @@
+// Benchmark workload — Roman to Integer (LeetCode #13).
+//
+// K = 10_000_000 outer iters. Per-iter:
+//   - LCG-shaped `num in [1, 3999]` so the input distribution sweeps the
+//     full constraint range (no fixed rotation the branch predictor can
+//     fully learn — each iter hits a different decimal pattern).
+//   - `int_to_roman(num)` (same generator as kata 12's bench) produces
+//     a fresh `Vec[char]` with capacity 15 — this is the *input* for
+//     the function being measured.
+//   - `roman_to_int(r)` walks the Vec[char] and reconstructs the i64,
+//     using the forward-scan + lookahead from the educational source.
+//
+// Per-iter work: ~10 comparisons + ~10 char-pushes for int_to_roman
+// (the generator), then ~10 value() calls + ~10 lookahead compares for
+// roman_to_int (the function under test). Plus one Vec[char] alloc +
+// one drop per iter. At K=10M that's ~3 × 10^8 simple ops + 10^7 small
+// allocs — same shape as kata 12 by design, so cross-kata wall-time
+// comparisons isolate the parsing-vs-emitting cost.
+//
+// Sink (`sum`) is the running total of every reconstructed i64. Because
+// `int_to_roman` and `roman_to_int` are exact inverses on [1, 3999],
+// `sum` equals the sum of every `num` drawn by the LCG over K iters —
+// a self-checking property: if either direction has a bug, the sink
+// diverges from the same K-iter LCG sum computed independently.
+//
+// Two-lane kata: the reduction `sum = sum + roman_to_int(r)` is the
+// slice-1 allow-list shape (associative + commutative +), so karac
+// emits a karac_par_reduce dispatch by default. KARAC_AUTO_PAR=0 builds
+// the seq-lane comparator — see bench/bench.sh.
+
+fn int_to_roman(num: i64) -> Vec[char] {
+    let mut out: Vec[char] = Vec.with_capacity(15);
+    let mut n = num;
+
+    while n >= 1000i64 { out.push('M'); n = n - 1000i64; }
+    if    n >= 900i64  { out.push('C'); out.push('M'); n = n - 900i64; }
+    if    n >= 500i64  { out.push('D'); n = n - 500i64; }
+    if    n >= 400i64  { out.push('C'); out.push('D'); n = n - 400i64; }
+    while n >= 100i64  { out.push('C'); n = n - 100i64; }
+    if    n >= 90i64   { out.push('X'); out.push('C'); n = n - 90i64; }
+    if    n >= 50i64   { out.push('L'); n = n - 50i64; }
+    if    n >= 40i64   { out.push('X'); out.push('L'); n = n - 40i64; }
+    while n >= 10i64   { out.push('X'); n = n - 10i64; }
+    if    n >= 9i64    { out.push('I'); out.push('X'); n = n - 9i64; }
+    if    n >= 5i64    { out.push('V'); n = n - 5i64; }
+    if    n >= 4i64    { out.push('I'); out.push('V'); n = n - 4i64; }
+    while n >= 1i64    { out.push('I'); n = n - 1i64; }
+
+    out
+}
+
+fn value(c: char) -> i64 {
+    if c == 'I' { return 1i64; }
+    if c == 'V' { return 5i64; }
+    if c == 'X' { return 10i64; }
+    if c == 'L' { return 50i64; }
+    if c == 'C' { return 100i64; }
+    if c == 'D' { return 500i64; }
+    if c == 'M' { return 1000i64; }
+    0i64
+}
+
+fn roman_to_int(r: ref Vec[char]) -> i64 {
+    let n: i64 = r.len();
+    let mut total: i64 = 0i64;
+    let mut i: i64 = 0i64;
+    while i < n {
+        let cur = value(r[i]);
+        if i + 1i64 < n {
+            let nxt = value(r[i + 1i64]);
+            if cur < nxt {
+                total = total - cur;
+            } else {
+                total = total + cur;
+            }
+        } else {
+            total = total + cur;
+        }
+        i = i + 1i64;
+    }
+    total
+}
+
+fn main() {
+    let k_iters: i64 = 10000000i64;
+
+    // Reduction shape: `sum = sum + roman_to_int(r)` per iter. The
+    // analyzer recognizes the allow-listed `+` accumulator and karac's
+    // default build emits a karac_par_reduce dispatch. `r` is allocated
+    // fresh inside `int_to_roman` and dropped at end-of-iter scope.
+    let mut sum: i64 = 0i64;
+    let mut k: i64 = 0i64;
+    while k < k_iters {
+        // LCG-shaped pseudorandom over the full [1, 3999] range. The
+        // double-modulo handles the rare negative residue path (signed
+        // overflow in `k * 2654435769`); modulo 3999 then +1 maps to
+        // the LeetCode constraint range.
+        let raw: i64 = k * 2654435769i64 + 305419896i64;
+        let num: i64 = (raw % 3999i64 + 3999i64) % 3999i64 + 1i64;
+        let r = int_to_roman(num);
+        sum = sum + roman_to_int(r);
+        k = k + 1i64;
+    }
+    println(sum);
+}
