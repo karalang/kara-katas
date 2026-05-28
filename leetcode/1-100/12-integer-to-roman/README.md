@@ -101,20 +101,32 @@ Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`:
 | go   greedy | 220.7 ms ± 16.1 ms | 230.3 ms | 1.10× of Kāra |
 | c    greedy (clang -O3) | 242.9 ms ± 18.6 ms | 237.9 ms | 1.21× of Kāra |
 
-**Kāra leads the seq lane on this workload's shape** — by **~5% over Rust, ~10% over Go, ~21% over C**. Read with the allocator-tax caveat in the next paragraph.
+**Kāra leads the seq lane on this workload's shape** — by **~5% over Rust, ~10% over Go, ~21% over C**. The mechanism behind that lead is subtle and was originally mis-attributed in this README; the corrected analysis is below.
 
-Per-iter shape: one `Vec[char]` alloc + ~10 char-pushes (the unrolled greedy fill) + ~10 char-reads (the `score_roman` sum) + one Vec drop. At K=10M that's 10⁷ small allocs + 10⁷ drops, and **the allocator round-trip is the dominating per-iter cost on every implementation**. A diagnostic C variant that allocates the 60-byte buffer once outside the K-loop and reuses it per iter ([`bench/greedy_reuse.c`](bench/greedy_reuse.c)) runs at **140.9 ms ± 1.0 ms** — **1.60× faster than the per-iter-malloc C row above, and 1.31× faster than Kāra-seq**. That 84 ms gap (225 ms → 141 ms) is the pure cost of 10⁷ `malloc(60)` + `free` pairs through libc: ~8.4 ns per pair, ~37% of the malloc-per-iter C wall.
+Per-iter shape: one `Vec[char]` alloc + ~10 char-pushes (the unrolled greedy fill) + ~10 char-reads (the `score_roman` sum) + one Vec drop. At K=10M that's 10⁷ small allocs + 10⁷ drops. A diagnostic C variant that allocates the 60-byte buffer once outside the K-loop and reuses it per iter ([`bench/greedy_reuse.c`](bench/greedy_reuse.c)) runs at **140.9 ms ± 1.0 ms** — so for C, the per-iter `malloc(60)` + `free` round-trip costs ~84 ms over 10⁷ iters (~8.4 ns per pair).
 
-So the seq-lane ordering this kata produces isn't really "Kāra's seq codegen beats clang -O3" — it's "the four languages pay *different* allocator round-trip costs for the same shape, and Kāra's path through libsystem `_malloc` / `_free` happens to land at the favorable end of the spread for small-Vec churn." `nm` on `greedy_kara_seq` shows it links only libsystem and the disassembly shows the same `_malloc` / `_free` stub calls as the C binary — there's no `karac_vec_*` wrapper saving work. The 40 ms Kāra advantage over per-iter-malloc C is real but mechanism-unconfirmed; plausible candidates include tighter same-size-class tcache locality and fewer concurrent live allocations across the worker's hot path. Confirming would need an Instruments / `dtrace` `malloc:::entry` pass.
+#### Mechanism (corrected 2026-05-27)
 
-Where each language lands on the per-iter alloc cost:
+An earlier version of this README concluded the ordering was "the four languages pay *different* allocator round-trip costs, and Kāra's path through libsystem `_malloc` / `_free` lands at the favorable end of the spread for small-Vec churn." **That was wrong.** A `DYLD_INSERT_LIBRARIES` malloc-counting shim against the Kāra and C binaries shows they make *byte-identical* allocator calls:
 
-- **Kāra (seq) at 200.2 ms** — pays ~5.9 ns per alloc/drop pair beyond the algorithmic floor (185 ms wall − 141 ms reuse-C floor over 10⁷ iters).
-- **Rust at 209.8 ms** (1.05× of Kāra) — pays ~6.9 ns per pair. `Vec::with_capacity(15)` + `push(c)` runs through libstd's allocator wrapper, which adds the alloc-layout check on every call. Otherwise the inner loop matches Kāra's char-push instruction count.
-- **Go at 220.7 ms** (1.10× of Kāra) — pays ~8.0 ns per pair. `make([]int32, 0, 15)` goes through the Go runtime allocator's small-object size class with a per-allocation GC-tracking write-barrier that scalar C / Rust / Kāra all skip.
-- **C at 242.9 ms** (1.21× of Kāra) — pays ~10.2 ns per pair. Naked `malloc(60)` + `free` routes through full libc malloc including size-class lookup, free-list management, and the per-call thread-local cache check. **C with the buffer hoisted (which any production C programmer would write) lands at 140.9 ms — 1.31× faster than Kāra-seq.** The pure-algorithm floor here is C's, not Kāra's; the per-iter-malloc shape is what masks it.
+| | Kāra-seq | C |
+|---|---|---|
+| malloc calls | 10,000,028 | 10,000,028 |
+| free calls | 10,000,014 | 10,000,014 |
+| 60-byte allocs (the hot path) | 10,000,000 | 10,000,000 |
 
-The σ on the C and Go rows is wider than Kāra/Rust (18.6 ms and 16.1 ms vs ~7 ms) because allocator throughput has higher cache-state variance at this scale — both languages had a small number of outliers above 300 ms while the bulk of the runs landed near the mean. Re-runs reproduce the ordering.
+Same count, same 60-byte size class, same totals (within 28 bytes of startup noise). There is no allocator-path difference — both call libsystem `malloc(60)` / `free` exactly 10⁷ times.
+
+The real mechanism is **clang's "optimization" of the generator is a pessimization here.** clang -O3 rewrites `int_to_roman`'s `while (n >= 1000) { push 'M'; n -= 1000; }` into Barrett-reduction division by constant plus a `memset_pattern16` bulk-fill call — 4 such call sites in the C binary, 0 in Kāra (Kāra lowers the loop literally as `cmp + store + sub + branch`). For the 1–12 byte fills typical of this kata (mean Roman length ~9.5), `memset_pattern16`'s ~3–5 ns cross-module call overhead exceeds the inline-store cost it replaces. So Kāra wins the generator by *not* applying a transform clang applies too eagerly at this output size. This is a reproducible observation about clang's heuristics — not a claim that Kāra's codegen is categorically faster. (See kata [#13](../13-roman-to-integer/#mechanism--where-the-84-ms-gap-over-c-actually-comes-from) for a parse-only diagnostic where, on a kernel clang does *not* over-vectorize, C edges Kāra by ~8% as expected of a mature optimizer.)
+
+Corrected reading of the per-language rows — the spread is **algorithmic codegen on the generator**, not allocator cost (which is identical across Kāra/Rust/C and only modestly higher on Go's GC-tracked allocator):
+
+- **Kāra (seq) at 200.2 ms** — literal lowering of the unrolled greedy; no `memset_pattern16`, no Barrett reduction. The 10⁷ × `malloc(60)`/`free` round-trip is in here too (~84 ms, same as C's), so Kāra's pure-algorithm floor is roughly 200 − 84 ≈ **116 ms** — *below* C's reuse-C floor of 141 ms.
+- **Rust at 209.8 ms** (1.05× of Kāra) — `Vec::with_capacity(15)` + `push(c)`; rustc applies a milder version of the same loop rewrite than clang, landing between Kāra and C.
+- **Go at 220.7 ms** (1.10× of Kāra) — `make([]int32, 0, 15)` adds a per-allocation GC-tracking write-barrier the scalar languages skip, on top of generator codegen comparable to Rust's.
+- **C at 242.9 ms** (1.21× of Kāra) — clang's `memset_pattern16` + Barrett-reduction generator is the slowest of the four at this output size. The reuse-C floor (140.9 ms) is C's no-alloc number but **still carries the pessimized generator** — so it is *not* the "pure algorithm floor" an earlier version of this README called it. Kāra's algorithmic floor (~116 ms) is lower.
+
+The σ on the C and Go rows is wider than Kāra/Rust (18.6 ms and 16.1 ms vs ~7 ms) because of higher cache-state variance at this scale — both had a few outliers above 300 ms while the bulk landed near the mean. Re-runs reproduce the ordering.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 

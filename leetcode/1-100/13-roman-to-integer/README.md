@@ -93,18 +93,44 @@ Snapshot — M5 Pro, 2026-05-27, hyperfine `--warmup 5 --runs 30 --shell=none` (
 | go   greedy | 368.2 ms ± 38.1 ms | 366.8 ms | 1.28× of Kāra |
 | c    greedy (clang -O3) | 372.6 ms ± 14.4 ms | 365.0 ms | 1.29× of Kāra |
 
-**Kāra leads the seq lane on this workload's shape** — by **~14% over Rust, ~28% over Go, ~29% over C**. The lead is wider than kata [#12](../12-integer-to-roman/)'s (~5%/10%/21%) because the per-iter work doubles (generate *and* parse) while the per-iter allocator cost stays fixed — the allocator round-trip is a smaller fraction of total wall time here, and the algorithmic-codegen portion is what's separating the rows. The allocator-tax framing from kata #12 still applies (see [`12-integer-to-roman` § Benchmarks](../12-integer-to-roman/#runtime--seq-lane-apples-to-apples-single-threaded) for the reuse-C diagnostic that pegged libc malloc/free at ~8.4 ns per pair × 10⁷ iters); it just shows up as a smaller share of the per-iter budget on this kata. Kāra's mean held identically at **288.6 ms** across two independent re-runs (σ 20.5 ms vs 5.6 ms — the lower-σ pass is reported); the within-lane ordering reproduces.
+**Kāra leads the seq lane on this *fused* workload** — by **~14% over Rust, ~28% over Go, ~29% over C**. But the headline needs unpacking, because the mechanism is not what it looks like. Kāra's mean held identically at **288.6 ms** across two independent re-runs (σ 20.5 ms vs 5.6 ms — the lower-σ pass is reported); the within-lane ordering reproduces.
 
-Per-iter shape: one `Vec[char]` alloc + ~10 char-pushes (the generator) + ~10 `value()` calls + ~10 lookahead compares (the parser) + one Vec drop. At K=10M that's ~6 × 10⁸ simple ops + 10⁷ small allocs. The algorithmic portion is roughly 2× kata #12's; the allocator portion is identical.
+The fused workload is two kernels back to back: `int_to_roman` (the generator) emits a `Vec[char]`, then `roman_to_int` (the parser) reads it back. Profiling each separately (see *Mechanism* below) shows **Kāra's lead comes entirely from the generator, and Kāra is actually slightly *slower* than C on the parser** — the kernel this kata is named for.
 
-Where each language lands per-iter, beyond the per-iter alloc/drop baseline:
+#### Mechanism — where the 84 ms gap over C actually comes from
 
-- **Kāra (seq) at 288.6 ms** — adds ~8.8 ns of pure algorithmic work per iter on top of kata #12's 5.9 ns alloc-pair cost (88.4 ms gap between the kata-13 and kata-12 Kāra rows over 10⁷ iters). Indexed `r[i]` access through the Vec is the dominant inner-loop op.
-- **Rust at 330.1 ms** (1.14× of Kāra) — adds ~12.0 ns per iter beyond the alloc baseline. `Vec<char>` indexing pays the bounds check + the `match` on char; the `match` arm gets a jump-table lowering, but the per-arm equality is heavier than Kāra's straight-line if-chain.
-- **Go at 368.2 ms** (1.28× of Kāra) — adds ~14.7 ns per iter. The `switch` arm on `int32` lowers cleanly, but Go's slice bounds check on every `r[i]` access carries a per-iter cost that scalar C / Rust / Kāra can hoist.
-- **C at 372.6 ms** (1.29× of Kāra) — adds ~13.2 ns per iter. Naked `int32_t*` index access matches Rust/Kāra in primitive cost, but the per-iter `malloc(60)` + `free` pair (~10.2 ns per kata #12's diagnostic) pulls C's wall to the bottom of the table on this workload's shape. Same caveat applies — production C with the buffer hoisted would close the gap.
+The kata #12 README originally attributed Kāra's lead to "Kāra's path through libsystem `_malloc` / `_free` landing at the favorable end of the spread for small-Vec churn." **That was wrong, and is corrected here and in kata #12.** A `DYLD_INSERT_LIBRARIES` malloc-counting shim against both binaries shows Kāra and C make *byte-identical* allocator calls:
 
-The σ on the Go and C rows is wider than Kāra/Rust (38.1 ms and 14.4 ms vs ~3-6 ms) — same scheduler/cache-state variance kata [#12](../12-integer-to-roman/) calls out. Re-runs reproduce the ordering.
+| | Kāra-seq | C |
+|---|---|---|
+| malloc calls | 10,000,028 | 10,000,028 |
+| free calls | 10,000,014 | 10,000,014 |
+| 60-byte allocs (the hot path) | 10,000,000 | 10,000,000 |
+
+Same count, same 60-byte size class, same totals. There is no allocator-path difference. The real mechanism is in the **generator's algorithmic codegen**: clang -O3 rewrites `int_to_roman`'s `while (n >= 1000) { push 'M'; n -= 1000; }` into Barrett-reduction division by constant plus a `memset_pattern16` bulk-fill call (4 such call sites in the C binary; 0 in Kāra). For the 1–12 byte fills typical of this kata (mean Roman length ~9.5), `memset_pattern16`'s ~3–5 ns cross-module call overhead **exceeds** the inline-store cost — so clang's "optimization" is a pessimization, and Kāra wins by lowering the loop literally and *not* applying that transform.
+
+Corrected per-iter cost breakdown (all three rows confirmed by the shim + a parse-only diagnostic):
+
+| Phase | Kāra | C |
+|---|---|---|
+| Allocator round-trip (identical call shape) | ~14.8 ns / iter | ~14.8 ns / iter |
+| `int_to_roman` (generator) | ~6 ns / iter | ~14 ns / iter — clang's `memset_pattern16` pessimization |
+| `roman_to_int` (parser) | ~8.5 ns / iter | ~7.85 ns / iter — **C wins** |
+
+So the honest framing: **on the parser kernel, C edges Kāra by ~8%, as you'd expect of a mature optimizer. Kāra leads the fused wall only because clang over-zealously vectorizes the generator's small subtract-loops.** That's a real and reproducible observation about clang's heuristics at this output size — not a claim that Kāra's codegen is categorically faster.
+
+#### Parse-only diagnostic
+
+To isolate the parser, a variant pre-stakes two `Vec[char]` inputs outside the timed loop (alternated by `k % 2` to defeat constant-folding) and runs 10M `roman_to_int` calls with **no per-iter allocation**:
+
+| Implementation | Wall time | Ratio |
+|---|---|---|
+| c parse-only (clang -O3) | **78.5 ms ± 1.1 ms** | **1.00×** (baseline) |
+| kāra parse-only (seq) | 85.0 ms ± 2.3 ms | 1.08× of C |
+
+This is the parser kernel's true cross-language order: C ahead by 8%. (The single-input version of this diagnostic ran in 1.9 ms for C because clang constant-folds the whole loop into one multiply — karac does not do that loop-invariant motion across pure calls, which is its own minor codegen gap.)
+
+The σ on the Go and C rows of the fused table is wider than Kāra/Rust (38.1 ms and 14.4 ms vs ~3-6 ms) — same scheduler/cache-state variance kata [#12](../12-integer-to-roman/) calls out. Re-runs reproduce the ordering.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
