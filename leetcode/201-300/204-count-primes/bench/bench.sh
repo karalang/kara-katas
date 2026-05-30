@@ -30,6 +30,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -133,58 +142,73 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=204 slug=count-primes group=201-300 \
+    title="Count Primes" workload="N=10^7 list primes" \
+    sink="$(echo "$kara_sink" | tr '\n' ' ' | sed 's/ $//')"
+
 echo "=== runtime ==="
-hyperfine \
-    --warmup 3 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'kara count (codegen, #[par_unordered])' './target/count_kara' \
-    --command-name 'kara count (codegen, single-threaded)'  './target/count_seq_kara' \
-    --command-name 'rust count (single-threaded)'           './target/count' \
-    --command-name 'rust count (rayon par_iter)'            './target/count_rayon' \
-    --command-name 'go   count (single-threaded)'           './target/go_seq' \
-    --command-name 'go   count (goroutines)'                './target/go_par' \
-    --command-name 'c    count (single-threaded)'           './target/count_c'
+rt_begin --warmup 3 --runs 10
+rt_cmd --lang kara --approach count --lane par --mode codegen \
+    --name 'kara count (codegen, #[par_unordered])' --cmd './target/count_kara'
+rt_cmd --lang kara --approach count --lane seq --mode codegen \
+    --name 'kara count (codegen, single-threaded)' --cmd './target/count_seq_kara'
+rt_cmd --lang rust --approach count --lane seq --mode native \
+    --name 'rust count (single-threaded)' --cmd './target/count'
+rt_cmd --lang rust --approach count --lane par --mode native \
+    --name 'rust count (rayon par_iter)' --cmd './target/count_rayon'
+rt_cmd --lang go --approach count --lane seq --mode native \
+    --name 'go   count (single-threaded)' --cmd './target/go_seq'
+rt_cmd --lang go --approach count --lane par --mode native \
+    --name 'go   count (goroutines)' --cmd './target/go_par'
+rt_cmd --lang c --approach count --lane seq --mode native \
+    --name 'c    count (single-threaded)' --cmd './target/count_c'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach count --mode codegen \
     --prepare 'rm -f target/count_kara count' \
-    --command-name 'karac build count.kara' 'sh -c "karac build count.kara >/dev/null && mv count target/count_kara"' \
+    --name 'karac build count.kara' \
+    --cmd 'sh -c "karac build count.kara >/dev/null && mv count target/count_kara"'
+ce_cmd --lang rust --approach count --mode native \
     --prepare 'rm -f target/count' \
-    --command-name 'rustc -O count.rs'      'rustc -O count.rs -o target/count' \
+    --name 'rustc -O count.rs' --cmd 'rustc -O count.rs -o target/count'
+ce_cmd --lang c --approach count --mode native \
     --prepare 'rm -f target/count_c' \
-    --command-name 'clang -O3 count.c'      'clang -O3 count.c -o target/count_c'
+    --name 'clang -O3 count.c' --cmd 'clang -O3 count.c -o target/count_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in 'kara count:target/count_kara' 'kara count (seq):target/count_seq_kara' 'rust count:target/count' 'rust+rayon count:target/count_rayon' 'go   count (seq):target/go_seq' 'go   count (par):target/go_par' 'c    count:target/count_c'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %8s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach count --lane par --mode codegen --path target/count_kara
+size_put --lang kara --approach count --lane seq --mode codegen --path target/count_seq_kara
+size_put --lang rust --approach count --lane seq --mode native  --path target/count
+size_put --lang rust --approach count --lane par --mode native  --path target/count_rayon
+size_put --lang go   --approach count --lane seq --mode native  --path target/go_seq
+size_put --lang go   --approach count --lane par --mode native  --path target/go_par
+size_put --lang c    --approach count --lane seq --mode native  --path target/count_c
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara count (codegen)' "$(mem_peak ./target/count_kara)"
-print_mem 'kara count (seq)'     "$(mem_peak ./target/count_seq_kara)"
-print_mem 'rust count'           "$(mem_peak ./target/count)"
-print_mem 'rust+rayon count'     "$(mem_peak ./target/count_rayon)"
-print_mem 'go   count (seq)'     "$(mem_peak ./target/go_seq)"
-print_mem 'go   count (par)'     "$(mem_peak ./target/go_par)"
-print_mem 'c    count'           "$(mem_peak ./target/count_c)"
+mem_put --lang kara --approach count --lane par --mode codegen --bytes "$(mem_peak ./target/count_kara)"
+mem_put --lang kara --approach count --lane seq --mode codegen --bytes "$(mem_peak ./target/count_seq_kara)"
+mem_put --lang rust --approach count --lane seq --mode native  --bytes "$(mem_peak ./target/count)"
+mem_put --lang rust --approach count --lane par --mode native  --bytes "$(mem_peak ./target/count_rayon)"
+mem_put --lang go   --approach count --lane seq --mode native  --bytes "$(mem_peak ./target/go_seq)"
+mem_put --lang go   --approach count --lane par --mode native  --bytes "$(mem_peak ./target/go_par)"
+mem_put --lang c    --approach count --lane seq --mode native  --bytes "$(mem_peak ./target/count_c)"
 
 echo
 echo "=== compile memory (cold) ==="
 rm -f target/count_kara count
-print_mem 'karac build count.kara' "$(mem_peak karac build count.kara)"
+cmem_put --lang kara --approach count --mode codegen --bytes "$(mem_peak karac build count.kara)"
 mv count target/count_kara 2>/dev/null || true
 rm -f target/count
-print_mem 'rustc -O count.rs' "$(mem_peak rustc -O count.rs -o target/count)"
+cmem_put --lang rust --approach count --mode native --bytes "$(mem_peak rustc -O count.rs -o target/count)"
 rm -f target/count_c
-print_mem 'clang -O3 count.c' "$(mem_peak clang -O3 count.c -o target/count_c)"
+cmem_put --lang c --approach count --mode native --bytes "$(mem_peak clang -O3 count.c -o target/count_c)"
+
+echo
+bench_emit
