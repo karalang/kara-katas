@@ -61,6 +61,11 @@ bench_begin() {
     : >"$BENCH_TMP/size.tsv"
     : >"$BENCH_TMP/mem.tsv"
     : >"$BENCH_TMP/cmem.tsv"
+    # Cumulative hyperfine exports — a kata may run several runtime or
+    # compile-elapsed batches (e.g. short- vs long-workload splits); each
+    # rt_end/ce_end merges its batch in rather than overwriting.
+    echo '{"results":[]}' >"$BENCH_TMP/runtime.json"
+    echo '{"results":[]}' >"$BENCH_TMP/compile.json"
 
     local id="" slug="" group="" title="" workload="" sink=""
     local kv key val
@@ -152,8 +157,13 @@ rt_cmd() {
 rt_end() {
     _bench_on || return 0
     hyperfine --warmup "$_RT_WARMUP" --runs "$_RT_RUNS" --shell=none \
-        --export-json "$BENCH_TMP/runtime.json" \
+        --export-json "$BENCH_TMP/_rt_batch.json" \
         "${_RT_ARGS[@]}"
+    # Merge this batch's results into the cumulative export.
+    jq -s '{results: (map(.results) | add)}' \
+        "$BENCH_TMP/runtime.json" "$BENCH_TMP/_rt_batch.json" \
+        >"$BENCH_TMP/_rt_merged.json"
+    mv "$BENCH_TMP/_rt_merged.json" "$BENCH_TMP/runtime.json"
 }
 
 # --- compile-elapsed lane ---------------------------------------------------
@@ -201,8 +211,12 @@ ce_cmd() {
 ce_end() {
     _bench_on || return 0
     hyperfine --warmup "$_CE_WARMUP" --runs "$_CE_RUNS" --shell=none \
-        --export-json "$BENCH_TMP/compile.json" \
+        --export-json "$BENCH_TMP/_ce_batch.json" \
         "${_CE_ARGS[@]}"
+    jq -s '{results: (map(.results) | add)}' \
+        "$BENCH_TMP/compile.json" "$BENCH_TMP/_ce_batch.json" \
+        >"$BENCH_TMP/_ce_merged.json"
+    mv "$BENCH_TMP/_ce_merged.json" "$BENCH_TMP/compile.json"
 }
 
 # --- scalar metrics (binary size, peak RSS) ---------------------------------
