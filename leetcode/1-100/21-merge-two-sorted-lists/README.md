@@ -17,9 +17,9 @@ Given the heads of two singly linked lists sorted in non-decreasing order, splic
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
 | Iterative dummy-anchored splice: walk both lists, splice the smaller front onto a growing tail, graft the surviving suffix when one runs dry | O(m + n) time, O(1) extra | [`iterative.kara`](iterative.kara) ✓ via `karac run` / `karac build` | [`iterative.py`](iterative.py) ✓ |
-| Recursive structural merge: pick the smaller front, set its `next` to the merge of the rest | O(m + n) time, O(m + n) stack | [`recursive.kara`](recursive.kara) ✓ via `karac run` — codegen deferred (see note) | [`recursive.py`](recursive.py) ✓ |
+| Recursive structural merge: pick the smaller front, set its `next` to the merge of the rest | O(m + n) time, O(m + n) stack | [`recursive.kara`](recursive.kara) ✓ via `karac run` / `karac build` | [`recursive.py`](recursive.py) ✓ |
 
-`✓` runs end-to-end today. The **iterative** form produces identical output under the interpreter and codegen across all nine test cases and is the benchmarked form. The **recursive** form is interpreter-verified; its `karac build` path is blocked on one remaining codegen gap (below).
+`✓` runs end-to-end today. Both forms produce identical output under the interpreter and codegen across all nine test cases; the **iterative** form is the benchmarked one.
 
 ## Why iterative (and the dummy)
 
@@ -38,17 +38,16 @@ The **dummy node** is the same load-bearing trick as kata [#2](../2-add-two-numb
 - **In-place structural splice from two sources** — `tail.next = Some(na)` then `tail = na`, alternating between the two input lists, re-links existing nodes into a new order with no allocation.
 - **`if let` Option destructuring + suffix graft** — the lockstep walk uses nested `if let Some(na) = a { if let Some(nb) = b { … } else { tail.next = a; break } }`, and the surviving suffix attaches with a single `tail.next = a` (or `b`).
 
-> **This kata drove a round of `karac` shared-struct refcount hardening.** It is the first to walk a *destructive cursor* over a shared-struct list (`let mut a = l1; a = na.next;`) and to splice from two sources, which surfaced three distinct use-after-free bugs in codegen — all fixed: (1) an un-annotated `let mut a = l1` over an `Option[shared]` binding wasn't registered for refcount management, so the cursor advance leaked the ref; (2) a branch-buried `Option[shared]` parameter return (`fn pick(l1,l2){ if let Some(_)=l1 {l1} else {l2} }`) freed the returned chain; (3) passing a niche `Option[shared]` field (`merge(n1.next, l2)`) under-counted vs the callee. The **iterative** form is now `karac build`-correct and leak-free (flat RSS across 500k merges). The **recursive** form needs one further fix — per-branch refcount compensation for a function whose tails *mix* `Some(<alias>)` returns with bare-arg returns — tracked in the compiler's `docs/implementation_checklist/phase-7-codegen.md`; it runs correctly under `karac run` today.
+> **This kata drove a round of `karac` shared-struct refcount hardening.** It is the first to walk a *destructive cursor* over a shared-struct list (`let mut a = l1; a = na.next;`) and to splice from two sources, which surfaced four distinct use-after-free bugs in codegen — all fixed: (1) an un-annotated `let mut a = l1` over an `Option[shared]` binding wasn't registered for refcount management, so the cursor advance freed the aliased node; (2) a branch-buried `Option[shared]` parameter return (`fn pick(l1,l2){ if let Some(_)=l1 {l1} else {l2} }`) freed the returned chain; (3) passing a niche `Option[shared]` field (`merge(n1.next, l2)`) under-counted vs the callee; (4) the recursive form mixes `Some(<alias>)` returns (which the constructor already retains) with bare-arg `l1`/`l2` returns (which need a compensating inc) in one function — fixed with *per-branch, flow-sensitive* compensation that inc's a bare-arg leaf only in the specific arm that returns it. Both forms are now `karac build`-correct and leak-free — the iterative and recursive merge both hold flat RSS (1.8 MB) across 500k merges. See the compiler's `docs/implementation_checklist/phase-7-codegen.md` for the per-branch fix.
 
 ## Running
 
 ```bash
-# Kāra — interpreter and codegen agree on the iterative form.
+# Kāra — interpreter and codegen agree on both forms.
 karac run   iterative.kara
 karac build iterative.kara && ./iterative
-
-# Recursive form — interpreter only for now.
 karac run   recursive.kara
+karac build recursive.kara && ./recursive
 
 # Python
 python3 iterative.py
