@@ -166,6 +166,32 @@ disabled (every `bench_*` call becomes a no-op) — useful on a box without
 The consolidator logs (to stderr) any kata that has a `bench.sh` but no
 `results.json` yet, so partial coverage is never mistaken for full coverage.
 
+## Regression checking
+
+Re-running a migrated `bench.sh` after compiler work is a free regression
+check. `scripts/bench-compare.py` diffs a current feed against a committed
+baseline, cell-by-cell on `(kata, lang, approach, lane, mode, metric)`:
+
+```bash
+# Snapshot a trusted feed as the baseline (do this when numbers are known-good).
+cp bench-results.json bench-baseline.json
+
+# After later compiler work + re-running benches:
+./scripts/consolidate-bench.sh
+python3 scripts/bench-compare.py --baseline bench-baseline.json
+```
+
+Deterministic metrics (binary size, compile elapsed, compile/runtime peak RSS)
+use a tight threshold and **fail the run** (exit 1) when they regress past it;
+runtime wall-time is noisy, so it's reported as advisory and never fails.
+Improvements are reported too. Works on either the consolidated feed or a
+single per-kata `results.json` (pass both `--baseline`/`--current` as
+per-kata files).
+
+> Provenance: this tool exists because the first two migrations (#1, #204)
+> surfaced a real **+41% kāra runtime-binary regression** vs the README
+> baselines — caught by exactly this kind of cell-by-cell diff.
+
 ## Migrating a kata's bench.sh
 
 Mechanical, following kata #204's `bench/bench.sh`:
