@@ -76,23 +76,25 @@ All three print the same sum-of-results sink so the algorithm's output participa
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-05-29, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
 
 | Workload | Kāra (codegen) | Rust | Gap |
 |---|---|---|---|
-| `greedy` | 3.2 ± 0.1 ms | 2.7 ± 0.0 ms | **1.19× of Rust** |
+| `greedy` | 3.4 ± 0.2 ms | 3.0 ± 0.3 ms | **1.11× of Rust** |
 
-This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. Codegen already does the cheapest fix on its own side — `emit_sort_by_inline_thunk` fuses the closure body into the bridge thunk so the function pointer points directly at the comparator code rather than going through a fat-pointer indirect call. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracks the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro. Closing the remaining FFI-boundary cost is tracked in [`deferred.md` § *Vec.sort_by FFI-Boundary Comparator Inlining*](../../../../karac-rust/docs/deferred.md); promotion gate fires once ≥2 distinct non-synthetic workloads show >1.3× perf gap from this specific cause.
+This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracked the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro.
+
+**Slice 6.1 + 6.4 (Vec[T].sort_by monomorphization) shipped 2026-05-29.** The original deferred-entry promotion gate ("≥2 distinct non-synthetic workloads show >1.3× perf gap") fired via katas [#16 (3Sum Closest)](../../1-100/16-3sum-closest/) at 1.55× and [#56 (Merge Intervals)](../../1-100/56-merge-intervals/) at 1.50×; karac shipped per-call-site `__vec_<elem>_sort_by_mono_<id>` insertion-sort bodies with the comparator inlined, plus a runtime length dispatch `if len > 64 { runtime } else { mono }`. **This kata routes to the runtime path at N=50000** because insertion sort's O(N²) loses hard above the threshold; the runtime length check at the call site picks the safe path per call. The pre-Slice-6.4 codegen behavior (FFI hop through `karac_vec_sort_by`) is preserved unchanged for kata 1665's workload; the 3.4 → 3.0 ms gap is unchanged within noise from pre-shipping numbers. Kata 16 / 56's much smaller N=16 workloads benefit from the mono path; kata 1665's N=50000 workload would have *regressed* under a pure-mono dispatch (a strawman first attempt during the Slice 6.4 work showed 3.2 ms → 1.1 s before the length dispatch was added), so the safe runtime fallback is the load-bearing piece here. Cross-ref: [`phase-7-codegen.md` Slice 6 trigger entry](https://github.com/karalang/kara/blob/main/docs/implementation_checklist/phase-7-codegen.md).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara greedy` (codegen) | 3.2 ± 0.1 ms |
-| `rust greedy` | 2.7 ± 0.0 ms |
-| `py greedy` | 38.3 ± 0.6 ms |
+| `kara greedy` (codegen) | 3.4 ± 0.2 ms |
+| `rust greedy` | 3.0 ± 0.3 ms |
+| `py greedy` | 38.6 ± 0.6 ms |
 
-Python is **~12× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size.
+Python is **~11× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size.
 
 ### Compile time and binary size
 
