@@ -17,9 +17,9 @@ Given a string `digits` containing characters from `'2'..'9'`, return every poss
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Iterative BFS — frontier ×3 or ×4 per digit, fresh `String` per emitted combo | O(L · 4^L) time + output | [`letter_combinations.kara`](letter_combinations.kara) ✓ via `karac run` / `karac build` (after the workaround below) | [`letter_combinations.py`](letter_combinations.py) ✓ |
+| Iterative BFS — frontier ×3 or ×4 per digit, fresh `String` per emitted combo | O(L · 4^L) time + output | [`letter_combinations.kara`](letter_combinations.kara) ✓ via `karac run` / `karac build` | [`letter_combinations.py`](letter_combinations.py) ✓ |
 
-`✓` runs end-to-end today. Interpreter and codegen produce identical output to the Python mirror across all ten test cases — but only after a one-line workaround the kata surfaced in `karac build`; see § Karac issues surfaced.
+`✓` runs end-to-end today. Interpreter and codegen produce identical output to the Python mirror across all ten test cases.
 
 ## Why iterative BFS (and not backtracking)
 
@@ -29,21 +29,20 @@ Two shapes apply naturally — iterative BFS and recursive backtracking. Both ar
 - **Output cardinality and alloc shape are explicit.** The frontier *is* the in-flight output — `next.len()` after the last digit equals the returned `Vec[String]`'s length. The allocator sees one `String.new()` + `push_str` + `push(letter)` per emitted combo, no recursion-frame overhead.
 - **The auto-par bench's reduction sink fits.** `sum = sum + r.len()` is the slice-1 allow-list shape, recognized by default in `karac build`. Same shape kata [#14](../14-longest-common-prefix/) and [#15](../15-3sum/) use.
 
-Letter groups live in a fixed `Vec[String]` of length 8, indexed by `(digit_byte - b'2')`. LeetCode restricts input to `'2'..'9'`, so the `(cast, index)` pair needs no bounds check — a malformed input would fail the problem precondition rather than the kata. The same one-pass-per-letter inner loop walks `letters.chars()` and emits one fresh `String` per (prefix, letter) pair via `push_str(prefix) + push(letter)` — the post-fix amortized-O(1) idiom kata [#71](../71-simplify-path/) introduced in karac commit `7ef42b9` (2026-05-25).
+Letter groups live in a fixed `Vec[String]` of length 8, indexed by `(digit_byte - b'2')`. LeetCode restricts input to `'2'..'9'`, so the `(cast, index)` pair needs no bounds check — a malformed input would fail the problem precondition rather than the kata. The same one-pass-per-letter inner loop walks `groups[idx].chars()` and emits one fresh `String` per (prefix, letter) pair via `push_str(prefix) + push(letter)` — the post-fix amortized-O(1) idiom kata [#71](../71-simplify-path/) introduced in karac commit `7ef42b9` (2026-05-25).
 
 ## Kāra features exercised
 
-- **`Vec[String]` cartesian growth** — same `Vec.new() + push(String)` shape kata [#14](../14-longest-common-prefix/) uses to hold a `Vec[String]` of inputs, but with the Vec growing ×3 or ×4 per outer iter rather than being fixed-size. The per-digit alloc + scope-drop of the old `out` Vec is the workload's dominant memory term.
+- **`Vec[String]` cartesian growth** — same `Vec.new() + push(String)` shape kata [#14](../14-longest-common-prefix/) uses to hold a `Vec[String]` of inputs, but with the Vec growing ×3 or ×4 per outer iter rather than being fixed-size. The per-digit alloc + scope-drop of the old `out` Vec is the workload's dominant memory term — the kata-as-bug-finder result here was the `out = next` outer-buffer leak, see § Karac fixes the kata drove.
 - **`String.push_str(other: String) + push(char)`** — same composite-build idiom as kata [#71](../71-simplify-path/)'s component reconstruction; both rely on the post-fix amortized-O(1) interpreter + codegen dispatch landed in karac `7ef42b9`. Surfaces the per-iter String-alloc cost in both the seq and auto-par lanes.
-- **`for c in s.chars()`** on a String binding — same Unicode-scalar-value walk kata [#6](../6-zigzag-conversion/), [#14](../14-longest-common-prefix/), and [#71](../71-simplify-path/) use. The `letters.chars()` walk fires 3 or 4 times per outer iteration; the codegen lowers it to a `karac_string_decode_char` loop on the local's `{ptr, len}`.
+- **`for c in groups[idx].chars()`** on an indexed `Vec[String]` element — the inline `vec[idx].chars()` shape kata 17 was the trigger for codegen fixing (see § Karac fixes), now lowers identically to the bare-String-variable case. The walk fires 3 or 4 times per outer iteration; codegen lowers it to a `karac_string_decode_char` loop on the indexed element's `{ptr, len}`.
 - **`(u8 as i64) - (u8 as i64)` digit-to-index conversion** — same `(bytes[i] as i32) - (zero as i32)` shape kata [#91](../91-decode-ways/) uses for digit-byte arithmetic. Lowers to a plain `sub` on the byte value, no overflow guard needed (input bytes are in `'2'..'9'`).
 - **Scalar `+` reduction in the bench** — `sum = sum + r.len()` is the slice-1 auto-par-on-reduction allow-list shape (associative + commutative `+`, scalar accumulator), recognized by default in `karac build` and lowered to a `karac_par_reduce` dispatch. Same shape kata [#14](../14-longest-common-prefix/), [#15](../15-3sum/), and [#16](../16-3sum-closest/) use.
 
 ## Running
 
 ```bash
-# Kāra — interpreter and codegen produce the same output today (after the
-# § Karac issues surfaced workaround).
+# Kāra — interpreter and codegen produce the same output today.
 karac run   letter_combinations.kara
 karac build letter_combinations.kara && ./letter_combinations
 
@@ -55,26 +54,15 @@ diff <(./letter_combinations)              <(python3 letter_combinations.py) && 
 diff <(karac run letter_combinations.kara) <(python3 letter_combinations.py) && echo OK
 ```
 
-## Karac issues surfaced
+## Karac fixes the kata drove
 
-This kata's natural shape `for letter in groups[idx].chars()` (where `groups: Vec[String]` and `idx: i64`) silently iterates **zero times** under `karac build` while `karac run` works correctly. Root cause: the `.chars()` peel-off in `kara/src/codegen/control_flow_for.rs:92` recurses with the receiver as the new iterable; if the receiver is an `ExprKind::Index` it falls through to the `_ =>` arm at `control_flow_for.rs:216` (skip body, return 0). The literal-string, identifier, and field-receiver arms exist; the index-receiver arm doesn't.
+Per BENCH.md's "katas are bug-finders" discipline, the kata-17 first ship documented two karac issues; both shipped on 2026-05-29 as part of the kata-17 work and are reflected in the post-fix § Benchmarks numbers below.
 
-The bug is **silent** — no error, no warning, just a zero-element loop. Per BENCH.md's correctness-first discipline, the kata surfaced this on the first `diff <(./letter_combinations) <(python3 letter_combinations.py)` run (expected 9 lines for `"23"`, got 0).
+1. **`for c in groups[idx].chars()` silent-zero codegen bug.** The `.chars()` peel-off in `codegen/control_flow_for.rs:92` recursed via `compile_for(…, object, body)` with the receiver as the new iterable. The recursed call's dispatcher only matched Identifier (via `string_vars`), StringLit, InterpolatedStringLit, and FieldAccess receivers; any other shape that yields a String — Index, MethodCall, Call — fell through to the silent `_ =>` arm and the body never ran. **Fix:** handle the receiver directly at the peel-off site rather than recursing into the shape-keyed dispatcher; the bare-String dispatch handles every receiver shape uniformly. Test: `test_e2e_for_in_indexed_vec_string_chars`. Karac commit landing this slice: see `kara/src/codegen/control_flow_for.rs`'s 2026-05-29 commit.
 
-**Workaround applied in the kata source.** Bind the indexed receiver to a local `String` before the `.chars()` call:
+2. **`x = rhs;` outer-buffer leak for tracked Vec / String LHS with move/fresh RHS.** The eager-free in `codegen/stmts.rs`'s Assign arm only fired for `InterpolatedStringLit` RHS. Identifier-RHS to a different tracked binding (`out = next;`) and Call/MethodCall/StructLiteral RHS shapes that materialize a fresh +1 transfer all skipped the free, leaking the OLD outer `{ptr,len,cap}` buffer per iteration. Kata-17 at K=100k measured **38.5 MiB peak RSS pre-fix** (vs C/Rust's 1.3 MiB), with K=10k → 5.2 MiB and K=1k → 1.7 MiB confirming linear growth before the fix. **Fix:** extend the eager-free trigger to fire on any RHS that orphans the LHS buffer (gated against self-alias `x = x`). Outer-buffer free only; inner heap-owning elements (String/Vec) get reached via the existing per-alias scope-exit cleanup that the let-bindings register at their own sites. Post-fix RSS plateaus at 1.3 MiB across K=1k/10k/100k.
 
-```kara
-// Buggy (codegen silently 0-iters):
-for letter in groups[idx].chars() { … }
-
-// Workaround (both paths agree):
-let letters = groups[idx];
-for letter in letters.chars() { … }
-```
-
-Same shape applies for `push_str(out[i])` → `let prefix = out[i]; s.push_str(prefix);` — the indexed-receiver path in argument position is not exercised by other katas in the corpus, and binding to a local is the conservative move. The bench source applies both bindings.
-
-**Karac fix lane.** The codegen patch is small: in `src/codegen/control_flow_for.rs`, add an `ExprKind::Index { … }` arm to the `match &iterable.kind` block (after the `.chars()` peel-off) that compiles the indexed expression to a String struct value, extracts data+len, and calls `compile_for_string_chars_inner` — the same shape the `ExprKind::StringLit` arm at `control_flow_for.rs:137` uses. Same delta likely needed for `ExprKind::MethodCall` and `ExprKind::Call` receivers returning String. Tracked as a follow-up; this kata's first ship documents the finding.
+The inner-element half of the recursive drop is left to the scope-exit `FreeVecBuffer` walker, which runs at function exit when all per-alias cleanups have drained. The kata's inner loop binds `let prefix = out[i]` per iteration — this is a deliberate memory-discipline pattern, not a workaround: each per-iter `let`-binding registers a scope-exit cleanup that frees that indexed String's char buffer at end-of-iter. A version of the kata that *omits* the per-iter binding compiles correctly but leaks the per-iter inner Strings (RSS ~15 MiB at K=100k instead of 1.3); this is an existing ownership limitation, tracked as follow-up rather than a kata-17 fix.
 
 ## Benchmarks
 
@@ -90,18 +78,16 @@ Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumul
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-29, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`.
+Snapshot — M5 Pro, 2026-05-29 post-karac-fix, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with both karac fixes landed (see § Karac fixes the kata drove for what shipped).
 
 | Implementation | Wall time |
 |---|---|
-| c    letter_combinations (clang -O3)  | **43.1 ± 1.8 ms** |
-| go   letter_combinations              | 47.0 ± 1.8 ms |
-| rust letter_combinations              | 59.2 ± 1.7 ms |
-| **kāra letter_combinations (seq)**    | **59.8 ± 1.5 ms** |
+| c    letter_combinations (clang -O3)  | **46.2 ± 3.4 ms** |
+| go   letter_combinations              | 45.4 ± 0.9 ms |
+| rust letter_combinations              | 68.2 ± 7.3 ms |
+| **kāra letter_combinations (seq)**    | **66.3 ± 7.0 ms** |
 
-Allocation-dominated workload. **Kāra seq ties Rust within noise** (1.01×; the 0.6 ms delta is well inside σ). The C lead at 1.39× over Kāra is the allocator delta — `malloc`/`free` on small `char *` buffers with no intermediate struct vs Kāra's `Vec[String]` Vec-of-{ptr,len,cap} cycling — and the same delta to Rust (1.37×) confirms it's a C-allocator effect rather than a Kāra-specific gap. Go's 1.27× lead over Kāra/Rust is its escape-analysis + bump-allocator on short-lived `[]byte`-and-immediately-`string()` traffic, where the GC absorbs the per-iter churn without per-alloc free-list lookup.
-
-Different shape from katas 14/15/16 (sort + two-pointer, allocator-light): there the headline is the codegen-quality compare against Rust; here it's the **allocator-pressure compare against C and Go**, with Rust's bsdmalloc-on-mac+`Vec<String>` paying the same overhead as Kāra's runtime allocator.
+**Kāra seq leads Rust by 1.03× — within σ**, a tie on this allocation-dominated workload. The 2.0 ms delta is well inside the run-to-run noise. C and Go lead Kāra/Rust by ~1.46× — the same delta to Kāra as to Rust, confirming it's the C-allocator / Go-bump-allocator + escape-analysis advantage on the small-buffer churn rather than a Kāra-specific gap. Different shape from katas 14/15/16 (sort + two-pointer, allocator-light): there the headline is the codegen-quality compare against Rust; here it's the **allocator-pressure compare against C and Go**, with Rust's bsdmalloc-on-mac+`Vec<String>` paying the same overhead as Kāra's runtime allocator.
 
 ### Runtime — auto-par regime
 
@@ -109,17 +95,17 @@ The `sum = sum + r.len()` reduction is auto-par-eligible; the default `karac bui
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra letter_combinations (auto-par default)** | **13.7 ± 1.2 ms** | 123.2 ms |
+| **kāra letter_combinations (auto-par default)** | **12.6 ± 0.7 ms** | 155.0 ms |
 
-The auto-par binary is **4.4× faster than the kāra seq binary** (59.8 → 13.7 ms), spreading the K=100k case-rotation reduction across the perf cores (~9.0× user-CPU-to-wall ratio on M5 Pro). Lower speedup ratio than allocator-light katas like #16 (7.6×) — the per-worker output-Vec allocation contends on the runtime's allocator surface, which serializes some of the parallel work. This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup with the `karac_par_reduce` machinery's +352 KiB binary delta.
+The auto-par binary is **5.3× faster than the kāra seq binary** (66.3 → 12.6 ms), spreading the K=100k case-rotation reduction across the perf cores (~12.3× user-CPU-to-wall ratio on M5 Pro). Higher speedup ratio than the kata-17 first ship (4.4× — pre-allocator-fix); the eager-free reduces per-iter alloc/free contention on the runtime allocator surface, so workers spend more time on combinatorial enumeration and less waiting for free-list locks.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py letter_combinations` (K=10k) | 29.2 ± 1.0 ms |
+| `py letter_combinations` (K=10k) | 27.3 ± 0.3 ms |
 
-Python at K=10k is 29 ms; projecting to the compiled mirrors' K=100k (~292 ms) puts it **~4.88× slower than kāra seq** and ~21.3× slower than the auto-par regime. Narrower than kata 14/16's Python-gap because CPython's interned-string + small-list allocators handle this workload's tight per-iter churn unusually well — the BFS `nxt.append(prefix + letter)` shape lowers to a hot interpreter path with no per-iter dict lookups.
+Python at K=10k is 27 ms; projecting to the compiled mirrors' K=100k (~273 ms) puts it **~4.12× slower than kāra seq** and ~21.7× slower than the auto-par regime. Narrower than kata 14/16's Python-gap because CPython's interned-string + small-list allocators handle this workload's tight per-iter churn unusually well — the BFS `nxt.append(prefix + letter)` shape lowers to a hot interpreter path with no per-iter dict lookups.
 
 ### Compile elapsed (cold)
 
@@ -127,11 +113,11 @@ Python at K=10k is 29 ms; projecting to the compiled mirrors' K=100k (~292 ms) p
 
 | Compiler | Time |
 |---|---|
-| clang -O3 letter_combinations.c           | **44.7 ± 0.7 ms** |
-| **karac build letter_combinations.kara**  | **82.7 ± 5.8 ms** |
-| rustc -O letter_combinations.rs           | 99.4 ± 1.6 ms |
+| clang -O3 letter_combinations.c           | **48.0 ± 0.6 ms** |
+| **karac build letter_combinations.kara**  | **77.6 ± 0.5 ms** |
+| rustc -O letter_combinations.rs           | 104.5 ± 0.8 ms |
 
-Kāra compiles **1.20× faster than `rustc -O`** and sits at **1.85× of clang -O3** — same shape as the rest of the corpus.
+Kāra compiles **1.35× faster than `rustc -O`** and sits at **1.62× of clang -O3** — same shape as the rest of the corpus.
 
 ### Binary size
 
@@ -151,24 +137,22 @@ Kāra seq lands at 81.5 KiB — **larger than kata 16's 33.0 KiB seq binary** be
 |---|---|
 | rust letter_combinations            | 1.3 MiB |
 | c    letter_combinations            | 1.3 MiB |
+| **kāra letter_combinations (seq)**  | **1.3 MiB** |
+| **kāra letter_combinations (auto-par)** | **4.0 MiB** |
 | go   letter_combinations            | 9.1 MiB |
-| **kāra letter_combinations (seq)**  | **38.5 MiB** |
-| **kāra letter_combinations (auto-par)** | **40.6 MiB** |
 
-**Karac issue surfaced — runtime allocator retention.** C and Rust both land at 1.3 MiB peak — their `malloc`/`free` and `Vec<String>` drop cycles return pages to the OS aggressively, so the steady-state RSS reflects only the largest single iteration's live set (~108 strings × ~6 bytes ≈ 700 B). Kāra seq sits at **38.5 MiB — 30× higher**. With K=100k iterations × ~27 strings/iter × ~14 B retained per cycle, the runtime appears to hold onto freed pages rather than returning them to the OS. The auto-par row's 40.6 MiB is the seq footprint + ~2 MiB of per-worker scratch.
-
-This is a runtime-allocator finding — the codegen is fine, but the heap-allocator strategy under heavy small-Vec churn is worth surfacing. Plausibly the runtime's `malloc` wrapper doesn't call `madvise(MADV_FREE)` on returned blocks, so the resident set grows with allocation-pattern history rather than instantaneous live set. Tracked as a follow-up alongside the `Vec[String][idx].chars()` codegen bug — both are kata-17-as-bug-finder results. Go's 9.1 MiB (vs C/Rust's 1.3) is its goroutine + GC heap floor, baseline for any Go program; Kāra's 38.5 MiB cannot be excused the same way (no GC, no green-thread runtime by default in the seq lane).
+**Kāra seq matches C and Rust at 1.3 MiB** — same working set, no retained pages. Sharp reversal from the kata-17 first ship measurement of 38.5 MiB seq / 40.6 MiB auto-par; the codegen `x = rhs` eager-free fix (§ Karac fixes #2) closed the outer-buffer leak that grew linearly with K. The auto-par row's 4.0 MiB is the seq baseline + per-worker scratch + workers' freshly-allocated per-iter outputs, which sit in the page cache until the reduce drains; still 2.3× lower than Go's 9.1 MiB GC-heap floor.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 letter_combinations.c          | 2.6 MiB |
-| **karac build letter_combinations.kara** | **10.7 MiB** |
+| **karac build letter_combinations.kara** | **10.5 MiB** |
 | rustc -O letter_combinations.rs          | 28.3 MiB |
 
-Kāra's compile-memory footprint is ~4.1× clang's and ~2.6× lower than rustc's on this kata — same shape as kata 15/16.
+Kāra's compile-memory footprint is ~4.0× clang's and ~2.7× lower than rustc's on this kata — same shape as kata 15/16.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **Kāra/Rust 1.01× tie is the load-bearing result** — both pay the same `Vec<String>`-of-{ptr,len,cap} cycling cost in the per-iter alloc surface, and Kāra's codegen lowers `push_str + push(char)` to the same shape Rust's stdlib `String` does. The C and Go lead (1.39×, 1.27×) is the allocator surface, not the codegen — same delta to Rust as to Kāra. The runtime-memory finding (38.5 MiB vs C/Rust's 1.3 MiB) is the kata's clearer signal than the wall-time numbers; that lives in § Runtime memory (peak) above.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **Kāra/Rust tie at 1.03× (within σ) is the load-bearing wall-time result** — both pay the same `Vec<String>`-of-{ptr,len,cap} cycling cost in the per-iter alloc surface, and Kāra's codegen lowers `push_str + push(char)` to the same shape Rust's stdlib `String` does. The C and Go lead is the allocator surface, not the codegen — same delta to Rust as to Kāra. The **runtime-memory result (1.3 MiB matching C/Rust) is the more durable kata-17 outcome**: it pinned down two karac codegen bugs that the previous corpus hadn't surfaced (silent-zero `.chars()` on indexed receivers; outer-buffer leak on Vec/String move-overwrite), both landed alongside this kata's first iteration.

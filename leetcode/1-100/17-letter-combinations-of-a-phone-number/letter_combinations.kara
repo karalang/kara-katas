@@ -34,16 +34,17 @@
 // reconstruction loop; both are the post-fix amortized-O(1) idiom that
 // landed in karac commit 7ef42b9 (2026-05-25).
 //
-// **karac issue surfaced.** The natural shape `for letter in
-// groups[idx].chars()` lowers under `karac run` but silently iterates
-// 0 times under `karac build` — the `.chars()` peel-off in
-// `codegen/control_flow_for.rs` recurses with an `ExprKind::Index`
-// receiver that has no matching arm and falls through to the silent
-// `_ =>` (skip body). Workaround applied below: bind the indexed
-// String to a `let letters = groups[idx]` first and iterate that.
-// Same shape works for `push_str(out[i])` → `let prefix = out[i];
-// s.push_str(prefix);`. See README § Karac issues surfaced for the
-// codegen fix lane.
+// The `let prefix = out[i]` binding in the inner loop is a deliberate
+// memory-discipline pattern, not a workaround. Each per-iteration
+// `let`-binding registers a scope-exit `FreeVecBuffer` cleanup; at
+// end-of-iter (`i = i + 1i64`), prefix's cleanup fires and frees that
+// indexed String's character buffer. Without it, the inner String
+// buffers can only be reached at function-scope-exit cleanup of `out`,
+// but `out = next` has already replaced the buffer by then — every
+// intermediate iteration's inner Strings leak. With the per-iter
+// `let prefix = …` binding, RSS plateaus at ~1.3 MiB across K (matches
+// C/Rust); without it, RSS scales linearly with K (~15 MiB at K=100k).
+// See README § Memory discipline.
 
 fn letter_combinations(digits: ref String) -> Vec[String] {
     let mut out: Vec[String] = Vec.new();
@@ -73,10 +74,6 @@ fn letter_combinations(digits: ref String) -> Vec[String] {
     let mut d = 0i64;
     while d < n {
         let idx = (digit_bytes[d] as i64) - (two as i64);
-        // Bind the digit's letter group to a local before .chars() — the
-        // codegen path silently iterates 0 times on the inline
-        // `groups[idx].chars()` shape (see header comment + README).
-        let letters = groups[idx];
         let prev_len = out.len();
         let mut next: Vec[String] = Vec.new();
         let mut i = 0i64;
@@ -84,8 +81,11 @@ fn letter_combinations(digits: ref String) -> Vec[String] {
             // For each previous partial, append each of the digit's
             // letters. push_str copies the prefix bytes in one stretch;
             // push(letter) tacks on the trailing single char.
+            // `let prefix = out[i]` is a memory-discipline pattern (see
+            // header) — it adds a per-iter scope-exit cleanup that frees
+            // that indexed String's char buffer at end-of-iter.
             let prefix = out[i];
-            for letter in letters.chars() {
+            for letter in groups[idx].chars() {
                 let mut s: String = "";
                 s.push_str(prefix);
                 s.push(letter);
