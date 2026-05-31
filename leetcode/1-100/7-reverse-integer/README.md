@@ -79,60 +79,96 @@ brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs hyperfine for runtime + cold-compile, plus straight `wc` / `time -l` reads for binary size + memory. Python is timed in a separate stanza at K = 1M and projected to K = 50M (a full python sample at K = 50M is ~80 s, too slow for the iterative dev loop).
+Per [`../../../BENCH.md`](../../../BENCH.md), the K = 50M outer loop reduces via `sum += reverse(inputs[k % N]) as i64` — karac's auto-par-on-reduction recognizes the shape and emits a `karac_par_reduce` dispatch by default (`nm -gU bench/target/reverse_kara | grep karac_par_reduce` confirms). The bench ships two kara binaries to keep the BENCH.md two-lane discipline honest:
+
+- **`reverse_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — the documented mechanism for side-by-side seq-vs-par benchmarking). The within-lane row directly comparable to rustc-O / clang-O3 / go build.
+- **`reverse_kara`** — default `karac build` output. Picks up auto-par dispatch (~14 cores active on this workload). Reported separately so the production-default Kara behavior stays visible — **not** headlined cross-lane against the single-threaded comparators.
 
 | File | What it does |
 |---|---|
 | [`bench/reverse.kara`](bench/reverse.kara) | N = 1024 LCG-fill i32 inputs, K = 50,000,000 outer iters, sink = Σ reverse(inputs[k % N]) as i64 |
-| [`bench/reverse.py`](bench/reverse.py) | Algorithmic mirror — same N, K, same LCG fill, same sink formula |
 | [`bench/reverse.rs`](bench/reverse.rs) | Algorithmic mirror; compiled with `rustc -O` |
+| [`bench/reverse.c`](bench/reverse.c) | Algorithmic mirror; compiled with `clang -O3` |
+| [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; compiled with `go build` |
+| [`bench/reverse.py`](bench/reverse.py) | Algorithmic mirror — same N, same LCG fill, same sink formula (sampled at K = 1M, projected ×50) |
 
-All three print the same sink (`-292_465_958_482_676` at the default parameters) so the algorithm's output participates in I/O and can't be elided. The bench's `bench.sh` asserts the kara and rust sinks match before timing; the python stanza prints its own sink (different K, expectedly different value).
+All compiled mirrors print the same sink (`-292_465_958_482_676`) so the algorithm's output participates in I/O and can't be elided; `bench.sh` asserts agreement across kara/kara_seq/rust/c/go before timing. Python is sampled at K = 1M (a full K = 50M python run is ~88 s) and projected ×50 — console-only, since its K differs from the compiled mirrors.
 
-### Runtime — 11.18× ahead of Rust via auto-par reduction
+### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 3 --runs 10 --shell=none`, native binaries via `karac build` and `rustc -O`. Requires karac at commit [`28d76af`](../../../../karac-rust/) or later — picks up the original auto-par reduction lowering (slice 3b.4 + 3b.6, `415508c`) plus the three par-reduce single-thread perf commits landed 2026-05-20: [`a9e51c8`](../../../../karac-rust/) const-prop top-level let-init captures into the worker (`n = 1024` arrives as a constant, not a heap load per iter), [`1712d51`](../../../../karac-rust/) `llvm.assume` non-negative loop var (ARM64 signed-mod-pow2 collapses from 4 instr to 1), [`28d76af`](../../../../karac-rust/) vec-bounds-check hoist via modulo (per-iter cmp+b.hs moves to function entry).
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` (`KARAC_AUTO_PAR=0`), `rustc -O`, `clang -O3`, `go build`. Kara seq binary verified single-threaded: `nm -gU bench/target/reverse_kara_seq | grep karac_par` finds no auto-par symbols.
 
-| Run | Mean ± σ |
-|---|---|
-| `kara reverse` (codegen) | 38.7 ± 1.9 ms |
-| `rust reverse` | 433.1 ± 2.7 ms |
-| `py   reverse` (K = 1M, ×50 projection) | 85,946 ms (~86 s projected) |
+| Implementation | Wall time | User-CPU | Within-workload ratio |
+|---|---|---|---|
+| **kāra reverse** (`KARAC_AUTO_PAR=0`) | **462.0 ms ± 35.9 ms** | 456.7 ms | **1.00×** (baseline) |
+| rust reverse                          | 461.4 ms ± 7.8 ms      | 458.2 ms | 1.00× of Kāra |
+| c    reverse (clang -O3)               | 473.1 ms ± 5.9 ms      | 469.4 ms | 1.02× of Kāra |
+| go   reverse                           | 529.8 ms ± 27.3 ms     | 523.4 ms | 1.15× of Kāra |
 
-The K = 50M outer loop is shaped `let mut sum = 0i64; let mut k = 0i64; while k < k_iters { sum = sum + (reverse(inputs[k % n]) as i64); k = k + 1i64; }` — a textbook reduction over the `sum` accumulator. The slice-1 concurrency analyzer recognizes this pattern (`karac build --concurrency-report bench/reverse.kara` prints `reduction { op: +, accumulator: sum, line: 64 }`); the slice-3b codegen lowers it to a `karac_par_reduce` call that fans the iteration space across the available cores, each thread accumulating into a private partial slot, then a final serial combine pass folds the partials into the parent's `sum`. The reduction op is associative + commutative (the slice-1 allow-list constraint), so the combine order doesn't affect the result — every run produces the same sink (`-292_465_958_482_676`) regardless of how the work was split. **No source-level changes** to express the parallelism: the analyzer recognizes the shape from the natural serial source.
+Pure scalar i32 arithmetic — a tight `while x != 0` digit loop with two overflow rails, no allocations. **Kāra's seq lane is at parity with Rust** (462 vs 461 ms, inside run-to-run variance — kara's σ was elevated by outliers this run, but its min of 437.8 ms edged below Rust's 451.4 ms), a hair ahead of clang-O3, and 1.15× ahead of Go. This is the honest per-core codegen comparison: on a scalar kernel that all four lower to near-identical inner loops, Kāra lands in the pack. The parity here is held by three karac perf commits that tuned this shape (2026-05-20): [`a9e51c8`](../../../../karac-rust/) const-prop of top-level let-init captures (`n = 1024` arrives constant, not a per-iter heap load), [`1712d51`](../../../../karac-rust/) `llvm.assume` non-negative loop var (ARM64 signed-mod-pow2 collapses from 4 instr to 1), [`28d76af`](../../../../karac-rust/) vec-bounds-check hoist via modulo (per-iter `cmp + b.hs` moves to function entry).
 
-CPU utilization tells the parallelism story: hyperfine's reading is **User 569.9 ms / wall 38.7 ms ≈ 14.7× CPU usage** — close to perfect parallel scaling across the M5 Pro's 6 P-cores + 12 E-cores. Per-iter work is enough (~10 inner iters of i32 mod/compare/mul-add per outer iter) to amortize the thread-spawn overhead; the inputs Vec fits comfortably in L1 cache (1024 × 4 bytes = 4 KiB), so workers reading the shared buffer don't contend on cache lines.
+### Runtime — auto-par regime (kara default, multi-core)
 
-Rust stays single-threaded at 433 ms — the Rust mirror's `for k in 0..k_iters { sum += reverse(inputs[(k % n) as usize]) as i64; }` is the same shape, but `rustc -O` doesn't auto-parallelize without explicit `rayon::par_iter()` or similar annotation. Adding rayon to the Rust source would close most of the gap, but that's a manual user step — kara's compiler does it automatically based on the source shape the slice-1 analyzer recognizes. **Previous readings:** 2026-05-19 (pre-auto-par): kara 418.8 ms vs rust 427.6 ms — at parity. 2026-05-20 (initial auto-par, pre-perf-commits): kara 45.0 ms vs rust 444.0 ms — 9.87× ahead. The current 11.18× is the auto-par lowering plus the three single-thread perf commits, which dropped per-worker user time from 648.9 ms → 569.9 ms.
+Same snapshot, default `karac build` output, hyperfine `--warmup 10 --runs 50`:
+
+| Implementation | Wall time | User-CPU | CPU% |
+|---|---|---|---|
+| **kāra reverse** (auto-par on reduction) | **41.6 ms ± 2.5 ms** | 568.9 ms | ~1368% (~14 cores) |
+
+The K = 50M outer loop is shaped `let mut sum = 0i64; while k < k_iters { sum = sum + (reverse(inputs[k % n]) as i64); k = k + 1i64; }` — a textbook reduction over `sum`. The slice-1 concurrency analyzer recognizes it (`karac build --concurrency-report bench/reverse.kara` prints `reduction { op: +, accumulator: sum }`); slice-3b codegen lowers it to a `karac_par_reduce` call that fans the iteration space across cores, each thread accumulating a private partial, then a serial combine folds them. The op is associative + commutative, so the sink (`-292_465_958_482_676`) is identical regardless of how the work splits. **No source-level changes** express the parallelism — the analyzer recognizes the shape from the natural serial source. The inputs Vec fits in L1 (1024 × 4 B = 4 KiB), so workers reading the shared buffer don't contend on cache lines.
+
+**Not headlined against the rust / c / go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 11× faster than rust" would conflate per-core codegen quality (where kara is at *parity* with Rust, above) with whether the comparator opted into parallelism. Rust at 461 ms is single-threaded; `rustc -O` won't auto-parallelize without a manual `rayon::par_iter()` rewrite, whereas kara's compiler does it automatically from the natural serial source. So the auto-par win is reported as an **intra-Kāra 11.1× speedup** (462.0 / 41.6, User 568.9 / wall 41.6 ≈ 14× CPU across the M5 Pro's 6 P + 12 E cores) — the same number that anchors this kata's point on the repo's [auto-parallel speedup chart](../../../BENCHMARKS.md#auto-parallel-speedup-kāra).
 
 ### Codegen vs Python
 
-Python is **~2,220× slower than Kāra codegen** at the same K (extrapolated from the K = 1M sample at 1718.9 ms; the projection to K = 50M is 85,946 ms vs kara's 38.7 ms). The reverse() body is dominated by CPython's per-bytecode dispatch — `c_mod` / `c_div` are pure-python helpers (no `divmod` shortcut for negatives gives the right answer here) so each loop iter spends ~5–10 µs in interpreter overhead vs a handful of nanoseconds in the codegen path. The gap is wider than kata [#6](../6-zigzag-conversion/#codegen-vs-python)'s ~32× because (a) there's no C-implemented `list.append` doing the heavy lifting — every operation is at the bytecode level — and (b) kara fans the outer loop across cores via auto-par reduction while CPython runs the GIL-locked single-threaded loop. The serial-vs-serial gap (kara's 569.9 ms user time vs python's 85,946 ms) is **~151×**; the auto-par lowering widens that to 2,220× on wall.
+Python (sampled at K = 1M: 1.769 s ± 0.011 s, projected ×50 to ~88.5 s at K = 50M) runs the same algorithm **~191× slower than Kāra's seq lane** (88.5 s / 462 ms) — the honest serial-vs-serial gap. The `reverse()` body is dominated by CPython's per-bytecode dispatch; `c_mod` / `c_div` are pure-python helpers, since Python's floor-division `%` gives the wrong sign for negatives and the mirror has to emulate truncated division. The auto-par regime widens the *wall* gap further (~2,130×), but that's a cross-lane figure — the ~191× seq-vs-seq number is the codegen-quality comparison.
 
-### Runtime memory — slightly above Rust (worker thread overhead)
+### Runtime memory (peak, RSS)
 
 Same snapshot:
 
-| Run | Peak RSS |
+| Implementation | Peak RSS |
 |---|---|
-| `kara reverse` (codegen) | 1.5 MiB |
-| `rust reverse` | 1.1 MiB |
+| c    reverse | 1.1 MiB |
+| **kāra reverse (seq)** | **1.1 MiB** |
+| rust reverse | 1.1 MiB |
+| kāra reverse (auto-par) | 1.4 MiB |
+| go   reverse | 3.0 MiB |
 
-Kara is ~0.4 MiB above Rust (was at parity pre-auto-par). The delta is the worker thread stacks — `karac_par_reduce` dispatches onto the long-lived `karac_par_run` pool (slice 3b.7), which holds N OS-thread stack reservations regardless of how many reductions actually fire. The pool's lazy-init creates N = `available_parallelism()` threads on the first auto-par call; each stack reservation adds to peak RSS even when most of the stack is never touched. Acceptable cost for the 11× speedup; the residual delta lives at the runtime-pool layer and would close (or reverse) only by tuning the pool's default thread count downward (separate slice — needs a knob for users running on memory-constrained targets). Pool sizing is currently `max(2, available_parallelism)`, which is the standard pool-API default; trimming to (say) the P-core count would cut the reservation in half on big.LITTLE hardware like the M5 Pro, at the cost of leaving E-cores unused under heavy load.
+The seq lane is at **three-way parity with C and Rust** (1.1 MiB each) — pure scalar arithmetic with no heap. The auto-par variant lands at 1.4 MiB: +0.3 MiB for the worker-thread stacks `karac_par_reduce` dispatches onto the long-lived `karac_par_run` pool (slice 3b.7), which reserves N = `available_parallelism()` OS-thread stacks on first auto-par call regardless of how many reductions fire. Acceptable cost for the 11.1× speedup; the residual would close only by tuning the pool's default thread count downward (a separate knob for memory-constrained targets). Go's 3.0 MiB carries its GC roots + scheduler arena.
 
-### Compile time and binary size
+### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-20, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 1 --runs 10` with `--prepare` deleting the artifact before each run:
 
-| Compiler | Compile time | Binary size |
-|---|---|---|
-| `karac build reverse.kara` | 57.7 ± 0.5 ms | 295.8 KiB |
-| `rustc -O reverse.rs` | 79.6 ± 0.6 ms | 455.6 KiB |
+| Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
+|---|---|---|---|
+| `reverse` | **64.2 ± 1.9 ms** | 78.5 ± 1.3 ms | 41.6 ± 0.9 ms |
 
-Kāra compiles this kata **1.38× faster** than `rustc -O` and produces a binary **1.46× smaller**. The kara binary grew from 49 KiB (pre-auto-par) to 295.8 KiB because the par_reduce lowering links in the karac-runtime's thread-pool + worker-dispatch code; rust's binary is unchanged because it doesn't pull in `std::sync::mpsc` / `std::thread::scope` for a single-threaded loop. Even with the new runtime weight, kara stays smaller than rust thanks to the cross-archive LTO + DCE work (landed 2026-05-12). The three perf commits added negligible compile overhead — the const-prop, assume, and BCE-hoist passes are bounded constant work per recognized site.
+`karac build` is **1.22× faster than `rustc -O`** on this file, sitting between clang (the LLVM single-file floor) and rustc. Go is omitted per BENCH.md — `go build`'s first invocation mixes module resolution + link.
 
-Compile memory: karac peaks at **8.8 MiB** vs rustc's **26.9 MiB** — ~3× lower compile-time RAM, essentially unchanged from the pre-auto-par snapshot (the reduction lowering is bounded constant work per recognized site).
+### Binary size
+
+| Implementation | Size |
+|---|---|
+| c    reverse | 32.7 KiB |
+| **kāra reverse (seq)** | **32.9 KiB** |
+| kāra reverse (auto-par) | 295.8 KiB |
+| rust reverse | 455.6 KiB |
+| go   reverse | 2434.1 KiB |
+
+The seq-lane Kāra binary is at parity with clang's (~33 KiB). The auto-par variant grows +263 KiB to carry the `karac_par_reduce` machinery (thread-pool init + worker-dispatch + reduction-combine globals) — the same +263 KiB ballast katas [#6](../6-zigzag-conversion/#binary-size) and [#8](../8-string-to-integer-atoi/) carry for the same mechanism, and still smaller than Rust's 455.6 KiB thanks to cross-archive LTO + DCE.
+
+### Compile memory (cold)
+
+| Compiler invocation | Peak |
+|---|---|
+| clang -O3 reverse.c | 2.6 MiB |
+| karac build reverse.kara | 10.0 MiB |
+| rustc -O reverse.rs | 26.9 MiB |
+
+`karac` compiles this file in **~10 MiB peak** — between clang and rustc, ~2.7× lower than rustc.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. The current result — **11.18× ahead of Rust on runtime via auto-par reduction, 1.46× smaller binary, 1.38× faster compile, ~3× lower compile RAM, +0.4 MiB peak RSS for the worker thread pool** — is the first kata where kara's auto-concurrency machinery lights up against a serial Rust baseline. The slice-1 analyzer recognizes the source shape; the slice-3 codegen lowers it without any user annotation. The three par-reduce single-thread perf commits (const-prop captures, assume non-neg loop var, BCE-hoist via modulo) widened the original 9.87× gap to 11.18× by cutting per-worker user time from 648.9 ms → 569.9 ms. Adding `rayon::par_iter()` to the Rust source would close most of the gap, but the comparison is meaningful exactly because that step is a manual rewrite on the Rust side and automatic on the kara side.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the load-bearing headline for v1 is the **seq-lane codegen-vs-Rust comparison — and there Kāra is at parity** (462 vs 461 ms, within σ), a hair ahead of C and Go. On top of that per-core baseline, Kāra's auto-concurrency machinery delivers a **language-level 11.1× intra-Kāra speedup** by parallelizing the reduction with no source change — reported separately (above) rather than as a cross-lane "ahead of Rust" number, because `rustc -O` stays single-threaded without a manual `rayon` rewrite and conflating the two lanes would overstate the codegen story. This is the first kata where that auto-par machinery lights up; the honest framing is *parity on codegen, plus free safe parallelism where the shape allows*.
