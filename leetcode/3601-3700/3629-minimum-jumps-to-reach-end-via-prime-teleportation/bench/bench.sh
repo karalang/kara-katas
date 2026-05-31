@@ -20,6 +20,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -104,58 +113,60 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=3629 slug=minimum-jumps-to-reach-end-via-prime-teleportation group=3601-3700 \
+    title="Minimum Jumps to Reach End via Prime Teleportation" \
+    workload="N=50,000 nums (values up to 10^6), cap=10^6 sieve, K=3 outer iterations" \
+    sink="$expected"
+
 echo "=== runtime — long workloads (compiled) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'kara bfs_sieve (codegen)' './target/bfs_sieve_kara' \
-    --command-name 'rust bfs_sieve'           './target/bfs_sieve' \
-    --command-name 'c    bfs_sieve'           './target/bfs_sieve_c' \
-    --command-name 'go   bfs_sieve'           './target/bfs_sieve_go_seq'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang kara --approach bfs_sieve --lane seq --mode codegen \
+    --name 'kara bfs_sieve (codegen)' --cmd './target/bfs_sieve_kara'
+rt_cmd --lang rust --approach bfs_sieve --lane seq --mode native \
+    --name 'rust bfs_sieve' --cmd './target/bfs_sieve'
+rt_cmd --lang c --approach bfs_sieve --lane seq --mode native \
+    --name 'c    bfs_sieve' --cmd './target/bfs_sieve_c'
+rt_cmd --lang go --approach bfs_sieve --lane seq --mode native \
+    --name 'go   bfs_sieve' --cmd './target/bfs_sieve_go_seq'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   bfs_sieve'           'python3 bfs_sieve.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach bfs_sieve --lane seq --mode interp \
+    --name 'py   bfs_sieve' --cmd 'python3 bfs_sieve.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach bfs_sieve --mode codegen \
     --prepare 'rm -f target/bfs_sieve_kara bfs_sieve' \
-    --command-name 'karac build bfs_sieve.kara' 'sh -c "karac build bfs_sieve.kara >/dev/null && mv bfs_sieve target/bfs_sieve_kara"' \
+    --name 'karac build bfs_sieve.kara' \
+    --cmd 'sh -c "karac build bfs_sieve.kara >/dev/null && mv bfs_sieve target/bfs_sieve_kara"'
+ce_cmd --lang rust --approach bfs_sieve --mode native \
     --prepare 'rm -f target/bfs_sieve' \
-    --command-name 'rustc -O bfs_sieve.rs'      'rustc -O bfs_sieve.rs -o target/bfs_sieve' \
+    --name 'rustc -O bfs_sieve.rs' --cmd 'rustc -O bfs_sieve.rs -o target/bfs_sieve'
+ce_cmd --lang c --approach bfs_sieve --mode native \
     --prepare 'rm -f target/bfs_sieve_c' \
-    --command-name 'clang -O3 bfs_sieve.c'      'clang -O3 bfs_sieve.c -o target/bfs_sieve_c'
+    --name 'clang -O3 bfs_sieve.c' --cmd 'clang -O3 bfs_sieve.c -o target/bfs_sieve_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara bfs_sieve:target/bfs_sieve_kara' \
-    'rust bfs_sieve:target/bfs_sieve' \
-    'c    bfs_sieve:target/bfs_sieve_c' \
-    'go   bfs_sieve:target/bfs_sieve_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach bfs_sieve --lane seq --mode codegen --path target/bfs_sieve_kara
+size_put --lang rust --approach bfs_sieve --lane seq --mode native  --path target/bfs_sieve
+size_put --lang c    --approach bfs_sieve --lane seq --mode native  --path target/bfs_sieve_c
+size_put --lang go   --approach bfs_sieve --lane seq --mode native  --path target/bfs_sieve_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara bfs_sieve (codegen)' "$(mem_peak ./target/bfs_sieve_kara)"
-print_mem 'rust bfs_sieve'           "$(mem_peak ./target/bfs_sieve)"
-print_mem 'c    bfs_sieve'           "$(mem_peak ./target/bfs_sieve_c)"
-print_mem 'go   bfs_sieve'           "$(mem_peak ./target/bfs_sieve_go_seq)"
-print_mem 'py   bfs_sieve'           "$(mem_peak python3 bfs_sieve.py)"
+mem_put --lang kara   --approach bfs_sieve --lane seq --mode codegen --bytes "$(mem_peak ./target/bfs_sieve_kara)"
+mem_put --lang rust   --approach bfs_sieve --lane seq --mode native  --bytes "$(mem_peak ./target/bfs_sieve)"
+mem_put --lang c      --approach bfs_sieve --lane seq --mode native  --bytes "$(mem_peak ./target/bfs_sieve_c)"
+mem_put --lang go     --approach bfs_sieve --lane seq --mode native  --bytes "$(mem_peak ./target/bfs_sieve_go_seq)"
+mem_put --lang python --approach bfs_sieve --lane seq --mode interp  --bytes "$(mem_peak python3 bfs_sieve.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -164,15 +175,20 @@ for src in bfs_sieve.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in bfs_sieve.rs; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in bfs_sieve.c; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

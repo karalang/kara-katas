@@ -20,6 +20,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -104,58 +113,60 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=1665 slug=minimum-initial-energy-to-finish-tasks group=1601-1700 \
+    title="Minimum Initial Energy to Finish Tasks" \
+    workload="N=50_000 deterministic tasks, K=5 outer iterations" \
+    sink="$expected"
+
 echo "=== runtime — short workloads (compiled) ==="
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara greedy (codegen)' './target/greedy_kara' \
-    --command-name 'rust greedy'           './target/greedy' \
-    --command-name 'c    greedy'           './target/greedy_c' \
-    --command-name 'go   greedy'           './target/greedy_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach greedy --lane seq --mode codegen \
+    --name 'kara greedy (codegen)' --cmd './target/greedy_kara'
+rt_cmd --lang rust --approach greedy --lane seq --mode native \
+    --name 'rust greedy' --cmd './target/greedy'
+rt_cmd --lang c --approach greedy --lane seq --mode native \
+    --name 'c    greedy' --cmd './target/greedy_c'
+rt_cmd --lang go --approach greedy --lane seq --mode native \
+    --name 'go   greedy' --cmd './target/greedy_go_seq'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   greedy'           'python3 greedy.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach greedy --lane seq --mode interp \
+    --name 'py   greedy' --cmd 'python3 greedy.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach greedy --mode codegen \
     --prepare 'rm -f target/greedy_kara greedy' \
-    --command-name 'karac build greedy.kara' 'sh -c "karac build greedy.kara >/dev/null && mv greedy target/greedy_kara"' \
+    --name 'karac build greedy.kara' \
+    --cmd 'sh -c "karac build greedy.kara >/dev/null && mv greedy target/greedy_kara"'
+ce_cmd --lang rust --approach greedy --mode native \
     --prepare 'rm -f target/greedy' \
-    --command-name 'rustc -O greedy.rs'      'rustc -O greedy.rs -o target/greedy' \
+    --name 'rustc -O greedy.rs' --cmd 'rustc -O greedy.rs -o target/greedy'
+ce_cmd --lang c --approach greedy --mode native \
     --prepare 'rm -f target/greedy_c' \
-    --command-name 'clang -O3 greedy.c'      'clang -O3 greedy.c -o target/greedy_c'
+    --name 'clang -O3 greedy.c' --cmd 'clang -O3 greedy.c -o target/greedy_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara greedy:target/greedy_kara' \
-    'rust greedy:target/greedy' \
-    'c    greedy:target/greedy_c' \
-    'go   greedy:target/greedy_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach greedy --lane seq --mode codegen --path target/greedy_kara
+size_put --lang rust --approach greedy --lane seq --mode native  --path target/greedy
+size_put --lang c    --approach greedy --lane seq --mode native  --path target/greedy_c
+size_put --lang go   --approach greedy --lane seq --mode native  --path target/greedy_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara greedy (codegen)' "$(mem_peak ./target/greedy_kara)"
-print_mem 'rust greedy'           "$(mem_peak ./target/greedy)"
-print_mem 'c    greedy'           "$(mem_peak ./target/greedy_c)"
-print_mem 'go   greedy'           "$(mem_peak ./target/greedy_go_seq)"
-print_mem 'py   greedy'           "$(mem_peak python3 greedy.py)"
+mem_put --lang kara   --approach greedy --lane seq --mode codegen --bytes "$(mem_peak ./target/greedy_kara)"
+mem_put --lang rust   --approach greedy --lane seq --mode native  --bytes "$(mem_peak ./target/greedy)"
+mem_put --lang c      --approach greedy --lane seq --mode native  --bytes "$(mem_peak ./target/greedy_c)"
+mem_put --lang go     --approach greedy --lane seq --mode native  --bytes "$(mem_peak ./target/greedy_go_seq)"
+mem_put --lang python --approach greedy --lane seq --mode interp  --bytes "$(mem_peak python3 greedy.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -164,15 +175,20 @@ for src in greedy.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in greedy.rs; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in greedy.c; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

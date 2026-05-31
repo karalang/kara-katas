@@ -13,7 +13,7 @@ Mirror of [`karac-rust/bench/README.md`](../karac-rust/bench/README.md) — the 
 | Compile peak memory | `/usr/bin/time -l` | Single sample; artifact deleted before invocation for cold compile |
 | **Compile elapsed time** | `hyperfine` | New — added 2026-05-20; matches karac-rust compile-speed gate |
 
-Each migrated `bench.sh` also serializes all of the above into a machine-readable `bench/results.json`, consolidated corpus-wide into one `bench-results.json` for dashboards. Format + the `bench-lib.sh` emission API are specified in [`BENCH_JSON.md`](BENCH_JSON.md); the worked reference is kata #204's `bench/bench.sh`.
+Every kata's `bench.sh` also serializes all of the above into a machine-readable `bench/results.json`, consolidated corpus-wide into one `bench-results.json` for dashboards. Format + the `bench-lib.sh` emission API are specified in [`BENCH_JSON.md`](BENCH_JSON.md); the worked references are kata #1 (seq-only, multi-approach) and #204 (par lane) `bench/bench.sh`.
 
 ## Hyperfine discipline
 

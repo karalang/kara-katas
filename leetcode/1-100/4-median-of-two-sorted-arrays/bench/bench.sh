@@ -30,6 +30,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -144,19 +153,27 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=4 slug=median-of-two-sorted-arrays group=1-100 \
+    title="Median of Two Sorted Arrays" \
+    workload="binary_search_partition: ~log2(M) partition cross-checks/call, K=10M (py timed separately)" \
+    sink="$expected"
+
 echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
 # All four comparators here run single-threaded. The kara binary built with
 # KARAC_AUTO_PAR=0 short-circuits auto-par dispatch back to plain sequential
 # codegen — this is the row that's directly comparable to rustc -O / clang
 # -O3 / go build on a per-core codegen-quality basis.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara binary_search_partition (seq, KARAC_AUTO_PAR=0)' './target/binary_search_partition_kara_seq' \
-    --command-name 'rust binary_search_partition'                         './target/binary_search_partition' \
-    --command-name 'c    binary_search_partition'                         './target/binary_search_partition_c' \
-    --command-name 'go   binary_search_partition'                         './target/binary_search_partition_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach binary_search_partition --lane seq --mode codegen \
+    --name 'kara binary_search_partition (seq, KARAC_AUTO_PAR=0)' --cmd './target/binary_search_partition_kara_seq'
+rt_cmd --lang rust --approach binary_search_partition --lane seq --mode native \
+    --name 'rust binary_search_partition' --cmd './target/binary_search_partition'
+rt_cmd --lang c --approach binary_search_partition --lane seq --mode native \
+    --name 'c    binary_search_partition' --cmd './target/binary_search_partition_c'
+rt_cmd --lang go --approach binary_search_partition --lane seq --mode native \
+    --name 'go   binary_search_partition' --cmd './target/binary_search_partition_go_seq'
+rt_end
 
 echo
 echo "=== runtime — auto-par regime (kara default, multi-core) ==="
@@ -166,19 +183,17 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 # the seq lane. NOT directly comparable to the single-thread rows above
 # per BENCH.md's two-lane discipline — reported separately so the
 # production-default Kara behavior stays visible.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara binary_search_partition (auto-par default)' './target/binary_search_partition_kara'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach binary_search_partition --lane par --mode codegen \
+    --name 'kara binary_search_partition (auto-par default)' --cmd './target/binary_search_partition_kara'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   binary_search_partition'           'python3 binary_search_partition.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach binary_search_partition --lane seq --mode interp \
+    --name 'py   binary_search_partition' --cmd 'python3 binary_search_partition.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
@@ -186,40 +201,35 @@ echo "=== compile elapsed (cold) ==="
 # build artifact so every invocation is a true cold compile. karac/rustc/clang
 # are the single-file compilers; go is excluded — its first invocation mixes
 # module resolution + std-lib link and isn't comparable to single-file.
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach binary_search_partition --mode codegen \
     --prepare 'rm -f target/binary_search_partition_kara binary_search_partition' \
-    --command-name 'karac build binary_search_partition.kara' 'sh -c "karac build binary_search_partition.kara >/dev/null && mv binary_search_partition target/binary_search_partition_kara"' \
+    --name 'karac build binary_search_partition.kara' \
+    --cmd 'sh -c "karac build binary_search_partition.kara >/dev/null && mv binary_search_partition target/binary_search_partition_kara"'
+ce_cmd --lang rust --approach binary_search_partition --mode native \
     --prepare 'rm -f target/binary_search_partition' \
-    --command-name 'rustc -O binary_search_partition.rs'      'rustc -O binary_search_partition.rs -o target/binary_search_partition' \
+    --name 'rustc -O binary_search_partition.rs' --cmd 'rustc -O binary_search_partition.rs -o target/binary_search_partition'
+ce_cmd --lang c --approach binary_search_partition --mode native \
     --prepare 'rm -f target/binary_search_partition_c' \
-    --command-name 'clang -O3 binary_search_partition.c'      'clang -O3 binary_search_partition.c -o target/binary_search_partition_c'
+    --name 'clang -O3 binary_search_partition.c' --cmd 'clang -O3 binary_search_partition.c -o target/binary_search_partition_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara binary_search_partition (seq):target/binary_search_partition_kara_seq' \
-    'kara binary_search_partition (auto-par):target/binary_search_partition_kara' \
-    'rust binary_search_partition:target/binary_search_partition' \
-    'c    binary_search_partition:target/binary_search_partition_c' \
-    'go   binary_search_partition:target/binary_search_partition_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-40s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach binary_search_partition --lane seq --mode codegen --path target/binary_search_partition_kara_seq
+size_put --lang kara --approach binary_search_partition --lane par --mode codegen --path target/binary_search_partition_kara
+size_put --lang rust --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition
+size_put --lang c    --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition_c
+size_put --lang go   --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara binary_search_partition (seq)'      "$(mem_peak ./target/binary_search_partition_kara_seq)"
-print_mem 'kara binary_search_partition (auto-par)' "$(mem_peak ./target/binary_search_partition_kara)"
-print_mem 'rust binary_search_partition'            "$(mem_peak ./target/binary_search_partition)"
-print_mem 'c    binary_search_partition'            "$(mem_peak ./target/binary_search_partition_c)"
-print_mem 'go   binary_search_partition'            "$(mem_peak ./target/binary_search_partition_go_seq)"
-print_mem 'py   binary_search_partition'            "$(mem_peak python3 binary_search_partition.py)"
+mem_put --lang kara --approach binary_search_partition --lane seq --mode codegen --bytes "$(mem_peak ./target/binary_search_partition_kara_seq)"
+mem_put --lang kara --approach binary_search_partition --lane par --mode codegen --bytes "$(mem_peak ./target/binary_search_partition_kara)"
+mem_put --lang rust --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition)"
+mem_put --lang c    --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition_c)"
+mem_put --lang go   --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition_go_seq)"
+mem_put --lang python --approach binary_search_partition --lane seq --mode interp --bytes "$(mem_peak python3 binary_search_partition.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -232,15 +242,20 @@ for src in binary_search_partition.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in binary_search_partition.rs; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in binary_search_partition.c; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

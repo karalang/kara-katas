@@ -214,9 +214,16 @@ Mechanical, following kata #204's `bench/bench.sh`:
 
 ## Migration status
 
-The JSON pipeline landed 2026-05-30. Kata #204 is the migrated reference. The
-remaining katas still emit only their README tables until their `bench.sh` is
-migrated and re-run. **The live source of truth for what's left is the
+The JSON pipeline landed 2026-05-30, and **all 33 kata `bench.sh` scripts were
+migrated to it the same day** — every script now sources `bench-lib.sh`, calls
+`bench_begin`, routes its hyperfine/size/memory measurements through the
+`rt_*`/`ce_*`/`size_put`/`mem_put`/`cmem_put` helpers, and ends in `bench_emit`.
+Katas #1 (seq-only, multi-approach) and #204 (par lane) are the worked
+references. So the *scripts* are uniform; what varies now is whether each kata's
+`bench/results.json` has been **produced yet** — that only happens the first
+time a migrated `bench.sh` is re-run, which is done kata-by-kata.
+
+**The live source of truth for which katas still lack a `results.json` is the
 consolidator**: `./scripts/consolidate-bench.sh` logs (to stderr) every kata
-that has a `bench.sh` but no `results.json` yet, so the pending list never goes
-stale against a hand-maintained checklist here.
+that has a `bench.sh` but no `results.json` yet, so the pending re-run list
+never goes stale against a hand-maintained checklist here.

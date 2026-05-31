@@ -20,6 +20,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -104,58 +113,60 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=5 slug=longest-palindromic-substring group=1-100 \
+    title="Longest Palindromic Substring" \
+    workload="expand_around_center (py timed separately)" \
+    sink="$expected"
+
 echo "=== runtime — short workloads (compiled) ==="
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara expand_around_center (codegen)' './target/expand_around_center_kara' \
-    --command-name 'rust expand_around_center'           './target/expand_around_center' \
-    --command-name 'c    expand_around_center'           './target/expand_around_center_c' \
-    --command-name 'go   expand_around_center'           './target/expand_around_center_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach expand_around_center --lane seq --mode codegen \
+    --name 'kara expand_around_center (codegen)' --cmd './target/expand_around_center_kara'
+rt_cmd --lang rust --approach expand_around_center --lane seq --mode native \
+    --name 'rust expand_around_center' --cmd './target/expand_around_center'
+rt_cmd --lang c --approach expand_around_center --lane seq --mode native \
+    --name 'c    expand_around_center' --cmd './target/expand_around_center_c'
+rt_cmd --lang go --approach expand_around_center --lane seq --mode native \
+    --name 'go   expand_around_center' --cmd './target/expand_around_center_go_seq'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   expand_around_center'           'python3 expand_around_center.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach expand_around_center --lane seq --mode interp \
+    --name 'py   expand_around_center' --cmd 'python3 expand_around_center.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach expand_around_center --mode codegen \
     --prepare 'rm -f target/expand_around_center_kara expand_around_center' \
-    --command-name 'karac build expand_around_center.kara' 'sh -c "karac build expand_around_center.kara >/dev/null && mv expand_around_center target/expand_around_center_kara"' \
+    --name 'karac build expand_around_center.kara' \
+    --cmd 'sh -c "karac build expand_around_center.kara >/dev/null && mv expand_around_center target/expand_around_center_kara"'
+ce_cmd --lang rust --approach expand_around_center --mode native \
     --prepare 'rm -f target/expand_around_center' \
-    --command-name 'rustc -O expand_around_center.rs'      'rustc -O expand_around_center.rs -o target/expand_around_center' \
+    --name 'rustc -O expand_around_center.rs' --cmd 'rustc -O expand_around_center.rs -o target/expand_around_center'
+ce_cmd --lang c --approach expand_around_center --mode native \
     --prepare 'rm -f target/expand_around_center_c' \
-    --command-name 'clang -O3 expand_around_center.c'      'clang -O3 expand_around_center.c -o target/expand_around_center_c'
+    --name 'clang -O3 expand_around_center.c' --cmd 'clang -O3 expand_around_center.c -o target/expand_around_center_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara expand_around_center:target/expand_around_center_kara' \
-    'rust expand_around_center:target/expand_around_center' \
-    'c    expand_around_center:target/expand_around_center_c' \
-    'go   expand_around_center:target/expand_around_center_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach expand_around_center --lane seq --mode codegen --path target/expand_around_center_kara
+size_put --lang rust --approach expand_around_center --lane seq --mode native  --path target/expand_around_center
+size_put --lang c    --approach expand_around_center --lane seq --mode native  --path target/expand_around_center_c
+size_put --lang go   --approach expand_around_center --lane seq --mode native  --path target/expand_around_center_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara expand_around_center (codegen)' "$(mem_peak ./target/expand_around_center_kara)"
-print_mem 'rust expand_around_center'           "$(mem_peak ./target/expand_around_center)"
-print_mem 'c    expand_around_center'           "$(mem_peak ./target/expand_around_center_c)"
-print_mem 'go   expand_around_center'           "$(mem_peak ./target/expand_around_center_go_seq)"
-print_mem 'py   expand_around_center'           "$(mem_peak python3 expand_around_center.py)"
+mem_put --lang kara --approach expand_around_center --lane seq --mode codegen --bytes "$(mem_peak ./target/expand_around_center_kara)"
+mem_put --lang rust --approach expand_around_center --lane seq --mode native  --bytes "$(mem_peak ./target/expand_around_center)"
+mem_put --lang c    --approach expand_around_center --lane seq --mode native  --bytes "$(mem_peak ./target/expand_around_center_c)"
+mem_put --lang go   --approach expand_around_center --lane seq --mode native  --bytes "$(mem_peak ./target/expand_around_center_go_seq)"
+mem_put --lang python --approach expand_around_center --lane seq --mode interp --bytes "$(mem_peak python3 expand_around_center.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -164,15 +175,20 @@ for src in expand_around_center.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in expand_around_center.rs; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in expand_around_center.c; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

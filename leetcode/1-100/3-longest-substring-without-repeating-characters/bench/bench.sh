@@ -28,6 +28,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 # /usr/bin/time -l (macOS BSD time) prints a "peak memory footprint" line on
 # stderr. We capture its stderr through a brace-group redirect, discard the
 # wrapped command's own stdout, and parse the bytes column. Memory is much
@@ -124,23 +133,30 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=3 slug=longest-substring-without-repeating-characters group=1-100 \
+    title="Longest Substring Without Repeating Characters" \
+    workload="sliding_window: 104_000-char input, K=20 outer iters (py timed separately)" \
+    sink="$expected"
+
 echo "=== runtime — short workloads (compiled) ==="
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara sliding_window (codegen)' './target/sliding_window_kara' \
-    --command-name 'rust sliding_window'           './target/sliding_window' \
-    --command-name 'c    sliding_window'           './target/sliding_window_c' \
-    --command-name 'go   sliding_window'           './target/sliding_window_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach sliding_window --lane seq --mode codegen \
+    --name 'kara sliding_window (codegen)' --cmd './target/sliding_window_kara'
+rt_cmd --lang rust --approach sliding_window --lane seq --mode native \
+    --name 'rust sliding_window' --cmd './target/sliding_window'
+rt_cmd --lang c --approach sliding_window --lane seq --mode native \
+    --name 'c    sliding_window' --cmd './target/sliding_window_c'
+rt_cmd --lang go --approach sliding_window --lane seq --mode native \
+    --name 'go   sliding_window' --cmd './target/sliding_window_go_seq'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   sliding_window'           'python3 sliding_window.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach sliding_window --lane seq --mode interp \
+    --name 'py   sliding_window' --cmd 'python3 sliding_window.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
@@ -148,38 +164,33 @@ echo "=== compile elapsed (cold) ==="
 # build artifact so every invocation is a true cold compile. karac/rustc/clang
 # are the single-file compilers; go is excluded — its first invocation mixes
 # module resolution + std-lib link and isn't comparable to single-file.
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach sliding_window --mode codegen \
     --prepare 'rm -f target/sliding_window_kara sliding_window' \
-    --command-name 'karac build sliding_window.kara' 'sh -c "karac build sliding_window.kara >/dev/null && mv sliding_window target/sliding_window_kara"' \
+    --name 'karac build sliding_window.kara' \
+    --cmd 'sh -c "karac build sliding_window.kara >/dev/null && mv sliding_window target/sliding_window_kara"'
+ce_cmd --lang rust --approach sliding_window --mode native \
     --prepare 'rm -f target/sliding_window' \
-    --command-name 'rustc -O sliding_window.rs'      'rustc -O sliding_window.rs -o target/sliding_window' \
+    --name 'rustc -O sliding_window.rs' --cmd 'rustc -O sliding_window.rs -o target/sliding_window'
+ce_cmd --lang c --approach sliding_window --mode native \
     --prepare 'rm -f target/sliding_window_c' \
-    --command-name 'clang -O3 sliding_window.c'      'clang -O3 sliding_window.c -o target/sliding_window_c'
+    --name 'clang -O3 sliding_window.c' --cmd 'clang -O3 sliding_window.c -o target/sliding_window_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara sliding_window:target/sliding_window_kara' \
-    'rust sliding_window:target/sliding_window' \
-    'c    sliding_window:target/sliding_window_c' \
-    'go   sliding_window:target/sliding_window_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach sliding_window --lane seq --mode codegen --path target/sliding_window_kara
+size_put --lang rust --approach sliding_window --lane seq --mode native  --path target/sliding_window
+size_put --lang c    --approach sliding_window --lane seq --mode native  --path target/sliding_window_c
+size_put --lang go   --approach sliding_window --lane seq --mode native  --path target/sliding_window_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara sliding_window (codegen)' "$(mem_peak ./target/sliding_window_kara)"
-print_mem 'rust sliding_window'           "$(mem_peak ./target/sliding_window)"
-print_mem 'c    sliding_window'           "$(mem_peak ./target/sliding_window_c)"
-print_mem 'go   sliding_window'           "$(mem_peak ./target/sliding_window_go_seq)"
-print_mem 'py   sliding_window'           "$(mem_peak python3 sliding_window.py)"
+mem_put --lang kara --approach sliding_window --lane seq --mode codegen --bytes "$(mem_peak ./target/sliding_window_kara)"
+mem_put --lang rust --approach sliding_window --lane seq --mode native  --bytes "$(mem_peak ./target/sliding_window)"
+mem_put --lang c    --approach sliding_window --lane seq --mode native  --bytes "$(mem_peak ./target/sliding_window_c)"
+mem_put --lang go   --approach sliding_window --lane seq --mode native  --bytes "$(mem_peak ./target/sliding_window_go_seq)"
+mem_put --lang python --approach sliding_window --lane seq --mode interp --bytes "$(mem_peak python3 sliding_window.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -192,15 +203,20 @@ for src in sliding_window.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in sliding_window.rs; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in sliding_window.c; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

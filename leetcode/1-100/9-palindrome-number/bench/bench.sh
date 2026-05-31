@@ -37,6 +37,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -132,19 +141,26 @@ fi
 echo "sink (kara/kara_seq/rust/c/go): $expected"
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=9 slug=palindrome-number group=1-100 \
+    title="Palindrome Number" workload="K=50M palindrome reduction" \
+    sink="$expected"
+
 echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
 # All four comparators here run single-threaded. The kara binary built
 # with KARAC_AUTO_PAR=0 short-circuits auto-par dispatch back to plain
 # sequential codegen — directly comparable to rustc-O / clang-O3 /
 # go build on a per-core codegen-quality basis.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name "kara ${STEM} (seq, KARAC_AUTO_PAR=0)" "./target/${STEM}_kara_seq" \
-    --command-name "rust ${STEM}"                          "./target/${STEM}" \
-    --command-name "c    ${STEM}"                          "./target/${STEM}_c" \
-    --command-name "go   ${STEM}"                          "./target/${STEM}_go_seq"
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach "$STEM" --lane seq --mode codegen \
+    --name "kara ${STEM} (seq, KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
+rt_cmd --lang rust --approach "$STEM" --lane seq --mode native \
+    --name "rust ${STEM}" --cmd "./target/${STEM}"
+rt_cmd --lang c --approach "$STEM" --lane seq --mode native \
+    --name "c    ${STEM}" --cmd "./target/${STEM}_c"
+rt_cmd --lang go --approach "$STEM" --lane seq --mode native \
+    --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
+rt_end
 
 echo
 echo "=== runtime — auto-par regime (kara default, multi-core) ==="
@@ -154,11 +170,10 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 # comparable to the single-thread rows above per BENCH.md's two-lane
 # discipline — reported separately so the production-default Kara
 # behavior stays visible.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name "kara ${STEM} (auto-par default)" "./target/${STEM}_kara"
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
+    --name "kara ${STEM} (auto-par default)" --cmd "./target/${STEM}_kara"
+rt_end
 
 echo
 echo "=== runtime — long workloads (py, K=1M scaled-down) ==="
@@ -185,39 +200,34 @@ print(f"  -> projected K=50M scale=50×")
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach "$STEM" --mode codegen \
     --prepare "rm -f target/${STEM}_kara ${STEM}" \
-    --command-name "karac build ${STEM}.kara" "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara\"" \
+    --name "karac build ${STEM}.kara" \
+    --cmd "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara\""
+ce_cmd --lang rust --approach "$STEM" --mode native \
     --prepare "rm -f target/${STEM}" \
-    --command-name "rustc -O ${STEM}.rs"      "rustc -O ${STEM}.rs -o target/${STEM}" \
+    --name "rustc -O ${STEM}.rs" --cmd "rustc -O ${STEM}.rs -o target/${STEM}"
+ce_cmd --lang c --approach "$STEM" --mode native \
     --prepare "rm -f target/${STEM}_c" \
-    --command-name "clang -O3 ${STEM}.c"      "clang -O3 ${STEM}.c -o target/${STEM}_c"
+    --name "clang -O3 ${STEM}.c" --cmd "clang -O3 ${STEM}.c -o target/${STEM}_c"
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    "kara ${STEM} (seq):target/${STEM}_kara_seq" \
-    "kara ${STEM} (auto-par):target/${STEM}_kara" \
-    "rust ${STEM}:target/${STEM}" \
-    "c    ${STEM}:target/${STEM}_c" \
-    "go   ${STEM}:target/${STEM}_go_seq"; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-40s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_kara_seq"
+size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_kara"
+size_put --lang rust --approach "$STEM" --lane seq --mode native  --path "target/${STEM}"
+size_put --lang c    --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_c"
+size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_go_seq"
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem "kara ${STEM} (seq)"      "$(mem_peak ./target/${STEM}_kara_seq)"
-print_mem "kara ${STEM} (auto-par)" "$(mem_peak ./target/${STEM}_kara)"
-print_mem "rust ${STEM}"            "$(mem_peak ./target/${STEM})"
-print_mem "c    ${STEM}"            "$(mem_peak ./target/${STEM}_c)"
-print_mem "go   ${STEM}"            "$(mem_peak ./target/${STEM}_go_seq)"
+mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara_seq)"
+mem_put --lang kara --approach "$STEM" --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang rust --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
+mem_put --lang c    --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
+mem_put --lang go   --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -226,15 +236,20 @@ for src in "${STEM}.kara"; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in "${STEM}.rs"; do
-    out="target/$(basename "$src" .rs)"
+    stem="$(basename "$src" .rs)"
+    out="target/$stem"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in "${STEM}.c"; do
-    out="target/$(basename "$src" .c)_c"
+    stem="$(basename "$src" .c)"
+    out="target/${stem}_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

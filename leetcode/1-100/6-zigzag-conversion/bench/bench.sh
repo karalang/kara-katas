@@ -29,6 +29,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -142,19 +151,26 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=6 slug=zigzag-conversion group=1-100 \
+    title="Zigzag Conversion" workload="K=10K convert passes" \
+    sink="$expected"
+
 echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
 # All four comparators here run single-threaded. The kara binary built
 # with KARAC_AUTO_PAR=0 short-circuits auto-par dispatch back to plain
 # sequential codegen — this is the row directly comparable to rustc -O /
 # clang -O3 / go build on a per-core codegen-quality basis.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara row_buffers (seq, KARAC_AUTO_PAR=0)' './target/row_buffers_kara_seq' \
-    --command-name 'rust row_buffers'                         './target/row_buffers' \
-    --command-name 'c    row_buffers'                         './target/row_buffers_c' \
-    --command-name 'go   row_buffers'                         './target/row_buffers_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach row_buffers --lane seq --mode codegen \
+    --name 'kara row_buffers (seq, KARAC_AUTO_PAR=0)' --cmd './target/row_buffers_kara_seq'
+rt_cmd --lang rust --approach row_buffers --lane seq --mode native \
+    --name 'rust row_buffers' --cmd './target/row_buffers'
+rt_cmd --lang c --approach row_buffers --lane seq --mode native \
+    --name 'c    row_buffers' --cmd './target/row_buffers_c'
+rt_cmd --lang go --approach row_buffers --lane seq --mode native \
+    --name 'go   row_buffers' --cmd './target/row_buffers_go_seq'
+rt_end
 
 echo
 echo "=== runtime — auto-par regime (kara default, multi-core) ==="
@@ -164,56 +180,49 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 # lane. NOT directly comparable to the single-thread rows above per
 # BENCH.md's two-lane discipline — reported separately so the production-
 # default Kara behavior stays visible.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara row_buffers (auto-par default)' './target/row_buffers_kara'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach row_buffers --lane par --mode codegen \
+    --name 'kara row_buffers (auto-par default)' --cmd './target/row_buffers_kara'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   row_buffers' 'python3 row_buffers.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach row_buffers --lane seq --mode interp \
+    --name 'py   row_buffers' --cmd 'python3 row_buffers.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach row_buffers --mode codegen \
     --prepare 'rm -f target/row_buffers_kara row_buffers' \
-    --command-name 'karac build row_buffers.kara' 'sh -c "karac build row_buffers.kara >/dev/null && mv row_buffers target/row_buffers_kara"' \
+    --name 'karac build row_buffers.kara' \
+    --cmd 'sh -c "karac build row_buffers.kara >/dev/null && mv row_buffers target/row_buffers_kara"'
+ce_cmd --lang rust --approach row_buffers --mode native \
     --prepare 'rm -f target/row_buffers' \
-    --command-name 'rustc -O row_buffers.rs'      'rustc -O row_buffers.rs -o target/row_buffers' \
+    --name 'rustc -O row_buffers.rs' --cmd 'rustc -O row_buffers.rs -o target/row_buffers'
+ce_cmd --lang c --approach row_buffers --mode native \
     --prepare 'rm -f target/row_buffers_c' \
-    --command-name 'clang -O3 row_buffers.c'      'clang -O3 row_buffers.c -o target/row_buffers_c'
+    --name 'clang -O3 row_buffers.c' --cmd 'clang -O3 row_buffers.c -o target/row_buffers_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara row_buffers (seq):target/row_buffers_kara_seq' \
-    'kara row_buffers (auto-par):target/row_buffers_kara' \
-    'rust row_buffers:target/row_buffers' \
-    'c    row_buffers:target/row_buffers_c' \
-    'go   row_buffers:target/row_buffers_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-40s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach row_buffers --lane seq --mode codegen --path target/row_buffers_kara_seq
+size_put --lang kara --approach row_buffers --lane par --mode codegen --path target/row_buffers_kara
+size_put --lang rust --approach row_buffers --lane seq --mode native  --path target/row_buffers
+size_put --lang c    --approach row_buffers --lane seq --mode native  --path target/row_buffers_c
+size_put --lang go   --approach row_buffers --lane seq --mode native  --path target/row_buffers_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara row_buffers (seq)'      "$(mem_peak ./target/row_buffers_kara_seq)"
-print_mem 'kara row_buffers (auto-par)' "$(mem_peak ./target/row_buffers_kara)"
-print_mem 'rust row_buffers'            "$(mem_peak ./target/row_buffers)"
-print_mem 'c    row_buffers'            "$(mem_peak ./target/row_buffers_c)"
-print_mem 'go   row_buffers'            "$(mem_peak ./target/row_buffers_go_seq)"
-print_mem 'py   row_buffers'            "$(mem_peak python3 row_buffers.py)"
+mem_put --lang kara --approach row_buffers --lane seq --mode codegen --bytes "$(mem_peak ./target/row_buffers_kara_seq)"
+mem_put --lang kara --approach row_buffers --lane par --mode codegen --bytes "$(mem_peak ./target/row_buffers_kara)"
+mem_put --lang rust --approach row_buffers --lane seq --mode native  --bytes "$(mem_peak ./target/row_buffers)"
+mem_put --lang c    --approach row_buffers --lane seq --mode native  --bytes "$(mem_peak ./target/row_buffers_c)"
+mem_put --lang go   --approach row_buffers --lane seq --mode native  --bytes "$(mem_peak ./target/row_buffers_go_seq)"
+mem_put --lang python --approach row_buffers --lane seq --mode interp --bytes "$(mem_peak python3 row_buffers.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -222,15 +231,18 @@ for src in row_buffers.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach row_buffers --mode codegen --bytes "$bytes"
 done
 for src in row_buffers.rs; do
     out="target/$(basename "$src" .rs)"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach row_buffers --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in row_buffers.c; do
     out="target/$(basename "$src" .c)_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach row_buffers --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit

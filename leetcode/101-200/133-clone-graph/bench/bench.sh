@@ -24,6 +24,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -113,73 +122,75 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=133 slug=clone-graph group=101-200 \
+    title="Clone Graph" workload="N=2000 ring, K=500 clones (clone_bfs)" \
+    sink="$expected"
+
 echo "=== runtime — seq lane (clone_bfs, N=2000 ring, K=500) ==="
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara clone_bfs (codegen)' './target/clone_bfs_kara' \
-    --command-name 'rust clone_bfs'             './target/clone_bfs' \
-    --command-name 'c    clone_bfs'             './target/clone_bfs_c' \
-    --command-name 'go   clone_bfs'             './target/clone_bfs_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach clone_bfs --lane seq --mode codegen \
+    --name 'kara clone_bfs (codegen)' --cmd './target/clone_bfs_kara'
+rt_cmd --lang rust --approach clone_bfs --lane seq --mode native \
+    --name 'rust clone_bfs' --cmd './target/clone_bfs'
+rt_cmd --lang c --approach clone_bfs --lane seq --mode native \
+    --name 'c    clone_bfs' --cmd './target/clone_bfs_c'
+rt_cmd --lang go --approach clone_bfs --lane seq --mode native \
+    --name 'go   clone_bfs' --cmd './target/clone_bfs_go_seq'
+rt_end
 
 echo
 echo "=== runtime — par lane (kara clone_bfs par 18-way only) ==="
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara clone_bfs (par 18-way)' './target/clone_bfs_par_kara'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach clone_bfs --lane par --mode codegen \
+    --name 'kara clone_bfs (par 18-way)' --cmd './target/clone_bfs_par_kara'
+rt_end
 
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     echo
     echo "=== runtime — python ==="
-    hyperfine \
-        --warmup 5 \
-        --runs 30 \
-        --shell=none \
-        --command-name 'py   clone_bfs' 'python3 clone_bfs.py'
+    rt_begin --warmup 5 --runs 30
+    rt_cmd --lang python --approach clone_bfs --lane seq --mode interp \
+        --name 'py   clone_bfs' --cmd 'python3 clone_bfs.py'
+    rt_end
 fi
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach clone_bfs --mode codegen \
     --prepare 'rm -f target/clone_bfs_kara clone_bfs' \
-    --command-name 'karac build clone_bfs.kara'     'sh -c "karac build clone_bfs.kara >/dev/null && mv clone_bfs target/clone_bfs_kara"' \
+    --name 'karac build clone_bfs.kara' \
+    --cmd 'sh -c "karac build clone_bfs.kara >/dev/null && mv clone_bfs target/clone_bfs_kara"'
+ce_cmd --lang kara --approach clone_bfs_par --mode codegen \
     --prepare 'rm -f target/clone_bfs_par_kara clone_bfs_par' \
-    --command-name 'karac build clone_bfs_par.kara' 'sh -c "karac build clone_bfs_par.kara >/dev/null && mv clone_bfs_par target/clone_bfs_par_kara"' \
+    --name 'karac build clone_bfs_par.kara' \
+    --cmd 'sh -c "karac build clone_bfs_par.kara >/dev/null && mv clone_bfs_par target/clone_bfs_par_kara"'
+ce_cmd --lang rust --approach clone_bfs --mode native \
     --prepare 'rm -f target/clone_bfs' \
-    --command-name 'rustc -O clone_bfs.rs'          'rustc -O clone_bfs.rs -o target/clone_bfs' \
+    --name 'rustc -O clone_bfs.rs' --cmd 'rustc -O clone_bfs.rs -o target/clone_bfs'
+ce_cmd --lang c --approach clone_bfs --mode native \
     --prepare 'rm -f target/clone_bfs_c' \
-    --command-name 'clang -O3 clone_bfs.c'          'clang -O3 clone_bfs.c -o target/clone_bfs_c'
+    --name 'clang -O3 clone_bfs.c' --cmd 'clang -O3 clone_bfs.c -o target/clone_bfs_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara clone_bfs (codegen):target/clone_bfs_kara' \
-    'kara clone_bfs (par 18-way):target/clone_bfs_par_kara' \
-    'rust clone_bfs:target/clone_bfs' \
-    'c    clone_bfs:target/clone_bfs_c' \
-    'go   clone_bfs:target/clone_bfs_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-30s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach clone_bfs     --lane seq --mode codegen --path target/clone_bfs_kara
+size_put --lang kara --approach clone_bfs     --lane par --mode codegen --path target/clone_bfs_par_kara
+size_put --lang rust --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs
+size_put --lang c    --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs_c
+size_put --lang go   --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara clone_bfs (codegen)'    "$(mem_peak ./target/clone_bfs_kara)"
-print_mem 'kara clone_bfs (par 18-way)' "$(mem_peak ./target/clone_bfs_par_kara)"
-print_mem 'rust clone_bfs'              "$(mem_peak ./target/clone_bfs)"
-print_mem 'c    clone_bfs'              "$(mem_peak ./target/clone_bfs_c)"
-print_mem 'go   clone_bfs'              "$(mem_peak ./target/clone_bfs_go_seq)"
+mem_put --lang kara --approach clone_bfs --lane seq --mode codegen --bytes "$(mem_peak ./target/clone_bfs_kara)"
+mem_put --lang kara --approach clone_bfs --lane par --mode codegen --bytes "$(mem_peak ./target/clone_bfs_par_kara)"
+mem_put --lang rust --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs)"
+mem_put --lang c    --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs_c)"
+mem_put --lang go   --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs_go_seq)"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
-    print_mem 'py   clone_bfs' "$(mem_peak python3 clone_bfs.py)"
+    mem_put --lang python --approach clone_bfs --lane seq --mode interp --bytes "$(mem_peak python3 clone_bfs.py)"
 fi
 
 echo
@@ -189,9 +200,12 @@ for src in clone_bfs.kara clone_bfs_par.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 rm -f target/clone_bfs
-print_mem "rustc -O clone_bfs.rs" "$(mem_peak rustc -O clone_bfs.rs -o target/clone_bfs)"
+cmem_put --lang rust --approach clone_bfs --mode native --bytes "$(mem_peak rustc -O clone_bfs.rs -o target/clone_bfs)"
 rm -f target/clone_bfs_c
-print_mem "clang -O3 clone_bfs.c" "$(mem_peak clang -O3 clone_bfs.c -o target/clone_bfs_c)"
+cmem_put --lang c --approach clone_bfs --mode native --bytes "$(mem_peak clang -O3 clone_bfs.c -o target/clone_bfs_c)"
+
+echo
+bench_emit

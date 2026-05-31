@@ -33,6 +33,15 @@ require clang     "xcode-select --install (macOS) or your distro's clang package
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
+# Structured-JSON emission (writes bench/results.json). Set BENCH_JSON=0 to
+# skip — the human-readable console output below is unaffected either way.
+if [ "${BENCH_JSON:-1}" = "1" ]; then
+    require jq      "brew install jq"
+    require python3 "python3 ships with macOS; or 'brew install python'"
+fi
+ROOT="$(cd ../../../.. && pwd)"
+. "$ROOT/scripts/bench-lib.sh"
+
 mem_peak() {
     { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
         | awk '/peak memory footprint/ {print $1}'
@@ -135,19 +144,26 @@ if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
 fi
 echo
 
+# Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
+bench_begin id=65 slug=valid-number group=1-100 \
+    title="Valid Number" workload="K=10M validation passes" \
+    sink="$expected"
+
 echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
 # All four comparators here run single-threaded. The kara binary built
 # with KARAC_AUTO_PAR=0 short-circuits auto-par dispatch back to plain
 # sequential codegen — this is the row directly comparable to rustc -O /
 # clang -O3 / go build on a per-core codegen-quality basis.
-hyperfine \
-    --warmup 5 \
-    --runs 30 \
-    --shell=none \
-    --command-name 'kara valid (seq, KARAC_AUTO_PAR=0)' './target/valid_kara_seq' \
-    --command-name 'rust valid'                        './target/valid' \
-    --command-name 'c    valid'                        './target/valid_c' \
-    --command-name 'go   valid'                        './target/valid_go_seq'
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach valid --lane seq --mode codegen \
+    --name 'kara valid (seq, KARAC_AUTO_PAR=0)' --cmd './target/valid_kara_seq'
+rt_cmd --lang rust --approach valid --lane seq --mode native \
+    --name 'rust valid' --cmd './target/valid'
+rt_cmd --lang c --approach valid --lane seq --mode native \
+    --name 'c    valid' --cmd './target/valid_c'
+rt_cmd --lang go --approach valid --lane seq --mode native \
+    --name 'go   valid' --cmd './target/valid_go_seq'
+rt_end
 
 echo
 echo "=== runtime — auto-par regime (kara default, multi-core) ==="
@@ -159,56 +175,49 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 # the production-default Kara behavior stays visible. Heavier warmup (10/50)
 # absorbs worker-pool init noise that otherwise inflates σ on short
 # auto-par runs.
-hyperfine \
-    --warmup 10 \
-    --runs 50 \
-    --shell=none \
-    --command-name 'kara valid (auto-par default)' './target/valid_kara'
+rt_begin --warmup 10 --runs 50
+rt_cmd --lang kara --approach valid --lane par --mode codegen \
+    --name 'kara valid (auto-par default)' --cmd './target/valid_kara'
+rt_end
 
 echo
 echo "=== runtime — long workloads (py) ==="
-hyperfine \
-    --warmup 2 \
-    --runs 10 \
-    --shell=none \
-    --command-name 'py   valid' 'python3 valid.py'
+rt_begin --warmup 2 --runs 10
+rt_cmd --lang python --approach valid --lane seq --mode interp \
+    --name 'py   valid' --cmd 'python3 valid.py'
+rt_end
 
 echo
 echo "=== compile elapsed (cold) ==="
-hyperfine \
-    --warmup 1 \
-    --runs 10 \
-    --shell=none \
+ce_begin --warmup 1 --runs 10
+ce_cmd --lang kara --approach valid --mode codegen \
     --prepare 'rm -f target/valid_kara valid' \
-    --command-name 'karac build valid.kara' 'sh -c "karac build valid.kara >/dev/null && mv valid target/valid_kara"' \
+    --name 'karac build valid.kara' \
+    --cmd 'sh -c "karac build valid.kara >/dev/null && mv valid target/valid_kara"'
+ce_cmd --lang rust --approach valid --mode native \
     --prepare 'rm -f target/valid' \
-    --command-name 'rustc -O valid.rs'      'rustc -O valid.rs -o target/valid' \
+    --name 'rustc -O valid.rs' --cmd 'rustc -O valid.rs -o target/valid'
+ce_cmd --lang c --approach valid --mode native \
     --prepare 'rm -f target/valid_c' \
-    --command-name 'clang -O3 valid.c'      'clang -O3 valid.c -o target/valid_c'
+    --name 'clang -O3 valid.c' --cmd 'clang -O3 valid.c -o target/valid_c'
+ce_end
 
 echo
 echo "=== binary size ==="
-for spec in \
-    'kara valid (seq):target/valid_kara_seq' \
-    'kara valid (auto-par):target/valid_kara' \
-    'rust valid:target/valid' \
-    'c    valid:target/valid_c' \
-    'go   valid:target/valid_go_seq'; do
-    label="${spec%%:*}"
-    path="${spec##*:}"
-    bytes=$(wc -c < "$path" | tr -d ' ')
-    kib=$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024}')
-    printf '  %-40s %10s bytes (%6s KiB)\n' "$label" "$bytes" "$kib"
-done
+size_put --lang kara --approach valid --lane seq --mode codegen --path target/valid_kara_seq
+size_put --lang kara --approach valid --lane par --mode codegen --path target/valid_kara
+size_put --lang rust --approach valid --lane seq --mode native  --path target/valid
+size_put --lang c    --approach valid --lane seq --mode native  --path target/valid_c
+size_put --lang go   --approach valid --lane seq --mode native  --path target/valid_go_seq
 
 echo
 echo "=== runtime memory (peak) ==="
-print_mem 'kara valid (seq)'      "$(mem_peak ./target/valid_kara_seq)"
-print_mem 'kara valid (auto-par)' "$(mem_peak ./target/valid_kara)"
-print_mem 'rust valid'            "$(mem_peak ./target/valid)"
-print_mem 'c    valid'            "$(mem_peak ./target/valid_c)"
-print_mem 'go   valid'            "$(mem_peak ./target/valid_go_seq)"
-print_mem 'py   valid'            "$(mem_peak python3 valid.py)"
+mem_put --lang kara --approach valid --lane seq --mode codegen --bytes "$(mem_peak ./target/valid_kara_seq)"
+mem_put --lang kara --approach valid --lane par --mode codegen --bytes "$(mem_peak ./target/valid_kara)"
+mem_put --lang rust --approach valid --lane seq --mode native  --bytes "$(mem_peak ./target/valid)"
+mem_put --lang c    --approach valid --lane seq --mode native  --bytes "$(mem_peak ./target/valid_c)"
+mem_put --lang go   --approach valid --lane seq --mode native  --bytes "$(mem_peak ./target/valid_go_seq)"
+mem_put --lang python --approach valid --lane seq --mode interp --bytes "$(mem_peak python3 valid.py)"
 
 echo
 echo "=== compile memory (cold) ==="
@@ -217,15 +226,18 @@ for src in valid.kara; do
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    print_mem "karac build $src" "$bytes"
+    cmem_put --lang kara --approach valid --mode codegen --bytes "$bytes"
 done
 for src in valid.rs; do
     out="target/$(basename "$src" .rs)"
     rm -f "$out"
-    print_mem "rustc -O $src" "$(mem_peak rustc -O "$src" -o "$out")"
+    cmem_put --lang rust --approach valid --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
 done
 for src in valid.c; do
     out="target/$(basename "$src" .c)_c"
     rm -f "$out"
-    print_mem "clang -O3 $src" "$(mem_peak clang -O3 "$src" -o "$out")"
+    cmem_put --lang c --approach valid --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
 done
+
+echo
+bench_emit
