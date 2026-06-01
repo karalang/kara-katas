@@ -91,16 +91,16 @@ Per [`../../../BENCH.md`](../../../BENCH.md) § *Implicit auto-par*, this kata e
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra regex** (`KARAC_AUTO_PAR=0`) | **112.5 ms ± 1.1 ms** | 110.5 ms | 98% |
-| rust regex (rustc -O) | **112.7 ms ± 0.8 ms** | 110.6 ms | 98% |
-| c    regex (clang -O3) | **114.0 ms ± 1.3 ms** | 112.0 ms | 98% |
-| go   regex | **172.4 ms ± 3.9 ms** | 169.8 ms | 98% |
+| **kāra regex** (`KARAC_AUTO_PAR=0`) | **111.9 ms ± 1.9 ms** | 109.9 ms | 99% |
+| rust regex (rustc -O) | **114.6 ms ± 5.5 ms** | 112.4 ms | 99% |
+| c    regex (clang -O3) | **114.6 ms ± 2.1 ms** | 112.7 ms | 99% |
+| go   regex | **170.9 ms ± 2.8 ms** | 168.4 ms | 99% |
 
-Kāra, Rust, and C are within **1.3% of each other** — a three-way per-core codegen-quality tie on a recursion-heavy workload. The recursive matcher's hot path (load `p[j]`, branch on `*`, peek and conditional-tail-call) is exactly the shape where rustc's mid-2026 inliner usually opens up a small lead via aggressive specialization. The fact that karac matches it here — within 0.2 ms — says the post-`bdac0d8` internal-linkage inlining heuristic is making the same call on this workload that rustc is.
+Kāra, Rust, and C are within **2.4% of each other** — a three-way per-core codegen-quality tie on a recursion-heavy workload. Kāra is nominally fastest this run (111.9 vs 114.6 ms), but Rust's row drew statistical outliers (σ 5.5 ms) under background load, so the gap is within noise — read it as a tie, not a win. The recursive matcher's hot path (load `p[j]`, branch on `*`, peek and conditional-tail-call) is exactly the shape where rustc's mid-2026 inliner usually opens up a small lead via aggressive specialization. The fact that karac stays level with it here says the post-`bdac0d8` internal-linkage inlining heuristic is making the same call on this workload that rustc is.
 
 The Go gap (~1.53× of Kāra-seq) reflects per-call slice-header reconstruction at each recursive frame (`[]byte(s)` happens fresh per `isMatch` call in the bench main, whereas rust/c/kara hold the byte view as a function-local across the recursion) plus the per-iter `idx % n` and `int → int64` widening overhead Go can't SROA across the predicate body.
 
@@ -110,25 +110,25 @@ Same snapshot, default `karac build` output:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra regex** (auto-par on reduction) | **10.1 ms ± 0.8 ms** | 132.8 ms | ~1320% (~13.2 cores) |
+| **kāra regex** (auto-par on reduction) | **10.6 ms ± 2.6 ms** | 129.5 ms | ~1230% (~12.3 cores) |
 
-Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~13.2 cores active during the run. The wall-time win *over the seq-lane Kāra row above* is **11.1×** (112.5 / 10.1); total CPU time goes up 20% (110.5 → 132.8 ms user) as the cost of dispatch + per-worker fixed overhead. Net: real production wall-time speedup on this workload's shape, paid for in additional CPU and a +263 KiB binary footprint (see § *Binary size* below).
+Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~12.3 cores active during the run. The wall-time win *over the seq-lane Kāra row above* is **10.5×** (111.9 / 10.6); total CPU time goes up 18% (109.9 → 129.5 ms user) as the cost of dispatch + per-worker fixed overhead. (The auto-par row's σ is ~2.6 ms — short multi-core runs are dispatch-noise-dominated; min was 9.0 ms.) Net: real production wall-time speedup on this workload's shape, paid for in additional CPU and a +263 KiB binary footprint (see § *Binary size* below).
 
 **Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 11× faster than rust" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq-lane table is the within-lane codegen-quality comparison; the auto-par row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline (no source-level annotation; the analyzer recognizes the natural serial reduction). A follow-up CR can add a true par lane (`rayon::par_iter` + goroutines variants of the outer reduction) so this number lands against in-lane parallel comparators.
 
 ### Codegen vs Python
 
-CPython at K = 1M takes **766.3 ± 4.4 ms** (single-core); projected to K = 10M that's ~7.66 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~68× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~759× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
+CPython at K = 1M takes **770.1 ± 8.0 ms** (single-core); projected to K = 10M that's ~7.70 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~69× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~726× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
 
 ### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `regex` | **60.7 ± 0.4 ms** | 79.2 ± 0.7 ms | 40.6 ± 0.3 ms |
+| `regex` | **66.1 ± 2.0 ms** | 95.0 ± 9.5 ms | 47.1 ± 1.6 ms |
 
-Karac is **1.30× faster than rustc -O** and **1.50× slower than clang -O3**. Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
+Karac is **1.44× faster than rustc -O** and **1.40× slower than clang -O3**. All three rose vs the 2026-05-25 snapshot (karac +5.4, rustc +15.8, clang +6.5 ms) under heavier background load this run — compile *elapsed* is the load-confounded metric; the deterministic signals (byte-identical binaries, compile-memory floor) held. Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
 
 ### Binary size
 
@@ -146,23 +146,23 @@ The seq-lane Kāra binary sits **within 0.2 KiB of clang's** (32.9 vs 32.7 KiB) 
 
 | Implementation | Bytes | MiB |
 |---|---|---|
-| **kāra regex (seq)** | **1,098,064** | **1.0** |
-| c    regex | 1,130,832 | 1.1 |
-| rust regex | 1,163,600 | 1.1 |
-| kāra regex (auto-par) | 1,540,456 | 1.5 |
-| go   regex | 3,047,952 | 2.9 |
+| **kāra regex (seq)** | **1,114,448** | **1.1** |
+| c    regex | 1,114,448 | 1.1 |
+| rust regex | 1,147,216 | 1.1 |
+| kāra regex (auto-par) | 1,507,688 | 1.4 |
+| go   regex | 2,982,488 | 2.8 |
 
-Kāra-seq's **1.0 MiB peak is the lowest in the lane** — 32 KiB under C, 65 KiB under Rust. The recursive matcher allocates nothing inside the loop (the input `Vec[String]` is fixed at ~~~~200 bytes total of string-header storage, the recursion lives entirely on the call stack), so steady state is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.5 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets. Go's 2.9 MiB carries its GC roots + scheduler arena overhead.
+Kāra-seq's peak **ties C to the byte** (1,114,448) and sits 32 KiB under Rust. (All five RSS figures shifted by 16 KiB-page multiples vs the 2026-05-25 snapshot — peak-footprint is quantized to the 16 KiB page on Apple Silicon, so Kāra-seq and C land on the same page this run rather than Kāra one page below; that's measurement granularity, not a regression.) The recursive matcher allocates nothing inside the loop (the input `Vec[String]` is fixed at ~~~~200 bytes total of string-header storage, the recursion lives entirely on the call stack), so steady state is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.5 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets. Go's 2.9 MiB carries its GC roots + scheduler arena overhead.
 
 ### Compile memory (cold)
 
 | Compiler | Bytes | MiB |
 |---|---|---|
 | clang -O3 regex.c | 2,687,336 | 2.6 |
-| karac build regex.kara | 10,027,488 | 9.6 |
-| rustc -O regex.rs | 28,328,584 | 27.0 |
+| karac build regex.kara | 10,944,992 | 10.4 |
+| rustc -O regex.rs | 28,344,968 | 27.0 |
 
-Karac peaks at **9.6 MiB** vs rustc's **27.0 MiB** (2.8× lower) and clang's **2.6 MiB** (3.7× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site — the seq build path would shave a small constant off but not materially change the ratio.
+Karac peaks at **10.4 MiB** vs rustc's **27.0 MiB** (2.6× lower) and clang's **2.6 MiB** (4.1× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site — the seq build path would shave a small constant off but not materially change the ratio. (The +0.9 MiB vs the 2026-05-25 snapshot is the documented fixed per-compile floor from karac feature-growth over the window — content-independent, byte-identical output, tracked benign across katas #6–#10.)
 
 ### Numbers published here are reference data
 
