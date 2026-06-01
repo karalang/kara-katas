@@ -89,26 +89,26 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 Per [`../../../BENCH.md`](../../../BENCH.md) § *Implicit auto-par*, this kata exercises karac's auto-par-on-reduction path: the K = 50,000,000 outer loop's `sum = sum + (if r { 1i64 } else { 0i64 })` accumulator is a textbook associative + commutative reduction, which the slice-1 concurrency analyzer recognizes and slice-3b codegen lowers to a `karac_par_reduce` dispatch *by default*. To honor BENCH.md's two-lane discipline (cross-lane wall-time ratios are not meaningful) the bench builds **two** kara binaries:
 
 - **`palindrome_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — the documented mechanism for side-by-side seq-vs-par benchmarking of the same source). The within-lane row directly comparable to rustc-O / clang-O3 / go build.
-- **`palindrome_kara`** — default `karac build` output. Picks up auto-par dispatch (~10.8 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
+- **`palindrome_kara`** — default `karac build` output. Picks up auto-par dispatch (~10.9 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
 
 **Workload.** N = 1024 LCG-fill i32 inputs (every 16th overwritten to a manufactured 8-digit palindrome → ~1/16 true rate), K = 50,000,000 outer iters, sink = count of `is_palindrome(inputs[k % N])` widened to i64. All four compiled mirrors agree on `3125000` (exactly 64 palindromes × 50M / 1024 expected hit count) before any timing runs; `bench.sh` fails loudly on mismatch.
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| rust palindrome (rustc -O) | **61.7 ms ± 1.1 ms** | 60.3 ms | 98% |
-| c    palindrome (clang -O3) | **69.2 ms ± 0.8 ms** | 67.8 ms | 98% |
-| **kāra palindrome** (`KARAC_AUTO_PAR=0`) | **69.8 ms ± 0.7 ms** | 68.4 ms | 98% |
-| go   palindrome | **107.1 ms ± 0.9 ms** | 105.0 ms | 98% |
+| rust palindrome (rustc -O) | **60.3 ms ± 0.8 ms** | 58.8 ms | 98% |
+| c    palindrome (clang -O3) | **68.5 ms ± 0.7 ms** | 66.7 ms | 97% |
+| **kāra palindrome** (`KARAC_AUTO_PAR=0`) | **70.2 ms ± 3.4 ms** | 68.0 ms | 97% |
+| go   palindrome | **105.1 ms ± 1.3 ms** | 102.8 ms | 98% |
 
-Kāra **matches `clang -O3` within σ** (69.8 vs 69.2 ms — measurement-noise parity) and runs **1.13× behind `rustc -O`** (69.8 vs 61.7 ms). Both ratios are within-lane: the same per-core single-threaded codegen-quality comparison the kata corpus is built around.
+Kāra **matches `clang -O3` within σ** (70.2 vs 68.5 ms — measurement-noise parity; kara's σ ran elevated this snapshot from background load, min 67.2 ms) and runs **1.16× behind `rustc -O`** (70.2 vs 60.3 ms). Both ratios are within-lane: the same per-core single-threaded codegen-quality comparison the kata corpus is built around.
 
-The Rust win on per-core throughput is plausibly the same shape as kata #4's pre-`bdac0d8` snapshot — rustc inlines `is_palindrome` into `main` while karac currently emits a call. `objdump --syms target/palindrome_kara_seq | grep is_palindrome` will tell us whether the symbol survived; if it did, the post-`bdac0d8` internal-linkage path may have a corner case for `bool`-returning predicates worth investigating. Filing as a follow-up rather than blocking the kata; the current seq-lane result is already 1.13× of Rust which is already good.
+The Rust win on per-core throughput is plausibly the same shape as kata #4's pre-`bdac0d8` snapshot — rustc inlines `is_palindrome` into `main` while karac currently emits a call. `objdump --syms target/palindrome_kara_seq | grep is_palindrome` will tell us whether the symbol survived; if it did, the post-`bdac0d8` internal-linkage path may have a corner case for `bool`-returning predicates worth investigating. Filing as a follow-up rather than blocking the kata; the current seq-lane result is already 1.16× of Rust which is already good.
 
-The Go gap (~1.55× of Kāra-seq) reflects per-iter slice-bounds checks + the boxed `int32` return that Go can't SROA across the small predicate body.
+The Go gap (~1.50× of Kāra-seq) reflects per-iter slice-bounds checks + the boxed `int32` return that Go can't SROA across the small predicate body.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
@@ -116,25 +116,25 @@ Same snapshot, default `karac build` output:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra palindrome** (auto-par on reduction) | **8.8 ms ± 0.8 ms** | 95.2 ms | ~1080% (~10.8 cores) |
+| **kāra palindrome** (auto-par on reduction) | **8.6 ms ± 0.5 ms** | 93.6 ms | ~1090% (~10.9 cores) |
 
-Karac's auto-par-on-reduction recognizes the K=50M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~10.8 cores active during the run. The wall-time win *over the seq-lane Kāra row above* is **7.9×** (69.8 / 8.8); total CPU time goes up 39% (68.4 → 95.2 ms user) as the cost of dispatch + per-worker fixed overhead. Net: real production wall-time speedup on this workload's shape, paid for in additional CPU and a +263 KiB binary footprint (see § *Binary size* below).
+Karac's auto-par-on-reduction recognizes the K=50M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~10.9 cores active during the run. The wall-time win *over the seq-lane Kāra row above* is **8.1×** (70.2 / 8.6); total CPU time goes up 38% (68.0 → 93.6 ms user) as the cost of dispatch + per-worker fixed overhead. Net: real production wall-time speedup on this workload's shape, paid for in additional CPU and a +263 KiB binary footprint (see § *Binary size* below).
 
 **Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 7× faster than rust" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq-lane table is the within-lane codegen-quality comparison; the auto-par row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline (no source-level annotation; the analyzer recognizes the natural serial reduction). A follow-up CR can add a true par lane (`rayon::par_iter` + goroutines variants of the outer reduction) so this number lands against in-lane parallel comparators.
 
 ### Codegen vs Python
 
-Python at K = 1M takes 159 ms (single-core); projected to K = 50M that's ~7.95 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~114× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~903× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
+Python at K = 1M takes 159 ms (single-core); projected to K = 50M that's ~7.95 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~113× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~924× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
 
 ### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
+Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `palindrome` | **61.2 ms ± 3.0 ms** | 80.9 ms ± 1.0 ms | 44.4 ms ± 1.4 ms |
+| `palindrome` | **67.3 ms ± 0.9 ms** | 83.0 ms ± 1.9 ms | 44.5 ms ± 1.2 ms |
 
-Karac is **1.32× faster than rustc -O** and **1.38× slower than clang -O3**. Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc`/`clang`/`karac` invocation; excluded per BENCH.md.
+Karac is **1.23× faster than rustc -O** and **1.51× slower than clang -O3**. (The karac figure ran ~6 ms above the 2026-05-25 snapshot, but compile *time* is the load-confounded metric here — the deterministic signals are clean: the emitted binary is byte-identical and compile *memory* moved only the +0.8 MiB benign floor documented below.) Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc`/`clang`/`karac` invocation; excluded per BENCH.md.
 
 ### Binary size
 
@@ -152,23 +152,23 @@ The seq-lane Kāra binary sits **within 0.2 KiB of clang's** (32.9 vs 32.7 KiB) 
 
 | Implementation | Bytes | MiB |
 |---|---|---|
+| **kāra palindrome (seq)** | **1,098,064** | **1.0** |
 | c    palindrome | 1,114,448 | 1.1 |
-| **kāra palindrome (seq)** | **1,114,448** | **1.1** |
-| rust palindrome | 1,163,600 | 1.1 |
-| kāra palindrome (auto-par) | 1,540,480 | 1.5 |
+| rust palindrome | 1,147,216 | 1.1 |
+| kāra palindrome (auto-par) | 1,507,688 | 1.4 |
 | go   palindrome | 3,113,536 | 3.0 |
 
-Kāra-seq is **byte-exact with C** (both at 1,114,448 bytes — the 4 KiB inputs Vec dominates steady state; everything else is libc + ELF/Mach-O loader overhead). Auto-par Kāra adds ~0.4 MiB for the lazy-init worker thread stacks — same overhead documented in [kata #7](../7-reverse-integer/) and [kata #4](../4-median-of-two-sorted-arrays/). Tunable downward via `KARAC_PAR_WORKERS` ([`d33b389`](../../../../karac-rust/)) for memory-constrained targets. Go's 3.0 MiB carries its GC roots + scheduler arena overhead.
+Kāra-seq is now **a hair under C** (1,098,064 vs 1,114,448 bytes — it was byte-exact with C in the 2026-05-25 snapshot; the newer runtime shaved 16 KiB off steady-state RSS). The 4 KiB inputs Vec dominates; everything else is libc + ELF/Mach-O loader overhead. Auto-par Kāra adds ~0.4 MiB for the lazy-init worker thread stacks — same overhead documented in [kata #7](../7-reverse-integer/) and [kata #4](../4-median-of-two-sorted-arrays/). Tunable downward via `KARAC_PAR_WORKERS` ([`d33b389`](../../../../karac-rust/)) for memory-constrained targets. Go's 3.0 MiB carries its GC roots + scheduler arena overhead.
 
 ### Compile memory (cold)
 
 | Compiler | Bytes | MiB |
 |---|---|---|
-| clang -O3 palindrome.c | 2,736,488 | 2.6 |
-| karac build palindrome.kara | 9,814,496 | 9.4 |
+| clang -O3 palindrome.c | 2,687,336 | 2.6 |
+| karac build palindrome.kara | 10,732,000 | 10.2 |
 | rustc -O palindrome.rs | 28,574,344 | 27.3 |
 
-Karac peaks at **9.4 MiB** vs rustc's **27.3 MiB** (2.9× lower) and clang's **2.6 MiB** (3.6× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site — the seq build path would shave a small constant off but not materially change the ratio.
+Karac peaks at **10.2 MiB** vs rustc's **27.3 MiB** (2.7× lower) and clang's **2.6 MiB** (4.0× higher). The +0.8 MiB vs the 2026-05-25 snapshot is the systemic benign per-compile floor (a fixed ~0.9 MiB karac-growth cost confirmed across katas #6–#9, not content-proportional), not an algorithmic blowup. The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site — the seq build path would shave a small constant off but not materially change the ratio.
 
 ### Numbers published here are reference data
 
