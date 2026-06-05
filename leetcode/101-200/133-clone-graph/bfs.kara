@@ -25,13 +25,18 @@ fn clone_graph(root: Option[Node]) -> Option[Node] {
 
             loop {
                 if let Some(curr) = queue.pop_front() {
+                    // One fetch per popped node — `curr_clone` is an RC
+                    // alias into the map, so pushes through it are
+                    // visible to every other handle. (Pre-refcount-fix
+                    // this was re-fetched per neighbor to dodge a
+                    // shared-struct aliasing hang.)
+                    let curr_clone = visited.get(curr.val).unwrap();
                     for nb in curr.neighbors.iter() {
                         if let None = visited.get(nb.val) {
                             let fresh = Node { val: nb.val, neighbors: Vec.new() };
                             let _ = visited.insert(nb.val, fresh);
                             queue.push_back(nb);
                         }
-                        let curr_clone = visited.get(curr.val).unwrap();
                         let nb_clone = visited.get(nb.val).unwrap();
                         curr_clone.neighbors.push(nb_clone);
                     }
@@ -40,7 +45,9 @@ fn clone_graph(root: Option[Node]) -> Option[Node] {
                 }
             }
 
-            visited.get(start.val)
+            // `root_clone` is still a live alias to the map's entry —
+            // return it directly instead of a final `visited.get`.
+            Some(root_clone)
         }
     }
 }

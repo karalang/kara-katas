@@ -25,13 +25,21 @@ fn dfs(node: Node, visited: mut ref Map[i64, Node]) -> Node {
     match visited.get(node.val) {
         Some(existing) => existing,
         None => {
+            // `copy` stays usable after the insert — `shared struct`
+            // handles are RC aliases, so the map holds one reference and
+            // this binding another; mutations through either are visible
+            // to both. (This natural shape was blocked until the 2026-06
+            // refcount fixes: returning a handle whose only other RC
+            // reference lived in a discarded local Map hung at runtime,
+            // so the original code re-fetched via `visited.get(...)` on
+            // every push and at the return.)
             let copy = Node { val: node.val, neighbors: Vec.new() };
             let _ = visited.insert(node.val, copy);
             for nb in node.neighbors.iter() {
                 let cloned_nb = dfs(nb, visited);
-                visited.get(node.val).unwrap().neighbors.push(cloned_nb);
+                copy.neighbors.push(cloned_nb);
             }
-            visited.get(node.val).unwrap()
+            copy
         }
     }
 }
