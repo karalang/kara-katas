@@ -60,53 +60,69 @@ brew install hyperfine    # one-time, also needs rustc (rustup) and karac
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` builds the Rust file with `rustc -O` and the Kāra file with `karac build` (both cached in `bench/target/`, gitignored), then runs three passes:
-
-1. **Runtime** — `hyperfine --warmup 2 --runs 10` across the three binaries on `N = 50_000` deterministic `(actual, minimum)` tasks, `K = 5` outer iterations so algorithm time dominates per-process startup.
-2. **Compile (cold)** — `hyperfine` with a `--prepare` step that deletes the artifact before every run, so each measurement is a fresh `karac build` / `rustc -O` invocation.
-3. **Binary size** — bytes / KiB of the produced artifact (`bench/target/greedy_kara` and `bench/target/greedy`).
+`bench/bench.sh` builds the Rust file with `rustc -O`, the C file with `clang -O3`, the Go mirror with `go build`, and the Kāra file with `karac build` (all cached in `bench/target/`, gitignored), then measures runtime (`hyperfine --warmup 5 --runs 30` on `N = 50_000` deterministic `(actual, minimum)` tasks, `K = 5` outer iterations so algorithm time dominates per-process startup), cold-compile time and memory (via a `--prepare` delete step), binary size, and peak RSS.
 
 | File | What it does |
 |---|---|
 | [`bench/greedy.kara`](bench/greedy.kara) | N=50_000 deterministic generator, K=5 outer iterations, sort-by-`(minimum - actual)`-descending via `Vec.sort_by` with an inline closure comparator |
 | [`bench/greedy.py`](bench/greedy.py) | Algorithmic mirror — same N, K, generator |
 | [`bench/greedy.rs`](bench/greedy.rs) | Algorithmic mirror; compiled with `rustc -O` |
+| [`bench/greedy.c`](bench/greedy.c) / [`bench/go-seq/`](bench/go-seq/) | Algorithmic mirrors; `clang -O3` (`qsort`) / `go build` (`sort.Slice`) |
 
-All three print the same sum-of-results sink so the algorithm's output participates in I/O and can't be elided.
+All mirrors print the same sum-of-results sink so the algorithm's output participates in I/O and can't be elided; bench.sh fails loudly on mismatch.
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-05-29, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build` and `rustc -O`:
+Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Workload | Kāra (codegen) | Rust | Gap |
-|---|---|---|---|
-| `greedy` | 3.4 ± 0.2 ms | 3.0 ± 0.3 ms | **1.11× of Rust** |
+| Workload | Kāra (codegen) | Rust | C (clang -O3) | Go | Kāra : Rust |
+|---|---|---|---|---|---|
+| `greedy` | 3.2 ± 0.1 ms | 2.7 ± 0.1 ms | 3.3 ± 0.1 ms | 10.3 ± 0.2 ms | **1.18× of Rust** |
+
+(The 2026-05-29 snapshot read kāra 3.4 ± 0.2 / rust 3.0 ± 0.3 — both moved down together within ~1σ, batch movement; C and Go rows are benched here for the first time.)
 
 This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracked the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro.
 
-**Slice 6.1 + 6.4 (Vec[T].sort_by monomorphization) shipped 2026-05-29.** The original deferred-entry promotion gate ("≥2 distinct non-synthetic workloads show >1.3× perf gap") fired via katas [#16 (3Sum Closest)](../../1-100/16-3sum-closest/) at 1.55× and [#56 (Merge Intervals)](../../1-100/56-merge-intervals/) at 1.50×; karac shipped per-call-site `__vec_<elem>_sort_by_mono_<id>` insertion-sort bodies with the comparator inlined, plus a runtime length dispatch `if len > 64 { runtime } else { mono }`. **This kata routes to the runtime path at N=50000** because insertion sort's O(N²) loses hard above the threshold; the runtime length check at the call site picks the safe path per call. The pre-Slice-6.4 codegen behavior (FFI hop through `karac_vec_sort_by`) is preserved unchanged for kata 1665's workload; the 3.4 → 3.0 ms gap is unchanged within noise from pre-shipping numbers. Kata 16 / 56's much smaller N=16 workloads benefit from the mono path; kata 1665's N=50000 workload would have *regressed* under a pure-mono dispatch (a strawman first attempt during the Slice 6.4 work showed 3.2 ms → 1.1 s before the length dispatch was added), so the safe runtime fallback is the load-bearing piece here. Cross-ref: [`phase-7-codegen.md` Slice 6 trigger entry](https://github.com/karalang/kara/blob/main/docs/implementation_checklist/phase-7-codegen.md).
+The new comparator rows make the comparator-inlining story unusually legible: **C loses to kāra here** (3.3 vs 3.2 — only time a clang -O3 mirror trails kāra in this corpus's sort katas) because `qsort`'s function-pointer comparator carries exactly the same cannot-inline handicap as kāra's FFI hop, on top of `qsort`'s element-swap-by-`memcpy` generality. Rust's monomorphized `sort_by` inlines the comparator into pdqsort and leads everyone. Go's `sort.Slice` trails 3.86× behind Rust — interface-based comparator dispatch plus bounds checks in the swap path.
+
+**Slice 6.1 + 6.4 (Vec[T].sort_by monomorphization) shipped 2026-05-29.** The original deferred-entry promotion gate ("≥2 distinct non-synthetic workloads show >1.3× perf gap") fired via katas [#16 (3Sum Closest)](../../1-100/16-3sum-closest/) at 1.55× and [#56 (Merge Intervals)](../../1-100/56-merge-intervals/) at 1.50×; karac shipped per-call-site `__vec_<elem>_sort_by_mono_<id>` insertion-sort bodies with the comparator inlined, plus a runtime length dispatch `if len > 64 { runtime } else { mono }`. **This kata routes to the runtime path at N=50000** because insertion sort's O(N²) loses hard above the threshold; the runtime length check at the call site picks the safe path per call. The pre-Slice-6.4 codegen behavior (FFI hop through `karac_vec_sort_by`) is preserved unchanged for kata 1665's workload; the kāra-vs-rust gap is unchanged within noise from pre-shipping numbers (3.4 vs 3.0 then, 3.2 vs 2.7 today). Kata 16 / 56's much smaller N=16 workloads benefit from the mono path; kata 1665's N=50000 workload would have *regressed* under a pure-mono dispatch (a strawman first attempt during the Slice 6.4 work showed 3.2 ms → 1.1 s before the length dispatch was added), so the safe runtime fallback is the load-bearing piece here. Cross-ref: [`phase-7-codegen.md` Slice 6 trigger entry](https://github.com/karalang/kara/blob/main/docs/implementation_checklist/phase-7-codegen.md).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara greedy` (codegen) | 3.4 ± 0.2 ms |
-| `rust greedy` | 3.0 ± 0.3 ms |
-| `py greedy` | 38.6 ± 0.6 ms |
+| `kara greedy` (codegen) | 3.2 ± 0.1 ms |
+| `rust greedy` | 2.7 ± 0.1 ms |
+| `py greedy` | 37.6 ± 0.6 ms |
 
-Python is **~11× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size.
+Python is **~12× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size. (CPython's `list.sort` with a key tuple is actually a *good* showing — Timsort's C core keeps the multiplier an order of magnitude below the pure-bytecode katas' ~35–540×.)
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
-| Compiler | Compile time | Binary size |
-|---|---|---|
-| `karac build greedy.kara` | 58.9 ± 0.9 ms | 294.7 KiB |
-| `rustc -O greedy.rs` | 119.7 ± 1.1 ms | 472.1 KiB |
+| Compiler | Compile time | Binary size | Compile memory |
+|---|---|---|---|
+| `karac build greedy.kara` | 69.9 ± 1.0 ms | 294.7 KiB (301,784 B) | 9.9 MiB |
+| `rustc -O greedy.rs` | 116.0 ± 3.9 ms | 472.1 KiB | 38.1 MiB |
+| `clang -O3 greedy.c` | 44.3 ± 0.8 ms | 32.9 KiB | 2.5 MiB |
 
-Kāra compiles this kata **~2× faster** than `rustc -O` and produces a binary **~38% smaller** — the cumulative effect of the 2026-05-12 fat-LTO runtime rebuild that exposed dead `Vec.sort_by` / `Map` plumbing to `-Wl,-dead_strip` (shaving ~17%), plus the 2026-05-25 `__TEXT,__jittmpl` segment re-scope (`karac-rust e76f42b`) that reclaimed an additional 16 KiB per Mach-O binary (311.9 KiB → 294.7 KiB on this kata).
+Kāra compiles this kata **1.66× faster** than `rustc -O` at ~3.8× lower compiler RAM, and produces a binary **~38% smaller** — the cumulative effect of the 2026-05-12 fat-LTO runtime rebuild that exposed dead `Map` plumbing to `-Wl,-dead_strip` (shaving ~17%), plus the 2026-05-25 `__TEXT,__jittmpl` segment re-scope (`karac-rust e76f42b`) that reclaimed an additional 16 KiB per Mach-O binary (311.9 KiB → 294.7 KiB on this kata). (The 2026-05-25 snapshot read `karac build` at 58.9 ± 0.9 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 69.9 — the same +11–14 ms shift seen across every kata re-benched on 06-05. rustc and clang both rebuilt their binaries **byte-identical**, anchoring the environment; rustc's own wall read 119.7 → 116.0.)
+
+> **Disk-artifact note (contamination recovery).** The `bench/target/greedy_kara` built 2026-05-29 weighed 420,600 B — it was produced during the transient window where the runtime archive was built with `cargo build` (rlib + staticlib dual emission), which defeats cross-module DCE and leaves std's ~57 KiB DWARF symbolizer plus friends reachable. Today's rebuild recovered **exactly −118,816 B**, the same fingerprint as katas #15/#16/#18/#56, landing on 301,784 B — confirming the 294.7 KiB this README documented all along (the contaminated size was never recorded here). Kāra's 294.7 KiB sits at the documented **dual-path sort floor**: the always-emitted `karac_vec_sort_by` large-N fallback keeps libstd's sort machinery linked (lean fix tracked karac-side as phase-7 Slice 6.2+). Go's binary (not in the cold-compile table — `go build` caching isn't comparable) weighs 2452.1 KiB, ~18 KiB above its usual 2434.2 corpus floor for the `sort` package.
+
+### Runtime memory (peak)
+
+| Run | Peak RSS |
+|---|---|
+| `c    greedy` | 1.8 MiB |
+| `rust greedy` | 3.4 MiB |
+| `kara greedy` (codegen) | 3.6 MiB |
+| `go   greedy` | 7.5 MiB |
+| `py   greedy` | 11.5 MiB |
+
+First RSS readings recorded for this kata (single-shot `/usr/bin/time -l`). The N=50,000 `(i64, i64)` working set is ~800 KiB ×2 (input + sorted copy); C's 1.8 MiB is that plus process baseline. Kāra sits 0.2 MiB above Rust — the statically-linked runtime surface (`karac_vec_sort_by` and friends) that the 294.7 KiB binary carries, faulted in at load. Go's 7.5 MiB is GC arena + runtime; Python's 11.5 MiB is the interpreter baseline.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C usually calibrates the LLVM-backend floor, but on this kata it instead calibrates the *comparator-indirection penalty* — `qsort`'s function-pointer dispatch lands it behind kāra, making Rust's inlined pdqsort the floor-setter. Go is the cross-runtime data point; Python is the ergonomic foil.
