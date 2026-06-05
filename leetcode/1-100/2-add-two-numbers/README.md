@@ -23,7 +23,7 @@ Reverse-order digit storage makes addition local — no normalisation pass is ne
 
 - **`shared struct ListNode { val: i64, mut next: Option[ListNode] }`** — self-referential RC-backed node with a mutable tail link, enabling left-to-right list construction via a `tail` cursor.
 - **`Option[ListNode]` + `if let Some(n) = a`** — flat per-list peek without a four-arm `match (a, b)` (three of those arms would share code).
-- **f-string accumulation (`s = f"{s}, {node.val}"`)** — `String + String` doesn't typecheck (registered as arithmetic); f-string is the supported incremental-string idiom.
+- **`String.push_str` accumulation** — `to_string` appends in place (`s.push_str(f"{node.val}")`), amortized O(1) per node. The pre-2026-06 form was f-string self-append (`s = f"{s}, {node.val}"`) — the only idiom before `push_str` landed (karac `7ef42b9`), but O(n²) since each append re-copies the whole buffer; kata [#71](../71-simplify-path/) measured and killed that shape. (`String + String` still doesn't typecheck — `+` is registered as arithmetic.)
 - **Tail-recursive shape in `recursive.kara`** — recursive call sits in the `next` field; tail-position by source, not by codegen guarantee.
 
 ## Running

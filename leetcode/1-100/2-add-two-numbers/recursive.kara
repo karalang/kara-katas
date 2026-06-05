@@ -60,6 +60,10 @@ fn from_array(arr: Slice[i64]) -> Option[ListNode] {
 }
 
 fn to_string(list: Option[ListNode]) -> String {
+    // `push_str` mutates in place (amortized O(1) per call); the prior
+    // f-string self-append `s = f"{s}{...}"` re-copied the whole buffer
+    // per node — O(n²) total, the exact shape kata #71 measured and
+    // killed (karac push_str landed 7ef42b9).
     let mut s: String = "[";
     let mut current = list;
     let mut first = true;
@@ -68,16 +72,17 @@ fn to_string(list: Option[ListNode]) -> String {
             Some(node) => {
                 if first {
                     first = false;
-                    s = f"{s}{node.val}";
                 } else {
-                    s = f"{s}, {node.val}";
+                    s.push_str(", ");
                 }
+                s.push_str(f"{node.val}");
                 current = node.next;
             }
             None => break,
         }
     }
-    f"{s}]"
+    s.push_str("]");
+    s
 }
 
 fn report(a: Slice[i64], b: Slice[i64]) {
