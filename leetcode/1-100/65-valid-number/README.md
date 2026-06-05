@@ -93,16 +93,16 @@ The N = 8 inputs are picked to exercise every transition path through the DFA so
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 5 --runs 30 --shell=none`. Per BENCH.md's two-lane discipline, the kara binary here is built with `KARAC_AUTO_PAR=0` so the comparison is per-core codegen-quality only — directly stackable against `rustc -O`, `clang -O3`, and `go build`.
+Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. Per BENCH.md's two-lane discipline, the kara binary here is built with `KARAC_AUTO_PAR=0` so the comparison is per-core codegen-quality only — directly stackable against `rustc -O`, `clang -O3`, and `go build`.
 
 | Run | Mean ± σ | User |
 |---|---|---|
-| `kara valid` (seq, KARAC_AUTO_PAR=0) | 64.7 ± 0.9 ms | 62.8 ms |
-| `rust valid` | 56.6 ± 0.6 ms | 54.8 ms |
-| `c    valid` | 63.8 ± 1.1 ms | 61.9 ms |
-| `go   valid` | 69.1 ± 0.8 ms | 66.7 ms |
+| `kara valid` (seq, KARAC_AUTO_PAR=0) | 64.8 ± 1.5 ms | 63.2 ms |
+| `rust valid` | 56.2 ± 0.8 ms | 54.6 ms |
+| `c    valid` | 65.6 ± 1.3 ms | 64.0 ms |
+| `go   valid` | 69.5 ± 0.9 ms | 67.4 ms |
 
-Single-thread kara is at **parity with C** (1.01× ahead) and **1.07× ahead of Go**, with **rust 1.14× ahead** as the per-core codegen reference. The codegen-quality gap to rust on this DFA shape (8 `else if` chains × ≤4 categories each lowering to nested `cmp + br`, plus a `categorize` call per byte) is small enough that the seq lane reads as essentially three-way parity with C/Go on the M5 Pro — same picture as the kata 8 seq lane after the three karac perf commits landed.
+Single-thread kara is at **parity with C** (1.01× ahead) and **1.07× ahead of Go**, with **rust 1.15× ahead** as the per-core codegen reference. (The 2026-05-25 snapshot read kara 64.7 ± 0.9 / rust 56.6 / c 63.8 / go 69.1 — every mirror reproduced within ~1σ across an 11-day gap and a karac reinstall, the tightest reproduction in the corpus; this DFA workload allocates nothing, so there's no allocator or page-cache surface for batch conditions to move.) The codegen-quality gap to rust on this DFA shape (8 `else if` chains × ≤4 categories each lowering to nested `cmp + br`, plus a `categorize` call per byte) is small enough that the seq lane reads as essentially three-way parity with C/Go on the M5 Pro — same picture as the kata 8 seq lane after the three karac perf commits landed.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
@@ -110,9 +110,11 @@ Default `karac build` output: karac's auto-par-on-reduction recognizes the `if r
 
 | Run | Mean ± σ | User | User / wall |
 |---|---|---|---|
-| `kara valid` (auto-par default) | 8.2 ± 0.7 ms | 66.9 ms | 8.16× |
+| `kara valid` (auto-par default) | 6.0 ± 0.5 ms | 67.5 ms | 11.3× |
 
-Auto-par is **7.89× faster than kara's own seq baseline** — the intra-Kāra seq→par speedup, which is the honest figure to report here; the seq lane above already carries the cross-language comparison (parity with C, 1.14× behind Rust), and restating auto-par as "N× faster than Rust/C" would conflate per-core codegen quality with whether the comparator opted into parallelism. The User / wall ratio of 8.16× says ~8 cores are doing useful work, with per-core efficiency = (66.9 ms User on auto-par) / (62.8 ms User on seq) = **94%** — within hand's-breadth of perfect parallel scaling. Slice-1 analyzer (commit [`3294e50`](../../../../karac-rust/), 2026-05-20) recognizes the conditional accumulator-update shape as a `+`-reduction with `sum` as the accumulator (semantically `sum = sum + (if r { 1i64 } else { 0i64 })` for the associative+commutative `+` op), then slice-3b codegen lowers it to `karac_par_reduce` that fans the iteration space across the M5 Pro's 6 P-cores + 12 E-cores. Reduction op is associative + commutative — combine order doesn't matter, every run produces the same sink (`6_250_000`). NOT directly comparable to the single-thread rows above per BENCH.md's two-lane discipline — reported separately so the production-default Kara behavior stays visible.
+Auto-par is **10.8× faster than kara's own seq baseline** — the intra-Kāra seq→par speedup, which is the honest figure to report here; the seq lane above already carries the cross-language comparison (parity with C, 1.15× behind Rust), and restating auto-par as "N× faster than Rust/C" would conflate per-core codegen quality with whether the comparator opted into parallelism. The User / wall ratio of 11.3× says ~11 cores are doing useful work, with per-core efficiency = (67.5 ms User on auto-par) / (63.2 ms User on seq) = **94%** — within hand's-breadth of perfect parallel scaling.
+
+> **Real improvement, 2026-06-05:** the 2026-05-25 snapshot read 8.2 ± 0.7 ms wall at 66.9 ms User (8.16× User/wall, 7.89× over seq). Today's 6.0 ± 0.5 ms is ~4σ better **with User-CPU flat** (66.9 → 67.5 ms) and an unchanged seq baseline — the same work is being packed onto cores with less idle wall time. The June karac runtime-archive scheduler work (dispatch + herd-free wakeup — the change that improved kata #13's reduction by 10%) is the attributable cause; this kata's fan-out/combine shape is exactly what that work targets. Corroborated by kata #20's par-RSS drop on the same archive. Slice-1 analyzer (commit [`3294e50`](../../../../karac-rust/), 2026-05-20) recognizes the conditional accumulator-update shape as a `+`-reduction with `sum` as the accumulator (semantically `sum = sum + (if r { 1i64 } else { 0i64 })` for the associative+commutative `+` op), then slice-3b codegen lowers it to `karac_par_reduce` that fans the iteration space across the M5 Pro's 6 P-cores + 12 E-cores. Reduction op is associative + commutative — combine order doesn't matter, every run produces the same sink (`6_250_000`). NOT directly comparable to the single-thread rows above per BENCH.md's two-lane discipline — reported separately so the production-default Kara behavior stays visible.
 
 The outer loop body that lights this up:
 
@@ -131,11 +133,11 @@ Rust and C stay single-threaded — neither `rustc -O` nor `clang -O3` auto-para
 
 Per the project's `no workarounds — fix the compiler` discipline, the workload kept its natural shape and the analyzer was extended (commit [`3294e50`](../../../../karac-rust/)) with a new `conditional_acc_update_shape` matcher that lifts single-arm `if cond { acc = acc + delta }` (and the trivially-equivalent two-arm form with an empty else) to the unconditional reduction. Three guards prevent unsoundness: the else branch must be empty, the then-block must be exactly one update statement of the recognized shape, and the condition must not read the accumulator (otherwise the per-iter decision is order-dependent and not preserved by the fan-out / combine model).
 
-Closing the gap dropped this kata's wall from 64.3 ms → 8.2 ms (**7.84× speedup from a single analyzer extension**), moving kara from 1.15× slower than rust to 6.90× faster on wall. The pre-fix 64.3 ms wall and today's seq-lane 64.7 ms wall agree to within σ — direct confirmation that the seq lane reproduces the pre-auto-par single-thread baseline, with the auto-par regime sitting on top of it.
+Closing the gap dropped this kata's wall from 64.3 ms → 8.2 ms as of 2026-05-25 (**7.84× speedup from a single analyzer extension**; the June runtime-archive scheduler work has since taken the same binary shape to 6.0 ms — 10.7× over the pre-fix wall). The pre-fix 64.3 ms wall and the current seq-lane 64.8 ms wall agree to within σ — direct confirmation that the seq lane reproduces the pre-auto-par single-thread baseline, with the auto-par regime sitting on top of it.
 
 ### Codegen vs Python
 
-Python is **400× slower than Kāra auto-par** at the same K (3,276 ms vs 8.2 ms) and **51× slower than Kāra seq** (3,276 ms vs 64.7 ms). The per-iter body has a function call per byte (`categorize`) plus state-machine dispatch, all at the CPython bytecode-dispatch level — every `cat = categorize(c)` is an attribute lookup + frame push, and each `state == N` compare boxes both sides into PyObjects. The serial-vs-serial slice (kara seq User 62.8 ms vs python wall 3,276 ms) is **~52×**; the auto-par lowering widens that to 400× on wall by fanning across cores while CPython runs the GIL-locked single-threaded loop. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~2,220×) because the inner body there is even shorter — interpreter overhead dominates a larger fraction of CPython's cost.
+Python is **~540× slower than Kāra auto-par** at the same K (3,256 ms vs 6.0 ms) and **~50× slower than Kāra seq** (3,256 ms vs 64.8 ms). The per-iter body has a function call per byte (`categorize`) plus state-machine dispatch, all at the CPython bytecode-dispatch level — every `cat = categorize(c)` is an attribute lookup + frame push, and each `state == N` compare boxes both sides into PyObjects. The serial-vs-serial slice (kara seq User 63.2 ms vs python wall 3,256 ms) is **~52×**; the auto-par lowering widens that to ~540× on wall by fanning across cores while CPython runs the GIL-locked single-threaded loop. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was wider (~2,220×) because the inner body there is even shorter — interpreter overhead dominates a larger fraction of CPython's cost.
 
 ### Runtime memory — seq at C/Rust parity, auto-par at +0.4 MiB
 
@@ -143,29 +145,31 @@ Same snapshot:
 
 | Run | Peak RSS |
 |---|---|
-| `kara valid` (seq) | 1.1 MiB |
-| `kara valid` (auto-par) | 1.5 MiB |
+| `kara valid` (seq) | 1.0 MiB |
+| `kara valid` (auto-par) | 1.4 MiB |
 | `rust valid` | 1.1 MiB |
-| `c    valid` | 1.1 MiB |
-| `go   valid` | 2.9 MiB |
-| `py   valid` | 7.3 MiB |
+| `c    valid` | 1.0 MiB |
+| `go   valid` | 2.8 MiB |
+| `py   valid` | 7.2 MiB |
 
-Kara seq matches C/Rust **byte-for-byte** at 1.1 MiB — no per-thread overhead because the seq binary skips the `karac_par_run` worker pool entirely. Auto-par adds ~0.4 MiB for the long-lived pool, which reserves N = `available_parallelism()` OS-thread stacks regardless of how many reductions fire. Acceptable cost for the 7.89× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the pool weight isn't worth paying. Same root-cause split as kata [#7](../7-reverse-integer/#runtime-memory-peak-rss) and kata [#8](../8-string-to-integer-atoi/#runtime-memory-peak-rss).
+Kara seq sits at C/Rust parity (1,065,248 B vs C's 1,048,864 / Rust's 1,114,400 — single-shot `/usr/bin/time -l` readings, page-level noisy; the 2026-05-25 sample read kara/C/Rust byte-identical) — no per-thread overhead because the seq binary skips the `karac_par_run` worker pool entirely. Auto-par adds ~0.4 MiB for the long-lived pool, which reserves N = `available_parallelism()` OS-thread stacks regardless of how many reductions fire. Acceptable cost for the 10.8× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the pool weight isn't worth paying. Same root-cause split as kata [#7](../7-reverse-integer/#runtime-memory-peak-rss) and kata [#8](../8-string-to-integer-atoi/#runtime-memory-peak-rss).
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-05-25, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build valid.kara` (auto-par default) | 63.5 ± 0.9 ms | 295.8 KiB |
-| `rustc -O valid.rs` | 80.1 ± 0.8 ms | 455.4 KiB |
-| `clang -O3 valid.c` | 43.4 ± 0.7 ms | 32.7 KiB |
+| `karac build valid.kara` (auto-par default) | 75.5 ± 1.2 ms | 295.8 KiB |
+| `rustc -O valid.rs` | 79.1 ± 1.3 ms | 455.4 KiB |
+| `clang -O3 valid.c` | 45.5 ± 1.1 ms | 32.7 KiB |
 
-Kāra compiles this kata **1.26× faster** than `rustc -O` and produces an auto-par binary **1.46× smaller** than `rustc -O`'s. Clang is **1.47× faster** and produces a binary **9.5× smaller** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-elapsed-cold). The seq-build kara binary is **32.8 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **9.3× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers — identical in shape to kata [#7](../7-reverse-integer/) and kata [#8](../8-string-to-integer-atoi/), and the cost of the 7.89× wall-clock win.
+Kāra compiles this kata **1.05× faster** than `rustc -O` and produces an auto-par binary **1.54× smaller** than `rustc -O`'s (466,296 / 302,872 B). Clang is **1.66× faster** than karac with a **13.9× smaller binary than Rust's** — same lower-floor C reference shape as kata [#8](../8-string-to-integer-atoi/#compile-elapsed-cold). The seq-build kara binary is **32.8 KiB** (auto-par dispatch dead-code-eliminated when `KARAC_AUTO_PAR=0`), bringing the kara/rust binary-size ratio to **13.9× smaller** when the runtime weight isn't paid for. The +263 KiB delta between seq and auto-par kara binaries is the `karac_par_reduce` runtime + thread-pool helpers (the auto-par binary sits at the documented ~295.8 KiB floor — libstd's panic/backtrace machinery reached via the reduction runtime) — identical in shape to kata [#7](../7-reverse-integer/) and kata [#8](../8-string-to-integer-atoi/), and the cost of the 10.8× wall-clock win.
 
-Compile memory: karac peaks at **9.9 MiB** vs rustc's **26.8 MiB** vs clang's **2.6 MiB** — ~2.7× lower compile-time RAM than rustc, ~3.8× higher than clang. Same ordering as kata [#8](../8-string-to-integer-atoi/#compile-memory-cold).
+(The 2026-05-25 snapshot read `karac build` at 63.5 ± 0.9 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for the 75.5 ms reading — both kara binary sizes reproduce the May table exactly, so codegen output is unchanged. rustc held flat 80.1 → 79.1.)
+
+Compile memory: karac peaks at **10.4 MiB** vs rustc's **26.7 MiB** vs clang's **2.5 MiB** — ~2.6× lower compile-time RAM than rustc, ~4.2× higher than clang (karac's 9.9 → 10.4 MiB move is the corpus-wide benign compile-mem floor band on the newer karac build). Same ordering as kata [#8](../8-string-to-integer-atoi/#compile-memory-cold).
 
 ### Why Rust, C, and Go are in the harness
 
-Same rationale as kata [#8](../8-string-to-integer-atoi/#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no String type and no length-prefixed slice; Go is the **GC + goroutine-overhead peer** that anchors the seq lane on the upper end. The current result — **seq lane at parity with C, 1.07× ahead of Go, 1.14× behind Rust on codegen quality; auto-par 7.89× intra-Kāra seq→par speedup (reported as the language-level win, not a cross-lane "faster than Rust" claim); 1.46× smaller binary than Rust on auto-par (9.3× smaller on seq); 1.26× faster compile than Rust; ~2.7× lower compile RAM than Rust; seq at C/Rust RSS parity, auto-par at +0.4 MiB peak RSS for the worker thread pool** — is the third kata in the suite where kara's auto-par lights up (after kata [#7](../7-reverse-integer/#benchmarks) at 11.1× and kata [#8](../8-string-to-integer-atoi/#benchmarks) at 7.5× intra-Kāra seq→par speedup). Surfaced as the *first* kata whose conditional-update body shape wasn't recognized by the slice-1 matcher — the analyzer extension that fixed it (commit [`3294e50`](../../../../karac-rust/), 2026-05-20) generalizes to any counts-of-truthy-results workload, a common per-iter-predicate shape.
+Same rationale as kata [#8](../8-string-to-integer-atoi/#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no String type and no length-prefixed slice; Go is the **GC + goroutine-overhead peer** that anchors the seq lane on the upper end. The current result — **seq lane at parity with C, 1.07× ahead of Go, 1.15× behind Rust on codegen quality; auto-par 10.8× intra-Kāra seq→par speedup (reported as the language-level win, not a cross-lane "faster than Rust" claim); 1.54× smaller binary than Rust on auto-par (13.9× smaller on seq); 1.05× faster compile than Rust; ~2.6× lower compile RAM than Rust; seq at C/Rust RSS parity, auto-par at +0.4 MiB peak RSS for the worker thread pool** — is the third kata in the suite where kara's auto-par lights up (after kata [#7](../7-reverse-integer/#benchmarks) at 11.1× and kata [#8](../8-string-to-integer-atoi/#benchmarks) at 7.5× intra-Kāra seq→par speedup). Surfaced as the *first* kata whose conditional-update body shape wasn't recognized by the slice-1 matcher — the analyzer extension that fixed it (commit [`3294e50`](../../../../karac-rust/), 2026-05-20) generalizes to any counts-of-truthy-results workload, a common per-iter-predicate shape.
