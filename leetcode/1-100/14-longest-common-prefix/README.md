@@ -89,7 +89,7 @@ Python at K=100k is 318 ms; projecting to the compiled mirrors' K=1M (~3.18 s) p
 | **karac build vertical.kara**  | **80.4 ± 1.5 ms** |
 | rustc -O vertical.rs           | 116.7 ± 17.6 ms |
 
-Kāra compiles **1.45× faster than `rustc -O`** and sits at **1.52× of clang -O3** — same shape as the rest of the corpus. (The 2026-05-29 snapshot read 92.0 ms for `karac build`; ~12 ms of that was link time against a build-contaminated runtime archive — see § Binary size — so the 80.4 ms reading is the corrected number, not drift.)
+Kāra compiles **1.45× faster than `rustc -O`** and sits at **1.52× of clang -O3** — same shape as the rest of the corpus. (The 2026-05-29 snapshot read 92.0 ± 6.4 ms for `karac build`; that reading was most likely load-inflated — kata #15, benched against the same contaminated archive, showed no comparable slowdown, so the archive's link-time cost doesn't explain the gap. Treat 80.4 ± 1.5 as the better-conditioned measurement of the same compiler.)
 
 ### Binary size
 

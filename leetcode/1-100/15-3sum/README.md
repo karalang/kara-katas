@@ -73,16 +73,16 @@ Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumul
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-30, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with the karac Slice 6.1 mono fast path for `Vec[i64].sort_by` landed (the kata 15 / 16 idiom — surfaced by [kata 16](../16-3sum-closest/) and shipped together).
+Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with the karac Slice 6.1 mono fast path for `Vec[i64].sort_by` landed (the kata 15 / 16 idiom — surfaced by [kata 16](../16-3sum-closest/) and shipped together). The 2026-05-30 snapshot read 210.7 / 234.3 / 266.2 / 380.3 ms — all four rows drifted down ~2–4% together (rust/c binaries byte-identical), so the shift is batch variance, not a code change.
 
 | Implementation | Wall time |
 |---|---|
-| **kāra three_sum (seq)** | **210.7 ± 5.3 ms** |
-| rust three_sum           | 234.3 ± 5.6 ms |
-| c    three_sum (clang -O3)| 266.2 ± 5.4 ms |
-| go   three_sum           | 380.3 ± 8.9 ms |
+| **kāra three_sum (seq)** | **202.4 ± 4.3 ms** |
+| rust three_sum           | 229.5 ± 4.8 ms |
+| c    three_sum (clang -O3)| 258.3 ± 3.9 ms |
+| go   three_sum           | 378.5 ± 4.8 ms |
 
-This is a sort-bound, allocation-heavy workload, and on the seq lane **Kāra leads Rust by 1.11×** (210.7 vs 234.3 ms). Pre-Slice-6.1 the two were tied at ~244 ms because Kāra's faster small-Vec alloc path was offsetting Rust's monomorphized-sort win; with Kāra now monomorphizing the sort too, both compilers monomorphize the comparator, both ship a fully-inlined insertion sort vs ipnsort, and Kāra's allocator edge stops being offset, so it inches ahead. **C now trails Kāra by 1.26×** (266.2 vs 210.7 ms) and lands slowest of the three static-compiled mirrors: `qsort`'s indirect comparator call lands per comparison — the same runtime-callback shape Kāra carried pre-Slice-6.1 — and there's no way to eliminate it without giving up the standard-library sort. (At kata 15's first ship Rust and C tied at 262.5 ms; on this re-bench Rust's sort pulls it clear of C while Kāra's mono sort + allocator edge keeps it ahead of both.) Go trails at **1.81×**: `sort.Slice` also pays a per-comparison closure indirect-call, and the `[][]int64` triplet output adds GC pressure the manual-free mirrors don't carry.
+This is a sort-bound, allocation-heavy workload, and on the seq lane **Kāra leads Rust by 1.13×** (202.4 vs 229.5 ms). Pre-Slice-6.1 the two were tied at ~244 ms because Kāra's faster small-Vec alloc path was offsetting Rust's monomorphized-sort win; with Kāra now monomorphizing the sort too, both compilers monomorphize the comparator, both ship a fully-inlined insertion sort vs ipnsort, and Kāra's allocator edge stops being offset, so it inches ahead. **C now trails Kāra by 1.28×** (258.3 vs 202.4 ms) and lands slowest of the three static-compiled mirrors: `qsort`'s indirect comparator call lands per comparison — the same runtime-callback shape Kāra carried pre-Slice-6.1 — and there's no way to eliminate it without giving up the standard-library sort. (At kata 15's first ship Rust and C tied at 262.5 ms; on the 05-30 re-bench Rust's sort pulled it clear of C while Kāra's mono sort + allocator edge keeps it ahead of both.) Go trails at **1.87×**: `sort.Slice` also pays a per-comparison closure indirect-call, and the `[][]int64` triplet output adds GC pressure the manual-free mirrors don't carry.
 
 This kata's tie-with-Rust history (and the pre-mono numbers) is the comparison point [kata 16](../16-3sum-closest/)'s Slice 6.1 trigger story relies on — kata 15's tie was the natural-occurring evidence that *something* was holding Kāra back on sort_by-heavy workloads; kata 16 removed the allocation-dominance offset and exposed it as a sort-dispatch gap; Slice 6.1 closed both.
 
@@ -92,17 +92,17 @@ The `sum = sum + r.len()` reduction is auto-par-eligible; the default `karac bui
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra three_sum (auto-par default)** | **27.7 ± 1.8 ms** | 381.1 ms |
+| **kāra three_sum (auto-par default)** | **27.1 ± 1.8 ms** | 384.2 ms |
 
-The auto-par binary is **7.6× faster than the kāra seq binary** (210.7 → 27.7 ms), spreading the K=1M case-rotation reduction across the perf cores (~13.8× user-CPU-to-wall ratio on M5 Pro). This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup at the cost of the `karac_par_reduce` machinery's **+40 KiB binary** over the seq lane (see § Binary size — both lanes now carry the sort runtime, so the par-reduce surface is a small marginal add) and +1.8 MiB peak RSS. The per-worker allocator contention of the nested-`Vec` output still caps the speedup below the perf-core count — a sort+allocate body parallelizes less cleanly than a pure arithmetic reduction, but the win is still substantial.
+The auto-par binary is **7.5× faster than the kāra seq binary** (202.4 → 27.1 ms), spreading the K=1M case-rotation reduction across the perf cores (~14.2× user-CPU-to-wall ratio on M5 Pro). This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup at the cost of the `karac_par_reduce` machinery's **+17.2 KiB binary** over the seq lane (see § Binary size — both lanes carry the libstd floor that `sort_by` already pulls in, so the par-reduce surface is a small marginal add) and +1.8 MiB peak RSS. The per-worker allocator contention of the nested-`Vec` output still caps the speedup below the perf-core count — a sort+allocate body parallelizes less cleanly than a pure arithmetic reduction, but the win is still substantial.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py three_sum` (K=100k) | 273.7 ± 1.0 ms |
+| `py three_sum` (K=100k) | 272.8 ± 6.2 ms |
 
-Python at K=100k is 274 ms; projecting to the compiled mirrors' K=1M (~2.74 s) puts it **~13.0× slower than kāra seq**. That gap is narrower than the corpus norm (kata 14 sits at ~37×) because the hot path here is dominated by `sorted()` — a C-implemented builtin — so CPython spends most of its time in the same kind of native sort the compiled mirrors run, and the per-iteration interpreter overhead is amortized over heavier per-call work. The nested-`Vec` output here means the per-iter allocator cost dominates on the Kāra side too, so the Slice 6.1 mono sort moved Kāra's wall time less than it moved kata 16's (kata 16 dropped 34 ms; kata 15 dropped 14 ms). Against the auto-par regime the cross-lane ratio is ~99×.
+Python at K=100k is 273 ms; projecting to the compiled mirrors' K=1M (~2.73 s) puts it **~13.5× slower than kāra seq**. That gap is narrower than the corpus norm (kata 14 sits at ~34×) because the hot path here is dominated by `sorted()` — a C-implemented builtin — so CPython spends most of its time in the same kind of native sort the compiled mirrors run, and the per-iteration interpreter overhead is amortized over heavier per-call work. The nested-`Vec` output here means the per-iter allocator cost dominates on the Kāra side too, so the Slice 6.1 mono sort moved Kāra's wall time less than it moved kata 16's (kata 16 dropped 34 ms; kata 15 dropped 14 ms). Against the auto-par regime the cross-lane ratio is ~101×.
 
 ### Compile elapsed (cold)
 
@@ -110,46 +110,51 @@ Python at K=100k is 274 ms; projecting to the compiled mirrors' K=1M (~2.74 s) p
 
 | Compiler | Time |
 |---|---|
-| clang -O3 three_sum.c           | **52.5 ± 0.5 ms** |
-| **karac build three_sum.kara**  | **76.6 ± 1.4 ms** |
-| rustc -O three_sum.rs           | 126.7 ± 1.1 ms |
+| clang -O3 three_sum.c           | **51.8 ± 0.5 ms** |
+| **karac build three_sum.kara**  | **79.1 ± 1.3 ms** |
+| rustc -O three_sum.rs           | 122.2 ± 0.8 ms |
 
-Kāra compiles **1.65× faster than `rustc -O`** and sits at **1.46× of clang -O3** — same shape as the rest of the corpus.
+Kāra compiles **1.55× faster than `rustc -O`** and sits at **1.53× of clang -O3** — same shape as the rest of the corpus. (05-30 read 76.6 ms for karac; the ±2.5 ms spread between batches is normal drift on this metric.)
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    three_sum            | 32.8 KiB |
-| **kāra three_sum (seq)**  | **410.8 KiB** |
-| **kāra three_sum (auto-par)** | **450.8 KiB** |
+| **kāra three_sum (seq)**  | **294.8 KiB** |
+| **kāra three_sum (auto-par)** | **312.0 KiB** |
 | rust three_sum            | 472.8 KiB |
 | go   three_sum            | 2452.2 KiB |
 
-**Correction (2026-05-30 re-bench).** An earlier snapshot of this section reported the seq binary at 33.0 KiB, on the reasoning that the Slice 6.1 mono fast path lets `karac_vec_sort_by` and its transitive runtime surface get DCE'd. The current seq binary is **410.8 KiB**. This is **an expected consequence of a separate fix, not a DCE failure**: a later toolchain change gave the sort runtime's ordering-violation panic a *symbolized* backtrace, so any program that reaches `s.sort_by(...)` now links the DWARF symbolizer (`gimli` + `addr2line` + `object` + `rustc_demangle`), ~260 KiB of `__text`. A minimal Kāra program with no `sort_by` still builds to **32.7 KiB with none of that surface** — so the cost is the sort-panic symbolizer specifically, confirmed identical on kata [#16](../16-3sum-closest/) which returns a *scalar* (no nested `Vec`) yet also lands at 410.8 KiB. Kata 16's § Binary size has the full disassembly breakdown and the no-sort control. The *runtime* half of the Slice 6.1 win is intact — the seq lane still leads Rust (see § Runtime — seq lane). The auto-par row adds only **+40 KiB** over seq for the `karac_par_reduce` + worker-pool surface, since the seq binary already carries the symbolizer that dominates the image. Kāra still ships under Rust's 472.8 KiB on both rows; C's 32.8 KiB (no runtime archive, no symbolized panics) is the floor.
+**Correction (2026-06-05 re-bench — supersedes the 2026-05-30 correction).** This section has moved twice, and the two moves had different causes:
+
+1. **The real, persistent cost: `sort_by` pulls the runtime's libstd floor.** The Slice 6.1 mono fast path emits *both* an inlined insertion sort (taken when `len ≤ 64`) *and* a fallback call to the runtime's generic `karac_vec_sort_by` (taken above 64 — required, insertion sort is O(N²) and a mono-only build regressed kata 1665's N=50k sort from 3.2 ms to 1.1 s). Unless LLVM can const-prove the vec never exceeds 64 elements, that fallback branch survives, and `karac_vec_sort_by`'s `slice::sort_by` reaches std's panic infrastructure — which keeps the DWARF backtrace symbolizer (`gimli` + `addr2line` + `object` + `rustc_demangle`) and its libstd retinue alive through `-dead_strip`, ~262 KiB. This is **the same libstd floor every auto-par binary pays** (kata [#14](../14-longest-common-prefix/)'s auto-par binary: 312.5 KiB with zero sorts) — not a sort-specific symbolizer as the 05-30 correction claimed. A minimal no-`sort_by` program still builds to 32.8 KiB (re-verified 2026-06-05: 33,544 B), and a `sort_by` whose vec LLVM fully const-folds also stays lean — the kata's dynamically-built N=16 cases can't be const-proven, so the seq binary lands at **294.8 KiB**.
+2. **The transient inflation: a build-contaminated runtime archive.** The 05-30 snapshot read 410.8 / 450.8 KiB because the runtime archive linked that day had been rebuilt with plain `cargo build` (rlib + staticlib co-emit defeats fat-LTO DCE — see kata #14 § Binary size for the same incident at smaller magnitude), inflating this kata's lanes by a further ~116–139 KiB. Rebuilt per the documented `cargo rustc … --crate-type staticlib` discipline, today's 294.8 / 312.0 are the true numbers.
+
+The *runtime* half of the Slice 6.1 win is intact — the seq lane still leads Rust (see § Runtime — seq lane). The auto-par row adds only **+17.2 KiB** over seq for the `karac_par_reduce` + worker-pool surface, since the seq binary already carries the libstd floor that dominates the image. Kāra ships at ~62% of Rust's 472.8 KiB on both rows; C's 32.8 KiB (no runtime archive, no symbolized panics) is the floor. Recovering the ~262 KiB for sort-only binaries (a non-panicking lean-tree sort in the runtime) is tracked on the karac side.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
+| rust three_sum            | 1.1 MiB |
 | c    three_sum            | 1.2 MiB |
 | **kāra three_sum (seq)**  | **1.2 MiB** |
-| rust three_sum            | 1.3 MiB |
 | **kāra three_sum (auto-par)** | **3.0 MiB** |
-| go   three_sum            | 9.3 MiB |
+| go   three_sum            | 9.5 MiB |
 
-Kāra seq's peak RSS (1,278,288 B) sits between C (1,261,904 B) and Rust (1,311,056 B), within ~50 KiB of both — the per-iter `Vec[Vec[i64]]` is allocated and freed inside `three_sum`, so steady state stays flat across the K=1M loop. The auto-par regime's 3.0 MiB is the worker pool's per-thread scratch + partials. Go's 9.3 MiB carries its GC roots + scheduler arena.
+Kāra seq's peak RSS (1,212,704 B) is byte-identical to C's and within a page of Rust's (1,196,320 B) — the per-iter `Vec[Vec[i64]]` is allocated and freed inside `three_sum`, so steady state stays flat across the K=1M loop. (All three shifted down ~64 KiB vs the 05-30 readings — the same environment-wide dyld/OS page shift seen on katas #12–#14, ordering within the trio is page-level noise.) The auto-par regime's 3.0 MiB is the worker pool's per-thread scratch + partials. Go's 9.5 MiB carries its GC roots + scheduler arena.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 three_sum.c          | 2.6 MiB |
-| **karac build three_sum.kara** | **11.1 MiB** |
-| rustc -O three_sum.rs          | 38.3 MiB |
+| clang -O3 three_sum.c          | 2.5 MiB |
+| **karac build three_sum.kara** | **11.3 MiB** |
+| rustc -O three_sum.rs          | 38.0 MiB |
 
-Kāra's compile-memory footprint is ~4.3× clang's and ~3.5× lower than rustc's on this kata.
+Kāra's compile-memory footprint is ~4.5× clang's and ~3.4× lower than rustc's on this kata. (+0.2 MiB vs 05-30 — within the content-independent karac compile-mem floor band tracked across the corpus.)
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this sort-bound kata **Kāra leads Rust by 1.11×** — pre-Slice-6.1 the two were tied because Kāra's runtime-callback sort dispatch (which kata 16 surfaced as the residual gap) was offsetting Kāra's allocator edge. With both compilers monomorphizing the comparator post-Slice-6.1, the allocator edge stops being offset and Kāra inches ahead. The full story — how the tie here pointed at the kata-16 trigger event — is in [kata 16's README § Sort-dispatch history](../16-3sum-closest/README.md).
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this sort-bound kata **Kāra leads Rust by ~1.1×** — pre-Slice-6.1 the two were tied because Kāra's runtime-callback sort dispatch (which kata 16 surfaced as the residual gap) was offsetting Kāra's allocator edge. With both compilers monomorphizing the comparator post-Slice-6.1, the allocator edge stops being offset and Kāra inches ahead. The full story — how the tie here pointed at the kata-16 trigger event — is in [kata 16's README § Sort-dispatch history](../16-3sum-closest/README.md).
