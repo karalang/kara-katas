@@ -38,9 +38,12 @@ fn main() {
     let total = m + n;
 
     // Pre-allocate with Vec.filled so the build doesn't pay log-N capacity
-    // growths; then fill via indexed write. Mirrors Rust's collect-with-
-    // size-hint behavior modulo the extra zero-init pass (Kara has no
-    // capacity-only Vec constructor yet — see Vec.with_capacity follow-up).
+    // growths; then fill via indexed write. `Vec.with_capacity` + push is
+    // available too (landed karac c8fd7c42) and was A/B-measured 2026-06-05:
+    // 15.4 ± 0.7 ms vs this shape's 15.1 ± 0.9 ms — no win. At MiB-scale
+    // allocations the kernel hands back zeroed pages, so filled's zero-init
+    // pass is ~free, while push pays a len-increment + cap-check per
+    // element. See README § Runtime for the recorded non-win.
     let mut prefix_a: Vec[i64] = Vec.filled(m, 0);
     let mut ia = 0i64;
     while ia < m {
