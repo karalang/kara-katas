@@ -43,28 +43,41 @@ brew install hyperfine    # one-time, also needs rustc (rustup)
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` builds the Rust file with `rustc -O` (cached in `bench/target/`, gitignored) and runs `hyperfine --warmup 5 --runs 30` against a 10-regular ring graph of `N = 2_000` nodes (val 1..N, neighbors at `i±1..i±5 mod N`), cloning the graph `K = 500` times per process. Sink is `sum of cloned root.val` across the K iterations so the optimizer cannot elide the call.
+`bench/bench.sh` builds the Rust file with `rustc -O`, the C file with `clang -O3`, the Go mirror with `go build`, and both Kāra files with `karac build` (all cached in `bench/target/`, gitignored), then runs `hyperfine --warmup 5 --runs 30` against a 10-regular ring graph of `N = 2_000` nodes (val 1..N, neighbors at `i±1..i±5 mod N`), cloning the graph `K = 500` times per process. Sink is `sum of cloned root.val` across the K iterations so the optimizer cannot elide the call.
 
 | File | What it does |
 |---|---|
 | [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Serial baseline mirroring `clone_bfs.rs` line-for-line — `curr_clone` hoisted out of the inner for-nb loop to match Rust's shape. |
 | [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500), one per core on M5 Pro. The two-phase Rc→Arc algorithm promotes shared-struct handles when they escape across the par barrier. |
-| [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator |
+| [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator (gated behind `KARA_BENCH_INCLUDE_PY=1`) |
 | [`bench/clone_bfs.rs`](bench/clone_bfs.rs) | Algorithmic mirror; uses `Rc<RefCell<Node>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O`; `black_box(&nodes[0])` keeps LLVM from hoisting the K loop |
+| [`bench/clone_bfs.c`](bench/clone_bfs.c) | Algorithmic mirror, hand-rolled manual-memory baseline; compiled with `clang -O3` |
+| [`bench/go-seq/clone_bfs/main.go`](bench/go-seq/clone_bfs/main.go) | Algorithmic mirror (GC-managed pointer nodes); compiled with `go build` |
 
-Both Rust and Python print `500` (sum of K root vals = 500 × 1).
+All compiled mirrors print `500` (sum of K root vals = 500 × 1); bench.sh fails loudly on mismatch.
 
-### Codegen vs Rust — **landed**
+### Runtime — seq lane
 
-Three codegen gaps surfaced while writing this kata blocked the bench path. All three landed in karac; the headline `kara codegen` row now sits at the top of the table (details in § Caveats below).
+Three codegen gaps surfaced while writing this kata blocked the bench path. All landed in karac (details in § Caveats below).
 
-Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-05-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four single-threaded; per BENCH.md's two-lane discipline the 18-way par row is reported separately below, not against the single-threaded comparators.
 
-| Workload | Kāra (par 18-way) | Kāra (codegen) | Rust (Rc&lt;RefCell&gt;) | Python (CPython) | Kāra par : Rust |
-|---|---|---|---|---|---|
-| `clone_bfs` (N=2000, K=500) | **22.7 ± 1.4 ms** | 155.6 ± 7.5 ms | 230.2 ± 2.5 ms | 588.3 ± 2.4 ms | **10.16× faster** |
+| Run | Mean ± σ |
+|---|---|
+| c    clone_bfs (manual memory) | 45.1 ± 1.0 ms |
+| **kāra clone_bfs (codegen)** | **151.4 ± 2.5 ms** |
+| rust clone_bfs (Rc&lt;RefCell&gt;) | 220.3 ± 1.5 ms |
+| go   clone_bfs | 241.4 ± 1.6 ms |
 
-The serial codegen row is 48% faster than Rust on its own — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>`. The 18-way par row then folds in the K=500 outer loop's iteration-level parallelism: K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Effective parallel speedup is ~6.9× wall-clock (not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice). A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription.
+**Kāra leads Rust by 1.46×** — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>` — and leads Go by 1.59×. C's manual-memory mirror (no RC, no per-node heap bookkeeping) is 3.36× ahead of kāra — the algorithmic floor for this shape, same role as kata [#71](../../1-100/71-simplify-path/)'s stack-buffer C mirror. (The 2026-05-16 snapshot read kāra 155.6 ± 7.5 / rust 230.2 ± 2.5 — both reproduce within ~3–4%; rust and C binaries are byte-identical to the May artifacts. C and Go rows are benched here for the first time. Python's 588.3 ms reading is from 05-16 — the py mirror is gated off by default at today's K.)
+
+### Runtime — par lane (explicit 18-way `par {}`)
+
+| Run | Mean ± σ | User | User / wall |
+|---|---|---|---|
+| `kara clone_bfs` (par 18-way) | 23.1 ± 0.7 ms | 264.1 ms | 11.4× |
+
+**6.6× faster than kāra's own seq baseline** (151.4 → 23.1 ms) — the intra-Kāra seq→par speedup, reported within-lane per BENCH.md (the 05-16 snapshot's headline "10.16× faster than Rust" was a cross-lane ratio and is retired; the honest decomposition is 1.46× codegen × ~6.6× parallelism). K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice. A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription. (05-16 read 22.7 ± 1.4 — reproduces within σ; this allocator-contention-bound shape sees no June-scheduler-archive win, same as kata [#71](../../1-100/71-simplify-path/)'s malloc-bound auto-par lane.)
 
 `karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in hundreds of seconds on the same hardware — orders of magnitude slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 
@@ -72,12 +85,27 @@ The serial codegen row is 48% faster than Rust on its own — allocator/hashtabl
 
 | Run | Peak RSS |
 |---|---|
-| `kara clone_bfs (par 18-way)` | 173.8 MiB |
-| `kara clone_bfs (codegen)` | 170.9 MiB |
-| `py   clone_bfs` | 33.8 MiB |
+| `go   clone_bfs` | 9.4 MiB |
+| `py   clone_bfs` | 33.8 MiB *(05-16 reading; gated)* |
+| `c    clone_bfs` | 154.7 MiB |
+| `kara clone_bfs (codegen)` | 170.6 MiB |
+| `kara clone_bfs (par 18-way)` | 173.9 MiB |
 | `rust clone_bfs` | 185.8 MiB |
 
-Kāra's peak is 7% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). The par row's overhead vs serial is +2.9 MiB (the eighteen branch stacks + Arc-promoted handle metadata) — negligible. Python's number is much smaller because CPython's tracing GC walks the cycles and reclaims them between iterations; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
+Kāra's peak is 8% under Rust's — both are dominated by the K=500 leaked Rc cycles (the graph forms 2000-node cycles that Rc cannot collect; same shape between Kāra `shared struct` and Rust `Rc<RefCell>`). The C mirror deliberately reproduces the same leak shape (clones are never freed) and sits ~9% under kāra — the delta is the RC header + Map metadata per node. The par row's overhead vs serial is +3.3 MiB (the eighteen branch stacks + Arc-promoted handle metadata) — negligible. Go and Python land far smaller because their tracing GCs walk the cycles and reclaim them between iterations (Go: 9.4 MiB, CPython: 33.8) — the structural counterpoint to refcounting on cyclic graphs; a faithful Rust impl that wanted bounded RSS would use `Weak` references or an arena (`Vec<Node>` + indices), and the same option is available in Kāra. The Kāra-vs-Rust comparison here is like-for-like.
+
+### Compile elapsed, binary size, compile memory
+
+First measured 2026-06-05 (`--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`):
+
+| Compiler | Compile time | Binary size | Compile peak RSS |
+|---|---|---|---|
+| `clang -O3 clone_bfs.c` | 54.3 ± 0.7 ms | 33.0 KiB | 2.5 MiB |
+| **`karac build clone_bfs.kara`** | **79.9 ± 2.1 ms** | **278.8 KiB** | **11.0 MiB** |
+| **`karac build clone_bfs_par.kara`** | **87.6 ± 0.9 ms** | **312.9 KiB** | **12.4 MiB** |
+| `rustc -O clone_bfs.rs` | 153.7 ± 1.6 ms | 475.7 KiB | 44.3 MiB |
+
+Kāra compiles the seq kata **1.92× faster than `rustc -O`** at **~4× lower compile RAM**, with a binary 1.71× smaller. Unlike the ~33 KiB array katas, this binary carries real runtime surface — `Map` (open-addressing + FxHash), `VecDeque`, and the shared-struct RC machinery — which is what the ~246 KiB over the no-runtime floor pays for; the par binary adds the worker/par-block runtime on top (+34 KiB). The kāra binaries are the one place this kata's 06-05 rebuild did *not* reproduce the May artifacts byte-for-byte (seq same size, par +16 B): they embed runtime-archive code that the June scheduler work legitimately changed, whereas the 33 KiB katas (#88/#91/#121) link none of it and rebuilt byte-identical.
 
 ## Caveats surfaced while writing this kata
 
