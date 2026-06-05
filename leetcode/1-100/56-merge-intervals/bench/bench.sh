@@ -16,11 +16,12 @@
 #                              visible.
 #
 # Sort dispatch shape note: this kata sorts `Vec[(i64, i64)]` by
-# `|a, b| a.0.cmp(b.0)` — TUPLE element type, so Slice 6.1's mono fast
-# path (gated on i64 elem type only) DOES NOT FIRE. Both kara binaries
-# route through `karac_vec_sort_by`'s runtime callback. This kata is the
-# natural-pull trigger evidence for Slice 6.4 (tuple/struct elem mono
-# sort) — see karac's docs/implementation_checklist/phase-7-codegen.md.
+# `|a, b| a.0.cmp(b.0)` — TUPLE element type. It was the natural-pull
+# trigger for karac Slice 6.4 (tuple/struct elem mono sort); post-6.4
+# the N=16 calls take the mono fast path, with `karac_vec_sort_by` kept
+# linked as the len>64 fallback — see karac's
+# docs/implementation_checklist/phase-7-codegen.md and ../README.md
+# § Sort-dispatch history.
 #
 # Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are
 # not meaningful — the README headlines the within-lane seq comparison,
