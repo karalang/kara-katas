@@ -65,14 +65,14 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`, 
 
 | Implementation | Wall time | User-CPU | Within-workload ratio |
 |---|---|---|---|
-| c    expand_around_center (clang -O3) | **30.6 ms ± 0.2 ms** | 29.4 ms | 0.59× of Kāra |
-| rust expand_around_center (rustc -O) | 37.3 ms ± 2.4 ms | 36.0 ms | 0.72× of Kāra |
-| go   expand_around_center | 45.3 ms ± 2.4 ms | 43.6 ms | 0.87× of Kāra |
-| **kāra expand_around_center (codegen)** | **52.0 ms ± 2.8 ms** | 50.6 ms | **1.00×** (baseline) |
+| c    expand_around_center (clang -O3) | **31.8 ms ± 0.6 ms** | 30.6 ms | 0.86× of Kāra |
+| rust expand_around_center (rustc -O) | 39.4 ms ± 2.9 ms | 38.0 ms | 1.06× of Kāra |
+| go   expand_around_center | 46.9 ms ± 2.7 ms | 45.3 ms | 1.26× of Kāra |
+| **kāra expand_around_center (codegen)** | **37.2 ms ± 3.3 ms** | 35.9 ms | **1.00×** (baseline) |
 
-**The kāra row is carrying an active, attributed karac regression — these are not the codegen's true numbers.** The 2026-05-24 snapshot had kāra at **parity with rustc within σ** (36.7 ± 1.5 vs 36.7 ± 1.4 ms) and 1.23× ahead of Go; today's rebuild under the post-`a3acedaf` karac reads 52.0 ms while the Rust and C binaries are **byte-identical to the May artifacts and flat** (37.3 / 30.6 ms), pinning the move on the kāra binary alone. Same-day A/B on this exact source: the pre-`a3acedaf` backup karac builds a binary that runs **39.9 ± 1.9 ms** vs the current karac's 53.6 ± 1.5 ms (1.34×). Control: the [`get_unchecked` sibling](bench/expand_around_center_unchecked.kara) — same loop, no bounds checks, hence no panic sites on the hot path — is **flat across the same two karacs** (39.5 ± 2.0 vs 37.5 ± 2.9 ms). The regression rides exclusively on panic-site-bearing code: karac's phase-9 contract-fault categorization (`8183f6c7`) makes every bounds-check failure block call `karac_runtime_panic_prefix()` at runtime, degrading codegen around the 2 × 125M bounds-checked reads in the inner loop (~0.2 cycles/check). Filed karac-side with the binary-size instance of the same defect (see § Binary size); when the fix lands this kata should snap back to ~40 ms rustc parity.
+**Regression caught, fixed, and re-measured the same day (2026-06-05).** The mid-day re-bench read kāra at 52.0 ± 2.8 ms while the Rust and C binaries were byte-identical to the May artifacts and flat — a live karac regression this kata caught the day it shipped. Same-day A/B pinned it (pre-regression backup karac: 39.9 ± 1.9 ms vs regressed: 53.6 ± 1.5 ms = 1.34×) and the [`get_unchecked` sibling](bench/expand_around_center_unchecked.kara) — no bounds checks, hence no panic sites on the hot path — was flat across both karacs, isolating it to panic-site-bearing code. Root cause (karac `3f3b34a9`, the fix): the 2026-05-31 fault-prefix (`8183f6c7`) + panic-location (`290e454c`) changes grew the panic-site `printf` from 1 operand to 7, pushing the `expand` helper past LLVM's O2 **inline threshold** — the un-inlined copy re-ran two loop-invariant guards on every one of the 2 × 125M inner-loop iterations. karac now outlines each panic body into a per-site `cold`+`noinline` function so a panic landing pad costs the enclosing function a single zero-operand call; `expand` inlines again and this evening's re-bench reads **37.2 ± 3.3 ms — ahead of rustc (39.4 ± 2.9) within σ**, the kata's best measurement to date (2026-05-24 snapshot: 36.7 vs 36.7 parity).
 
-Inner-loop-bound shape: a tight two-pointer `chars[lo] == chars[hi]` byte-comparison loop running 12.5M times per `longest_palindrome` call, with the `Vec[char]` snapshot built once per outer iteration. The underlying story — "Kāra codegen tracks rustc step-for-step on inner-loop byte-comparison workloads once stdlib surface is in shape" — is unchanged (the pre-regression karac still measures it, same day, same machine); C's lead is bounds-check overhead on indexed `Vec[char]` reads vs raw `int32_t*` arithmetic, with dominator-aware bounds-check elision tracked as the karac follow-up that closes it.
+Inner-loop-bound shape: a tight two-pointer `chars[lo] == chars[hi]` byte-comparison loop running 12.5M times per `longest_palindrome` call, with the `Vec[char]` snapshot built once per outer iteration. The story — "Kāra codegen tracks rustc step-for-step on inner-loop byte-comparison workloads once stdlib surface is in shape" — holds; C's lead is bounds-check overhead on indexed `Vec[char]` reads vs raw `int32_t*` arithmetic, with dominator-aware bounds-check elision tracked as the karac follow-up that closes it.
 
 ### Runtime — long workloads (Python)
 
@@ -80,9 +80,9 @@ Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`:
 
 | Run | Mean ± σ |
 |---|---|
-| `py   expand_around_center` | 2.677 s ± 0.040 s |
+| `py   expand_around_center` | 2.674 s ± 0.010 s |
 
-Python is **51× slower** than today's regression-carrying Kāra binary (~67× against the pre-regression ~40 ms estimate) — the textbook "compiled vs interpreted" curve for O(n²) algorithms with tight inner loops, where CPython's per-iteration overhead dominates and there's no C-implemented stdlib type (like `dict`) to amortize the interpreter cost away.
+Python is **72× slower** than the Kāra binary — the textbook "compiled vs interpreted" curve for O(n²) algorithms with tight inner loops, where CPython's per-iteration overhead dominates and there's no C-implemented stdlib type (like `dict`) to amortize the interpreter cost away.
 
 ### Compile elapsed (cold)
 
@@ -90,20 +90,20 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10 --shell=none` w
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `expand_around_center` | **86.1 ± 3.7 ms** | 107.6 ± 5.2 ms | 47.5 ± 0.7 ms |
+| `expand_around_center` | **76.1 ± 2.5 ms** | 98.7 ± 1.4 ms | 45.8 ± 1.1 ms |
 
-`karac build` is **1.25× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). (The 2026-05-24 snapshot read karac at 60.9 ± 0.5 ms; the drift is the recurring reinstall-day band — today's karac reads 75–86 ms across the suite — and rustc/clang also moved +9/+2.5 ms on byte-identical inputs, so part of today's spread is environment.) Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
+`karac build` is **1.30× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). (The 2026-05-24 snapshot read karac at 60.9 ± 0.5 ms; the drift is the recurring reinstall-day band — today's karac reads ~75–86 ms across the suite — and rustc/clang also moved on byte-identical inputs, so part of the spread is environment.) Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    expand_around_center | 32.8 KiB |
-| **kāra expand_around_center** | **49.3 KiB** |
+| **kāra expand_around_center** | **33.0 KiB** |
 | rust expand_around_center | 455.4 KiB |
 | go   expand_around_center | 2434.4 KiB |
 
-**The binary was 33.0 KiB — within ~200 bytes of clang's — until 2026-06-05; it now reads 49.3 KiB.** The +16.3 KiB is the same karac-side regression katas [#6](../6-zigzag-conversion/README.md) and [#88](../88-merge-sorted-array/README.md) measured the same day: karac's phase-9 contract-fault categorization (`8183f6c7`) makes every panic site (bounds checks included) reference `karac_runtime_panic_prefix`, whose thread-local data drags one page-aligned writable `__DATA` segment (16 KiB on Apple Silicon) into every binary — even contract-free ones. On this kata the same defect also costs **runtime** (see § Runtime — the 1.34× inner-loop regression rides on the identical panic-site change; the `get_unchecked` sibling carries neither the page nor the slowdown). Filed karac-side with a fix pointer; when it lands this kata returns to clang parity. There's history rhyming here: the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`, 2026-05-25) reclaimed a *different* 16 KiB page that had kept this kara at 49.1 KiB — the parity story was won once already. The rest of the lean profile is unchanged: cross-archive LTO + DCE strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, shared structs). Rust's 455 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection) on every single-file binary.
+**Back to within ~180 bytes of clang.** The binary spent part of 2026-06-05 at 49.3 KiB: karac's phase-9 contract-fault categorization (`8183f6c7`) made every panic site (bounds checks included) reference `karac_runtime_panic_prefix`, whose thread-local data dragged one page-aligned writable `__DATA` segment (16 KiB on Apple Silicon) into every binary — even contract-free ones. Katas [#6](../6-zigzag-conversion/README.md) and [#88](../88-merge-sorted-array/README.md) measured the same +16 KiB the same day, and on this kata the same panic-site change also cost **runtime** (§ Runtime). The same-day karac fix (`3f3b34a9`) folds the fault prefix to a static string when the program declares no contract, so the symbol — and its `__DATA` page — dead-strips; the evening re-bench reads **33.0 KiB**, byte-count parity with the pre-regression artifact. There's history rhyming here: the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`, 2026-05-25) reclaimed a *different* 16 KiB page that had kept this kara at 49.1 KiB — this parity has now been won twice. The rest of the lean profile is unchanged: cross-archive LTO + DCE strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, shared structs). Rust's 455 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection) on every single-file binary.
 
 ### Runtime memory (peak, RSS)
 
@@ -113,7 +113,7 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10 --shell=none` w
 | **kāra expand_around_center (codegen)** | **1.2 MiB** |
 | rust expand_around_center | 1.1 MiB |
 | go   expand_around_center | 3.0 MiB |
-| py   expand_around_center | 6.9 MiB |
+| py   expand_around_center | 6.8 MiB |
 
 At parity with C/Rust — the algorithm is O(1) extra space and the per-call `Vec[char]` snapshot allocates 5000 × 4 bytes = 20 KiB that's freed before the next outer iteration. Go's baseline includes the runtime + GC; Python's includes the CPython interpreter.
 
@@ -122,11 +122,11 @@ At parity with C/Rust — the algorithm is O(1) extra space and the per-call `Ve
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 expand_around_center.c | 2.5 MiB |
-| karac build expand_around_center.kara | 11.7 MiB |
-| rustc -O expand_around_center.rs | 30.0 MiB |
+| karac build expand_around_center.kara | 11.6 MiB |
+| rustc -O expand_around_center.rs | 29.9 MiB |
 
 `karac` compiles this file in **~12 MiB peak** — between clang and rustc, with no algorithmic blowup signature. (Was 8.9 MiB at the 2026-05-24 snapshot; the +2.8 MiB matches the probe-confirmed fixed-floor karac growth measured across the suite — today's karac reads 11.5–12.3 MiB on peer single-file katas — not a workload-proportional regression.) Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
 
 ### Why this kata is in the harness
 
-Longest Palindromic Substring is the canonical "tight inner-loop on a byte-comparison hot path" entry: an O(n²) two-pointer expand where every iteration is one indexed read + one equality test + two integer increments, repeated millions of times with no allocator, no map lookup, and no generic dispatch in the way. This is where Kāra's codegen has to compete with rustc step-for-step on instruction count and dispatch overhead — there's nowhere to hide behind stdlib quality. The parity-with-rustc / ~1.2×-behind-clang shape is the load-bearing measurement that "yes, on inner-loop algorithms once the stdlib surface is in shape, kara codegen is competitive with rustc" — and that same sensitivity is what made this kata the canary that caught the 2026-06-05 panic-site runtime regression (§ Runtime) the day it shipped: the headline number is temporarily 1.39× of rustc until the filed karac fix lands, with the pre-regression karac still measuring parity on the same day and machine.
+Longest Palindromic Substring is the canonical "tight inner-loop on a byte-comparison hot path" entry: an O(n²) two-pointer expand where every iteration is one indexed read + one equality test + two integer increments, repeated millions of times with no allocator, no map lookup, and no generic dispatch in the way. This is where Kāra's codegen has to compete with rustc step-for-step on instruction count and dispatch overhead — there's nowhere to hide behind stdlib quality. The parity-with-rustc / ~1.2×-behind-clang shape is the load-bearing measurement that "yes, on inner-loop algorithms once the stdlib surface is in shape, kara codegen is competitive with rustc" — and that same sensitivity is what made this kata the canary that caught the 2026-06-05 panic-site runtime regression (§ Runtime) the day it shipped: re-benched at 1.39× of rustc mid-day, A/B-attributed within hours, karac fixed (`3f3b34a9` — panic bodies outlined so landing pads stop bloating the inline cost of hot functions), and re-measured to its best-ever number (ahead of rustc within σ) the same evening. One bench cycle, full loop: detect → attribute → fix → verify.

@@ -127,21 +127,21 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10 --shell=none` w
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `row_buffers` | **79.8 ms ± 2.1 ms** | 110.0 ms ± 1.2 ms | 46.8 ms ± 1.6 ms |
+| `row_buffers` | **75.6 ms ± 0.9 ms** | 106.0 ms ± 1.2 ms | 44.3 ms ± 1.1 ms |
 
-`karac build` is **1.38× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). vs the 2026-05-31 snapshot karac moved +7.8 ms while rustc held flat (−1.1 ms) and clang drifted +2.8 ms — the karac-specific ~+5 ms residual is the `a3acedaf` new-install growth band, the same karac-only compile-cost drift observed across the corpus on reinstall days (binaries are unaffected; see the drift-watch close-out in the karac trackers). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
+`karac build` is **1.40× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). The mid-day `a3acedaf` install had karac at 79.8 ms; the evening `3f3b34a9` install reads 75.6 — both inside the recurring reinstall-day band (~75–86 ms across the corpus; binaries unaffected, see the drift-watch close-out in the karac trackers), with rustc/clang drifting −4/−2.5 ms on byte-identical inputs across the same window. Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    row_buffers | 33.0 KiB |
-| **kāra row_buffers (seq)** | **49.3 KiB** |
+| **kāra row_buffers (seq)** | **33.0 KiB** |
 | kāra row_buffers (auto-par) | 295.9 KiB |
 | rust row_buffers | 455.8 KiB |
 | go   row_buffers | 2434.1 KiB |
 
-The seq-lane Kāra binary was **33.1 KiB (within ~1.5× of clang's) until the 2026-05-31 snapshot; it now reads 49.3 KiB**. The +16.2 KiB is *not* the `Vec.filled` rewrite — the old manual-push-loop source rebuilt with current karac emits the same 50,496 B (±8 B), and rebuilt with the pre-`a3acedaf` backup karac emits the old 33,872 B. The growth is one page-aligned writable `__DATA` segment pulled in by `karac_runtime_panic_prefix`: karac's phase-9 contract-fault categorization (`8183f6c7`) makes every panic site (including bounds checks) read a runtime thread-local predicate-depth prefix, and the thread-local data costs a 16 KiB page on Apple Silicon even in contract-free programs. Filed karac-side (gate the runtime read on the program actually containing a contract; the static prefix folds back and the page dead-strips). The auto-par variant is unchanged at 295.9 KiB — it grows +246 KiB over seq to carry the par_reduce machinery (per-branch trampolines + reduction-combine globals + worker-pool registration), the same ballast kata [#4](../4-median-of-two-sorted-arrays/#binary-size) carries for the same auto-par mechanism. Here the ballast is paid for in a real 4.3× wall-time win, so it stays in.
+**Within 24 bytes of clang (33,832 B vs 33,808 B).** The seq-lane binary spent part of 2026-06-05 at 49.3 KiB: karac's phase-9 contract-fault categorization (`8183f6c7`) made every panic site (including bounds checks) reference `karac_runtime_panic_prefix`, whose thread-local data dragged one page-aligned writable 16 KiB `__DATA` segment into every binary — even contract-free ones. This kata's re-bench was the *first* instance measured (bisected via the pre-`a3acedaf` backup karac: 33,872 B old vs 50,496 B regressed, same source); katas [#88](../88-merge-sorted-array/README.md) and [#5](../5-longest-palindromic-substring/README.md) confirmed it the same day, and kata #5 showed the same panic-site change also cost **runtime** on bounds-check-hot loops. The same-day karac fix (`3f3b34a9`) folds the fault prefix static for contract-free programs (the page dead-strips) and outlines panic bodies (kata #5's 1.34× restored); this evening's rebuild reads **33,832 B** — the lean floor, back. The auto-par variant is unchanged at 295.9 KiB — it grows +246 KiB over seq to carry the par_reduce machinery (per-branch trampolines + reduction-combine globals + worker-pool registration), the same ballast kata [#4](../4-median-of-two-sorted-arrays/#binary-size) carries for the same auto-par mechanism. Here the ballast is paid for in a real 4.3× wall-time win, so it stays in.
 
 ### Runtime memory (peak, RSS)
 
