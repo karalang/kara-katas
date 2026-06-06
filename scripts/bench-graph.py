@@ -347,6 +347,12 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
             t += ystep
         fmt = lambda t: f"{t:.1f}×"
 
+    # Always pin 1.0 as a gridline. On a tall linear axis the regular step
+    # (ymax/5, e.g. 1.6) can skip 1.0 entirely, which silently drops the
+    # Rust=1.0 baseline line. Inject it so the reference is always drawn.
+    if not any(abs(t - 1.0) < 1e-9 for t in gridvals):
+        gridvals = sorted(gridvals + [1.0])
+
     # dot radius + alpha shrink as the suite grows so dense clouds stay readable
     if n <= 30:
         r_other, r_kara, op = 4.0, 5.0, 0.95
