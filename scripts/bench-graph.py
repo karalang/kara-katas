@@ -42,7 +42,7 @@ BG = "#282c34"      # soft charcoal-gray canvas
 FG = "#c9d1d9"      # primary text (titles, legend) -- off-white, not glaring
 MUTED = "#8b949e"   # secondary text (subtitles, labels, captions)
 GRID = "#3b414b"    # faint gridlines / tick marks (just above the canvas)
-DIM = "#6e7681"     # baseline line
+DIM = "#a7b0bc"     # baseline line -- light enough to read clearly on the dark canvas
 DIM2 = "#aeb6c0"    # baseline label (brightest gray, for emphasis)
 RED = "#ff7b72"     # ceiling reference line
 
@@ -247,7 +247,7 @@ def render(progs, baseline, title, unitnote, langs, yscale):
         is_base = abs(t - 1.0) < 1e-9
         dash = ' stroke-dasharray="5 4"' if is_base else ""
         s.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
-                 f'stroke="{DIM if is_base else GRID}" stroke-width="{1.4 if is_base else 1}"{dash}/>')
+                 f'stroke="{DIM if is_base else GRID}" stroke-width="{2 if is_base else 1}"{dash}/>')
         wt = ' font-weight="700"' if is_base else ""
         s.append(f'<text x="{ml-10}" y="{y+4:.1f}" font-size="12" text-anchor="end" '
                  f'fill="{DIM2 if is_base else MUTED}"{wt}>{fmt(t)}</text>')
@@ -369,7 +369,7 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
         is_base = abs(t - 1.0) < 1e-9
         dash = ' stroke-dasharray="5 4"' if is_base else ""
         s.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
-                 f'stroke="{DIM if is_base else GRID}" stroke-width="{1.4 if is_base else 1}"{dash}/>')
+                 f'stroke="{DIM if is_base else GRID}" stroke-width="{2 if is_base else 1}"{dash}/>')
         wt = ' font-weight="700"' if is_base else ""
         s.append(f'<text x="{ml-10}" y="{y+4:.1f}" font-size="12" text-anchor="end" '
                  f'fill="{DIM2 if is_base else MUTED}"{wt}>{fmt(t)}</text>')
@@ -416,11 +416,13 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
         yy = ly + j * 24
         if lang == baseline:
             s.append(f'<line x1="{lx}" y1="{yy}" x2="{lx+22}" y2="{yy}" stroke="{DIM}" '
-                     f'stroke-width="1.6" stroke-dasharray="5 4"/>')
+                     f'stroke-width="2" stroke-dasharray="5 4"/>')
+            disp = f"{LABEL[lang]} = 1.0×"
         else:
             s.append(f'<circle cx="{lx+11}" cy="{yy}" r="{5 if lang=="kara" else 4}" fill="{COLOR[lang]}"/>')
+            disp = LABEL[lang]
         s.append(f'<text x="{lx+30}" y="{yy+4}" font-size="13" '
-                 f'fill="{FG}" font-weight="{700 if lang=="kara" else 400}">{LABEL[lang]}</text>')
+                 f'fill="{FG}" font-weight="{700 if lang=="kara" else 400}">{esc(disp)}</text>')
 
     cap_txt = ("Each dot is one benchmarked program (kata × approach); there is no connecting line "
                "because left-to-right order is not meaningful. Raw numbers: bench-results.json")
@@ -500,7 +502,7 @@ def render_bars(progs, baseline, title, unitnote, langs, yscale, overlap):
         is_base = abs(t - 1.0) < 1e-9
         dash = ' stroke-dasharray="5 4"' if is_base else ""
         s.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
-                 f'stroke="{DIM if is_base else GRID}" stroke-width="{1.4 if is_base else 1}"{dash}/>')
+                 f'stroke="{DIM if is_base else GRID}" stroke-width="{2 if is_base else 1}"{dash}/>')
         wt = ' font-weight="700"' if is_base else ""
         s.append(f'<text x="{ml-10}" y="{y+4:.1f}" font-size="12" text-anchor="end" '
                  f'fill="{DIM2 if is_base else MUTED}"{wt}>{fmt(t)}</text>')
