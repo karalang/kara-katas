@@ -23,7 +23,7 @@ The header comment in [`binary_search.kara`](binary_search.kara) covers why comp
 - **Indexed slice access** — `nums[0]`, `nums[mid]`, `nums[hi]` inside the loops.
 - **`for i in 1..n`** (linear) and **`while lo < hi`** (binary) — both loop forms with mutable accumulators.
 - **`%` and `/` on `i64`** — bench workload generates the rotated array via `((i + r) % n) + 1`.
-- **`u64` indices in `binary_search.kara`** — `lo`/`hi`/`mid` carried as `u64` so the backend emits the unsigned mid-compute (`sub + add ..., lsr #1`) instead of the signed-rounding `subs + cinc + add ..., asr #1` shape.
+- **`u64` indices in `binary_search.kara`** — `lo`/`hi`/`mid` carried as `u64` so the backend emits the unsigned mid-compute (`sub + add ..., lsr #1`) instead of the signed-rounding `subs + cinc + add ..., asr #1` shape. Re-verified 2026-06-06 on current karac (A/B asm of this source vs an `i64` rewrite): the gap is still real — the plain-`i64` form still pays the 3-instruction `cinc + asr` mid-compute and a signed `b.lt` guard, so the `u64` carry stays load-bearing, not stylistic. The karac-side fix (make the naturally-written `i64` form emit the unsigned shape, e.g. via `len()` non-negativity range info) is tracked in kara `docs/implementation_checklist/phase-7-codegen.md` § "Signed-index mid-compute parity", which names this bench source as its natural-pull trigger; when it lands, the `u64` carry and this bullet both go (re-bench ceremony applies).
 
 ## Running
 
