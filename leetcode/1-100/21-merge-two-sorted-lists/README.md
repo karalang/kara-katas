@@ -71,18 +71,18 @@ This is the **alloc/merge/drop peer to kata 19's alloc/splice/drop**: where kata
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-06, hyperfine `--warmup 5 --runs 30 --shell=none`. All four single-threaded.
+Snapshot — M5 Pro, 2026-06-06, `bench.sh` (hyperfine `--warmup 5 --runs 30 --shell=none`, structured-JSON emit). All four single-threaded.
 
 | Implementation | Wall time |
 |---|---|
-| go   iterative                     | 1.008 ± 0.010 s |
-| c    iterative (clang -O3)         | 1.030 ± 0.038 s |
-| **kāra iterative**                 | **1.195 ± 0.021 s** |
-| rust iterative                     | 1.518 ± 0.027 s |
+| go   iterative                     | 1.001 ± 0.012 s |
+| c    iterative (clang -O3)         | 1.083 ± 0.030 s |
+| **kāra iterative**                 | **1.245 ± 0.074 s** |
+| rust iterative                     | 1.510 ± 0.096 s |
 
-**Kāra leads Rust by 1.27×** and trails C by 1.16× and Go by 1.19×. Same cause as kata [#19](../19-remove-nth-node-from-end-of-list/): Rust's reference-semantics linked list is `Rc<RefCell<ListNode>>`, whose per-node `Rc` refcount + `RefCell` borrow-flag traffic is heavier than Kāra's plain RC header. Against the manual-memory floor the order flips — this kata is allocator-bound (build + drop ~200 nodes per iter, plus the re-link), and Kāra's per-node RC inc/dec bookkeeping sits just behind C's plain `malloc`/`free` and Go's GC-managed pointer nodes; with no sort here, pure RC-node churn is the whole workload, so Kāra lands a hair behind the no-refcount mirrors. The Rust gap is the load-bearing number, driven by `Rc<RefCell>`.
+**Kāra leads Rust by 1.21×** and trails C by 1.15× and Go by 1.24×. Same cause as kata [#19](../19-remove-nth-node-from-end-of-list/): Rust's reference-semantics linked list is `Rc<RefCell<ListNode>>`, whose per-node `Rc` refcount + `RefCell` borrow-flag traffic is heavier than Kāra's plain RC header. Against the manual-memory floor the order flips — this kata is allocator-bound (build + drop ~200 nodes per iter, plus the re-link), and Kāra's per-node RC inc/dec bookkeeping sits just behind C's plain `malloc`/`free` and Go's GC-managed pointer nodes; with no sort here, pure RC-node churn is the whole workload, so Kāra lands a hair behind the no-refcount mirrors. The Rust gap is the load-bearing number, driven by `Rc<RefCell>`.
 
-(History: the 2026-05-30 snapshot read kāra 1.212 ± 0.036 / C 1.085; 06-05 read kāra 1.109 / C 1.065 with byte-identical binaries — batch conditions. The **06-06 batch is the first with a changed kāra binary**: the 2026-06-05/06 karac refcount-soundness overhaul (unwrap receive-inc, field-let alias acquire, explicit-return compensation, tail-zeroing retirement — four UAF classes closed, several surfaced by THIS kata's splice shapes) costs this alias-heaviest kata **~5% in a same-load old-vs-new A/B (1.05 ± 0.02×, 1.125 → 1.184 s)** — a real regression, accepted as the soundness price; binary size unchanged (33 624 B). The cross-language ratios above fold that in plus batch drift. Splice/re-parenting shapes are outside the current RC-elision phases (B1/B2 are append-only) — recovering the 5% would need splice-aware elision, tracked in the karac wip doc. **Separately, the DEFAULT (non-`KARAC_AUTO_PAR=0`) build now auto-parallelizes the K-loop** (karac auto-par engages where it previously fell back; 90.2 ms wall / 1.45 s user, ~12.7× over seq on 18 cores) — per BENCH.md lane discipline the table above stays seq-lane; the par lane needs its own same-lane comparators before it can headline.)
+(History: the 2026-05-30 snapshot read kāra 1.212 ± 0.036 / C 1.085; 06-05 read kāra 1.109 / C 1.065 with byte-identical binaries — batch conditions. The **06-06 batch is the first with a changed kāra binary**: the 2026-06-05/06 karac refcount-soundness overhaul (unwrap receive-inc, field-let alias acquire, explicit-return compensation, tail-zeroing retirement — four UAF classes closed, several surfaced by THIS kata's splice shapes) costs this alias-heaviest kata **~5% in a controlled same-load old-vs-new A/B (1.05 ± 0.02×, 1.125 → 1.184 s, 40 runs)** — a real regression, accepted as the soundness price; binary size unchanged (33 624 B). The table above is the canonical `bench.sh`/results.json run (wider σ, ~6% load drift vs the controlled A/B — read the A/B for the codegen attribution and the table for cross-language position). Splice/re-parenting shapes are outside the current RC-elision phases (B1/B2 are append-only) — recovering the 5% would need splice-aware elision, tracked in the karac wip doc. **Separately, the DEFAULT (non-`KARAC_AUTO_PAR=0`) build now auto-parallelizes the K-loop** (karac auto-par engages where it previously fell back; 90.2 ms wall / 1.45 s user, ~12.7× over seq on 18 cores) — per BENCH.md lane discipline the table above stays seq-lane; the par lane needs its own same-lane comparators before it can headline.)
 
 ### Runtime — Python
 
@@ -98,11 +98,11 @@ Python at K=100k is 2.16 s; projecting to the compiled mirrors' K=500k (~10.8 s)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 iterative.c           | **40.7 ± 0.4 ms** |
-| **karac build iterative.kara**  | **76.7 ± 1.2 ms** |
-| rustc -O iterative.rs           | 99.1 ± 0.7 ms |
+| clang -O3 iterative.c           | **41.6 ± 0.8 ms** |
+| **karac build iterative.kara**  | **79.0 ± 1.1 ms** |
+| rustc -O iterative.rs           | 100.4 ± 1.0 ms |
 
-Kāra compiles **1.29× faster than `rustc -O`** and sits at **1.88× of clang -O3** — same shape as the rest of the corpus. (All three compilers read faster than on 2026-05-30 — karac 80.2 → 76.7, rustc 111.5 → 99.1, clang 45.4 → 40.7 — a uniform environmental shift, not a toolchain change.)
+Kāra compiles **1.27× faster than `rustc -O`** and sits at **1.90× of clang -O3** — same shape as the rest of the corpus. (06-06 batch: karac 79.0, rustc 100.4, clang 41.6 — karac is +2.3 ms vs 06-05 despite the compiler having grown the June elision/niche analysis passes; within the corpus-wide compile-cost band.)
 
 ### Binary size
 
@@ -138,4 +138,4 @@ Kāra's compile-memory footprint is ~4× clang's and ~3× lower than rustc's on 
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound linked-list kata **Kāra leads Rust by 1.27×**, the same `Rc<RefCell>` cause kata 2 / 19 identify; against the no-refcount mirrors (C, Go) Kāra trails (1.16× / 1.19×) because pure RC-node churn — with no sort to amortize — is the whole workload, plus the ~5% June soundness-fix cost noted above.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound linked-list kata **Kāra leads Rust by 1.21×**, the same `Rc<RefCell>` cause kata 2 / 19 identify; against the no-refcount mirrors (C, Go) Kāra trails (1.15× / 1.24×) because pure RC-node churn — with no sort to amortize — is the whole workload, plus the ~5% June soundness-fix cost noted above.
