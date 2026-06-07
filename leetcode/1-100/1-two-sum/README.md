@@ -95,7 +95,7 @@ Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`. These rows are kep
 | `kara hash_map` (interp) | 12.54 s ± 0.11 s |
 | `py brute_force`         | 2.01 s ± 0.05 s |
 
-`karac run` re-runs the entire front-end every invocation (lex → parse → resolve → typecheck → effects → ownership) before tree-walking — the 12.5 s here is the pipeline rerun + tree-walk dispatch on every AST node, not the algorithm. `kara brute_force (interp)` is omitted at N=5000: tree-walk × 12.5 M comparisons takes a long time per run and doesn't add information beyond "tree-walk doesn't scale to N²." The interpreter-vs-codegen gap is **not** a Kāra-vs-X comparison — it's the cost of skipping `karac build`. Future work tracked in the [interpreter perf brainstorm](../../../../karac-rust/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
+`karac run` re-runs the entire front-end every invocation (lex → parse → resolve → typecheck → effects → ownership) before tree-walking — the 12.5 s here is the pipeline rerun + tree-walk dispatch on every AST node, not the algorithm. `kara brute_force (interp)` is omitted at N=5000: tree-walk × 12.5 M comparisons takes a long time per run and doesn't add information beyond "tree-walk doesn't scale to N²." The interpreter-vs-codegen gap is **not** a Kāra-vs-X comparison — it's the cost of skipping `karac build`. Future work tracked in the [interpreter perf brainstorm](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
 
 Python is **11× slower** than Kāra codegen on `hash_map` (15.5 ms vs 1.4 ms) and **68× slower** on `brute_force` (2.01 s vs 29.5 ms) — the gap CPython opens against any compiled-with-codegen language at workload sizes that put algorithm time above interpreter-startup floors.
 
