@@ -12,6 +12,7 @@ Return the index of the first occurrence of `needle` in `haystack`, or `-1` if `
 |---|---|---|---|
 | Brute-force sliding window | O(hn · nn) time, O(1) extra space | [`brute_force.kara`](brute_force.kara) ✓ | [`brute_force.py`](brute_force.py) ✓ |
 | Knuth-Morris-Pratt (KMP) | O(hn + nn) time, O(nn) extra space | [`kmp.kara`](kmp.kara) ✓ | [`kmp.py`](kmp.py) ✓ |
+| KMP, bounds-check-elided (`get_unchecked`) | O(hn + nn) time, O(nn) extra space | [`kmp_unchecked.kara`](kmp_unchecked.kara) ✓ | — (perf variant; see § Unchecked variant) |
 
 ## Why two approaches
 
@@ -77,6 +78,21 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 | go   kmp | 23.5 ± 1.2 ms | kāra 1.54× ahead |
 
 **Brute force is a three-way kāra ≈ Rust ≈ C tie**, and **KMP is kāra ≈ Rust** with C 1.30× ahead (the no-bounds-check raw-pointer floor on the tight `lps[]`-indexed loop). Both hold *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow) — the only arithmetic in either hot loop is cursor `i++`/`j++`, whose overflow checks fold (loop-bounded), so there's no trapping cost. The algorithmic point lands too: kāra brute 30.5 ms vs kāra KMP 15.3 ms — KMP is ~2× faster on this M = 16 input even though both stream the same 2M-byte haystack (the per-byte compare-count gap is larger; wall-time is bounded by the memory scan). Go trails on both — its per-element bounds checks aren't eliminated on these tight loops.
+
+### Unchecked variant — `Slice.get_unchecked` closes the C gap
+
+C's 1.30× KMP lead is purely the two bounds checks the safe scan can't shed: `needle[j]` and `lps[j-1]`. Neither is foldable by the compiler — `j` rewinds via the LPS table on a mismatch, so it's not a monotone induction variable, and proving `j < nn` would need an interprocedural "every `lps` value is `< nn`" analysis (see [karac phase-7 § BCE table-range tier](../../../../kara/docs/implementation_checklist/phase-7-codegen.md)). But the `j < nn` invariant *is* true for every input — `j` starts 0, `j == nn` returns, and the rewind preserves it — so the programmer can assert it. [`kmp_unchecked.kara`](kmp_unchecked.kara) does exactly that, reading both cells through `unsafe { … .get_unchecked(…) }` (`Slice.get_unchecked` for `needle[j]`, `Vec.get_unchecked` for `lps[j-1]`), each with a `// Safety:` rationale. The hot scan loop emits zero bounds checks (verified by disassembly; only `build_lps`'s once-per-call setup check remains).
+
+Snapshot — M5 Pro, 2026-06-07, same `--warmup 5 --runs 30 --shell=none` run (moderate background load; the kāra-vs-C/Rust ratios are the load-immune signal):
+
+| Run | Mean ± σ | Gap |
+|---|---|---|
+| c    kmp (clang -O3) | 12.2 ± 1.1 ms | 1.16× ahead of kāra-unchecked |
+| **kāra kmp_unchecked (codegen)** | **14.2 ± 1.2 ms** | — |
+| kāra kmp (safe) | 15.9 ± 1.5 ms | the checked baseline |
+| rust kmp (safe) | 16.1 ± 1.4 ms | **kāra-unchecked 1.13× faster** |
+
+Skipping the two checks takes kāra from **1.30× behind C to 1.16×** (and from Rust-parity to **1.13× faster than safe Rust**) — sound, because the programmer carries the `j < nn` proof the compiler can't. Same binary size (33.0 KiB; the check removal nets ~0 bytes since the panic-site infra is shared). The safe [`kmp.kara`](kmp.kara) stays the canonical answer; `kmp_unchecked` is the manual escape hatch for the residual the automatic BCE passes provably can't reach. (`Slice.get_unchecked` landed karac `fac9f85d`, 2026-06-07 — the by-value read form; the `_mut`/write form is future v2 work.)
 
 ### Codegen vs Python (KMP)
 
