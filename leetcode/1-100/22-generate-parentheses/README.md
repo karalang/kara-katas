@@ -81,28 +81,30 @@ Snapshot — M5 Pro, 2026-06-06, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Implementation | Wall time |
 |---|---|
-| c    backtracking (clang -O3)      | 161.5 ± 3.8 ms |
-| go   backtracking                  | 192.9 ± 2.3 ms |
-| **kāra backtracking**              | **333.3 ± 7.3 ms** |
-| rust backtracking                  | 551.6 ± 12.0 ms |
+| c    backtracking (clang -O3)      | 164.6 ± 3.5 ms |
+| **kāra backtracking**              | **194.4 ± 5.9 ms** |
+| go   backtracking                  | 195.4 ± 1.8 ms |
+| rust backtracking                  | 555.6 ± 6.7 ms |
 
-**Kāra leads Rust by 1.66×** and trails C by 2.06× and Go by 1.73×. The Rust gap is the load-bearing number and has a precise cause: the snapshot idiom's per-node allocation goes through `format!("{cur}(")`, whose `fmt::Arguments` machinery is a runtime formatting interpreter — Kāra's `f"{cur}("` lowers to two direct byte-appends into a fresh accumulator, no formatting layer. (A Rust mirror hand-tuned to `cur.clone()` + `push('(')` would close most of that gap; the mirrors deliberately use each language's native interpolation idiom for the same source shape.) The gap **to C** is equally mechanical: C's per-node cost is one exact-size `malloc` + one `memcpy`, while Kāra's f-string accumulator grows incrementally — the first append sizes the buffer to `cur`'s length, the second append (one byte) triggers a second grow + full re-copy — so Kāra pays roughly two mallocs + two copies per node where C pays one of each: ≈ the observed 2×. Pre-sizing the accumulator from the parts' summed lengths is the obvious future karac optimization, and would benefit any f-string-heavy code, not just this kata. Go's tuned string-concat runtime (exact-size allocation, no formatting layer) lands it near C.
+**Kāra leads Rust by 2.86×, is in a dead heat with Go (within σ), and sits 1.18× behind C.** The Rust gap has a precise cause: the snapshot idiom's per-node allocation goes through `format!("{cur}(")`, whose `fmt::Arguments` machinery is a runtime formatting interpreter — Kāra's `f"{cur}("` lowers to one exact-size `malloc` + per-part `memcpy`s, no formatting layer. (A Rust mirror hand-tuned to `cur.clone()` + `push('(')` would close most of that gap; the mirrors deliberately use each language's native interpolation idiom for the same source shape.) Go's tuned string-concat runtime (exact-size allocation, no formatting layer) is the natural peer, and Kāra matches it. The residual 1.18× to C is the leaf defensive copy (each completed string is copied once into the accumulator — the soundness cost of the owned-param ABI documented in the bug-finder note, retired when the move-ABI flip lands) plus the accumulator's per-evaluation header traffic.
+
+**This table is the *post-optimization* snapshot.** The first run of this bench read **kāra 333.3 ± 7.3 ms — 2.06× behind C** — and attributed the gap to the f-string accumulator growing twice per node (first append sizes the buffer to exactly `cur.len()`, the one-byte second append re-grows and re-copies: two mallocs + two full copies where C pays one of each). That finding was fixed in karac the same day (`d93eca59`): f-strings whose parts are all side-effect-free now render every part first, `malloc` once at the summed size, and `memcpy` each part at its running offset. Controlled same-load A/B on this bench binary: **350.8 → 196.5 ms, 1.78×**. The win applies to every f-string-heavy program, not just this kata — the kata was the bug-finder (and here, the perf-finder).
 
 ### Runtime — kara default build
 
 | Implementation | Wall time |
 |---|---|
-| **kāra backtracking (default build)** | **340.4 ± 7.8 ms** |
+| **kāra backtracking (default build)** | **189.4 ± 4.5 ms** |
 
-~2% over the seq binary: the par-dispatch surface links (see § Binary size) but the inherently-sequential recursion gives it nothing to fan out, and the reduction-shaped byte fold never clears the dispatch threshold. The cost of the default build on a non-parallelizable workload is noise-level — the lane exists to keep the production-default behavior visible.
+Indistinguishable from the seq binary (within σ): the par-dispatch surface links (see § Binary size) but the inherently-sequential recursion gives it nothing to fan out, and the reduction-shaped byte fold never clears the dispatch threshold. The cost of the default build on a non-parallelizable workload is noise-level — the lane exists to keep the production-default behavior visible.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| py backtracking (same K=150) | 557.8 ± 2.9 ms |
+| py backtracking (same K=150) | 568.2 ± 13.7 ms |
 
-**The corpus's narrowest Python gap: 1.67× — and dead even with the Rust mirror.** Unlike most katas, Python runs the *full* K here (no scale-down). The workload is exactly CPython's best case: `cur + "("` is a C-level exact-size allocate-and-memcpy with no per-character bytecode, so the interpreter only pays for the ~58k call frames per iteration while all the actual work happens in C. Compare kata [#20](../20-valid-parentheses/)'s ~35× (per-byte bytecode loop) — the two parenthesis katas bracket Python's best and worst cases between them.
+**Still the corpus's narrowest Python gap: 2.92× — and Python matches the Rust mirror.** Unlike most katas, Python runs the *full* K here (no scale-down). The workload is exactly CPython's best case: `cur + "("` is a C-level exact-size allocate-and-memcpy with no per-character bytecode, so the interpreter only pays for the ~58k call frames per iteration while all the actual work happens in C. (Before the f-string pre-sizing fix the gap was 1.67× — Python briefly matched *Kāra* on this workload, which is what made the grow-twice pathology impossible to ignore.) Compare kata [#20](../20-valid-parentheses/)'s ~35× (per-byte bytecode loop) — the two parenthesis katas bracket Python's best and worst cases between them.
 
 ### Compile elapsed (cold)
 
@@ -110,46 +112,46 @@ Snapshot — M5 Pro, 2026-06-06, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Compiler | Time |
 |---|---|
-| clang -O3 backtracking.c           | **43.9 ± 0.5 ms** |
-| **karac build backtracking.kara**  | **76.1 ± 1.5 ms** |
-| rustc -O backtracking.rs           | 79.3 ± 1.4 ms |
+| clang -O3 backtracking.c           | **42.3 ± 0.7 ms** |
+| **karac build backtracking.kara**  | **72.0 ± 2.1 ms** |
+| rustc -O backtracking.rs           | 79.0 ± 1.7 ms |
 
-Kāra compiles **1.04× faster than `rustc -O`** and sits at **1.73× of clang -O3** — same shape as the rest of the corpus (narrow rustc margin, as on kata [#20](../20-valid-parentheses/), since the Rust mirror is tiny).
+Kāra compiles **1.10× faster than `rustc -O`** and sits at **1.70× of clang -O3** — same shape as the rest of the corpus (narrow rustc margin, as on kata [#20](../20-valid-parentheses/), since the Rust mirror is tiny).
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| c    backtracking                  | 32.9 KiB |
 | **kāra backtracking (seq)**        | **32.9 KiB** |
+| c    backtracking                  | 32.9 KiB |
 | **kāra backtracking (default)**    | **295.7 KiB** |
 | rust backtracking                  | 456.4 KiB |
 | go   backtracking                  | 2434.1 KiB |
 
-Kāra's seq binary is **33,728 bytes — 48 bytes from C's 33,680**. No sort, no networking: a recursive string-builder program is as small as the C mirror. The default build sits exactly on the documented **295.7 KiB auto-par floor** (worker pool + libstd retinue — see [kata 16 § Binary size](../16-3sum-closest/README.md) for the breakdown), at ~65% of Rust's 456 KiB.
+Kāra's seq binary is **33,664 bytes — 16 bytes *smaller* than C's 33,680** (the pre-sized f-string path emits less IR than the grow loop it replaced; the first-run snapshot read 33,728, 48 B above C). No sort, no networking: a recursive string-builder program is as small as the C mirror. The default build sits exactly on the documented **295.7 KiB auto-par floor** (worker pool + libstd retinue — see [kata 16 § Binary size](../16-3sum-closest/README.md) for the breakdown), at ~65% of Rust's 456 KiB.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    backtracking                  | 2.0 MiB |
+| c    backtracking                  | 2.2 MiB |
 | rust backtracking                  | 2.5 MiB |
-| **kāra backtracking (seq)**        | **3.0 MiB** |
+| **kāra backtracking (seq)**        | **2.9 MiB** |
 | **kāra backtracking (default)**    | **3.0 MiB** |
-| go   backtracking                  | 9.0 MiB |
+| go   backtracking                  | 9.1 MiB |
 
-Each iteration's 16,796-string set (~340 KB of payload + headers) is allocated, folded, and fully freed inside the loop — steady state is flat across all 150 iterations (a leaking build would exceed 100 MB). Kāra's ~1 MiB over C is allocator slack around the f-string grow-twice pattern plus the leaf's compiler-inserted defensive copy (each completed string is copied once into the accumulator — the soundness cost of the owned-param ABI documented in the bug-finder note; the move-ABI follow-up tracked in karac's owned-temp spike would retire it). Go's 9 MiB carries its GC arena + scheduler.
+Each iteration's 16,796-string set (~340 KB of payload + headers) is allocated, folded, and fully freed inside the loop — steady state is flat across all 150 iterations (a leaking build would exceed 100 MB). Kāra's ~0.7 MiB over C (down from ~1 MiB pre-fix — exact-size f-string allocations replaced the grow-twice slack) is the leaf's compiler-inserted defensive copy (each completed string is copied once into the accumulator — the soundness cost of the owned-param ABI documented in the bug-finder note; the move-ABI follow-up tracked in karac's owned-temp spike would retire it) plus allocator slack. Go's 9.1 MiB carries its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 backtracking.c          | 2.5 MiB |
-| **karac build backtracking.kara** | **12.4 MiB** |
-| rustc -O backtracking.rs          | 27.7 MiB |
+| clang -O3 backtracking.c          | 2.6 MiB |
+| **karac build backtracking.kara** | **12.5 MiB** |
+| rustc -O backtracking.rs          | 27.8 MiB |
 
 Kāra's compile-memory footprint is ~5× clang's and ~2.2× lower than rustc's — top of the corpus's karac band (the June analysis passes), same shape as the rest of the corpus.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware, same LLVM backend), so the headline ratio is the codegen-vs-Rust gap on the seq lane. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this string-build-bound kata **Kāra leads Rust by 1.66×** (its `format!` runtime-formatting layer vs Kāra's direct-append f-string lowering) and trails the no-formatting mirrors (C 2.06×, Go 1.73×) on the accumulator's grow-twice pattern — both causes mechanical, both documented above, one of them (pre-sizing) an identified karac optimization.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware, same LLVM backend), so the headline ratio is the codegen-vs-Rust gap on the seq lane. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this string-build-bound kata **Kāra leads Rust by 2.86×** (its `format!` runtime-formatting layer vs Kāra's pre-sized single-malloc f-string lowering), **matches Go** (the natural exact-size-concat peer), and sits 1.18× behind C on the leaf defensive copy. The first-run 2.06×-behind-C reading drove the f-string pre-sizing fix into karac the same day — see § Runtime for the before/after.
