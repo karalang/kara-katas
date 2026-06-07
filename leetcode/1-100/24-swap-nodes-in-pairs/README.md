@@ -40,6 +40,8 @@ The **dummy node** is the same load-bearing trick as katas [#2](../2-add-two-num
 
 `i64` is *not* load-bearing — LeetCode bounds the list at 100 nodes and values to `[0, 100]`; the width is for uniformity with the rest of the corpus (contrast kata [#18](../18-4sum/), where the 10⁹ bound forces `i64`).
 
+Kata [#25](../25-reverse-nodes-in-k-group/) generalizes this swap to arbitrary group size — at k = 2 its group reversal degenerates to exactly this three-store dance, and its trailing partial group generalizes the odd-length singleton.
+
 ## Kāra features exercised
 
 - **`shared struct ListNode { val: i64, mut next: Option[ListNode] }`** — the same reference-semantics (RC-backed) linked-node model as katas 2/19/21/23, with niche `Option[shared]` layout (a single nullable pointer).
@@ -94,7 +96,7 @@ Snapshot — M5 Pro, 2026-06-07, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 **Go beats C here (1.39×)** — the most pronounced Go lead in the linked-list set (kata 21 read Go 1.08× over C). Pure alloc-churn is Go's best case: its bump allocator hands out nodes from a contiguous arena and the GC reclaims each iteration's 100 dead nodes in batch, where C (and Kāra, and Rust) pay a `malloc`/`free` pair per node. The flip side is the 9.7 MiB GC arena in the memory table below — Kāra holds C-level RSS at C-adjacent speed.
 
-> **Default (non-`KARAC_AUTO_PAR=0`) build:** karac's reduction-recognition auto-parallelizes the K-loop — 155.0 ± 26.2 ms wall / 2.20 s user on 18 cores, a **~5.3× wall win over seq** for a +269 KiB binary (302.9 KiB, the `karac_par_reduce` floor — see [kata 16 § Binary size](../16-3sum-closest/README.md)). Per BENCH.md lane discipline the table above stays seq-lane; the par lane would need same-lane comparators (rayon / goroutine mirrors) before it can headline.
+> **Default (non-`KARAC_AUTO_PAR=0`) build:** karac's reduction-recognition auto-parallelizes the K-loop — 155.0 ± 26.2 ms wall / 2.20 s user on 18 cores, a **~5.3× wall win over seq** for a +262.8 KiB binary (295.8 KiB — 302,856 B, the `karac_par_reduce` floor; an earlier revision of this line divided by 1000 and read "302.9 KiB" — see [kata 16 § Binary size](../16-3sum-closest/README.md)). Per BENCH.md lane discipline the table above stays seq-lane; the par lane would need same-lane comparators (rayon / goroutine mirrors) before it can headline.
 
 ### Runtime — Python
 
