@@ -16,14 +16,15 @@
 // The stack stores positions into the snapshotted `Vec[char]` rather
 // than fresh `String` allocations — 16 bytes per stack entry regardless
 // of how long the component is, and no per-component allocation. The
-// output walk reads characters back out of `cs` at the recorded
-// positions.
+// output walk slices each component straight out of the input with
+// `s[start..end]`.
 //
 // LeetCode #71's input alphabet is English letters, digits, `'.'`,
-// `'/'`, `'_'` — all ASCII, all single-`char` under any encoding the
-// `s.chars()` snapshot would produce. Using `chars` over `bytes` here
-// just so the per-character f-string append in the output loop has
-// the right type without a u8→char round-trip.
+// `'/'`, `'_'` — all ASCII, all single-`char`. The `s.chars()` snapshot
+// gives cheap random access for the scan (`cs[i+1]` for the second dot of
+// '..'), and because every char is one byte the recorded char-indices
+// double as BYTE offsets for the `s[start..end]` output slice (a property
+// the output loop relies on — see its note below).
 
 fn simplify(s: ref String) -> String {
     // Snapshot the input once into a char buffer. `s.chars()` is a
@@ -89,26 +90,26 @@ fn simplify(s: ref String) -> String {
         return "/";
     }
 
-    // Reconstruct the output: "/" prefix per component, then each
-    // component's characters from `cs[start..end]`. `String.push_str`
-    // for the "/" separator and `String.push(char)` for each component
-    // byte both mutate `out` in place with amortized O(1) per call —
-    // the shape this kata was the trigger for adding to the stdlib
-    // (karac commit 7ef42b9, 2026-05-25). Pre-fix the available shape
-    // was f-string self-append `out = f"{out}{c}"` which allocated a
-    // fresh String per call (O(n²) total per simplify); see the
-    // README's § Benchmarks for the pre/post bench numbers.
+    // Reconstruct the output: "/" prefix per component, then the
+    // component's text sliced straight out of the input via `s[a..b]`
+    // (karac String slicing, phase-8 — the surface this kata motivated;
+    // see the README's § Benchmarks for the slicing-vs-char-push history).
+    // `(start, end)` are char-indices into `cs`, used here as BYTE offsets
+    // into `s` — valid because #71's input alphabet is all ASCII
+    // (one byte per char; see the snapshot note above), so char-index ==
+    // byte-offset and every component boundary (always at a '/') is a
+    // char boundary. `String.push_str` appends both the "/" separator and
+    // the sliced component in amortized O(1).
+    //
+    // Earlier shapes this replaced: f-string self-append
+    // `out = f"{out}{c}"` (O(n²), a fresh String per char), then a
+    // per-char `out.push(cs[p])` loop (O(n), 2026-05-25). Slicing collapses
+    // the inner loop to one call per component.
     let mut out: String = "";
     let mut k = 0i64;
     while k < starts.len() {
         out.push_str("/");
-        let a = starts[k];
-        let b = ends[k];
-        let mut p = a;
-        while p < b {
-            out.push(cs[p]);
-            p = p + 1i64;
-        }
+        out.push_str(s[starts[k]..ends[k]]);
         k = k + 1i64;
     }
     out
