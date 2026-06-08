@@ -36,10 +36,20 @@ Each test case prints the match **count**, then each start index on its own line
 ## Kāra features exercised
 
 - **`Map[String, i64]` as a multiset** — `need` and `seen` are count maps. `match m.get(k) { Some(c) => c, None => 0 }` is the read-default-to-zero idiom; `m.insert(k, c + 1)` / `m.insert(k, c - 1)` are the increment/decrement; `m.clear()` resets a dead window.
-- **String slicing `s[a .. b]`** — `s[start .. start + wl]` produces a fresh `String` over the window's bytes (design.md § String slicing; lowered to `karac_string_slice`), used directly as a map key. The whole kata is map-lookup-driven — no manual byte indexing.
-- **`words: Slice[String]`** — the read-only sequence-parameter convention shared with [#1](../1-two-sum/) / [#15](../15-3sum/); a `Vec[String]` argument coerces to it at the call site. Indexed access `words[idx]` yields the element `String` directly, so `need` is keyed on the words themselves (`words[idx].clone()`), no substring built.
+- **Borrowed String-slice map keys `m.get(s[a .. b])`** — a slice expression written *inline in a map-key slot* lowers to a borrowed `{ptr, len, cap = 0}` view into `s` — no allocation for lookups, and a deep-copy only when `insert` adds a genuinely new key. This is the headline performance idiom for the kata; see [§ Why the slice is written inline](#why-the-slice-is-written-inline).
+- **`words: Slice[String]`** — the read-only sequence-parameter convention shared with [#1](../1-two-sum/) / [#15](../15-3sum/); a `Vec[String]` argument coerces to it at the call site. Indexed access `words[idx]` yields the element `String` directly, so `need` is keyed on the words themselves (`words[idx].clone()` — the one owned-key site, run once per call).
 - **`Vec[i64].sort_by(|a, b| a.cmp(b))`** — the sliding-window result is sorted before return so the two approaches print identically.
 - **`for idx in 0..k` index iteration** + nested `while` loops over scalar cursors (`i`, `j`, `left`, `count`).
+
+## Why the slice is written inline
+
+The hot loop writes `need.get(s[j .. j+wl])` rather than `let piece = s[j .. j+wl]; need.get(piece)`, and that choice is what makes the kata fast.
+
+A `String` slice expression in a **map-key position** (`get` / `contains_key` / `remove` / `insert`) lowers to a *borrowed* view — a `{ptr, len, cap = 0}` struct that points straight into `s`'s buffer, with no `malloc`/`memcpy`. For the lookups (`get`), that view is hashed and compared and then discarded — it is never retained, so the borrow is always sound. For `insert`, the runtime **deep-copies** the bytes into an owned key only on a *fresh* insertion; an existing key just updates its count. So a counter/window map allocates **once per distinct word**, not once per window position — exactly what Rust's `&str` keys and C's packed-`u32` keys achieve.
+
+Binding the slice to a `let` first (`let piece = s[…]`) takes the **owned** path instead: `karac_string_slice` allocates a fresh `String` every time. That is correct but is the per-window-allocation cost this kata exists to avoid. (Extending the borrow to a `let`-bound slice used only as a key needs escape analysis, which is a later slice.)
+
+This idiom landed as two karac changes the kata drove (it was the "simulated demand"): borrowed String-slice map keys, and a fix to `Map.clear()` so it frees its heap key buffers instead of leaking them (the sliding window clears `seen` on every dead window). See [§ Benchmarks](#benchmarks) for the before/after.
 
 ## Running
 
@@ -78,26 +88,29 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| c    concat_words (clang -O3) | 24.0 ± 0.6 ms | 8.3× ahead of kāra |
-| rust concat_words | 64.3 ± 0.6 ms | 3.1× ahead of kāra |
-| go   concat_words | 174.6 ± 1.5 ms | 1.14× ahead of kāra |
-| **kāra concat_words (codegen)** | **199.0 ± 2.9 ms** | — |
+| c    concat_words (clang -O3) | 23.6 ± 0.6 ms | 5.1× ahead of kāra |
+| rust concat_words | 65.1 ± 0.5 ms | 1.85× ahead of kāra |
+| **kāra concat_words (codegen)** | **120.5 ± 1.5 ms** | — |
+| go   concat_words | 173.0 ± 1.4 ms | kāra 1.44× ahead of Go |
 
-**This kata is honest about a v1 cost, not a codegen win** — and that is the point of running it. The gap is **one specific thing: every window slice `s[j .. j+L]` heap-allocates a fresh `String`** (via `karac_string_slice`: `malloc` + `memcpy` + NUL-terminate), because Kāra v1 has no borrowed-string-slice that can serve as a `Map` key. Rust keys its map on `&str` slices that point straight into the text (zero allocation); C packs each 4-byte word into a `u32` and skips string hashing entirely; Go's `map[string]` hashes a cheap immutable slice. Kāra, by contrast, does ~8 million `malloc`/`free` pairs over the run — and the [peak-RSS table](#runtime-memory-peak) shows it: **10.0 MiB for Kāra vs 1.4 MiB for Rust**, the signature of allocation churn, not of a larger working set (the live set is tiny — a few count maps).
+This kata was the *driver* for two karac changes, and the table above is the after. **Before** them (binding each window slice to a `let`, so every `s[j..j+L]` heap-allocated a fresh `String`), idiomatic Kāra ran this in **199 ms — 3.1× behind Rust — with 10.0 MiB peak RSS** from ~8 million `malloc`/`free` pairs. The two fixes:
 
-That the cost is allocation and *not* the backend is visible in the other columns: Kāra **compiles this kata 2.2× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's** (see below). The instruction stream the backend produces is fine; it is being asked to allocate a string several million times because the language can't yet hand the map a borrowed view.
+1. **Borrowed String-slice map keys.** A slice written inline as a map key is now a borrowed view into `s` (no allocation); `insert` deep-copies only on a fresh key (see [§ Why the slice is written inline](#why-the-slice-is-written-inline)). Allocation drops from once-per-window to once-per-*distinct*-word — the same thing Rust's `&str` keys and C's packed `u32` keys do.
+2. **`Map.clear()` frees its heap keys.** The sliding window clears `seen` on every dead window; `karac_map_clear` previously only zeroed the bucket status and *leaked* the owned key buffers. Fixed, RSS drops from 10.0 MiB to **1.6 MiB — within 15 % of Rust's 1.4 MiB** (see [peak-RSS table](#runtime-memory-peak)).
 
-**The fix is a known v1 gap, now with a concrete target.** A borrowed `StringSlice` (or small-string-interning) usable as a `Map` key would let the idiomatic solution key on a view into `s` — the same move Rust makes — and should close most of the gap. This kata is the simulated demand for that feature; it is tracked alongside the `String.from_utf8` codegen hole (the two open "string-materialization" items). Until then the kata reports reality: on a string-window-hashing workload, idiomatic Kāra is ~3× behind idiomatic Rust, ~1.14× behind Go, and still **3.2× ahead of Python**.
+Net: **199 → 120 ms (1.65× faster) and 10.0 → 1.6 MiB (6× less)**, landing at **1.85× Rust on runtime and ~parity on memory**, and **1.44× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 5.1× lead is its zero-hashing packed-`u32` key — a representation no general string solution gets.
+
+That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 2.2× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's**.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara concat_words` (codegen) | 199.0 ± 2.9 ms |
-| `rust concat_words` | 64.3 ± 0.6 ms |
-| `py concat_words` | 628.3 ± 7.2 ms |
+| `kara concat_words` (codegen) | 120.5 ± 1.5 ms |
+| `rust concat_words` | 65.1 ± 0.5 ms |
+| `py concat_words` | 633.5 ± 7.8 ms |
 
-Even paying for every slice allocation, Kāra codegen is **~3.2× faster than CPython** — CPython also allocates a `str` per slice *and* dispatches every map operation through the interpreter.
+Kāra codegen is **~5.3× faster than CPython** — CPython allocates a `str` per slice *and* dispatches every map operation through the interpreter.
 
 ### Compile time and binary size
 
@@ -105,12 +118,12 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build concat_words.kara` | 89.9 ± 1.8 ms | 295.2 KiB |
-| `rustc -O concat_words.rs` | 197.4 ± 3.2 ms | 473.6 KiB |
-| `clang -O3 concat_words.c` | 56.8 ± 0.5 ms | 32.9 KiB |
+| `karac build concat_words.kara` | 86.7 ± 1.5 ms | 295.4 KiB |
+| `rustc -O concat_words.rs` | 193.7 ± 3.2 ms | 473.6 KiB |
+| `clang -O3 concat_words.c` | 55.2 ± 0.5 ms | 32.9 KiB |
 | `go build` | — | 2434.3 KiB |
 
-Kāra compiles this kata **2.2× faster than `rustc -O`** (1.58× slower than C) and produces a binary **38 % smaller than Rust's**. The 295 KiB is the auto-par/`Map`/`String` runtime floor — this workload pulls in the hash-map and string-slice runtime, so it does not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit.
+Kāra compiles this kata **2.2× faster than `rustc -O`** (1.57× slower than C) and produces a binary **38 % smaller than Rust's**. The 295 KiB is the `Map`/`String` runtime floor — this workload pulls in the hash-map and string-slice runtime, so it does not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit.
 
 ### Runtime memory (peak)
 
@@ -118,12 +131,12 @@ Kāra compiles this kata **2.2× faster than `rustc -O`** (1.58× slower than C)
 |---|---|
 | `c    concat_words` | 1.2 MiB |
 | `rust concat_words` | 1.4 MiB |
-| `py concat_words` | 7.7 MiB |
-| `go   concat_words` | 9.5 MiB |
-| `kara concat_words` (codegen) | 10.0 MiB |
+| `kara concat_words` (codegen) | 1.6 MiB |
+| `py concat_words` | 7.8 MiB |
+| `go   concat_words` | 9.4 MiB |
 
-Kāra's 10.0 MiB is **not** a large live set — it is allocator high-water from churning ~8 million short-lived slice `String`s through `malloc`/`free`. Rust and C never allocate in the hot loop (borrowed `&str` / packed `u32`), so they sit near their loaded-image floor. This row is the same story as the runtime gap, told in bytes: close the borrowed-slice-key gap and this drops toward the Rust/C floor.
+Kāra now sits **within 15 % of Rust** and an order of magnitude below Go's GC arena — the live set is tiny (a few count maps + the 200 KB text), and with the `Map.clear` leak fixed there is no allocator high-water from churned keys. Before the fix this row read 10.0 MiB; it is the clearest single-number evidence that the two changes worked.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (and, here, what zero-allocation keying buys), Go is the cross-runtime data point, and Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (and, here, what zero-allocation *and* zero-hashing keying buys), Go is the cross-runtime data point, and Python is the ergonomic foil.

@@ -28,11 +28,13 @@
 // Kāra notes (shared with brute_force.kara):
 //   * `words: Slice[String]`; `need`/`seen` are `Map[String, i64]` keyed on
 //     words and on `s[a .. b]` String slices — no manual byte handling.
-//   * `piece` is read several times (`need.get`, `seen.get`, the shrink-loop
-//     guard) before being cloned into `seen`, so it is borrowed throughout and
-//     a fresh `piece.clone()` is what the map takes ownership of. The
-//     left-edge word `lw` is re-sliced per drop (a fresh `String` each time),
-//     so it is simply moved into the `seen.insert` that decrements it.
+//   * Every window slice is written *inline* in the map-key slot (`need.get(s[j
+//     ..j+wl])`, never `let piece = s[j..j+wl]`). A slice expression in a map
+//     key position lowers to a borrowed `{ptr,len,cap=0}` view into `s` — the
+//     `get`s never allocate, and `insert` deep-copies the bytes only on a
+//     fresh key — so the hot loop allocates once per *distinct* word, not once
+//     per window. Binding the slice to a `let` first would force an owned copy
+//     each time. See README § "Why the slice is written inline".
 
 fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
     let mut result: Vec[i64] = Vec.new();
@@ -62,8 +64,11 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
         let mut left = r;
         let mut j = r;
         while j + wl <= n {
-            let piece = s[j..j + wl];
-            let req = match need.get(piece) {
+            // Each `s[a..b]` is written inline in the map-key slot so it
+            // lowers to a borrowed (allocation-free) view for the `get`s and a
+            // deep-copy-on-fresh-key for `insert`. See README § "Why the slice
+            // is written inline".
+            let req = match need.get(s[j..j + wl]) {
                 Some(c) => c,
                 None => -1i64,
             };
@@ -73,36 +78,34 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
                 count = 0;
                 left = j + wl;
             } else {
-                let cur = match seen.get(piece) {
+                let cur = match seen.get(s[j..j + wl]) {
                     Some(c) => c,
                     None => 0i64,
                 };
-                seen.insert(piece.clone(), cur + 1);
+                seen.insert(s[j..j + wl], cur + 1);
                 count = count + 1;
-                // Too many of `piece`: drop words off the left until balanced.
-                while (match seen.get(piece) {
+                // Too many of this word: drop words off the left until balanced.
+                while (match seen.get(s[j..j + wl]) {
                     Some(c) => c,
                     None => 0i64,
                 }) > req
                 {
-                    let lw = s[left..left + wl];
-                    let lc = match seen.get(lw) {
+                    let lc = match seen.get(s[left..left + wl]) {
                         Some(c) => c,
                         None => 0i64,
                     };
-                    seen.insert(lw, lc - 1);
+                    seen.insert(s[left..left + wl], lc - 1);
                     left = left + wl;
                     count = count - 1;
                 }
                 if count == k {
                     result.push(left);
                     // Slide past the leftmost word to look for the next window.
-                    let lw = s[left..left + wl];
-                    let lc = match seen.get(lw) {
+                    let lc = match seen.get(s[left..left + wl]) {
                         Some(c) => c,
                         None => 0i64,
                     };
-                    seen.insert(lw, lc - 1);
+                    seen.insert(s[left..left + wl], lc - 1);
                     left = left + wl;
                     count = count - 1;
                 }

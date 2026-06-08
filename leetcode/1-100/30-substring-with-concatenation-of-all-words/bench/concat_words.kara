@@ -38,14 +38,19 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
         need.insert(words[idx].clone(), cur + 1);
     }
 
+    // The map keys are written inline as `s[a..b]` slice expressions rather
+    // than bound to a `let piece = s[a..b]`: a slice expression in a map
+    // key position lowers to a borrowed `{ptr,len,cap=0}` view into `s` (no
+    // allocation) for lookups, and the deep-copy-on-fresh-insert path for
+    // `insert` — so this hot loop allocates only once per *distinct* word, not
+    // once per window. Binding the slice first would force an owned copy.
     for r in 0..wl {
         let mut seen: Map[String, i64] = Map.new();
         let mut count = 0i64;
         let mut left = r;
         let mut j = r;
         while j + wl <= n {
-            let piece = s[j..j + wl];
-            let req = match need.get(piece) {
+            let req = match need.get(s[j..j + wl]) {
                 Some(c) => c,
                 None => -1i64,
             };
@@ -54,34 +59,32 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
                 count = 0;
                 left = j + wl;
             } else {
-                let cur = match seen.get(piece) {
+                let cur = match seen.get(s[j..j + wl]) {
                     Some(c) => c,
                     None => 0i64,
                 };
-                seen.insert(piece.clone(), cur + 1);
+                seen.insert(s[j..j + wl], cur + 1);
                 count = count + 1;
-                while (match seen.get(piece) {
+                while (match seen.get(s[j..j + wl]) {
                     Some(c) => c,
                     None => 0i64,
                 }) > req
                 {
-                    let lw = s[left..left + wl];
-                    let lc = match seen.get(lw) {
+                    let lc = match seen.get(s[left..left + wl]) {
                         Some(c) => c,
                         None => 0i64,
                     };
-                    seen.insert(lw, lc - 1);
+                    seen.insert(s[left..left + wl], lc - 1);
                     left = left + wl;
                     count = count - 1;
                 }
                 if count == k {
                     result.push(left);
-                    let lw = s[left..left + wl];
-                    let lc = match seen.get(lw) {
+                    let lc = match seen.get(s[left..left + wl]) {
                         Some(c) => c,
                         None => 0i64,
                     };
-                    seen.insert(lw, lc - 1);
+                    seen.insert(s[left..left + wl], lc - 1);
                     left = left + wl;
                     count = count - 1;
                 }

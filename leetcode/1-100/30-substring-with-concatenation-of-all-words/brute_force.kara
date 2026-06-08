@@ -22,10 +22,12 @@
 //     O(1) and yields the element `String` directly, so the `need` map is
 //     keyed on the words themselves (`words[idx].clone()`), no substring
 //     construction.
-//   * `s[start .. start + wl]` is a String *slice* — a fresh `String` over the
-//     window's bytes (design.md § String slicing; `karac_string_slice`). It is
-//     used directly as a `Map[String, i64]` key, so the whole kata is
-//     map-lookup-driven with no manual byte fiddling.
+//   * `s[start .. start + wl]` is a String *slice* used directly as a
+//     `Map[String, i64]` key (design.md § String slicing). Written inline in
+//     the key slot — rather than `let piece = s[…]` — it lowers to a borrowed,
+//     allocation-free view into `s` for the `get`s and a deep-copy-on-fresh-key
+//     for `insert`, so the whole kata is map-lookup-driven with no per-window
+//     allocation. See README § "Why the slice is written inline".
 //   * All counts live in `i64`; the `req`/`cur` reads default a missing key to
 //     0 / −1 via `match … { Some(c) => c, None => … }`.
 
@@ -60,8 +62,12 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
         let mut ok = true;
         while j < k {
             let start = i + j * wl;
-            let piece = s[start..start + wl];
-            let req = match need.get(piece) {
+            // `s[start..start+wl]` is written inline at each map-key site (not
+            // bound to a `let piece = …`): a slice expression in key position
+            // lowers to a borrowed `{ptr,len,cap=0}` view into `s` — no
+            // allocation for the `get`s, and `insert` deep-copies only on a
+            // fresh key. See README § "Why the slice is written inline".
+            let req = match need.get(s[start..start + wl]) {
                 Some(c) => c,
                 None => -1i64,
             };
@@ -70,7 +76,7 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
                 ok = false;
                 j = k;
             } else {
-                let cur = match seen.get(piece) {
+                let cur = match seen.get(s[start..start + wl]) {
                     Some(c) => c,
                     None => 0i64,
                 };
@@ -79,7 +85,7 @@ fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
                     ok = false;
                     j = k;
                 } else {
-                    seen.insert(piece, cur + 1);
+                    seen.insert(s[start..start + wl], cur + 1);
                     j = j + 1;
                 }
             }
