@@ -12,10 +12,10 @@
 // Each outer step removes the top set bit of the quotient, so the whole thing
 // is O(log(quotient)^2) compares — no repeated subtraction, no multiply.
 //
-// Magnitudes are held in i64 so that negating INT_MIN (whose magnitude 2^31
+// Magnitudes are held in i64 so that `.abs()` of INT_MIN (whose magnitude 2^31
 // does not fit back into i32) never traps under Kāra's default arithmetic
 // overflow checking (design.md § Arithmetic Overflow): the only true overflow,
-// INT_MIN / -1, is special-cased before any negation runs.
+// INT_MIN / -1, is special-cased before any `.abs()` runs.
 
 fn divide(dividend: i64, divisor: i64) -> i64 {
     let int_max = 2147483647i64;
@@ -30,11 +30,10 @@ fn divide(dividend: i64, divisor: i64) -> i64 {
     // is exactly that XOR.
     let negative = (dividend < 0) != (divisor < 0);
 
-    // Reduce to magnitudes (safe in i64 even when dividend == INT_MIN).
-    let mut a = dividend;
-    if a < 0 { a = -a; }
-    let mut b = divisor;
-    if b < 0 { b = -b; }
+    // Reduce to magnitudes (safe in i64 — for 32-bit-range inputs `abs` never
+    // overflows, and the one true-overflow case, INT_MIN / -1, returned above).
+    let mut a = dividend.abs();
+    let b = divisor.abs();
 
     let mut result = 0i64;
     while a >= b {

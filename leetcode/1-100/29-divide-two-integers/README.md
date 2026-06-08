@@ -19,14 +19,14 @@ The naïve "subtract the divisor until you can't" is O(quotient) — up to ~2 bi
 Two integer-boundary details carry the correctness:
 
 - **Sign is an XOR of the operand signs.** `(dividend < 0) != (divisor < 0)` is exactly that XOR — `!=` on two `bool`s — computed once, applied at the end.
-- **Magnitudes live in i64.** `|INT_MIN| = 2³¹` does not fit back into a signed 32-bit value, so negating it would overflow. Holding both magnitudes in `i64` makes `−dividend` always representable, and the single genuinely-overflowing result (`INT_MIN / −1`) is special-cased and saturated *before* any negation runs. This is the one structural difference from sibling kata [#7 (reverse integer)](../7-reverse-integer/README.md), where the overflow check guards an accumulating product rather than a one-shot negation.
+- **Magnitudes live in i64.** `|INT_MIN| = 2³¹` does not fit back into a signed 32-bit value, so taking its absolute value would overflow. Holding both magnitudes in `i64` makes `dividend.abs()` always representable, and the single genuinely-overflowing result (`INT_MIN / −1`) is special-cased and saturated *before* any `.abs()` runs. This is the one structural difference from sibling kata [#7 (reverse integer)](../7-reverse-integer/README.md), where the overflow check guards an accumulating product rather than a one-shot magnitude.
 
 ## Kāra features exercised
 
 - **Bit-shift operator `<<`** — the doubling search (`temp << 1`, `multiple << 1`) is the core of the algorithm; the first kata in this group whose hot loop is shift-driven rather than index-driven.
 - **`!=` on `bool` as XOR** — `(dividend < 0) != (divisor < 0)` derives the quotient's sign without a branch.
 - **Early `return` plus a tail `if`-expression** — the `INT_MIN / −1` guard returns early; the function's value is the tail `if negative { -result } else { result }`, an expression, not a statement.
-- **Unary negation under default overflow checking** — `-a`, `-b`, `-result` all run with Kāra's arithmetic-overflow trapping on (design.md § Arithmetic Overflow); i64 magnitudes keep every negation in range so none can trap.
+- **`.abs()` and unary negation under default overflow checking** — `dividend.abs()`, `divisor.abs()`, and the tail `-result` all run with Kāra's arithmetic-overflow trapping on (design.md § Arithmetic Overflow); i64 magnitudes keep them in range so none can trap (`iN::MIN.abs()` would trap, but the only such case, `INT_MIN / −1`, returned early).
 - **Nested `while` loops over scalars** — no arrays, no slices: the whole kata is integer ALU and control flow.
 
 ## Running
@@ -60,39 +60,39 @@ Each of the 5M calls draws a fresh pair from the classic glibc LCG (`a = 1103515
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded:
+Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded:
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| rust bit_shift | 312.0 ± 2.4 ms | 1.02× ahead of kāra |
-| c    bit_shift (clang -O3) | 313.7 ± 2.9 ms | 1.01× ahead of kāra |
-| **kāra bit_shift (codegen)** | **319.7 ± 2.4 ms** | — |
-| go   bit_shift | 373.1 ± 5.8 ms | kāra 1.17× ahead of Go |
+| rust bit_shift | 305.8 ± 1.8 ms | 1.03× ahead of kāra |
+| c    bit_shift (clang -O3) | 308.2 ± 1.0 ms | 1.02× ahead of kāra |
+| **kāra bit_shift (codegen)** | **316.0 ± 1.4 ms** | — |
+| go   bit_shift | 353.0 ± 1.9 ms | kāra 1.12× ahead of Go |
 
-**Kāra is within 2% of both Rust and C** on a branch-bound integer kernel — and this is *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow), which Rust's release build omits. There is no array indexing here, so unlike the array-compaction siblings ([#26](../26-remove-duplicates-from-sorted-array/README.md), [#27](../27-remove-element/README.md)) there is no bounds-check story; the only Kāra-specific cost is the overflow check on the loop body's `a − temp` / `result + multiple`. Those checks don't dominate because the data-dependent `while a >= (temp << 1)` compare and its mispredicts are the real bottleneck — the same regime for all four compilers, which is why they land within a hair of each other. The shifts themselves never trap.
+**Kāra is within ~3% of both Rust and C** on a branch-bound integer kernel — and this is *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow), which Rust's release build omits. There is no array indexing here, so unlike the array-compaction siblings ([#26](../26-remove-duplicates-from-sorted-array/README.md), [#27](../27-remove-element/README.md)) there is no bounds-check story; the only Kāra-specific cost is the overflow check on the loop body's `a − temp` / `result + multiple`. Those checks don't dominate because the data-dependent `while a >= (temp << 1)` compare and its mispredicts are the real bottleneck — the same regime for all four compilers, which is why they land within a hair of each other. The shifts themselves never trap.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara bit_shift` (codegen) | 319.7 ± 2.4 ms |
-| `rust bit_shift` | 312.0 ± 2.4 ms |
-| `py bit_shift` | 21622.3 ± 1076.5 ms |
+| `kara bit_shift` (codegen) | 316.0 ± 1.4 ms |
+| `rust bit_shift` | 305.8 ± 1.8 ms |
+| `py bit_shift` | 20676.4 ± 124.6 ms |
 
-Python is **~68× slower** than Kāra codegen — per-call CPython bytecode dispatch over a nested loop of compares, shifts, and subtractions, 5M times over.
+Python is **~65× slower** than Kāra codegen — per-call CPython bytecode dispatch over a nested loop of compares, shifts, and subtractions, 5M times over.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build bit_shift.kara` | 69.1 ± 1.6 ms | 32.8 KiB |
-| `rustc -O bit_shift.rs` | 71.6 ± 1.7 ms | 455.4 KiB |
-| `clang -O3 bit_shift.c` | 40.8 ± 1.0 ms | 32.6 KiB |
+| `karac build bit_shift.kara` | 66.1 ± 1.0 ms | 32.8 KiB |
+| `rustc -O bit_shift.rs` | 70.1 ± 1.2 ms | 455.4 KiB |
+| `clang -O3 bit_shift.c` | 38.9 ± 1.0 ms | 32.6 KiB |
 | `go build` | — | 2434.1 KiB |
 
-Kāra compiles this kata **1.04× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within 144 bytes of C** (33,576 B vs 33,432 B; the delta is the overflow-trap landing pads). The workload reaches `println(i64)` and nothing else from the runtime — no `Vec`, no slice ops — so cross-archive LTO + DCE strips the runtime down to almost nothing, the same lean profile as kata [#27](../27-remove-element/README.md#compile-time-and-binary-size).
+Kāra compiles this kata **1.06× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within 144 bytes of C** (33,576 B vs 33,432 B; the delta is the overflow-trap landing pads). The workload reaches `println(i64)` and nothing else from the runtime — no `Vec`, no slice ops — so cross-archive LTO + DCE strips the runtime down to almost nothing, the same lean profile as kata [#27](../27-remove-element/README.md#compile-time-and-binary-size).
 
 ### Runtime memory (peak)
 
