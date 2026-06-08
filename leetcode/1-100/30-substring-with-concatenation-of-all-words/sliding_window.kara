@@ -1,0 +1,148 @@
+// LeetCode #30: Substring with Concatenation of All Words — sliding window.
+//
+// Same problem as brute_force.kara — find every start index where a length-(L·K)
+// slice of `s` is the concatenation of all K words (each of length L) exactly
+// once, in any order. This variant is O(n): instead of re-tallying a fresh
+// window at every byte offset, it slides one window per *phase*.
+//
+// The key observation: a valid window starts at some offset whose value mod L
+// is fixed, and within one residue class `r` (0 ≤ r < L) all the word
+// boundaries line up — every candidate window is a run of whole L-byte words
+// starting at `r, r+L, r+2L, …`. So run L independent passes, one per residue
+// `r`, each a classic variable-width sliding window over *words* (step L):
+//
+//   * Extend `right` by one word. If that word isn't in `need`, the window is
+//     dead — clear it and restart just past the offending word.
+//   * Otherwise add it to `seen`; while it now appears more often than `need`
+//     wants, drop words off the `left` end (each drop slides `left` by L).
+//   * When the window holds exactly K words it is a match: record `left`, then
+//     drop one word off the left so the search continues for the next window.
+//
+// Each byte of `s` enters and leaves a window at most once per phase, so the
+// total work is O(n) map operations across all L phases — independent of K.
+//
+// Because the L phases discover hits in residue-then-scan order rather than
+// globally ascending order, the result is sorted before return so this file's
+// output matches brute_force.kara's left-to-right scan order byte-for-byte.
+//
+// Kāra notes (shared with brute_force.kara):
+//   * `words: Slice[String]`; `need`/`seen` are `Map[String, i64]` keyed on
+//     words and on `s[a .. b]` String slices — no manual byte handling.
+//   * `piece` is read several times (`need.get`, `seen.get`, the shrink-loop
+//     guard) before being cloned into `seen`, so it is borrowed throughout and
+//     a fresh `piece.clone()` is what the map takes ownership of. The
+//     left-edge word `lw` is re-sliced per drop (a fresh `String` each time),
+//     so it is simply moved into the `seen.insert` that decrements it.
+
+fn find_substring(s: ref String, words: Slice[String]) -> Vec[i64] {
+    let mut result: Vec[i64] = Vec.new();
+    let k = words.len();
+    if k == 0 {
+        return result;
+    }
+    let wl = words[0].len();
+    let total = wl * k;
+    let n = s.len();
+    if wl == 0 or total > n {
+        return result;
+    }
+
+    let mut need: Map[String, i64] = Map.new();
+    for idx in 0..k {
+        let cur = match need.get(words[idx]) {
+            Some(c) => c,
+            None => 0i64,
+        };
+        need.insert(words[idx].clone(), cur + 1);
+    }
+
+    for r in 0..wl {
+        let mut seen: Map[String, i64] = Map.new();
+        let mut count = 0i64; // whole words currently in [left, right)
+        let mut left = r;
+        let mut j = r;
+        while j + wl <= n {
+            let piece = s[j..j + wl];
+            let req = match need.get(piece) {
+                Some(c) => c,
+                None => -1i64,
+            };
+            if req < 0 {
+                // Dead window — restart just past the foreign word.
+                seen.clear();
+                count = 0;
+                left = j + wl;
+            } else {
+                let cur = match seen.get(piece) {
+                    Some(c) => c,
+                    None => 0i64,
+                };
+                seen.insert(piece.clone(), cur + 1);
+                count = count + 1;
+                // Too many of `piece`: drop words off the left until balanced.
+                while (match seen.get(piece) {
+                    Some(c) => c,
+                    None => 0i64,
+                }) > req
+                {
+                    let lw = s[left..left + wl];
+                    let lc = match seen.get(lw) {
+                        Some(c) => c,
+                        None => 0i64,
+                    };
+                    seen.insert(lw, lc - 1);
+                    left = left + wl;
+                    count = count - 1;
+                }
+                if count == k {
+                    result.push(left);
+                    // Slide past the leftmost word to look for the next window.
+                    let lw = s[left..left + wl];
+                    let lc = match seen.get(lw) {
+                        Some(c) => c,
+                        None => 0i64,
+                    };
+                    seen.insert(lw, lc - 1);
+                    left = left + wl;
+                    count = count - 1;
+                }
+            }
+            j = j + wl;
+        }
+    }
+    result.sort_by(|a, b| a.cmp(b));
+    result
+}
+
+fn report(s: ref String, words: Slice[String]) {
+    let r = find_substring(s, words);
+    println(r.len());
+    for idx in r {
+        println(idx);
+    }
+}
+
+fn main() {
+    // Identical cases and output to brute_force.kara — the two files diff only
+    // in the algorithm, never in what they print.
+    let w1: Vec[String] = ["foo", "bar"];
+    report("barfoothefoobarman", w1); // 2: 0 9
+
+    let w2: Vec[String] = ["word", "good", "best", "word"];
+    report("wordgoodgoodgoodbestword", w2); // 0
+
+    let w3: Vec[String] = ["bar", "foo", "the"];
+    report("barfoofoobarthefoobarman", w3); // 3: 6 9 12
+
+    let w4: Vec[String] = ["aa", "aa"];
+    report("aaaaaa", w4); // 3: 0 1 2
+
+    let w5: Vec[String] = ["a", "b", "a"];
+    report("abababab", w5); // 3: 0 2 4
+
+    let w6: Vec[String] = ["a"];
+    report("a", w6); // 1: 0
+
+    let w7: Vec[String] = ["ab", "ba"];
+    report("abbaab", w7); // 2: 0 2
+}
