@@ -99,11 +99,16 @@ gated on `expr_yields_fresh_owned_temp` (excludes literals / `ref String`
 identifiers / `out[k]` place exprs) and `cap > 0` (a literal owns no heap).
 Post-fix RSS is **1.2 MiB** — lower than Rust, tied with C. Test:
 `asan_push_str_substring_temp_no_double_free` (guards the new `free()` against
-double-free / UAF).
+double-free / UAF). A follow-up ([`5bc5c2ec`]) factored the free into a shared
+`free_fresh_owned_str_arg` helper and applied it to `contains` and
+`starts_with` too — the same leak on the lexer's keyword-membership /
+prefix-check surface (`keyword.contains(source.substring(a, b))`), closing the
+whole borrowed-string-arg class fix #1 opened.
 
 [`522bec1c`]: ../../../../kara/
 [`240389ff`]: ../../../../kara/
 [`5ebdc96c`]: ../../../../kara/
+[`5bc5c2ec`]: ../../../../kara/
 
 ## Benchmarks
 
