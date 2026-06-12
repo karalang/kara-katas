@@ -4,10 +4,17 @@
 // index-heavy version snapshots each line into a `Vec[char]` and the
 // streaming version pushes survivors char-by-char, this one scans the line's
 // zero-copy `bytes()` view with `b'/'` / `b'*'` byte classification and emits
-// each surviving run as a single `substring` slice — exactly the lexer's
-// `token_text = source.substring(start, current)` shape (WIP §1 byte scan + §3
-// substring slicing), and O(segments) `push_str` calls instead of O(chars)
-// `push`.
+// each surviving run as a single **zero-copy slice** `source[li][a..b]`
+// appended via `push_str` (WIP §1 byte scan + §3 token-text slicing), O(segments)
+// calls instead of O(chars) `push`.
+//
+// Append uses slice syntax, NOT `.substring(a, b)`, on purpose: `s[a..b]` is a
+// borrowed view (no allocation), so `push_str` copies the bytes once — exactly
+// Rust's `&line[a..b]`. `.substring(a, b)` instead returns an *owned* `String`
+// (malloc + copy + free per segment); it is the right tool only when the run
+// must OUTLIVE the source (a stored token), and benches ~1.6× slower here. With
+// the zero-copy slice this kata beats Rust on the seq lane (see README
+// § Benchmarks).
 //
 // `seg_start` marks where the current surviving run began (a byte offset into
 // the line). A `//` or `/*` flushes `[seg_start, i)`; a closing `*/` resumes
@@ -35,11 +42,11 @@ fn remove_comments(source: ref Vec[String]) -> Vec[String] {
         while i < n {
             if not in_block {
                 if i + 1i64 < n and bytes[i] == slash and bytes[i + 1i64] == slash {
-                    buffer.push_str(source[li].substring(seg_start, i));
+                    buffer.push_str(source[li][seg_start..i]);
                     seg_start = n;             // rest of line is a comment
                     break;
                 } else if i + 1i64 < n and bytes[i] == slash and bytes[i + 1i64] == star {
-                    buffer.push_str(source[li].substring(seg_start, i));
+                    buffer.push_str(source[li][seg_start..i]);
                     in_block = true;
                     i = i + 2i64;
                 } else {
@@ -57,7 +64,7 @@ fn remove_comments(source: ref Vec[String]) -> Vec[String] {
         }
 
         if not in_block {
-            buffer.push_str(source[li].substring(seg_start, n));
+            buffer.push_str(source[li][seg_start..n]);
             if not buffer.is_empty() {
                 result.push(buffer);
                 buffer = "";
