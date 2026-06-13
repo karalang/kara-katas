@@ -35,7 +35,7 @@ int main(void) {
 
     const int64_t target = -1;
     int64_t sum = 0;
-    for (int k = 0; k < 10; k++) {
+    for (int k = 0; k < 100; k++) {
         size_t i, j;
         if (two_sum(data, target, &i, &j)) {
             sum += (int64_t)i + (int64_t)j;

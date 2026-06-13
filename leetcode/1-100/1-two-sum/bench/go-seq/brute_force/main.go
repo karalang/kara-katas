@@ -27,7 +27,7 @@ func main() {
 
 	const target int64 = -1
 	var sum int64
-	for k := 0; k < 10; k++ {
+	for k := 0; k < 100; k++ {
 		if i, j, ok := twoSum(data, target); ok {
 			sum += int64(i) + int64(j)
 		} else {

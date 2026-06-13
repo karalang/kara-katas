@@ -2,13 +2,16 @@
 # Wall-clock comparison across implementations of LeetCode #1.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Seq-only kata: brute_force's per-call work (~12.5M comparisons) is
-# small enough that a par lane would mostly measure dispatch overhead;
-# hash_map's per-call work (~5K inserts) is even smaller. Both stay
-# single-threaded so the kata measures pure codegen quality per the
-# BENCH.md two-lane protocol.
+# Two lanes. brute_force runs K=100 independent O(n²) two_sum calls: heavy
+# enough per call that karac's auto-par-on-reduction clears the runtime gate and
+# parallelizes the `for _ in 0..100` reduction with NO parallel source (unblocked
+# by B-2026-06-12-7, the for-_ wildcard fix) — so it gets a PAR LANE vs hand-tuned
+# C-pthreads / rayon / goroutines. hash_map's per-call work (~5K inserts) is too
+# light; the runtime correctly keeps it serial, so it stays seq-only. At
+# brute_force's original K=10 the runtime also (correctly) declined par — the
+# par lane needs the K=100 workload.
 #
-# Requires: hyperfine (`brew install hyperfine`), rustc (rustup), clang,
+# Requires: hyperfine (`brew install hyperfine`), rustc + cargo (rustup), clang,
 # go, karac.
 
 set -euo pipefail
@@ -23,6 +26,7 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require cargo     "rustup (https://rustup.rs)  — needed for the rayon par-lane variant"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
@@ -96,14 +100,60 @@ build_go_seq() {
     fi
 }
 
+# brute_force auto-pars (its O(n²) per-call work clears the runtime gate at
+# K=100 calls); build a KARAC_AUTO_PAR=0 seq twin for the apples-to-apples seq
+# lane. hash_map stays seq-only (per-call work too light — runtime declines).
+build_kara_seq() {
+    local src="$1"
+    local stem="$(basename "$src" .kara)"
+    local out="target/${stem}_kara_seq"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
+        mv "$stem" "$out"
+    fi
+}
+
+# Par-lane comparators for brute_force — hand-tuned parallelism vs Kāra auto-par.
+build_rayon() {
+    local out="target/two_sum_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f rayon/target/release/two_sum_rayon "$out"
+    fi
+}
+build_go_par() {
+    local out="target/two_sum_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime).
+build_c_par() {
+    local out="target/brute_force_c_par"
+    local src="brute_force_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust brute_force.rs
 build_rust hash_map.rs
 build_c    brute_force.c
 build_c    hash_map.c
 build_kara brute_force.kara
 build_kara hash_map.kara
+build_kara_seq brute_force.kara
 build_go_seq brute_force
 build_go_seq hash_map
+build_rayon
+build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at N=5000 the
@@ -111,34 +161,42 @@ build_go_seq hash_map
 # Set `KARA_BENCH_INCLUDE_PY=1` to opt in.
 #
 # Plain "name:command" pairs (no associative arrays — macOS bash is 3.2).
-expected="-20"
+# Per-approach sink: brute_force scaled to K=100 calls (-200) so its O(n²) work
+# clears the runtime auto-par gate; hash_map stays K=10 (-20). Triples are
+# name:command:expected.
 mismatch=""
-for pair in \
-    'bf_kara:./target/brute_force_kara' \
-    'bf_rust:./target/brute_force' \
-    'bf_c:./target/brute_force_c' \
-    'bf_go:./target/brute_force_go_seq' \
-    'hm_kara:./target/hash_map_kara' \
-    'hm_rust:./target/hash_map' \
-    'hm_c:./target/hash_map_c' \
-    'hm_go:./target/hash_map_go_seq'; do
-    name="${pair%%:*}"
-    cmd="${pair#*:}"
+for triple in \
+    'bf_kara:./target/brute_force_kara:-200' \
+    'bf_kara_seq:./target/brute_force_kara_seq:-200' \
+    'bf_rust:./target/brute_force:-200' \
+    'bf_c:./target/brute_force_c:-200' \
+    'bf_go:./target/brute_force_go_seq:-200' \
+    'bf_rayon:./target/two_sum_rayon:-200' \
+    'bf_go_par:./target/two_sum_go_par:-200' \
+    'bf_c_par:./target/brute_force_c_par:-200' \
+    'hm_kara:./target/hash_map_kara:-20' \
+    'hm_rust:./target/hash_map:-20' \
+    'hm_c:./target/hash_map_c:-20' \
+    'hm_go:./target/hash_map_go_seq:-20'; do
+    name="${triple%%:*}"
+    rest="${triple#*:}"
+    cmd="${rest%:*}"
+    exp="${rest##*:}"
     out=$("$cmd")
-    if [ "$out" != "$expected" ]; then
-        mismatch="$mismatch ${name}=${out}"
+    if [ "$out" != "$exp" ]; then
+        mismatch="$mismatch ${name}=${out}(want ${exp})"
     fi
 done
 if [ -n "$mismatch" ]; then
-    echo "sink mismatch (expected=$expected):$mismatch" >&2
+    echo "sink mismatch:$mismatch" >&2
     exit 1
 fi
-echo "sink (all eight: kara/rust/c/go × brute_force/hash_map): $expected"
+echo "sink ok (brute_force=-200 ×8, hash_map=-20 ×4)"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_bf=$(python3 brute_force.py)
     py_hm=$(python3 hash_map.py)
-    if [ "$py_bf" != "$expected" ] || [ "$py_hm" != "$expected" ]; then
-        echo "python sink mismatch: py_bf=$py_bf py_hm=$py_hm" >&2
+    if [ "$py_bf" != "-200" ] || [ "$py_hm" != "-20" ]; then
+        echo "python sink mismatch: py_bf=$py_bf(want -200) py_hm=$py_hm(want -20)" >&2
         exit 1
     fi
     echo "python: matches"
@@ -147,8 +205,8 @@ echo
 
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=1 slug=two-sum group=1-100 \
-    title="Two Sum" workload="brute_force N=5000 / hash_map N=5000" \
-    sink="$expected"
+    title="Two Sum" workload="brute_force N=5000 K=100 / hash_map N=5000 K=10" \
+    sink="-200"
 
 # Two runtime batches because the workloads span ~5 orders of magnitude:
 #   - short workloads (<50ms): hash_map across all langs, brute_force in
@@ -159,7 +217,7 @@ bench_begin id=1 slug=two-sum group=1-100 \
 echo "=== runtime — short workloads ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach brute_force --lane seq --mode codegen \
-    --name 'kara brute_force (codegen)' --cmd './target/brute_force_kara'
+    --name 'kara brute_force (seq, KARAC_AUTO_PAR=0)' --cmd './target/brute_force_kara_seq'
 rt_cmd --lang rust --approach brute_force --lane seq --mode native \
     --name 'rust brute_force' --cmd './target/brute_force'
 rt_cmd --lang c --approach brute_force --lane seq --mode native \
@@ -176,6 +234,26 @@ rt_cmd --lang go --approach hash_map --lane seq --mode native \
     --name 'go   hash_map' --cmd './target/hash_map_go_seq'
 rt_cmd --lang python --approach hash_map --lane seq --mode interp \
     --name 'py   hash_map' --cmd 'python3 hash_map.py'
+rt_end
+
+echo
+echo "=== runtime — PAR LANE: brute_force (multi-core: auto-par vs hand-tuned vs metal floor) ==="
+# brute_force only — its O(n²) per-call work clears the runtime auto-par gate at
+# K=100 calls, so `karac build` emits a karac_par_reduce dispatch off the plain
+# `for _ in 0..100` reduction with NO parallel source (unblocked by B-2026-06-12-7,
+# the for-_ wildcard auto-par fix). C/rayon/go parallelize the SAME reduction by
+# hand. The C row is the bare-metal FLOOR (raw pthreads, no runtime). hash_map is
+# absent — its per-call work is too light, the runtime correctly keeps it serial.
+# Apples-to-apples WITHIN the par lane; NOT comparable to the single-thread seq rows.
+rt_begin --warmup 10 --runs 50
+rt_cmd --lang kara --approach brute_force --lane par --mode codegen \
+    --name 'kara  brute_force (auto-par, NO parallel code)' --cmd './target/brute_force_kara'
+rt_cmd --lang c --approach brute_force --lane par --mode native \
+    --name 'c     brute_force (pthreads — metal floor)' --cmd './target/brute_force_c_par'
+rt_cmd --lang rust --approach brute_force --lane par --mode native \
+    --name 'rust  brute_force (rayon par_iter)' --cmd './target/two_sum_rayon'
+rt_cmd --lang go --approach brute_force --lane par --mode native \
+    --name 'go    brute_force (goroutines + WaitGroup)' --cmd './target/two_sum_go_par'
 rt_end
 
 echo
@@ -219,7 +297,11 @@ ce_end
 
 echo
 echo "=== binary size ==="
-size_put --lang kara --approach brute_force --lane seq --mode codegen --path target/brute_force_kara
+size_put --lang kara --approach brute_force --lane seq --mode codegen --path target/brute_force_kara_seq
+size_put --lang kara --approach brute_force --lane par --mode codegen --path target/brute_force_kara
+size_put --lang c    --approach brute_force --lane par --mode native  --path target/brute_force_c_par
+size_put --lang rust --approach brute_force --lane par --mode native  --path target/two_sum_rayon
+size_put --lang go   --approach brute_force --lane par --mode native  --path target/two_sum_go_par
 size_put --lang kara --approach hash_map    --lane seq --mode codegen --path target/hash_map_kara
 size_put --lang rust --approach brute_force --lane seq --mode native  --path target/brute_force
 size_put --lang rust --approach hash_map    --lane seq --mode native  --path target/hash_map
@@ -235,7 +317,11 @@ echo "=== runtime memory (peak) ==="
 # plus the AST/value heap karac walks at runtime — `karac run` re-runs
 # lex → … → ownership → tree-walk every invocation, so the number measures
 # interpreter overhead + algorithm working set, not algorithm alone.
-mem_put --lang kara --approach brute_force --lane seq --mode codegen --bytes "$(mem_peak ./target/brute_force_kara)"
+mem_put --lang kara --approach brute_force --lane seq --mode codegen --bytes "$(mem_peak ./target/brute_force_kara_seq)"
+mem_put --lang kara --approach brute_force --lane par --mode codegen --bytes "$(mem_peak ./target/brute_force_kara)"
+mem_put --lang c    --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/brute_force_c_par)"
+mem_put --lang rust --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/two_sum_rayon)"
+mem_put --lang go   --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/two_sum_go_par)"
 mem_put --lang kara --approach hash_map    --lane seq --mode codegen --bytes "$(mem_peak ./target/hash_map_kara)"
 mem_put --lang kara --approach hash_map    --lane seq --mode interp  --bytes "$(mem_peak karac run hash_map.kara)"
 mem_put --lang rust --approach brute_force --lane seq --mode native  --bytes "$(mem_peak ./target/brute_force)"

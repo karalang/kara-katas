@@ -47,31 +47,47 @@ brew install hyperfine    # also needs rustc, clang, go, karac
 ./bench/bench.sh
 ```
 
-`bench/bench.sh` follows the [kara-katas bench protocol](../../../BENCH.md): builds same-algorithm mirrors in Kāra, Rust, C, Go (and Python, optional), checks they print the same stdout sink, then times them with hyperfine. Both approaches are seq-only — the per-call work (~12.5 M comparisons for brute force; ~5 K inserts for hash map) is small enough that a par lane would mostly measure dispatch overhead, so the kata measures pure codegen quality.
+`bench/bench.sh` follows the [kara-katas bench protocol](../../../BENCH.md): builds same-algorithm mirrors in Kāra, Rust, C, Go (and Python, optional), checks they print the same stdout sink, then times them with hyperfine. **brute_force** runs K=100 independent O(n²) two_sum calls — heavy enough per call that karac's auto-par-on-reduction parallelizes the `for _ in 0..100` loop with no parallel source, so it has both a seq lane (codegen quality) and a **par lane** (auto-par vs hand-tuned C/rayon/goroutines). **hash_map** stays seq-only — its ~5 K inserts/call are too light, and the runtime correctly keeps it serial.
 
 | File | What it does |
 |---|---|
-| [`bench/brute_force.kara`](bench/brute_force.kara) | N=5000 deterministic input, K=10 outer iterations, sentinel target so brute force never short-circuits (full 12,497,500 inner-loop comparisons per call) |
-| [`bench/hash_map.kara`](bench/hash_map.kara) | Same N, K, target; single-pass `Map[i64, i64]` |
+| [`bench/brute_force.kara`](bench/brute_force.kara) | N=5000 deterministic input, **K=100** outer two_sum calls (scaled from 10 so the per-call O(n²) work clears the runtime auto-par gate — see par lane), sentinel target so brute force never short-circuits (full 12,497,500 inner-loop comparisons per call) |
+| [`bench/hash_map.kara`](bench/hash_map.kara) | N=5000, **K=10**, same target; single-pass `Map[i64, i64]` (stays seq-only) |
 | [`bench/brute_force.{rs,c,py}`](bench/) + [`bench/go-seq/brute_force/`](bench/go-seq/brute_force/) | Algorithmic mirrors — same N, K, target |
+| par-lane (brute_force): [`bench/rayon/`](bench/rayon/), [`bench/go-par/`](bench/go-par/), [`bench/brute_force_par.c`](bench/brute_force_par.c) | hand-tuned-parallel mirrors of the K=100 reduction |
 | [`bench/hash_map.{rs,c,py}`](bench/) + [`bench/go-seq/hash_map/`](bench/go-seq/hash_map/) | Same; idiomatic hashmap per language (`std::collections::HashMap` in Rust, open-addressing in C, `map[int64]int` in Go) |
 
-All mirrors print `-20` (sum-of-results sink so the algorithm's output participates in I/O and can't be elided).
+`brute_force` mirrors print `-200` (K=100 × −2); `hash_map` mirrors print `-20` (K=10 × −2) — a sum-of-results sink so the output participates in I/O and can't be elided.
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O`, `clang -O3`, `go build`. Within-lane comparisons only; the two workloads are listed separately because their algorithmic complexities differ. Both kara binaries verified seq via `nm -gU | grep karac_par_reduce` (no auto-par symbols present) per BENCH.md § Implicit auto-par.
+Snapshot — M5 Pro, 2026-06-13, hyperfine `--warmup 5 --runs 30..40 --shell=none`, native binaries via `karac build` (`KARAC_AUTO_PAR=0` for the brute_force seq row), `rustc -O`, `clang -O3`, `go build`. Within-lane comparisons only. **brute_force now auto-pars** under default `karac build` (its K=100 reduction clears the runtime gate — par lane below); the seq row here is the `KARAC_AUTO_PAR=0` twin. `hash_map` stays seq-only (`nm -gU | grep karac_par_reduce` empty — per-call work too light, runtime correctly declines).
 
-`brute_force` — inner-loop-dominated (~125 M comparisons total):
+`brute_force` — inner-loop-dominated (~1.25 B comparisons total at K=100):
 
 | Implementation | Wall time | User-CPU | Within-workload ratio |
 |---|---|---|---|
-| **kāra brute_force (codegen)**   | **29.5 ms ± 0.1 ms**  | 28.2 ms | **1.00×** (baseline) |
-| c    brute_force (clang -O3)     | 29.6 ms ± 0.1 ms      | 28.3 ms | 1.00× of Kāra |
-| go   brute_force                 | 30.6 ms ± 0.2 ms      | 29.0 ms | 1.04× of Kāra |
-| rust brute_force (rustc -O)      | 32.0 ms ± 1.0 ms      | 30.6 ms | 1.08× of Kāra |
+| c    brute_force (clang -O3)     | **281 ms ± 2 ms**     | 279 ms  | 0.90× of Kāra |
+| rust brute_force (rustc -O)      | 283 ms ± 2 ms         | 281 ms  | 0.91× of Kāra |
+| go   brute_force                 | 284 ms ± 1 ms         | 282 ms  | 0.91× of Kāra |
+| **kāra brute_force (seq)**       | **312 ms ± 21 ms**    | 310 ms  | **1.00×** (baseline) |
 
-Kāra is at **C parity** on the brute-force inner loop. The earlier 2.9× gap to Rust (M1, 2026-05-06) was the cost of an unelided bounds-check blocking LLVM's autovectorizer; that closed once bounds-check elision landed. Kāra, C, Go, and Rust now all sit within ~10% of each other on this workload — within run-to-run jitter and not a meaningful per-language ranking.
+Kāra is **1.10× behind** the C/Rust/Go cluster (all tied ~283 ms — a trivial O(n²) loop every backend compiles identically). At the old K=10 these were dead-even (Kāra 29.5 vs C 29.6 ms); the gap that opens at K=100 is Kāra's `two_sum` returning a `Vec[i64]` — one heap allocation per call, ×100 — where the Rust/C/Go mirrors return a non-allocating `Option`/tuple. That allocator traffic also widens Kāra's σ (amplified by the 3 concurrent build agents on the box during this snapshot).
+
+### Runtime — par lane (auto-par vs hand-tuned vs metal floor)
+
+brute_force only. The K=100 independent O(n²) calls are embarrassingly parallel; all four parallelize that *same* reduction across the 18 cores — the difference is what the programmer wrote:
+
+| | parallel code written | wall time | total CPU |
+|---|---|---|---|
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 22.0 ms | 334 ms |
+| **Kāra (auto-par)** | **none** — compiler parallelized the `for _` reduction | **28.6 ms** | 399 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 47.6 ms | 342 ms |
+| Go goroutines | chunk + `sync.WaitGroup` + merge | 65.9 ms | 505 ms |
+
+**Kāra's auto-par beats the raw-pthreads metal floor (1.7×) and goroutines (2.3×) — second only to hand-tuned rayon (1.30× ahead) — with zero parallel source**, an ~11× speedup over its own seq binary (312 → 28.6 ms). As on #394's fine-grained workload, the C "floor" isn't the floor: per-process `pthread` spawn over 100 chunks loses to the pooled work-stealing schedulers (rayon, Kāra's `karac_par_reduce`). (Multi-core within the par lane; per [BENCH.md](../../../BENCH.md)'s two-lane discipline, *not* comparable to the single-thread seq rows above.)
+
+**Buyer reframe.** The canonical "kata #1" — and Kāra parallelizes it for free: the speedup a Rust team buys with a crate + an API rewrite, a Go team with hand-rolled chunk/merge, and a C team with raw thread plumbing, Kāra emits from the same single-threaded source — out-running the C floor and goroutines. Colorless parallelism on the most-recognized interview problem there is.
 
 `hash_map` — algorithm-dominated (~50 K inserts/lookups total):
 
@@ -93,11 +109,11 @@ Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`. These rows are kep
 | Run | Mean ± σ |
 |---|---|
 | `kara hash_map` (interp) | 12.54 s ± 0.11 s |
-| `py brute_force`         | 2.01 s ± 0.05 s |
+| `py brute_force` (K=100) | 19.39 s ± 0.38 s |
 
 `karac run` re-runs the entire front-end every invocation (lex → parse → resolve → typecheck → effects → ownership) before tree-walking — the 12.5 s here is the pipeline rerun + tree-walk dispatch on every AST node, not the algorithm. `kara brute_force (interp)` is omitted at N=5000: tree-walk × 12.5 M comparisons takes a long time per run and doesn't add information beyond "tree-walk doesn't scale to N²." The interpreter-vs-codegen gap is **not** a Kāra-vs-X comparison — it's the cost of skipping `karac build`. Future work tracked in the [interpreter perf brainstorm](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
 
-Python is **11× slower** than Kāra codegen on `hash_map` (15.5 ms vs 1.4 ms) and **68× slower** on `brute_force` (2.01 s vs 29.5 ms) — the gap CPython opens against any compiled-with-codegen language at workload sizes that put algorithm time above interpreter-startup floors.
+Python is **11× slower** than Kāra codegen on `hash_map` (15.5 ms vs 1.4 ms) and **~62× slower** on `brute_force` (19.4 s vs 312 ms seq, both at K=100) — the gap CPython opens against any compiled-with-codegen language at workload sizes that put algorithm time above interpreter-startup floors. (Against Kāra's *auto-par* brute_force at 28.6 ms, Python is ~680× slower.)
 
 ### Compile elapsed (cold)
 
@@ -114,24 +130,26 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10 --shell=none` w
 
 | Implementation | Size |
 |---|---|
-| c    brute_force | 32.8 KiB |
+| c    brute_force (seq / par) | 32.8 / 32.9 KiB |
 | c    hash_map    | 32.9 KiB |
-| kāra brute_force | 32.8 KiB |
+| kāra brute_force (seq)       | 32.8 KiB |
+| **kāra brute_force (par, auto-par)** | **505.4 KiB** |
 | kāra hash_map    | 278.6 KiB |
-| rust brute_force | 455.4 KiB |
+| rust brute_force (seq / par+rayon) | 455.4 / 453.0 KiB |
 | rust hash_map    | 457.0 KiB |
-| go   brute_force | 2434.1 KiB |
+| go   brute_force (seq / par) | 2434.1 / 2451.0 KiB |
 | go   hash_map    | 2434.2 KiB |
 
-The `kara hash_map` row is heavier than `kara brute_force` because the runtime hashmap (probing + growth + finalizer plumbing) is statically linked in; the brute-force binary only links the array/println slice of the runtime. Rust pays the same kind of `HashMap` static-link cost but at a higher baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
+The `kara brute_force (par)` binary is +473 KiB over the seq twin — the `karac_par_reduce` worker/dispatch machinery statically linked in (the standing auto-par footprint cost). The `kara hash_map` row is heavier than `kara brute_force (seq)` because the runtime hashmap (probing + growth + finalizer plumbing) is statically linked; the seq brute-force binary only links the array/println runtime slice. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
 
 ### Runtime memory (peak, RSS)
 
 | Implementation | Peak |
 |---|---|
-| c    brute_force | 1.1 MiB |
-| kāra brute_force (codegen) | 1.1 MiB |
-| rust brute_force | 1.1 MiB |
+| c    brute_force (seq / par) | 1.0 / 1.4 MiB |
+| kāra brute_force (seq)       | 1.0 MiB |
+| kāra brute_force (par, auto-par) | 2.9 MiB |
+| rust brute_force (seq / par) | 1.1 / 1.7 MiB |
 | c    hash_map | 1.3 MiB |
 | kāra hash_map (codegen) | 1.3 MiB |
 | rust hash_map | 1.3 MiB |

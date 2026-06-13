@@ -22,7 +22,7 @@ def main() -> None:
     target = -1
 
     sum_result = 0
-    for _ in range(10):
+    for _ in range(100):
         r = two_sum(data, target)
         if r is None:
             sum_result += -1 + -1

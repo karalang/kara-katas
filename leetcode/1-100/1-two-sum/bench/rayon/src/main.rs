@@ -1,8 +1,7 @@
-//! Benchmark workload — brute-force O(n²) Two Sum.
-//!
-//! Algorithmic mirror of bench/brute_force.kara and bench/brute_force.py.
-//! See ../README.md § Benchmarks for the choice of N / K and the
-//! no-short-circuit target sentinel.
+// LeetCode #1 — rayon-parallel Rust mirror (par lane, brute_force).
+// Same O(n²) two_sum as ../brute_force.rs; the 100-call reduction runs across a
+// rayon pool. Hand-tuned-parallel comparator for Kāra's auto-par. Sink = -200.
+use rayon::prelude::*;
 
 fn two_sum(nums: &[i64], target: i64) -> Option<(usize, usize)> {
     let n = nums.len();
@@ -20,13 +19,12 @@ fn main() {
     const N: usize = 5000;
     let data: [i64; N] = std::array::from_fn(|i| ((i as i64) * 7) % 1000);
     let target: i64 = -1;
-
-    let mut sum: i64 = 0;
-    for _ in 0..100 {
-        sum += match two_sum(&data, target) {
+    let sum: i64 = (0..100)
+        .into_par_iter()
+        .map(|_| match two_sum(&data, target) {
             Some((i, j)) => i as i64 + j as i64,
             None => -2,
-        };
-    }
+        })
+        .sum();
     println!("{}", sum);
 }
