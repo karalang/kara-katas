@@ -28,6 +28,7 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require cargo     "rustup (https://rustup.rs)  — needed for the rayon par-lane variant"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from karac checkout)"
@@ -95,11 +96,34 @@ build_go_seq() {
     fi
 }
 
+# Par-lane comparators — hand-tuned parallelism a programmer writes by hand,
+# against which Kara's auto-par (no parallel source at all) is measured.
+build_rayon() {
+    local out="target/decode_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f rayon/target/release/decode_rayon "$out"
+    fi
+}
+
+build_go_par() {
+    local out="target/decode_string_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+
 build_rust     decode_string.rs
 build_c        decode_string.c
 build_kara     decode_string.kara
 build_kara_seq decode_string.kara
 build_go_seq
+build_rayon
+build_go_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 # Python skipped from the sink check by default (at ITERS=4000 the py run takes
@@ -111,7 +135,9 @@ for pair in \
     'kara_seq:./target/decode_string_kara_seq' \
     'rust:./target/decode_string' \
     'c:./target/decode_string_c' \
-    'go:./target/decode_string_go_seq'; do
+    'go:./target/decode_string_go_seq' \
+    'rayon:./target/decode_rayon' \
+    'go_par:./target/decode_string_go_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -123,7 +149,7 @@ if [ -n "$mismatch" ]; then
     echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara/kara_seq/rust/c/go): $expected"
+echo "sink (kara/kara_seq/rust/c/go/rayon/go-par): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_out=$(python3 decode_string.py)
     if [ "$py_out" != "$expected" ]; then
@@ -155,15 +181,22 @@ rt_cmd --lang go --approach decode_string --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — auto-par regime (kara default, multi-core) ==="
-# Default `karac build` output: karac's auto-par-on-reduction recognizes the
-# `sum +=` reduction over ITERS independent passes and emits a karac_par_reduce
-# dispatch. NOT directly comparable to the single-thread rows above per
-# BENCH.md's two-lane discipline — reported separately so the production-default
-# kara behavior stays visible.
+echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned) ==="
+# THE differentiator row. All three parallelize the SAME ITERS reduction across
+# the machine's cores — but Kara's default `karac build` output got there with
+# NO parallel source (the auto-par-on-reduction pass recognized `sum += pass_len`
+# and emitted a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
+# `.into_par_iter()` and Go needed hand-written goroutine chunking + WaitGroup +
+# partial-merge. Apples-to-apples WITHIN the par lane (all multi-core); per
+# BENCH.md's two-lane discipline this is NOT comparable to the single-thread seq
+# rows above. Heavier warmup absorbs worker-pool init noise.
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach decode_string --lane par --mode codegen \
-    --name 'kara decode_string (auto-par default)' --cmd './target/decode_string_kara'
+    --name 'kara  decode_string (auto-par, NO parallel code)' --cmd './target/decode_string_kara'
+rt_cmd --lang rust --approach decode_string --lane par --mode native \
+    --name 'rust  decode_string (rayon par_iter)' --cmd './target/decode_rayon'
+rt_cmd --lang go --approach decode_string --lane par --mode native \
+    --name 'go    decode_string (goroutines + WaitGroup)' --cmd './target/decode_string_go_par'
 rt_end
 
 echo
@@ -195,6 +228,8 @@ size_put --lang kara --approach decode_string --lane par --mode codegen --path t
 size_put --lang rust --approach decode_string --lane seq --mode native  --path target/decode_string
 size_put --lang c    --approach decode_string --lane seq --mode native  --path target/decode_string_c
 size_put --lang go   --approach decode_string --lane seq --mode native  --path target/decode_string_go_seq
+size_put --lang rust --approach decode_string --lane par --mode native  --path target/decode_rayon
+size_put --lang go   --approach decode_string --lane par --mode native  --path target/decode_string_go_par
 
 echo
 echo "=== runtime memory (peak) ==="
@@ -203,6 +238,8 @@ mem_put --lang kara --approach decode_string --lane par --mode codegen --bytes "
 mem_put --lang rust --approach decode_string --lane seq --mode native  --bytes "$(mem_peak ./target/decode_string)"
 mem_put --lang c    --approach decode_string --lane seq --mode native  --bytes "$(mem_peak ./target/decode_string_c)"
 mem_put --lang go   --approach decode_string --lane seq --mode native  --bytes "$(mem_peak ./target/decode_string_go_seq)"
+mem_put --lang rust --approach decode_string --lane par --mode native  --bytes "$(mem_peak ./target/decode_rayon)"
+mem_put --lang go   --approach decode_string --lane par --mode native  --bytes "$(mem_peak ./target/decode_string_go_par)"
 mem_put --lang python --approach decode_string --lane seq --mode interp --bytes "$(mem_peak python3 decode_string.py)"
 
 echo

@@ -113,12 +113,33 @@ Kāra's cold compile (81 ms) edges `rustc -O` (96 ms). **Runtime memory is omitt
 as a comparison** — Kāra's 86.9 MiB is the B-2026-06-12-5 leak, not representative;
 Rust/C sit at ~1.2 MiB.
 
-### Auto-par regime (Kāra default — reported separately)
+### Par lane — auto-par vs hand-tuned parallelism (multi-core)
 
 The decode is sequential within one pass, but the outer reduction over `ITERS`
-independent decodes triggers karac's auto-par-on-reduction: **70.4 ms** (User-CPU
-1035 ms confirms multi-core), ~4.6× over the seq binary. Per [`BENCH.md`]'s
-two-lane discipline, not comparable to the single-thread rows above.
+independent decodes is embarrassingly parallel. All three implementations
+parallelize that *same* reduction across the machine's cores — the difference is
+what the programmer had to write:
+
+| | parallel code written | time | total CPU | seq→par scaling |
+|---|---|---|---|---|
+| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass_len` reduction | **72.4 ms** | 1084 ms | **4.5×** |
+| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 85.2 ms | 1462 ms | 3.4× |
+| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 66.9 ms | 287 ms | 2.5× |
+
+**Kāra's auto-par beats hand-tuned rayon (1.18×) and lands within 1.08× of
+hand-written goroutines — with no parallel source at all.** The default `karac
+build` emits a `karac_par_reduce` dispatch off the plain sequential loop; the
+Rust and Go programmers each had to opt in and restructure. (Multi-core within
+the par lane; per [`BENCH.md`]'s two-lane discipline, *not* comparable to the
+single-thread seq rows above. Kāra's wall time has higher run-to-run variance —
+worker-pool init on a sub-100 ms run — but the mean sits below rayon's.)
+
+**Buyer reframe.** The parallel speedup that costs a Rust team a crate, an API
+rewrite, and a new class of data-race bugs to chase — and a Go team a hand-rolled
+chunk/merge — Kāra delivers from the same single-threaded source. Colorless
+parallelism: fewer lines, no `unsafe`/`Send`/`Sync` reasoning, no goroutine-leak
+or partial-merge bugs, *and* it out-runs rayon here. Less engineering and fewer
+concurrency incidents for equal-or-better throughput.
 
 [`BENCH.md`]: ../../../BENCH.md
 
