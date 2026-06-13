@@ -1,7 +1,7 @@
 /*
  * LeetCode 5 — expand-around-center Longest Palindromic Substring, C mirror.
  * Algorithmic peer of bench/expand_around_center.{kara,rs,py}. Same input:
- * 5000 'a' chars, K=10, sink = sum of (best_start + best_len) per call.
+ * 5000 'a' chars, K=100, sink = sum of (best_start + best_len) per call = 500000.
  */
 #include <stdio.h>
 #include <stdint.h>

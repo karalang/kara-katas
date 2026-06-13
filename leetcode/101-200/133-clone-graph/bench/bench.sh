@@ -3,7 +3,9 @@
 # See ../README.md § Benchmarks for what these numbers mean.
 #
 # Seq lane: clone_bfs across kara/rust/c/go (N=2000 ring, K=500).
-# Par lane: kara clone_bfs_par (18-way) only — NOT cross-lane with rust.
+# Par lane: kara clone_bfs_par (hand-written `par {}`) vs hand-tuned-parallel
+# mirrors — rust rayon, pthreads-C, goroutine-Go. clone_graph is RC/alloc-heavy
+# so it does NOT auto-par; the kara par lane is hand-written, not a seq twin.
 #
 # Requires: hyperfine (`brew install hyperfine`), rustc (rustup), clang,
 # go, karac.
@@ -85,11 +87,41 @@ build_go_seq() {
     fi
 }
 
+# par-lane comparators (hand-tuned-parallel mirrors for kara's `par {}`).
+# rayon rebuilds the graph per worker (Rc is not Send); the pthreads-C and
+# goroutine-Go mirrors share the read-only ring and only the map is per-thread.
+build_rust_rayon() {
+    local bin="$1"
+    echo "compiling rayon/$bin ..." >&2
+    ( cd rayon && cargo build --release --quiet )
+    cp "rayon/target/release/$bin" "target/$bin"
+}
+build_c_par() {
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+build_go_par() {
+    local bin="$1"
+    local out="target/$bin"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling go-par/$bin ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+
 build_rust clone_bfs.rs
 build_c    clone_bfs.c
 build_kara clone_bfs.kara
 build_kara clone_bfs_par.kara
 build_go_seq clone_bfs
+build_rust_rayon clone_rayon
+build_c_par      clone_bfs_par.c
+build_go_par     clone_bfs_go_par
 
 expected="500"
 mismatch=""
@@ -98,7 +130,10 @@ for pair in \
     'seq_rust:./target/clone_bfs' \
     'seq_c:./target/clone_bfs_c' \
     'seq_go:./target/clone_bfs_go_seq' \
-    'par_kara:./target/clone_bfs_par_kara'; do
+    'par_kara:./target/clone_bfs_par_kara' \
+    'par_rayon:./target/clone_rayon' \
+    'par_c:./target/clone_bfs_par_c' \
+    'par_go:./target/clone_bfs_go_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -111,7 +146,7 @@ if [ -n "$mismatch" ]; then
     exit 1
 fi
 echo "sink seq (kara/rust/c/go): $expected"
-echo "sink par (kara clone_bfs_par): $expected"
+echo "sink par (kara clone_bfs_par / rayon / pthreads-C / goroutine-Go): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py=$(python3 clone_bfs.py)
     if [ "$py" != "$expected" ]; then
@@ -140,10 +175,16 @@ rt_cmd --lang go --approach clone_bfs --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — par lane (kara clone_bfs par 18-way only) ==="
+echo "=== runtime — par lane (clone_bfs, K=500: kara par {} vs hand-tuned) ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach clone_bfs --lane par --mode codegen \
-    --name 'kara clone_bfs (par 18-way)' --cmd './target/clone_bfs_par_kara'
+    --name 'kara clone_bfs (par {})' --cmd './target/clone_bfs_par_kara'
+rt_cmd --lang rust --approach clone_bfs --lane par --mode native \
+    --name 'rust clone_bfs (rayon)' --cmd './target/clone_rayon'
+rt_cmd --lang c --approach clone_bfs --lane par --mode native \
+    --name 'c    clone_bfs (pthreads)' --cmd './target/clone_bfs_par_c'
+rt_cmd --lang go --approach clone_bfs --lane par --mode native \
+    --name 'go   clone_bfs (goroutines)' --cmd './target/clone_bfs_go_par'
 rt_end
 
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
@@ -179,16 +220,22 @@ echo "=== binary size ==="
 size_put --lang kara --approach clone_bfs     --lane seq --mode codegen --path target/clone_bfs_kara
 size_put --lang kara --approach clone_bfs     --lane par --mode codegen --path target/clone_bfs_par_kara
 size_put --lang rust --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs
+size_put --lang rust --approach clone_bfs     --lane par --mode native  --path target/clone_rayon
 size_put --lang c    --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs_c
+size_put --lang c    --approach clone_bfs     --lane par --mode native  --path target/clone_bfs_par_c
 size_put --lang go   --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs_go_seq
+size_put --lang go   --approach clone_bfs     --lane par --mode native  --path target/clone_bfs_go_par
 
 echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach clone_bfs --lane seq --mode codegen --bytes "$(mem_peak ./target/clone_bfs_kara)"
 mem_put --lang kara --approach clone_bfs --lane par --mode codegen --bytes "$(mem_peak ./target/clone_bfs_par_kara)"
 mem_put --lang rust --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs)"
+mem_put --lang rust --approach clone_bfs --lane par --mode native  --bytes "$(mem_peak ./target/clone_rayon)"
 mem_put --lang c    --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs_c)"
+mem_put --lang c    --approach clone_bfs --lane par --mode native  --bytes "$(mem_peak ./target/clone_bfs_par_c)"
 mem_put --lang go   --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs_go_seq)"
+mem_put --lang go   --approach clone_bfs --lane par --mode native  --bytes "$(mem_peak ./target/clone_bfs_go_par)"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     mem_put --lang python --approach clone_bfs --lane seq --mode interp --bytes "$(mem_peak python3 clone_bfs.py)"
 fi

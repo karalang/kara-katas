@@ -5,6 +5,18 @@
 # Multi-approach kata: linear_scan (K=10) and binary_search (K=2_000_000)
 # share one bench.sh with separate runtime hyperfine batches per approach.
 #
+# binary_search runs a K=2_000_000 outer loop of independent read-only
+# find_min calls, so Kāra's cost model auto-parallelizes it (post trip-count
+# fix). It therefore carries BOTH lanes: a seq twin (KARAC_AUTO_PAR=0) in the
+# seq lane and the auto-par binary in the par lane, compared against rayon /
+# pthreads-C / goroutine-Go hand-tuned-parallel mirrors. linear_scan stays
+# seq-only (it carries the small-K approach contrast, not a par surface).
+#
+# find_min is loop-invariant + pure, so -O3 would hoist the K-loop to a
+# single call; the seq lane and ALL par comparators (rayon / C / Go) use
+# black_box to defeat that, so the sink reflects K real iterations (K × min
+# value 1 = 2000000), not a collapsed single call.
+#
 # Requires: hyperfine (`brew install hyperfine`), rustc (rustup), clang,
 # go, karac.
 
@@ -85,14 +97,64 @@ build_go_seq() {
     fi
 }
 
+# --- par-lane builders (hand-tuned-parallel comparators for auto-par) --------
+# kara seq twin: same source, KARAC_AUTO_PAR=0 forces the single-threaded
+# lowering so the seq lane is a true single-thread baseline (the default build
+# auto-parallelizes binary_search after the cost-model trip-count fix).
+build_kara_seq() {
+    local src="$1"
+    local stem="$(basename "$src" .kara)"
+    local out="target/${stem}_kara_seq"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (seq twin, KARAC_AUTO_PAR=0) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
+        mv "$stem" "$out"
+    fi
+}
+
+# rayon cargo project (bench/rayon/, package findmin_rayon). cargo's own
+# incremental check is the freshness gate.
+build_rust_rayon() {
+    local bin="$1"
+    echo "compiling rayon/$bin ..." >&2
+    ( cd rayon && cargo build --release --quiet )
+    cp "rayon/target/release/$bin" "target/$bin"
+}
+
+# pthreads-C par mirror; -lpthread, output target/<stem>_c.
+build_c_par() {
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
+# goroutine-Go par mirror (bench/go-par/, module findmin_go_par).
+build_go_par() {
+    local bin="$1"
+    local out="target/$bin"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling go-par/$bin ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+
 build_rust linear_scan.rs
 build_rust binary_search.rs
 build_c    linear_scan.c
 build_c    binary_search.c
 build_kara linear_scan.kara
-build_kara binary_search.kara
+build_kara binary_search.kara          # auto-par (par lane)
+build_kara_seq binary_search.kara      # seq twin (seq lane)
 build_go_seq linear_scan
 build_go_seq binary_search
+# par-lane comparators for binary_search
+build_rust_rayon findmin_rayon
+build_c_par      binary_search_par.c
+build_go_par     findmin_go_par
 
 expected_ls="10"
 mismatch_ls=""
@@ -114,13 +176,21 @@ if [ -n "$mismatch_ls" ]; then
 fi
 echo "sink linear_scan (kara/rust/c/go): $expected_ls"
 
+# binary_search sink — K × min value 1 = 2000000. black_box keeps the
+# loop-invariant find_min from being hoisted to a single call on every lane,
+# so this value confirms K real iterations ran (seq twin + auto-par + the
+# three hand-tuned-parallel mirrors must all agree).
 expected_bs="2000000"
 mismatch_bs=""
 for pair in \
-    'bs_kara:./target/binary_search_kara' \
+    'bs_kara_seq:./target/binary_search_kara_seq' \
+    'bs_kara_par:./target/binary_search_kara' \
     'bs_rust:./target/binary_search' \
     'bs_c:./target/binary_search_c' \
-    'bs_go:./target/binary_search_go_seq'; do
+    'bs_go:./target/binary_search_go_seq' \
+    'bs_rayon:./target/findmin_rayon' \
+    'bs_c_par:./target/binary_search_par_c' \
+    'bs_go_par:./target/findmin_go_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -132,7 +202,7 @@ if [ -n "$mismatch_bs" ]; then
     echo "binary_search sink mismatch (expected=$expected_bs):$mismatch_bs" >&2
     exit 1
 fi
-echo "sink binary_search (kara/rust/c/go): $expected_bs"
+echo "sink binary_search (kara seq+par/rust/c/go + rayon/c-par/go-par): $expected_bs"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_ls=$(python3 linear_scan.py)
     py_bs=$(python3 binary_search.py)
@@ -163,16 +233,29 @@ rt_cmd --lang go --approach linear_scan --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — binary_search (compiled, K=2_000_000) ==="
+echo "=== runtime — binary_search seq lane (compiled, K=2_000_000) ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach binary_search --lane seq --mode codegen \
-    --name 'kara binary_search (codegen)' --cmd './target/binary_search_kara'
+    --name 'kara binary_search (seq twin)' --cmd './target/binary_search_kara_seq'
 rt_cmd --lang rust --approach binary_search --lane seq --mode native \
     --name 'rust binary_search' --cmd './target/binary_search'
 rt_cmd --lang c --approach binary_search --lane seq --mode native \
     --name 'c    binary_search' --cmd './target/binary_search_c'
 rt_cmd --lang go --approach binary_search --lane seq --mode native \
     --name 'go   binary_search' --cmd './target/binary_search_go_seq'
+rt_end
+
+echo
+echo "=== runtime — binary_search par lane (K=2_000_000 auto-par vs hand-tuned) ==="
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach binary_search --lane par --mode codegen \
+    --name 'kara binary_search (auto-par)' --cmd './target/binary_search_kara'
+rt_cmd --lang rust --approach binary_search --lane par --mode native \
+    --name 'rust binary_search (rayon)' --cmd './target/findmin_rayon'
+rt_cmd --lang c --approach binary_search --lane par --mode native \
+    --name 'c    binary_search (pthreads)' --cmd './target/binary_search_par_c'
+rt_cmd --lang go --approach binary_search --lane par --mode native \
+    --name 'go   binary_search (goroutines)' --cmd './target/findmin_go_par'
 rt_end
 
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
@@ -214,13 +297,17 @@ ce_end
 echo
 echo "=== binary size ==="
 size_put --lang kara --approach linear_scan   --lane seq --mode codegen --path target/linear_scan_kara
-size_put --lang kara --approach binary_search --lane seq --mode codegen --path target/binary_search_kara
+size_put --lang kara --approach binary_search --lane seq --mode codegen --path target/binary_search_kara_seq
+size_put --lang kara --approach binary_search --lane par --mode codegen --path target/binary_search_kara
 size_put --lang rust --approach linear_scan   --lane seq --mode native  --path target/linear_scan
 size_put --lang rust --approach binary_search --lane seq --mode native  --path target/binary_search
+size_put --lang rust --approach binary_search --lane par --mode native  --path target/findmin_rayon
 size_put --lang c    --approach linear_scan   --lane seq --mode native  --path target/linear_scan_c
 size_put --lang c    --approach binary_search --lane seq --mode native  --path target/binary_search_c
+size_put --lang c    --approach binary_search --lane par --mode native  --path target/binary_search_par_c
 size_put --lang go   --approach linear_scan   --lane seq --mode native  --path target/linear_scan_go_seq
 size_put --lang go   --approach binary_search --lane seq --mode native  --path target/binary_search_go_seq
+size_put --lang go   --approach binary_search --lane par --mode native  --path target/findmin_go_par
 
 echo
 echo "=== runtime memory (peak) ==="
@@ -228,10 +315,14 @@ mem_put --lang kara --approach linear_scan   --lane seq --mode codegen --bytes "
 mem_put --lang rust --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan)"
 mem_put --lang c    --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan_c)"
 mem_put --lang go   --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan_go_seq)"
-mem_put --lang kara --approach binary_search --lane seq --mode codegen --bytes "$(mem_peak ./target/binary_search_kara)"
+mem_put --lang kara --approach binary_search --lane seq --mode codegen --bytes "$(mem_peak ./target/binary_search_kara_seq)"
+mem_put --lang kara --approach binary_search --lane par --mode codegen --bytes "$(mem_peak ./target/binary_search_kara)"
 mem_put --lang rust --approach binary_search --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search)"
+mem_put --lang rust --approach binary_search --lane par --mode native  --bytes "$(mem_peak ./target/findmin_rayon)"
 mem_put --lang c    --approach binary_search --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_c)"
+mem_put --lang c    --approach binary_search --lane par --mode native  --bytes "$(mem_peak ./target/binary_search_par_c)"
 mem_put --lang go   --approach binary_search --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_go_seq)"
+mem_put --lang go   --approach binary_search --lane par --mode native  --bytes "$(mem_peak ./target/findmin_go_par)"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     mem_put --lang python --approach linear_scan   --lane seq --mode interp --bytes "$(mem_peak python3 linear_scan.py)"
     mem_put --lang python --approach binary_search --lane seq --mode interp --bytes "$(mem_peak python3 binary_search.py)"
