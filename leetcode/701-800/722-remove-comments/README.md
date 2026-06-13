@@ -164,16 +164,29 @@ earlier substring path's leak (fix #3) is moot here. The seq binary is 33 KiB
 (14× smaller than Rust's 456 KiB, tied with C), and the cold compile (88 ms)
 edges `rustc -O` (101 ms).
 
-### Auto-par regime (Kāra default, multi-core — reported separately)
+### Par lane — auto-par vs hand-tuned parallelism (multi-core)
 
 The kata is **seq-only at the algorithm level** (the `in_block` flag carries
-across lines → cross-line data dependency, no per-line parallel lane). But the
-bench's outer reduction over `ITERS` independent passes is recognized by
-karac's auto-par-on-reduction pass, which emits a `karac_par_reduce` dispatch:
-**17.0 ms** wall (User-CPU 204 ms confirms multi-core), a ~5× speedup over the
-seq binary, at a +263 KiB binary footprint. Per [`BENCH.md`]'s two-lane
-discipline this is **not** comparable to the single-thread rows above — it is
-the production-default Kāra behavior, reported so it stays visible.
+across lines → no per-line parallel lane), but the bench's outer reduction over
+`ITERS` independent passes is embarrassingly parallel. All three parallelize that
+same reduction; the difference is what the programmer had to write:
+
+| | parallel code written | time |
+|---|---|---|
+| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **17.3 ms** |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 16.9 ms |
+| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.9 ms |
+
+**Kāra's auto-par is dead-even with hand-tuned rayon** (16.9 vs 17.3 ms, within
+the ±2 ms run-to-run noise) and **1.4× faster than hand-written goroutines** —
+with no parallel source, a ~4.7× speedup over its own seq binary. Per
+[`BENCH.md`]'s two-lane discipline this is multi-core, *not* comparable to the
+single-thread seq rows above.
+
+**Buyer reframe.** Colorless parallelism: the speedup that costs a Rust team a
+crate + an API rewrite + data-race reasoning, and a Go team hand-rolled
+chunk/merge, Kāra delivers from the same single-threaded source — matching rayon
+and beating goroutines. Fewer lines, fewer concurrency incidents, equal throughput.
 
 [`BENCH.md`]: ../../../BENCH.md
 
