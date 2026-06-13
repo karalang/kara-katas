@@ -73,13 +73,18 @@ build_c() {
     fi
 }
 
+# NOTE: this kata's `sliding_window` K-loop newly auto-parallelizes under the
+# current cost model. Until a par lane is decided (runtime engagement TBD — see
+# SWEEP_TRACKER "newly-firing"), the kara binary is built as an honest seq twin
+# (KARAC_AUTO_PAR=0) so the seq-codegen row is single-threaded, not the auto-par
+# binary. Drop the env override (and add a par lane) once that decision lands.
 build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+        echo "compiling $src (seq twin, KARAC_AUTO_PAR=0) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
@@ -168,7 +173,7 @@ ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach sliding_window --mode codegen \
     --prepare 'rm -f target/sliding_window_kara sliding_window' \
     --name 'karac build sliding_window.kara' \
-    --cmd 'sh -c "karac build sliding_window.kara >/dev/null && mv sliding_window target/sliding_window_kara"'
+    --cmd 'sh -c "KARAC_AUTO_PAR=0 karac build sliding_window.kara >/dev/null && mv sliding_window target/sliding_window_kara"'
 ce_cmd --lang rust --approach sliding_window --mode native \
     --prepare 'rm -f target/sliding_window' \
     --name 'rustc -O sliding_window.rs' --cmd 'rustc -O sliding_window.rs -o target/sliding_window'
@@ -201,7 +206,7 @@ echo "=== compile memory (cold) ==="
 for src in sliding_window.kara; do
     stem="$(basename "$src" .kara)"
     rm -f "target/${stem}_kara" "$stem"
-    bytes=$(mem_peak karac build "$src")
+    bytes=$(mem_peak env KARAC_AUTO_PAR=0 karac build "$src")
     mv "$stem" "target/${stem}_kara" 2>/dev/null || true
     cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
