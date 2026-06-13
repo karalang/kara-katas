@@ -120,19 +120,29 @@ independent decodes is embarrassingly parallel. All three implementations
 parallelize that *same* reduction across the machine's cores — the difference is
 what the programmer had to write:
 
-| | parallel code written | time | total CPU | seq→par scaling |
-|---|---|---|---|---|
-| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass_len` reduction | **72.4 ms** | 1084 ms | **4.5×** |
-| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 85.2 ms | 1462 ms | 3.4× |
-| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 66.9 ms | 287 ms | 2.5× |
+| | parallel code written | time | total CPU |
+|---|---|---|---|
+| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 69.1 ms | 291 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass_len` reduction | **72.6 ms** | 1091 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 83.5 ms | 1333 ms |
+| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 85.0 ms | 1436 ms |
 
-**Kāra's auto-par beats hand-tuned rayon (1.18×) and lands within 1.08× of
-hand-written goroutines — with no parallel source at all.** The default `karac
-build` emits a `karac_par_reduce` dispatch off the plain sequential loop; the
-Rust and Go programmers each had to opt in and restructure. (Multi-core within
-the par lane; per [`BENCH.md`]'s two-lane discipline, *not* comparable to the
-single-thread seq rows above. Kāra's wall time has higher run-to-run variance —
-worker-pool init on a sub-100 ms run — but the mean sits below rayon's.)
+**Kāra's auto-par beats hand-tuned rayon *and* the raw-pthreads "metal floor",
+and lands within 1.05× of hand-written goroutines — with no parallel source at
+all.** The default `karac build` emits a `karac_par_reduce` dispatch off the
+plain sequential loop; the Rust, Go, and C programmers each had to opt in and
+restructure (the C version is the most boilerplate of all).
+
+The C row was *meant* to be the floor — raw OS threads with no
+runtime/work-stealing/GC — but on this fine-grained, allocation-heavy,
+memory-bandwidth-bound workload it isn't: per-process `pthread` spawn plus
+bandwidth contention mean the **pooled lightweight schedulers (Go's goroutines,
+Kāra's `karac_par_reduce` runtime) win over hand-rolled threads.** An honest
+finding, not spin — raw threads aren't automatically fastest for this shape, and
+Kāra's runtime is well-tuned for it. (Multi-core within the par lane; per
+[`BENCH.md`]'s two-lane discipline, *not* comparable to the single-thread seq
+rows above. Kāra's wall time has higher run-to-run variance — worker-pool init
+on a sub-100 ms run — but the mean sits below C and rayon.)
 
 **Buyer reframe.** The parallel speedup that costs a Rust team a crate, an API
 rewrite, and a new class of data-race bugs to chase — and a Go team a hand-rolled

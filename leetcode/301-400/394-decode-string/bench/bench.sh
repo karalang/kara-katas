@@ -117,6 +117,17 @@ build_go_par() {
     fi
 }
 
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime). NOT a
+# competitor row: it calibrates how much auto-par leaves on the table vs metal.
+build_c_par() {
+    local out="target/decode_string_c_par"
+    local src="decode_string_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust     decode_string.rs
 build_c        decode_string.c
 build_kara     decode_string.kara
@@ -124,6 +135,7 @@ build_kara_seq decode_string.kara
 build_go_seq
 build_rayon
 build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 # Python skipped from the sink check by default (at ITERS=4000 the py run takes
@@ -137,7 +149,8 @@ for pair in \
     'c:./target/decode_string_c' \
     'go:./target/decode_string_go_seq' \
     'rayon:./target/decode_rayon' \
-    'go_par:./target/decode_string_go_par'; do
+    'go_par:./target/decode_string_go_par' \
+    'c_par:./target/decode_string_c_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -149,7 +162,7 @@ if [ -n "$mismatch" ]; then
     echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara/kara_seq/rust/c/go/rayon/go-par): $expected"
+echo "sink (kara/kara_seq/rust/c/go/rayon/go-par/c-par): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_out=$(python3 decode_string.py)
     if [ "$py_out" != "$expected" ]; then
@@ -181,18 +194,22 @@ rt_cmd --lang go --approach decode_string --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned) ==="
-# THE differentiator row. All three parallelize the SAME ITERS reduction across
-# the machine's cores — but Kara's default `karac build` output got there with
-# NO parallel source (the auto-par-on-reduction pass recognized `sum += pass_len`
-# and emitted a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
-# `.into_par_iter()` and Go needed hand-written goroutine chunking + WaitGroup +
-# partial-merge. Apples-to-apples WITHIN the par lane (all multi-core); per
-# BENCH.md's two-lane discipline this is NOT comparable to the single-thread seq
-# rows above. Heavier warmup absorbs worker-pool init noise.
+echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned vs metal floor) ==="
+# THE differentiator. All FOUR parallelize the SAME ITERS reduction across the
+# machine's cores — but Kara's default `karac build` output got there with NO
+# parallel source (auto-par-on-reduction recognized `sum += pass_len` and emitted
+# a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
+# `.into_par_iter()`, Go needed hand-written goroutine chunking + WaitGroup +
+# partial-merge, and C needed raw pthread create/join + chunk + merge. The C row
+# is the BARE-METAL FLOOR (raw OS threads, no runtime/work-stealing/GC) — it
+# calibrates how much auto-par leaves on the table vs metal, NOT an ergonomic
+# competitor. Apples-to-apples WITHIN the par lane (all multi-core); per BENCH.md's
+# two-lane discipline this is NOT comparable to the single-thread seq rows above.
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach decode_string --lane par --mode codegen \
     --name 'kara  decode_string (auto-par, NO parallel code)' --cmd './target/decode_string_kara'
+rt_cmd --lang c --approach decode_string --lane par --mode native \
+    --name 'c     decode_string (pthreads — metal floor)' --cmd './target/decode_string_c_par'
 rt_cmd --lang rust --approach decode_string --lane par --mode native \
     --name 'rust  decode_string (rayon par_iter)' --cmd './target/decode_rayon'
 rt_cmd --lang go --approach decode_string --lane par --mode native \
@@ -230,6 +247,7 @@ size_put --lang c    --approach decode_string --lane seq --mode native  --path t
 size_put --lang go   --approach decode_string --lane seq --mode native  --path target/decode_string_go_seq
 size_put --lang rust --approach decode_string --lane par --mode native  --path target/decode_rayon
 size_put --lang go   --approach decode_string --lane par --mode native  --path target/decode_string_go_par
+size_put --lang c    --approach decode_string --lane par --mode native  --path target/decode_string_c_par
 
 echo
 echo "=== runtime memory (peak) ==="
@@ -240,6 +258,7 @@ mem_put --lang c    --approach decode_string --lane seq --mode native  --bytes "
 mem_put --lang go   --approach decode_string --lane seq --mode native  --bytes "$(mem_peak ./target/decode_string_go_seq)"
 mem_put --lang rust --approach decode_string --lane par --mode native  --bytes "$(mem_peak ./target/decode_rayon)"
 mem_put --lang go   --approach decode_string --lane par --mode native  --bytes "$(mem_peak ./target/decode_string_go_par)"
+mem_put --lang c    --approach decode_string --lane par --mode native  --bytes "$(mem_peak ./target/decode_string_c_par)"
 mem_put --lang python --approach decode_string --lane seq --mode interp --bytes "$(mem_peak python3 decode_string.py)"
 
 echo

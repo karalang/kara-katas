@@ -119,6 +119,17 @@ build_go_par() {
     fi
 }
 
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime). NOT a
+# competitor row: it calibrates how much auto-par leaves on the table vs metal.
+build_c_par() {
+    local out="target/remove_comments_c_par"
+    local src="remove_comments_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust     remove_comments.rs
 build_c        remove_comments.c
 build_kara     remove_comments.kara
@@ -126,6 +137,7 @@ build_kara_seq remove_comments.kara
 build_go_seq
 build_rayon
 build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 # Python skipped from the sink check by default (at ITERS=4000 the py run takes
@@ -139,7 +151,8 @@ for pair in \
     'c:./target/remove_comments_c' \
     'go:./target/remove_comments_go_seq' \
     'rayon:./target/remove_comments_rayon' \
-    'go_par:./target/remove_comments_go_par'; do
+    'go_par:./target/remove_comments_go_par' \
+    'c_par:./target/remove_comments_c_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -151,7 +164,7 @@ if [ -n "$mismatch" ]; then
     echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara/kara_seq/rust/c/go/rayon/go-par): $expected"
+echo "sink (kara/kara_seq/rust/c/go/rayon/go-par/c-par): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_out=$(python3 remove_comments.py)
     if [ "$py_out" != "$expected" ]; then
@@ -183,18 +196,22 @@ rt_cmd --lang go --approach remove_comments --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned) ==="
-# THE differentiator row. All three parallelize the SAME ITERS reduction across
-# the machine's cores — but Kara's default `karac build` output got there with
-# NO parallel source (auto-par-on-reduction recognized `sum += pass_len` and
-# emitted a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
-# `.into_par_iter()` and Go needed hand-written goroutine chunking + WaitGroup +
-# partial-merge. Apples-to-apples WITHIN the par lane (all multi-core); per
-# BENCH.md's two-lane discipline this is NOT comparable to the single-thread seq
-# rows above.
+echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned vs metal floor) ==="
+# THE differentiator. All FOUR parallelize the SAME ITERS reduction across the
+# machine's cores — but Kara's default `karac build` output got there with NO
+# parallel source (auto-par-on-reduction recognized `sum += pass_len` and emitted
+# a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
+# `.into_par_iter()`, Go needed hand-written goroutine chunking + WaitGroup +
+# partial-merge, and C needed raw pthread create/join + chunk + merge. The C row
+# is the BARE-METAL FLOOR (raw OS threads, no runtime/work-stealing/GC) — it
+# calibrates how much auto-par leaves on the table vs metal, NOT an ergonomic
+# competitor. Apples-to-apples WITHIN the par lane (all multi-core); per BENCH.md's
+# two-lane discipline this is NOT comparable to the single-thread seq rows above.
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach remove_comments --lane par --mode codegen \
     --name 'kara  remove_comments (auto-par, NO parallel code)' --cmd './target/remove_comments_kara'
+rt_cmd --lang c --approach remove_comments --lane par --mode native \
+    --name 'c     remove_comments (pthreads — metal floor)' --cmd './target/remove_comments_c_par'
 rt_cmd --lang rust --approach remove_comments --lane par --mode native \
     --name 'rust  remove_comments (rayon par_iter)' --cmd './target/remove_comments_rayon'
 rt_cmd --lang go --approach remove_comments --lane par --mode native \
@@ -232,6 +249,7 @@ size_put --lang c    --approach remove_comments --lane seq --mode native  --path
 size_put --lang go   --approach remove_comments --lane seq --mode native  --path target/remove_comments_go_seq
 size_put --lang rust --approach remove_comments --lane par --mode native  --path target/remove_comments_rayon
 size_put --lang go   --approach remove_comments --lane par --mode native  --path target/remove_comments_go_par
+size_put --lang c    --approach remove_comments --lane par --mode native  --path target/remove_comments_c_par
 
 echo
 echo "=== runtime memory (peak) ==="
@@ -242,6 +260,7 @@ mem_put --lang c    --approach remove_comments --lane seq --mode native  --bytes
 mem_put --lang go   --approach remove_comments --lane seq --mode native  --bytes "$(mem_peak ./target/remove_comments_go_seq)"
 mem_put --lang rust --approach remove_comments --lane par --mode native  --bytes "$(mem_peak ./target/remove_comments_rayon)"
 mem_put --lang go   --approach remove_comments --lane par --mode native  --bytes "$(mem_peak ./target/remove_comments_go_par)"
+mem_put --lang c    --approach remove_comments --lane par --mode native  --bytes "$(mem_peak ./target/remove_comments_c_par)"
 mem_put --lang python --approach remove_comments --lane seq --mode interp --bytes "$(mem_peak python3 remove_comments.py)"
 
 echo

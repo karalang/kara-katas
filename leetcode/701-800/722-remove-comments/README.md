@@ -168,25 +168,31 @@ edges `rustc -O` (101 ms).
 
 The kata is **seq-only at the algorithm level** (the `in_block` flag carries
 across lines → no per-line parallel lane), but the bench's outer reduction over
-`ITERS` independent passes is embarrassingly parallel. All three parallelize that
+`ITERS` independent passes is embarrassingly parallel. All four parallelize that
 same reduction; the difference is what the programmer had to write:
 
 | | parallel code written | time |
 |---|---|---|
-| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **17.3 ms** |
-| Rust + rayon | `rayon` crate + `.into_par_iter()` | 16.9 ms |
-| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.9 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 16.6 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 16.7 ms |
+| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **18.3 ms** |
+| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.8 ms |
 
-**Kāra's auto-par is dead-even with hand-tuned rayon** (16.9 vs 17.3 ms, within
-the ±2 ms run-to-run noise) and **1.4× faster than hand-written goroutines** —
-with no parallel source, a ~4.7× speedup over its own seq binary. Per
+**Kāra's auto-par lands within ~1.1× of the front of the pack — the raw-pthreads
+metal floor and rayon (both ≈16.6 ms) — and 1.4× ahead of goroutines, with no
+parallel source** (a ~4.7× speedup over its own seq binary). Here the work per
+pass is chunky (600 lines × `ITERS=4000`), so thread overhead amortizes and the
+hand-rolled C/rayon threads are genuinely the floor; Kāra has ~10% headroom to
+metal. (Contrast #394, whose fine-grained tasks invert this — Kāra's pooled
+runtime *beats* the C floor there. The C row is what makes that visible.) Per
 [`BENCH.md`]'s two-lane discipline this is multi-core, *not* comparable to the
 single-thread seq rows above.
 
 **Buyer reframe.** Colorless parallelism: the speedup that costs a Rust team a
-crate + an API rewrite + data-race reasoning, and a Go team hand-rolled
-chunk/merge, Kāra delivers from the same single-threaded source — matching rayon
-and beating goroutines. Fewer lines, fewer concurrency incidents, equal throughput.
+crate + an API rewrite + data-race reasoning, a Go team hand-rolled chunk/merge,
+and a C team raw thread plumbing, Kāra delivers from the same single-threaded
+source — within 10% of the metal floor. Fewer lines, fewer concurrency incidents,
+near-floor throughput.
 
 [`BENCH.md`]: ../../../BENCH.md
 
