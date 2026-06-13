@@ -1,7 +1,9 @@
-//! Benchmark workload — brute-force sliding-window strStr.
-//!
-//! Algorithmic mirror of bench/brute_force.kara and bench/brute_force.py. See
-//! ../README.md § Benchmarks for the adversarial input and N, M, K.
+// LeetCode #28 — rayon-parallel Rust mirror (par lane, brute_force).
+// Same brute-force sliding-window str_str as ../brute_force.rs; the K-call
+// reduction runs across a rayon pool. Hand-tuned-parallel comparator for
+// Kāra's auto-par (which parallelizes the same K-loop from zero parallel
+// source). Sink = 199998400 (K=100 × first-match index 1999984).
+use rayon::prelude::*;
 
 fn str_str(haystack: &[u8], needle: &[u8]) -> i64 {
     let hn = haystack.len() as i64;
@@ -35,9 +37,9 @@ fn main() {
     let mut needle = vec![b'a'; M];
     needle[M - 1] = b'b';
 
-    let mut total: i64 = 0;
-    for _ in 0..100 {
-        total += str_str(&haystack, &needle);
-    }
+    let total: i64 = (0..100)
+        .into_par_iter()
+        .map(|_| str_str(&haystack, &needle))
+        .sum();
     println!("{}", total);
 }

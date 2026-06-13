@@ -34,7 +34,7 @@ def main() -> None:
     needle[m - 1] = ord("b")
 
     total = 0
-    for _ in range(10):
+    for _ in range(100):
         total += str_str(haystack, needle)
     print(total)
 
