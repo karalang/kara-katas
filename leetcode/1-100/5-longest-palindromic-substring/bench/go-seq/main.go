@@ -36,7 +36,7 @@ func longestPalindrome(s string) (int64, int64) {
 func main() {
 	data := strings.Repeat("a", 5000)
 	var sum int64
-	for k := 0; k < 10; k++ {
+	for k := 0; k < 100; k++ {
 		start, length := longestPalindrome(data)
 		sum += start + length
 	}

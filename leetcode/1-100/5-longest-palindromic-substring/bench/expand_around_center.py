@@ -36,7 +36,7 @@ def main() -> None:
     data = "a" * 5000
 
     sum_result = 0
-    for _ in range(10):
+    for _ in range(100):
         start, length = longest_palindrome(data)
         sum_result += start + length
     print(sum_result)

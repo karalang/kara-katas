@@ -1,9 +1,11 @@
-//! Benchmark workload — expand-around-center O(n²) Longest Palindromic
-//! Substring.
-//!
-//! Algorithmic mirror of bench/expand_around_center.kara and
-//! bench/expand_around_center.py. See ../README.md § Benchmarks for the input
-//! shape and K choice.
+// LeetCode #5 — rayon-parallel Rust mirror (par lane, expand_around_center).
+// Same O(n²) expand-around-center longest_palindrome as ../expand_around_center.rs;
+// the K=100-call reduction runs across a rayon pool. Hand-tuned-parallel
+// comparator for Kāra's auto-par (which parallelizes the same K-loop from zero
+// parallel source). Sink = 500000 (K=100 × (best_start 0 + best_len 5000)).
+// longest_palindrome allocates a Vec<char> per call, so it is not hoisted out of
+// the loop — no black_box needed (the seq lane doesn't use one either).
+use rayon::prelude::*;
 
 fn expand(chars: &[char], lo0: i64, hi0: i64) -> (i64, i64) {
     let mut lo = lo0;
@@ -41,10 +43,12 @@ fn longest_palindrome(s: &str) -> (i64, i64) {
 fn main() {
     let data: String = "a".repeat(5000);
 
-    let mut sum: i64 = 0;
-    for _ in 0..100 {
-        let (start, length) = longest_palindrome(&data);
-        sum += start + length;
-    }
+    let sum: i64 = (0..100)
+        .into_par_iter()
+        .map(|_| {
+            let (start, length) = longest_palindrome(&data);
+            start + length
+        })
+        .sum();
     println!("{}", sum);
 }

@@ -48,7 +48,7 @@ int main(void) {
     data[n] = '\0';
 
     int64_t sum = 0;
-    for (int k = 0; k < 10; k++) {
+    for (int k = 0; k < 100; k++) {
         int64_t start, length;
         longest_palindrome(data, n, &start, &length);
         sum += start + length;
