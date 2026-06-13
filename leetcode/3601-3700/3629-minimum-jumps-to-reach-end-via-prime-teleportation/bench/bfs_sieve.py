@@ -61,7 +61,7 @@ def main() -> None:
     data = [(i * 7919 + 13) % 999983 + 2 for i in range(N)]
 
     sum_result = 0
-    for _ in range(3):
+    for _ in range(50):
         sum_result += min_jumps(data)
     print(sum_result)
 

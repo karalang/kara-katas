@@ -1,26 +1,23 @@
-// Benchmark workload — BFS + sieve solution to LeetCode #3629.
-// C mirror of bench/bfs_sieve.kara and bench/bfs_sieve.rs. Same N, K,
-// seeding scheme, sink formula — see those files' headers for rationale.
-//
-// Built via `clang -O3` in bench.sh.
-
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
+/* LeetCode #3629 — C pthreads-parallel mirror (par-lane BARE-METAL FLOOR, bfs_sieve).
+ * Same BFS + prime-factor-sieve min_jumps as bfs_sieve.c; the K=50-call reduction
+ * split across a fixed pool of _SC_NPROCESSORS_ONLN pthreads (spawn once, chunk,
+ * join+merge). Raw OS threads, no runtime — the ceiling auto-par is measured
+ * against. min_jumps is self-contained + thread-safe (all per-call local allocs);
+ * the input array is shared read-only. Sink = 24350 (K=50 × per-call result 487).
+ * Build: clang -O3 bfs_sieve_par.c -o … -lpthread */
+#include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct {
     int64_t *data;
     size_t len;
     size_t cap;
 } IntVec;
-
-static void intvec_init(IntVec *v) {
-    v->data = NULL;
-    v->len = 0;
-    v->cap = 0;
-}
 
 static void intvec_push(IntVec *v, int64_t x) {
     if (v->len == v->cap) {
@@ -166,25 +163,56 @@ static int64_t min_jumps(const int64_t *nums, size_t n) {
     return result;
 }
 
-int main(void) {
-    const size_t N = 50000;
-    const int k_iters = 50;
+#define N 50000
+#define ITERS 50
 
-    int64_t *data = (int64_t *)malloc(N * sizeof(int64_t));
-    if (!data) {
-        fprintf(stderr, "malloc failed\n");
-        return 1;
+typedef struct {
+    const int64_t *data;
+    long start, end;
+    int64_t partial;
+} Work;
+
+static void *worker(void *arg) {
+    Work *w = (Work *)arg;
+    int64_t s = 0;
+    for (long k = w->start; k < w->end; k++) {
+        s += min_jumps(w->data, (size_t)N);
     }
-    for (size_t i = 0; i < N; i++) {
+    w->partial = s;
+    return NULL;
+}
+
+int main(void) {
+    int64_t *data = (int64_t *)malloc((size_t)N * sizeof(int64_t));
+    for (size_t i = 0; i < (size_t)N; i++) {
         data[i] = ((int64_t)i * 7919 + 13) % 999983 + 2;
     }
 
-    int64_t sum = 0;
-    for (int k = 0; k < k_iters; k++) {
-        sum += min_jumps(data, N);
+    long nworkers = sysconf(_SC_NPROCESSORS_ONLN);
+    if (nworkers < 1) {
+        nworkers = 1;
     }
-    printf("%lld\n", (long long)sum);
-
+    if (nworkers > ITERS) {
+        nworkers = ITERS;
+    }
+    pthread_t *threads = malloc((size_t)nworkers * sizeof(pthread_t));
+    Work *works = malloc((size_t)nworkers * sizeof(Work));
+    long chunk = ITERS / nworkers;
+    for (long w = 0; w < nworkers; w++) {
+        works[w].data = data;
+        works[w].start = w * chunk;
+        works[w].end = (w == nworkers - 1) ? ITERS : (w + 1) * chunk;
+        works[w].partial = 0;
+        pthread_create(&threads[w], NULL, worker, &works[w]);
+    }
+    int64_t total = 0;
+    for (long w = 0; w < nworkers; w++) {
+        pthread_join(threads[w], NULL);
+        total += works[w].partial;
+    }
+    printf("%lld\n", (long long)total);
+    free(threads);
+    free(works);
     free(data);
     return 0;
 }

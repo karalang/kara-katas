@@ -1,9 +1,12 @@
-//! Benchmark workload — BFS + sieve solution to LeetCode #3629.
-//!
-//! Algorithmic mirror of bench/bfs_sieve.kara and bench/bfs_sieve.py.
-//! See ../README.md § Benchmarks for the choice of N / K and the
-//! deterministic seeding scheme.
-
+// LeetCode #3629 — rayon-parallel Rust mirror (par lane, bfs_sieve).
+// Same BFS + prime-factor-sieve min_jumps as ../bfs_sieve.rs; the K=50-call
+// reduction runs across a rayon pool. Hand-tuned-parallel comparator for Kāra's
+// auto-par. Sink = 24350 (K=50 × per-call result 487).
+//
+// `data: Vec<i64>` is Sync, so the input is shared read-only across rayon worker
+// threads; min_jumps is self-contained (builds its own factors/bucket/visited per
+// call) and allocates, so it is not hoisted out of the loop (no black_box needed).
+use rayon::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
 fn build_factors(cap: i64) -> Vec<Vec<i64>> {
@@ -75,11 +78,9 @@ fn min_jumps(nums: &[i64]) -> i64 {
 
 fn main() {
     const N: usize = 50_000;
+    const K: i64 = 50;
     let data: Vec<i64> = (0..N as i64).map(|i| (i * 7919 + 13) % 999983 + 2).collect();
 
-    let mut sum: i64 = 0;
-    for _ in 0..50 {
-        sum += min_jumps(&data);
-    }
+    let sum: i64 = (0..K).into_par_iter().map(|_| min_jumps(&data)).sum();
     println!("{}", sum);
 }

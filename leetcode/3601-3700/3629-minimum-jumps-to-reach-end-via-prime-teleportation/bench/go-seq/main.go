@@ -88,7 +88,7 @@ func main() {
 	}
 
 	var sum int64
-	for k := 0; k < 3; k++ {
+	for k := 0; k < 50; k++ {
 		sum += minJumps(data)
 	}
 	fmt.Println(sum)
