@@ -62,10 +62,12 @@ remove-comments already hardened.
 
 The run-path footgun carried from #67 — [`B-2026-06-13-15`](../../../../kara/docs/bug-ledger.md):
 emitting a digit with a `byte as char` cast is a typecheck *error*
-(`E_INT_AS_CHAR`), but **`karac run` is type-lenient** — it downgrades hard type
-errors to warnings and runs anyway with a placeholder value → silent wrong
-output, exit 0 (`build`/`check` reject correctly). So the emit is a digit-table
-slice, and the kata is gated on `karac check` before its `karac run` output is
+(`E_INT_AS_CHAR`), but **`karac run` was type-lenient** — it downgraded hard type
+errors to warnings and ran anyway with a placeholder value → silent wrong
+output, exit 0. **Fixed in karac `b59eb070`:** `run` now aborts on the
+value-corrupting cast family, matching `build`/`check` (soft type errors keep
+their leniency). The emit is a digit-table slice regardless — the idiomatic form
+— and the kata is gated on `karac check` before its `karac run` output is
 trusted.
 
 ## Kāra features exercised
@@ -86,5 +88,6 @@ trusted.
 
 **Bug ledger:** the codegen/radix surface was a flat curve (no miscompile);
 shares **`B-2026-06-13-15`** with #67 (the `karac run` type-leniency footgun on
-the `byte as char` digit emit). See the
+the `byte as char` digit emit) — fixed (`b59eb070`): `run` now aborts on
+value-corrupting casts. See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

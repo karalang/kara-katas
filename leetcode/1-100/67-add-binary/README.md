@@ -63,17 +63,20 @@ atoi, #394 decode-string) already hardened.
 [`B-2026-06-13-15`](../../../../kara/docs/bug-ledger.md).** A direct
 `byte as char` cast is correctly a typecheck *error* (`E_INT_AS_CHAR` — not every
 `u8` is a valid scalar); `karac check` and `karac build` both reject it (exit 1,
-no binary). But **`karac run` is the deliberately type-lenient script path** — it
-downgrades hard type errors to `warning[typecheck]` and executes anyway, with the
+no binary). **`karac run` *was* the deliberately type-lenient script path** — it downgraded
+hard type errors to `warning[typecheck]` and executed anyway, with the
 interpreter substituting a placeholder (empty `String` / unchanged int) for the
 unrepresentable value → **silent wrong output, exit 0**. So an `as char` slip in
-the digit emit would *run* and produce garbage rather than fault. The emit
-therefore uses a char literal (`push('0')`) here and a digit-table slice in #415,
-never a byte→char cast — and every kata in this pair is gated on `karac check`
-(full typecheck) before its `karac run` output is trusted. The hazard is acute
-for the self-hosting lexer's number path; tracked in
+the digit emit would have *run* and produced garbage rather than faulted. **Fixed
+in karac `b59eb070`:** `run` now aborts on the value-corrupting cast family
+(`TypeErrorKind::is_run_fatal` — every `as` the checker rejects) with
+`error[typecheck]`, matching `check`/`build`; genuinely soft type errors
+(mismatch, arity) keep their leniency. The emit still uses a char literal
+(`push('0')`) here and a digit-table slice in #415, never a byte→char cast —
+that's the idiomatic form regardless — and every kata in this pair is gated on
+`karac check` before its `karac run` output is trusted. Tracked in
 [`phase-12-self-hosting.md`](../../../../kara/docs/implementation_checklist/phase-12-self-hosting.md)
-§ Strategy, with the proposed contained fix.
+§ Strategy.
 
 ## Kāra features exercised
 
@@ -92,6 +95,7 @@ for the self-hosting lexer's number path; tracked in
 
 **Bug ledger:** the codegen/radix surface was a flat curve (no miscompile), but
 the `as char` digit-emit exploration surfaced **`B-2026-06-13-15`** — `karac run`
-runs through hard type errors with a placeholder value → silent wrong output,
-exit 0 (`build`/`check` reject correctly). See the
+ran through hard type errors with a placeholder value → silent wrong output,
+exit 0. **Fixed (`b59eb070`):** `run` now aborts on value-corrupting casts,
+matching `build`/`check`. See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
