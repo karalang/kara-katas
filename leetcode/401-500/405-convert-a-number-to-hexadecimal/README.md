@@ -69,6 +69,53 @@ times — but #405 was protected by the cost-model's `all_pure → trivial` gate
 emitted). #171's printing helper carries a real effect, which defeats that gate
 and exposed the bug. The fix serializes all output here too.
 
+## Benchmarks
+
+Workload: render **4M distinct values** to hex, concatenated into one growing
+buffer, then byte-checksummed (sink `2 231 199 964`). Persisting the output
+defeats allocation-elision — a per-render byte-sum lets `rustc`/`clang`/`go`
+elide the heap `String` and fold the work to arithmetic, but a buffer that is
+built up and then observed cannot be elided. This is a **sequential
+string-building** workload (the lexer's real shape) — the build carries a
+loop-borne dependency on the buffer, so it does not auto-parallelize (seq-only by
+construction). Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+
+### Seq lane — runtime (single-threaded string build)
+
+| | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
+|---|---|---|---|---|---|---|
+| time | 17 ms | 51 ms | 212 ms | 218 ms | **596 ms** | 2094 ms |
+
+**Honest read: Kāra trails here — ~2.7× Rust, ~34× the C floor — and it is *not*
+the overflow-safety tax.** Unlike the compute-bound parse in
+[#171](../../101-200/171-excel-sheet-column-number/), turning on Rust's overflow
+checks barely moves it (212 → 218 ms): this workload is **allocation-bound**. The
+kata's `to_hex` allocates a `Vec[i64]` nibble buffer **and** a `String` per
+render — ~8M small heap allocations over 4M renders — and Kāra's small-object
+allocation throughput currently trails Rust's allocator + `Vec`/`String` by that
+factor. The render *logic* (mask/shift, digit-table slice) is cheap; the cost is
+allocation churn. **This is a real optimization target** — surfaced exactly
+because the kata stresses the allocator the way a token-text-building lexer does.
+
+### Compile, binary
+
+| | Kāra | Rust | C |
+|---|---|---|---|
+| compile elapsed | **78 ms** | 107 ms | 52 ms |
+| binary (seq) | **279 KiB** | 456 KiB | 33 KiB |
+
+Kāra's cold compile (78 ms) still beats `rustc -O` (107 ms), and emits a
+**279 KiB** binary — 1.6× smaller than Rust, 9× smaller than Go (2.4 MiB).
+Runtime peak RSS (67.6 MiB) is dominated by the ~30 MB concatenated output buffer
+plus allocation churn — about 2× Rust's 33.5 MiB, tracking the same small-alloc
+overhead.
+
+**Where this lands.** Unlike #722/#125 (where Kāra's seq codegen beats or ties
+Rust) and #171 (parity at equal safety), #405 is the workload that finds a
+genuine gap: per-render small-object allocation. It is reported here straight, as
+an optimization target rather than a headline — the kata earned its place by
+surfacing the gap, not by winning the lane.
+
 ## Kāra features exercised
 
 - **i64 hex literals + bitwise ops** — `0xffffffffi64`, `0xfi64`, `n & 0xf`,
