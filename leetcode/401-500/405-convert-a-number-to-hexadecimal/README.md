@@ -84,37 +84,46 @@ construction). Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 | | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 17 ms | 51 ms | 212 ms | 218 ms | **596 ms** | 2094 ms |
+| time | 18 ms | 50 ms | 206 ms | 214 ms | **286 ms** | 2079 ms |
+| vs Kāra | 16× faster | 5.7× faster | 1.39× faster | 1.34× faster | — | 7.3× slower |
 
-**Honest read: Kāra trails here — ~2.7× Rust, ~34× the C floor — and it is *not*
-the overflow-safety tax.** Unlike the compute-bound parse in
-[#171](../../101-200/171-excel-sheet-column-number/), turning on Rust's overflow
-checks barely moves it (212 → 218 ms): this workload is **allocation-bound**. The
-kata's `to_hex` allocates a `Vec[i64]` nibble buffer **and** a `String` per
-render — ~8M small heap allocations over 4M renders — and Kāra's small-object
-allocation throughput currently trails Rust's allocator + `Vec`/`String` by that
-factor. The render *logic* (mask/shift, digit-table slice) is cheap; the cost is
-allocation churn. **This is a real optimization target** — surfaced exactly
-because the kata stresses the allocator the way a token-text-building lexer does.
+**This kata did its job: it found a real codegen gap and drove the fix.** The
+first run trailed Rust **2.7×** (596 ms) — allocation-bound, as expected for a
+render-into-a-String loop. Profiling pinned the cause precisely: `_xzm_free`
+(allocator free) topped the profile, and the call tree showed every
+`out.push_str(HEX[d..d+1])` calling `karac_string_slice` — which **allocated and
+freed a temp heap `String` for the slice on every push**, ~28M wasted allocations.
+The digit-table slice this README (and #415/#722) called "zero-copy" *wasn't*.
+The fix (`karac 08ae0140`) routes a string-slice `push_str` argument through the
+already-existing non-allocating borrow view (`{ptr, len, cap: 0}` into the
+source) — **30× on a slice-push microbench, and 596 → 286 ms here (2.08×)**.
+
+Where Kāra now lands: **1.39× `rustc -O`** (1.34× at equal overflow safety) and
+**16× the C floor**. The residual is the *other* per-render allocation — the
+`String` that `to_hex` returns (Rust allocates it too) plus Rust's
+decade-hardened `String`/allocator codegen — plus C being the bare-metal floor
+that renders into a stack buffer and **never allocates per render at all** (so
+the 16× is "Kāra builds a String; C doesn't," not the same task). The remaining
+small-object-allocation gap is tracked as a real optimization target (escape-
+analysis stack allocation of the non-escaping nibble buffer).
 
 ### Compile, binary
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **78 ms** | 107 ms | 52 ms |
+| compile elapsed | **80 ms** | 109 ms | 52 ms |
 | binary (seq) | **279 KiB** | 456 KiB | 33 KiB |
 
-Kāra's cold compile (78 ms) still beats `rustc -O` (107 ms), and emits a
-**279 KiB** binary — 1.6× smaller than Rust, 9× smaller than Go (2.4 MiB).
-Runtime peak RSS (67.6 MiB) is dominated by the ~30 MB concatenated output buffer
-plus allocation churn — about 2× Rust's 33.5 MiB, tracking the same small-alloc
-overhead.
+Kāra's cold compile (80 ms) beats `rustc -O` (109 ms), and emits a **279 KiB**
+binary — 1.6× smaller than Rust, 9× smaller than Go (2.4 MiB). Runtime peak RSS
+(67.6 MiB) is dominated by the ~30 MB concatenated output buffer.
 
-**Where this lands.** Unlike #722/#125 (where Kāra's seq codegen beats or ties
-Rust) and #171 (parity at equal safety), #405 is the workload that finds a
-genuine gap: per-render small-object allocation. It is reported here straight, as
-an optimization target rather than a headline — the kata earned its place by
-surfacing the gap, not by winning the lane.
+**Where this lands.** This is the kata's whole value: it stressed the allocator
+exactly the way a token-text-building lexer does, surfaced a genuine codegen
+inefficiency (the `push_str(s[a..b])` temp-allocation — also the self-hosted
+lexer's hot path), and the fix that closed most of the gap (2.7× → 1.39× Rust)
+ships from that finding. The katas exist to find Kāra's gaps and fix them on the
+spot — not just to win lanes.
 
 ## Kāra features exercised
 

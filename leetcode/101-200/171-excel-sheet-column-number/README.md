@@ -105,15 +105,15 @@ summed column numbers (sink `2 500 050 000 000`). The parse is pure arithmetic �
 
 | | C | Rust (`-O`) | **Kāra** | Go | Rust (`-C overflow-checks=on`) |
 |---|---|---|---|---|---|
-| time | 141 ms | 147 ms | **285 ms** | 166 ms | 255 ms |
-| vs Kāra | 2.0× faster | 1.94× faster | — | 1.7× faster | **1.12× faster** |
+| time | 138 ms | 142 ms | **271 ms** | 155 ms | 240 ms |
+| vs Kāra | 2.0× faster | 1.91× faster | — | 1.7× faster | **1.13× faster** |
 
 **Read the two Rust columns together — this is the whole story.** Kāra traps on
 integer overflow *by default* (design.md § Arithmetic Overflow: "defined
 behavior, never undefined"); `rustc -O` **silently wraps**. That safety is not
-free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.73×**
-(147 → 255 ms) — almost exactly the gap to Kāra. **At equal overflow safety, Kāra
-is within 1.12× of Rust** — codegen parity on a tight integer loop. The 1.94×
+free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.69×**
+(142 → 240 ms) — almost exactly the gap to Kāra. **At equal overflow safety, Kāra
+is within 1.13× of Rust** — codegen parity on a tight integer loop. The 1.91×
 against `rustc -O`'s default is the price of a silent-wraparound class of bugs
 Kāra refuses to ship and Rust release opts out of. (C and Go also wrap; they are
 the unsafe-but-fast floor, not safety peers.)
@@ -126,15 +126,15 @@ embarrassingly parallel. Every implementation parallelizes that *same* reduction
 
 | | parallel code written | time |
 |---|---|---|
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 16 ms |
-| Rust + rayon | `rayon` crate + `.into_par_iter()` rewrite | 17 ms |
-| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 24 ms |
-| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **32 ms** |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 14 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` rewrite | 16 ms |
+| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 19 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **27 ms** |
 
-**Kāra's auto-par turns its 285 ms seq run into 32 ms — a 9.0× self-speedup
+**Kāra's auto-par turns its 271 ms seq run into 27 ms — a 9.9× self-speedup
 across the machine's cores from the *same single-threaded source*, no parallel
 code, no crate, no goroutine boilerplate.** The absolute number trails hand-tuned
-rayon (1.85×) — partly the same overflow-safety tax (rayon wraps), partly
+rayon (1.7×) — partly the same overflow-safety tax (rayon wraps), partly
 per-thread codegen — but the engineering delta is the point: rayon/goroutines/
 pthreads each cost a dependency or a hand-rolled chunk-merge and a new class of
 data-race bugs; Kāra delivers 9× from code that reads sequential.
