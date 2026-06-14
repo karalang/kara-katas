@@ -127,42 +127,59 @@ comparison (the Kāra binary built `KARAC_AUTO_PAR=0`).
 
 | | Go | C | **Kāra (seq)** | Rust |
 |---|---|---|---|---|
-| time | 70.6 ms | 77.9 ms | **81.4 ms** | 89.0 ms |
-| vs Kāra | 1.15× faster | 1.05× faster | — | 1.09× slower |
+| time | 71.0 ms | 72.5 ms | **72.6 ms** | 78.2 ms |
+| vs Kāra | 1.02× faster | ~tied (1.00×) | — | 1.08× slower |
 
-Kāra **beats Rust** on identical code (~1.10×) and trails C by only 1.05×, on
-a string-heavy workload. Getting here was the kata's most instructive perf
-lesson:
+Kāra **beats Rust** on identical code (~1.08×) and now **ties C** (was 1.05×
+slower) on a string-heavy workload. The move from behind-C to level-with-C is the
+`push_str`-borrow fix (karac `08ae0140`) landing on this kata's exact hot path —
+`buffer.push_str(source[li][a..b])`, a slice of an *indexed* `Vec` element —
+shedding the per-segment temp allocation: a **load-immune −12.5 % on instructions
+retired (2.17 B → 1.90 B)**. That instruction count is the trustworthy headline
+here: this run's wall-clock board sat ~10 % below the prior run on thermal/load
+alone (every language moved together), so the within-lane ratios above — and the
+instruction count — are what carry the signal, not the absolute millisecond
+deltas. Getting here was the kata's most instructive perf lesson:
 
-| Kāra form | seq time | vs Rust |
+Measured in **instructions retired** (load-immune — unlike wall-clock, it doesn't
+drift with thermal/load, so the forms compare cleanly across runs):
+
+| Kāra form | instructions | vs slice |
 |---|---|---|
-| `Vec[char]` snapshot + per-char `push` (index-heavy) | 407 ms | 4.4× slower |
-| `bytes()` scan + `substring(a,b)` append (allocating) | 134 ms | 1.45× slower |
-| **`bytes()` scan + `s[a..b]` slice append (zero-copy)** ★ | **81 ms** | **1.10× faster** |
+| `bytes()` scan + `substring(a,b)` append (allocating) | 3.47 B | 1.83× more |
+| **`bytes()` scan + `s[a..b]` slice append (zero-copy, post-fix)** ★ | **1.90 B** | — |
 
-The whole gap to Rust was the **`substring()` allocation**: it returns an
-*owned* `String` (malloc + copy + free per segment), so `push_str(substring())`
-copies the run twice and heap-churns once per segment — measured at **+1.6B
-instructions vs the slice form** (3.47B → 2.17B, −37%). Switching the append to
-the zero-copy slice `source[li][a..b]` — Kāra's `&line[a..b]` — copies the run
-*once*, no allocation, and the codegen-quality gap to Rust **vanishes** (Kāra
-edges ahead). Reserve `.substring()` for when the run must outlive the source
-(a stored token); for append, slice.
+(The naive `Vec[char]` snapshot + per-char `push` form is several × slower again —
+index-heavy — but it isn't the shipped code; substring-vs-slice is the lesson that
+matters.)
+
+The whole gap to Rust was the **`substring()` allocation**: it returns an *owned*
+`String` (malloc + copy + free per segment), so `push_str(substring())` copies
+the run twice and heap-churns once per segment — **3.47 B instructions**.
+Switching the append to the slice `source[li][a..b]` (Kāra's `&line[a..b]`) cut
+that to 2.17 B (−37 %) — but the slice's `push_str` was **still** allocating a
+throwaway temp for the borrowed run (the "zero-copy" claim was aspirational). The
+`push_str`-borrow fix (karac `08ae0140`) closed that last gap: the slice run is
+now appended through a `{ptr, len, cap: 0}` borrow view with **no allocation at
+all**, dropping the slice form to **1.90 B instructions (−12.5 % more, −45 % vs
+substring)** — and the codegen-quality gap to Rust stays closed (Kāra edges
+ahead, now level with C). Reserve `.substring()` for when the run must outlive the
+source (a stored token); for append, slice.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.2 MiB** | 1.3 MiB | 1.1 MiB | 8.4 MiB |
+| **runtime peak RSS** | **1.2 MiB** | 1.3 MiB | 1.2 MiB | 9.0 MiB |
 | binary size (seq) | 33 KiB | 456 KiB | 33 KiB | 2434 KiB |
-| compile elapsed | 88 ms | 101 ms | 46 ms | — |
-| compile peak RSS | 14.9 MiB | 31.6 MiB | 2.5 MiB | — |
+| compile elapsed | 97 ms | 124 ms | 53 ms | — |
+| compile peak RSS | 14.8 MiB | 31.6 MiB | 2.5 MiB | — |
 
-Kāra's runtime memory is the **lowest tier** (1.2 MiB, between C's 1.1 and
-Rust's 1.3) — the zero-copy slice form allocates nothing per segment, and the
-earlier substring path's leak (fix #3) is moot here. The seq binary is 33 KiB
-(14× smaller than Rust's 456 KiB, tied with C), and the cold compile (88 ms)
-edges `rustc -O` (101 ms).
+Kāra's runtime memory is the **lowest tier** (1.2 MiB, level with C, just under
+Rust's 1.3) — the now-truly-zero-copy slice form allocates nothing per segment,
+and the earlier substring path's leak (fix #3) is moot here. The seq binary is
+33 KiB (14× smaller than Rust's 456 KiB, tied with C), and the cold compile
+(97 ms) edges `rustc -O` (124 ms).
 
 ### Par lane — auto-par vs hand-tuned parallelism (multi-core)
 
@@ -173,14 +190,14 @@ same reduction; the difference is what the programmer had to write:
 
 | | parallel code written | time |
 |---|---|---|
-| Rust + rayon | `rayon` crate + `.into_par_iter()` | 16.6 ms |
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 16.7 ms |
-| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **18.3 ms** |
-| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.8 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 8.6 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 9.0 ms |
+| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **9.5 ms** |
+| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 25.3 ms |
 
 **Kāra's auto-par lands within ~1.1× of the front of the pack — the raw-pthreads
-metal floor and rayon (both ≈16.6 ms) — and 1.4× ahead of goroutines, with no
-parallel source** (a ~4.7× speedup over its own seq binary). Here the work per
+metal floor (8.6 ms) and rayon (9.0 ms) — and 2.7× ahead of goroutines, with no
+parallel source** (a ~7.6× speedup over its own seq binary). Here the work per
 pass is chunky (600 lines × `ITERS=4000`), so thread overhead amortizes and the
 hand-rolled C/rayon threads are genuinely the floor; Kāra has ~10% headroom to
 metal. (Contrast #394, whose fine-grained tasks invert this — Kāra's pooled
