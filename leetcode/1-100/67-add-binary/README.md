@@ -50,22 +50,30 @@ order, so it emits MSB-first with no buffer.
 
 ## What this kata uncovered
 
-**Flat curve — no `karac` bug.** The whole radix surface compiled and ran
-first-try under both backends: two-pointer `Vec[u8]` scan, `(b - b'0') as i64`
-digit widening, `% 2` / `/ 2` carry arithmetic, `Vec[u8]` push/index/reverse,
-char-literal `String.push`, recursion with a `(i, j, carry)` frame, and the
-`f"…\"{a}\"…"` escaped-quote interpolation in `report`. This is the same
-flat-curve signal the array/string katas gave — the base-2 carry machinery sits
-on codegen primitives the earlier katas (#7 reverse-integer, #8 atoi, #394
-decode-string) already hardened.
+**Codegen/radix surface — flat curve, no miscompile.** The whole radix surface
+compiled and ran first-try under both backends: two-pointer `Vec[u8]` scan,
+`(b - b'0') as i64` digit widening, `% 2` / `/ 2` carry arithmetic, `Vec[u8]`
+push/index/reverse, char-literal `String.push`, recursion with a `(i, j, carry)`
+frame, and the `f"…\"{a}\"…"` escaped-quote interpolation in `report`. This is
+the same flat-curve signal the array/string katas gave — the base-2 carry
+machinery sits on codegen primitives the earlier katas (#7 reverse-integer, #8
+atoi, #394 decode-string) already hardened.
 
-One **correct-by-design** rejection worth recording for the lexer port: a
-direct `byte as char` cast is a typecheck error (`E_INT_AS_CHAR` — not every
-`u8` is a valid scalar). Because `karac run` bypasses typecheck, an `as char`
-slip would *silently* yield an empty string rather than fault — so the digit
-emit uses a char literal (`push('0')`) here and a digit-table slice in #415,
-never a byte→char cast. Caught with `karac check` (full typecheck) before
-trusting `karac run` output.
+**But the digit-emit exploration surfaced a real run-path defect —
+[`B-2026-06-13-15`](../../../../kara/docs/bug-ledger.md).** A direct
+`byte as char` cast is correctly a typecheck *error* (`E_INT_AS_CHAR` — not every
+`u8` is a valid scalar); `karac check` and `karac build` both reject it (exit 1,
+no binary). But **`karac run` is the deliberately type-lenient script path** — it
+downgrades hard type errors to `warning[typecheck]` and executes anyway, with the
+interpreter substituting a placeholder (empty `String` / unchanged int) for the
+unrepresentable value → **silent wrong output, exit 0**. So an `as char` slip in
+the digit emit would *run* and produce garbage rather than fault. The emit
+therefore uses a char literal (`push('0')`) here and a digit-table slice in #415,
+never a byte→char cast — and every kata in this pair is gated on `karac check`
+(full typecheck) before its `karac run` output is trusted. The hazard is acute
+for the self-hosting lexer's number path; tracked in
+[`phase-12-self-hosting.md`](../../../../kara/docs/implementation_checklist/phase-12-self-hosting.md)
+§ Strategy, with the proposed contained fix.
 
 ## Kāra features exercised
 
@@ -82,5 +90,8 @@ trusting `karac run` output.
 
 ---
 
-**Bug ledger:** flat curve — this kata surfaced no `karac` defect. See the
-[`karac` bug ledger](../../../../kara/docs/bug-ledger.md) for the running count.
+**Bug ledger:** the codegen/radix surface was a flat curve (no miscompile), but
+the `as char` digit-emit exploration surfaced **`B-2026-06-13-15`** — `karac run`
+runs through hard type errors with a placeholder value → silent wrong output,
+exit 0 (`build`/`check` reject correctly). See the
+[`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

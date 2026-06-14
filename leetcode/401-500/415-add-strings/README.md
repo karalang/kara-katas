@@ -60,11 +60,13 @@ width (the no-bignum point — proof the arithmetic really is per-digit). The
 radix-render table sits on the same zero-copy-slice + `push_str` path #722
 remove-comments already hardened.
 
-One **correct-by-design** note carried from #67: emitting a digit with a
-`byte as char` cast is a typecheck error (`E_INT_AS_CHAR`), and because
-`karac run` bypasses typecheck it would *silently* produce wrong output — so the
-emit is a digit-table slice, verified with `karac check` (full typecheck) before
-trusting `karac run`.
+The run-path footgun carried from #67 — [`B-2026-06-13-15`](../../../../kara/docs/bug-ledger.md):
+emitting a digit with a `byte as char` cast is a typecheck *error*
+(`E_INT_AS_CHAR`), but **`karac run` is type-lenient** — it downgrades hard type
+errors to warnings and runs anyway with a placeholder value → silent wrong
+output, exit 0 (`build`/`check` reject correctly). So the emit is a digit-table
+slice, and the kata is gated on `karac check` before its `karac run` output is
+trusted.
 
 ## Kāra features exercised
 
@@ -82,5 +84,7 @@ trusting `karac run`.
 
 ---
 
-**Bug ledger:** flat curve — this kata surfaced no `karac` defect. See the
-[`karac` bug ledger](../../../../kara/docs/bug-ledger.md) for the running count.
+**Bug ledger:** the codegen/radix surface was a flat curve (no miscompile);
+shares **`B-2026-06-13-15`** with #67 (the `karac run` type-leniency footgun on
+the `byte as char` digit emit). See the
+[`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
