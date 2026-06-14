@@ -70,6 +70,71 @@ their leniency). The emit is a digit-table slice regardless — the idiomatic fo
 — and the kata is gated on `karac check` before its `karac run` output is
 trusted.
 
+## Benchmarks
+
+Workload: a fixed 38-digit operand added to `decimal(k)` for **`TOTAL=500 000`**
+distinct `k`, every sum-string concatenated into one growing buffer, then
+byte-checksummed (sink `1 000 513 006`). Persisting the output defeats
+allocation-elision — a per-result byte-sum lets `rustc`/`clang`/`go` fold the
+heap `String` away, but a buffer that is built up and then observed cannot be
+elided. This is a **sequential string-building** workload (the lexer's real
+shape); the build carries a loop-borne dependency on the buffer, so it does not
+auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
+(`hyperfine`).
+
+### Seq lane — runtime (single-threaded string build)
+
+| | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
+|---|---|---|---|---|---|---|
+| time | 33 ms | 135 ms | 181 ms | 184 ms | **185 ms** | 1885 ms |
+| vs Kāra | 5.6× faster | 1.37× faster | 1.02× faster | ~tied (1.00×) | — | 10.2× slower |
+
+**At equal overflow safety, Kāra is level with Rust.** Kāra traps on integer
+overflow by default (design.md § Arithmetic Overflow); `rustc -O` silently wraps.
+Here that costs almost nothing — `-C overflow-checks=on` moves Rust only 181 → 184
+ms (+1.4 %) — because the work is **allocation-bound, not arithmetic-bound**: the
+column add is a stream of single-digit sums that never overflow, so the trap
+branches are free. At that equal-safety point Kāra and Rust are within σ (185 vs
+184 ms). The `DIGITS[d..d+1]` render rides the same now-truly-zero-copy
+`push_str`-borrow path (karac `08ae0140`) that #722 remove-comments and #405
+convert-to-hex measured — appended through a `{ptr, len, cap: 0}` view, no temp
+per digit. C is the bare-metal floor (5.6×): it renders into a stack buffer and
+**never allocates per result at all**, so the gap is "Kāra/Rust build a `String`;
+C doesn't," not the same task.
+
+**No par lane — by construction (unlike its slice-partner [#722](../../701-800/722-remove-comments/)).**
+This is a string *build*: `out.push_str(r)` carries a loop-borne dependency on
+the buffer, so karac's auto-par-on-reduction pass does not fire — verified here,
+the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run
+single-threaded. The same property that makes the output un-elidable (you must
+build the whole buffer before observing it) also makes it un-parallelizable.
+#722's outer reduction over *independent* passes is the shape that auto-pars; an
+accumulate-into-one-buffer render, like #415 and #405, is sequential.
+
+### Runtime memory, binary size, compile
+
+| | Kāra | Rust | C | Go |
+|---|---|---|---|---|
+| **runtime peak RSS** | 38 MiB | **20 MiB** | 1 MiB | 56 MiB |
+| binary size (seq) | **295 KiB** | 455 KiB | 33 KiB | 2434 KiB |
+| compile elapsed | **86 ms** | 114 ms | 53 ms |
+
+The honest counterpoint to #722 (where Kāra was the memory floor): here Kāra's
+peak RSS is **~1.9× Rust's** (38 vs 20 MiB). Both hold the ~19 MB output buffer,
+but Kāra's `String`/`Vec` growth carries more slack per object — the
+**small-object-allocation overhead** tracked as a codegen optimization target
+([`phase-7-codegen.md`](../../../../kara/docs/implementation_checklist/phase-7-codegen.md),
+the same residual #405's `~1.4×` gap names). It costs nothing in wall-clock here
+(Kāra still ties Rust) but it is real in memory, and this kata is positioned to
+show it. Compile still favors Kāra — cold compile 86 ms edges `rustc -O` (114 ms),
+and the 295 KiB binary is 1.5× smaller than Rust's 455 KiB.
+
+**Where this lands.** A clean allocation-bound string-build: Kāra reaches Rust
+parity on speed at equal overflow safety, beats it on compile and binary, and
+trails it on memory — the small-object-allocation gap surfacing exactly where the
+workload is allocation-heavy. The render is the lexer's `from_str_radix`-inverse
+glyph path, on the hardened zero-copy slice.
+
 ## Kāra features exercised
 
 - **`bytes()` byte scan + indexing** — two-pointer reverse walk, `b'0'` byte
