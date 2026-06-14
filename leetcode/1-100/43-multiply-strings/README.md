@@ -73,6 +73,72 @@ The run-path footgun the radix katas carried — `byte as char` being a typechec
 not bite here: the digit emit is a table slice by construction, and the kata is
 gated on `karac check` before its `karac run` output is trusted.
 
+## Benchmarks
+
+Workload: a fixed 38-digit operand multiplied by `decimal(k)` for **`TOTAL=300 000`**
+distinct `k`, every product-string concatenated into one growing buffer, then
+byte-checksummed (sink `742 591 719`). Persisting the output defeats
+allocation-elision — a per-result byte-sum lets `rustc`/`clang`/`go` fold the heap
+`String` away, but a buffer that is built up and then observed cannot be elided.
+This is a **sequential string-building** workload (the lexer's real shape); the
+build carries a loop-borne dependency on the buffer, so it does not
+auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
+(`hyperfine`).
+
+### Seq lane — runtime (single-threaded grid multiply + string build)
+
+| | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
+|---|---|---|---|---|---|---|
+| time | 92 ms | 239 ms | 188 ms | 225 ms | **309 ms** | 6943 ms |
+| vs Kāra | 3.3× faster | 1.29× faster | 1.64× faster | 1.37× faster | — | 22.5× slower |
+
+**The arithmetic-bound counterpoint to [#415](../../401-500/415-add-strings/).**
+Add-strings was allocation-bound — the overflow-safety tax was ~0 (`-C
+overflow-checks=on` moved Rust only 181→184 ms) and Kāra tied Rust at equal
+safety. The multiply **grid** flips that: each product does ~380 `d1·d2` partial
+products + carry redistributions (m·n, not m+n), so the work is genuinely
+arithmetic-heavy, and the overflow-safety tax is now **real** — `-C
+overflow-checks=on` costs Rust **188 → 225 ms (+19 %)**. Kāra traps on overflow by
+default (design.md § Arithmetic Overflow); `rustc -O` silently wraps, so the
+188 ms figure is apples-to-oranges. **At equal overflow safety Kāra is 1.37× Rust**
+(309 vs 225 ms) — the residual is the same small-object-allocation + codegen gap
+the radix-render katas name ([#405](../../401-500/405-convert-a-number-to-hexadecimal/)'s
+`~1.4×`, [phase-7-codegen.md](../../../../kara/docs/implementation_checklist/phase-7-codegen.md)),
+here riding on top of the grid's per-result `Vec[i64]` allocation. C is the
+no-heap floor (3.3×): it renders into a stack buffer and never allocates per
+result; Kāra/Rust/Go all build a `String`.
+
+**No par lane — by construction (like its add-sibling #415).** This is a string
+*build*: `out.push_str(product)` carries a loop-borne dependency on the buffer,
+so karac's auto-par-on-reduction pass does not fire — verified here, the default
+and `KARAC_AUTO_PAR=0` binaries agree on the sink and both run single-threaded
+(cpu 99 %). The property that makes the output un-elidable (you must build the
+whole buffer before observing it) also makes it un-parallelizable. The grid's
+inner double loop *is* compute-dense, but it feeds one shared accumulator.
+
+### Runtime memory, binary size, compile
+
+| | Kāra | Rust | C | Go |
+|---|---|---|---|---|
+| **runtime peak RSS** | 38.8 MiB | **16.4 MiB** | 1.0 MiB | 50.6 MiB |
+| binary size (seq) | **295 KiB** | 456 KiB | 33 KiB | 2434 KiB |
+| compile elapsed | **93 ms** | 122 ms | 57 ms |
+
+Same shape as #415's memory counterpoint: both hold the ~14 MB product buffer,
+but Kāra's `String`/`Vec` growth carries more slack per object (the
+small-object-allocation overhead, [phase-7-codegen.md](../../../../kara/docs/implementation_checklist/phase-7-codegen.md))
+— **2.4× Rust's RSS** (38.8 vs 16.4 MiB). It is the same residual the equal-safety
+runtime gap names, surfacing in memory. Compile still favors Kāra — cold compile
+93 ms edges `rustc -O` (122 ms), and the 295 KiB binary is 1.5× smaller than
+Rust's 456 KiB (and 8× smaller than Go's 2.4 MiB).
+
+**Where this lands.** An arithmetic-bound digit grid: Kāra trails Rust 1.37× at
+equal overflow safety (vs the 1.64× wrap-vs-trap headline) and 2.4× on memory —
+both the small-object-allocation gap — while beating Rust on compile and binary.
+The honest pairing with #415: the same render path, but moving the workload from
+allocation-bound (where Kāra ties) to arithmetic-bound (where the checked-arith +
+small-alloc residual shows) maps exactly where Kāra's codegen still has road left.
+
 ## Kāra features exercised
 
 - **`bytes()` byte scan + indexing** — nested reverse walk over both operands,
