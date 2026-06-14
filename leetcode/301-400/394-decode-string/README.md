@@ -166,3 +166,7 @@ concurrency incidents for equal-or-better throughput.
 - **`String.repeat(n)`** — the repeat primitive this kata motivated (iterative
   style's `cur.repeat(count)`); the recursive style falls back to a `push_str`
   loop because its source is tuple-bound.
+
+---
+
+**Bug ledger:** this kata surfaced `B-2026-06-12-3`, `B-2026-06-12-4`, `B-2026-06-12-5`, `B-2026-06-12-14` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

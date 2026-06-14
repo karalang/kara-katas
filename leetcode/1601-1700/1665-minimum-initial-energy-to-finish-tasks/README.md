@@ -126,3 +126,7 @@ First RSS readings recorded for this kata (single-shot `/usr/bin/time -l`). The 
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C usually calibrates the LLVM-backend floor, but on this kata it instead calibrates the *comparator-indirection penalty* — `qsort`'s function-pointer dispatch lands it behind kāra, making Rust's inlined pdqsort the floor-setter. Go is the cross-runtime data point; Python is the ergonomic foil.
+
+---
+
+**Bug ledger:** this kata surfaced `B-2026-06-13-2` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

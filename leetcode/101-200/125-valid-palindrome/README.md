@@ -178,3 +178,7 @@ fewer concurrency incidents per unit of performance.
   indexing (recursive style).
 - **Auto-parallelized reduction** — `sum += pass(input)` lowered to a
   `karac_par_reduce` dispatch with no parallel source (par lane).
+
+---
+
+**Bug ledger:** this kata surfaced `B-2026-06-13-14` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

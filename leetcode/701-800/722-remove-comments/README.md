@@ -213,3 +213,7 @@ near-floor throughput.
 - **Cross-line state machine** — `in_block` is the single piece of state that
   legitimately survives a line boundary; the streaming variant additionally
   carries per-line pending-marker flags that must reset at the newline.
+
+---
+
+**Bug ledger:** this kata surfaced `B-2026-06-12-11`, `B-2026-06-12-12`, `B-2026-06-12-13` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).

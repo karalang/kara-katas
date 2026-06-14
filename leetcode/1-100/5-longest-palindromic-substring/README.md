@@ -130,3 +130,7 @@ At parity with C/Rust — the algorithm is O(1) extra space and the per-call `Ve
 ### Why this kata is in the harness
 
 Longest Palindromic Substring is the canonical "tight inner-loop on a byte-comparison hot path" entry: an O(n²) two-pointer expand where every iteration is one indexed read + one equality test + two integer increments, repeated millions of times with no allocator, no map lookup, and no generic dispatch in the way. This is where Kāra's codegen has to compete with rustc step-for-step on instruction count and dispatch overhead — there's nowhere to hide behind stdlib quality. The parity-with-rustc / ~1.2×-behind-clang shape is the load-bearing measurement that "yes, on inner-loop algorithms once the stdlib surface is in shape, kara codegen is competitive with rustc" — and that same sensitivity is what made this kata the canary that caught the 2026-06-05 panic-site runtime regression (§ Runtime) the day it shipped: re-benched at 1.39× of rustc mid-day, A/B-attributed within hours, karac fixed (`3f3b34a9` — panic bodies outlined so landing pads stop bloating the inline cost of hot functions), and re-measured to its best-ever number (ahead of rustc within σ) the same evening. One bench cycle, full loop: detect → attribute → fix → verify.
+
+---
+
+**Bug ledger:** this kata surfaced `B-2026-06-12-7` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
