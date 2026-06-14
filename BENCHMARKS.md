@@ -108,7 +108,7 @@ the headline chart in the **[README](README.md#parallel-lane--auto-par-vs-hand-t
 Five katas currently ship the full parallel comparator set (#1 two-sum, #204
 count-primes, #394 decode-string, #722 remove-comments, #125 valid-palindrome).
 Across them Kāra's auto-par lands in the same range as hand-tuned `rayon` —
-ahead on two, behind on three, by at most 1.35× — for none of the engineering
+ahead on two, behind on three (by at most 1.45×), and edging the raw-pthreads C floor on two — for none of the engineering
 cost. Katas whose per-call work is too small for rayon/goroutine dispatch to win
 (parallelizing them by hand would *lose* to sequential) contribute only the
 intra-language auto-par speedup above and stay seq-only here. More points land

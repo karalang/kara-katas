@@ -82,15 +82,15 @@ def _crss(c):
 # magnitude, the rest are well-behaved linear.
 # (fname, title, unitnote, section, lane, langs, yscale, extractor)
 ALL4 = ["kara", "rust", "c", "go"]
-PAR3 = ["kara", "rust", "go"]   # par lane = Kāra auto-par vs Rust rayon vs Go goroutines; C has no parallel mirror
+PAR4 = ["kara", "rust", "c", "go"]   # par lane = Kāra auto-par vs Rust rayon vs Go goroutines vs C pthreads (metal floor)
 COMPILE3 = ["kara", "rust", "c"]  # Go excluded: `go build` bundles module resolution, not a single-file compile
 METRICS = [
     ("runtime-seq", "Runtime — sequential lane", "lower = faster", "measurements", "seq", ALL4, "linear", _rt),
-    ("runtime-par", "Runtime — auto-parallel lane", "lower = faster", "measurements", "par", PAR3, "linear", _rt),
+    ("runtime-par", "Runtime — auto-parallel lane", "lower = faster", "measurements", "par", PAR4, "linear", _rt),
     ("binary-seq", "Binary size — sequential lane", "lower = smaller", "measurements", "seq", ALL4, "log", _bin),
-    ("binary-par", "Binary size — auto-parallel lane", "lower = smaller", "measurements", "par", PAR3, "log", _bin),
+    ("binary-par", "Binary size — auto-parallel lane", "lower = smaller", "measurements", "par", PAR4, "log", _bin),
     ("rss-seq", "Runtime peak memory — sequential lane", "lower = leaner", "measurements", "seq", ALL4, "linear", _rss),
-    ("rss-par", "Runtime peak memory — auto-parallel lane", "lower = leaner", "measurements", "par", PAR3, "linear", _rss),
+    ("rss-par", "Runtime peak memory — auto-parallel lane", "lower = leaner", "measurements", "par", PAR4, "linear", _rss),
     ("compile-elapsed", "Compile time (cold)", "lower = faster", "compile", None, COMPILE3, "linear", _cel),
     ("compile-rss", "Compile peak memory (cold)", "lower = leaner", "compile", None, COMPILE3, "linear", _crss),
 ]

@@ -108,6 +108,13 @@ build_go() {
 build_go go-seq
 build_go go-par
 
+# C pthreads par mirror (par-lane metal floor) — clang needs -lpthread, so it
+# can't go through build_c (which has no link flag).
+if [ ! -x target/count_c_par ] || [ count_par.c -nt target/count_c_par ]; then
+    echo "compiling count_par.c (pthreads) ..." >&2
+    clang -O3 count_par.c -o target/count_c_par -lpthread
+fi
+
 # Sanity: all four impls must agree on the (count, sum) sink before we
 # time them. Python skipped from sink check by default — at N=10M it
 # takes ~30s and bench.sh would block waiting on it. Set
@@ -116,11 +123,12 @@ kara_sink=$(./target/count_kara)
 kara_seq_sink=$(./target/count_seq_kara)
 rust_sink=$(./target/count)
 c_sink=$(./target/count_c)
+c_par_sink=$(./target/count_c_par)
 rayon_sink=$(./target/count_rayon)
 go_seq_sink=$(./target/go_seq)
 go_par_sink=$(./target/go_par)
 mismatch=""
-for pair in "kara_seq:$kara_seq_sink" "rust:$rust_sink" "c:$c_sink" "rayon:$rayon_sink" "go_seq:$go_seq_sink" "go_par:$go_par_sink"; do
+for pair in "kara_seq:$kara_seq_sink" "rust:$rust_sink" "c:$c_sink" "c_par:$c_par_sink" "rayon:$rayon_sink" "go_seq:$go_seq_sink" "go_par:$go_par_sink"; do
     name="${pair%%:*}"
     sink="${pair#*:}"
     if [ "$sink" != "$kara_sink" ]; then
@@ -163,6 +171,8 @@ rt_cmd --lang go --approach count --lane par --mode native \
     --name 'go   count (goroutines)' --cmd './target/go_par'
 rt_cmd --lang c --approach count --lane seq --mode native \
     --name 'c    count (single-threaded)' --cmd './target/count_c'
+rt_cmd --lang c --approach count --lane par --mode native \
+    --name 'c    count (pthreads — metal floor)' --cmd './target/count_c_par'
 rt_end
 
 echo
@@ -189,6 +199,7 @@ size_put --lang rust --approach count --lane par --mode native  --path target/co
 size_put --lang go   --approach count --lane seq --mode native  --path target/go_seq
 size_put --lang go   --approach count --lane par --mode native  --path target/go_par
 size_put --lang c    --approach count --lane seq --mode native  --path target/count_c
+size_put --lang c    --approach count --lane par --mode native  --path target/count_c_par
 
 echo
 echo "=== runtime memory (peak) ==="
@@ -199,6 +210,7 @@ mem_put --lang rust --approach count --lane par --mode native  --bytes "$(mem_pe
 mem_put --lang go   --approach count --lane seq --mode native  --bytes "$(mem_peak ./target/go_seq)"
 mem_put --lang go   --approach count --lane par --mode native  --bytes "$(mem_peak ./target/go_par)"
 mem_put --lang c    --approach count --lane seq --mode native  --bytes "$(mem_peak ./target/count_c)"
+mem_put --lang c    --approach count --lane par --mode native  --bytes "$(mem_peak ./target/count_c_par)"
 
 echo
 echo "=== compile memory (cold) ==="
