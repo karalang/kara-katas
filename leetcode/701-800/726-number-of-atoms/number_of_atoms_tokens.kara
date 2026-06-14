@@ -1,0 +1,200 @@
+// LeetCode #726: Number of Atoms — explicit lex-then-evaluate split.
+//
+// The other two styles fuse scanning and evaluation in one pass. This one does
+// what the real compiler does: a **lexer pass** first turns the source into a
+// flat token stream, then a separate **evaluator pass** consumes that stream.
+// It's the most faithful mirror of the self-hosted pipeline's actual shape —
+// the lexer's job is exactly "bytes -> tokens", nothing more.
+//
+//   Pass 1 (lex):   bytes  ->  parallel token vecs (kind, name-text, number)
+//   Pass 2 (eval):  tokens ->  emit list scaled by a paren-position stack
+//
+// Token kinds: 0 = NAME, 1 = '(', 2 = ')', 3 = NUMBER. A NUMBER token that
+// follows a NAME or a ')' is that element's / group's count; a standalone count
+// of 1 is simply the absence of a NUMBER token. Tally + render are byte-compare
+// based, identical to the other styles (no Map).
+
+fn is_upper(b: u8) -> bool { b >= b'A' and b <= b'Z' }
+fn is_lower(b: u8) -> bool { b >= b'a' and b <= b'z' }
+fn is_digit(b: u8) -> bool { b >= b'0' and b <= b'9' }
+
+fn str_less(a: ref String, b: ref String) -> bool {
+    let ab = a.bytes();
+    let bb = b.bytes();
+    let an = ab.len();
+    let bn = bb.len();
+    let mut i = 0i64;
+    while i < an and i < bn {
+        let x = ab[i];
+        let y = bb[i];
+        if x < y { return true; }
+        if x > y { return false; }
+        i = i + 1i64;
+    }
+    an < bn
+}
+
+fn number_of_atoms(s: ref String) -> String {
+    let bytes = s.bytes();
+    let n = bytes.len();
+
+    // --- Pass 1: lex into a token stream (parallel vecs). ---
+    let mut kinds: Vec[i64] = Vec.new();   // 0 NAME · 1 '(' · 2 ')' · 3 NUMBER
+    let mut texts: Vec[String] = Vec.new(); // NAME text (empty for other kinds)
+    let mut nums: Vec[i64] = Vec.new();     // NUMBER value (0 for other kinds)
+
+    let mut i = 0i64;
+    while i < n {
+        let b = bytes[i];
+        if b == b'(' {
+            kinds.push(1i64); texts.push(""); nums.push(0i64);
+            i = i + 1i64;
+        } else if b == b')' {
+            kinds.push(2i64); texts.push(""); nums.push(0i64);
+            i = i + 1i64;
+        } else if is_digit(b) {
+            let mut v = 0i64;
+            while i < n and is_digit(bytes[i]) {
+                v = v * 10i64 + ((bytes[i] - b'0') as i64);
+                i = i + 1i64;
+            }
+            kinds.push(3i64); texts.push(""); nums.push(v);
+        } else if is_upper(b) {
+            let mut j = i + 1i64;
+            while j < n and is_lower(bytes[j]) {
+                j = j + 1i64;
+            }
+            kinds.push(0i64); texts.push(s[i..j]); nums.push(0i64);
+            i = j;
+        } else {
+            i = i + 1i64;
+        }
+    }
+
+    // --- Pass 2: evaluate the token stream into a scaled emit list. ---
+    let mut names: Vec[String] = Vec.new();
+    let mut counts: Vec[i64] = Vec.new();
+    let mut paren_stack: Vec[i64] = Vec.new();
+
+    let toks = kinds.len();
+    let mut ti = 0i64;
+    while ti < toks {
+        let k = kinds[ti];
+        if k == 0i64 {
+            // NAME, optionally followed by a NUMBER count.
+            let nm_idx = ti;
+            let mut c = 1i64;
+            if ti + 1i64 < toks and kinds[ti + 1i64] == 3i64 {
+                c = nums[ti + 1i64];
+                ti = ti + 2i64;
+            } else {
+                ti = ti + 1i64;
+            }
+            names.push(texts[nm_idx].clone());
+            counts.push(c);
+        } else if k == 1i64 {
+            paren_stack.push(names.len());
+            ti = ti + 1i64;
+        } else if k == 2i64 {
+            // ')' optionally followed by a NUMBER group multiplier.
+            let mut mult = 1i64;
+            if ti + 1i64 < toks and kinds[ti + 1i64] == 3i64 {
+                mult = nums[ti + 1i64];
+                ti = ti + 2i64;
+            } else {
+                ti = ti + 1i64;
+            }
+            let start = paren_stack.pop().unwrap();
+            let mut g = start;
+            while g < names.len() {
+                counts[g] = counts[g] * mult;
+                g = g + 1i64;
+            }
+        } else {
+            // Stray NUMBER (not preceded by NAME/')'); well-formed input has none.
+            ti = ti + 1i64;
+        }
+    }
+
+    // --- Tally, sort by name, render. ---
+    let mut agg_names: Vec[String] = Vec.new();
+    let mut agg_counts: Vec[i64] = Vec.new();
+    let mut e = 0i64;
+    let m = names.len();
+    while e < m {
+        let mut found = -1i64;
+        let mut t = 0i64;
+        let an = agg_names.len();
+        while t < an {
+            if agg_names[t] == names[e] {
+                found = t;
+                t = an;
+            } else {
+                t = t + 1i64;
+            }
+        }
+        if found < 0i64 {
+            agg_names.push(names[e].clone());
+            agg_counts.push(counts[e]);
+        } else {
+            agg_counts[found] = agg_counts[found] + counts[e];
+        }
+        e = e + 1i64;
+    }
+
+    let gn = agg_names.len();
+    let mut order: Vec[i64] = Vec.new();
+    let mut p = 0i64;
+    while p < gn {
+        order.push(p);
+        p = p + 1i64;
+    }
+    let mut a = 1i64;
+    while a < gn {
+        let cur = order[a];
+        let mut b2 = a - 1i64;
+        while b2 >= 0i64 and str_less(agg_names[cur], agg_names[order[b2]]) {
+            order[b2 + 1i64] = order[b2];
+            b2 = b2 - 1i64;
+        }
+        order[b2 + 1i64] = cur;
+        a = a + 1i64;
+    }
+
+    let mut out: String = "";
+    let mut q = 0i64;
+    while q < gn {
+        let idx = order[q];
+        out.push_str(agg_names[idx]);
+        let c = agg_counts[idx];
+        if c > 1i64 {
+            out.push_str(f"{c}");
+        }
+        q = q + 1i64;
+    }
+    out
+}
+
+fn report(s: ref String) {
+    println(f"\"{s}\" -> \"{number_of_atoms(s)}\"");
+}
+
+fn main() {
+    report("H2O");              // H2O
+    report("Mg(OH)2");          // H2MgO2
+    report("K4(ON(SO3)2)2");    // K4N2O14S4
+    report("H");                // H
+    report("O2");               // O2
+    report("HOH");              // H2O
+    report("Mg");               // Mg
+    report("MgO");              // MgO
+    report("NaCl");             // ClNa
+    report("CaCO3");            // CCaO3
+    report("(NB3)33");          // B99N33
+    report("(N(B3)2)2");        // B12N2
+    report("K4(ON(SO3)2)2");    // K4N2O14S4
+    report("A2B(C3)2");         // A2BC6
+    report("((H)2O)2");         // H4O2
+    report("Be32");             // Be32
+    report("(Be32)1");          // Be32
+}
