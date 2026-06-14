@@ -18,9 +18,17 @@ Kāra's orange dots sit clustered around the Rust baseline — ahead on the allo
 
 Kāra emits **C-sized binaries** (~33 KiB) for most programs, rising to its ~285 KiB compute floor when a program pulls in the larger runtime surface (hash maps, strings). Either way it sits far below Rust, and roughly **70× smaller than Go**, which carries its runtime + GC in every binary.
 
+## Parallel lane — auto-par vs hand-tuned
+
+This is the one thing Kāra does that the others don't hand you for free. The katas below have a data-parallel reduction over their workload; Kāra's compiler parallelizes it automatically from the **same single-threaded source**, while the Rust/Go/C mirrors had to be *rewritten* by hand — Rust pulls in the `rayon` crate and an `.into_par_iter()`, Go hand-rolls goroutine chunking + a `WaitGroup` + a merge, C raw `pthread_create`/`join`. Each dot is one program; lower is faster; relative to Rust = 1.0.
+
+![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.svg)
+
+The honest result: across the five katas with a full parallel comparator set, Kāra's auto-par — **with zero parallel code** — lands in the *same range* as hand-tuned `rayon`, ahead on two (#394 1.17×, #125 1.06×) and behind on three (by at most 1.35×), and well ahead of Go's goroutines on fine-grained work (4× on #125). It is **not** uniformly faster than `rayon`, and the chart shows that. The point isn't "beats rayon" — it's **competitive throughput for none of the cost**: no crate, no API rewrite, no `unsafe`/`Send`/`Sync` reasoning, and no data-race, goroutine-leak, or partial-merge bug class to chase. The compiler's cost gate also *declines* to parallelize loops too small to pay off, so this lane only includes katas where the reduction is heavy enough to matter.
+
 ## The rest of the picture
 
-Five more charts — compile time, compile memory, runtime memory, Kāra's automatic-parallelization speedup, and the methodology behind all of them — live in **[BENCHMARKS.md](BENCHMARKS.md)**.
+Four more charts — compile time, compile memory, runtime memory, and Kāra's intra-language auto-par speedup (same source, parallel ÷ sequential) — plus the methodology live in **[BENCHMARKS.md](BENCHMARKS.md)**.
 
 ## What these numbers are — and aren't
 

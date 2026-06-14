@@ -92,18 +92,27 @@ free — which also makes it the easiest chart to over-read, so read it carefull
   on your program. The honest claim is *ergonomic, safe, automatic parallelization
   where it applies* — these numbers are evidence it scales, not a promise about
   arbitrary code.
-- **Three data points is a start, not a distribution.** This reads as a real
-  spectrum only once more parallel katas land; treat it as illustrative for now.
+- **This is a real distribution now (26 programs), not a teaser.** Every kata
+  whose `karac build` engages auto-par contributes a point; the spread from the
+  cost-gate floor up to ~13× against the 18-core ceiling is the spectrum, not a
+  single illustrative number.
 
 ### Cross-language parallel lane
 
-The *other* parallel comparison — Kāra auto-par vs Rust `rayon` vs Go goroutines
-on the same workload — isn't charted yet. Only one kata (#204) currently ships
-the full three-language parallel set; #4 and #6 contribute Kāra's intra-language
-auto-par speedup (above) but stay seq-only for *cross-language* comparison,
-because their per-call work is too small for rayon/goroutine dispatch to win
-(parallelizing them in Rust or Go would *lose* to the sequential version). These
-charts appear automatically once a second complete par kata lands.
+The *other* parallel comparison — Kāra auto-par (zero parallel source) vs Rust
+`rayon` vs Go goroutines vs a C-pthreads metal floor on the same workload — is
+the headline chart in the **[README](README.md#parallel-lane--auto-par-vs-hand-tuned)**:
+
+![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.svg)
+
+Five katas currently ship the full parallel comparator set (#1 two-sum, #204
+count-primes, #394 decode-string, #722 remove-comments, #125 valid-palindrome).
+Across them Kāra's auto-par lands in the same range as hand-tuned `rayon` —
+ahead on two, behind on three, by at most 1.35× — for none of the engineering
+cost. Katas whose per-call work is too small for rayon/goroutine dispatch to win
+(parallelizing them by hand would *lose* to sequential) contribute only the
+intra-language auto-par speedup above and stay seq-only here. More points land
+automatically as parallel katas are added.
 
 ## Caveats
 
