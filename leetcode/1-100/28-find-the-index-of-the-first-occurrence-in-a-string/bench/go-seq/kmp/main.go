@@ -65,7 +65,7 @@ func main() {
 	needle[M-1] = 'b'
 
 	var total int64
-	for iter := 0; iter < 10; iter++ {
+	for iter := 0; iter < 100; iter++ {
 		total += strStr(haystack, needle)
 	}
 	fmt.Println(total)

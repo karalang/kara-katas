@@ -59,7 +59,7 @@ fn main() {
     needle[M - 1] = b'b';
 
     let mut total: i64 = 0;
-    for _ in 0..10 {
+    for _ in 0..100 {
         total += str_str(&haystack, &needle);
     }
     println!("{}", total);

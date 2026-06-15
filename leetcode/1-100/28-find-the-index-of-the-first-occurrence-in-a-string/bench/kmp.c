@@ -69,7 +69,7 @@ int main(void) {
     needle[M - 1] = 'b';
 
     int64_t total = 0;
-    for (int iter = 0; iter < 10; iter++) {
+    for (int iter = 0; iter < 100; iter++) {
         total += str_str(haystack, (int64_t)N, needle, (int64_t)M);
     }
     printf("%lld\n", (long long)total);
