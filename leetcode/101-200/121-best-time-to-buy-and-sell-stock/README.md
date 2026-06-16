@@ -76,7 +76,7 @@ The honest comparison is at equal safety. Kāra checks integer overflow by defau
 | Run | Mean ± σ |
 |---|---|
 | `kara one_pass` (codegen) | 14.3 ± 0.1 ms |
-| `rust one_pass` | 14.3 ± 1.8 ms |
+| `rust one_pass` (`-O`, wraps) | 13.7 ± 0.1 ms |
 | `py one_pass` | 520.3 ± 2.0 ms |
 
 Python is **~36× slower** than Kāra codegen on this workload — the per-iteration overhead of CPython bytecode dispatch dominates everything else when the body is two integer compares.
