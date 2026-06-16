@@ -104,11 +104,43 @@ build_go_seq() {
     fi
 }
 
+# Par-lane comparators — hand-tuned parallelism vs Kāra auto-par. Each
+# parallelizes the SAME K=10M outer atoi reduction by hand.
+build_rayon() {
+    local out="target/atoi_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f "rayon/target/release/atoi_rayon" "$out"
+    fi
+}
+build_go_par() {
+    local out="target/atoi_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime).
+build_c_par() {
+    local out="target/atoi_c_par"
+    local src="atoi_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust     atoi.rs
 build_c        atoi.c
 build_kara     atoi.kara
 build_kara_seq atoi.kara
 build_go_seq
+build_rayon
+build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at K=10M the py
@@ -121,7 +153,10 @@ for pair in \
     'kara_seq:./target/atoi_kara_seq' \
     'rust:./target/atoi' \
     'c:./target/atoi_c' \
-    'go:./target/atoi_go_seq'; do
+    'go:./target/atoi_go_seq' \
+    'rayon:./target/atoi_rayon' \
+    'go_par:./target/atoi_go_par' \
+    'c_par:./target/atoi_c_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -177,6 +212,12 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach atoi --lane par --mode codegen \
     --name 'kara atoi (auto-par default)' --cmd './target/atoi_kara'
+rt_cmd --lang c --approach atoi --lane par --mode native \
+    --name 'c    atoi (pthreads — metal floor)' --cmd './target/atoi_c_par'
+rt_cmd --lang rust --approach atoi --lane par --mode native \
+    --name 'rust atoi (rayon par_iter)' --cmd './target/atoi_rayon'
+rt_cmd --lang go --approach atoi --lane par --mode native \
+    --name 'go   atoi (goroutines + WaitGroup)' --cmd './target/atoi_go_par'
 rt_end
 
 echo
@@ -205,6 +246,9 @@ echo
 echo "=== binary size ==="
 size_put --lang kara --approach atoi --lane seq --mode codegen --path target/atoi_kara_seq
 size_put --lang kara --approach atoi --lane par --mode codegen --path target/atoi_kara
+size_put --lang c    --approach atoi --lane par --mode native  --path target/atoi_c_par
+size_put --lang rust --approach atoi --lane par --mode native  --path target/atoi_rayon
+size_put --lang go   --approach atoi --lane par --mode native  --path target/atoi_go_par
 size_put --lang rust --approach atoi --lane seq --mode native  --path target/atoi
 size_put --lang c    --approach atoi --lane seq --mode native  --path target/atoi_c
 size_put --lang go   --approach atoi --lane seq --mode native  --path target/atoi_go_seq
@@ -213,6 +257,9 @@ echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach atoi --lane seq --mode codegen --bytes "$(mem_peak ./target/atoi_kara_seq)"
 mem_put --lang kara --approach atoi --lane par --mode codegen --bytes "$(mem_peak ./target/atoi_kara)"
+mem_put --lang c    --approach atoi --lane par --mode native  --bytes "$(mem_peak ./target/atoi_c_par)"
+mem_put --lang rust --approach atoi --lane par --mode native  --bytes "$(mem_peak ./target/atoi_rayon)"
+mem_put --lang go   --approach atoi --lane par --mode native  --bytes "$(mem_peak ./target/atoi_go_par)"
 mem_put --lang rust --approach atoi --lane seq --mode native  --bytes "$(mem_peak ./target/atoi)"
 mem_put --lang c    --approach atoi --lane seq --mode native  --bytes "$(mem_peak ./target/atoi_c)"
 mem_put --lang go   --approach atoi --lane seq --mode native  --bytes "$(mem_peak ./target/atoi_go_seq)"

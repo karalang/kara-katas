@@ -105,14 +105,17 @@ the headline chart in the **[README](README.md#parallel-lane--auto-par-vs-hand-t
 
 ![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.png)
 
-Five katas currently ship the full parallel comparator set (#1 two-sum, #204
-count-primes, #394 decode-string, #722 remove-comments, #125 valid-palindrome).
-Across them Kāra's auto-par lands in the same range as hand-tuned `rayon` —
-ahead on two, behind on three (by at most 1.45×), and edging the raw-pthreads C floor on two — for none of the engineering
-cost. Katas whose per-call work is too small for rayon/goroutine dispatch to win
-(parallelizing them by hand would *lose* to sequential) contribute only the
-intra-language auto-par speedup above and stay seq-only here. More points land
-automatically as parallel katas are added.
+**31 programs** now ship the full parallel comparator set. Across them Kāra's
+auto-par runs at a median **1.13× of hand-tuned `rayon`** (typically within
+~10–15%, with zero parallel source), is **faster than `rayon` outright on seven**
+(best #22 0.47×), wins against Go's goroutines on **24 of 31** (goroutine dispatch
+overhead swamps fine-grained reductions), and **edges or matches the raw-pthreads
+C floor on nine** of the allocation-heavy ones — for none of the engineering cost.
+A handful of string-/allocation-churn kernels trail both C and Go (worst #71
+simplify, ~8.8× of C); the chart shows them. Katas whose per-call work is too
+small for rayon/goroutine dispatch to win (parallelizing them by hand would
+*lose* to sequential) contribute only the intra-language auto-par speedup above
+and stay seq-only here. More points land automatically as parallel katas are added.
 
 ## Caveats
 

@@ -111,11 +111,43 @@ build_go_seq() {
     fi
 }
 
+# Par-lane comparators — hand-tuned parallelism vs Kāra auto-par. Each
+# parallelizes the SAME K=10M outer reduction by hand.
+build_rayon() {
+    local out="target/binary_search_partition_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f "rayon/target/release/binary_search_partition_rayon" "$out"
+    fi
+}
+build_go_par() {
+    local out="target/binary_search_partition_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime).
+build_c_par() {
+    local out="target/binary_search_partition_c_par"
+    local src="binary_search_partition_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust    binary_search_partition.rs
 build_c       binary_search_partition.c
 build_kara    binary_search_partition.kara
 build_kara_seq binary_search_partition.kara
 build_go_seq
+build_rayon
+build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at K=10M the py
@@ -130,7 +162,10 @@ for pair in \
     'kara_seq:./target/binary_search_partition_kara_seq' \
     'rust:./target/binary_search_partition' \
     'c:./target/binary_search_partition_c' \
-    'go:./target/binary_search_partition_go_seq'; do
+    'go:./target/binary_search_partition_go_seq' \
+    'rayon:./target/binary_search_partition_rayon' \
+    'go_par:./target/binary_search_partition_go_par' \
+    'c_par:./target/binary_search_partition_c_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -186,6 +221,12 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach binary_search_partition --lane par --mode codegen \
     --name 'kara binary_search_partition (auto-par default)' --cmd './target/binary_search_partition_kara'
+rt_cmd --lang c --approach binary_search_partition --lane par --mode native \
+    --name 'c    binary_search_partition (pthreads — metal floor)' --cmd './target/binary_search_partition_c_par'
+rt_cmd --lang rust --approach binary_search_partition --lane par --mode native \
+    --name 'rust binary_search_partition (rayon par_iter)' --cmd './target/binary_search_partition_rayon'
+rt_cmd --lang go --approach binary_search_partition --lane par --mode native \
+    --name 'go   binary_search_partition (goroutines + WaitGroup)' --cmd './target/binary_search_partition_go_par'
 rt_end
 
 echo
@@ -218,6 +259,9 @@ echo
 echo "=== binary size ==="
 size_put --lang kara --approach binary_search_partition --lane seq --mode codegen --path target/binary_search_partition_kara_seq
 size_put --lang kara --approach binary_search_partition --lane par --mode codegen --path target/binary_search_partition_kara
+size_put --lang c    --approach binary_search_partition --lane par --mode native  --path target/binary_search_partition_c_par
+size_put --lang rust --approach binary_search_partition --lane par --mode native  --path target/binary_search_partition_rayon
+size_put --lang go   --approach binary_search_partition --lane par --mode native  --path target/binary_search_partition_go_par
 size_put --lang rust --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition
 size_put --lang c    --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition_c
 size_put --lang go   --approach binary_search_partition --lane seq --mode native  --path target/binary_search_partition_go_seq
@@ -226,6 +270,9 @@ echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach binary_search_partition --lane seq --mode codegen --bytes "$(mem_peak ./target/binary_search_partition_kara_seq)"
 mem_put --lang kara --approach binary_search_partition --lane par --mode codegen --bytes "$(mem_peak ./target/binary_search_partition_kara)"
+mem_put --lang c    --approach binary_search_partition --lane par --mode native  --bytes "$(mem_peak ./target/binary_search_partition_c_par)"
+mem_put --lang rust --approach binary_search_partition --lane par --mode native  --bytes "$(mem_peak ./target/binary_search_partition_rayon)"
+mem_put --lang go   --approach binary_search_partition --lane par --mode native  --bytes "$(mem_peak ./target/binary_search_partition_go_par)"
 mem_put --lang rust --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition)"
 mem_put --lang c    --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition_c)"
 mem_put --lang go   --approach binary_search_partition --lane seq --mode native  --bytes "$(mem_peak ./target/binary_search_partition_go_seq)"

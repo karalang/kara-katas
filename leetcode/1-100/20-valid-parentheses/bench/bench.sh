@@ -121,11 +121,43 @@ build_go_seq() {
     fi
 }
 
+# Par-lane comparators — hand-tuned parallelism vs Kāra auto-par. Each
+# parallelizes the SAME K=500k outer count-reduction by hand.
+build_rayon() {
+    local out="target/${STEM}_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f "rayon/target/release/${STEM}_rayon" "$out"
+    fi
+}
+build_go_par() {
+    local out="target/${STEM}_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime).
+build_c_par() {
+    local out="target/${STEM}_c_par"
+    local src="${STEM}_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust     "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_kara_seq "${STEM}.kara"
 build_go_seq
+build_rayon
+build_go_par
+build_c_par
 
 # Sink agreement — every compiled mirror's stdout must be byte-identical
 # before timing. K=500_000: corrupt fires on k%7==0 (⌈500000/7⌉ = 71429
@@ -137,7 +169,10 @@ for pair in \
     "kara_seq:./target/${STEM}_kara_seq" \
     "rust:./target/${STEM}" \
     "c:./target/${STEM}_c" \
-    "go:./target/${STEM}_go_seq"; do
+    "go:./target/${STEM}_go_seq" \
+    "rayon:./target/${STEM}_rayon" \
+    "go_par:./target/${STEM}_go_par" \
+    "c_par:./target/${STEM}_c_par"; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -185,6 +220,12 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach valid_parentheses --lane par --mode codegen \
     --name "kara ${STEM} (auto-par default)" --cmd "./target/${STEM}_kara"
+rt_cmd --lang c --approach valid_parentheses --lane par --mode native \
+    --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
+rt_cmd --lang rust --approach valid_parentheses --lane par --mode native \
+    --name "rust ${STEM} (rayon par_iter)" --cmd "./target/${STEM}_rayon"
+rt_cmd --lang go --approach valid_parentheses --lane par --mode native \
+    --name "go   ${STEM} (goroutines + WaitGroup)" --cmd "./target/${STEM}_go_par"
 rt_end
 
 echo
@@ -215,6 +256,9 @@ echo
 echo "=== binary size ==="
 size_put --lang kara --approach valid_parentheses --lane seq --mode codegen --path "target/${STEM}_kara_seq"
 size_put --lang kara --approach valid_parentheses --lane par --mode codegen --path "target/${STEM}_kara"
+size_put --lang c    --approach valid_parentheses --lane par --mode native  --path "target/${STEM}_c_par"
+size_put --lang rust --approach valid_parentheses --lane par --mode native  --path "target/${STEM}_rayon"
+size_put --lang go   --approach valid_parentheses --lane par --mode native  --path "target/${STEM}_go_par"
 size_put --lang rust --approach valid_parentheses --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach valid_parentheses --lane seq --mode native  --path "target/${STEM}_c"
 size_put --lang go   --approach valid_parentheses --lane seq --mode native  --path "target/${STEM}_go_seq"
@@ -223,6 +267,9 @@ echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach valid_parentheses --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara_seq)"
 mem_put --lang kara --approach valid_parentheses --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang c    --approach valid_parentheses --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_c_par)"
+mem_put --lang rust --approach valid_parentheses --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_rayon)"
+mem_put --lang go   --approach valid_parentheses --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_go_par)"
 mem_put --lang rust --approach valid_parentheses --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
 mem_put --lang c    --approach valid_parentheses --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
 mem_put --lang go   --approach valid_parentheses --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"

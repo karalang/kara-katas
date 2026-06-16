@@ -109,11 +109,43 @@ build_go_seq() {
     fi
 }
 
+# Par-lane comparators — hand-tuned parallelism vs Kāra auto-par. Each
+# parallelizes the SAME K=1M outer reduction by hand.
+build_rayon() {
+    local out="target/simplify_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f "rayon/target/release/simplify_rayon" "$out"
+    fi
+}
+build_go_par() {
+    local out="target/simplify_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+# C pthreads — the par-lane bare-metal FLOOR (raw OS threads, no runtime).
+build_c_par() {
+    local out="target/simplify_c_par"
+    local src="simplify_par.c"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling c-par (pthreads) ..." >&2
+        clang -O3 "$src" -o "$out" -lpthread
+    fi
+}
+
 build_rust     simplify.rs
 build_c        simplify.c
 build_kara     simplify.kara
 build_kara_seq simplify.kara
 build_go_seq
+build_rayon
+build_go_par
+build_c_par
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at K=1M the py
@@ -126,7 +158,10 @@ for pair in \
     'kara_seq:./target/simplify_kara_seq' \
     'rust:./target/simplify' \
     'c:./target/simplify_c' \
-    'go:./target/simplify_go_seq'; do
+    'go:./target/simplify_go_seq' \
+    'rayon:./target/simplify_rayon' \
+    'go_par:./target/simplify_go_par' \
+    'c_par:./target/simplify_c_par'; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -182,6 +217,12 @@ echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 rt_begin --warmup 10 --runs 50
 rt_cmd --lang kara --approach simplify --lane par --mode codegen \
     --name 'kara simplify (auto-par default)' --cmd './target/simplify_kara'
+rt_cmd --lang c --approach simplify --lane par --mode native \
+    --name 'c    simplify (pthreads — metal floor)' --cmd './target/simplify_c_par'
+rt_cmd --lang rust --approach simplify --lane par --mode native \
+    --name 'rust simplify (rayon par_iter)' --cmd './target/simplify_rayon'
+rt_cmd --lang go --approach simplify --lane par --mode native \
+    --name 'go   simplify (goroutines + WaitGroup)' --cmd './target/simplify_go_par'
 rt_end
 
 echo
@@ -210,6 +251,9 @@ echo
 echo "=== binary size ==="
 size_put --lang kara --approach simplify --lane seq --mode codegen --path target/simplify_kara_seq
 size_put --lang kara --approach simplify --lane par --mode codegen --path target/simplify_kara
+size_put --lang c    --approach simplify --lane par --mode native  --path target/simplify_c_par
+size_put --lang rust --approach simplify --lane par --mode native  --path target/simplify_rayon
+size_put --lang go   --approach simplify --lane par --mode native  --path target/simplify_go_par
 size_put --lang rust --approach simplify --lane seq --mode native  --path target/simplify
 size_put --lang c    --approach simplify --lane seq --mode native  --path target/simplify_c
 size_put --lang go   --approach simplify --lane seq --mode native  --path target/simplify_go_seq
@@ -218,6 +262,9 @@ echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach simplify --lane seq --mode codegen --bytes "$(mem_peak ./target/simplify_kara_seq)"
 mem_put --lang kara --approach simplify --lane par --mode codegen --bytes "$(mem_peak ./target/simplify_kara)"
+mem_put --lang c    --approach simplify --lane par --mode native  --bytes "$(mem_peak ./target/simplify_c_par)"
+mem_put --lang rust --approach simplify --lane par --mode native  --bytes "$(mem_peak ./target/simplify_rayon)"
+mem_put --lang go   --approach simplify --lane par --mode native  --bytes "$(mem_peak ./target/simplify_go_par)"
 mem_put --lang rust --approach simplify --lane seq --mode native  --bytes "$(mem_peak ./target/simplify)"
 mem_put --lang c    --approach simplify --lane seq --mode native  --bytes "$(mem_peak ./target/simplify_c)"
 mem_put --lang go   --approach simplify --lane seq --mode native  --bytes "$(mem_peak ./target/simplify_go_seq)"
