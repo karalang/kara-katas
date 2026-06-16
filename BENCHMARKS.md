@@ -23,7 +23,7 @@ READMEs and the JSON feed.
 Single-threaded, same algorithm everywhere. This is the load-bearing
 per-core compiler-quality comparison.
 
-![Runtime, sequential lane](graphs/runtime-seq.svg)
+![Runtime, sequential lane](graphs/runtime-seq.png)
 
 Kāra's cloud tracks C's closely and straddles the Rust baseline depending on the
 workload — ahead on allocation/RC- and string-heavy kernels, behind on a few
@@ -33,7 +33,7 @@ tight numeric loops. Go trails on most single-threaded work.
 
 Stripped native binary, on disk. Log scale, because Go is ~70× the others.
 
-![Binary size, sequential lane](graphs/binary-seq.svg)
+![Binary size, sequential lane](graphs/binary-seq.png)
 
 Kāra emits C-sized binaries (~33 KiB) for most programs and rises to its
 ~285 KiB compute floor when it links the larger runtime surface (hash maps,
@@ -44,7 +44,7 @@ every binary.
 
 Peak RSS during execution.
 
-![Runtime peak memory, sequential lane](graphs/rss-seq.svg)
+![Runtime peak memory, sequential lane](graphs/rss-seq.png)
 
 Kāra, C, and Rust cluster at parity (~1.0×) — Kāra runs leak-free at native
 footprint. Go's GC heap pushes it to 2–8× depending on allocation pressure.
@@ -55,7 +55,7 @@ Wall-clock for a full cold compile of one file (artifact deleted first). Go is
 omitted: `go build` bundles module resolution + multi-package compile + link,
 which isn't comparable to a single-file compiler invocation.
 
-![Compile time, cold](graphs/compile-elapsed.svg)
+![Compile time, cold](graphs/compile-elapsed.png)
 
 Kāra's compiler is faster than `rustc -O` on every program here (~0.55–0.8×),
 sitting between clang (the LLVM single-file floor) and rustc.
@@ -64,7 +64,7 @@ sitting between clang (the LLVM single-file floor) and rustc.
 
 Peak RSS of the compiler process. Go omitted for the same reason as above.
 
-![Compile peak memory, cold](graphs/compile-rss.svg)
+![Compile peak memory, cold](graphs/compile-rss.png)
 
 Kāra compiles in ~0.3× of rustc's peak memory — again between clang and rustc,
 with no algorithmic blowup.
@@ -76,7 +76,7 @@ no `rayon`, no goroutines, no thread plumbing, and no data-race risk, because th
 transform belongs to the compiler, not to you. This chart is *intra-Kāra*: the
 auto-par binary against the **exact same source** compiled sequentially.
 
-![Kāra auto-parallel speedup](graphs/autopar-speedup.svg)
+![Kāra auto-parallel speedup](graphs/autopar-speedup.png)
 
 This is the one place Kāra does something mainstream languages don't hand you for
 free — which also makes it the easiest chart to over-read, so read it carefully:
@@ -103,7 +103,7 @@ The *other* parallel comparison — Kāra auto-par (zero parallel source) vs Rus
 `rayon` vs Go goroutines vs a C-pthreads metal floor on the same workload — is
 the headline chart in the **[README](README.md#parallel-lane--auto-par-vs-hand-tuned)**:
 
-![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.svg)
+![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.png)
 
 Five katas currently ship the full parallel comparator set (#1 two-sum, #204
 count-primes, #394 decode-string, #722 remove-comments, #125 valid-palindrome).
