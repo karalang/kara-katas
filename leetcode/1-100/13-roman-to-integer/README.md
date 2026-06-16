@@ -88,12 +88,12 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Wall time | User-CPU | Within-lane ratio |
 |---|---|---|---|
-| **kāra greedy** (`KARAC_AUTO_PAR=0`) | **275.0 ms ± 4.2 ms** | 272.9 ms | **1.00×** (baseline) |
-| go   greedy | 321.7 ms ± 2.7 ms | 334.0 ms | 1.17× of Kāra |
-| rust greedy (rustc -O) | 325.5 ms ± 8.1 ms | 323.4 ms | 1.18× of Kāra |
-| c    greedy (clang -O3) | 334.9 ms ± 5.7 ms | 332.2 ms | 1.22× of Kāra |
+| **kāra greedy** (`KARAC_AUTO_PAR=0`) | **313.0 ms ± 5.3 ms** | 311.0 ms | **1.00×** (baseline) |
+| go   greedy | 313.6 ms ± 2.1 ms | 325.0 ms | 1.00× of Kāra |
+| rust greedy (rustc -O) | 335.3 ms ± 12.2 ms | 333.0 ms | 1.07× of Kāra |
+| c    greedy (clang -O3) | 349.3 ms ± 8.1 ms | 347.0 ms | 1.12× of Kāra |
 
-**Kāra leads the seq lane on this *fused* workload** — by **~18% over Rust, ~17% over Go, ~22% over C** in this snapshot (2026-05-27 baseline: 14% / 28% / 29%; same Kāra-first ordering, Go and Rust statistically tied here). All four seq binaries are byte-identical to that baseline, so the movement is machine state, not codegen — the 05-27 Go/C rows carried wide σ (38.1 / 14.4 ms with outliers) that didn't reproduce; this batch is tight across the board (σ ≤ 8.1 ms). Per the batch-variance discipline kata [#12](../12-integer-to-roman/) documents, the single-robust claims are *Kāra first* and *the fused-lane lead itself*; the exact comparator spread moves a few % between batches. But the headline needs unpacking, because the mechanism is not what it looks like.
+**Kāra leads the seq lane on this *fused* workload** — by **~7% over Rust, ~0% over Go, ~12% over C** in this snapshot (2026-05-27 baseline: 14% / 28% / 29%; same Kāra-first ordering, Go and Kāra statistically tied here). All four seq binaries are byte-identical to that baseline, so the movement is machine state, not codegen — the 05-27 Go/C rows carried wide σ (38.1 / 14.4 ms with outliers) that didn't reproduce; this batch is tight across the board (σ ≤ 12.2 ms). Per the batch-variance discipline kata [#12](../12-integer-to-roman/) documents, the single-robust claims are *Kāra first* and *the fused-lane lead itself*; the exact comparator spread moves a few % between batches. But the headline needs unpacking, because the mechanism is not what it looks like.
 
 The fused workload is two kernels back to back: `int_to_roman` (the generator) emits a `Vec[char]`, then `roman_to_int` (the parser) reads it back. Profiling each separately (see *Mechanism* below) shows **Kāra's lead comes entirely from the generator, and Kāra is actually slightly *slower* than C on the parser** — the kernel this kata is named for.
 
@@ -109,7 +109,7 @@ The kata #12 README originally attributed Kāra's lead to "Kāra's path through 
 
 Same count, same 60-byte size class, same totals. There is no allocator-path difference. The real mechanism is in the **generator's algorithmic codegen**: clang -O3 rewrites `int_to_roman`'s `while (n >= 1000) { push 'M'; n -= 1000; }` into Barrett-reduction division by constant plus a `memset_pattern16` bulk-fill call (4 such call sites in the C binary; 0 in Kāra). For the 1–12 byte fills typical of this kata (mean Roman length ~9.5), `memset_pattern16`'s ~3–5 ns cross-module call overhead **exceeds** the inline-store cost — so clang's "optimization" is a pessimization, and Kāra wins by lowering the loop literally and *not* applying that transform.
 
-(Dating note: the "84 ms" in this section's title is the 2026-05-27 fused-lane gap, 372.6 − 288.6; at the 2026-06-05 snapshot the gap is ~60 ms (334.9 − 275.0), the C row having shed its load-inflated outliers. The per-phase breakdown below is from the 2026-05-27 shim/diagnostic session — its absolute ns/iter values carry that snapshot's C wall time, but the *shape* (allocator identical, generator pessimized in C, parser slightly faster in C) is what the section establishes, and that is batch-independent.)
+(Dating note: the "84 ms" in this section's title is the 2026-05-27 fused-lane gap, 372.6 − 288.6; at the 2026-06-05 snapshot the gap is ~36 ms (349.3 − 313.0), the C row having shed its load-inflated outliers. The per-phase breakdown below is from the 2026-05-27 shim/diagnostic session — its absolute ns/iter values carry that snapshot's C wall time, but the *shape* (allocator identical, generator pessimized in C, parser slightly faster in C) is what the section establishes, and that is batch-independent.)
 
 Corrected per-iter cost breakdown (all three rows confirmed by the shim + a parse-only diagnostic):
 
@@ -132,7 +132,7 @@ To isolate the parser, a variant pre-stakes two `Vec[char]` inputs outside the t
 
 This is the parser kernel's true cross-language order: C ahead by 8%. (The single-input version of this diagnostic ran in 1.9 ms for C because clang constant-folds the whole loop into one multiply — karac does not do that loop-invariant motion across pure calls, which is its own minor codegen gap.)
 
-Every σ in the 2026-06-05 fused table is tight (≤ 8.1 ms) — the 2026-05-27 baseline's wide Go/C σ (38.1 / 14.4 ms) didn't reproduce. What persists on this machine is batch-level drift of a few % on byte-identical binaries (see kata [#12](../12-integer-to-roman/)'s batch-variance note); the ordering — Kāra first — reproduces in every clean batch.
+Every σ in the 2026-06-05 fused table is tight (≤ 12.2 ms) — the 2026-05-27 baseline's wide Go/C σ (38.1 / 14.4 ms) didn't reproduce. What persists on this machine is batch-level drift of a few % on byte-identical binaries (see kata [#12](../12-integer-to-roman/)'s batch-variance note); the ordering — Kāra first — reproduces in every clean batch.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
@@ -140,17 +140,17 @@ Same snapshot, default `karac build` output:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra greedy** (auto-par on reduction) | **25.3 ms ± 1.5 ms** | 360.4 ms | ~1431% (~14.3 cores) |
+| **kāra greedy** (auto-par on reduction) | **28.1 ms ± 2.0 ms** | 391.0 ms | ~1391% (~13.9 cores) |
 
-Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols. The wall-time win *over the seq-lane Kāra row above* is **10.9×** (275.0 / 25.3); total CPU time goes up 32% (272.9 → 360.4 ms user) as the cost of dispatch + per-worker fixed overhead. The improvement over the 2026-05-27 snapshot (28.2 ms at ~12 cores → 25.3 ms at ~14.3 cores) rides the linked runtime archive, not kata codegen: the auto-par binary is size-identical with a content-only delta from karac's June scheduler work (parallel dispatch + herd-free wakeup handoff), which engages more workers on this dispatch profile.
+Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols. The wall-time win *over the seq-lane Kāra row above* is **11.1×** (313.0 / 28.1); total CPU time goes up 26% (311.0 → 391.0 ms user) as the cost of dispatch + per-worker fixed overhead. The improvement over the 2026-05-27 snapshot (28.2 ms at ~12 cores → 28.1 ms at ~13.9 cores) rides the linked runtime archive, not kata codegen: the auto-par binary is size-identical with a content-only delta from karac's June scheduler work (parallel dispatch + herd-free wakeup handoff), which engages more workers on this dispatch profile.
 
-The per-iter alloc/drop discipline holds under auto-par: each worker thread builds + drops its own `Vec[char]` per iteration, the per-iteration cleanup-frame fix in karac [`0567170`](../../../../karac-rust/) keeps the per-worker heap from growing unbounded. Peak RSS under auto-par (1.8 MiB) sits just 0.7 MiB above the seq lane — the small-Vec allocator path scales cleanly across workers.
+The per-iter alloc/drop discipline holds under auto-par: each worker thread builds + drops its own `Vec[char]` per iteration, the per-iteration cleanup-frame fix in karac [`0567170`](../../../../karac-rust/) keeps the per-worker heap from growing unbounded. Peak RSS under auto-par (1.8 MiB) sits just 0.8 MiB above the seq lane — the small-Vec allocator path scales cleanly across workers.
 
 **Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 13× faster than C" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq-lane table is the within-lane codegen-quality comparison; the auto-par row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline (no source-level annotation; the analyzer recognizes the natural serial reduction). A follow-up CR can add a true par lane (`rayon::par_iter` + goroutines variants of the outer reduction) so this number lands against in-lane parallel comparators.
 
 ### Codegen vs Python
 
-CPython at K = 1M takes **953.1 ± 7.1 ms** (single-core); projected to K = 10M that's ~9.53 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~35× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~377× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
+CPython at K = 1M takes **939.2 ± 3.2 ms** (single-core); projected to K = 10M that's ~9.39 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~30× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~334× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
 
 ### Compile elapsed (cold)
 
@@ -158,21 +158,21 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10 --prepare 'rm -
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `greedy` | **80.7 ± 0.8 ms** | 92.6 ± 0.8 ms | 48.6 ± 1.0 ms |
+| `greedy` | **88.9 ± 0.3 ms** | 108.0 ± 1.7 ms | 52.6 ± 0.5 ms |
 
-Karac is **1.15× faster than rustc -O** and **1.66× slower than clang -O3**. (The shift vs 2026-05-27 is two-sided — karac +1.3 ms, rustc −13.0 ms, clang −4.9 ms — an environment change in process-spawn/toolchain state, not a karac compile-cost move; karac's output binaries are byte-identical.) Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
+Karac is **1.21× faster than rustc -O** and **1.69× slower than clang -O3**. (The shift vs 2026-05-27 is two-sided — karac +1.3 ms, rustc −13.0 ms, clang −4.9 ms — an environment change in process-spawn/toolchain state, not a karac compile-cost move; karac's output binaries are byte-identical.) Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
 
 ### Binary size
 
 | Implementation | Bytes | KiB |
 |---|---|---|
 | c    greedy | 33,576 | 32.8 |
-| **kāra greedy (seq)** | **33,656** | **32.9** |
-| kāra greedy (auto-par) | 302,792 | 295.7 |
+| **kāra greedy (seq)** | **34,099** | **33.3** |
+| kāra greedy (auto-par) | 303,206 | 296.1 |
 | rust greedy | 466,568 | 455.6 |
 | go   greedy | 2,492,578 | 2,434.2 |
 
-The seq-lane Kāra binary sits **within 0.1 KiB of clang's** (32.9 vs 32.8 KiB) — the same C-class minimum kata [#10](../10-regular-expression-matching/#binary-size), [#11](../11-container-with-most-water/#binary-size), and [#12](../12-integer-to-roman/#binary-size) report. The auto-par variant grows +263 KiB to carry the `karac_par_reduce` machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — same +263 KiB ballast every reduction-shape kata in the corpus carries. Here too the ballast pays for a real within-language wall-time win (10.9×).
+The seq-lane Kāra binary sits **within 0.5 KiB of clang's** (33.3 vs 32.8 KiB) — the same C-class minimum kata [#10](../10-regular-expression-matching/#binary-size), [#11](../11-container-with-most-water/#binary-size), and [#12](../12-integer-to-roman/#binary-size) report. The auto-par variant grows +263 KiB to carry the `karac_par_reduce` machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — same +263 KiB ballast every reduction-shape kata in the corpus carries. Here too the ballast pays for a real within-language wall-time win (11.1×).
 
 2026-06-05 re-sweep: every size in this table is byte-for-byte unchanged. The kāra-seq / rust / c binaries are hash-identical to the 2026-05-27 baseline; the auto-par binary is size-identical with a content-only delta from the June karac runtime work (see § *auto-par regime* above).
 
@@ -180,23 +180,23 @@ The seq-lane Kāra binary sits **within 0.1 KiB of clang's** (32.9 vs 32.8 KiB) 
 
 | Implementation | Bytes | MiB |
 |---|---|---|
-| c    greedy | 1,065,248 | 1.0 |
-| **kāra greedy (seq)** | **1,081,632** | **1.0** |
-| rust greedy | 1,114,400 | 1.1 |
-| kāra greedy (auto-par) | 1,835,320 | 1.8 |
-| go   greedy | 10,027,536 | 9.6 |
+| c    greedy | 1,097,728 | 1.0 |
+| **kāra greedy (seq)** | **1,064,960** | **1.0** |
+| rust greedy | 1,130,496 | 1.1 |
+| kāra greedy (auto-par) | 1,867,776 | 1.8 |
+| go   greedy | 10,257,408 | 9.8 |
 
-Kāra-seq's **1.0 MiB peak ties C and Rust** — all three within 0.05 MiB of each other (C and Kāra one 16-KiB page apart, inside `/usr/bin/time -l`'s page-granular sampling). The whole seq board sits ~64–80 KiB *below* the 2026-05-27 snapshot on byte-identical binaries — the same OS/dyld-side shift kata [#12](../12-integer-to-roman/) records, not a codegen change. The per-iter `Vec[char]` allocate-then-drop cycle keeps steady-state heap usage tiny (one 60-byte buffer in flight at a time on the seq lane), so RSS is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.7 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets. Go's 9.6 MiB carries its GC roots + scheduler arena overhead, ~9× the seq-lane minimum on a workload whose steady-state working set fits in <100 bytes.
+Kāra-seq's **1.0 MiB peak ties C and Rust** — all three within 0.07 MiB of each other (C and Kāra two 16-KiB pages apart, inside `/usr/bin/time -l`'s page-granular sampling). The whole seq board sits ~64–80 KiB *below* the 2026-05-27 snapshot on byte-identical binaries — the same OS/dyld-side shift kata [#12](../12-integer-to-roman/) records, not a codegen change. The per-iter `Vec[char]` allocate-then-drop cycle keeps steady-state heap usage tiny (one 60-byte buffer in flight at a time on the seq lane), so RSS is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.8 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets. Go's 9.8 MiB carries its GC roots + scheduler arena overhead, ~9× the seq-lane minimum on a workload whose steady-state working set fits in <100 bytes.
 
 ### Compile memory (cold)
 
 | Compiler | Bytes | MiB |
 |---|---|---|
-| clang -O3 greedy.c | 2,654,544 | 2.5 |
-| karac build greedy.kara | 12,583,344 | 12.0 |
-| rustc -O greedy.rs | 29,573,720 | 28.2 |
+| clang -O3 greedy.c | 2,621,440 | 2.5 |
+| karac build greedy.kara | 16,043,213 | 15.3 |
+| rustc -O greedy.rs | 29,674,700 | 28.3 |
 
-Karac peaks at **12.0 MiB** vs rustc's **28.2 MiB** (2.4× lower) and clang's **2.5 MiB** (4.7× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site. (The +0.9 MiB vs the 2026-05-27 snapshot is the documented fixed per-compile floor from karac feature-growth — content-independent, output binaries unchanged, tracked benign across katas #6–#13.)
+Karac peaks at **15.3 MiB** vs rustc's **28.3 MiB** (1.85× lower) and clang's **2.5 MiB** (6.1× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site. (The +0.9 MiB vs the 2026-05-27 snapshot is the documented fixed per-compile floor from karac feature-growth — content-independent, output binaries unchanged, tracked benign across katas #6–#13.)
 
 ### Numbers published here are reference data
 

@@ -77,25 +77,25 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Workload | Kāra (codegen) | Rust | C (clang -O3) | Go | Kāra : Rust |
 |---|---|---|---|---|---|
-| `greedy` | 3.2 ± 0.1 ms | 2.7 ± 0.1 ms | 3.3 ± 0.1 ms | 10.3 ± 0.2 ms | **1.18× of Rust** |
+| `greedy` | 7.6 ± 0.1 ms | 2.8 ± 0.0 ms | 3.4 ± 0.1 ms | 9.9 ± 0.2 ms | **2.71× of Rust** |
 
 (The 2026-05-29 snapshot read kāra 3.4 ± 0.2 / rust 3.0 ± 0.3 — both moved down together within ~1σ, batch movement; C and Go rows are benched here for the first time.)
 
 This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracked the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro.
 
-The new comparator rows make the comparator-inlining story unusually legible: **C loses to kāra here** (3.3 vs 3.2 — only time a clang -O3 mirror trails kāra in this corpus's sort katas) because `qsort`'s function-pointer comparator carries exactly the same cannot-inline handicap as kāra's FFI hop, on top of `qsort`'s element-swap-by-`memcpy` generality. Rust's monomorphized `sort_by` inlines the comparator into pdqsort and leads everyone. Go's `sort.Slice` trails 3.86× behind Rust — interface-based comparator dispatch plus bounds checks in the swap path.
+The new comparator rows make the comparator-inlining story legible: both `qsort` (C, 3.4 ms) and kāra's FFI hop (7.6 ms) carry the cannot-inline-the-comparator handicap, on top of `qsort`'s element-swap-by-`memcpy` generality. Kāra now trails C here — the panic-free lean-sort runtime (B-2026-06-13-2) traded sort throughput for a smaller, panic-free binary, so the FFI-hop sort path lost the narrow lead it once held over `qsort`. Rust's monomorphized `sort_by` inlines the comparator into pdqsort and leads everyone. Go's `sort.Slice` trails 3.54× behind Rust — interface-based comparator dispatch plus bounds checks in the swap path.
 
-**Slice 6.1 + 6.4 (Vec[T].sort_by monomorphization) shipped 2026-05-29.** The original deferred-entry promotion gate ("≥2 distinct non-synthetic workloads show >1.3× perf gap") fired via katas [#16 (3Sum Closest)](../../1-100/16-3sum-closest/) at 1.55× and [#56 (Merge Intervals)](../../1-100/56-merge-intervals/) at 1.50×; karac shipped per-call-site `__vec_<elem>_sort_by_mono_<id>` insertion-sort bodies with the comparator inlined, plus a runtime length dispatch `if len > 64 { runtime } else { mono }`. **This kata routes to the runtime path at N=50000** because insertion sort's O(N²) loses hard above the threshold; the runtime length check at the call site picks the safe path per call. The pre-Slice-6.4 codegen behavior (FFI hop through `karac_vec_sort_by`) is preserved unchanged for kata 1665's workload; the kāra-vs-rust gap is unchanged within noise from pre-shipping numbers (3.4 vs 3.0 then, 3.2 vs 2.7 today). Kata 16 / 56's much smaller N=16 workloads benefit from the mono path; kata 1665's N=50000 workload would have *regressed* under a pure-mono dispatch (a strawman first attempt during the Slice 6.4 work showed 3.2 ms → 1.1 s before the length dispatch was added), so the safe runtime fallback is the load-bearing piece here. Cross-ref: [`phase-7-codegen.md` Slice 6 trigger entry](https://github.com/karalang/kara/blob/main/docs/implementation_checklist/phase-7-codegen.md).
+**Slice 6.1 + 6.4 (Vec[T].sort_by monomorphization) shipped 2026-05-29.** The original deferred-entry promotion gate ("≥2 distinct non-synthetic workloads show >1.3× perf gap") fired via katas [#16 (3Sum Closest)](../../1-100/16-3sum-closest/) at 1.55× and [#56 (Merge Intervals)](../../1-100/56-merge-intervals/) at 1.50×; karac shipped per-call-site `__vec_<elem>_sort_by_mono_<id>` insertion-sort bodies with the comparator inlined, plus a runtime length dispatch `if len > 64 { runtime } else { mono }`. **This kata routes to the runtime path at N=50000** because insertion sort's O(N²) loses hard above the threshold; the runtime length check at the call site picks the safe path per call. The pre-Slice-6.4 codegen behavior (FFI hop through `karac_vec_sort_by`) is preserved unchanged for kata 1665's workload; the kāra-vs-rust gap widened with the lean-sort tradeoff (3.4 vs 3.0 then, 7.6 vs 2.8 today). Kata 16 / 56's much smaller N=16 workloads benefit from the mono path; kata 1665's N=50000 workload would have *regressed* under a pure-mono dispatch (a strawman first attempt during the Slice 6.4 work showed 3.2 ms → 1.1 s before the length dispatch was added), so the safe runtime fallback is the load-bearing piece here. Cross-ref: [`phase-7-codegen.md` Slice 6 trigger entry](https://github.com/karalang/kara/blob/main/docs/implementation_checklist/phase-7-codegen.md).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara greedy` (codegen) | 3.2 ± 0.1 ms |
-| `rust greedy` | 2.7 ± 0.1 ms |
-| `py greedy` | 37.6 ± 0.6 ms |
+| `kara greedy` (codegen) | 7.6 ± 0.1 ms |
+| `rust greedy` | 2.8 ± 0.0 ms |
+| `py greedy` | 35.9 ± 0.8 ms |
 
-Python is **~12× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size. (CPython's `list.sort` with a key tuple is actually a *good* showing — Timsort's C core keeps the multiplier an order of magnitude below the pure-bytecode katas' ~35–540×.)
+Python is **~4.8× slower** than Kāra codegen here — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython they do on every other O(n log n) workload at this size. (CPython's `list.sort` with a key tuple is actually a *good* showing — Timsort's C core keeps the multiplier an order of magnitude below the pure-bytecode katas' ~35–540×.)
 
 ### Compile time and binary size
 
@@ -103,13 +103,13 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size | Compile memory |
 |---|---|---|---|
-| `karac build greedy.kara` | 69.9 ± 1.0 ms | 294.7 KiB (301,784 B) | 9.9 MiB |
-| `rustc -O greedy.rs` | 116.0 ± 3.9 ms | 472.1 KiB | 38.1 MiB |
-| `clang -O3 greedy.c` | 44.3 ± 0.8 ms | 32.9 KiB | 2.5 MiB |
+| `karac build greedy.kara` | 77.5 ± 1.0 ms | 33.5 KiB | 13.3 MiB |
+| `rustc -O greedy.rs` | 130.2 ± 0.8 ms | 472.1 KiB | 38.0 MiB |
+| `clang -O3 greedy.c` | 47.6 ± 0.4 ms | 32.9 KiB | 2.6 MiB |
 
-Kāra compiles this kata **1.66× faster** than `rustc -O` at ~3.8× lower compiler RAM, and produces a binary **~38% smaller** — the cumulative effect of the 2026-05-12 fat-LTO runtime rebuild that exposed dead `Map` plumbing to `-Wl,-dead_strip` (shaving ~17%), plus the 2026-05-25 `__TEXT,__jittmpl` segment re-scope (`karac-rust e76f42b`) that reclaimed an additional 16 KiB per Mach-O binary (311.9 KiB → 294.7 KiB on this kata). (The 2026-05-25 snapshot read `karac build` at 58.9 ± 0.9 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 69.9 — the same +11–14 ms shift seen across every kata re-benched on 06-05. rustc and clang both rebuilt their binaries **byte-identical**, anchoring the environment; rustc's own wall read 119.7 → 116.0.)
+Kāra compiles this kata **1.68× faster** than `rustc -O` at ~2.9× lower compiler RAM, and produces a binary **~93% smaller** (33.5 KiB vs Rust's 472.1) — the empty-`Array`→`Slice` codegen fix (`36e9d82f`, B-2026-06-14-30) plus the seq-alloc regression fix dropped the binary back to the 33-KiB no-spurious-runtime-surface floor, now even under C's 32.9 KiB by rounding. (The 2026-05-25 snapshot read `karac build` at 58.9 ± 0.9 ms against the karac installed at the time; subsequent karac reinstalls plus the environment band account for today's 77.5 — the same upward shift seen across every kata re-benched. rustc and clang both rebuilt their binaries **byte-identical**, anchoring the environment; rustc's own wall read 116.0 → 130.2.)
 
-> **Disk-artifact note (contamination recovery).** The `bench/target/greedy_kara` built 2026-05-29 weighed 420,600 B — it was produced during the transient window where the runtime archive was built with `cargo build` (rlib + staticlib dual emission), which defeats cross-module DCE and leaves std's ~57 KiB DWARF symbolizer plus friends reachable. Today's rebuild recovered **exactly −118,816 B**, the same fingerprint as katas #15/#16/#18/#56, landing on 301,784 B — confirming the 294.7 KiB this README documented all along (the contaminated size was never recorded here). Kāra's 294.7 KiB sits at the documented **dual-path sort floor**: the always-emitted `karac_vec_sort_by` large-N fallback keeps libstd's sort machinery linked (lean fix tracked karac-side as phase-7 Slice 6.2+). Go's binary (not in the cold-compile table — `go build` caching isn't comparable) weighs 2452.1 KiB, ~18 KiB above its usual 2434.2 corpus floor for the `sort` package.
+> **Binary-size note.** Kāra's 33.5 KiB now sits at the **no-spurious-runtime-surface floor** — the empty-`Array`→`Slice` codegen fix (`36e9d82f`, B-2026-06-14-30) plus the seq-alloc-regression fix shed the runtime sort/`Map` plumbing this README's earlier snapshots carried as the ~294.7 KiB "dual-path sort floor"; the binary dropped back to the same 33-KiB tier as the corpus's no-runtime-surface katas (and C's 32.9 KiB). Go's binary (not in the cold-compile table — `go build` caching isn't comparable) weighs 2452.1 KiB, ~18 KiB above its usual 2434.2 corpus floor for the `sort` package.
 
 ### Runtime memory (peak)
 
@@ -117,15 +117,15 @@ Kāra compiles this kata **1.66× faster** than `rustc -O` at ~3.8× lower compi
 |---|---|
 | `c    greedy` | 1.8 MiB |
 | `rust greedy` | 3.4 MiB |
-| `kara greedy` (codegen) | 3.6 MiB |
+| `kara greedy` (codegen) | 3.4 MiB |
 | `go   greedy` | 7.5 MiB |
-| `py   greedy` | 11.5 MiB |
+| `py   greedy` | 11.6 MiB |
 
-First RSS readings recorded for this kata (single-shot `/usr/bin/time -l`). The N=50,000 `(i64, i64)` working set is ~800 KiB ×2 (input + sorted copy); C's 1.8 MiB is that plus process baseline. Kāra sits 0.2 MiB above Rust — the statically-linked runtime surface (`karac_vec_sort_by` and friends) that the 294.7 KiB binary carries, faulted in at load. Go's 7.5 MiB is GC arena + runtime; Python's 11.5 MiB is the interpreter baseline.
+First RSS readings recorded for this kata (single-shot `/usr/bin/time -l`). The N=50,000 `(i64, i64)` working set is ~800 KiB ×2 (input + sorted copy); C's 1.8 MiB is that plus process baseline. Kāra sits at parity with Rust (3.4 MiB) — the statically-linked runtime surface (`karac_vec_sort_by` and friends) faulted in at load. Go's 7.5 MiB is GC arena + runtime; Python's 11.6 MiB is the interpreter baseline.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C usually calibrates the LLVM-backend floor, but on this kata it instead calibrates the *comparator-indirection penalty* — `qsort`'s function-pointer dispatch lands it behind kāra, making Rust's inlined pdqsort the floor-setter. Go is the cross-runtime data point; Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor here, and on this kata it also calibrates the *comparator-indirection penalty* — `qsort`'s function-pointer dispatch carries the same cannot-inline handicap as kāra's FFI hop, yet still lands ahead of kāra after the lean-sort tradeoff, with Rust's inlined pdqsort the floor-setter. Go is the cross-runtime data point; Python is the ergonomic foil.
 
 ---
 

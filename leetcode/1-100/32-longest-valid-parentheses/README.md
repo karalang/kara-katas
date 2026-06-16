@@ -79,8 +79,8 @@ Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 | | C | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 198.4 ms | 308.9 ms | **326.8 ms** | 379.9 ms | 661.0 ms | 21444 ms |
-| vs Kāra | 1.65× faster | 1.06× faster | — | **1.16× slower (Kāra wins at = safety)** | 2.02× slower | 66× slower |
+| time | 196.9 ms | 309.4 ms | **318.9 ms** | 377.9 ms | 661.3 ms | 21027 ms |
+| vs Kāra | 1.62× faster | 1.03× faster | — | **1.19× slower (Kāra wins at = safety)** | 2.07× slower | 66× slower |
 
 **The allocation-*churn* middle ground between [#31](../31-next-permutation/) and
 [#43](../43-multiply-strings/).** #31 was pure in-place compute (no heap → Kāra
@@ -88,12 +88,12 @@ ties Rust/C). #43 was allocation-*growth* (a per-result `Vec` + a 14 MB output
 `String` → Kāra trailed 1.37× on the small-object path). #32 allocates a small
 stack **per call and frees it immediately** — churn, not growth — so the allocator
 hands back the same block and there is no sustained heap pressure. The result:
-**at equal overflow safety Kāra (326.8 ms) beats Rust (379.9 ms) by 1.16×.** Kāra
+**at equal overflow safety Kāra (318.9 ms) beats Rust (377.9 ms) by 1.19×.** Kāra
 traps on overflow by default (design.md § Arithmetic Overflow); the honest peer is
 `rustc -C overflow-checks=on`, and Kāra's checked codegen is *cheaper* here than
-Rust's (Rust's checks cost it 308.9 → 379.9 ms, +23 %; Kāra's land at 326.8). Only
-wrapping `rustc -O` edges ahead (1.06×), and C's no-GC stack-`malloc` floor is
-1.65× — the residual is the per-call allocation, present in every language but
+Rust's (Rust's checks cost it 309.4 → 377.9 ms, +22 %; Kāra's land at 318.9). Only
+wrapping `rustc -O` edges ahead (1.03×), and C's no-GC stack-`malloc` floor is
+1.62× — the residual is the per-call allocation, present in every language but
 cheapest in C.
 
 **No par lane — by construction.** Although each window is computed
@@ -108,23 +108,23 @@ story.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.08 MiB | 1.09 MiB | **1.03 MiB** | 10.0 MiB |
-| binary size (seq) | **49.6 KiB** | 456.0 KiB | 32.7 KiB | 2434.1 KiB |
-| compile elapsed | **76.3 ms** | 94.6 ms | 45.7 ms |
-| compile peak RSS | **13.5 MiB** | 26.8 MiB | 2.6 MiB |
+| **runtime peak RSS** | 1.05 MiB | 1.11 MiB | **1.03 MiB** | 9.84 MiB |
+| binary size (seq) | **33.3 KiB** | 456.0 KiB | 32.7 KiB | 2434.1 KiB |
+| compile elapsed | **75.9 ms** | 93.0 ms | 45.3 ms |
+| compile peak RSS | **13.3 MiB** | 26.7 MiB | 2.5 MiB |
 
 The churn-not-growth shape shows in memory too: 330K per-call allocations leave
-Kāra's runtime RSS (1.08 MiB) **tied with Rust** (1.09) and within rounding of C
+Kāra's runtime RSS (1.05 MiB) **tied with Rust** (1.11) and within rounding of C
 (1.03) — the allocator recycles the freed blocks, so there is no resident slack to
-surface (the opposite of #43, where holding a growing buffer surfaced 2.4× Rust's
-RSS). Go's GC heap is 10 MiB by contrast. The seq compute binary references no
-`String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to **49.6 KiB** —
-9.2× under Rust. Compile still favors Kāra over `rustc -O` on both elapsed and
+surface (the same flat-heap profile #43 now reaches once its RC-aliasing slack was
+fixed). Go's GC heap is 9.84 MiB by contrast. The seq compute binary references no
+`String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.3 KiB** —
+13.7× under Rust. Compile still favors Kāra over `rustc -O` on both elapsed and
 peak compiler RSS.
 
 **Where this lands.** A per-call short-lived-allocation kernel: Kāra ties Rust/C
-on memory, **beats Rust at equal overflow safety** (1.16×), trails only wrapping
-`rustc -O` (1.06×) and C's no-GC floor (1.65×). With #31 (no-alloc, tied) and #43
+on memory, **beats Rust at equal overflow safety** (1.19×), trails only wrapping
+`rustc -O` (1.03×) and C's no-GC floor (1.62×). With #31 (no-alloc, tied) and #43
 (alloc-growth, 1.37× behind), #32 completes the picture — Kāra's small-object
 residual bites only under *sustained* heap growth; transient per-call churn it
 handles at the systems-language floor.

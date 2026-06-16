@@ -67,12 +67,12 @@ Snapshot — M5 Pro, 2026-06-13, hyperfine `--warmup 5 --runs 30..40 --shell=non
 
 | Implementation | Wall time | User-CPU | Within-workload ratio |
 |---|---|---|---|
-| c    brute_force (clang -O3)     | **281 ms ± 2 ms**     | 279 ms  | 0.90× of Kāra |
-| rust brute_force (rustc -O)      | 283 ms ± 2 ms         | 281 ms  | 0.91× of Kāra |
-| go   brute_force                 | 284 ms ± 1 ms         | 282 ms  | 0.91× of Kāra |
-| **kāra brute_force (seq)**       | **312 ms ± 21 ms**    | 310 ms  | **1.00×** (baseline) |
+| c    brute_force (clang -O3)     | **282 ms ± 1 ms**     | 280 ms  | 0.87× of Kāra |
+| rust brute_force (rustc -O)      | 283 ms ± 1 ms         | 281 ms  | 0.87× of Kāra |
+| go   brute_force                 | 285 ms ± 1 ms         | 282 ms  | 0.88× of Kāra |
+| **kāra brute_force (seq)**       | **324 ms ± 28 ms**    | 322 ms  | **1.00×** (baseline) |
 
-Kāra ties the C/Rust/Go cluster at best-case (all ~280–283 ms — a trivial O(n²) loop every backend compiles identically) and runs ~1.05–1.10× behind on the *mean*. `two_sum` returns a stack `Array[i64, 2]` and allocates **nothing** (verified: zero allocator calls, one page fault, RSS 1.5 MB) — the small mean gap is the per-iteration overflow-check on the inner `nums[i] + nums[j]` add (Kāra's default trapping arithmetic; `wrapping_add` is the escape). The wide σ is **not** a Kāra characteristic: instruction count is identical every run (11.26 B), so the variance is P/E-core scheduling on the M5 Pro's hybrid chip (the min/max spread tracks the P-vs-E performance ratio), amplified here by concurrent build load. Take the min column as the load-immune signal.
+Kāra runs in the same band as the C/Rust/Go cluster (all ~282–285 ms) but ~1.15× behind on the *mean*. `two_sum` returns a stack `Array[i64, 2]` and allocates **nothing** (verified: zero allocator calls, one page fault, RSS 1.0 MB) — the small mean gap is the per-iteration overflow-check on the inner `nums[i] + nums[j]` add (Kāra's default trapping arithmetic; `wrapping_add` is the escape). The wide σ is **not** a Kāra characteristic: instruction count is identical every run (11.26 B), so the variance is P/E-core scheduling on the M5 Pro's hybrid chip (the min/max spread tracks the P-vs-E performance ratio), amplified here by concurrent build load. Take the min column as the load-immune signal.
 
 ### Runtime — par lane (auto-par vs hand-tuned vs metal floor)
 
@@ -80,12 +80,12 @@ brute_force only. The K=100 independent O(n²) calls are embarrassingly parallel
 
 | | parallel code written | wall time | total CPU |
 |---|---|---|---|
-| Rust + rayon | `rayon` crate + `.into_par_iter()` | 22.0 ms | 334 ms |
-| **Kāra (auto-par)** | **none** — compiler parallelized the `for _` reduction | **28.6 ms** | 399 ms |
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 47.6 ms | 342 ms |
-| Go goroutines | chunk + `sync.WaitGroup` + merge | 65.9 ms | 505 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 22.5 ms | 333 ms |
+| **Kāra (auto-par)** | **none** — compiler parallelized the `for _` reduction | **28.6 ms** | 394 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 51.1 ms | 342 ms |
+| Go goroutines | chunk + `sync.WaitGroup` + merge | 69.5 ms | 510 ms |
 
-**Kāra's auto-par beats the raw-pthreads metal floor (1.7×) and goroutines (2.3×) — second only to hand-tuned rayon (1.30× ahead) — with zero parallel source**, an ~11× speedup over its own seq binary (312 → 28.6 ms). As on #394's fine-grained workload, the C "floor" isn't the floor: per-process `pthread` spawn over 100 chunks loses to the pooled work-stealing schedulers (rayon, Kāra's `karac_par_reduce`). (Multi-core within the par lane; per [BENCH.md](../../../BENCH.md)'s two-lane discipline, *not* comparable to the single-thread seq rows above.)
+**Kāra's auto-par beats the raw-pthreads metal floor (1.8×) and goroutines (2.4×) — second only to hand-tuned rayon (1.27× ahead) — with zero parallel source**, an ~11× speedup over its own seq binary (324 → 28.6 ms). As on #394's fine-grained workload, the C "floor" isn't the floor: per-process `pthread` spawn over 100 chunks loses to the pooled work-stealing schedulers (rayon, Kāra's `karac_par_reduce`). (Multi-core within the par lane; per [BENCH.md](../../../BENCH.md)'s two-lane discipline, *not* comparable to the single-thread seq rows above.)
 
 **Buyer reframe.** The canonical "kata #1" — and Kāra parallelizes it for free: the speedup a Rust team buys with a crate + an API rewrite, a Go team with hand-rolled chunk/merge, and a C team with raw thread plumbing, Kāra emits from the same single-threaded source — out-running the C floor and goroutines. Colorless parallelism on the most-recognized interview problem there is.
 
@@ -93,10 +93,10 @@ brute_force only. The K=100 independent O(n²) calls are embarrassingly parallel
 
 | Implementation | Wall time | User-CPU | Within-workload ratio |
 |---|---|---|---|
-| c    hash_map (open-addressing)  | **1.1 ms ± 0.0 ms**   | 0.4 ms  | 0.79× of Kāra |
-| **kāra hash_map (codegen)**      | **1.4 ms ± 0.1 ms**   | 0.6 ms  | **1.00×** (baseline) |
-| rust hash_map (`HashMap`)        | 1.9 ms ± 0.1 ms       | 1.1 ms  | 1.36× of Kāra |
-| go   hash_map (`map[int64]int`)  | 2.3 ms ± 0.1 ms       | 1.3 ms  | 1.64× of Kāra |
+| c    hash_map (open-addressing)  | **1.4 ms ± 0.1 ms**   | 0.0 ms  | 0.80× of Kāra |
+| **kāra hash_map (codegen)**      | **1.7 ms ± 0.1 ms**   | 1.0 ms  | **1.00×** (baseline) |
+| rust hash_map (`HashMap`)        | 2.2 ms ± 0.1 ms       | 1.0 ms  | 1.27× of Kāra |
+| go   hash_map (`map[int64]int`)  | 2.6 ms ± 0.1 ms       | 1.0 ms  | 1.48× of Kāra |
 
 Kāra is **faster than Rust's `HashMap` and Go's `map`** here; the C row uses a workload-specific open-addressing table (no genuine "C hashmap" exists in libc), so it sits below by construction. The improvement vs the M1 snapshot (Kāra was at 1.4× of Rust) lines up with the Phase 4 monomorphization work — `Map[K, V]` no longer dispatches through erased function pointers when the key/value types are known at the call site — though disentangling that contribution from the M1→M5 hardware change would need a per-machine before/after. The headline number on M5 is what it is: Kāra-with-generic-Map beats Rust's `HashMap<i64, usize>` on this workload size.
 
@@ -108,12 +108,12 @@ Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`. These rows are kep
 
 | Run | Mean ± σ |
 |---|---|
-| `kara hash_map` (interp) | 12.54 s ± 0.11 s |
-| `py brute_force` (K=100) | 19.39 s ± 0.38 s |
+| `kara hash_map` (interp) | 4.87 s ± 0.02 s |
+| `py brute_force` (K=100) | 19.35 s ± 0.24 s |
 
-`karac run` re-runs the entire front-end every invocation (lex → parse → resolve → typecheck → effects → ownership) before tree-walking — the 12.5 s here is the pipeline rerun + tree-walk dispatch on every AST node, not the algorithm. `kara brute_force (interp)` is omitted at N=5000: tree-walk × 12.5 M comparisons takes a long time per run and doesn't add information beyond "tree-walk doesn't scale to N²." The interpreter-vs-codegen gap is **not** a Kāra-vs-X comparison — it's the cost of skipping `karac build`. Future work tracked in the [interpreter perf brainstorm](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
+`karac run` re-runs the entire front-end every invocation (lex → parse → resolve → typecheck → effects → ownership) before tree-walking — the 4.9 s here is the pipeline rerun + tree-walk dispatch on every AST node, not the algorithm. `kara brute_force (interp)` is omitted at N=5000: tree-walk × 12.5 M comparisons takes a long time per run and doesn't add information beyond "tree-walk doesn't scale to N²." The interpreter-vs-codegen gap is **not** a Kāra-vs-X comparison — it's the cost of skipping `karac build`. Future work tracked in the [interpreter perf brainstorm](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md).
 
-Python is **11× slower** than Kāra codegen on `hash_map` (15.5 ms vs 1.4 ms) and **~62× slower** on `brute_force` (19.4 s vs 312 ms seq, both at K=100) — the gap CPython opens against any compiled-with-codegen language at workload sizes that put algorithm time above interpreter-startup floors. (Against Kāra's *auto-par* brute_force at 28.6 ms, Python is ~680× slower.)
+Python is **9× slower** than Kāra codegen on `hash_map` (15.2 ms vs 1.7 ms) and **~64× slower** on `brute_force` (19.4 s vs 304 ms seq, both at K=100) — the gap CPython opens against any compiled-with-codegen language at workload sizes that put algorithm time above interpreter-startup floors. (Against Kāra's *auto-par* brute_force at 28.9 ms, Python is ~670× slower.)
 
 ### Compile elapsed (cold)
 
@@ -121,10 +121,10 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10 --shell=none` w
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `brute_force` | **54.6 ± 1.8 ms** | 79.5 ± 0.8 ms | 44.8 ± 0.5 ms |
-| `hash_map`    | **60.0 ± 2.6 ms** | 114.5 ± 2.0 ms | 41.9 ± 0.4 ms |
+| `brute_force` | **89.7 ± 0.4 ms** | 96.5 ± 1.6 ms | 54.0 ± 2.5 ms |
+| `hash_map`    | **89.9 ± 1.6 ms** | 140.2 ± 2.4 ms | 55.2 ± 1.0 ms |
 
-`karac build` is **1.46× faster than `rustc -O`** on `brute_force` and **1.91× faster** on `hash_map`, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
+`karac build` is **1.08× faster than `rustc -O`** on `brute_force` and **1.56× faster** on `hash_map`, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Both files compile fast and flat — no algorithmic blowup signature. Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
 ### Binary size
 
@@ -132,9 +132,9 @@ Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 1 --runs 10 --shell=none` w
 |---|---|
 | c    brute_force (seq / par) | 32.8 / 32.9 KiB |
 | c    hash_map    | 32.9 KiB |
-| kāra brute_force (seq)       | 32.8 KiB |
-| **kāra brute_force (par, auto-par)** | **505.4 KiB** |
-| kāra hash_map    | 278.6 KiB |
+| kāra brute_force (seq)       | 33.0 KiB |
+| **kāra brute_force (par, auto-par)** | **505.6 KiB** |
+| kāra hash_map    | 278.9 KiB |
 | rust brute_force (seq / par+rayon) | 455.4 / 453.0 KiB |
 | rust hash_map    | 457.0 KiB |
 | go   brute_force (seq / par) | 2434.1 / 2451.0 KiB |
@@ -151,28 +151,28 @@ The `kara brute_force (par)` binary is +473 KiB over the seq twin — the `karac
 | kāra brute_force (par, auto-par) | 2.9 MiB |
 | rust brute_force (seq / par) | 1.1 / 1.7 MiB |
 | c    hash_map | 1.3 MiB |
-| kāra hash_map (codegen) | 1.3 MiB |
+| kāra hash_map (codegen) | 1.2 MiB |
 | rust hash_map | 1.3 MiB |
-| go   brute_force | 3.0 MiB |
+| go   brute_force | 2.9 MiB |
 | go   hash_map | 4.4 MiB |
-| py   brute_force | 7.1 MiB |
-| py   hash_map | 7.2 MiB |
-| kāra hash_map (interp) | 19.8 MiB |
+| py   brute_force | 7.0 MiB |
+| py   hash_map | 7.1 MiB |
+| kāra hash_map (interp) | 18.6 MiB |
 
-Kāra, Rust, and C all sit at the same per-workload memory floor (~1 MiB for brute force, ~1.3 MiB for hash map) — the hashmap variants pay for the runtime hashtable. Go's baseline includes the runtime + GC; Python's includes the CPython interpreter. The `kara hash_map (interp)` row carries the `karac` binary itself (~7 MB with `--features llvm`) plus the AST/value heap karac walks at runtime — `karac run` is interpreter overhead + algorithm working set, not algorithm alone. The 14.6 → 19.8 MiB drift from the 2026-05-22 snapshot reflects added frontend state from the slice-shipping work that landed since (push_str arm + Vec.filled arm + the wider stdlib_seq enumeration).
+Kāra, Rust, and C all sit at the same per-workload memory floor (~1 MiB for brute force, ~1.3 MiB for hash map) — the hashmap variants pay for the runtime hashtable. Go's baseline includes the runtime + GC; Python's includes the CPython interpreter. The `kara hash_map (interp)` row carries the `karac` binary itself (~7 MB with `--features llvm`) plus the AST/value heap karac walks at runtime — `karac run` is interpreter overhead + algorithm working set, not algorithm alone. The 14.6 → 18.6 MiB drift from the 2026-05-22 snapshot reflects added frontend state from the slice-shipping work that landed since (push_str arm + Vec.filled arm + the wider stdlib_seq enumeration).
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 brute_force.c | 2.6 MiB |
-| clang -O3 hash_map.c    | 2.6 MiB |
-| karac build brute_force.kara | 8.9 MiB |
-| karac build hash_map.kara    | 8.9 MiB |
-| rustc -O brute_force.rs | 27.1 MiB |
-| rustc -O hash_map.rs    | 37.4 MiB |
+| clang -O3 hash_map.c    | 2.5 MiB |
+| karac build brute_force.kara | 13.0 MiB |
+| karac build hash_map.kara    | 13.3 MiB |
+| rustc -O brute_force.rs | 26.1 MiB |
+| rustc -O hash_map.rs    | 37.3 MiB |
 
-`karac` compiles both files in **~9 MiB peak** — between clang and rustc, with no algorithmic blowup signature (a 10× spike here is what catches frontend regressions like the 2026-05-12 `Array[T, N]` Maranget O(N²) fix). Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
+`karac` compiles both files in **~13 MiB peak** — between clang and rustc, with no algorithmic blowup signature (a 10× spike here is what catches frontend regressions like the 2026-05-12 `Array[T, N]` Maranget O(N²) fix). Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
 
 ### Why this kata is in the harness
 

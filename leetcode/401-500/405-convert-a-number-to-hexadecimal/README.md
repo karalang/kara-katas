@@ -84,8 +84,8 @@ construction). Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 | | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 17 ms | 50 ms | 208 ms | 214 ms | **271 ms** | 2058 ms |
-| vs Kāra | 15.9× faster | 5.4× faster | 1.31× faster | 1.27× faster | — | 7.6× slower |
+| time | 16 ms | 49 ms | 236 ms | 235 ms | **305 ms** | 2049 ms |
+| vs Kāra | 18.6× faster | 6.2× faster | 1.30× faster | 1.30× faster | — | 6.7× slower |
 
 **This kata did its job twice over: it found two real codegen gaps and drove
 both fixes.** The first run trailed Rust **2.7×** (596 ms) — allocation-bound, as
@@ -109,8 +109,8 @@ Rust's total alloc-ops), instructions **−16%**, **286 → 271 ms**, at **zero
 memory cost** (macOS malloc's 16-byte quantum makes a 4- and 8-byte request the
 same chunk).
 
-Where Kāra now lands: **1.31× `rustc -O`** (1.27× at equal overflow safety) and
-**16× the C floor**. The residual is the *other* per-render allocation — the
+Where Kāra now lands: **1.30× `rustc -O`** (1.30× at equal overflow safety) and
+**19× the C floor**. The residual is the *other* per-render allocation — the
 `String` that `to_hex` returns (Rust allocates it too) plus Rust's
 decade-hardened `String`/allocator codegen — plus C being the bare-metal floor
 that renders into a stack buffer and **never allocates per render at all** (so
@@ -122,11 +122,11 @@ nibble buffer — tracked, lower-yield now that the realloc count matches Rust.
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **78 ms** | 106 ms | 52 ms |
-| binary (seq) | **295 KiB** | 456 KiB | 33 KiB |
+| compile elapsed | **76 ms** | 103 ms | 50 ms |
+| binary (seq) | **279 KiB** | 456 KiB | 33 KiB |
 
-Kāra's cold compile (78 ms) beats `rustc -O` (106 ms), and emits a **295 KiB**
-binary — 1.5× smaller than Rust, 8× smaller than Go (2.4 MiB). Runtime peak RSS
+Kāra's cold compile (76 ms) beats `rustc -O` (103 ms), and emits a **279 KiB**
+binary — 1.6× smaller than Rust, 8× smaller than Go (2.4 MiB). Runtime peak RSS
 (**31.4 MiB**, *below* Rust's 33.5 MiB) is dominated by the ~30 MB concatenated
 output buffer — the per-render churn no longer inflates it now that the realloc
 count matches Rust.
@@ -134,7 +134,7 @@ count matches Rust.
 **Where this lands.** This is the kata's whole value: it stressed the allocator
 exactly the way a token-text-building lexer does, surfaced a genuine codegen
 inefficiency (the `push_str(s[a..b])` temp-allocation — also the self-hosted
-lexer's hot path), and **two** fixes that closed most of the gap (2.7× → 1.31×
+lexer's hot path), and **two** fixes that closed most of the gap (2.7× → 1.30×
 Rust: the slice-borrow view, then the String min-cap-8 floor) ship from that
 finding. The katas exist to find Kāra's gaps and fix them on the spot — not just
 to win lanes.

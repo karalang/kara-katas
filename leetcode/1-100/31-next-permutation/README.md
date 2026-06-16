@@ -84,8 +84,8 @@ construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 | | C | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 291.6 ms | 292.6 ms | **296.8 ms** | 298.0 ms | 324.7 ms | 16703 ms |
-| vs Kāra | 1.02× faster | 1.01× faster | — | **1.00× (Kāra 0.4 % faster)** | 1.09× slower | 56× slower |
+| time | 290.0 ms | 291.1 ms | **293.6 ms** | 296.4 ms | 322.3 ms | 16377 ms |
+| vs Kāra | 1.01× faster | 1.01× faster | — | **1.01× (Kāra 1.0 % faster)** | 1.10× slower | 56× slower |
 
 **The compute-bound counterpoint to [#43](../43-multiply-strings/).** Multiply
 Strings was allocation- *and* arithmetic-bound — a per-result `Vec[i64]` + a
@@ -94,9 +94,9 @@ put it at **1.37× Rust** at equal safety. Next Permutation removes both: the
 array lives in a fixed `Array[i64, 10]`, the algorithm steps it **in place**, and
 the only arithmetic is the bounded checksum (modulus `2^31 - 1`, nothing ever
 near an overflow). With no heap traffic and no real overflow-check pressure,
-**Kāra is dead even with Rust and C** — 296.8 ms vs Rust's 292.6 ms (`-O`, wrap)
-and C's 291.6 ms, both ~1.02×, and it actually **edges Rust at equal overflow
-safety** (296.8 vs 298.0 ms with `-C overflow-checks=on`). This is the honest
+**Kāra is dead even with Rust and C** — 293.6 ms vs Rust's 291.1 ms (`-O`, wrap)
+and C's 290.0 ms, both ~1.01×, and it actually **edges Rust at equal overflow
+safety** (293.6 vs 296.4 ms with `-C overflow-checks=on`). This is the honest
 flip side of #43: when the workload is pure in-place integer compute rather than
 small-object allocation, the residual Kāra carries elsewhere simply isn't there.
 
@@ -110,22 +110,22 @@ auto-par-on-reduction pass does not fire — verified here, the default and
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.05 MiB | 1.08 MiB | **1.00 MiB** | 2.89 MiB |
-| binary size (seq) | **49.4 KiB** | 455.4 KiB | 32.8 KiB | 2434.1 KiB |
-| compile elapsed | **77.5 ms** | 90.5 ms | 47.0 ms |
-| compile peak RSS | **13.2 MiB** | 25.9 MiB | 2.5 MiB |
+| **runtime peak RSS** | 1.03 MiB | 1.08 MiB | **1.00 MiB** | 2.86 MiB |
+| binary size (seq) | **33.1 KiB** | 455.4 KiB | 32.8 KiB | 2434.1 KiB |
+| compile elapsed | **77.9 ms** | 88.9 ms | 46.8 ms |
+| compile peak RSS | **13.5 MiB** | 26.0 MiB | 2.6 MiB |
 
-The no-allocation shape shows in memory too: Kāra's runtime RSS (1.05 MiB)
-**ties C and Rust** to within rounding — the opposite of #43, where holding a
-~14 MB product buffer surfaced the small-object slack as 2.4× Rust's RSS. With
+The no-allocation shape shows in memory too: Kāra's runtime RSS (1.03 MiB)
+**ties C and Rust** to within rounding — the same flat-heap profile #43 now also
+reaches on memory once its RC-aliasing slack was fixed. With
 nothing on the heap, there is no slack to surface.
 
-The binary is **49.4 KiB** — an order of magnitude under the ~295 KiB auto-par
-floor and 9.2× smaller than Rust's 455 KiB: this seq compute binary references no
+The binary is **33.1 KiB** — an order of magnitude under the ~295 KiB auto-par
+floor and 13.8× smaller than Rust's 455 KiB: this seq compute binary references no
 `String`/`Vec`/par-scheduler runtime symbol, so LTO + `-dead_strip` carve nearly
-the whole runtime away (only ~1.5× C's 33 KiB remains). Compile still favors
-Kāra over `rustc -O` on both elapsed (77.5 vs 90.5 ms) and peak compiler RSS
-(13.2 vs 25.9 MiB).
+the whole runtime away (within 0.3 KiB of C's 32.8 KiB). Compile still favors
+Kāra over `rustc -O` on both elapsed (77.9 vs 88.9 ms) and peak compiler RSS
+(13.5 vs 26.0 MiB).
 
 **Where this lands.** A pure in-place integer-compute kernel: Kāra ties Rust and
 C on runtime (and edges checked-Rust), ties them on memory, and wins on binary

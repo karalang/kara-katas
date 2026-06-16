@@ -72,12 +72,12 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 2 --runs 10 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra decode_ways**         | **365.0 ms ± 4.6 ms** | 362.0 ms | 99% |
-| rust decode_ways (rustc -O)  | **357.9 ms ± 9.1 ms** | 354.9 ms | 99% |
-| c    decode_ways (clang -O3) | **407.7 ms ± 4.0 ms** | 404.7 ms | 99% |
-| go   decode_ways             | **470.6 ms ± 16.6 ms** | 466.8 ms | 99% |
+| **kāra decode_ways**         | **379.8 ms ± 0.9 ms** | 377.0 ms | 99% |
+| rust decode_ways (rustc -O)  | **354.5 ms ± 8.1 ms** | 352.0 ms | 99% |
+| c    decode_ways (clang -O3) | **400.5 ms ± 3.0 ms** | 398.0 ms | 99% |
+| go   decode_ways             | **455.3 ms ± 14.9 ms** | 453.0 ms | 99% |
 
-Kāra matches rustc-O within combined σ and runs ~1.12× faster than `clang -O3`. (The 2026-05-22 snapshot read kāra 381.1 / rust 381.7 / c 427.5 / go 490.3 — all four moved down 4–6% together in the 06-05 batch on **byte-identical binaries**, including the kāra one, which the May-30 karac rebuilt to the same sha256; the kāra/rust order flip within the parity band is noise.) Two consecutive karac codegen fixes closed the gap from the initial 501 ms (1.35× rust) snapshot:
+Kāra matches rustc-O within combined σ and runs ~1.05× faster than `clang -O3`. (The 2026-05-22 snapshot read kāra 381.1 / rust 381.7 / c 427.5 / go 490.3 — all four moved down 4–6% together in the 06-05 batch on **byte-identical binaries**, including the kāra one, which the May-30 karac rebuilt to the same sha256; the kāra/rust order flip within the parity band is noise.) Two consecutive karac codegen fixes closed the gap from the initial 501 ms (1.35× rust) snapshot:
 
 1. Cast lowering (commit `5eac110`) — `(bytes[i] as i32)` for `bytes: Vec[u8]` was emitting `ldrsb`+`sxtb`+`and #0xff` where rust emitted a single `ldrb`. Inner-loop went 16 → 14 instructions, dropping the wall to 415 ms (1.13× rust).
 2. Auto-par cost-model (commit `1f3f498`) — `stmt_is_constant_init` was missing `ExprKind::ByteLit`, so `let zero: u8 = b'0';` mis-classified as non-constant pushed the prologue into a 4-branch `karac_par_run`. The captured `let l = 80` became an opaque load downstream, breaking LLVM's const-prop into `k % l` (lowered as `sdiv` instead of `umulh`-reciprocal). Removing the wasteful par-block recovered the final ~34 ms and stripped 263 KiB of par-machinery from the binary.
@@ -88,7 +88,7 @@ Kāra matches rustc-O within combined σ and runs ~1.12× faster than `clang -O3
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `decode_ways` | **66.1 ms ± 1.3 ms** | 74.6 ms ± 1.4 ms | 41.6 ms ± 1.1 ms |
+| `decode_ways` | **74.1 ms ± 0.6 ms** | 88.3 ms ± 1.7 ms | 44.4 ms ± 0.4 ms |
 
 Single-file invocations only — the Go module's `go build` mixes module resolution + std-lib link with codegen and is deliberately excluded per BENCH.md.
 
@@ -97,20 +97,20 @@ Single-file invocations only — the Go module's `go build` mixes module resolut
 | Implementation | Bytes | KiB |
 |---|---|---|
 | c    decode_ways  | 33,456 | 32.7 |
-| **kāra decode_ways** | **33,656** | **32.9** |
+| **kāra decode_ways** | **33,997** | **33.2** |
 | rust decode_ways  | 466,488 | 455.6 |
 | go   decode_ways  | 2,492,546 | 2,434.1 |
 
-Kāra is now within **~200 bytes of clang's binary** — basically at parity. (The 2026-06-05 re-bench reproduced every size in this table byte-for-byte, kāra's via a fresh rebuild under the May-30 karac.) Two consecutive karac fixes brought it down from the original 312 KiB: the auto-par cost-model fix (commit `1f3f498`) stripped 263 KiB of par-block machinery (per-branch trampolines + return-slot struct + cancel-check globals) when there's no actual par work to run, and the `__TEXT,__jittmpl` segment re-scope (commit `e76f42b`) reclaimed the final 16 KiB by parking the 4-byte JIT-template manifest inside `__TEXT` instead of a fresh page-aligned `__KARA` segment. Rust's 456 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection).
+Kāra is now within **~550 bytes of clang's binary** — basically at parity. (The 2026-06-05 re-bench reproduced every size in this table byte-for-byte, kāra's via a fresh rebuild under the May-30 karac.) Two consecutive karac fixes brought it down from the original 312 KiB: the auto-par cost-model fix (commit `1f3f498`) stripped 263 KiB of par-block machinery (per-branch trampolines + return-slot struct + cancel-check globals) when there's no actual par work to run, and the `__TEXT,__jittmpl` segment re-scope (commit `e76f42b`) reclaimed the final 16 KiB by parking the 4-byte JIT-template manifest inside `__TEXT` instead of a fresh page-aligned `__KARA` segment. Rust's 456 KiB and Go's 2.4 MiB both reflect their respective runtimes (GC, panic-unwind tables, reflection).
 
 ### Runtime memory (peak)
 
 | Implementation | Bytes | MiB |
 |---|---|---|
-| c    decode_ways  | 1,065,248 | 1.0 |
-| **kāra decode_ways** | **1,065,248** | **1.0** |
-| rust decode_ways  | 1,098,016 | 1.0 |
-| go   decode_ways  | 2,998,800 | 2.9 |
+| c    decode_ways  | 1,081,344 | 1.0 |
+| **kāra decode_ways** | **1,064,960** | **1.0** |
+| rust decode_ways  | 1,130,496 | 1.1 |
+| go   decode_ways  | 2,916,352 | 2.8 |
 
 A single 80-byte buffer + scalar accumulator; the algorithm itself is O(1) extra space. Kāra reads **byte-identical to the C mirror** in the 06-05 sample (the 05-22 sample had kāra two pages above C — single-shot `/usr/bin/time -l` readings are page-level noisy, and the whole table shifted down ~3–5 pages with the environment); either way kāra is at parity with the C mirror — the par-block-runtime overhead that pushed kāra to 1.5 MiB pre-fix (the runtime's worker-pool initialization + spawn-site registry) is no longer paid when there's no actual par work to run.
 
@@ -118,11 +118,11 @@ A single 80-byte buffer + scalar accumulator; the algorithm itself is O(1) extra
 
 | Compiler invocation | Bytes | MiB |
 |---|---|---|
-| `clang -O3 decode_ways.c`     | 2,654,520 | 2.5 |
-| **`karac build decode_ways.kara`** | **10,191,280** | **9.7** |
-| `rustc -O decode_ways.rs`     | 28,361,328 | 27.0 |
+| `clang -O3 decode_ways.c`     | 2,726,298 | 2.6 |
+| **`karac build decode_ways.kara`** | **13,736,346** | **13.1** |
+| `rustc -O decode_ways.rs`     | 28,311,552 | 27.0 |
 
-Kāra's compile-memory footprint is ~3.9× clang's and ~2.8× lower than rustc's on this kata. The 2026-05-25 5-sample re-measure (range 8.8–9.1 MiB, after the `__TEXT,__jittmpl` segment re-scope, karac `e76f42b`) read ~9.0 MiB; today's 9.7 MiB is the corpus-wide benign compile-mem floor band on the May-30 karac build (+0.7, same band every re-swept kata shows; the emitted binary is byte-identical, so it's compiler-internal footprint, not codegen). rustc held flat at 27.0.
+Kāra's compile-memory footprint is ~5.0× clang's and ~2.1× lower than rustc's on this kata. The 2026-05-25 5-sample re-measure (range 8.8–9.1 MiB, after the `__TEXT,__jittmpl` segment re-scope, karac `e76f42b`) read ~9.0 MiB; today's 9.7 MiB is the corpus-wide benign compile-mem floor band on the May-30 karac build (+0.7, same band every re-swept kata shows; the emitted binary is byte-identical, so it's compiler-internal footprint, not codegen). rustc held flat at 27.0.
 
 ### Numbers published here are reference data
 

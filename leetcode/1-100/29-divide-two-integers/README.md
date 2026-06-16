@@ -64,10 +64,10 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| rust bit_shift | 305.8 ± 1.8 ms | 1.03× ahead of kāra |
-| c    bit_shift (clang -O3) | 308.2 ± 1.0 ms | 1.02× ahead of kāra |
-| **kāra bit_shift (codegen)** | **316.0 ± 1.4 ms** | — |
-| go   bit_shift | 353.0 ± 1.9 ms | kāra 1.12× ahead of Go |
+| rust bit_shift | 305.5 ± 2.1 ms | 1.02× ahead of kāra |
+| c    bit_shift (clang -O3) | 308.6 ± 1.0 ms | 1.01× ahead of kāra |
+| **kāra bit_shift (codegen)** | **313.1 ± 1.1 ms** | — |
+| go   bit_shift | 353.4 ± 2.0 ms | kāra 1.13× ahead of Go |
 
 **Kāra is within ~3% of both Rust and C** on a branch-bound integer kernel — and this is *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow), which Rust's release build omits. There is no array indexing here, so unlike the array-compaction siblings ([#26](../26-remove-duplicates-from-sorted-array/README.md), [#27](../27-remove-element/README.md)) there is no bounds-check story; the only Kāra-specific cost is the overflow check on the loop body's `a − temp` / `result + multiple`. Those checks don't dominate because the data-dependent `while a >= (temp << 1)` compare and its mispredicts are the real bottleneck — the same regime for all four compilers, which is why they land within a hair of each other. The shifts themselves never trap.
 
@@ -75,11 +75,11 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ |
 |---|---|
-| `kara bit_shift` (codegen) | 316.0 ± 1.4 ms |
-| `rust bit_shift` | 305.8 ± 1.8 ms |
-| `py bit_shift` | 20676.4 ± 124.6 ms |
+| `kara bit_shift` (codegen) | 313.1 ± 1.1 ms |
+| `rust bit_shift` | 305.5 ± 2.1 ms |
+| `py bit_shift` | 20727.4 ± 44.2 ms |
 
-Python is **~65× slower** than Kāra codegen — per-call CPython bytecode dispatch over a nested loop of compares, shifts, and subtractions, 5M times over.
+Python is **~66× slower** than Kāra codegen — per-call CPython bytecode dispatch over a nested loop of compares, shifts, and subtractions, 5M times over.
 
 ### Compile time and binary size
 
@@ -87,12 +87,12 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build bit_shift.kara` | 66.1 ± 1.0 ms | 32.8 KiB |
-| `rustc -O bit_shift.rs` | 70.1 ± 1.2 ms | 455.4 KiB |
-| `clang -O3 bit_shift.c` | 38.9 ± 1.0 ms | 32.6 KiB |
+| `karac build bit_shift.kara` | 72.1 ± 0.8 ms | 33.0 KiB |
+| `rustc -O bit_shift.rs` | 80.9 ± 2.3 ms | 455.4 KiB |
+| `clang -O3 bit_shift.c` | 43.7 ± 0.2 ms | 32.6 KiB |
 | `go build` | — | 2434.1 KiB |
 
-Kāra compiles this kata **1.06× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within 144 bytes of C** (33,576 B vs 33,432 B; the delta is the overflow-trap landing pads). The workload reaches `println(i64)` and nothing else from the runtime — no `Vec`, no slice ops — so cross-archive LTO + DCE strips the runtime down to almost nothing, the same lean profile as kata [#27](../27-remove-element/README.md#compile-time-and-binary-size).
+Kāra compiles this kata **1.12× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within 336 bytes of C** (33,768 B vs 33,432 B; the delta is the overflow-trap landing pads). The workload reaches `println(i64)` and nothing else from the runtime — no `Vec`, no slice ops — so cross-archive LTO + DCE strips the runtime down to almost nothing, the same lean profile as kata [#27](../27-remove-element/README.md#compile-time-and-binary-size).
 
 ### Runtime memory (peak)
 
@@ -100,11 +100,11 @@ Kāra compiles this kata **1.06× faster** than `rustc -O` and produces a binary
 |---|---|
 | `kara bit_shift` (codegen) | 1.0 MiB |
 | `c    bit_shift` | 1.0 MiB |
-| `rust bit_shift` | 1.0 MiB |
-| `go   bit_shift` | 2.6 MiB |
+| `rust bit_shift` | 1.1 MiB |
+| `go   bit_shift` | 2.9 MiB |
 | `py bit_shift` | 6.8 MiB |
 
-**Byte-identical to C** (1,032,480 B each) — there is no heap working set at all, just two `i64` accumulators and the LCG state, so peak RSS is essentially the loaded image. Rust's +65 KiB is its larger static image; Go's +1.6 MiB is GC arena + runtime; Python's 6.8 MiB is the interpreter itself.
+**Within 16 KiB of C** (1,065,248 B vs 1,048,864 B) — there is no heap working set at all, just two `i64` accumulators and the LCG state, so peak RSS is essentially the loaded image. Rust's +65 KiB is its larger static image; Go's +1.9 MiB is GC arena + runtime; Python's 6.8 MiB is the interpreter itself.
 
 ### Why Rust is in the harness
 

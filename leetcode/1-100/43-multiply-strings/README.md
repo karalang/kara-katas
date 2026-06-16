@@ -89,8 +89,8 @@ auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
 
 | | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 92 ms | 239 ms | 188 ms | 225 ms | **309 ms** | 6943 ms |
-| vs Kāra | 3.3× faster | 1.29× faster | 1.64× faster | 1.37× faster | — | 22.5× slower |
+| time | 91 ms | 234 ms | 197 ms | 233 ms | **269 ms** | 6927 ms |
+| vs Kāra | 2.97× faster | 1.15× faster | 1.37× faster | 1.16× faster | — | 25.7× slower |
 
 **The arithmetic-bound counterpoint to [#415](../../401-500/415-add-strings/).**
 Add-strings was allocation-bound — the overflow-safety tax was ~0 (`-C
@@ -98,14 +98,14 @@ overflow-checks=on` moved Rust only 181→184 ms) and Kāra tied Rust at equal
 safety. The multiply **grid** flips that: each product does ~380 `d1·d2` partial
 products + carry redistributions (m·n, not m+n), so the work is genuinely
 arithmetic-heavy, and the overflow-safety tax is now **real** — `-C
-overflow-checks=on` costs Rust **188 → 225 ms (+19 %)**. Kāra traps on overflow by
+overflow-checks=on` costs Rust **197 → 233 ms (+18 %)**. Kāra traps on overflow by
 default (design.md § Arithmetic Overflow); `rustc -O` silently wraps, so the
-188 ms figure is apples-to-oranges. **At equal overflow safety Kāra is 1.37× Rust**
-(309 vs 225 ms) — the residual is the same small-object-allocation + codegen gap
+197 ms figure is apples-to-oranges. **At equal overflow safety Kāra is 1.16× Rust**
+(269 vs 233 ms) — the residual is the same small-object-allocation + codegen gap
 the radix-render katas name ([#405](../../401-500/405-convert-a-number-to-hexadecimal/)'s
 `~1.4×`, [phase-7-codegen.md](../../../../kara/docs/implementation_checklist/phase-7-codegen.md)),
 here riding on top of the grid's per-result `Vec[i64]` allocation. C is the
-no-heap floor (3.3×): it renders into a stack buffer and never allocates per
+no-heap floor (2.97×): it renders into a stack buffer and never allocates per
 result; Kāra/Rust/Go all build a `String`.
 
 **No par lane — by construction (like its add-sibling #415).** This is a string
@@ -120,21 +120,19 @@ inner double loop *is* compute-dense, but it feeds one shared accumulator.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 38.8 MiB | **16.4 MiB** | 1.0 MiB | 50.6 MiB |
+| **runtime peak RSS** | **15.9 MiB** | 16.3 MiB | 1.0 MiB | 48.3 MiB |
 | binary size (seq) | **295 KiB** | 456 KiB | 33 KiB | 2434 KiB |
-| compile elapsed | **93 ms** | 122 ms | 57 ms |
+| compile elapsed | **92 ms** | 119 ms | 55 ms |
 
 Same shape as #415's memory counterpoint: both hold the ~14 MB product buffer,
-but Kāra's `String`/`Vec` growth carries more slack per object (the
-small-object-allocation overhead, [phase-7-codegen.md](../../../../kara/docs/implementation_checklist/phase-7-codegen.md))
-— **2.4× Rust's RSS** (38.8 vs 16.4 MiB). It is the same residual the equal-safety
-runtime gap names, surfacing in memory. Compile still favors Kāra — cold compile
-93 ms edges `rustc -O` (122 ms), and the 295 KiB binary is 1.5× smaller than
+and Kāra's `String`/`Vec` growth now tracks Rust's almost exactly
+— **0.97× Rust's RSS** (15.9 vs 16.3 MiB), a hair *under*. Compile still favors Kāra — cold compile
+92 ms edges `rustc -O` (119 ms), and the 295 KiB binary is 1.5× smaller than
 Rust's 456 KiB (and 8× smaller than Go's 2.4 MiB).
 
-**Where this lands.** An arithmetic-bound digit grid: Kāra trails Rust 1.37× at
-equal overflow safety (vs the 1.64× wrap-vs-trap headline) and 2.4× on memory —
-both the small-object-allocation gap — while beating Rust on compile and binary.
+**Where this lands.** An arithmetic-bound digit grid: Kāra trails Rust 1.16× at
+equal overflow safety (vs the 1.37× wrap-vs-trap headline) while now **tying Rust on memory**
+(0.97×, a hair under) — the small-object-allocation gap shows only in runtime now — while beating Rust on compile and binary.
 The honest pairing with #415: the same render path, but moving the workload from
 allocation-bound (where Kāra ties) to arithmetic-bound (where the checked-arith +
 small-alloc residual shows) maps exactly where Kāra's codegen still has road left.

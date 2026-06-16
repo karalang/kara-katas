@@ -86,19 +86,19 @@ auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
 
 | | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 33 ms | 135 ms | 181 ms | 184 ms | **185 ms** | 1885 ms |
-| vs Kāra | 5.6× faster | 1.37× faster | 1.02× faster | ~tied (1.00×) | — | 10.2× slower |
+| time | 33 ms | 134 ms | 198 ms | 202 ms | **250 ms** | 1924 ms |
+| vs Kāra | 7.6× faster | 1.87× faster | 1.27× faster | 1.24× faster | — | 7.7× slower |
 
-**At equal overflow safety, Kāra is level with Rust.** Kāra traps on integer
+**At equal overflow safety, Kāra trails Rust by 1.24×.** Kāra traps on integer
 overflow by default (design.md § Arithmetic Overflow); `rustc -O` silently wraps.
-Here that costs almost nothing — `-C overflow-checks=on` moves Rust only 181 → 184
-ms (+1.4 %) — because the work is **allocation-bound, not arithmetic-bound**: the
+Here that costs almost nothing — `-C overflow-checks=on` moves Rust only 198 → 202
+ms (+2 %) — because the work is **allocation-bound, not arithmetic-bound**: the
 column add is a stream of single-digit sums that never overflow, so the trap
-branches are free. At that equal-safety point Kāra and Rust are within σ (185 vs
-184 ms). The `DIGITS[d..d+1]` render rides the same now-truly-zero-copy
+branches are free. At that equal-safety point Kāra sits 1.24× behind Rust (250 vs
+202 ms). The `DIGITS[d..d+1]` render rides the same now-truly-zero-copy
 `push_str`-borrow path (karac `08ae0140`) that #722 remove-comments and #405
 convert-to-hex measured — appended through a `{ptr, len, cap: 0}` view, no temp
-per digit. C is the bare-metal floor (5.6×): it renders into a stack buffer and
+per digit. C is the bare-metal floor (7.6×): it renders into a stack buffer and
 **never allocates per result at all**, so the gap is "Kāra/Rust build a `String`;
 C doesn't," not the same task.
 
@@ -115,23 +115,24 @@ accumulate-into-one-buffer render, like #415 and #405, is sequential.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 38 MiB | **20 MiB** | 1 MiB | 56 MiB |
+| **runtime peak RSS** | 21 MiB | **21 MiB** | 1 MiB | 62 MiB |
 | binary size (seq) | **295 KiB** | 455 KiB | 33 KiB | 2434 KiB |
-| compile elapsed | **86 ms** | 114 ms | 53 ms |
+| compile elapsed | **86 ms** | 111 ms | 53 ms |
 
 The honest counterpoint to #722 (where Kāra was the memory floor): here Kāra's
-peak RSS is **~1.9× Rust's** (38 vs 20 MiB). Both hold the ~19 MB output buffer,
-but Kāra's `String`/`Vec` growth carries more slack per object — the
-**small-object-allocation overhead** tracked as a codegen optimization target
+peak RSS is **~at parity with Rust's** (21 vs 21 MiB). Both hold the ~19 MB output buffer,
+and the per-object slack that the
+**small-object-allocation overhead** target names
 ([`phase-7-codegen.md`](../../../../kara/docs/implementation_checklist/phase-7-codegen.md),
-the same residual #405's `~1.4×` gap names). It costs nothing in wall-clock here
-(Kāra still ties Rust) but it is real in memory, and this kata is positioned to
-show it. Compile still favors Kāra — cold compile 86 ms edges `rustc -O` (114 ms),
+the same residual #405's `~1.3×` gap names) no longer separates them on memory here. The
+wall-clock gap is **1.24× behind Rust** at equal overflow safety, surfacing the
+small-object-allocation cost in speed rather than memory on this run. Compile still
+favors Kāra — cold compile 86 ms edges `rustc -O` (111 ms),
 and the 295 KiB binary is 1.5× smaller than Rust's 455 KiB.
 
-**Where this lands.** A clean allocation-bound string-build: Kāra reaches Rust
-parity on speed at equal overflow safety, beats it on compile and binary, and
-trails it on memory — the small-object-allocation gap surfacing exactly where the
+**Where this lands.** A clean allocation-bound string-build: Kāra trails Rust by
+1.24× on speed at equal overflow safety, beats it on compile and binary, and sits
+at parity on memory — the small-object-allocation gap surfacing exactly where the
 workload is allocation-heavy. The render is the lexer's `from_str_radix`-inverse
 glyph path, on the hardened zero-copy slice.
 

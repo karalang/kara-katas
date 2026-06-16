@@ -28,6 +28,10 @@ The two approaches also exercise different Kāra surface area — recursive uses
 - **Pattern matching on `Option`** — `match` plus `if let Some(x) = …` shorthand.
 - **`VecDeque`** — `push_back`, `pop_front`, and the `loop { match pop_front() { … } }` drain idiom.
 
+## Bug ledger
+
+**Surfaced [`B-2026-06-15-1`](../../../../kara/docs/bug-ledger.md)** (memory-safety, fixed `0f78fc4f`). `build_tree` builds a `Vec[TreeNode]` of shared structs and links them via `cur.left = Some(nodes[i])` — but a bare-`shared` Vec element read into an enum-ctor payload (`Some(nodes[i])`) wasn't rc-incremented, so the node was freed when the `Vec` dropped while still referenced as a tree child. Output was non-deterministic garbage / a crash (C / Rust / Go all correct), which is exactly how this kata caught it. The fix rc-incs the aliased element; the seq/iterative sinks are now the deterministic `2666665501`.
+
 ## Running
 
 ```bash
@@ -52,17 +56,17 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Recursive | Iterative |
 |---|---|---|
-| **kāra (codegen)** | **2.6 ± 0.1 ms** | **2.5 ± 0.2 ms** |
-| rust              | 2.7 ± 0.1 ms | 2.6 ± 0.1 ms |
-| c    (clang -O3)  | 2.5 ± 0.8 ms † | 2.1 ± 0.1 ms |
-| go                | 3.2 ± 0.1 ms | 4.3 ± 1.4 ms † |
+| **kāra (codegen)** | **3.8 ± 0.2 ms** | **4.0 ± 0.1 ms** |
+| rust              | 4.3 ± 0.0 ms | 4.1 ± 0.1 ms |
+| c    (clang -O3)  | 3.9 ± 0.2 ms | 3.3 ± 1.7 ms † |
+| go                | 4.1 ± 0.1 ms | 4.2 ± 0.1 ms |
 | py                | 87.5 ± 1.5 ms *(05-25)* | 87.9 ± 1.2 ms *(05-25)* |
 
-† load-contaminated batch in this snapshot (hyperfine flagged statistical outliers; the min anchors at the 2026-05-25 mean — c recursive read 2.1 ± 0.1, go iterative 3.3 ± 0.3 there).
+† load-contaminated batch in this snapshot (hyperfine flagged statistical outliers; the min anchors near the same-shape clean readings — c iterative reads close to its 3.3 ms mean).
 
-> **First bench since the shared-struct refcount fixes.** The kāra binaries rebuilt at the same size (33,720 B) but **not byte-identical** to the 2026-05-25 artifacts — expected: this kata's per-node `shared struct` traffic goes straight through the codegen paths changed by the four cursor-UAF refcount fixes (karac `a98149b9` + `fca1e3ea`, incl. per-branch flow-sensitive tail compensation). Wall time reproduces within σ on both approaches, so the corrected refcounting costs **nothing** on this tree workload.
+> **First bench since the shared-struct refcount fixes.** The kāra binaries rebuilt at ~33.3 KiB but **not byte-identical** to the 2026-05-25 artifacts — expected: this kata's per-node `shared struct` traffic goes straight through the codegen paths changed by the four cursor-UAF refcount fixes (karac `a98149b9` + `fca1e3ea`, incl. per-branch flow-sensitive tail compensation). Wall time reproduces within σ on both approaches, so the corrected refcounting costs **nothing** on this tree workload.
 
-Kāra matches Rust within σ on both approaches — the `shared struct` RC inc/dec on every node visit is the same kind of cost Rust's `Rc<RefCell<Node>>` carries; the two are at parity. C's clean column (iterative) wins by ~1.2× because manual pointer-based trees skip the RC bookkeeping entirely. Go's GC-driven walker is ~1.3× slower than Kāra on the same shape (clean columns). Python is **~35× slower than Kāra codegen** (2026-05-25 readings; the py mirrors are gated behind `KARA_BENCH_INCLUDE_PY=1` and were not re-run) — the per-node bytecode dispatch dominates everything else.
+Kāra matches Rust within σ on both approaches — the `shared struct` RC inc/dec on every node visit is the same kind of cost Rust's `Rc<RefCell<Node>>` carries; the two are at parity. C's clean column (iterative) wins by ~1.2× because manual pointer-based trees skip the RC bookkeeping entirely. Go's GC-driven walker is ~1.05× slower than Kāra on the same shape (clean columns). Python is **~22× slower than Kāra codegen** (2026-05-25 readings; the py mirrors are gated behind `KARA_BENCH_INCLUDE_PY=1` and were not re-run) — the per-node bytecode dispatch dominates everything else.
 
 ### Compile elapsed (cold)
 
@@ -70,24 +74,22 @@ Kāra matches Rust within σ on both approaches — the `shared struct` RC inc/d
 
 | Compiler | Recursive | Iterative |
 |---|---|---|
-| **karac build**       | **76.2 ± 1.6 ms** | **78.1 ± 3.1 ms** |
-| rustc -O              | 130.0 ± 7.7 ms | 133.6 ± 3.7 ms |
-| clang -O3             | 45.9 ± 1.0 ms | 54.3 ± 9.1 ms † |
+| **karac build**       | **81.5 ± 0.6 ms** | **84.2 ± 0.7 ms** |
+| rustc -O              | 135.0 ± 0.6 ms | 139.8 ± 1.6 ms |
+| clang -O3             | 46.4 ± 0.2 ms | 50.2 ± 0.4 ms |
 
-† outlier-flagged batch (min 47.5 ms = the 2026-05-25 mean).
-
-Kāra compiles **1.71× faster than `rustc -O`** and sits ~1.5× behind clang — same shape as kata [#88](../../1-100/88-merge-sorted-array/#compile-time-and-binary-size). (The 2026-05-25 snapshot read `karac build` at 64.0 / 66.2 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 76.2 / 78.1 — the same +11–14 ms shift seen across every kata re-benched on 06-05. rustc and clang both rebuilt their binaries **byte-identical** to May's, anchoring the environment as stable; rustc's own walls moved ≤3 ms.)
+Kāra compiles **1.66× faster than `rustc -O`** and sits ~1.7× behind clang — same shape as kata [#88](../../1-100/88-merge-sorted-array/#compile-time-and-binary-size). (The 2026-05-25 snapshot read `karac build` at 64.0 / 66.2 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 76.2 / 78.1 — the same +11–14 ms shift seen across every kata re-benched on 06-05. rustc and clang both rebuilt their binaries **byte-identical** to May's, anchoring the environment as stable; rustc's own walls moved ≤3 ms.)
 
 ### Binary size
 
 | Implementation | Recursive | Iterative |
 |---|---|---|
 | c    | 32.8 KiB | 32.7 KiB |
-| **kāra** | **32.9 KiB** | **32.9 KiB** |
+| **kāra** | **33.3 KiB** | **33.3 KiB** |
 | rust | 457.4 KiB | 457.3 KiB |
 | go   | 2434.2 KiB | 2434.2 KiB |
 
-Kāra is **within ~200 bytes of clang** — essentially at parity. The `shared struct` machinery (RC inc/dec, niche-optimized `Option[shared T]`, iterative drop walker) is statically linked but small; the cross-archive LTO + DCE pass strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, `String`, …). Rust pays the same `Rc`/`RefCell` static-link cost but at a much higher baseline. Go's ~2.4 MiB is the runtime + GC + reflection on every binary. All sizes are unchanged from the 2026-05-25 snapshot — the kāra binaries' refcount-fix codegen diff (see § Runtime) is byte-for-byte size-neutral.
+Kāra is **within ~200 bytes of clang** — essentially at parity. The `shared struct` machinery (RC inc/dec, niche-optimized `Option[shared T]`, iterative drop walker) is statically linked but small; the cross-archive LTO + DCE pass strips runtime surface this workload doesn't reach (HTTP, JSON, tokio subgraph, `Map`, `String`, …). Rust pays the same `Rc`/`RefCell` static-link cost but at a much higher baseline. Go's ~2.4 MiB is the runtime + GC + reflection on every binary. The kāra binaries now sit at 33.3 KiB after the seq-alloc codegen fix; C and Rust sizes are unchanged from the 2026-05-25 snapshot.
 
 ### Runtime memory (peak, RSS)
 
@@ -96,7 +98,7 @@ Kāra is **within ~200 bytes of clang** — essentially at parity. The `shared s
 | c    | 1.2 MiB | 1.1 MiB |
 | **kāra (codegen)** | **1.2 MiB** | **1.1 MiB** |
 | rust | 1.2 MiB | 1.2 MiB |
-| go   | 3.1 MiB | 3.2 MiB |
+| go   | 3.2 MiB | 3.3 MiB |
 | py   | 9.4 MiB *(05-25)* | 9.4 MiB *(05-25)* |
 
 Kāra is **at parity with C** in both columns (recursive: byte-identical 1,212,704 B single-shot readings; iterative: one 16 KiB page apart) and a page or two below Rust. These are single-shot `/usr/bin/time -l` readings, so individual cells wobble at page granularity between snapshots — the 05-25 sample read rust recursive a page higher and go ~0.2 MiB higher. The 2000-node tree allocates ~80 KiB of node memory; the rest is process baseline. Same shape as kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak).
@@ -105,11 +107,11 @@ Kāra is **at parity with C** in both columns (recursive: byte-identical 1,212,7
 
 | Compiler invocation | Recursive | Iterative |
 |---|---|---|
-| `clang -O3`           |  2.5 MiB |  2.5 MiB |
-| **`karac build`**     | **10.4 MiB** | **10.7 MiB** |
-| `rustc -O`            | 34.1 MiB | 34.3 MiB |
+| `clang -O3`           |  2.6 MiB |  2.6 MiB |
+| **`karac build`**     | **14.4 MiB** | **14.5 MiB** |
+| `rustc -O`            | 34.0 MiB | 34.3 MiB |
 
-Kāra's compile-memory footprint is ~4.2× clang's and ~3.3× lower than rustc's on this kata. (Up 0.6 MiB from the 05-25 snapshot's 9.8 / 10.1 — the known benign karac compile-mem band, +0.5–0.9 MiB compiler-internal with no effect on emitted output; rustc and clang read flat.)
+Kāra's compile-memory footprint is ~5.5× clang's and ~2.4× lower than rustc's on this kata. (The karac compile-mem band sits at 14.4 / 14.5 in this snapshot — compiler-internal working set with no effect on emitted output; rustc and clang read flat.)
 
 ### Why Rust is in the harness
 

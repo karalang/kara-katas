@@ -63,7 +63,7 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Workload.** M = 8 distinct test cases, each a `Vec[(i64, i64)]` of N = 16 intervals drawn from a deterministic 31-bit LCG: each interval is `(start, start + width)` where `start` is sampled from `[0, 50]` and `width` from `[1, 10]`. The bounded-width construction guarantees `start <= end` and produces a mix of overlapping / disjoint cases so the sweep does real merging work. Built once into a `Vec[Vec[(i64, i64)]]` before the timed loop. K = 1,000,000 outer iterations rotate `idx = k % M` and call `merge_intervals` on that case. Per call: a `Vec.from_slice` copy of N pairs, an O(N log N) sort by first tuple component, an O(N) sweep, and one `Vec[(i64, i64)]` output. The sink — the running total of every returned `Vec`'s `.len()` — is **3,000,000** across all five mirrors; bench.sh fails loudly on mismatch.
 
-Same M=8/N=16/K=1M shape as katas [#15](../15-3sum/) and [#16](../16-3sum-closest/), so cross-kata wall-time comparisons stay meaningful. The key difference: this kata sorts a **tuple-typed Vec**, not a `Vec[i64]`. Kata 15/16's `sort_by(|a, b| a.cmp(b))` on `Vec[i64]` hits karac's Slice 6.1 mono fast path (per-call-site `__vec_i64_sort_by_mono_<id>` emitted into the user binary); this kata's `sort_by(|a, b| a.0.cmp(b.0))` on `Vec[(i64, i64)]` originally did NOT — the mono gate was i64-elem-only in v1, which is the story § Sort-dispatch history tells. Post-Slice-6.4 the gate accepts integer tuples, so at N=16 every call takes the mono fast path; the `karac_vec_sort_by` runtime fallback stays linked for the `len > 64` branch (see § Binary size).
+Same M=8/N=16/K=1M shape as katas [#15](../15-3sum/) and [#16](../16-3sum-closest/), so cross-kata wall-time comparisons stay meaningful. The key difference: this kata sorts a **tuple-typed Vec**, not a `Vec[i64]`. Kata 15/16's `sort_by(|a, b| a.cmp(b))` on `Vec[i64]` hits karac's Slice 6.1 mono fast path (per-call-site `__vec_i64_sort_by_mono_<id>` emitted into the user binary); this kata's `sort_by(|a, b| a.0.cmp(b.0))` on `Vec[(i64, i64)]` originally did NOT — the mono gate was i64-elem-only in v1, which is the story § Sort-dispatch history tells. Post-Slice-6.4 the gate accepts integer tuples, so at N=16 every call takes the mono fast path; the `len > 64` runtime fallback now resolves to the lean non-panicking sort entry, so the seq binary collapses to the no-sort floor (see § Binary size).
 
 Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumulator is the slice-1 allow-list reduction shape, so `karac build` may emit a `karac_par_reduce` dispatch by default. The bench builds two kara binaries — `KARAC_AUTO_PAR=0` for the within-lane seq comparison, default for the auto-par regime — and reports them in separate tables per the two-lane discipline.
 
@@ -73,12 +73,12 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Implementation | Wall time |
 |---|---|
-| rust merge_intervals                  | **57.6 ± 1.3 ms** |
-| **kāra merge_intervals (seq)**        | **62.3 ± 1.9 ms** |
-| c    merge_intervals (clang -O3)      | 95.9 ± 0.8 ms |
-| go   merge_intervals                  | 410.6 ± 2.0 ms |
+| rust merge_intervals                  | **60.4 ± 1.3 ms** |
+| **kāra merge_intervals (seq)**        | **64.1 ± 1.3 ms** |
+| c    merge_intervals (clang -O3)      | 97.3 ± 1.0 ms |
+| go   merge_intervals                  | 403.4 ± 2.4 ms |
 
-Rust leads by **1.08×** over Kāra seq — well inside codegen-quality noise on a sort + sweep workload where both compilers now monomorphize the tuple-element comparator. **Kāra leads C by 1.54×** (was only 1.06× pre-fix); the qsort indirect-call penalty C carries is no longer offset on the Kāra side because Kāra no longer pays the equivalent runtime-callback cost on this N=16 workload. **Go trails by 6.59×**: `sort.Slice` still pays the per-compare closure indirect-call, and the `[]Interval` allocator has GC behind it that the manual-free mirrors don't carry. (Against the 2026-05-29 snapshot — rust 61.5 / kāra 65.0 / c 97.5 / go 421.9 — all four moved down 2–6% together; the rust and C binaries are byte-identical to that snapshot's, so this is batch conditions, and the 1.06× → 1.08× Rust ratio shift is noise.)
+Rust leads by **1.06×** over Kāra seq — well inside codegen-quality noise on a sort + sweep workload where both compilers now monomorphize the tuple-element comparator. **Kāra leads C by 1.52×** (was only 1.06× pre-fix); the qsort indirect-call penalty C carries is no longer offset on the Kāra side because Kāra no longer pays the equivalent runtime-callback cost on this N=16 workload. **Go trails by 6.29×**: `sort.Slice` still pays the per-compare closure indirect-call, and the `[]Interval` allocator has GC behind it that the manual-free mirrors don't carry. (Against the 2026-05-29 snapshot — rust 61.5 / kāra 65.0 / c 97.5 / go 421.9 — all four moved down 2–6% together; the rust and C binaries are byte-identical to that snapshot's, so this is batch conditions, and the 1.06× Rust ratio shift is noise.)
 
 #### Sort-dispatch history (kata 56 → karac Slice 6.4)
 
@@ -86,7 +86,7 @@ Rust leads by **1.08×** over Kāra seq — well inside codegen-quality noise on
 
 **Post-fix (Slice 6.4 of the Vec[T] monomorphization roadmap, karac commit see tracker entry):** karac now accepts integer-tuple and integer-field-struct element types in the `should_use_mono_vec_sort_by_for` gate. The mono emitter is parameterised over `elem_ty`: loads/stores/GEPs use the LLVM struct stride (16 bytes for `(i64, i64)`, 24 for `(i64, i64, i64)`, etc.); the closure body's `.0` / `.1` tuple-index access routes through `compile_expr`'s existing extract path; for named structs the caller plumbs the Kāra type name so `var_type_names` lookups for `.field_name` access work. Closes the kata 56 gap end-to-end. Same architecture as Slice 6.1's i64 path; same A/B-against-the-experiment validation.
 
-**Runtime length dispatch (also Slice 6.4):** call sites now emit BOTH the mono fast path AND a runtime-callback fallback, choosing per-call based on `if len > 64`. Insertion sort is O(N²) so it loses hard above ~N=64; without the dispatch, kata 1665's N=50000 workload would regress from 3.2 ms to 1.1 s. With the dispatch, kata 56 (N=16) takes the mono path each call (~62 ms total) and kata 1665 (N=50000) takes the runtime path each call (3.8 ms, matching its pre-Slice-6.4 baseline). Cost: the seq binary stays at ~295 KiB instead of collapsing to ~33 KiB the way kata 16's did under Slice 6.1's *pure-mono* dispatch — both branches at the call site mean `karac_vec_sort_by` stays linked, and its `slice::sort_by` reaches libstd's panic/backtrace machinery (~262 KiB) which survives `-dead_strip`. (The ~410 KiB figures earlier snapshots quoted included a further ~116 KiB of transient archive contamination — see § Binary size.) This applies to *every* dual-path sort call site post-Slice-6.4: kata 15/16/18 seq binaries sit at the same ~295 KiB today. A lean non-panicking large-N sort entry is tracked on the karac side (phase-7 Slice 6.2+, filed 2026-06-05); for now the wall-time win is the load-bearing result.
+**Runtime length dispatch (also Slice 6.4):** call sites now emit BOTH the mono fast path AND a runtime-callback fallback, choosing per-call based on `if len > 64`. Insertion sort is O(N²) so it loses hard above ~N=64; without the dispatch, kata 1665's N=50000 workload would regress from 3.2 ms to 1.1 s. With the dispatch, kata 56 (N=16) takes the mono path each call (~64 ms total) and kata 1665 (N=50000) takes the runtime path each call (3.8 ms, matching its pre-Slice-6.4 baseline). With the lean non-panicking large-N sort entry now landed, the seq binary collapses to ~33 KiB the way kata 16's did under Slice 6.1's *pure-mono* dispatch — the runtime fallback no longer drags `karac_vec_sort_by`'s `slice::sort_by` → libstd panic/backtrace machinery (~262 KiB) into the link, so `-dead_strip` carves it away. (The ~410 KiB figures earlier snapshots quoted included a further ~116 KiB of transient archive contamination — see § Binary size.) This applies to *every* dual-path sort call site: kata 15/16/18 seq binaries collapse to the same ~33 KiB floor today.
 
 ### Runtime — auto-par regime
 
@@ -94,17 +94,17 @@ The `sum = sum + r.len()` reduction is auto-par-eligible:
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra merge_intervals (auto-par default)** | **9.2 ± 0.8 ms** | 100.1 ms |
+| **kāra merge_intervals (auto-par default)** | **9.5 ± 0.8 ms** | 99.0 ms |
 
-The auto-par binary is **6.8× faster than the kāra seq binary** (62.3 → 9.2 ms), spreading the K=1M case-rotation reduction across the perf cores (~11× user-CPU-to-wall ratio on M5 Pro). Both lanes' absolute times dropped post-Slice-6.4 (seq 91.5 → ~62 ms, auto-par 10.7 → ~9 ms) — each worker runs the faster mono body — and the ratio compressed because the seq baseline dropped more.
+The auto-par binary is **6.7× faster than the kāra seq binary** (64.1 → 9.5 ms), spreading the K=1M case-rotation reduction across the perf cores (~10× user-CPU-to-wall ratio on M5 Pro). Both lanes' absolute times dropped post-Slice-6.4 (seq 91.5 → ~64 ms, auto-par 10.7 → ~9 ms) — each worker runs the faster mono body — and the ratio compressed because the seq baseline dropped more.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py merge_intervals` (K=100k) | 103.6 ± 0.8 ms |
+| `py merge_intervals` (K=100k) | 103.5 ± 0.6 ms |
 
-Python at K=100k is 104 ms; projecting to the compiled mirrors' K=1M (~1.04 s) puts it **~16.6× slower than kāra seq** (was ~11.5× pre-Slice-6.4, widened by Kāra's mono-path speedup). CPython's `sorted(key=lambda x: x[0])` is a C-implemented stable sort with the key extracted in interpreter code per element; the per-iteration overhead is amortized over the heavy per-call sort+sweep work.
+Python at K=100k is 104 ms; projecting to the compiled mirrors' K=1M (~1.04 s) puts it **~16.1× slower than kāra seq** (was ~11.5× pre-Slice-6.4, widened by Kāra's mono-path speedup). CPython's `sorted(key=lambda x: x[0])` is a C-implemented stable sort with the key extracted in interpreter code per element; the per-iteration overhead is amortized over the heavy per-call sort+sweep work.
 
 ### Compile elapsed (cold)
 
@@ -112,25 +112,25 @@ Python at K=100k is 104 ms; projecting to the compiled mirrors' K=1M (~1.04 s) p
 
 | Compiler | Time |
 |---|---|
-| clang -O3 merge_intervals.c           | **49.8 ± 0.6 ms** |
-| **karac build merge_intervals.kara**  | **77.4 ± 1.4 ms** |
-| rustc -O merge_intervals.rs           | 124.0 ± 1.1 ms |
+| clang -O3 merge_intervals.c           | **53.2 ± 0.6 ms** |
+| **karac build merge_intervals.kara**  | **85.5 ± 2.7 ms** |
+| rustc -O merge_intervals.rs           | 139.7 ± 1.1 ms |
 
-Kāra compiles **1.60× faster than `rustc -O`** and sits at **1.55× of clang -O3** — same shape as the rest of the corpus.
+Kāra compiles **1.63× faster than `rustc -O`** and sits at **1.61× of clang -O3** — same shape as the rest of the corpus.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    merge_intervals            | 32.8 KiB |
-| **kāra merge_intervals (seq)**  | **294.7 KiB** |
-| **kāra merge_intervals (auto-par)** | **312.0 KiB** |
+| **kāra merge_intervals (seq)**  | **33.5 KiB** |
+| **kāra merge_intervals (auto-par)** | **312.3 KiB** |
 | rust merge_intervals            | 473.0 KiB |
 | go   merge_intervals            | 2452.2 KiB |
 
 > **Correction (2026-06-05).** Earlier snapshots quoted kāra seq at 410.8 KiB and auto-par at 450.4 KiB. Those binaries were linked against a transiently contaminated runtime archive (an `rlib`+`staticlib` dual-emission build that defeated cross-module DCE — see [kata 15 § Binary size](../15-3sum/README.md) for the full breakdown). Rebuilt against the clean archive: **seq 420,608 → 301,792 B (−118,816 B)** — the same recovery delta as katas 15/16/18 — and **par 461,200 → 319,520 B (−141,680 B)**, landing both at the corpus-standard sort-kata sizes (15/16 seq 294.8, par 312.0 KiB).
 
-Kāra seq sits at **294.7 KiB** post-Slice-6.4 — the runtime length dispatch (described in § Sort-dispatch history) means the call site emits BOTH the mono fast path AND a `karac_vec_sort_by` fallback for `len > 64`, so the runtime archive's sort surface stays linked, and its `slice::sort_by` pulls libstd's panic/backtrace floor (~262 KiB over the ~33 KiB no-sort base). This is the same floor every dual-path sort kata pays today — kata 15/16/18 seq binaries are within a few hundred bytes of this one. The fallback is load-bearing because kata 1665's N=50000 workload needs the runtime path (mono insertion sort is O(N²)). Recovering the ~262 KiB with a lean non-panicking large-N sort entry is tracked on the karac side (phase-7 Slice 6.2+, filed 2026-06-05); the wall-time win is the load-bearing result for now. The auto-par binary adds the worker-pool dispatch (+17.3 KiB over seq) — it shares the same libstd floor rather than paying it twice.
+Kāra seq sits at **33.5 KiB** — within 0.7 KiB of C's 32.8 KiB no-sort base. With the lean non-panicking large-N sort entry landed, the seq call site's runtime-dispatch fallback no longer pulls `karac_vec_sort_by`'s `slice::sort_by` → libstd panic/backtrace floor (the ~262 KiB that earlier snapshots carried), so LTO + `-dead_strip` collapse the seq binary to the bare no-sort floor. The auto-par binary still carries the worker-pool dispatch + scheduler surface, landing at **312.3 KiB** — the +278.8 KiB over seq is the par-scheduler runtime, not a sort floor.
 
 ### Runtime memory (peak)
 
@@ -140,7 +140,7 @@ Kāra seq sits at **294.7 KiB** post-Slice-6.4 — the runtime length dispatch (
 | **kāra merge_intervals (seq)**  | **1.1 MiB** |
 | rust merge_intervals            | 1.1 MiB |
 | **kāra merge_intervals (auto-par)** | **2.1 MiB** |
-| go   merge_intervals            | 9.7 MiB |
+| go   merge_intervals            | 9.3 MiB |
 
 Kāra seq's peak RSS is within a page of Rust and a few pages of C (single-shot `/usr/bin/time -l` readings are page-level noisy) — the per-iter `Vec[(i64, i64)]` output is allocated and freed inside `merge_intervals` so steady state stays flat across K=1M. The auto-par regime's 2.1 MiB is the worker pool's per-thread scratch + partials.
 
@@ -149,11 +149,11 @@ Kāra seq's peak RSS is within a page of Rust and a few pages of C (single-shot 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 merge_intervals.c          | 2.5 MiB |
-| **karac build merge_intervals.kara** | **10.8 MiB** |
+| **karac build merge_intervals.kara** | **13.9 MiB** |
 | rustc -O merge_intervals.rs          | 39.5 MiB |
 
-Kāra's compile-memory footprint is ~4.3× clang's and ~3.7× lower than rustc's on this kata — same shape as the rest of the corpus.
+Kāra's compile-memory footprint is ~5.6× clang's and ~2.8× lower than rustc's on this kata — same shape as the rest of the corpus.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **Kāra/Rust 1.08× gap is the load-bearing result** — the kata's first ship at 1.50× was the natural-pull trigger for karac Slice 6.4, which extended Slice 6.1's i64 mono path to integer-tuple and integer-field-struct elements; the post-fix gap is within codegen-quality noise. Kāra now leads C by 1.54× on this kata (was only 1.06× pre-fix) because the qsort indirect-call penalty C carries is no longer offset on the Kāra side. The kata 1665 second witness (sort_by on `(i64, i64)` at N=50000) drove the runtime length dispatch (`if len > 64 { runtime } else { mono }`) — pure-mono insertion sort would have regressed kata 1665 from 3.2 ms to 1.1 s, so the dispatch is the correct safety net.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **Kāra/Rust 1.06× gap is the load-bearing result** — the kata's first ship at 1.50× was the natural-pull trigger for karac Slice 6.4, which extended Slice 6.1's i64 mono path to integer-tuple and integer-field-struct elements; the post-fix gap is within codegen-quality noise. Kāra now leads C by 1.52× on this kata (was only 1.06× pre-fix) because the qsort indirect-call penalty C carries is no longer offset on the Kāra side. The kata 1665 second witness (sort_by on `(i64, i64)` at N=50000) drove the runtime length dispatch (`if len > 64 { runtime } else { mono }`) — pure-mono insertion sort would have regressed kata 1665 from 3.2 ms to 1.1 s, so the dispatch is the correct safety net.

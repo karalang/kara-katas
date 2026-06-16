@@ -59,10 +59,10 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| rust two_pointer | 57.8 ± 1.4 ms | 1.07× ahead of kāra |
-| c    two_pointer (clang -O3) | 59.6 ± 1.5 ms | 1.04× ahead of kāra |
-| **kāra two_pointer (codegen)** | **61.7 ± 1.3 ms** | — |
-| go   two_pointer | 65.9 ± 0.9 ms | kāra 1.07× ahead of Go |
+| rust two_pointer | 54.6 ± 0.6 ms | 1.11× ahead of kāra |
+| c    two_pointer (clang -O3) | 56.0 ± 0.4 ms | 1.08× ahead of kāra |
+| **kāra two_pointer (codegen)** | **60.5 ± 0.5 ms** | — |
+| go   two_pointer | 62.5 ± 0.7 ms | kāra 1.03× ahead of Go |
 
 All four land within 14% of each other — this workload is mispredict-bound, not compute-bound. With keep/skip a coin flip, the ~50% mispredict rate on the conditional write costs ~10 cycles every other element, and that penalty is identical for every backend; what's left to differentiate on is per-iteration overhead. Kāra's 4 ms gap to C is the bounds-check tax on three data-dependent indexed accesses per element (`nums[i]`, `nums[k−1]`, `nums[k]` — `k` is data-dependent, so no frontend can prove the accesses in-range), and Rust pays the same checks yet edges out C here — conditional-store emission roulette, inside overlapping noise bands. Induction-variable bounds-check elision (tracked: [karac phase-7 § transitive bounds from induction-variable monotonicity](../../../../kara/docs/implementation_checklist/phase-7-codegen.md), promoted 2026-06-07 with this kata's bench as one of its two natural-pull triggers; rationale in the [v62 brainstorm archive](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md)) targets exactly this shape. Same regime as kata [#88](../88-merge-sorted-array/README.md#codegen-vs-rust-the-headline), with the branch made honest.
 
@@ -70,9 +70,9 @@ All four land within 14% of each other — this workload is mispredict-bound, no
 
 | Run | Mean ± σ |
 |---|---|
-| `kara two_pointer` (codegen) | 61.7 ± 1.3 ms |
-| `rust two_pointer` | 57.8 ± 1.4 ms |
-| `py two_pointer` | 917.9 ± 7.9 ms |
+| `kara two_pointer` (codegen) | 60.5 ± 0.5 ms |
+| `rust two_pointer` | 54.6 ± 0.6 ms |
+| `py two_pointer` | 884.1 ± 4.8 ms |
 
 Python is **~15× slower** than Kāra codegen — per-iteration CPython bytecode dispatch on a body of one compare, one conditional write, and an increment.
 
@@ -82,12 +82,12 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build two_pointer.kara` | 74.7 ± 3.2 ms | 33.0 KiB |
-| `rustc -O two_pointer.rs` | 85.6 ± 2.3 ms | 455.4 KiB |
-| `clang -O3 two_pointer.c` | 48.0 ± 1.7 ms | 32.8 KiB |
+| `karac build two_pointer.kara` | 74.4 ± 0.8 ms | 33.3 KiB |
+| `rustc -O two_pointer.rs` | 97.5 ± 1.6 ms | 455.4 KiB |
+| `clang -O3 two_pointer.c` | 48.7 ± 0.8 ms | 32.8 KiB |
 | `go build` | — | 2434.1 KiB |
 
-Kāra compiles this kata **1.15× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — and **within 184 bytes of C** (33,752 B vs 33,568 B). Same lean profile as kata [#88](../88-merge-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
+Kāra compiles this kata **1.31× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — and **within ~0.5 KiB of C** (33.3 vs 32.8 KiB). Same lean profile as kata [#88](../88-merge-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
 
 ### Runtime memory (peak)
 
@@ -96,10 +96,10 @@ Kāra compiles this kata **1.15× faster** than `rustc -O` and produces a binary
 | `kara two_pointer` (codegen) | 31.6 MiB |
 | `c    two_pointer` | 31.6 MiB |
 | `rust two_pointer` | 31.6 MiB |
-| `go   two_pointer` | 34.2 MiB |
-| `py two_pointer` | 98.7 MiB |
+| `go   two_pointer` | 34.5 MiB |
+| `py two_pointer` | 98.8 MiB |
 
-**Parity with C and Rust** — kāra's reading is byte-identical to C (33,128,760 B), Rust 32 KiB above. The working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.6 MiB is GC arena + runtime; Python's 98.7 MiB is per-element PyObject boxing. Same story as kata [#88](../88-merge-sorted-array/README.md#runtime-memory-peak).
+**Parity with C and Rust** — kāra's reading is byte-identical to C and Rust (33,161,216 B each). The working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.9 MiB is GC arena + runtime; Python's 98.8 MiB is per-element PyObject boxing. Same story as kata [#88](../88-merge-sorted-array/README.md#runtime-memory-peak).
 
 ### Why Rust is in the harness
 

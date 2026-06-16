@@ -92,14 +92,14 @@ Snapshot — M5 Pro, 2026-06-07, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Implementation | Wall time |
 |---|---|
-| go   iterative                     | 0.503 ± 0.004 s |
-| c    iterative (clang -O3)         | 0.666 ± 0.012 s |
-| **kāra iterative**                 | **0.874 ± 0.018 s** |
-| rust iterative                     | 0.977 ± 0.020 s |
+| go   iterative                     | 0.497 ± 0.006 s |
+| c    iterative (clang -O3)         | 0.562 ± 0.015 s |
+| **kāra iterative**                 | **0.798 ± 0.028 s** |
+| rust iterative                     | 0.855 ± 0.043 s |
 
 **Kāra leads Rust by 1.12×** and trails C by 1.31× and Go by 1.74×. Same cause structure as kata [#24](../24-swap-nodes-in-pairs/) (which read 1.23× / 1.12× / 1.56×), with the C gap widened by what this kata adds: the reversal unwraps-and-rewraps **every node** — a refcount acquire/release pair per step where kata 24's pair dance paid per-pair — and the probe pre-walk traverses each group a second time. Rust's `Rc<RefCell<ListNode>>` mirror pays the same per-step shape (an `Rc` clone plus `RefCell` borrow-flag traffic per reversal store), which is why Kāra still leads it; against C's bare pointer stores the soundness bookkeeping is pure overhead, and the gap grows with the per-node store count.
 
-**Go beats C again (1.32×, vs 1.39× in kata 24)** — pure alloc-churn is Go's best case: bump-allocated nodes from a contiguous arena, batch GC reclaim of each iteration's 100 dead nodes, where C/Kāra/Rust pay a `malloc`/`free` pair per node. The flip side is the 9.1 MiB GC arena in the memory table below — Kāra holds C-level RSS at a C-adjacent pace.
+**Go beats C again (1.32×, vs 1.39× in kata 24)** — pure alloc-churn is Go's best case: bump-allocated nodes from a contiguous arena, batch GC reclaim of each iteration's 100 dead nodes, where C/Kāra/Rust pay a `malloc`/`free` pair per node. The flip side is the 9.6 MiB GC arena in the memory table below — Kāra holds C-level RSS at a C-adjacent pace.
 
 > **Default (non-`KARAC_AUTO_PAR=0`) build:** karac's reduction-recognition auto-parallelizes the K-loop — 164.3 ± 24.6 ms wall / 2.52 s user on 18 cores, a **~5.3× wall win over seq** for a +262.8 KiB binary (295.8 KiB — the `karac_par_reduce` floor, same 302,856-byte binary as kata [#24](../24-swap-nodes-in-pairs/)'s default build). Per BENCH.md lane discipline the table above stays seq-lane; the par lane would need same-lane comparators (rayon / goroutine mirrors) before it can headline.
 
@@ -107,7 +107,7 @@ Snapshot — M5 Pro, 2026-06-07, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Run | Mean ± σ |
 |---|---|
-| `py iterative` (K=100k) | 1.123 ± 0.034 s |
+| `py iterative` (K=100k) | 1.106 ± 0.009 s |
 
 Python at K=100k is 1.12 s; projecting to the compiled mirrors' K=500k (~5.6 s) puts it **~6.4× slower than kāra seq** — same neighborhood as kata 24's 5.9×, for the same reason: the workload is almost pure object allocation and pointer stores, both of which CPython does in C, so there's no arithmetic inner loop for the bytecode interpreter to lose on.
 
@@ -117,9 +117,9 @@ Python at K=100k is 1.12 s; projecting to the compiled mirrors' K=500k (~5.6 s) 
 
 | Compiler | Time |
 |---|---|
-| clang -O3 iterative.c           | **41.1 ± 0.7 ms** |
-| **karac build iterative.kara**  | **78.6 ± 0.7 ms** |
-| rustc -O iterative.rs           | 105.2 ± 1.0 ms |
+| clang -O3 iterative.c           | **45.7 ± 0.5 ms** |
+| **karac build iterative.kara**  | **85.3 ± 0.7 ms** |
+| rustc -O iterative.rs           | 121.5 ± 1.6 ms |
 
 Kāra compiles **1.34× faster than `rustc -O`** and sits at **1.91× of clang -O3** — same shape as the rest of the corpus (kata 24: 1.27× / 1.84×).
 
@@ -128,7 +128,7 @@ Kāra compiles **1.34× faster than `rustc -O`** and sits at **1.91× of clang -
 | Implementation | Size |
 |---|---|
 | c    iterative                     | 32.7 KiB |
-| **kāra iterative**                 | **32.9 KiB** |
+| **kāra iterative**                 | **33.1 KiB** |
 | rust iterative                     | 456.1 KiB |
 | go   iterative                     | 2434.2 KiB |
 
@@ -138,22 +138,22 @@ Kāra's seq binary is **32.9 KiB — 208 bytes off C's** (33,720 vs 33,512 B), b
 
 | Implementation | Peak |
 |---|---|
-| **kāra iterative**                 | **1.0 MiB** |
-| c    iterative                     | 1.0 MiB |
-| rust iterative                     | 1.0 MiB |
-| go   iterative                     | 9.1 MiB |
+| **kāra iterative**                 | **1.2 MiB** |
+| c    iterative                     | 1.1 MiB |
+| rust iterative                     | 1.1 MiB |
+| go   iterative                     | 9.6 MiB |
 
-Kāra's single-shot reading (1,065,248 B) lands a page below C's (1,081,632 B) this batch — `/usr/bin/time -l` readings are page-level noisy, so the honest claim is parity. The per-iter list is allocated, group-reversed, and fully freed inside the loop; steady state stays flat across all 500,000 iterations — the same flat-RSS property the kata-24 fixes established, now under per-step alias churn. Go's 9.1 MiB is the GC arena that buys its wall-time lead above.
+Kāra's single-shot reading (1,065,248 B) lands a page below C's (1,081,632 B) this batch — `/usr/bin/time -l` readings are page-level noisy, so the honest claim is parity. The per-iter list is allocated, group-reversed, and fully freed inside the loop; steady state stays flat across all 500,000 iterations — the same flat-RSS property the kata-24 fixes established, now under per-step alias churn. Go's 9.6 MiB is the GC arena that buys its wall-time lead above.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 iterative.c          | 2.5 MiB |
-| **karac build iterative.kara** | **13.4 MiB** |
+| **karac build iterative.kara** | **14.5 MiB** |
 | rustc -O iterative.rs          | 31.4 MiB |
 
-Kāra's compile-memory footprint is ~5× clang's and ~2.3× below rustc's — corpus shape. The reading is ~0.5 MiB above kata 24's same-shape workload (12.9 MiB): karac itself grew between the two measurements (this kata's interpreter fix links `stacker` into the compiler binary), consistent with the known fixed-floor compile-mem drift — the emitted binary is unaffected (see Binary size above).
+Kāra's compile-memory footprint is ~5× clang's and ~2.3× below rustc's — corpus shape. The reading is ~0.8 MiB above kata 24's same-shape workload (13.7 MiB): karac itself grew between the two measurements (this kata's interpreter fix links `stacker` into the compiler binary), consistent with the known fixed-floor compile-mem drift — the emitted binary is unaffected (see Binary size above).
 
 ### Why Rust is in the harness
 

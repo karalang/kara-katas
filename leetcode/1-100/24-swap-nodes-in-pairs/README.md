@@ -87,14 +87,14 @@ Snapshot — M5 Pro, 2026-06-07, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Implementation | Wall time |
 |---|---|
-| go   iterative                     | 0.526 ± 0.015 s |
-| c    iterative (clang -O3)         | 0.734 ± 0.017 s |
-| **kāra iterative**                 | **0.819 ± 0.023 s** |
-| rust iterative                     | 1.005 ± 0.044 s |
+| go   iterative                     | 0.492 ± 0.004 s |
+| c    iterative (clang -O3)         | 0.569 ± 0.023 s |
+| **kāra iterative**                 | **0.700 ± 0.031 s** |
+| rust iterative                     | 0.814 ± 0.038 s |
 
 **Kāra leads Rust by 1.23×** and trails C by 1.12× and Go by 1.56×. Same causes as katas [#19](../19-remove-nth-node-from-end-of-list/)/[#21](../21-merge-two-sorted-lists/): Rust's reference-semantics list is `Rc<RefCell<ListNode>>`, whose per-node `Rc` + `RefCell` borrow-flag traffic — paid on every one of the three re-link stores per pair — is heavier than Kāra's plain RC header; against the manual-memory floor the order flips because the workload is allocator-bound (build + drop 100 nodes per iter) and Kāra's RC bookkeeping sits just behind C's bare `malloc`/`free`.
 
-**Go beats C here (1.39×)** — the most pronounced Go lead in the linked-list set (kata 21 read Go 1.08× over C). Pure alloc-churn is Go's best case: its bump allocator hands out nodes from a contiguous arena and the GC reclaims each iteration's 100 dead nodes in batch, where C (and Kāra, and Rust) pay a `malloc`/`free` pair per node. The flip side is the 9.7 MiB GC arena in the memory table below — Kāra holds C-level RSS at C-adjacent speed.
+**Go beats C here (1.39×)** — the most pronounced Go lead in the linked-list set (kata 21 read Go 1.08× over C). Pure alloc-churn is Go's best case: its bump allocator hands out nodes from a contiguous arena and the GC reclaims each iteration's 100 dead nodes in batch, where C (and Kāra, and Rust) pay a `malloc`/`free` pair per node. The flip side is the 9.2 MiB GC arena in the memory table below — Kāra holds C-level RSS at C-adjacent speed.
 
 > **Default (non-`KARAC_AUTO_PAR=0`) build:** karac's reduction-recognition auto-parallelizes the K-loop — 155.0 ± 26.2 ms wall / 2.20 s user on 18 cores, a **~5.3× wall win over seq** for a +262.8 KiB binary (295.8 KiB — 302,856 B, the `karac_par_reduce` floor; an earlier revision of this line divided by 1000 and read "302.9 KiB" — see [kata 16 § Binary size](../16-3sum-closest/README.md)). Per BENCH.md lane discipline the table above stays seq-lane; the par lane would need same-lane comparators (rayon / goroutine mirrors) before it can headline.
 
@@ -102,7 +102,7 @@ Snapshot — M5 Pro, 2026-06-07, `bench.sh` (hyperfine `--warmup 5 --runs 30 --s
 
 | Run | Mean ± σ |
 |---|---|
-| `py iterative` (K=100k) | 0.971 ± 0.007 s |
+| `py iterative` (K=100k) | 0.954 ± 0.056 s |
 
 Python at K=100k is 0.97 s; projecting to the compiled mirrors' K=500k (~4.85 s) puts it **~5.9× slower than kāra seq** — the narrowest Python gap in the linked-list set (kata 19/21 read ~10×), because the workload is almost pure object allocation and pointer stores, both of which CPython does in C; there is no arithmetic inner loop for the bytecode interpreter to lose on.
 
@@ -112,9 +112,9 @@ Python at K=100k is 0.97 s; projecting to the compiled mirrors' K=500k (~4.85 s)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 iterative.c           | **41.3 ± 1.1 ms** |
-| **karac build iterative.kara**  | **75.9 ± 1.4 ms** |
-| rustc -O iterative.rs           | 96.6 ± 3.0 ms |
+| clang -O3 iterative.c           | **44.9 ± 0.3 ms** |
+| **karac build iterative.kara**  | **79.9 ± 0.7 ms** |
+| rustc -O iterative.rs           | 110.2 ± 1.1 ms |
 
 Kāra compiles **1.27× faster than `rustc -O`** and sits at **1.84× of clang -O3** — same shape as the rest of the corpus (kata 21: 1.27× / 1.90×).
 
@@ -123,7 +123,7 @@ Kāra compiles **1.27× faster than `rustc -O`** and sits at **1.84× of clang -
 | Implementation | Size |
 |---|---|
 | c    iterative                     | 32.7 KiB |
-| **kāra iterative**                 | **32.9 KiB** |
+| **kāra iterative**                 | **33.1 KiB** |
 | rust iterative                     | 456.1 KiB |
 | go   iterative                     | 2434.1 KiB |
 
@@ -134,22 +134,22 @@ Kāra's seq binary is **32.9 KiB — 208 bytes off C's** (33,720 vs 33,512 B), a
 | Implementation | Peak |
 |---|---|
 | **kāra iterative**                 | **1.0 MiB** |
-| c    iterative                     | 1.0 MiB |
+| c    iterative                     | 1.1 MiB |
 | rust iterative                     | 1.1 MiB |
-| go   iterative                     | 9.7 MiB |
+| go   iterative                     | 9.2 MiB |
 
-Kāra's peak RSS reads **byte-identical to C** in this batch (1,081,632 B each — single-shot `/usr/bin/time -l` readings, page-level noisy, so the honest claim is parity within a couple of 16 KiB pages). The per-iter list is allocated, re-linked, and fully freed inside the loop; steady state stays flat across all 500,000 iterations — the flat-RSS property is exactly what the `break`-drain fix this kata drove is about. Go's 9.7 MiB is the GC arena that buys its wall-time lead above.
+Kāra's peak RSS reads **byte-identical to C** in this batch (1,081,632 B each — single-shot `/usr/bin/time -l` readings, page-level noisy, so the honest claim is parity within a couple of 16 KiB pages). The per-iter list is allocated, re-linked, and fully freed inside the loop; steady state stays flat across all 500,000 iterations — the flat-RSS property is exactly what the `break`-drain fix this kata drove is about. Go's 9.2 MiB is the GC arena that buys its wall-time lead above.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 iterative.c          | 2.6 MiB |
-| **karac build iterative.kara** | **12.9 MiB** |
+| clang -O3 iterative.c          | 2.5 MiB |
+| **karac build iterative.kara** | **13.7 MiB** |
 | rustc -O iterative.rs          | 30.0 MiB |
 
 Kāra's compile-memory footprint is ~5× clang's and ~2.3× below rustc's — same shape as the rest of the corpus.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound re-link kata **Kāra leads Rust by 1.23×** — the `Rc<RefCell>` tax is at its most visible when every pair costs three refcounted pointer stores — while holding C-level RSS and a C-level binary; Go's GC buys a 1.56× wall lead at 9.7× the memory.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound re-link kata **Kāra leads Rust by 1.23×** — the `Rc<RefCell>` tax is at its most visible when every pair costs three refcounted pointer stores — while holding C-level RSS and a C-level binary; Go's GC buys a 1.42× wall lead at 9.2× the memory.

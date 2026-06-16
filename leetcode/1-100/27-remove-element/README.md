@@ -59,12 +59,12 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| rust two_pointer | 54.3 ± 0.7 ms | 1.04× ahead of kāra |
+| rust two_pointer | 53.0 ± 0.7 ms | 1.06× ahead of kāra |
 | **kāra two_pointer (codegen)** | **56.4 ± 0.6 ms** | — |
-| c    two_pointer (clang -O3) | 56.6 ± 1.1 ms | kāra 1.00× (parity) |
-| go   two_pointer | 67.7 ± 0.8 ms | kāra 1.20× ahead of Go |
+| c    two_pointer (clang -O3) | 55.0 ± 0.5 ms | 1.03× ahead of kāra |
+| go   two_pointer | 66.1 ± 0.7 ms | kāra 1.17× ahead of Go |
 
-**Kāra is at C parity** (0.996×) and 4% behind Rust on a mispredict-bound compaction — and this is *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow), which Rust's release build omits. The per-element body is one compare, one conditional store, and `k += 1`; the increment's overflow check folds (loop-bounded), so there is no trapping-arithmetic cost in the hot loop — the only `with.overflow` checks land in the once-per-outer-iteration sink accumulation. Same regime as sibling kata [#26](../26-remove-duplicates-from-sorted-array/README.md#codegen-vs-rust-the-headline).
+**Kāra trails C by ~3%** (1.03×) and Rust by ~6% on a mispredict-bound compaction — and this is *with* integer-overflow trapping on by default (design.md § Arithmetic Overflow), which Rust's release build omits. The per-element body is one compare, one conditional store, and `k += 1`; the increment's overflow check folds (loop-bounded), so there is no trapping-arithmetic cost in the hot loop — the only `with.overflow` checks land in the once-per-outer-iteration sink accumulation. Same regime as sibling kata [#26](../26-remove-duplicates-from-sorted-array/README.md#codegen-vs-rust-the-headline).
 
 **Bounds-check status.** The monotone-variable BCE pass (karac `ef5a02a6`) proves `k ≥ 0` from its zero init + monotone `k += 1` and emits `llvm.assume(k >= k_entry)`, folding the negative-index half of the `nums[k]` write check and the `nums[i]` read check (trip-count-bounded). The **upper** half of `nums[k]` survives — it needs the relational invariant `k ≤ i`, which is the still-open relational tier of the BCE work (tracked in karac `phase-7-codegen.md` § "transitive bounds from induction-variable monotonicity"). This is exactly the residual shape sibling kata #26 documents; closing the relational tier would fold the last check here too.
 
@@ -73,8 +73,8 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 | Run | Mean ± σ |
 |---|---|
 | `kara two_pointer` (codegen) | 56.4 ± 0.6 ms |
-| `rust two_pointer` | 54.3 ± 0.7 ms |
-| `py two_pointer` | 888.8 ± 9.3 ms |
+| `rust two_pointer` | 53.0 ± 0.7 ms |
+| `py two_pointer` | 882.8 ± 6.7 ms |
 
 Python is **~16× slower** than Kāra codegen — per-iteration CPython bytecode dispatch on a body of one compare, one conditional store, and an increment.
 
@@ -84,12 +84,12 @@ Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build two_pointer.kara` | 70.2 ± 0.9 ms | 33.0 KiB |
-| `rustc -O two_pointer.rs` | 84.3 ± 1.7 ms | 455.4 KiB |
-| `clang -O3 two_pointer.c` | 44.4 ± 0.8 ms | 32.8 KiB |
+| `karac build two_pointer.kara` | 74.1 ± 0.5 ms | 33.3 KiB |
+| `rustc -O two_pointer.rs` | 98.8 ± 2.3 ms | 455.4 KiB |
+| `clang -O3 two_pointer.c` | 48.0 ± 0.3 ms | 32.8 KiB |
 | `go build` | — | 2434.1 KiB |
 
-Kāra compiles this kata **1.20× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within 184 bytes of C** (33,752 B vs 33,568 B; the delta is the overflow-trap landing pads). Same lean profile as kata [#26](../26-remove-duplicates-from-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
+Kāra compiles this kata **1.33× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — **within ~0.5 KiB of C** (33.3 vs 32.8 KiB; the delta is the overflow-trap landing pads). Same lean profile as kata [#26](../26-remove-duplicates-from-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
 
 ### Runtime memory (peak)
 
@@ -98,11 +98,11 @@ Kāra compiles this kata **1.20× faster** than `rustc -O` and produces a binary
 | `kara two_pointer` (codegen) | 31.6 MiB |
 | `c    two_pointer` | 31.6 MiB |
 | `rust two_pointer` | 31.6 MiB |
-| `go   two_pointer` | 34.3 MiB |
+| `go   two_pointer` | 34.5 MiB |
 | `py two_pointer` | 68.1 MiB |
 
-**Parity with C and Rust** — the working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.7 MiB is GC arena + runtime; Python's 68.1 MiB is per-element PyObject boxing. Same story as kata [#26](../26-remove-duplicates-from-sorted-array/README.md#runtime-memory-peak).
+**Parity with C and Rust** — the working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.9 MiB is GC arena + runtime; Python's 68.1 MiB is per-element PyObject boxing. Same story as kata [#26](../26-remove-duplicates-from-sorted-array/README.md#runtime-memory-peak).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (kāra reaches parity here), Go is the cross-runtime data point, and Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (kāra trails it by ~3% here), Go is the cross-runtime data point, and Python is the ergonomic foil.

@@ -94,22 +94,22 @@ single-threaded (Kāra built `KARAC_AUTO_PAR=0`).
 
 | | Go | C | Rust | **Kāra (seq)** |
 |---|---|---|---|---|
-| time | 169.7 ms | 269.4 ms | 288.4 ms | **326.4 ms** |
-| vs Kāra | 1.92× faster | 1.21× faster | 1.13× faster | — |
+| time | 166.5 ms | 198.0 ms | 239.6 ms | **240.2 ms** |
+| vs Kāra | 1.44× faster | 1.21× faster | 1.00× (parity) | — |
 
-Kāra is **1.13× behind Rust** and 1.21× behind C on identical code — a healthy
+Kāra is **at parity with Rust** and 1.21× behind C on identical code — a healthy
 per-core codegen-quality result on an allocation-heavy string workload. (Go's
-`strings.Repeat` + GC string handling is unusually fast here, 1.92×.)
+`strings.Repeat` + GC string handling is unusually fast here, 1.44×.)
 
 ### Compile, binary
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **81 ms** | 96 ms | 45 ms |
-| compile peak RSS | 14.0 MiB | 29.9 MiB | 2.5 MiB |
+| compile elapsed | **86 ms** | 113 ms | 49 ms |
+| compile peak RSS | 14.0 MiB | 30.0 MiB | 2.5 MiB |
 | binary (seq) | 295 KiB | 456 KiB | 33 KiB |
 
-Kāra's cold compile (81 ms) edges `rustc -O` (96 ms). **Runtime memory is omitted
+Kāra's cold compile (86 ms) edges `rustc -O` (113 ms). **Runtime memory is omitted
 as a comparison** — Kāra's 86.9 MiB is the B-2026-06-12-5 leak, not representative;
 Rust/C sit at ~1.2 MiB.
 
@@ -122,14 +122,14 @@ what the programmer had to write:
 
 | | parallel code written | time | total CPU |
 |---|---|---|---|
-| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 69.1 ms | 291 ms |
-| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass_len` reduction | **72.6 ms** | 1091 ms |
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 83.5 ms | 1333 ms |
-| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 85.0 ms | 1436 ms |
+| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 68.4 ms | 288 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass_len` reduction | **23.5 ms** | 322 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 26.5 ms | 345 ms |
+| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 22.0 ms | 347 ms |
 
-**Kāra's auto-par beats hand-tuned rayon *and* the raw-pthreads "metal floor",
-and lands within 1.05× of hand-written goroutines — with no parallel source at
-all.** The default `karac build` emits a `karac_par_reduce` dispatch off the
+**Kāra's auto-par beats the raw-pthreads "metal floor" *and* hand-written
+goroutines, and lands within 1.07× of hand-tuned rayon — with no parallel source
+at all.** The default `karac build` emits a `karac_par_reduce` dispatch off the
 plain sequential loop; the Rust, Go, and C programmers each had to opt in and
 restructure (the C version is the most boilerplate of all).
 
@@ -142,13 +142,13 @@ finding, not spin — raw threads aren't automatically fastest for this shape, a
 Kāra's runtime is well-tuned for it. (Multi-core within the par lane; per
 [`BENCH.md`]'s two-lane discipline, *not* comparable to the single-thread seq
 rows above. Kāra's wall time has higher run-to-run variance — worker-pool init
-on a sub-100 ms run — but the mean sits below C and rayon.)
+on a sub-100 ms run — but the mean sits below C and Go.)
 
 **Buyer reframe.** The parallel speedup that costs a Rust team a crate, an API
 rewrite, and a new class of data-race bugs to chase — and a Go team a hand-rolled
 chunk/merge — Kāra delivers from the same single-threaded source. Colorless
 parallelism: fewer lines, no `unsafe`/`Send`/`Sync` reasoning, no goroutine-leak
-or partial-merge bugs, *and* it out-runs rayon here. Less engineering and fewer
+or partial-merge bugs, *and* it runs within 1.07× of rayon here. Less engineering and fewer
 concurrency incidents for equal-or-better throughput.
 
 [`BENCH.md`]: ../../../BENCH.md

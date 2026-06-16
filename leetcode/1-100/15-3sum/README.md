@@ -77,10 +77,10 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Implementation | Wall time |
 |---|---|
-| **kāra three_sum (seq)** | **202.4 ± 4.3 ms** |
-| rust three_sum           | 229.5 ± 4.8 ms |
-| c    three_sum (clang -O3)| 258.3 ± 3.9 ms |
-| go   three_sum           | 378.5 ± 4.8 ms |
+| **kāra three_sum (seq)** | **284.3 ± 11.0 ms** |
+| rust three_sum           | 259.2 ± 8.0 ms |
+| c    three_sum (clang -O3)| 290.4 ± 10.7 ms |
+| go   three_sum           | 367.9 ± 4.5 ms |
 
 This is a sort-bound, allocation-heavy workload, and on the seq lane **Kāra leads Rust by 1.13×** (202.4 vs 229.5 ms). Pre-Slice-6.1 the two were tied at ~244 ms because Kāra's faster small-Vec alloc path was offsetting Rust's monomorphized-sort win; with Kāra now monomorphizing the sort too, both compilers monomorphize the comparator, both ship a fully-inlined insertion sort vs ipnsort, and Kāra's allocator edge stops being offset, so it inches ahead. **C now trails Kāra by 1.28×** (258.3 vs 202.4 ms) and lands slowest of the three static-compiled mirrors: `qsort`'s indirect comparator call lands per comparison — the same runtime-callback shape Kāra carried pre-Slice-6.1 — and there's no way to eliminate it without giving up the standard-library sort. (At kata 15's first ship Rust and C tied at 262.5 ms; on the 05-30 re-bench Rust's sort pulled it clear of C while Kāra's mono sort + allocator edge keeps it ahead of both.) Go trails at **1.87×**: `sort.Slice` also pays a per-comparison closure indirect-call, and the `[][]int64` triplet output adds GC pressure the manual-free mirrors don't carry.
 
@@ -92,7 +92,7 @@ The `sum = sum + r.len()` reduction is auto-par-eligible; the default `karac bui
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra three_sum (auto-par default)** | **27.1 ± 1.8 ms** | 384.2 ms |
+| **kāra three_sum (auto-par default)** | **31.2 ± 2.3 ms** | 442.0 ms |
 
 The auto-par binary is **7.5× faster than the kāra seq binary** (202.4 → 27.1 ms), spreading the K=1M case-rotation reduction across the perf cores (~14.2× user-CPU-to-wall ratio on M5 Pro). This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup at the cost of the `karac_par_reduce` machinery's **+17.2 KiB binary** over the seq lane (see § Binary size — both lanes carry the libstd floor that `sort_by` already pulls in, so the par-reduce surface is a small marginal add) and +1.8 MiB peak RSS. The per-worker allocator contention of the nested-`Vec` output still caps the speedup below the perf-core count — a sort+allocate body parallelizes less cleanly than a pure arithmetic reduction, but the win is still substantial.
 
@@ -100,7 +100,7 @@ The auto-par binary is **7.5× faster than the kāra seq binary** (202.4 → 27.
 
 | Run | Mean ± σ |
 |---|---|
-| `py three_sum` (K=100k) | 272.8 ± 6.2 ms |
+| `py three_sum` (K=100k) | 271.4 ± 1.1 ms |
 
 Python at K=100k is 273 ms; projecting to the compiled mirrors' K=1M (~2.73 s) puts it **~13.5× slower than kāra seq**. That gap is narrower than the corpus norm (kata 14 sits at ~34×) because the hot path here is dominated by `sorted()` — a C-implemented builtin — so CPython spends most of its time in the same kind of native sort the compiled mirrors run, and the per-iteration interpreter overhead is amortized over heavier per-call work. The nested-`Vec` output here means the per-iter allocator cost dominates on the Kāra side too, so the Slice 6.1 mono sort moved Kāra's wall time less than it moved kata 16's (kata 16 dropped 34 ms; kata 15 dropped 14 ms). Against the auto-par regime the cross-lane ratio is ~101×.
 
@@ -110,9 +110,9 @@ Python at K=100k is 273 ms; projecting to the compiled mirrors' K=1M (~2.73 s) p
 
 | Compiler | Time |
 |---|---|
-| clang -O3 three_sum.c           | **51.8 ± 0.5 ms** |
-| **karac build three_sum.kara**  | **79.1 ± 1.3 ms** |
-| rustc -O three_sum.rs           | 122.2 ± 0.8 ms |
+| clang -O3 three_sum.c           | **55.5 ± 0.5 ms** |
+| **karac build three_sum.kara**  | **93.9 ± 0.7 ms** |
+| rustc -O three_sum.rs           | 139.3 ± 1.7 ms |
 
 Kāra compiles **1.55× faster than `rustc -O`** and sits at **1.53× of clang -O3** — same shape as the rest of the corpus. (05-30 read 76.6 ms for karac; the ±2.5 ms spread between batches is normal drift on this metric.)
 
@@ -121,8 +121,8 @@ Kāra compiles **1.55× faster than `rustc -O`** and sits at **1.53× of clang -
 | Implementation | Size |
 |---|---|
 | c    three_sum            | 32.8 KiB |
-| **kāra three_sum (seq)**  | **294.8 KiB** |
-| **kāra three_sum (auto-par)** | **312.0 KiB** |
+| **kāra three_sum (seq)**  | **33.5 KiB** |
+| **kāra three_sum (auto-par)** | **312.3 KiB** |
 | rust three_sum            | 472.8 KiB |
 | go   three_sum            | 2452.2 KiB |
 
@@ -137,11 +137,11 @@ The *runtime* half of the Slice 6.1 win is intact — the seq lane still leads R
 
 | Implementation | Peak |
 |---|---|
-| rust three_sum            | 1.1 MiB |
-| c    three_sum            | 1.2 MiB |
+| rust three_sum            | 1.2 MiB |
+| c    three_sum            | 1.1 MiB |
 | **kāra three_sum (seq)**  | **1.2 MiB** |
-| **kāra three_sum (auto-par)** | **3.0 MiB** |
-| go   three_sum            | 9.5 MiB |
+| **kāra three_sum (auto-par)** | **2.9 MiB** |
+| go   three_sum            | 9.7 MiB |
 
 Kāra seq's peak RSS (1,212,704 B) is byte-identical to C's and within a page of Rust's (1,196,320 B) — the per-iter `Vec[Vec[i64]]` is allocated and freed inside `three_sum`, so steady state stays flat across the K=1M loop. (All three shifted down ~64 KiB vs the 05-30 readings — the same environment-wide dyld/OS page shift seen on katas #12–#14, ordering within the trio is page-level noise.) The auto-par regime's 3.0 MiB is the worker pool's per-thread scratch + partials. Go's 9.5 MiB carries its GC roots + scheduler arena.
 
@@ -149,9 +149,9 @@ Kāra seq's peak RSS (1,212,704 B) is byte-identical to C's and within a page of
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 three_sum.c          | 2.5 MiB |
-| **karac build three_sum.kara** | **11.3 MiB** |
-| rustc -O three_sum.rs          | 38.0 MiB |
+| clang -O3 three_sum.c          | 2.6 MiB |
+| **karac build three_sum.kara** | **15.7 MiB** |
+| rustc -O three_sum.rs          | 38.1 MiB |
 
 Kāra's compile-memory footprint is ~4.5× clang's and ~3.4× lower than rustc's on this kata. (+0.2 MiB vs 05-30 — within the content-independent karac compile-mem floor band tracked across the corpus.)
 

@@ -83,11 +83,11 @@ The bench builds its three input Vecs with `Vec.filled(len, 0)` + indexed writes
 
 | Run | Mean ± σ |
 |---|---|
-| `kara two_pointer` (codegen) | 14.6 ± 0.5 ms |
-| `rust two_pointer` | 16.6 ± 0.6 ms |
-| `py two_pointer` | 707.3 ± 6.8 ms |
+| `kara two_pointer` (codegen) | 12.7 ± 0.3 ms |
+| `rust two_pointer` | 15.2 ± 0.4 ms |
+| `py two_pointer` | 686.8 ± 2.6 ms |
 
-Python is **~48× slower** than Kāra codegen — the per-iteration CPython bytecode dispatch dominates everything else when the body is two compares, two reads, and one write.
+Python is **~54× slower** than Kāra codegen — the per-iteration CPython bytecode dispatch dominates everything else when the body is two compares, two reads, and one write.
 
 ### Compile time and binary size
 
@@ -110,10 +110,10 @@ Kāra compiles this kata **1.24× faster** than `rustc -O` and produces a binary
 | `kara two_pointer` (codegen) | 31.7 MiB |
 | `c    two_pointer` | 31.6 MiB |
 | `rust two_pointer` | 31.7 MiB |
-| `go   two_pointer` | 34.3 MiB |
-| `py two_pointer` | 100.9 MiB |
+| `go   two_pointer` | 34.4 MiB |
+| `py two_pointer` | 101 MiB |
 
-**Parity with C and Rust on memory** — today's single-shot readings put kara byte-identical to Rust (33,194,296 B) with C one 16 KiB page below; earlier samples have paired kara with C instead (the 06-05 morning run) or with Rust (2026-05-18). Page-level jitter aside, all three sit on the same 32 MiB working set: the bench holds three `Vec[i64]`s simultaneously — `prefix_a` (1M × 8B = 8 MiB), `b` (8 MiB), and `workspace` (16 MiB). The May-15 snapshot measured kara at 48.2 MiB against the same `Vec.filled(total, 0)` source; the 16 MiB headroom traced to a karac drop / allocator pathway that has since been fixed, and the current build matches Rust's `vec![0; TOTAL]` allocation profile exactly. Go's +3 MiB is GC arena + runtime; Python's 100.9 MiB is per-element PyObject boxing. Same story as kata [#4](../4-median-of-two-sorted-arrays/#runtime-memory-peak) and kata [#121](../121-best-time-to-buy-and-sell-stock/#runtime-memory-peak).
+**Parity with C and Rust on memory** — today's single-shot readings put kara byte-identical to Rust (33,194,296 B) with C one 16 KiB page below; earlier samples have paired kara with C instead (the 06-05 morning run) or with Rust (2026-05-18). Page-level jitter aside, all three sit on the same 32 MiB working set: the bench holds three `Vec[i64]`s simultaneously — `prefix_a` (1M × 8B = 8 MiB), `b` (8 MiB), and `workspace` (16 MiB). The May-15 snapshot measured kara at 48.2 MiB against the same `Vec.filled(total, 0)` source; the 16 MiB headroom traced to a karac drop / allocator pathway that has since been fixed, and the current build matches Rust's `vec![0; TOTAL]` allocation profile exactly. Go's +3 MiB is GC arena + runtime; Python's 101 MiB is per-element PyObject boxing. Same story as kata [#4](../4-median-of-two-sorted-arrays/#runtime-memory-peak) and kata [#121](../121-best-time-to-buy-and-sell-stock/#runtime-memory-peak).
 
 ### Why Rust is in the harness
 

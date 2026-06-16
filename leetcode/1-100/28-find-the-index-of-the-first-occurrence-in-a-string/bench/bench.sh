@@ -143,8 +143,8 @@ build_c    brute_force.c
 build_c    kmp.c
 build_kara brute_force.kara          # auto-par (par lane)
 build_kara_seq brute_force.kara      # seq twin (seq lane)
-build_kara kmp.kara
-build_kara kmp_unchecked.kara
+build_kara_seq kmp.kara
+build_kara_seq kmp_unchecked.kara
 build_go_seq brute_force
 build_go_seq kmp
 # par-lane comparators for brute_force
@@ -166,8 +166,8 @@ for pair in \
     'bf_rayon:./target/strstr_rayon' \
     'bf_c_par:./target/brute_force_par_c' \
     'bf_go_par:./target/strstr_go_par' \
-    'kmp_kara:./target/kmp_kara' \
-    'kmpu_kara:./target/kmp_unchecked_kara' \
+    'kmp_kara:./target/kmp_kara_seq' \
+    'kmpu_kara:./target/kmp_unchecked_kara_seq' \
     'kmp_rust:./target/kmp' \
     'kmp_c:./target/kmp_c' \
     'kmp_go:./target/kmp_go_seq'; do
@@ -209,9 +209,9 @@ rt_cmd --lang c --approach brute_force --lane seq --mode native \
 rt_cmd --lang go --approach brute_force --lane seq --mode native \
     --name 'go   brute_force' --cmd './target/brute_force_go_seq'
 rt_cmd --lang kara --approach kmp --lane seq --mode codegen \
-    --name 'kara kmp (codegen)' --cmd './target/kmp_kara'
+    --name 'kara kmp (seq twin)' --cmd './target/kmp_kara_seq'
 rt_cmd --lang kara --approach kmp_unchecked --lane seq --mode codegen \
-    --name 'kara kmp_unchecked (codegen)' --cmd './target/kmp_unchecked_kara'
+    --name 'kara kmp_unchecked (seq twin)' --cmd './target/kmp_unchecked_kara_seq'
 rt_cmd --lang rust --approach kmp --lane seq --mode native \
     --name 'rust kmp' --cmd './target/kmp'
 rt_cmd --lang c --approach kmp --lane seq --mode native \
@@ -248,13 +248,13 @@ ce_cmd --lang kara --approach brute_force --mode codegen \
     --name 'karac build brute_force.kara' \
     --cmd 'sh -c "karac build brute_force.kara >/dev/null && mv brute_force target/brute_force_kara"'
 ce_cmd --lang kara --approach kmp --mode codegen \
-    --prepare 'rm -f target/kmp_kara kmp' \
+    --prepare 'rm -f target/kmp_kara_seq kmp' \
     --name 'karac build kmp.kara' \
-    --cmd 'sh -c "karac build kmp.kara >/dev/null && mv kmp target/kmp_kara"'
+    --cmd 'sh -c "KARAC_AUTO_PAR=0 karac build kmp.kara >/dev/null && mv kmp target/kmp_kara_seq"'
 ce_cmd --lang kara --approach kmp_unchecked --mode codegen \
-    --prepare 'rm -f target/kmp_unchecked_kara kmp_unchecked' \
+    --prepare 'rm -f target/kmp_unchecked_kara_seq kmp_unchecked' \
     --name 'karac build kmp_unchecked.kara' \
-    --cmd 'sh -c "karac build kmp_unchecked.kara >/dev/null && mv kmp_unchecked target/kmp_unchecked_kara"'
+    --cmd 'sh -c "KARAC_AUTO_PAR=0 karac build kmp_unchecked.kara >/dev/null && mv kmp_unchecked target/kmp_unchecked_kara_seq"'
 ce_cmd --lang rust --approach brute_force --mode native \
     --prepare 'rm -f target/brute_force' \
     --name 'rustc -O brute_force.rs' --cmd 'rustc -O brute_force.rs -o target/brute_force'
@@ -273,8 +273,8 @@ echo
 echo "=== binary size ==="
 size_put --lang kara --approach brute_force --lane seq --mode codegen --path target/brute_force_kara_seq
 size_put --lang kara --approach brute_force --lane par --mode codegen --path target/brute_force_kara
-size_put --lang kara --approach kmp         --lane seq --mode codegen --path target/kmp_kara
-size_put --lang kara --approach kmp_unchecked --lane seq --mode codegen --path target/kmp_unchecked_kara
+size_put --lang kara --approach kmp         --lane seq --mode codegen --path target/kmp_kara_seq
+size_put --lang kara --approach kmp_unchecked --lane seq --mode codegen --path target/kmp_unchecked_kara_seq
 size_put --lang rust --approach brute_force --lane seq --mode native  --path target/brute_force
 size_put --lang rust --approach brute_force --lane par --mode native  --path target/strstr_rayon
 size_put --lang rust --approach kmp         --lane seq --mode native  --path target/kmp
@@ -289,8 +289,8 @@ echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach brute_force --lane seq --mode codegen --bytes "$(mem_peak ./target/brute_force_kara_seq)"
 mem_put --lang kara --approach brute_force --lane par --mode codegen --bytes "$(mem_peak ./target/brute_force_kara)"
-mem_put --lang kara --approach kmp         --lane seq --mode codegen --bytes "$(mem_peak ./target/kmp_kara)"
-mem_put --lang kara --approach kmp_unchecked --lane seq --mode codegen --bytes "$(mem_peak ./target/kmp_unchecked_kara)"
+mem_put --lang kara --approach kmp         --lane seq --mode codegen --bytes "$(mem_peak ./target/kmp_kara_seq)"
+mem_put --lang kara --approach kmp_unchecked --lane seq --mode codegen --bytes "$(mem_peak ./target/kmp_unchecked_kara_seq)"
 mem_put --lang rust --approach brute_force --lane seq --mode native  --bytes "$(mem_peak ./target/brute_force)"
 mem_put --lang rust --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/strstr_rayon)"
 mem_put --lang rust --approach kmp         --lane seq --mode native  --bytes "$(mem_peak ./target/kmp)"

@@ -88,27 +88,27 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| c    concat_words (clang -O3) | 23.6 ± 0.6 ms | 5.1× ahead of kāra |
-| rust concat_words | 65.1 ± 0.5 ms | 1.85× ahead of kāra |
-| **kāra concat_words (codegen)** | **120.5 ± 1.5 ms** | — |
-| go   concat_words | 173.0 ± 1.4 ms | kāra 1.44× ahead of Go |
+| c    concat_words (clang -O3) | 25.5 ± 0.9 ms | 4.6× ahead of kāra |
+| rust concat_words | 68.7 ± 2.9 ms | 1.72× ahead of kāra |
+| **kāra concat_words (codegen)** | **118.4 ± 1.0 ms** | — |
+| go   concat_words | 173.2 ± 2.4 ms | kāra 1.46× ahead of Go |
 
 This kata was the *driver* for two karac changes, and the table above is the after. **Before** them (binding each window slice to a `let`, so every `s[j..j+L]` heap-allocated a fresh `String`), idiomatic Kāra ran this in **199 ms — 3.1× behind Rust — with 10.0 MiB peak RSS** from ~8 million `malloc`/`free` pairs. The two fixes:
 
 1. **Borrowed String-slice map keys.** A slice written inline as a map key is now a borrowed view into `s` (no allocation); `insert` deep-copies only on a fresh key (see [§ Why the slice is written inline](#why-the-slice-is-written-inline)). Allocation drops from once-per-window to once-per-*distinct*-word — the same thing Rust's `&str` keys and C's packed `u32` keys do.
-2. **`Map.clear()` frees its heap keys.** The sliding window clears `seen` on every dead window; `karac_map_clear` previously only zeroed the bucket status and *leaked* the owned key buffers. Fixed, RSS drops from 10.0 MiB to **1.6 MiB — within 15 % of Rust's 1.4 MiB** (see [peak-RSS table](#runtime-memory-peak)).
+2. **`Map.clear()` frees its heap keys.** The sliding window clears `seen` on every dead window; `karac_map_clear` previously only zeroed the bucket status and *leaked* the owned key buffers. Fixed, RSS drops from 10.0 MiB to **1.4 MiB — at parity with Rust's 1.4 MiB** (see [peak-RSS table](#runtime-memory-peak)).
 
-Net: **199 → 120 ms (1.65× faster) and 10.0 → 1.6 MiB (6× less)**, landing at **1.85× Rust on runtime and ~parity on memory**, and **1.44× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 5.1× lead is its zero-hashing packed-`u32` key — a representation no general string solution gets.
+Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing at **1.72× Rust on runtime and ~parity on memory**, and **1.46× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 4.6× lead is its zero-hashing packed-`u32` key — a representation no general string solution gets.
 
-That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 2.2× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's**.
+That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 2.3× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's**.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara concat_words` (codegen) | 120.5 ± 1.5 ms |
-| `rust concat_words` | 65.1 ± 0.5 ms |
-| `py concat_words` | 633.5 ± 7.8 ms |
+| `kara concat_words` (codegen) | 118.4 ± 1.0 ms |
+| `rust concat_words` | 68.7 ± 2.9 ms |
+| `py concat_words` | 638.3 ± 18.1 ms |
 
 Kāra codegen is **~5.3× faster than CPython** — CPython allocates a `str` per slice *and* dispatches every map operation through the interpreter.
 
@@ -118,12 +118,12 @@ Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 1 --runs 10` with `--prepar
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build concat_words.kara` | 86.7 ± 1.5 ms | 295.4 KiB |
-| `rustc -O concat_words.rs` | 193.7 ± 3.2 ms | 473.6 KiB |
-| `clang -O3 concat_words.c` | 55.2 ± 0.5 ms | 32.9 KiB |
+| `karac build concat_words.kara` | 90.5 ± 0.7 ms | 295.7 KiB |
+| `rustc -O concat_words.rs` | 205.1 ± 1.8 ms | 473.6 KiB |
+| `clang -O3 concat_words.c` | 59.4 ± 0.6 ms | 32.9 KiB |
 | `go build` | — | 2434.3 KiB |
 
-Kāra compiles this kata **2.2× faster than `rustc -O`** (1.57× slower than C) and produces a binary **38 % smaller than Rust's**. The 295 KiB is the `Map`/`String` runtime floor — this workload pulls in the hash-map and string-slice runtime, so it does not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit.
+Kāra compiles this kata **2.3× faster than `rustc -O`** (1.52× slower than C) and produces a binary **38 % smaller than Rust's**. The 295 KiB is the `Map`/`String` runtime floor — this workload pulls in the hash-map and string-slice runtime, so it does not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit.
 
 ### Runtime memory (peak)
 
@@ -131,11 +131,11 @@ Kāra compiles this kata **2.2× faster than `rustc -O`** (1.57× slower than C)
 |---|---|
 | `c    concat_words` | 1.2 MiB |
 | `rust concat_words` | 1.4 MiB |
-| `kara concat_words` (codegen) | 1.6 MiB |
+| `kara concat_words` (codegen) | 1.4 MiB |
 | `py concat_words` | 7.8 MiB |
-| `go   concat_words` | 9.4 MiB |
+| `go   concat_words` | 9.5 MiB |
 
-Kāra now sits **within 15 % of Rust** and an order of magnitude below Go's GC arena — the live set is tiny (a few count maps + the 200 KB text), and with the `Map.clear` leak fixed there is no allocator high-water from churned keys. Before the fix this row read 10.0 MiB; it is the clearest single-number evidence that the two changes worked.
+Kāra now sits **at parity with Rust** and an order of magnitude below Go's GC arena — the live set is tiny (a few count maps + the 200 KB text), and with the `Map.clear` leak fixed there is no allocator high-water from churned keys. Before the fix this row read 10.0 MiB; it is the clearest single-number evidence that the two changes worked.
 
 ### Why Rust is in the harness
 

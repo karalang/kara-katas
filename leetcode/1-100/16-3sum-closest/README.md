@@ -80,9 +80,9 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 | Implementation | Wall time |
 |---|---|
 | rust three_sum_closest                | **58.3 ± 0.5 ms** |
-| **kāra three_sum_closest (seq)**      | **63.1 ± 1.0 ms** |
-| c    three_sum_closest (clang -O3)    | 106.9 ± 0.9 ms |
-| go   three_sum_closest                | 174.5 ± 4.6 ms |
+| **kāra three_sum_closest (seq)**      | **67.9 ± 1.4 ms** |
+| c    three_sum_closest (clang -O3)    | 105.9 ± 1.1 ms |
+| go   three_sum_closest                | 167.8 ± 7.0 ms |
 
 This is the same sort-bound shape as kata 15. Rust leads by **1.08×** over Kāra seq — well inside codegen-quality noise on a sort + two-pointer workload where both compilers monomorphize their comparators. **C trails Kāra by 1.69×** (106.9 vs 63.1 ms) — `qsort`'s indirect comparator call lands per comparison and there's no way to eliminate it without giving up the standard-library sort. **Go trails by 2.77×** — `sort.Slice` also pays the per-comparison closure indirect call, with GC and scheduler overhead on top.
 
@@ -100,7 +100,7 @@ The `sum = sum + three_sum_closest(...)` reduction is auto-par-eligible; the def
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra three_sum_closest (auto-par default)** | **8.2 ± 0.6 ms** | 96.3 ms |
+| **kāra three_sum_closest (auto-par default)** | **8.4 ± 0.9 ms** | 97.0 ms |
 
 The auto-par binary is **7.7× faster than the kāra seq binary** (63.1 → 8.2 ms), spreading the K=1M case-rotation reduction across the perf cores (~11.7× user-CPU-to-wall ratio on M5 Pro). Note the speedup ratio dropped from the pre-Slice-6.1 9.0× (96.8 → 10.8 ms) — auto-par's absolute wall time improved (10.8 → 8.2 ms) because each worker now runs the faster mono sort body, but the seq baseline improved more, so the ratio compresses. This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup with the `karac_par_reduce` machinery's **+17.2 KiB binary over seq** (see § Binary size — both lanes carry the libstd floor that `sort_by` already pulls in, so the par-reduce + worker-pool surface is a small marginal add). Per-worker memory pressure stays flat at 1.7 MiB.
 
@@ -108,7 +108,7 @@ The auto-par binary is **7.7× faster than the kāra seq binary** (63.1 → 8.2 
 
 | Run | Mean ± σ |
 |---|---|
-| `py three_sum_closest` (K=100k) | 148.7 ± 1.3 ms |
+| `py three_sum_closest` (K=100k) | 143.3 ± 0.8 ms |
 
 Python at K=100k is 149 ms; projecting to the compiled mirrors' K=1M (~1.49 s) puts it **~23.6× slower than kāra seq**. Wider than kata 15's ~13.5× because Kāra seq got faster (kata 15 still dominated by per-iter Vec alloc which CPython also pays); kata 16's mono fast path means the per-call cost on Kāra has dropped sharply while CPython's relative cost stayed put. Against the auto-par regime the cross-lane ratio is ~181×.
 
@@ -118,9 +118,9 @@ Python at K=100k is 149 ms; projecting to the compiled mirrors' K=1M (~1.49 s) p
 
 | Compiler | Time |
 |---|---|
-| clang -O3 three_sum_closest.c           | **49.0 ± 1.1 ms** |
-| **karac build three_sum_closest.kara**  | **75.7 ± 1.9 ms** |
-| rustc -O three_sum_closest.rs           | 120.8 ± 2.4 ms |
+| clang -O3 three_sum_closest.c           | **52.0 ± 0.6 ms** |
+| **karac build three_sum_closest.kara**  | **86.4 ± 0.5 ms** |
+| rustc -O three_sum_closest.rs           | 133.4 ± 2.0 ms |
 
 Kāra compiles **1.60× faster than `rustc -O`** and sits at **1.54× of clang -O3** — same shape as the rest of the corpus. (05-30 read 68.8 / 46.2 / 118.6 — karac and clang both rose ~6–10% in this batch, so treat the drift as environmental, not a compiler change.)
 
@@ -129,8 +129,8 @@ Kāra compiles **1.60× faster than `rustc -O`** and sits at **1.54× of clang -
 | Implementation | Size |
 |---|---|
 | c    three_sum_closest            | 32.8 KiB |
-| **kāra three_sum_closest (seq)**  | **294.8 KiB** |
-| **kāra three_sum_closest (auto-par)** | **312.0 KiB** |
+| **kāra three_sum_closest (seq)**  | **33.5 KiB** |
+| **kāra three_sum_closest (auto-par)** | **312.3 KiB** |
 | rust three_sum_closest            | 456.0 KiB |
 | go   three_sum_closest            | 2452.2 KiB |
 
@@ -150,7 +150,7 @@ This kata remains the control: it returns a scalar `i64`, no nested `Vec`, yet l
 | **kāra three_sum_closest (seq)**  | **1.1 MiB** |
 | rust three_sum_closest            | 1.1 MiB |
 | **kāra three_sum_closest (auto-par)** | **1.7 MiB** |
-| go   three_sum_closest            | 9.0 MiB |
+| go   three_sum_closest            | 9.3 MiB |
 
 Kāra seq's peak RSS (1,114,400 B) is byte-for-byte identical to Rust's and within one page of C (1,098,016 B) — indistinguishable at this granularity. (All three shifted down ~48 KiB vs the 05-30 readings — the same environment-wide dyld/OS page shift seen across the #12–#15 re-benches.) The auto-par regime's 1.7 MiB is the worker pool's per-thread scratch + partials, **1.3 MiB *lower* than kata 15's 3.0 MiB** despite running on the same shape — the body returns a scalar so workers' per-iter live set is just the sorted buffer, not a freshly-allocated `Vec[Vec[i64]]`. Same compiler, same auto-par dispatch, lighter body shape → measurably tighter steady-state RSS.
 
@@ -159,8 +159,8 @@ Kāra seq's peak RSS (1,114,400 B) is byte-for-byte identical to Rust's and with
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 three_sum_closest.c          | 2.5 MiB |
-| **karac build three_sum_closest.kara** | **10.5 MiB** |
-| rustc -O three_sum_closest.rs          | 37.1 MiB |
+| **karac build three_sum_closest.kara** | **14.8 MiB** |
+| rustc -O three_sum_closest.rs          | 37.2 MiB |
 
 Kāra's compile-memory footprint is ~4.1× clang's and ~3.5× lower than rustc's on this kata — same shape as kata 15. (+0.1 MiB vs 05-30 — within the content-independent karac compile-mem floor band tracked across the corpus.)
 

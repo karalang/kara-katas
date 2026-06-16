@@ -105,15 +105,15 @@ summed column numbers (sink `2 500 050 000 000`). The parse is pure arithmetic �
 
 | | C | Rust (`-O`) | **Kāra** | Go | Rust (`-C overflow-checks=on`) |
 |---|---|---|---|---|---|
-| time | 138 ms | 142 ms | **271 ms** | 155 ms | 240 ms |
-| vs Kāra | 2.0× faster | 1.91× faster | — | 1.7× faster | **1.13× faster** |
+| time | 134 ms | 139 ms | **231 ms** | 152 ms | 233 ms |
+| vs Kāra | 1.73× faster | 1.66× faster | — | 1.53× faster | **1.01× slower** |
 
 **Read the two Rust columns together — this is the whole story.** Kāra traps on
 integer overflow *by default* (design.md § Arithmetic Overflow: "defined
 behavior, never undefined"); `rustc -O` **silently wraps**. That safety is not
-free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.69×**
-(142 → 240 ms) — almost exactly the gap to Kāra. **At equal overflow safety, Kāra
-is within 1.13× of Rust** — codegen parity on a tight integer loop. The 1.91×
+free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.67×**
+(139 → 233 ms) — almost exactly the gap to Kāra. **At equal overflow safety, Kāra
+is at parity with Rust** — codegen parity on a tight integer loop. The 1.66×
 against `rustc -O`'s default is the price of a silent-wraparound class of bugs
 Kāra refuses to ship and Rust release opts out of. (C and Go also wrap; they are
 the unsafe-but-fast floor, not safety peers.)
@@ -128,13 +128,13 @@ embarrassingly parallel. Every implementation parallelizes that *same* reduction
 |---|---|---|
 | C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 14 ms |
 | Rust + rayon | `rayon` crate + `.into_par_iter()` rewrite | 16 ms |
-| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 19 ms |
-| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **27 ms** |
+| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 18 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **24 ms** |
 
-**Kāra's auto-par turns its 271 ms seq run into 27 ms — a 9.9× self-speedup
+**Kāra's auto-par turns its 231 ms seq run into 24 ms — a 9.8× self-speedup
 across the machine's cores from the *same single-threaded source*, no parallel
 code, no crate, no goroutine boilerplate.** The absolute number trails hand-tuned
-rayon (1.7×) — partly the same overflow-safety tax (rayon wraps), partly
+rayon (1.49×) — partly the same overflow-safety tax (rayon wraps), partly
 per-thread codegen — but the engineering delta is the point: rayon/goroutines/
 pthreads each cost a dependency or a hand-rolled chunk-merge and a new class of
 data-race bugs; Kāra delivers 9× from code that reads sequential.
@@ -143,15 +143,15 @@ data-race bugs; Kāra delivers 9× from code that reads sequential.
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **90 ms** | 129 ms | 58 ms |
+| compile elapsed | **82 ms** | 116 ms | 49 ms |
 | binary (seq) | **295 KiB** | 457 KiB | 33 KiB |
 
-Kāra's cold compile (90 ms) beats `rustc -O` (129 ms), and emits a **295 KiB**
+Kāra's cold compile (82 ms) beats `rustc -O` (116 ms), and emits a **295 KiB**
 binary — **1.5× smaller than Rust**, **8× smaller than Go** (2.4 MiB). Runtime
-peak RSS is a clean 4.6 MiB.
+peak RSS is a clean 3.1 MiB.
 
 **Buyer reframe.** Kāra ships overflow-trap safety *by default* at near-Rust
-codegen speed (1.12× at equal safety), and a 9× parallel speedup from
+codegen speed (at parity at equal safety), and a 9× parallel speedup from
 single-threaded source — the safety a Rust team would have to remember to enable,
 and the parallelism they'd pay a crate + an API rewrite + a data-race audit for,
 both arrive for free. The remaining single-thread gap to `rustc -O`'s default is

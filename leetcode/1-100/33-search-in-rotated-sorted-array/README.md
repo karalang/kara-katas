@@ -102,17 +102,17 @@ dependency, so it does not auto-parallelize. Apple M5 Pro; `bench/bench.sh`
 
 | | C | Rust (`-O`) | Go | **Kāra** | Rust (`overflow-checks=on`) | Python |
 |---|---|---|---|---|---|---|
-| time | 213.2 ms | 286.4 ms | 291.8 ms | **312.3 ms** | 313.3 ms | 9638 ms |
-| vs Kāra | 1.46× faster | 1.09× faster | 1.07× faster | — | **1.00× (tied at = safety)** | 31× slower |
+| time | 211.3 ms | 283.8 ms | 289.9 ms | **309.5 ms** | 311.3 ms | 9827 ms |
+| vs Kāra | 1.46× faster | 1.09× faster | 1.07× faster | — | **1.01× (tied at = safety)** | 32× slower |
 
 **A branchy, data-dependent compute kernel — and the cleanest equal-safety read
 yet.** Binary search's direction at each step depends on a comparison the branch
 predictor can't pre-resolve, and the arithmetic is light (a `mid`, a `%` for the
 checksum). That makes the overflow-check tax the dominant Kāra-vs-Rust variable:
-`rustc -O` (wrap) runs 286 ms, but turning Rust's checks **on** to match Kāra's
-checked-by-default semantics (design.md § Arithmetic Overflow) costs it 286 → 313
-ms (+9.4 %). Kāra lands at **312 ms — dead even with equal-safety Rust** (a hair
-ahead). The unchecked tier — wrapping `rustc -O` (286) and Go (292, no integer
+`rustc -O` (wrap) runs 284 ms, but turning Rust's checks **on** to match Kāra's
+checked-by-default semantics (design.md § Arithmetic Overflow) costs it 284 → 311
+ms (+9.7 %). Kāra lands at **310 ms — dead even with equal-safety Rust** (a hair
+ahead). The unchecked tier — wrapping `rustc -O` (284) and Go (290, no integer
 overflow checking either) — is ~1.07–1.09× faster precisely because it skips the
 checks this loop still pays per step; C's no-overhead floor is 1.46×. The honest
 one-liner: **at equal overflow safety Kāra ties Rust on branchy search; the gap to
@@ -127,16 +127,16 @@ modulo reduction): verified, the default and `KARAC_AUTO_PAR=0` binaries are
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.08 MiB | 1.11 MiB | **1.05 MiB** | 3.02 MiB |
-| binary size (seq) | **49.6 KiB** | 455.7 KiB | 32.7 KiB | 2434.1 KiB |
-| compile elapsed | **72.9 ms** | 93.6 ms | 47.6 ms |
-| compile peak RSS | **13.0 MiB** | 26.7 MiB | 2.5 MiB |
+| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 2.95 MiB |
+| binary size (seq) | **33.4 KiB** | 455.7 KiB | 32.7 KiB | 2434.1 KiB |
+| compile elapsed | **74.1 ms** | 90.9 ms | 46.6 ms |
+| compile peak RSS | **13.0 MiB** | 26.7 MiB | 2.6 MiB |
 
 The single 4096-element array is the only heap allocation, so runtime RSS ties C
-and Rust to within rounding (1.08 / 1.05 / 1.11 MiB). The seq compute binary
+and Rust to within rounding (1.06 / 1.05 / 1.11 MiB). The seq compute binary
 references no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to
-**49.6 KiB** — 9.2× under Rust. Compile favors Kāra over `rustc -O` on both
-elapsed (72.9 vs 93.6 ms) and peak compiler RSS (13.0 vs 26.7 MiB).
+**33.4 KiB** — 13.6× under Rust. Compile favors Kāra over `rustc -O` on both
+elapsed (74.1 vs 90.9 ms) and peak compiler RSS (13.0 vs 26.7 MiB).
 
 **Where this lands.** With [#31](../31-next-permutation/) (in-place compute,
 tied), [#32](../32-longest-valid-parentheses/) (alloc-churn, Kāra ahead at equal
