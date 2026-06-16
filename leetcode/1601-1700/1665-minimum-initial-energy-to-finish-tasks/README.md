@@ -75,11 +75,13 @@ All mirrors print the same sum-of-results sink so the algorithm's output partici
 
 Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
-| Workload | Kāra (codegen) | Rust | C (clang -O3) | Go | Kāra : Rust |
-|---|---|---|---|---|---|
-| `greedy` | 7.6 ± 0.1 ms | 2.8 ± 0.0 ms | 3.4 ± 0.1 ms | 9.9 ± 0.2 ms | **2.71× of Rust** |
+| Workload | Kāra (codegen) | Rust | Rust (checked) | C (clang -O3) | Go | Kāra : Rust |
+|---|---|---|---|---|---|---|
+| `greedy` | 7.6 ± 0.1 ms | 2.8 ± 0.0 ms | 2.7 ± 0.0 ms | 3.4 ± 0.1 ms | 9.9 ± 0.2 ms | **2.71× of Rust** |
 
 (The 2026-05-29 snapshot read kāra 3.4 ± 0.2 / rust 3.0 ± 0.3 — both moved down together within ~1σ, batch movement; C and Go rows are benched here for the first time.)
+
+**This gap is sort-related, not an overflow-comparison artifact.** Kāra checks integer overflow by default; `rustc -O` silently wraps. Elsewhere in the corpus that asymmetry can flatter Kāra's ratio against wrapping Rust, so the harness now also benches an equal-safety Rust lane (`rustc -O -C overflow-checks=on`, the "Rust (checked)" column). Here it reads **2.7 ms — statistically indistinguishable from wrapping Rust's 2.8 ms** (≈ 0.04 ms apart, well inside σ). Overflow checking costs nothing measurable on this workload, so it explains none of the gap. The 2.71× difference is entirely the sort path described below — the lean-sort runtime tradeoff (`B-2026-06-13-2`), not a safety-comparison effect. The equal-safety overlay confirms it rather than papering over it.
 
 This kata is **sort-dominated** — pdqsort over 50,000 `(i64, i64)` pairs is ~850k comparisons per call × K=5 ≈ 4M comparator invocations. The remaining gap is the FFI hop on each comparison: `karac_vec_sort_by` lives in a precompiled runtime crate and calls the user comparator via an `extern "C" fn` pointer that LLVM in the runtime crate sees as opaque and cannot inline through. The 2026-05-12 → 2026-05-25 gap-tightening from 1.37× → 1.19× tracked the cumulative effect of cross-archive LTO + DCE, the `__TEXT,__jittmpl` segment re-scope (`e76f42b`), and platform shift from M1 → M5 Pro.
 

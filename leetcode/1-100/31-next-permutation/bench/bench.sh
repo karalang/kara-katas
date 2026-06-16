@@ -46,6 +46,18 @@ mem_peak() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -110,6 +122,7 @@ build_go_seq() {
 }
 
 build_rust         next_permutation.rs
+build_rust_ovf         next_permutation.rs
 build_rust_checked next_permutation.rs
 build_c            next_permutation.c
 build_kara         next_permutation.kara
@@ -123,6 +136,7 @@ for pair in \
     'kara:./target/next_permutation_kara' \
     'kara_seq:./target/next_permutation_kara_seq' \
     'rust:./target/next_permutation' \
+    'rust_ovf:./target/next_permutation_ovf' \
     'rust_chk:./target/next_permutation_rschk' \
     'c:./target/next_permutation_c' \
     'go:./target/next_permutation_go_seq'; do
@@ -159,6 +173,8 @@ rt_cmd --lang kara --approach next_permutation --lane seq --mode codegen \
     --name 'kara next_permutation (seq, KARAC_AUTO_PAR=0)' --cmd './target/next_permutation_kara_seq'
 rt_cmd --lang rust --approach next_permutation --lane seq --mode native \
     --name 'rust next_permutation' --cmd './target/next_permutation'
+rt_cmd --lang rust_ovf --approach next_permutation --lane seq --mode native \
+    --name 'rust next_permutation (overflow-checks=on, equal-safety)' --cmd './target/next_permutation_ovf'
 rt_cmd --lang rust --approach next_permutation_rschk --lane seq --mode native \
     --name 'rust next_permutation (overflow-checks=on, =Kara safety)' --cmd './target/next_permutation_rschk'
 rt_cmd --lang c --approach next_permutation --lane seq --mode native \

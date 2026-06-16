@@ -55,18 +55,19 @@ Note the bench's `middle_pair_off(a, a_off, a_len, b, b_off, b_len)` signature d
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-05-23, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro, 2026-06-16, hyperfine `--warmup 5 --runs 30 --shell=none`. The equal-safety `rust -C overflow-checks=on` lane is recorded alongside the wrapping `rust -O` lane — it is the apples-to-apples Kāra-vs-Rust row, since Kāra checks overflow by default:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| c    binary_search_partition (clang -O3) | **12.3 ms ± 0.1 ms** | 11.0 ms | 95% |
-| **kāra binary_search_partition** (`KARAC_AUTO_PAR=0`) | **16.2 ms ± 0.4 ms** | 14.0 ms | 96% |
-| rust binary_search_partition (rustc -O)  | **15.4 ms ± 0.2 ms** | 14.0 ms | 95% |
-| go   binary_search_partition             | **28.1 ms ± 0.3 ms** | 26.0 ms | 94% |
+| c    binary_search_partition (clang -O3) | **12.4 ms ± 0.1 ms** | 11.0 ms | 92% |
+| **kāra binary_search_partition** (`KARAC_AUTO_PAR=0`) | **16.9 ms ± 3.3 ms** | 14.0 ms | 91% |
+| rust binary_search_partition (rustc -O)  | **15.8 ms ± 0.4 ms** | 14.0 ms | 94% |
+| rust binary_search_partition (overflow-checks=on) | **15.9 ms ± 0.5 ms** | 14.0 ms | 94% |
+| go   binary_search_partition             | **28.5 ms ± 0.4 ms** | 26.0 ms | 97% |
 
-Kāra matches rustc-O within σ (16.2 vs 15.4 ms — measurement-noise parity), runs ~1.32× of `clang -O3`, and ~1.74× faster than `go build`. This is the cleanest per-core "is karac's codegen at parity with rustc?" answer for this workload. The earlier snapshot (2026-05-17, kara 16.2 ± 0.2 ms vs rust 15.8 ± 0.3 ms, 1.03× of Rust) was the same story; the ~1 ms improvement since reflects the `bdac0d8` internal-linkage fix (see *How we got here* below) plus general codegen drift, not a regression elsewhere.
+**The Kāra-vs-Rust headline is the equal-safety row.** Kāra checks integer overflow by default — the sink reduction `sum += pair[0] + pair[1]` and the partition index arithmetic are all checked adds. `rustc -O` *silently wraps*, so the apples-to-apples comparison is `rust -C overflow-checks=on`, which restores the same checked arithmetic Kāra ships by default. Against it Kāra runs **1.06×** (16.9 vs 15.9 ms — within σ given the kara row's wide spread this run). Note the equal-safety Rust row is statistically indistinguishable from `rust -O` here (15.9 vs 15.8 ms): the binary-search body has little hot integer arithmetic to check, so the overflow tax is near-zero for Rust — and Kāra still lands within noise of both. This is the cleanest per-core "is karac's codegen at parity with rustc?" answer for this workload.
 
-The C win (~1.32×) is consistent across this kata family: clang's `int64_t*` + struct-return Pair maps to one fewer load + one register pair vs Rust's tuple-return + Kāra's `Array[i64, 2]` return — a constant per-call gap on top of the same algorithm. Go's 28.1 ms reflects per-iter slice-bounds checks + no SROA equivalent on the tuple return.
+The C win (~1.36×) is consistent across this kata family: clang's `int64_t*` + struct-return Pair maps to one fewer load + one register pair vs Rust's tuple-return + Kāra's `Array[i64, 2]` return — a constant per-call gap on top of the same algorithm; clang also skips the overflow checks Kāra runs. Go's 28.5 ms reflects per-iter slice-bounds checks + no SROA equivalent on the tuple return.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 

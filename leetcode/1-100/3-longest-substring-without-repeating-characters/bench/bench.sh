@@ -55,6 +55,18 @@ print_mem() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -99,6 +111,7 @@ build_go_seq() {
 }
 
 build_rust sliding_window.rs
+build_rust_ovf sliding_window.rs
 build_c    sliding_window.c
 build_kara sliding_window.kara
 build_go_seq
@@ -114,6 +127,7 @@ mismatch=""
 for pair in \
     'kara:./target/sliding_window_kara' \
     'rust:./target/sliding_window' \
+    'rust_ovf:./target/sliding_window_ovf' \
     'c:./target/sliding_window_c' \
     'go:./target/sliding_window_go_seq'; do
     name="${pair%%:*}"
@@ -150,6 +164,8 @@ rt_cmd --lang kara --approach sliding_window --lane seq --mode codegen \
     --name 'kara sliding_window (codegen)' --cmd './target/sliding_window_kara'
 rt_cmd --lang rust --approach sliding_window --lane seq --mode native \
     --name 'rust sliding_window' --cmd './target/sliding_window'
+rt_cmd --lang rust_ovf --approach sliding_window --lane seq --mode native \
+    --name 'rust sliding_window (overflow-checks=on, equal-safety)' --cmd './target/sliding_window_ovf'
 rt_cmd --lang c --approach sliding_window --lane seq --mode native \
     --name 'c    sliding_window' --cmd './target/sliding_window_c'
 rt_cmd --lang go --approach sliding_window --lane seq --mode native \

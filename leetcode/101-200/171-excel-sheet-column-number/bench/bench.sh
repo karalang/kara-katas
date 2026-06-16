@@ -51,6 +51,18 @@ mem_peak() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -146,6 +158,7 @@ build_c_par() {
 }
 
 build_rust     column_number.rs
+build_rust_ovf     column_number.rs
 build_rust_checked column_number.rs
 build_c        column_number.c
 build_kara     column_number.kara
@@ -162,6 +175,7 @@ for pair in \
     'kara:./target/column_number_kara' \
     'kara_seq:./target/column_number_kara_seq' \
     'rust:./target/column_number' \
+    'rust_ovf:./target/column_number_ovf' \
     'rust_chk:./target/column_number_rschk' \
     'c:./target/column_number_c' \
     'go:./target/column_number_go_seq' \
@@ -193,6 +207,8 @@ rt_cmd --lang kara --approach column_number --lane seq --mode codegen \
     --name 'kara column_number (seq, KARAC_AUTO_PAR=0)' --cmd './target/column_number_kara_seq'
 rt_cmd --lang rust --approach column_number --lane seq --mode native \
     --name 'rust column_number' --cmd './target/column_number'
+rt_cmd --lang rust_ovf --approach column_number --lane seq --mode native \
+    --name 'rust column_number (overflow-checks=on, equal-safety)' --cmd './target/column_number_ovf'
 rt_cmd --lang rust --approach column_number_rschk --lane seq --mode native \
     --name 'rust column_number (overflow-checks=on, =Kara safety)' --cmd './target/column_number_rschk'
 rt_cmd --lang c --approach column_number --lane seq --mode native \

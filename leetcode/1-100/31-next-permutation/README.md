@@ -84,8 +84,8 @@ construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 | | C | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 290.0 ms | 291.1 ms | **293.6 ms** | 296.4 ms | 322.3 ms | 16377 ms |
-| vs Kāra | 1.01× faster | 1.01× faster | — | **1.01× (Kāra 1.0 % faster)** | 1.10× slower | 56× slower |
+| time | 290.0 ms | 291.1 ms | **293.6 ms** | 296.5 ms | 322.3 ms | 16377 ms |
+| vs Kāra | 1.01× faster | 1.01× faster | — | **1.00× (equal-safety parity)** | 1.10× slower | 56× slower |
 
 **The compute-bound counterpoint to [#43](../43-multiply-strings/).** Multiply
 Strings was allocation- *and* arithmetic-bound — a per-result `Vec[i64]` + a
@@ -93,12 +93,15 @@ growing `String`, where Kāra's small-object-allocation gap + checked-arith tax
 put it at **1.37× Rust** at equal safety. Next Permutation removes both: the
 array lives in a fixed `Array[i64, 10]`, the algorithm steps it **in place**, and
 the only arithmetic is the bounded checksum (modulus `2^31 - 1`, nothing ever
-near an overflow). With no heap traffic and no real overflow-check pressure,
-**Kāra is dead even with Rust and C** — 293.6 ms vs Rust's 291.1 ms (`-O`, wrap)
-and C's 290.0 ms, both ~1.01×, and it actually **edges Rust at equal overflow
-safety** (293.6 vs 296.4 ms with `-C overflow-checks=on`). This is the honest
-flip side of #43: when the workload is pure in-place integer compute rather than
-small-object allocation, the residual Kāra carries elsewhere simply isn't there.
+near an overflow). The honest comparison is at equal safety: Kāra checks integer
+overflow by default, and `rustc -O` *wraps*. With no heap traffic and no real
+overflow-check pressure, **Kāra is dead even with Rust and C** — 293.6 ms vs
+Rust's 291.1 ms (`-O`, wrap) and C's 290.0 ms, both ~1.01×, and at **equal overflow
+safety it reaches parity** — 293.6 ms vs Rust's 296.5 ms with
+`-C overflow-checks=on`, a 1.00× tie (Kāra a hair ahead, well inside the noise).
+This is the honest flip side of #43: when the workload is pure in-place integer
+compute rather than small-object allocation, the residual Kāra carries elsewhere
+simply isn't there.
 
 **No par lane — by construction.** The enumeration is inherently serial: each
 permutation is derived in place from the one before it, so karac's
@@ -128,8 +131,8 @@ Kāra over `rustc -O` on both elapsed (77.9 vs 88.9 ms) and peak compiler RSS
 (13.5 vs 26.0 MiB).
 
 **Where this lands.** A pure in-place integer-compute kernel: Kāra ties Rust and
-C on runtime (and edges checked-Rust), ties them on memory, and wins on binary
-size and compile. Paired with #43 it draws the line cleanly — Kāra's residual is
+C on runtime (parity with checked-Rust at equal safety, 1.00×), ties them on
+memory, and wins on binary size and compile. Paired with #43 it draws the line cleanly — Kāra's residual is
 small-object allocation + checked arithmetic on hot allocation paths, and when a
 workload touches neither, Kāra is right on the systems-language floor.
 

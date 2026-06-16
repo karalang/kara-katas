@@ -18,6 +18,21 @@ Languages: **Kāra** (`karac build`), **Rust** (`rustc -O`), **C** (`clang -O3`)
 compiled languages it would flatten everything; its numbers are in the per-kata
 READMEs and the JSON feed.
 
+**One baseline caveat, made explicit:** Kāra checks integer overflow by default;
+`rustc -O` **silently wraps**. So the gray `Rust = 1.0` baseline is *unsafe* Rust —
+on a workload that exercises overflowing arithmetic it is doing strictly less work
+than Kāra. The runtime chart therefore overlays a goldenrod **Rust (checked)** ring
+— `rustc -O -C overflow-checks=on`, the safety-matched build — on the katas where
+the two diverge. That is the apples-to-apples number. Across the corpus the overflow
+tax is the bulk of every apparent "Kāra is slower" gap: the worst offenders (#171
+1.66×, #9 1.46×, #8 1.41× vs `rust -O`) collapse to **0.99× / 1.08× / 1.15×** once
+both languages check, and Kāra's own checked-arithmetic codegen is at *exact* parity
+with Rust's in isolation. Kāra even emits **fewer** instructions than safety-matched
+Rust on 16 of the corpus's collection/pointer kernels (linked lists, trees, maps,
+backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is a
+handful of string-building kernels (1-byte `push_str` loops, ~1.2×) and the
+low-cardinality sort in #1665 — both tracked.
+
 ## Runtime — sequential lane
 
 Single-threaded, same algorithm everywhere. This is the load-bearing
@@ -25,9 +40,12 @@ per-core compiler-quality comparison.
 
 ![Runtime, sequential lane](graphs/runtime-seq.png)
 
-Kāra's cloud tracks C's closely and straddles the Rust baseline depending on the
-workload — ahead on allocation/RC- and string-heavy kernels, behind on a few
-tight numeric loops. Go trails on most single-threaded work.
+Kāra's cloud tracks C's closely and sits at or below the **Rust (checked)** rings
+on most programs — i.e. at parity with *safety-matched* Rust, ahead on the
+collection/pointer kernels, with the only daylight to the gray `rust -O` baseline
+being the overflow checks Rust opts out of by default (see the baseline caveat
+above). The residual equal-safety gaps are string-building kernels and #1665's sort.
+Go trails on most single-threaded work.
 
 ## Binary size — sequential lane
 

@@ -61,17 +61,18 @@ The seven-row table below contains both comparisons interleaved; the per-iter `i
 
 | Lane | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|---|
-| par | rust count (rayon par_iter)              | **35.2 ms ± 0.4 ms** | 561.0 ms | ~1590% (~16 cores) |
-| par | **kāra count (codegen, #[par_unordered])** | **56.8 ms ± 2.3 ms** | 679.0 ms | ~1200% (~12 cores) |
-| par | go   count (goroutines)                  | **48.0 ms ± 1.4 ms** | 514.0 ms | ~1070% (~11 cores) |
-| seq | go   count                               | **430.0 ms ± 1.5 ms** | 456.0 ms | 106% |
-| seq | **kāra count**                           | **520.2 ms ± 6.7 ms** | 517.0 ms | 99% |
-| seq | c    count (clang -O3)                   | **487.2 ms ± 0.4 ms** | 484.0 ms | 99% |
-| seq | rust count (rustc -O)                    | **494.4 ms ± 1.0 ms** | 491.0 ms | 99% |
+| par | rust count (rayon par_iter)              | **35.0 ms ± 0.3 ms** | 561.0 ms | ~1590% (~16 cores) |
+| par | **kāra count (codegen, #[par_unordered])** | **56.7 ms ± 1.4 ms** | 678.0 ms | ~1200% (~12 cores) |
+| par | go   count (goroutines)                  | **48.3 ms ± 1.4 ms** | 513.0 ms | ~1070% (~11 cores) |
+| seq | go   count                               | **431.5 ms ± 4.0 ms** | 459.0 ms | 108% |
+| seq | **kāra count**                           | **521.1 ms ± 5.9 ms** | 517.0 ms | 99% |
+| seq | c    count (clang -O3)                   | **487.9 ms ± 0.3 ms** | 484.0 ms | 99% |
+| seq | rust count (rustc -O)                    | **494.5 ms ± 0.8 ms** | 491.0 ms | 99% |
+| seq | rust count (overflow-checks=on)          | **519.6 ms ± 4.2 ms** | 516.0 ms | 99% |
 
 Run `bench/bench.sh` to reproduce. Hyperfine, 10 runs after 3 warmups, M5 Pro under typical desktop load.
 
-**Story 1 — per-core compiler quality (the kata's primary purpose).** Looking only at the seq lane: Kāra (520 ms), C (487 ms), and Rust (494 ms) are within **~7% of each other** — essentially identical. Go is the outlier at 430 ms (~14% faster than the others); see *Why is Go single-thread faster?* below. **The Kāra compiler is at near-parity with both Rust and C on single-threaded code.** No claim of a per-core advantage; the kata's value here is the *demonstration* that Kāra hasn't traded compiler quality for higher-level features. A careful reader looking for "what's the actual codegen cost of using Kāra?" gets a clean answer: ~7% vs C/Rust, ~21% behind Go on this specific shape.
+**Story 1 — per-core compiler quality (the kata's primary purpose).** Looking only at the seq lane: the Kāra-vs-Rust headline is the **equal-safety** row. Kāra checks integer overflow by default; `rustc -O` *silently wraps*, so the `rust -O` row (494 ms) runs a weaker safety contract. The apples-to-apples comparison is `rust -C overflow-checks=on` (519.6 ms), which restores the same checked trial-division arithmetic Kāra ships by default — and against it Kāra is at **dead parity, 1.00×** (521 vs 520 ms, inside σ). The residual ~5% gap to wrapping `rust -O` is the overflow-check safety tax, not codegen quality. C (487 ms) and clang, like `rust -O`, also skip the overflow checks, so the Kāra-vs-C ~7% gap likewise folds the safety tax in. Go is the outlier at 430 ms (~17% faster than the checked rows); see *Why is Go single-thread faster?* below. **The Kāra compiler is at parity with equal-safety Rust on single-threaded code** — it hasn't traded compiler quality for higher-level features. A careful reader looking for "what's the actual codegen cost of using Kāra?" gets a clean answer: parity with equal-safety Rust, ~7% vs unchecked C/Rust, ~21% behind Go on this specific shape.
 
 **Story 2 — auto-parallelism vs library/runtime parallelism (a separate question with its own answer).** Kāra's `#[par_unordered]` is **1.61× slower than `rayon`** and **1.18× slower than Go's goroutines**. Brand-new auto-par lands within 61% of Rust's mature `rayon` work-stealing library and behind Go's goroutine runtime — both have been hand-tuned for years. Go par spends ~514 ms user-CPU across ~11 cores and Kāra par ~679 ms across ~12 cores; rayon spends ~561 ms across ~16 cores. The Kāra-vs-rayon gap is concentrated in scheduler efficiency: rayon's per-worker deques + work-stealing distribute load better than karac's current single global queue + Condvar (the v1 MVP per `karac-rust/runtime/src/lib.rs § Pool`); Go's goroutine runtime sits at a comparable distribution efficiency to karac's MVP. The Phase 3 + 3.1 codegen work (worker-fn synthesis, amortized-doubling combine) is competitive with both rayon and Go at the worker-level; the runtime scheduler is the remaining gap, tracked at karac-rust `phase-7-codegen.md` line 163 ("real work-stealing scheduler") as the optimization target this comparison empirically validates.
 

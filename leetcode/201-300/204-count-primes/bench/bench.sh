@@ -52,6 +52,18 @@ print_mem() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -82,6 +94,7 @@ build_kara() {
 }
 
 build_rust count.rs
+build_rust_ovf count.rs
 build_c    count.c
 build_kara count.kara
 build_kara count_seq.kara
@@ -122,13 +135,14 @@ fi
 kara_sink=$(./target/count_kara)
 kara_seq_sink=$(./target/count_seq_kara)
 rust_sink=$(./target/count)
+rust_ovf_sink=$(./target/count_ovf)
 c_sink=$(./target/count_c)
 c_par_sink=$(./target/count_c_par)
 rayon_sink=$(./target/count_rayon)
 go_seq_sink=$(./target/go_seq)
 go_par_sink=$(./target/go_par)
 mismatch=""
-for pair in "kara_seq:$kara_seq_sink" "rust:$rust_sink" "c:$c_sink" "c_par:$c_par_sink" "rayon:$rayon_sink" "go_seq:$go_seq_sink" "go_par:$go_par_sink"; do
+for pair in "kara_seq:$kara_seq_sink" "rust:$rust_sink" "rust_ovf:$rust_ovf_sink" "c:$c_sink" "c_par:$c_par_sink" "rayon:$rayon_sink" "go_seq:$go_seq_sink" "go_par:$go_par_sink"; do
     name="${pair%%:*}"
     sink="${pair#*:}"
     if [ "$sink" != "$kara_sink" ]; then
@@ -163,6 +177,8 @@ rt_cmd --lang kara --approach count --lane seq --mode codegen \
     --name 'kara count (codegen, single-threaded)' --cmd './target/count_seq_kara'
 rt_cmd --lang rust --approach count --lane seq --mode native \
     --name 'rust count (single-threaded)' --cmd './target/count'
+rt_cmd --lang rust_ovf --approach count --lane seq --mode native \
+    --name 'rust count (overflow-checks=on, equal-safety)' --cmd './target/count_ovf'
 rt_cmd --lang rust --approach count --lane par --mode native \
     --name 'rust count (rayon par_iter)' --cmd './target/count_rayon'
 rt_cmd --lang go --approach count --lane seq --mode native \

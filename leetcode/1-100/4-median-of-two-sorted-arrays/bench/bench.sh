@@ -52,6 +52,18 @@ print_mem() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -141,6 +153,7 @@ build_c_par() {
 }
 
 build_rust    binary_search_partition.rs
+build_rust_ovf    binary_search_partition.rs
 build_c       binary_search_partition.c
 build_kara    binary_search_partition.kara
 build_kara_seq binary_search_partition.kara
@@ -161,6 +174,7 @@ for pair in \
     'kara:./target/binary_search_partition_kara' \
     'kara_seq:./target/binary_search_partition_kara_seq' \
     'rust:./target/binary_search_partition' \
+    'rust_ovf:./target/binary_search_partition_ovf' \
     'c:./target/binary_search_partition_c' \
     'go:./target/binary_search_partition_go_seq' \
     'rayon:./target/binary_search_partition_rayon' \
@@ -204,6 +218,8 @@ rt_cmd --lang kara --approach binary_search_partition --lane seq --mode codegen 
     --name 'kara binary_search_partition (seq, KARAC_AUTO_PAR=0)' --cmd './target/binary_search_partition_kara_seq'
 rt_cmd --lang rust --approach binary_search_partition --lane seq --mode native \
     --name 'rust binary_search_partition' --cmd './target/binary_search_partition'
+rt_cmd --lang rust_ovf --approach binary_search_partition --lane seq --mode native \
+    --name 'rust binary_search_partition (overflow-checks=on, equal-safety)' --cmd './target/binary_search_partition_ovf'
 rt_cmd --lang c --approach binary_search_partition --lane seq --mode native \
     --name 'c    binary_search_partition' --cmd './target/binary_search_partition_c'
 rt_cmd --lang go --approach binary_search_partition --lane seq --mode native \

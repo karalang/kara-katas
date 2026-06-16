@@ -52,8 +52,14 @@ COLOR = {
     "rust": "#8b949e",  # gray -- usually the baseline (flat), intentionally recessive
     "c": "#3fb950",     # green
     "go": "#bc8cff",    # violet
+    # equal-safety Rust (rustc -O -C overflow-checks=on) -- an OPTIONAL overlay on
+    # the runtime chart, present only where the workload exercises overflow-checked
+    # arithmetic (so rust -O's silent wrapping understates the safety-matched cost).
+    # Goldenrod reads as a Rust variant without colliding with the gray baseline.
+    "rust_ovf": "#d4a017",
 }
-LABEL = {"kara": "Kāra", "rust": "Rust", "c": "C", "go": "Go"}
+LABEL = {"kara": "Kāra", "rust": "Rust", "c": "C", "go": "Go",
+         "rust_ovf": "Rust (checked)"}
 
 # Metric specs: (filename, title, unit-note, lane-or-None, extractor).
 # extractor(measurement-or-compile-row) -> float|None
@@ -80,19 +86,21 @@ def _crss(c):
 # finished artifact still is, so Go stays in runtime/binary/rss). yscale: how
 # the relative axis is drawn ("linear" | "log") -- size spans orders of
 # magnitude, the rest are well-behaved linear.
-# (fname, title, unitnote, section, lane, langs, yscale, extractor)
+# (fname, title, unitnote, section, lane, langs, yscale, extractor, opt_langs)
+# opt_langs: OPTIONAL overlay langs plotted only where present (do NOT gate which
+# programs appear, and are NOT drawn for programs that lack them).
 ALL4 = ["kara", "rust", "c", "go"]
 PAR4 = ["kara", "rust", "c", "go"]   # par lane = Kāra auto-par vs Rust rayon vs Go goroutines vs C pthreads (metal floor)
 COMPILE3 = ["kara", "rust", "c"]  # Go excluded: `go build` bundles module resolution, not a single-file compile
 METRICS = [
-    ("runtime-seq", "Runtime — sequential lane", "lower = faster", "measurements", "seq", ALL4, "linear", _rt),
-    ("runtime-par", "Runtime — auto-parallel lane", "lower = faster", "measurements", "par", PAR4, "linear", _rt),
-    ("binary-seq", "Binary size — sequential lane", "lower = smaller", "measurements", "seq", ALL4, "log", _bin),
-    ("binary-par", "Binary size — auto-parallel lane", "lower = smaller", "measurements", "par", PAR4, "log", _bin),
-    ("rss-seq", "Runtime peak memory — sequential lane", "lower = leaner", "measurements", "seq", ALL4, "linear", _rss),
-    ("rss-par", "Runtime peak memory — auto-parallel lane", "lower = leaner", "measurements", "par", PAR4, "linear", _rss),
-    ("compile-elapsed", "Compile time (cold)", "lower = faster", "compile", None, COMPILE3, "linear", _cel),
-    ("compile-rss", "Compile peak memory (cold)", "lower = leaner", "compile", None, COMPILE3, "linear", _crss),
+    ("runtime-seq", "Runtime — sequential lane", "lower = faster", "measurements", "seq", ALL4, "linear", _rt, ["rust_ovf"]),
+    ("runtime-par", "Runtime — auto-parallel lane", "lower = faster", "measurements", "par", PAR4, "linear", _rt, []),
+    ("binary-seq", "Binary size — sequential lane", "lower = smaller", "measurements", "seq", ALL4, "log", _bin, []),
+    ("binary-par", "Binary size — auto-parallel lane", "lower = smaller", "measurements", "par", PAR4, "log", _bin, []),
+    ("rss-seq", "Runtime peak memory — sequential lane", "lower = leaner", "measurements", "seq", ALL4, "linear", _rss, []),
+    ("rss-par", "Runtime peak memory — auto-parallel lane", "lower = leaner", "measurements", "par", PAR4, "linear", _rss, []),
+    ("compile-elapsed", "Compile time (cold)", "lower = faster", "compile", None, COMPILE3, "linear", _cel, []),
+    ("compile-rss", "Compile peak memory (cold)", "lower = leaner", "compile", None, COMPILE3, "linear", _crss, []),
 ]
 
 
@@ -106,9 +114,12 @@ def pick_row(rows, lang):
     return cands[0] if cands else None
 
 
-def collect(feed, section, lane, langs, extract):
+def collect(feed, section, lane, langs, extract, opt_langs=()):
     """Return list of programs: {key, label, vals:{lang:value}} that have a value
-    for every language in `langs` (so the relative lines have no gaps)."""
+    for every language in `langs` (so the relative lines have no gaps).
+
+    `opt_langs` are OPTIONAL overlay langs: their value rides along in `vals` when
+    present, but they neither gate program inclusion nor create gaps if absent."""
     progs = []
     for kata in feed["katas"]:
         kid = kata["kata"]["id"]
@@ -124,12 +135,13 @@ def collect(feed, section, lane, langs, extract):
         for ap in approaches:
             arows = [r for r in rows if r.get("approach") == ap]
             vals = {}
-            for lang in langs:
+            for lang in list(langs) + list(opt_langs):
                 row = pick_row(arows, lang)
                 v = extract(row) if row else None
                 if v is not None:
                     vals[lang] = float(v)
-            # require every participating language, else the profile has gaps
+            # require every REQUIRED language, else the profile has gaps; optional
+            # overlay langs are exempt (plotted only where present).
             if all(lang in vals for lang in langs):
                 short_ap = ap if len(ap) <= 14 else ap[:13] + "…"
                 progs.append({"key": f"{kid}:{ap}", "label": f"#{kid}\n{short_ap}", "vals": vals})
@@ -300,12 +312,15 @@ def render(progs, baseline, title, unitnote, langs, yscale):
     return "\n".join(s)
 
 
-def render_dots(progs, baseline, title, unitnote, langs, yscale):
+def render_dots(progs, baseline, title, unitnote, langs, yscale, opt_langs=()):
     """Dot-chart (scatter/strip). Each program = one dot per language at its
     ratio-to-baseline; NO connecting line (x-order is meaningless, so a line would
     imply a trend that doesn't exist). Designed to scale: at hundreds/thousands of
     programs the dots overplot into a density band per language. baseline draws as
-    the flat 1.0 reference. kāra is larger + on top."""
+    the flat 1.0 reference. kāra is larger + on top.
+
+    `opt_langs` are optional overlay langs (e.g. equal-safety Rust): plotted only
+    for programs that carry them, never connected, and absent where they don't apply."""
     W, H = 980, 560
     ml, mr, mt, mb = 70, 168, 78, 104
     pw, ph = W - ml - mr, H - mt - mb
@@ -320,6 +335,16 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
             series[lang].append(r)
             ymax_data = max(ymax_data, r)
             ymin_data = min(ymin_data, r)
+    # optional overlay langs: sparse (i, ratio) lists, only where present
+    opt_series = {lang: [] for lang in opt_langs}
+    for i, p in enumerate(progs):
+        base = p["vals"][baseline]
+        for lang in opt_langs:
+            if lang in p["vals"]:
+                r = p["vals"][lang] / base
+                opt_series[lang].append((i, r))
+                ymax_data = max(ymax_data, r)
+                ymin_data = min(ymin_data, r)
 
     def X(i):
         if n == 1:
@@ -400,10 +425,14 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
     # per-language horizontal dodge so coincident dots (e.g. kāra == C at binary
     # parity) sit shoulder-to-shoulder instead of one occluding the other. Scaled
     # to inter-program spacing so it shrinks gracefully as the suite grows.
+    # only overlay langs that actually carry ≥1 data point participate -- keeps the
+    # machinery fully inert (charts byte-identical) until a lane provides the data.
+    present_opt = [l for l in opt_langs if opt_series[l]]
     plotlangs = [l for l in langs if l != baseline]
+    dodgelangs = plotlangs + present_opt  # present overlay langs get their own dodge slot
     spacing = (pw / max(n - 1, 1))
-    ddx = min(spacing * 0.5, (r_kara * 2 + 1.5)) / max(len(plotlangs), 1)
-    dodge = {l: (j - (len(plotlangs) - 1) / 2) * ddx for j, l in enumerate(plotlangs)}
+    ddx = min(spacing * 0.5, (r_kara * 2 + 1.5)) / max(len(dodgelangs), 1)
+    dodge = {l: (j - (len(dodgelangs) - 1) / 2) * ddx for j, l in enumerate(dodgelangs)}
 
     # dots: kara drawn last (on top)
     draw_order = [l for l in plotlangs if l != "kara"] + (["kara"] if "kara" in plotlangs else [])
@@ -415,19 +444,31 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale):
         for i, v in enumerate(series[lang]):
             s.append(f'<circle cx="{X(i)+dx:.1f}" cy="{Y(v):.1f}" r="{r}" '
                      f'fill="{COLOR[lang]}" opacity="{o}"/>')
+    # optional overlay dots (e.g. equal-safety Rust) -- drawn as a hollow ring so
+    # they read as a "same lang, safety-matched" annotation distinct from the solid
+    # comparator dots, present only where the kata carries the lane.
+    for lang in present_opt:
+        dx = dodge.get(lang, 0.0)
+        for i, v in opt_series[lang]:
+            s.append(f'<circle cx="{X(i)+dx:.1f}" cy="{Y(v):.1f}" r="{r_other}" '
+                     f'fill="none" stroke="{COLOR[lang]}" stroke-width="1.8" opacity="{min(1.0, op + 0.1)}"/>')
 
     # legend
     lx, ly = ml + pw + 24, mt + 6
-    for j, lang in enumerate(langs):
+    for j, lang in enumerate(list(langs) + present_opt):
         yy = ly + j * 24
         if lang == baseline:
             s.append(f'<line x1="{lx}" y1="{yy}" x2="{lx+22}" y2="{yy}" stroke="{DIM}" '
                      f'stroke-width="2" stroke-dasharray="5 4"/>')
             disp = f"{LABEL[lang]} = 1.0×"
+        elif lang in opt_langs:
+            s.append(f'<circle cx="{lx+11}" cy="{yy}" r="4" fill="none" '
+                     f'stroke="{COLOR[lang]}" stroke-width="1.8"/>')
+            disp = LABEL[lang]
         else:
             s.append(f'<circle cx="{lx+11}" cy="{yy}" r="{5 if lang=="kara" else 4}" fill="{COLOR[lang]}"/>')
             disp = LABEL[lang]
-        s.append(f'<text x="{lx+30}" y="{yy+4}" font-size="13" '
+        s.append(f'<text x="{lx+30}" y="{yy+4}" font-size="{12 if lang in opt_langs else 13}" '
                  f'fill="{FG}" font-weight="{700 if lang=="kara" else 400}">{esc(disp)}</text>')
 
     cap_txt = ("Each dot is one benchmarked program (kata × approach); there is no connecting line "
@@ -701,10 +742,12 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
 
     wrote = []
-    for fname, title, unitnote, section, lane, langs, yscale, extract in METRICS:
+    for fname, title, unitnote, section, lane, langs, yscale, extract, opt_langs in METRICS:
         if args.only and fname != args.only:
             continue
-        progs = collect(feed, section, lane, langs, extract)
+        # the baseline can't also be an optional overlay (it's the 1.0 reference)
+        opt_langs = [l for l in opt_langs if l != args.baseline]
+        progs = collect(feed, section, lane, langs, extract, opt_langs)
         if len(progs) < 2:
             print(f"skip {fname}: only {len(progs)} program(s) with all of {langs} "
                   f"(need ≥2 for a profile)", file=sys.stderr)
@@ -715,7 +758,7 @@ def main():
         if args.style == "line":
             svg = render(progs, args.baseline, title, unitnote, langs, ys)
         elif args.style == "dots":
-            svg = render_dots(progs, args.baseline, title, unitnote, langs, ys)
+            svg = render_dots(progs, args.baseline, title, unitnote, langs, ys, opt_langs)
         else:
             svg = render_bars(progs, args.baseline, title, unitnote, langs, ys,
                               overlap=(args.style == "bars-overlap"))

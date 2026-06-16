@@ -75,16 +75,17 @@ Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + three_sum_closes
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with the karac Slice 6.1 mono fast path landed (see § Sort-dispatch history below for the pre-fix story). The 2026-05-30 snapshot read 62.6 / 58.7 / 106.7 / 169.9 — all rows within ~3% (rust/c binaries byte-identical), batch variance.
+Snapshot — M5 Pro, 2026-06-16, hyperfine `--warmup 5 --runs 30 --shell=none`. All comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with the karac Slice 6.1 mono fast path landed (see § Sort-dispatch history below for the pre-fix story). The equal-safety `rust -C overflow-checks=on` lane is now recorded alongside the wrapping `rust -O` lane — it is the apples-to-apples Kāra-vs-Rust row, since Kāra checks overflow by default.
 
 | Implementation | Wall time |
 |---|---|
-| rust three_sum_closest                | **58.3 ± 0.5 ms** |
-| **kāra three_sum_closest (seq)**      | **67.9 ± 1.4 ms** |
-| c    three_sum_closest (clang -O3)    | 105.9 ± 1.1 ms |
-| go   three_sum_closest                | 167.8 ± 7.0 ms |
+| rust three_sum_closest                | **58.7 ± 0.5 ms** |
+| **kāra three_sum_closest (seq)**      | **65.8 ± 1.8 ms** |
+| rust three_sum_closest (overflow-checks=on) | 67.3 ± 0.9 ms |
+| c    three_sum_closest (clang -O3)    | 106.7 ± 1.2 ms |
+| go   three_sum_closest                | 167.2 ± 0.8 ms |
 
-This is the same sort-bound shape as kata 15. Rust leads by **1.08×** over Kāra seq — well inside codegen-quality noise on a sort + two-pointer workload where both compilers monomorphize their comparators. **C trails Kāra by 1.69×** (106.9 vs 63.1 ms) — `qsort`'s indirect comparator call lands per comparison and there's no way to eliminate it without giving up the standard-library sort. **Go trails by 2.77×** — `sort.Slice` also pays the per-comparison closure indirect call, with GC and scheduler overhead on top.
+This is the same sort-bound shape as kata 15. **The Kāra-vs-Rust headline is the equal-safety row.** Kāra checks integer overflow by default; `rustc -O` *silently wraps*, so the `rust -O` row runs a weaker safety contract. The apples-to-apples comparison is `rust -C overflow-checks=on`, which restores the same checked arithmetic Kāra ships by default — and against it **Kāra is actually faster, 0.98×** (65.8 vs 67.3 ms). The apparent "Rust leads by 1.08×" against `rust -O` is the overflow-check safety tax, not a codegen-quality gap: once Rust does the same per-`sum` checks Kāra does, Kāra's mono sort body edges ahead. Both compilers monomorphize their comparators (see § Sort-dispatch history below). **C trails Kāra by 1.62×** (106.7 vs 65.8 ms) — `qsort`'s indirect comparator call lands per comparison and there's no way to eliminate it without giving up the standard-library sort; note clang -O3 also skips the overflow checks. **Go trails by 2.54×** — `sort.Slice` also pays the per-comparison closure indirect call, with GC and scheduler overhead on top.
 
 #### Sort-dispatch history (kata 16 → karac Slice 6.1)
 
@@ -166,4 +167,4 @@ Kāra's compile-memory footprint is ~4.1× clang's and ~3.5× lower than rustc's
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **Kāra/Rust ~1.08× gap is the load-bearing result** — the kata's first ship at 1.55× was the natural-pull trigger for karac Slice 6.1, which monomorphizes `Vec[i64].sort_by` inline-closure comparators into the user binary; the post-fix gap is within codegen-quality noise. Kata 15 with the same fix runs **faster than Rust** by ~1.1× (see [`15-3sum/README.md`](../15-3sum/README.md)). Kāra leads C by 1.69× (was 1.17×) and Go by 2.77× (was 1.91×) on this kata — the qsort indirect-call penalty and `sort.Slice` closure overhead are no longer offset on the Kāra side.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this kata the **load-bearing result is equal-safety parity: Kāra is 0.98× of `rust -C overflow-checks=on`** — a hair faster than safety-matched Rust. (The ~1.08× against wrapping `rust -O` is the overflow-check tax, not a codegen gap; see the runtime section above.) The kata's first ship at 1.55× was the natural-pull trigger for karac Slice 6.1, which monomorphizes `Vec[i64].sort_by` inline-closure comparators into the user binary; the post-fix gap closed to codegen-quality noise, and to parity once safety is matched. Kata 15 with the same fix also runs **faster than Rust** (see [`15-3sum/README.md`](../15-3sum/README.md)). Kāra leads C by 1.62× and Go by 2.54× on this kata — the qsort indirect-call penalty and `sort.Slice` closure overhead are no longer offset on the Kāra side.

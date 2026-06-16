@@ -55,6 +55,18 @@ print_mem() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -134,6 +146,7 @@ build_c_par() {
 }
 
 build_rust     atoi.rs
+build_rust_ovf     atoi.rs
 build_c        atoi.c
 build_kara     atoi.kara
 build_kara_seq atoi.kara
@@ -152,6 +165,7 @@ for pair in \
     'kara:./target/atoi_kara' \
     'kara_seq:./target/atoi_kara_seq' \
     'rust:./target/atoi' \
+    'rust_ovf:./target/atoi_ovf' \
     'c:./target/atoi_c' \
     'go:./target/atoi_go_seq' \
     'rayon:./target/atoi_rayon' \
@@ -194,6 +208,8 @@ rt_cmd --lang kara --approach atoi --lane seq --mode codegen \
     --name 'kara atoi (seq, KARAC_AUTO_PAR=0)' --cmd './target/atoi_kara_seq'
 rt_cmd --lang rust --approach atoi --lane seq --mode native \
     --name 'rust atoi' --cmd './target/atoi'
+rt_cmd --lang rust_ovf --approach atoi --lane seq --mode native \
+    --name 'rust atoi (overflow-checks=on, equal-safety)' --cmd './target/atoi_ovf'
 rt_cmd --lang c --approach atoi --lane seq --mode native \
     --name 'c    atoi' --cmd './target/atoi_c'
 rt_cmd --lang go --approach atoi --lane seq --mode native \

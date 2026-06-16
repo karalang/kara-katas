@@ -95,18 +95,29 @@ Per [`../../../BENCH.md`](../../../BENCH.md) § *Implicit auto-par*, this kata e
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 5 --runs 30 --shell=none`:
+Snapshot — M5 Pro, 2026-06-16, hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| rust palindrome (rustc -O) | **59.1 ms ± 0.7 ms** | 58.0 ms | 98% |
-| c    palindrome (clang -O3) | **67.0 ms ± 0.9 ms** | 65.0 ms | 97% |
-| **kāra palindrome** (`KARAC_AUTO_PAR=0`) | **85.9 ms ± 0.3 ms** | 84.0 ms | 97% |
-| go   palindrome | **103.8 ms ± 1.7 ms** | 101.0 ms | 98% |
+| rust palindrome (rustc -O) | **59.3 ms ± 0.2 ms** | 57.9 ms | 99% |
+| c    palindrome (clang -O3) | **66.4 ms ± 0.2 ms** | 64.8 ms | 99% |
+| rust palindrome (`-C overflow-checks=on`) | **79.9 ms ± 2.1 ms** | 78.2 ms | 99% |
+| **kāra palindrome** (`KARAC_AUTO_PAR=0`) | **86.5 ms ± 0.3 ms** | 84.7 ms | 99% |
+| go   palindrome | **102.3 ms ± 0.4 ms** | 100.3 ms | 99% |
 
-Kāra **runs 1.28× behind `clang -O3`** (85.9 vs 67.0 ms) and runs **1.45× behind `rustc -O`** (85.9 vs 59.1 ms). Both ratios are within-lane: the same per-core single-threaded codegen-quality comparison the kata corpus is built around.
+**Read the two Rust rows together — that's the apples-to-apples story.** Kāra
+traps on integer overflow *by default* (design.md § Arithmetic Overflow: "defined
+behavior, never undefined"); `rustc -O` **silently wraps**. So the equal-safety
+build — Rust with `-C overflow-checks=on` — is the comparison that holds the
+safety constant. Against it Kāra is **at parity**: 86.5 ms vs 79.9 ms, a **1.08×**
+gap that is just per-core codegen, not a safety difference. The wider 1.45× against
+`rustc -O`'s default is the silent-wraparound bug class Kāra refuses to ship and
+Rust release opts out of — the half-reverse digit walk here never overflows i32,
+but Kāra still checks every `reversed * 10` like the language guarantees. (C and Go
+also wrap; they are the unsafe-but-fast floor, not safety peers.) Against `clang -O3`
+Kāra runs 1.30× behind (86.5 vs 66.4 ms), within-lane.
 
-The Rust win on per-core throughput is plausibly the same shape as kata #4's pre-`bdac0d8` snapshot — rustc inlines `is_palindrome` into `main` while karac currently emits a call. `objdump --syms target/palindrome_kara_seq | grep is_palindrome` will tell us whether the symbol survived; if it did, the post-`bdac0d8` internal-linkage path may have a corner case for `bool`-returning predicates worth investigating. Filing as a follow-up rather than blocking the kata; the current seq-lane result is already 1.45× of Rust which is already good.
+The Rust win on per-core throughput is plausibly the same shape as kata #4's pre-`bdac0d8` snapshot — rustc inlines `is_palindrome` into `main` while karac currently emits a call. `objdump --syms target/palindrome_kara_seq | grep is_palindrome` will tell us whether the symbol survived; if it did, the post-`bdac0d8` internal-linkage path may have a corner case for `bool`-returning predicates worth investigating. Filing as a follow-up rather than blocking the kata; the current seq-lane result is at parity (1.08×) with equal-safety Rust and 1.45× of wrapping `rustc -O`, which is already good.
 
 The Go gap (~1.21× of Kāra-seq) reflects per-iter slice-bounds checks + the boxed `int32` return that Go can't SROA across the small predicate body.
 

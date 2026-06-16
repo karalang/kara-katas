@@ -48,6 +48,18 @@ mem_peak() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -112,6 +124,7 @@ build_go_seq() {
 }
 
 build_rust         multiply_strings.rs
+build_rust_ovf         multiply_strings.rs
 build_rust_checked multiply_strings.rs
 build_c            multiply_strings.c
 build_kara         multiply_strings.kara
@@ -125,6 +138,7 @@ for pair in \
     'kara:./target/multiply_strings_kara' \
     'kara_seq:./target/multiply_strings_kara_seq' \
     'rust:./target/multiply_strings' \
+    'rust_ovf:./target/multiply_strings_ovf' \
     'rust_chk:./target/multiply_strings_rschk' \
     'c:./target/multiply_strings_c' \
     'go:./target/multiply_strings_go_seq'; do
@@ -161,6 +175,8 @@ rt_cmd --lang kara --approach multiply_strings --lane seq --mode codegen \
     --name 'kara multiply_strings (seq, KARAC_AUTO_PAR=0)' --cmd './target/multiply_strings_kara_seq'
 rt_cmd --lang rust --approach multiply_strings --lane seq --mode native \
     --name 'rust multiply_strings' --cmd './target/multiply_strings'
+rt_cmd --lang rust_ovf --approach multiply_strings --lane seq --mode native \
+    --name 'rust multiply_strings (overflow-checks=on, equal-safety)' --cmd './target/multiply_strings_ovf'
 rt_cmd --lang rust --approach multiply_strings_rschk --lane seq --mode native \
     --name 'rust multiply_strings (overflow-checks=on, =Kara safety)' --cmd './target/multiply_strings_rschk'
 rt_cmd --lang c --approach multiply_strings --lane seq --mode native \

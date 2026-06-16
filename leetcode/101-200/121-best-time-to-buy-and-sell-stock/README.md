@@ -65,10 +65,11 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 |---|---|---|
 | c    one_pass (clang -O3) | 13.2 ± 0.1 ms | 1.07× ahead of kāra |
 | **kāra one_pass (codegen)** | **14.3 ± 0.1 ms** | — |
-| rust one_pass | 14.3 ± 1.8 ms | **exact tie with Rust** |
+| rust one_pass (`-O`, wrapping) | 13.7 ± 0.1 ms | 1.04× ahead of kāra |
+| rust one_pass (`overflow-checks=on`) | 14.1 ± 0.1 ms | **1.01× — equal-safety parity** |
 | go   one_pass | 15.1 ± 1.2 ms | kāra 1.06× ahead of Go |
 
-Kāra and Rust read **identical to the tenth of a millisecond** (same 14.3 wall, same 13 ms User). (The 2026-05-18 snapshot read kāra 14.7 / rust 15.0 — the "1.02× faster than Rust" margin was startup-and-page-fault variance, as that snapshot itself noted; today's batch confirms it by landing both on the same number, on binaries byte-identical to May's. C and Go rows are benched here for the first time.) The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. The May-14 snapshot read kara at 1.09× *of* Rust on M1; the gap closed with the cross-archive LTO + DCE work and the karac drop-pathway fix that also showed up in kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak)'s memory profile. C's 1.07× lead is the no-bounds-check floor.
+The honest comparison is at equal safety. Kāra checks integer overflow by default; `rustc -O` *wraps* — its 13.7 ms is a no-overflow-check binary. Matching Kāra's default safety with `-C overflow-checks=on` moves Rust to **14.1 ms**, and against that lane Kāra and Rust read **identical to the tenth of a millisecond** — a **1.01× tie** (14.3 vs 14.1, both ~12.5 ms User, well inside the noise band). The small gap to wrapping `-O` Rust is the overflow-check safety tax, and it vanishes once Rust opts into the same checks. The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. The May-14 snapshot read kara at 1.09× *of* Rust on M1; the gap closed with the cross-archive LTO + DCE work and the karac drop-pathway fix that also showed up in kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak)'s memory profile. C's 1.07× lead is the no-bounds-check, no-overflow-check floor.
 
 ### Codegen vs Python
 

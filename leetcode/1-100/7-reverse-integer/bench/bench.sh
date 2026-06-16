@@ -52,6 +52,18 @@ mem_peak() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -131,6 +143,7 @@ build_c_par() {
 }
 
 build_rust     "${STEM}.rs"
+build_rust_ovf     "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_kara_seq "${STEM}.kara"
@@ -149,6 +162,7 @@ for pair in \
     "kara:./target/${STEM}_kara" \
     "kara_seq:./target/${STEM}_kara_seq" \
     "rust:./target/${STEM}" \
+    "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
     "go:./target/${STEM}_go_seq" \
     "rayon:./target/${STEM}_rayon" \
@@ -183,6 +197,8 @@ rt_cmd --lang kara --approach reverse --lane seq --mode codegen \
     --name "kara ${STEM} (seq, KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach reverse --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
+rt_cmd --lang rust_ovf --approach reverse --lane seq --mode native \
+    --name "rust reverse (overflow-checks=on, equal-safety)" --cmd "./target/${STEM}_ovf"
 rt_cmd --lang c --approach reverse --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach reverse --lane seq --mode native \

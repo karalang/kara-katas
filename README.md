@@ -10,7 +10,7 @@ Single-threaded, same algorithm in every language, native binaries (`karac build
 
 ![Runtime, sequential lane — relative to Rust](graphs/runtime-seq.png)
 
-Kāra's orange dots sit clustered around the Rust baseline — ahead on the allocation- and string-heavy workloads, behind on a couple, tracking C's green cloud closely. It loses on some programs, and the chart shows that plainly.
+Kāra's orange dots sit clustered around the Rust baseline, tracking C's green cloud closely. One thing to read deliberately: Kāra **checks integer overflow by default** and `rustc -O` **silently wraps**, so the gray `Rust = 1.0` line is *unsafe* Rust. The goldenrod **Rust (checked)** rings overlay `rustc -O -C overflow-checks=on` — the safety-matched build — on the katas where it differs, and Kāra's dots sit right on or below them: at *equal safety* the apparent gaps collapse to parity (the worst, #171 1.66× → 0.99×; #9 1.46× → 1.08×), and Kāra emits **fewer** instructions than safety-matched Rust on 16 collection/pointer kernels. What's left after equalizing safety is a few string-building kernels (~1.2×) and #1665's sort — and the chart shows those plainly too. See [BENCHMARKS.md](BENCHMARKS.md) for the full caveat.
 
 ## Binary size
 

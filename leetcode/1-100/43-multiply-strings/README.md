@@ -89,8 +89,8 @@ auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
 
 | | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 91 ms | 234 ms | 197 ms | 233 ms | **269 ms** | 6927 ms |
-| vs Kāra | 2.97× faster | 1.15× faster | 1.37× faster | 1.16× faster | — | 25.7× slower |
+| time | 92 ms | 233 ms | 200 ms | 229 ms | **272 ms** | 6995 ms |
+| vs Kāra | 2.96× faster | 1.17× faster | 1.36× faster | 1.19× faster | — | 25.7× slower |
 
 **The arithmetic-bound counterpoint to [#415](../../401-500/415-add-strings/).**
 Add-strings was allocation-bound — the overflow-safety tax was ~0 (`-C
@@ -98,10 +98,10 @@ overflow-checks=on` moved Rust only 181→184 ms) and Kāra tied Rust at equal
 safety. The multiply **grid** flips that: each product does ~380 `d1·d2` partial
 products + carry redistributions (m·n, not m+n), so the work is genuinely
 arithmetic-heavy, and the overflow-safety tax is now **real** — `-C
-overflow-checks=on` costs Rust **197 → 233 ms (+18 %)**. Kāra traps on overflow by
+overflow-checks=on` costs Rust **200 → 229 ms (+15 %)**. Kāra traps on overflow by
 default (design.md § Arithmetic Overflow); `rustc -O` silently wraps, so the
-197 ms figure is apples-to-oranges. **At equal overflow safety Kāra is 1.16× Rust**
-(269 vs 233 ms) — the residual is the same small-object-allocation + codegen gap
+200 ms figure is apples-to-oranges. **At equal overflow safety Kāra is 1.19× Rust**
+(272 vs 229 ms) — the residual is not the arithmetic but the same small-object-allocation + codegen gap
 the radix-render katas name ([#405](../../401-500/405-convert-a-number-to-hexadecimal/)'s
 `~1.4×`, [phase-7-codegen.md](../../../../kara/docs/implementation_checklist/phase-7-codegen.md)),
 here riding on top of the grid's per-result `Vec[i64]` allocation. C is the
@@ -130,8 +130,8 @@ and Kāra's `String`/`Vec` growth now tracks Rust's almost exactly
 92 ms edges `rustc -O` (119 ms), and the 295 KiB binary is 1.5× smaller than
 Rust's 456 KiB (and 8× smaller than Go's 2.4 MiB).
 
-**Where this lands.** An arithmetic-bound digit grid: Kāra trails Rust 1.16× at
-equal overflow safety (vs the 1.37× wrap-vs-trap headline) while now **tying Rust on memory**
+**Where this lands.** An arithmetic-bound digit grid: Kāra trails Rust 1.19× at
+equal overflow safety (vs the 1.36× wrap-vs-trap headline) while now **tying Rust on memory**
 (0.97×, a hair under) — the small-object-allocation gap shows only in runtime now — while beating Rust on compile and binary.
 The honest pairing with #415: the same render path, but moving the workload from
 allocation-bound (where Kāra ties) to arithmetic-bound (where the checked-arith +

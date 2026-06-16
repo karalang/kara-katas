@@ -42,6 +42,18 @@ print_mem() {
 
 mkdir -p target
 
+# Equal-safety Rust twin: rustc with overflow checks ON, matching kāra's
+# default-checked arithmetic. The runtime-only `rust_ovf` lane overlays this on
+# the chart so the safety tax that `rust -O`'s silent wrapping hides is visible.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_rust() {
     local src="$1"
     local out="target/$(basename "$src" .rs)"
@@ -81,6 +93,7 @@ build_go_seq() {
 }
 
 build_rust greedy.rs
+build_rust_ovf greedy.rs
 build_c    greedy.c
 build_kara greedy.kara
 build_go_seq
@@ -89,6 +102,7 @@ expected=$(./target/greedy_kara)
 mismatch=""
 for pair in \
     'rust:./target/greedy' \
+    'rust_ovf:./target/greedy_ovf' \
     'c:./target/greedy_c' \
     'go:./target/greedy_go_seq'; do
     name="${pair%%:*}"
@@ -125,6 +139,8 @@ rt_cmd --lang kara --approach greedy --lane seq --mode codegen \
     --name 'kara greedy (codegen)' --cmd './target/greedy_kara'
 rt_cmd --lang rust --approach greedy --lane seq --mode native \
     --name 'rust greedy' --cmd './target/greedy'
+rt_cmd --lang rust_ovf --approach greedy --lane seq --mode native \
+    --name 'rust greedy (overflow-checks=on, equal-safety)' --cmd './target/greedy_ovf'
 rt_cmd --lang c --approach greedy --lane seq --mode native \
     --name 'c    greedy' --cmd './target/greedy_c'
 rt_cmd --lang go --approach greedy --lane seq --mode native \
