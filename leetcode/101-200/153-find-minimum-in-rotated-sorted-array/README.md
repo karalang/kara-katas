@@ -63,17 +63,17 @@ All compiled mirrors print the same sum-of-results sink per workload (linear: `1
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All mirrors single-threaded (seq-only kata):
+Snapshot — M5 Pro, 2026-06-17, hyperfine `--warmup 5 --runs 30 --shell=none`. Seq lane (both workloads single-threaded):
 
 | Workload | Kāra (codegen) | Rust | C (clang -O3) | Go | Kāra : Rust |
 |---|---|---|---|---|---|
-| `linear_scan` (K=10) | 5.4 ± 1.0 ms | 6.0 ± 2.9 ms | 4.8 ± 0.2 ms | 9.6 ± 1.3 ms | **kāra 1.12× faster** |
-| `binary_search` (K=2M) | 66.1 ± 1.1 ms | 50.2 ± 0.4 ms | 37.5 ± 0.3 ms | **34.3 ± 1.8 ms** | kāra 0.76× |
+| `linear_scan` (K=10) | 5.1 ± 0.2 ms | 5.6 ± 1.5 ms | 4.8 ± 0.1 ms | 9.7 ± 1.5 ms | **kāra 1.10× faster** |
+| `binary_search` (K=2M) | 39.1 ± 1.2 ms | 51.4 ± 1.0 ms | 38.8 ± 0.4 ms | 35.0 ± 1.6 ms | **kāra 1.31× faster** |
 
-(The 2026-05-19 snapshot read linear 5.0/5.6 and binary 48.0/52.0 for kāra/rust — everything reproduces within ~1σ on byte-identical kāra/rust/C binaries; C and Go rows are benched here for the first time.) Both workloads run at parity-or-faster than `rustc -O`. Against the new comparators: C leads kāra 1.12× on linear and 1.76× on binary (bounds-check-free indexing); Go trails badly on linear (2.00× behind C — per-iteration overhead on the 20 M-read scan) but **wins binary_search outright** (1.09× ahead of even C) — the call-overhead-dominated regime rewards Go's aggressive cross-call inlining of the ~21-iteration search into the K loop. The two shapes:
+**The binary-search midpoint BCE fix landed kāra at C parity here.** Before [`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md), `binary_search` ran **66.1 ms — 1.76× behind C** (and behind Rust), because the per-iteration `nums[mid]` bounds check survived `-O2`: folding `mid < len` needs the *relational* invariant `mid < hi`, which LLVM's interval-based CVP can't derive, and kāra's `mid = extractvalue(sadd.with.overflow …)` is opaque to its range pass. Teaching karac to emit `assume(lo <= mid < hi)` at the midpoint binding (surfaced and fixed via [#34](../../1-100/34-find-first-and-last-position/)) folds the check, dropping `binary_search` to **39.1 ms — dead even with C (38.8 ms) and 1.31× ahead of Rust**; Go's 35.0 ms keeps a 1.12× edge (its aggressive cross-call inlining of the ~21-iteration search into the K loop still wins the call-overhead-dominated regime). `linear_scan` holds at 1.10× ahead of Rust / 1.07× behind C. The two shapes:
 
 - **`linear_scan` is inner-loop-dominated** — 20 M indexed reads, one compare each. Closed once karac's TargetMachine started passing the host CPU baseline (apple-m1 on macOS arm64) instead of `generic`/`""`, which is what unlocked LLVM's autovectorizer cost-model to interleave by 4 (matching Rust). See [`karac-rust/docs/implementation_checklist/phase-10-targets.md`](../../../../karac-rust/docs/implementation_checklist/phase-10-targets.md) for the CPU-baseline-per-target table mirroring rustc.
-- **`binary_search` is call-overhead-dominated** — each call is only ~21 iterations, so we measure how cheaply 2 M function dispatches happen plus the mid-compute inside. Closing the gap took two changes: source-level `Vec.with_capacity(n)` (eliminated the doubling-realloc transient 2× RSS and ~22% of the fill cost), then type-aware operator dispatch in karac (LLVM was emitting `cinc`-rounded signed mid-compute on the `(hi + lo) / 2` shape because karac codegen unconditionally used signed div/cmp/shr ops; once primitive trait-method dispatch threaded operand signedness through `compile_binop_typed`, switching `lo`/`hi`/`mid` to `u64` made LLVM emit the fused `sub + add ..., lsr #1` mid-point and `b.lo` loop guard — two instructions instead of three in the hot block).
+- **`binary_search` is call-overhead-dominated** — each call is only ~21 iterations, so we measure how cheaply 2 M function dispatches happen plus the mid-compute and indexing inside. Three karac changes closed the gap, in order: source-level `Vec.with_capacity(n)` (eliminated the doubling-realloc transient 2× RSS and ~22% of the fill cost); type-aware operator dispatch (`u64` `lo`/`hi`/`mid` made LLVM emit the fused `sub + add ..., lsr #1` mid-point and `b.lo` guard — two instructions instead of the signed `cinc + asr` three); and finally the **midpoint bounds-check elision** ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md)), which removed the surviving per-iteration `nums[mid]` check and is what brought the seq lane from 1.76× behind C to parity.
 
 ### Codegen vs Python
 
@@ -81,27 +81,27 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Run | Mean ± σ | Slower than Kāra codegen |
 |---|---|---|
-| `kara linear_scan` (codegen) | 5.4 ± 1.0 ms | — |
-| `py linear_scan` | 271.6 ± 4.1 ms *(05-19)* | **~50×** |
-| `kara binary_search` (codegen) | 66.1 ± 1.1 ms | — |
-| `py binary_search` | 1329 ± 12 ms *(05-19)* | **~20×** |
+| `kara linear_scan` (codegen) | 5.1 ± 0.2 ms | — |
+| `py linear_scan` | 271.6 ± 4.1 ms *(05-19)* | **~53×** |
+| `kara binary_search` (codegen) | 39.1 ± 1.2 ms | — |
+| `py binary_search` | 1329 ± 12 ms *(05-19)* | **~34×** |
 
-Python is ~20–50× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
+Python is ~34–53× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+Snapshot — M5 Pro, 2026-06-17, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build linear_scan.kara` | 78.4 ± 0.8 ms | 33.3 KiB |
-| `rustc -O linear_scan.rs` | 104.4 ± 1.7 ms | 455.6 KiB |
-| `clang -O3 linear_scan.c` | 52.0 ± 0.5 ms | 32.8 KiB |
-| `karac build binary_search.kara` | 75.7 ± 0.9 ms | 33.3 KiB |
-| `rustc -O binary_search.rs` | 91.7 ± 1.3 ms | 455.7 KiB |
-| `clang -O3 binary_search.c` | 46.6 ± 0.3 ms | 32.8 KiB |
+| `karac build linear_scan.kara` | 80.2 ± 0.9 ms | 33.3 KiB |
+| `rustc -O linear_scan.rs` | 105.3 ± 1.9 ms | 455.6 KiB |
+| `clang -O3 linear_scan.c` | 53.2 ± 1.4 ms | 32.8 KiB |
+| `karac build binary_search.kara` | 76.5 ± 1.4 ms | 33.3 KiB |
+| `rustc -O binary_search.rs` | 94.4 ± 1.6 ms | 455.7 KiB |
+| `clang -O3 binary_search.c` | 47.5 ± 0.7 ms | 32.8 KiB |
 
-Kāra compiles both files **1.16–1.23× faster** than `rustc -O` and produces binaries **~14× smaller** (within ~150 B of clang's) — `strip -x` plus the size-targeted post-link passes have landed since the earlier snapshot, and the `__TEXT,__jittmpl` segment re-scope (karac `e76f42b`, 2026-05-25) reclaimed an additional 16 KiB per Mach-O binary that the original 2026-05-19 snapshot's 49 KiB figures still carried. (The 05-19 snapshot read `karac build` at 62.0 / 55.5 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 75.9 / 69.1 — both kāra binaries rebuilt **byte-identical**, so codegen output is unchanged. Compile memory, first recorded today: karac 13.5 / 13.2 MiB vs rustc 29.3 / 27.1 and clang 2.5 / 2.6.)
+Kāra compiles both files **1.23–1.31× faster** than `rustc -O` and produces binaries **~14× smaller** (within ~150 B of clang's). The `linear_scan` binary rebuilds byte-identical to the 06-05 snapshot, but `binary_search`'s codegen **changed** with the midpoint bounds-check elision fix ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md)) — it now emits the `assume(lo <= mid < hi)` facts and folds the loop's `nums[mid]` check, which is the runtime win above; the gated extra `default<O1>` pass that completes the fold is invisible in the cold-compile number (76.5 ms, still 1.23× under `rustc -O`). Compile memory: karac 13.3 / 13.1 MiB vs rustc 29.3 / 27.1 and clang 2.5 / 2.6.
 
 ### Runtime memory (peak)
 
