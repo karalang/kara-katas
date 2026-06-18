@@ -102,17 +102,29 @@ rule because the destination borrow cannot write through it; the reverse directi
 
 **2. `mut` array-view parameters aren't lowered to LLVM `noalias`**
 ([`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, codegen, open) —
-the source of the benchmark gap to Rust below, and a genuine optimization opportunity.
-The recursive solver threads **four independent mutable array views** — the board plus
-the three masks — through `go()`. Rust's `&mut` guarantees non-aliasing, which LLVM
-turns into `noalias` and exploits heavily; Kāra's `mut Slice` params (like plain C's
-`int64_t *`) carry no such attribute, so LLVM must assume any two of the four might alias
-and holds back. The result is a clean three-way split (see the benchmark): Rust 190 ms,
-**Kāra ties plain C at 260 ms**. The proof that the gap *is* aliasing, not Kāra codegen
-quality, is below — adding C `restrict` reproduces Rust's time exactly. Kāra's ownership
-checker already **proves** these `mut` refs are non-aliasing (the same invariant Rust's
-`&mut` encodes), so the fact needed to emit `noalias` is in hand — it is simply not yet
-attached to the LLVM parameter attributes.
+the source of the benchmark gap to Rust below. The recursive solver threads **four
+independent mutable array views** — the board plus the three masks — through `go()`.
+Rust's `&mut` guarantees non-aliasing, which LLVM turns into `noalias` and exploits
+heavily; Kāra's `mut Slice` params (like plain C's `int64_t *`) carry no such attribute,
+so LLVM must assume any two of the four might alias and holds back. The result is a clean
+three-way split (see the benchmark): Rust 190 ms, **Kāra ties plain C at 260 ms**, and
+adding C `restrict` reproduces Rust's time exactly — proving the gap *is* the aliasing
+attribute, not Kāra codegen quality.
+
+But emitting `noalias` is **not** a quick win, and chasing it surfaced a deeper gap.
+`noalias` is sound only if `mut ref` / `mut Slice` params are *guaranteed* non-aliasing —
+exactly what Rust's borrow checker enforces for `&mut`. Kāra's design says the same
+(`mut ref T` is an *exclusive* borrow, "allowed only when no other borrow of `T` is
+active"), **but the checker doesn't enforce it at call sites**: `f(mut v, mut v)` — two
+exclusive borrows of the same binding — compiles
+([`B-2026-06-17-6`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, ownership, open).
+Worse, codegen already *diverges* from the interpreter on that aliased call (it passes the
+Vec header by value per borrow), so a blanket `noalias` would turn a latent bug into broad
+miscompiles. The correct sequence is therefore: **enforce mut-borrow exclusivity first**
+(B-2026-06-17-6), *then* emit `noalias` on the now-provably-disjoint params. (An earlier
+draft of this README claimed Kāra's ownership "already proves" non-aliasing — that was
+wrong; `f(mut v, mut v)` is the counterexample, and finding it is exactly what this
+bug-finder kata is for.)
 
 ## Benchmarks
 
@@ -207,8 +219,11 @@ RSS (15.1 vs 26.4 MiB); clang's 41.3 ms / 2.5 MiB is the toolchain floor.
 typecheck, **fixed `3ab709a2`**) — a `mut ref` argument failed to downgrade to a `ref`
 parameter under `karac build` (a `karac run` warning became a build error); fixed by
 adding the `mut ref T → ref T` reborrow subtyping arm, so the plain solver now uses the
-natural `ref`; and [`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl)
+natural `ref`; [`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl)
 (`kata:37`, codegen, open) — `mut` array-view parameters aren't emitted as LLVM `noalias`,
-the full and *provable* (C `restrict` closes it) source of the 1.37× gap to equal-safety
-Rust, recoverable from ownership facts Kāra already has. See the
-[`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
+the *provable* (C `restrict` closes it) source of the 1.37× gap to equal-safety Rust; and
+its newly-found blocker [`B-2026-06-17-6`](../../../../kara/docs/bug-ledger.jsonl)
+(`kata:37`, ownership, open) — Kāra's **exclusive-borrow rule isn't enforced at call
+sites** (`f(mut v, mut v)` compiles, and codegen then diverges from the interpreter on the
+aliased call), so mut-param `noalias` can't be made sound until exclusivity is enforced
+first. See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
