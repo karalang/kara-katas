@@ -5,11 +5,17 @@
 // order) try each digit whose bit is clear in rows[r] | cols[c] | boxes[b], set the
 // three bits, recurse, and on failure clear the cell and XOR the bits back off. The
 // masks make the candidate test O(1) and the undo a single XOR per unit — no
-// per-placement grid re-scan. The board is a flat `Array[i64, 81]` passed as
-// `mut Slice[i64]` (the idiomatic borrowed view; an `Array` coerces to it), solved
-// in place; the three masks are stack `Array[i64, 9]` locals reset per solve, so the
-// hot path does NO heap allocation — this measures backtracking-search codegen
-// (recursion + branchy mask arithmetic), not the allocator.
+// per-placement grid re-scan.
+//
+// The board is a fixed `Array[i64, 81]` borrowed as `mut ref Array[i64, 81]` (its
+// natural type — the length is part of the type, and the borrow lowers to a single
+// `ptr`, the closest analog to C's `int64_t *restrict` / Rust's `&mut [i64; 81]`);
+// the three masks are `mut ref Array[i64, 9]` borrows of stack locals reset per solve.
+// `mut ref` params carry LLVM `noalias` (Kāra's exclusive-borrow guarantee, enforced
+// at call sites since B-2026-06-17-6), so the four views are declared mutually
+// non-aliasing — the same disjointness C asserts with `restrict`. The hot path does NO
+// heap allocation (board + masks are all stack storage), so this measures
+// backtracking-search codegen, not the allocator.
 //
 // Workload: the template is Arto Inkala's 2012 "world's hardest sudoku" — the puzzle
 // engineered to force maximal backtracking. TOTAL times, copy the template into a
@@ -27,10 +33,10 @@ fn box_index(r: i64, c: i64) -> i64 {
 }
 
 fn go(
-    board: mut Slice[i64],
-    rows: mut Slice[i64],
-    cols: mut Slice[i64],
-    boxes: mut Slice[i64],
+    board: mut ref Array[i64, 81],
+    rows: mut ref Array[i64, 9],
+    cols: mut ref Array[i64, 9],
+    boxes: mut ref Array[i64, 9],
     pos: i64,
 ) -> bool {
     if pos == 81i64 {
@@ -64,7 +70,7 @@ fn go(
     false
 }
 
-fn solve(board: mut Slice[i64]) -> bool {
+fn solve(board: mut ref Array[i64, 81]) -> bool {
     let mut rows: Array[i64, 9] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     let mut cols: Array[i64, 9] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     let mut boxes: Array[i64, 9] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
