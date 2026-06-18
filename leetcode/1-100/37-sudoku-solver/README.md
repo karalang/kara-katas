@@ -83,18 +83,22 @@ exponential in the worst case and agree on every puzzle.
 Two `karac` findings, both reproduced minimally and tracked in the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl):
 
-**1. A `mut ref` argument won't downgrade to a `ref` parameter under `karac build`**
-([`B-2026-06-17-4`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, typecheck, open).
-The plain solver's read-only `is_safe(board)` is naturally called from the mutating
-search `go(board: mut ref Vec[Vec[i64]])`. Passing that `mut ref` binding to a `ref`
-parameter is a **`karac run` warning** (the interpreter accepts it and the program runs)
-but a **`karac build` hard error** — *"expected ref …, found mut ref …"* at the call
-argument. A program that runs should build, so the run/build divergence is the defect;
-the safe widening (reborrow a `mut ref` down to a `ref`) ought to be accepted on both
-paths. Minimal repro: `fn peek(xs: ref Vec[i64]) -> i64 { xs[0] }` called from
-`fn poke(xs: mut ref Vec[i64]) -> i64 { xs[0] = 9i64; peek(xs) }` — runs (prints `9`),
-fails to build. **Sidestepped, not worked around:** `is_safe` declares its board `mut ref`
-(it only reads — the `mut` is a borrow-mode formality forced by the missing downgrade).
+**1. A `mut ref` argument wouldn't downgrade to a `ref` parameter under `karac build`**
+([`B-2026-06-17-4`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, typecheck, **fixed
+in [`3ab709a2`](../../../../kara/docs/bug-ledger.jsonl)**). The plain solver's read-only
+`is_safe(board)` is naturally called from the mutating search
+`go(board: mut ref Vec[Vec[i64]])`. Passing that `mut ref` binding to a `ref` parameter
+*was* a **`karac run` warning** (the interpreter accepted it and the program ran) but a
+**`karac build` hard error** — *"expected ref …, found mut ref …"* at the call argument.
+A program that runs should build, so the run/build divergence was the defect. The fix
+adds the missing subtyping arm: a `mut ref T` reborrows down to a read-only `ref T` (the
+`&mut T → &T` reborrow), sound and covariant in the pointee exactly like the `ref → ref`
+rule because the destination borrow cannot write through it; the reverse direction
+(`ref → mut ref`) stays rejected. Minimal repro that now builds and prints `9`:
+`fn peek(xs: ref Vec[i64]) -> i64 { xs[0] }` called from
+`fn poke(xs: mut ref Vec[i64]) -> i64 { xs[0] = 9i64; peek(xs) }`. With the fix landed,
+[`sudoku_solver_plain.kara`](sudoku_solver_plain.kara) uses the **natural `ref`** on
+`is_safe` (the earlier `mut ref` sidestep is gone).
 
 **2. `mut` array-view parameters aren't lowered to LLVM `noalias`**
 ([`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, codegen, open) —
@@ -200,9 +204,10 @@ RSS (15.1 vs 26.4 MiB); clang's 41.3 ms / 2.5 MiB is the toolchain floor.
 ---
 
 **Bug ledger:** [`B-2026-06-17-4`](../../../../kara/docs/bug-ledger.jsonl) (`kata:37`,
-typecheck, open) — a `mut ref` argument fails to downgrade to a `ref` parameter under
-`karac build` (a `karac run` warning becomes a build error), sidestepped by the read-only
-helper taking `mut ref`; and [`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl)
+typecheck, **fixed `3ab709a2`**) — a `mut ref` argument failed to downgrade to a `ref`
+parameter under `karac build` (a `karac run` warning became a build error); fixed by
+adding the `mut ref T → ref T` reborrow subtyping arm, so the plain solver now uses the
+natural `ref`; and [`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl)
 (`kata:37`, codegen, open) — `mut` array-view parameters aren't emitted as LLVM `noalias`,
 the full and *provable* (C `restrict` closes it) source of the 1.37× gap to equal-safety
 Rust, recoverable from ownership facts Kāra already has. See the
