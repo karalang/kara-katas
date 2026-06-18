@@ -99,21 +99,24 @@ codegen, not the allocator. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 ### Seq lane — runtime (single-threaded single-pass bitmask validation)
 
-| | C | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Go | Python |
+| | **Kāra** | C | Rust (`-O`) | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 113.8 ms | 114.3 ms | 118.6 ms | **183.1 ms** | 246.5 ms | 27702 ms |
-| vs Kāra | 1.61× faster | 1.60× faster | **1.54× faster (= safety)** | — | 1.35× slower | 151× slower |
+| time | **65.3 ms** | 117.4 ms | 118.2 ms | 122.4 ms | 254.0 ms | 29054 ms |
+| vs Kāra | — | 1.80× slower | 1.81× slower | **1.87× slower (= safety)** | 3.89× slower | 445× slower |
 
-**Within 1.54× of equal-safety Rust, and 1.35× ahead of Go.** This is a branchy,
-index-heavy inner loop — 81 cells each doing a `Slice` read plus three bounds-checked
-mask accesses — so the residual gap to Rust is the per-access bounds check Kāra does
-not yet fully elide on stack `Array`/`Slice` indices, where Rust's known-length arrays
-drop it. The overflow tax is small but real here (`rustc -O` 114.3 ms vs
-`-C overflow-checks=on` 118.6 ms, +3.8 %), so equal-safety Rust is 1.54× rather than
-1.60×; the remaining distance is codegen on a tight branchy loop, not checked
-arithmetic. C (1.61×) marks the no-overhead floor, and Go — whose BCE also leaves the
-mask-index checks in and does not inline `isValid` into the hot loop — runs the same
-algorithm 1.35× slower than Kāra.
+**Kāra is the fastest of the field — 1.8× ahead of both C and `rustc -O`, 3.9× ahead of
+Go.** This flipped from an earlier 1.54×-*behind*-Rust standing when karac learned to
+**fully unroll small constant-trip loops** ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl),
+**fixed [`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**, surfaced by the sibling
+[#37](../37-sudoku-solver/)). The validator's whole hot path is the nested 9×9 grid scan
+(`while r < 9 { while c < 9 { … } }`) — both loops have a small constant trip count, and
+karac now expands them into straight-line code, where clang and `rustc -O` both leave them
+**rolled** here. Stacked with `noalias` (from the `mut ref` exclusive borrow) and the
+bounds-check elision a fixed `Array[i64, N]` makes provable, the unroll compounds into a
+1.8× lead over the C-class. The overflow tax is small but real (`rustc -O` 118.2 ms vs
+`-C overflow-checks=on` 122.4 ms, +3.5 %), so equal-safety Rust is 1.87× behind; Go —
+whose BCE leaves the mask-index checks in and does not inline `isValid` into the hot loop
+— runs the same algorithm 3.9× slower.
 
 **No par lane — by construction.** The validation is pure and independent per
 iteration, but the checksum reduction carries a loop-borne dependency, so karac's
@@ -124,18 +127,20 @@ are **byte-identical** and both run single-threaded.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.03 MiB | 1.08 MiB | **1.00 MiB** | 2.91 MiB |
-| binary size (seq) | **33.0 KiB** | 455.4 KiB | 32.8 KiB | 2434.1 KiB |
-| compile elapsed | 76.3 ms | 98.3 ms | **50.4 ms** |
-| compile peak RSS | 14.1 MiB | 26.1 MiB | **2.5 MiB** |
+| **runtime peak RSS** | **1.00 MiB** | 1.06 MiB | **1.00 MiB** | 2.69 MiB |
+| binary size (seq) | 33.0 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
+| compile elapsed | 101.6 ms | 85.6 ms | **46.0 ms** |
+| compile peak RSS | 17.2 MiB | 26.1 MiB | **2.5 MiB** |
 
 The board and masks are all stack storage with no hot-path allocation, so runtime RSS
-ties C and Rust to within rounding (1.03 / 1.00 / 1.08 MiB); Python's interpreter pays
-7.1 MiB. The seq compute binary references no `String`/par-scheduler runtime, so LTO +
-`-dead_strip` carve it to **33.0 KiB** — 13.8× under Rust and within a rounding of C's
-32.8 KiB (Go's static runtime is 2.4 MiB). Compile favours Kāra over `rustc -O` on both
-elapsed (76.3 vs 98.3 ms) and peak compiler RSS (14.1 vs 26.1 MiB); clang's 50.4 ms /
-2.5 MiB is the toolchain floor.
+ties C to the byte (1.00 / 1.00 MiB) with Rust a rounding behind (1.06 MiB); Python's
+interpreter pays 6.9 MiB. The seq compute binary references no `String`/par-scheduler
+runtime, so LTO + `-dead_strip` carve it to **33.0 KiB** — 13.8× under Rust and within a
+rounding of C's 32.8 KiB (Go's static runtime is 2.4 MiB). Compile now trails `rustc -O`
+on elapsed (101.6 vs 85.6 ms) — fully unrolling the nested 9×9 scan hands the LLVM backend
+more straight-line IR to optimize, the compile-time cost of the runtime win — though it
+still leads on peak compiler RSS (17.2 vs 26.1 MiB); clang's 46.0 ms / 2.5 MiB is the
+toolchain floor.
 
 ## Kāra features exercised
 

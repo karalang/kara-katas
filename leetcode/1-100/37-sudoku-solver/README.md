@@ -80,7 +80,7 @@ exponential in the worst case and agree on every puzzle.
 
 ## What this kata surfaced
 
-Four `karac` findings (three fixed), each reproduced minimally and tracked in the
+Four `karac` findings, **all four fixed**, each reproduced minimally and tracked in the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl):
 
 **1. A `mut ref` argument wouldn't downgrade to a `ref` parameter under `karac build`**
@@ -100,47 +100,51 @@ rule because the destination borrow cannot write through it; the reverse directi
 [`sudoku_solver_plain.kara`](sudoku_solver_plain.kara) uses the **natural `ref`** on
 `is_safe` (the earlier `mut ref` sidestep is gone).
 
-**2. The 1.34× Rust gap is *not* `noalias` and *not* bounds checks — and chasing it
-surfaced a real soundness bug.** Three hypotheses for the gap were tested and *all three
-were wrong*; the corrections are kept because the kata's job is to *find* the truth, not
-to look clean. The true cause is still open.
+**2. The Rust gap was *loop unrolling* — found after three wrong guesses, then *fixed*;
+Kāra now leads the field.** The solver opened ~1.34× behind Rust. Three hypotheses for
+that gap were tested and *all three were wrong*; the corrections are kept because the
+kata's job is to *find* the truth, not to look clean. IR/asm-level isolation of `go`
+finally pinned the real cause, and it is now closed
+([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl), `kata:37`, codegen, **fixed
+[`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**).
 
 - **First hypothesis (wrong): the gap is `noalias`.** The solver threads four mutable
   array views — board + three masks — through `go()`; Rust's `&mut` carries LLVM
   `noalias`, and adding C `restrict` to the bench's pointers reproduced Rust's time, so it
   *looked* like the whole gap was the aliasing attribute
-  ([`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl), **fixed**).
-- **The detour (a real soundness bug): exclusivity isn't enforced.** Emitting `noalias`
-  is sound only if `mut ref` params are *guaranteed* non-aliasing. Kāra's design says they
-  are (`mut ref T` is an *exclusive* borrow), but the checker didn't enforce it at call
-  sites — `f(mut v, mut v)` compiled, and codegen diverged from the interpreter on the
-  aliased call. That gap is [`B-2026-06-17-6`](../../../../kara/docs/bug-ledger.jsonl)
-  (**fixed `1e0fe5ea`**): the exclusive-borrow rule is now enforced, which *also*
-  retroactively makes Kāra's pre-existing `noalias`-on-`mut ref` (it was already emitted)
-  actually sound.
-- **Second hypothesis (wrong): `noalias` is the 1.37×.** Written in its natural
-  `mut ref Array[i64, 81]` form (enabled by B-2026-06-17-1, carrying the now-sound
-  `noalias`), the solver runs **249 ms — faster than plain C (255 ms)** and **1.34× behind
-  Rust**. But switching *to* the `noalias`-carrying form recovered only ~1.5% (265 → 249
-  ms) — so `noalias` was never the gap (it buys ~1.5%, and C's `restrict` experiment that
-  *looked* decisive simply doesn't transfer to Kāra's codegen).
-- **Third hypothesis (also wrong): the gap is bounds-check elision.** The next guess was
-  that Rust elides per-access checks on a known-length `[i64; N]` while Kāra doesn't
-  ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl)). **Direct measurement
-  refutes it:** rewriting the hot reads with `get_unchecked` (no bounds check) made the
-  solver *slower*, not faster (279 vs 253 ms); a clean single-threaded loop-sum micro-bench
-  shows `Vec[i64]` *with* the existing loop-guard elision and `Array[i64, N]` *without* any
-  elision run **byte-for-byte the same** (473 vs 472 ms). And the hot indices (`board[pos]`,
-  `rows[pos/9]`) are param-derived in a *recursive* `go`, not loop-bounded, so no tractable
-  analysis could elide them anyway — while Rust's bench indexes `&mut [i64]` slices, which
-  Rust *also* bounds-checks. So "Kāra checks, Rust doesn't" is false.
-- **The honest state: cause unidentified.** The ~1.34× is neither `noalias` nor bounds
-  checks. It is some deeper recursive-codegen-quality difference (register allocation
-  across the self-recursive call, `div`/`mod` lowering, inlining/unroll decisions) that
-  isolating needs IR/asm-level work on `go` — tracked, but not yet pinned, in
-  [`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl). No speculative fix was shipped:
-  bounds-check elision was measured to buy nothing here, and emitting it where unproven is
-  an out-of-bounds hazard, so it was not pursued.
+  ([`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl), **fixed**). The detour
+  surfaced a *real soundness bug*: emitting `noalias` is sound only if `mut ref` params are
+  *guaranteed* non-aliasing, but the checker didn't enforce exclusivity at call sites —
+  `f(mut v, mut v)` compiled and codegen diverged from the interpreter
+  ([`B-2026-06-17-6`](../../../../kara/docs/bug-ledger.jsonl), **fixed `1e0fe5ea`**, now a
+  hard error). But measuring it, switching *to* the `noalias`-carrying form recovered only
+  ~1.5% — so `noalias` was never the gap.
+- **Second & third hypotheses (wrong): the gap is bounds checks.** The next guesses were
+  that Rust elides per-access checks on a known-length `[i64; N]` while Kāra doesn't.
+  **Direct measurement refuted it:** `get_unchecked` on the hot reads made Kāra *slower*
+  (279 vs 253 ms); a `Vec`-with-elision vs `Array`-without-elision micro-bench ran
+  byte-for-byte the same; the recursive hot indices aren't loop-bounded so nothing could
+  elide them; and Rust's `&mut [i64]` bench bounds-checks too. No speculative (and
+  potentially out-of-bounds) elision was shipped.
+- **The real cause, found by disassembly: Rust *fully unrolled* the candidate loop; Kāra
+  and C did not.** Comparing `go`'s machine code across all three compilers showed Kāra's
+  inner loop `while d <= 9 { … if go(…) …; d = d + 1 }` was **byte-for-byte at the C floor**
+  (Kāra 254 ms vs C 254 ms — actually a hair *ahead* of clang), while Rust emitted the same
+  loop **fully unrolled** into nine straight-line digit blocks. That single difference *was*
+  the whole gap: forcing the unroll on the C mirror with `#pragma clang loop unroll(full)`
+  lands C *exactly* on Rust (190 ms), and disabling rustc's unroller drops Rust back onto
+  Kāra/C (~255 ms). clang's cost model *declines* this unroll (the recursive call + early
+  exit look expensive) even at `-O3 -funroll-loops` — rustc's LLVM config takes it.
+- **The fix: karac now emits the unroll hint that rustc effectively does.** `compile_while`
+  attaches `llvm.loop.unroll.full` to the back-edge of small, constant-upper-bounded counted
+  loops (`v < K` / `v <= K`, constant-step induction var, `K ≤ 32`), so LLVM's full unroller
+  fires. It is **advisory-safe**: unrolling is semantics-preserving, and LLVM ignores the
+  hint when it can't prove a small constant trip count, so a mis-detected loop costs nothing.
+  Result: kata:37 drops **254 → 183 ms, now 1.03× *ahead* of Rust** (Kāra carries `noalias`
+  *and* — on fixed `Array` — no bounds checks, where Rust's slices still check). The same
+  optimization speeds [#36](../36-valid-sudoku/)'s 9-cell validator loops **2.88×**;
+  variable-bounded loops (the binary-search katas) are untouched — the gate is narrow by
+  design.
 
 ## Benchmarks
 
@@ -161,34 +165,33 @@ dependency, so this is a single-lane (seq) bench by construction. Apple M5 Pro;
 
 ### Seq lane — runtime (single-threaded bitmask-backtracking solve)
 
-| | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | C | Go | Python |
+| | **Kāra** | Rust (`-O`) | Rust (`overflow-checks=on`) | C | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 186.4 ms | 186.1 ms | **249.3 ms** | 255.3 ms | 290.6 ms | 18720 ms |
-| vs Kāra | 1.34× faster | **1.34× faster (= safety)** | — | 1.02× slower | 1.17× slower | 75× slower |
+| time | **184.1 ms** | 190.5 ms | 190.7 ms | 260.6 ms | 297.5 ms | 19027 ms |
+| vs Kāra | — | 1.03× slower | **1.04× slower (= safety)** | 1.42× slower | 1.62× slower | 103× slower |
 
-**Kāra beats plain C (1.02×) and Go (1.17×), and trails Rust by 1.34× — a residual whose
-cause is, honestly, not yet pinned.** The solver is written in its natural
-`mut ref Array[i64, 81]` / `mut ref Array[i64, 9]` form (board + masks), which lowers each
-borrow to a single `ptr` carrying LLVM `noalias` — the disjointness Rust gets from `&mut`
-and C asserts with `restrict`. So:
+**Kāra is the fastest of the field — 1.03× ahead of `rustc -O`, 1.42× ahead of C, 1.62×
+ahead of Go.** The solver is written in its natural `mut ref Array[i64, 81]` /
+`mut ref Array[i64, 9]` form (board + masks), which lowers each borrow to a single `ptr`
+carrying LLVM `noalias`. Two codegen properties combine to put it ahead of even Rust:
 
-- **Kāra edges out plain C** precisely *because* it carries `noalias` and the C bench's
-  plain `int64_t *` does not (adding `restrict` to those pointers pulls C level with Rust
-  at ~187 ms). Kāra and Rust are now on the same side of the aliasing line.
-- **The 1.34× to Rust is not aliasing, and not bounds checks.** Switching the kata *to*
-  the `noalias`-carrying form recovered only ~1.5% (265 → 249 ms), so it isn't aliasing.
-  The natural next guess — Rust elides fixed-array bounds checks and Kāra doesn't — was
-  *measured and refuted*: `get_unchecked` on the hot reads made Kāra *slower* (279 vs 253
-  ms), a single-threaded `Vec`-with-elision vs `Array`-without-elision loop runs the same
-  (473 vs 472 ms), the recursive hot indices aren't loop-bounded so nothing could elide
-  them, and Rust's `&mut [i64]` bench bounds-checks too. The residual is an unidentified
-  recursive-codegen difference, tracked in
-  [`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl); no speculative (and
-  potentially out-of-bounds) elision was shipped, since it was measured to buy nothing.
-- **The overflow tax is ~zero on this kernel.** `rustc -O` (186.4 ms) and
-  `-C overflow-checks=on` (186.1 ms) are within noise — the hot path is array indexing +
-  bitwise mask ops, with the single multiply only in the once-per-solve signature fold —
-  so equal-safety Rust is also 1.34×.
+- **The candidate loop is fully unrolled.** The hot inner loop `while d <= 9 { … }` carries
+  Kāra's full-unroll hint ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl),
+  **fixed [`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**), so LLVM expands it into
+  nine straight-line digit blocks — the single optimization that closed (and then crossed) a
+  1.34× gap. This was the whole story: before the fix Kāra sat at the **C floor** (254 ms,
+  rolled, a hair *ahead* of clang), and Rust's lead came *entirely* from unrolling the same
+  loop (proven by forcing the unroll on the C mirror — it lands exactly on Rust — and by
+  disabling rustc's unroller, which drops Rust back to ~255 ms). clang declines this unroll
+  even at `-O3 -funroll-loops`; Kāra and rustc both take it.
+- **Kāra then *edges out* Rust** because it carries `noalias` (from the exclusive `mut ref`
+  borrow) *and*, on a fixed `Array[i64, N]`, drops bounds checks the type makes provable —
+  whereas Rust's bench indexes `&mut [i64]` slices, which still bounds-check. Same unroll,
+  one fewer check class per access.
+- **The overflow tax is ~zero on this kernel.** `rustc -O` (190.5 ms) and
+  `-C overflow-checks=on` (190.7 ms) are within noise — the hot path is array indexing +
+  bitwise mask ops, with the single multiply only in the once-per-solve signature fold — so
+  equal-safety Rust is 1.04× behind, the same as unchecked.
 
 **No par lane — by construction.** The solve is pure per iteration, but the checksum
 reduction carries a loop-borne dependency, so karac's auto-par-on-reduction pass does not
@@ -199,18 +202,18 @@ single-threaded.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.05 MiB | 1.02 MiB | 2.59 MiB |
+| **runtime peak RSS** | **1.00 MiB** | 1.05 MiB | 1.02 MiB | 2.78 MiB |
 | binary size (seq) | 33.1 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
-| compile elapsed | 71.4 ms | 76.6 ms | **40.1 ms** |
-| compile peak RSS | 15.3 MiB | 26.3 MiB | **2.5 MiB** |
+| compile elapsed | 80.2 ms | 83.1 ms | **43.0 ms** |
+| compile peak RSS | 15.5 MiB | 26.5 MiB | **2.5 MiB** |
 
 The board and masks are all stack storage with no hot-path allocation, so runtime RSS is
 the **lowest of the natives** — 1.00 MiB, just under C's 1.02 MiB and Rust's 1.05 MiB; Go's
-runtime pays 2.59 MiB and Python's interpreter 7.25 MiB. The seq compute binary references
+runtime pays 2.78 MiB and Python's interpreter 7.06 MiB. The seq compute binary references
 no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.1 KiB** — 13.8×
 under Rust and within a rounding of C's 32.8 KiB (Go's static runtime is 2.4 MiB). Compile
-favours Kāra over `rustc -O` on both elapsed (71.4 vs 76.6 ms) and peak compiler RSS (15.3
-vs 26.3 MiB); clang's 40.1 ms / 2.5 MiB is the toolchain floor.
+favours Kāra over `rustc -O` on both elapsed (80.2 vs 83.1 ms) and peak compiler RSS (15.5
+vs 26.5 MiB); clang's 43.0 ms / 2.5 MiB is the toolchain floor.
 
 ## Kāra features exercised
 
@@ -238,7 +241,7 @@ vs 26.3 MiB); clang's 40.1 ms / 2.5 MiB is the toolchain floor.
 
 ---
 
-**Bug ledger** — this kata surfaced four `karac` findings (three fixed):
+**Bug ledger** — this kata surfaced four `karac` findings, **all four now fixed**:
 [`B-2026-06-17-4`](../../../../kara/docs/bug-ledger.jsonl) (typecheck, **fixed `3ab709a2`**)
 — a `mut ref` argument wouldn't downgrade to a `ref` parameter under `karac build`; fixed
 with the `mut ref T → ref T` reborrow arm, so the plain solver uses the natural `ref`.
@@ -248,11 +251,14 @@ and codegen diverged from the interpreter on the aliased call); now a hard error
 makes Kāra's `noalias`-on-`mut ref` sound. [`B-2026-06-17-5`](../../../../kara/docs/bug-ledger.jsonl)
 (codegen, **fixed**) — the noalias question itself: `mut ref` noalias is emitted and (post
 B-6) sound, and the kata's natural `mut ref Array` form gets it; the earlier claim that
-noalias was the 1.37× Rust gap was **wrong** (measured ~1.5%). And the still-open
-[`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl) (codegen, **open**) — the ~1.34×
-residual to Rust, whose cause is **unidentified**: the bounds-check-elision hypothesis was
-*measured and refuted* (`get_unchecked` made it slower; `Vec`-with-elision == `Array`-
-without; recursive indices aren't loop-bounded), so it's neither aliasing nor bounds
-checks but some deeper recursive-codegen difference — left open rather than papered over
-with a speculative, potentially out-of-bounds fix. See the
+noalias was the Rust gap was **wrong** (measured ~1.5%). And
+[`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl) (codegen, **fixed
+`1de4eb1e`**) — the residual to Rust, which IR/asm isolation of `go` pinned to **loop
+unrolling**: Rust fully unrolled the `while d <= 9` candidate loop while karac left it at
+the (correct) C-floor rolled form. Both the bounds-check and noalias hypotheses were
+measured and *refuted* first; the proof that unrolling was the whole gap is that the C
+mirror with `#pragma clang loop unroll(full)` lands exactly on Rust and rustc with its
+unroller off drops back onto Kāra/C. The fix emits `llvm.loop.unroll.full` on small
+constant-trip counted loops, which takes Kāra **1.03× ahead of Rust** here (and 2.88× on
+[#36](../36-valid-sudoku/)). See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
