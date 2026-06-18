@@ -62,26 +62,27 @@ on every board.
 
 ## What this kata surfaced
 
-**`ref Array[T, N]` parameters fail codegen** ([`B-2026-06-17-1`](../../../../kara/docs/bug-ledger.jsonl),
-`kata:36`, open). The natural way to pass a fixed-size board by borrow —
-`fn is_valid(board: ref Array[i64, 81])` — builds-fails with *"Index operator applied
+**`ref Array[T, N]` parameters failed codegen** ([`B-2026-06-17-1`](../../../../kara/docs/bug-ledger.jsonl),
+`kata:36`, **fixed `2cdbbac4`**). The natural way to pass a fixed-size board by borrow —
+`fn is_valid(board: ref Array[i64, 81])` — *built*-failed with *"Index operator applied
 to non-array type"*. A `ref`/`mut ref Array` param's slot LLVM type is `ptr` (the
-borrow), not `[N x T]`, and the param sits in no name-keyed index registry, so
-`compile_index` (`src/codegen/collections.rs`) falls past the tensor/slice/map/soa/vec
+borrow), not `[N x T]`, and the param sat in no name-keyed index registry, so
+`compile_index` (`src/codegen/collections.rs`) fell past the tensor/slice/map/soa/vec
 routes to the generic tail, whose `ArrayType` branch can't match a `ptr`. The
 `ref Vec[T]` form is handled precisely because it has an explicit `vec_elem_types`
-name-keyed route (its ref slot is also `ptr`); `ref Array` has no analogue. The fix is
-to mirror that route: detect a `ref`/`mut-ref Array` param from its recorded
-`TypeExpr`, load the pointer and GEP through `[N x T]`, for both index-read and
-index-store. (Note: `run_program` bypasses codegen, so the form *runs* fine — only
-`karac build` trips.)
+name-keyed route (its ref slot is also `ptr`); `ref Array` had no analogue. **The fix
+mirrors that route** (`ref_array_index_target`): detect a `ref`/`mut-ref Array` param
+from its recorded inner `[N x T]` type, load the data pointer from the slot and GEP
+through `[N x T]`, for both index-read and index-store — exactly as predicted here, now
+landed in `2cdbbac4`. (Note: `run_program` bypassed codegen, so the form always *ran*
+fine — only `karac build` tripped.)
 
-This is **not** a blocker for the kata: the idiomatic borrowed view of a fixed array is
+This was **not** a blocker for the kata: the idiomatic borrowed view of a fixed array is
 **`Slice[i64]`** (an `Array` coerces to it), exactly how [#34](../34-find-first-and-last-position/)
 / [#35](../35-search-insert-position/) pass `nums`. The bench harness uses `Slice` and
 hits the hot path with zero heap allocation; the pedagogical files use `ref Vec[Vec[i64]]`
-(the 2-D jagged form), which has always worked. So `ref Array` is a genuine codegen gap
-the kata *found*, tracked for its own fix — not a corner this kata needs.
+(the 2-D jagged form). So `ref Array` was a genuine codegen gap the kata *found* and
+*drove to a fix* — both forms build now; the bench stays on the idiomatic `Slice`.
 
 ## Benchmarks
 
@@ -142,7 +143,8 @@ elapsed (76.3 vs 98.3 ms) and peak compiler RSS (14.1 vs 26.1 MiB); clang's 50.4
   `Slice[i64]` and `main` passes its `Array[i64, 81]` board by coercion, the same
   borrowed-`nums` form as [#34](../34-find-first-and-last-position/) /
   [#35](../35-search-insert-position/); the attempt to use `ref Array[i64, 81]` instead
-  is what surfaced [`B-2026-06-17-1`](../../../../kara/docs/bug-ledger.jsonl).
+  is what surfaced [`B-2026-06-17-1`](../../../../kara/docs/bug-ledger.jsonl) (since fixed
+  in `2cdbbac4` — `ref Array` indexing builds now, though `Slice` stays the idiomatic view).
 - **Stack `Array[i64, N]` locals reset per call** — the three nine-element masks are
   `let mut rows: Array[i64, 9] = [0, …]` rebuilt each validation, no heap in the hot
   path — the property that lets the bench isolate validation codegen from the allocator.
@@ -156,8 +158,10 @@ elapsed (76.3 vs 98.3 ms) and peak compiler RSS (14.1 vs 26.1 MiB); clang's 50.4
 ---
 
 **Bug ledger:** [`B-2026-06-17-1`](../../../../kara/docs/bug-ledger.jsonl) (`kata:36`,
-codegen, open) — `ref`/`mut ref Array[T, N]` parameters fail codegen
+codegen, **fixed `2cdbbac4`**) — `ref`/`mut ref Array[T, N]` parameters failed codegen
 (*"Index operator applied to non-array type"*) because the borrow slot is `ptr` with no
-name-keyed index route; fix mirrors the existing `ref Vec[T]` route. Sidestepped, **not
-worked around**, by the idiomatic `Slice[i64]` borrowed view (same form as #34/#35).
+name-keyed index route; the fix mirrors the existing `ref Vec[T]` route
+(`ref_array_index_target`), GEPing through the recorded `[N x T]` for index-read and
+index-store. The bench keeps the idiomatic `Slice[i64]` borrowed view (same form as
+#34/#35); `ref Array` now also builds.
 See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
