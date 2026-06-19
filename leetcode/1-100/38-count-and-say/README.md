@@ -129,38 +129,42 @@ String-growth codegen from each stdlib's integer-formatting path. Unlike #36/#37
 
 | | Go | C | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 19.5 ms | 25.4 ms | 32.2 ms | 32.9 ms | **46.3 ms** | 589 ms |
-| vs Kāra | 2.37× faster | 1.82× faster | 1.44× faster | **1.41× faster (= safety)** | — | 12.7× slower |
+| time | 18.8 ms | 25.0 ms | 32.0 ms | 32.7 ms | **39.4 ms** | 589 ms |
+| vs Kāra | 2.10× faster | 1.58× faster | 1.23× faster | **1.21× faster (= safety)** | — | 14.9× slower |
 
 **Kāra trails the C-class here — but the gap is runtime/codegen overhead, not the algorithm
-or anything fundamental, and profiling it drove a karac fix that already closed a third of
-it.** Where #36/#37 (stack integer compute) put Kāra *ahead* of C and Rust, #38 is pure
-`String` work — a UTF-8-correct heap buffer where C/Go/Rust drive a raw byte buffer.
-Profiling the binary (leaf-time samples) showed the gap was several overheads C structurally
-avoids — and the dominant one was an easy fix:
+or anything fundamental, and profiling it drove *two* karac fixes that closed most of it
+(65.0 → 39.4 ms).** Where #36/#37 (stack integer compute) put Kāra *ahead* of C and Rust, #38
+is pure `String` work — a UTF-8-correct heap buffer where C/Go/Rust drive a raw byte buffer.
+Profiling the binary (leaf-time samples) found the gap was several overheads C structurally
+avoids, two of them straight-line fixes:
 
-- **`String.push(char)` did a runtime encode CALL + a variable-length `memcpy` — which LLVM
-  lowers to a libc `memmove` call even to copy one byte.** On a pure-ASCII workload that was
-  pure waste: the profile put `memmove`/`memcpy` at ~40% and the encode at ~20% of the hot
-  time. karac now takes an **ASCII fast-path** — a codepoint `< 0x80` is its own single byte,
-  stored directly with one write, no call, no copy
+- **`String.push(char)` did a runtime encode CALL + a variable-length `memcpy`** — which LLVM
+  lowers to a libc `memmove` call even to copy one byte (the profile: `memmove`/`memcpy` ~40%,
+  encode ~20% of the hot time). karac now takes an **ASCII fast-path** — a codepoint `< 0x80`
+  is its own single byte, stored directly, no call, no copy
   ([`B-2026-06-18-6`](../../../../kara/docs/bug-ledger.jsonl), **fixed
-  [`1bb11108`](../../../../kara/docs/bug-ledger.jsonl)**). That alone took #38 from **65.0 →
-  46.3 ms** (1.40×; `memmove` 324 → 36 samples, encode gone), and it speeds *all* String-
-  building code, not just this kata.
-- **The remaining 1.82× to C is the read side + allocation.** Post-fix the profile is
-  dominated by `karac_string_decode_char` (the `for c in s.chars()` UTF-8 decode, ~⅓) and
-  `malloc`/`realloc`/`free` (a fresh `String` allocated per `say` step, ~½). A symmetric
-  ASCII fast-path on the decode and builder-buffer reuse across steps are the next moves —
-  identified, not yet done (the honest line: measure each before claiming it).
-- **The overflow tax is ~zero here.** `rustc -O` (32.2 ms) and `-C overflow-checks=on`
-  (32.9 ms) are within ~2% — character compares and byte appends, no arithmetic — so
-  equal-safety Rust is 1.41× ahead, the same as unchecked. Go leads (19.5 ms) on a tight
-  `[]byte` loop; C (25.4 ms) and Rust (32.2 ms) follow on the same byte-buffer footing.
-- **Not the char *iteration alone*.** An earlier draft pinned the whole gap on `chars()`
-  decoding — but an isolated iteration micro-bench runs *at C speed* (1.01×), and even now
-  decode is only part of the residual. The original gap was the string-*build* path (the
-  encode + `memmove`), which is what the fix above removed.
+  [`1bb11108`](../../../../kara/docs/bug-ledger.jsonl)**): #38 65.0 → 46.3 ms (`memmove` 324 →
+  36 samples, encode gone).
+- **`for c in s.chars()` called `karac_string_decode_char` per character.** With the build
+  side fixed, that read-side decode became the top non-allocation cost — so it got the
+  **symmetric read-side fast-path**: a leading byte `< 0x80` is decoded inline (peek the byte,
+  advance one), the slow runtime call only for multibyte
+  ([`B-2026-06-18-7`](../../../../kara/docs/bug-ledger.jsonl), **fixed
+  [`89760340`](../../../../kara/docs/bug-ledger.jsonl)**): 46.3 → 39.4 ms, and decode drops
+  out of the profile entirely. Both fixes speed *all* String code, not just this kata.
+- **The residual 1.58× to C is now purely allocation.** Re-profiled, the hot non-loop time is
+  almost entirely `malloc`/`realloc`/`free`/`bzero` — a fresh `String` allocated and grown per
+  `say` step, where C reuses one buffer. Closing it means **builder-buffer reuse across
+  steps**, a deeper change (String value semantics) left as identified headroom — not claimed
+  until implemented and measured.
+- **The overflow tax is ~zero here.** `rustc -O` (32.0 ms) and `-C overflow-checks=on`
+  (32.7 ms) are within ~2% — character compares and byte appends, no arithmetic — so
+  equal-safety Rust is 1.21× ahead, the same as unchecked. Go leads (18.8 ms) on a tight
+  `[]byte` loop; C (25.0 ms) and Rust (32.0 ms) follow on the same byte-buffer footing. (And
+  the gap was never the char *iteration* itself: an isolated `chars()` micro-bench runs at C
+  speed — the costs were the per-char encode/decode *calls* and the allocation, now two-thirds
+  addressed.)
 
 **No par lane — by construction.** The per-iteration say is pure, but the checksum reduction
 carries a loop-borne dependency, so karac's auto-par-on-reduction pass does not fire: the
@@ -170,17 +174,17 @@ default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run sing
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.09 MiB** | 1.11 MiB | 1.20 MiB | 9.09 MiB |
+| **runtime peak RSS** | **1.13 MiB** | 1.13 MiB | 1.17 MiB | 8.70 MiB |
 | binary size (seq) | 33.5 KiB | 456.0 KiB | **32.9 KiB** | 2434.1 KiB |
-| compile elapsed | 76.0 ms | 93.2 ms | **49.6 ms** |
-| compile peak RSS | 13.9 MiB | 28.2 MiB | **2.5 MiB** |
+| compile elapsed | 74.8 ms | 93.0 ms | **47.0 ms** |
+| compile peak RSS | 13.8 MiB | 28.2 MiB | **2.5 MiB** |
 
-Each term is a heap `String`, so runtime RSS is allocator-bound; Kāra (1.09 MiB), Rust
-(1.11 MiB), and C (1.20 MiB) tie to within rounding, while Go's runtime pays 9.09 MiB and
-Python's interpreter 6.88 MiB. The seq compute binary references no par-scheduler runtime, so
+Each term is a heap `String`, so runtime RSS is allocator-bound; Kāra (1.13 MiB), Rust
+(1.13 MiB), and C (1.17 MiB) tie to within rounding, while Go's runtime pays 8.70 MiB and
+Python's interpreter 7.08 MiB. The seq compute binary references no par-scheduler runtime, so
 LTO + `-dead_strip` carve it to **33.5 KiB** — 13.6× under Rust and within a rounding of C's
 32.9 KiB (Go's static runtime is 2.4 MiB). Compile favours Kāra over `rustc -O` on both
-elapsed (76.0 vs 93.2 ms) and peak compiler RSS (13.9 vs 28.2 MiB); clang's 49.6 ms / 2.5 MiB
+elapsed (74.8 vs 93.0 ms) and peak compiler RSS (13.8 vs 28.2 MiB); clang's 47.0 ms / 2.5 MiB
 is the toolchain floor.
 
 ## Kāra features exercised
