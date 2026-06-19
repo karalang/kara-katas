@@ -30,6 +30,7 @@ import argparse
 import json
 import math
 import os
+import statistics
 import sys
 
 # Language presentation order + colors. kara first (highlighted), then the
@@ -58,6 +59,11 @@ COLOR = {
     # Goldenrod reads as a Rust variant without colliding with the gray baseline.
     "rust_ovf": "#d4a017",
 }
+# The solid "Rust" line is the release default (overflow-checks OFF -- wraps
+# silently). "rust_ovf" is the equal-safety twin (overflow-checks=on) that
+# matches kāra's default trap-on-overflow contract; it reads "overflow-checked"
+# rather than the cryptic "_ovf" so a lay reader sees what it is. The runtime
+# chart footnote (render_dots) spells out the contract and quantifies the tax.
 LABEL = {"kara": "Kāra", "rust": "Rust", "c": "C", "go": "Go",
          "rust_ovf": "Rust (checked)"}
 
@@ -346,6 +352,14 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale, opt_langs=()):
                 ymax_data = max(ymax_data, r)
                 ymin_data = min(ymin_data, r)
 
+    # When the equal-safety Rust overlay rides on this chart, qualify the baseline
+    # as "Rust (default)" so the legend reads as the pair "Rust (default)" vs
+    # "Rust (checked)". On charts with no checked twin we keep the bare "Rust" --
+    # "(default)" there would only prompt "default as opposed to what?".
+    lab = dict(LABEL)
+    if "rust" in lab and any(opt_series[l] for l in opt_langs):
+        lab["rust"] = "Rust (default)"
+
     def X(i):
         if n == 1:
             return ml + pw / 2
@@ -393,7 +407,7 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale, opt_langs=()):
     scale_note = " · log scale" if yscale == "log" else ""
     s.append(f'<text x="{ml}" y="34" font-size="21" font-weight="700" fill="{FG}">{esc(title)}</text>')
     s.append(f'<text x="{ml}" y="56" font-size="13" fill="{MUTED}">'
-             f'relative to {LABEL[baseline]} = 1.0 · {esc(unitnote)} · {n} programs{scale_note}</text>')
+             f'relative to {lab[baseline]} = 1.0 · {esc(unitnote)} · {n} programs{scale_note}</text>')
 
     for t in gridvals:
         y = Y(t)
@@ -405,7 +419,7 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale, opt_langs=()):
         s.append(f'<text x="{ml-10}" y="{y+4:.1f}" font-size="12" text-anchor="end" '
                  f'fill="{DIM2 if is_base else MUTED}"{wt}>{fmt(t)}</text>')
     s.append(f'<text x="{ml+pw}" y="{Y(1.0)-6:.1f}" font-size="11" text-anchor="end" '
-             f'fill="{DIM2}">{LABEL[baseline]} baseline</text>')
+             f'fill="{DIM2}">{lab[baseline]} baseline</text>')
 
     # x ticks only when sparse enough to label; otherwise just an axis line
     if n <= 30:
@@ -460,16 +474,40 @@ def render_dots(progs, baseline, title, unitnote, langs, yscale, opt_langs=()):
         if lang == baseline:
             s.append(f'<line x1="{lx}" y1="{yy}" x2="{lx+22}" y2="{yy}" stroke="{DIM}" '
                      f'stroke-width="2" stroke-dasharray="5 4"/>')
-            disp = f"{LABEL[lang]} = 1.0×"
+            disp = f"{lab[lang]} = 1.0×"
         elif lang in opt_langs:
             s.append(f'<circle cx="{lx+11}" cy="{yy}" r="4" fill="none" '
                      f'stroke="{COLOR[lang]}" stroke-width="1.8"/>')
-            disp = LABEL[lang]
+            disp = lab[lang]
         else:
             s.append(f'<circle cx="{lx+11}" cy="{yy}" r="{5 if lang=="kara" else 4}" fill="{COLOR[lang]}"/>')
-            disp = LABEL[lang]
+            disp = lab[lang]
         s.append(f'<text x="{lx+30}" y="{yy+4}" font-size="{12 if lang in opt_langs else 13}" '
                  f'fill="{FG}" font-weight="{700 if lang=="kara" else 400}">{esc(disp)}</text>')
+
+    # Safety-contract footnote (runtime chart only). A reader can't be expected
+    # to know that the solid Rust baseline is the release default that WRAPS on
+    # overflow, while kāra traps by default -- so the matched-safety comparison
+    # is kāra vs the hollow rings, not kāra vs the line. Spell that out and
+    # quantify both ratios straight from the plotted data: the median tax Rust
+    # pays to turn its checks on (rust_ovf/rust), and where kāra lands against
+    # that equal-safety Rust (kara/rust_ovf). Only renders where the overlay has
+    # data, so non-overflow charts stay byte-identical.
+    if baseline == "rust" and "rust_ovf" in present_opt and "kara" in series:
+        ovf_ratios = [r for _, r in opt_series["rust_ovf"]]          # rust_ovf / rust
+        kara_vals = series["kara"]
+        matched = [kara_vals[i] / r for i, r in opt_series["rust_ovf"] if r > 0]
+        tax = statistics.median(ovf_ratios) if ovf_ratios else None
+        if tax is not None:
+            np = len(ovf_ratios)
+            m_txt = (f"At that matched safety kāra is ≈ {statistics.median(matched):.2f}×"
+                     if matched else "")
+            line1 = ("Solid Rust = 1.0× is the release default — it wraps silently on overflow. "
+                     "Hollow rings ◌ are Rust built overflow-checked,")
+            line2 = (f"the same safety kāra enforces by default: median {tax:.2f}× the cost of plain "
+                     f"Rust across the {np} overflow-exercising programs. {m_txt} — compare kāra to the rings.")
+            s.append(f'<text x="{ml}" y="{H-58}" font-size="11.5" fill="{FG}">{esc(line1)}</text>')
+            s.append(f'<text x="{ml}" y="{H-42}" font-size="11.5" fill="{FG}">{esc(line2)}</text>')
 
     cap_txt = ("Each dot is one benchmarked program (kata × approach); there is no connecting line "
                "because left-to-right order is not meaningful. Raw numbers: bench-results.json")

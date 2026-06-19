@@ -19,9 +19,9 @@ compiled languages it would flatten everything; its numbers are in the per-kata
 READMEs and the JSON feed.
 
 **One baseline caveat, made explicit:** Kāra checks integer overflow by default;
-`rustc -O` **silently wraps**. So the gray `Rust = 1.0` baseline is *unsafe* Rust —
-on a workload that exercises overflowing arithmetic it is doing strictly less work
-than Kāra. The runtime chart therefore overlays a goldenrod **Rust (checked)** ring
+`rustc -O` **silently wraps** — defined behavior (not UB), but a wrong value where
+Kāra would trap. So the gray **Rust (default)** baseline is doing strictly less work
+than Kāra on a workload that exercises overflowing arithmetic. The runtime chart therefore overlays a goldenrod **Rust (checked)** ring
 — `rustc -O -C overflow-checks=on`, the safety-matched build — on the katas where
 the two diverge. That is the apples-to-apples number. Across the corpus the overflow
 tax is the bulk of every apparent "Kāra is slower" gap: the worst offenders (#171
