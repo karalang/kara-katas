@@ -132,28 +132,36 @@ String-growth codegen from each stdlib's integer-formatting path. Unlike #36/#37
 | time | 19.2 ms | 24.6 ms | 31.8 ms | 32.5 ms | **65.0 ms** | 585 ms |
 | vs Kāra | 3.39× faster | 2.64× faster | 2.04× faster | **2.00× faster (= safety)** | — | 9.0× slower |
 
-**This is the kata where Kāra trails the C-class — honestly, and for an identifiable
-reason.** Where #36/#37 (stack integer compute) put Kāra *ahead* of C and Rust, #38 is pure
-`String` work, and Kāra runs ~2.6× behind C and ~2.0× behind equal-safety Rust. The gap is
-**per-`char` iteration**: `for c in s.chars()` decodes one Unicode scalar value per
-character through a runtime call (`karac_string_decode_char`), correct for arbitrary UTF-8 —
-whereas C, Go, and Rust walk the underlying **bytes** directly. On a pure-ASCII digit
-workload that per-character decode is overhead the C-class never pays, and it dominates a
-loop whose body is otherwise just a compare and two `push`es. The remaining distance is
-`String` growth on `push`. So:
+**This is the kata where Kāra trails the C-class — honestly, and the cause is
+runtime/codegen overhead, not the algorithm or anything fundamental.** Where #36/#37 (stack
+integer compute) put Kāra *ahead* of C and Rust, #38 is pure `String` work — and `String`
+here is a UTF-8-correct heap buffer where C/Go/Rust drive a raw byte buffer. **Profiling the
+binary** (leaf-time samples) shows the 2.66× to C is several overheads C structurally
+avoids, none of them inherent:
+
+| hot leaf | ~share | what it is |
+|---|---|---|
+| `memmove` / `memcpy` | ~40% | `push` copying bytes through intermediate buffers |
+| `karac_string_decode_char` / `_encode_char` | ~20% | per-`char` UTF-8 decode (read) + encode (push) |
+| `malloc` / `realloc` / `free` | ~20% | a fresh `String` allocated per `say` step |
+
+C does the identical RLE with plain byte stores into one reused buffer — no `memmove`, no
+codec calls, far less allocation. Every piece is optimizable: an **ASCII fast-path on
+`push(char)`** (store one byte when `< 0x80`, skipping the encode + copy) removes most of the
+`memmove`/codec cost, and **reusing the builder buffer across steps** cuts the allocation
+churn — standard string-builder techniques. (How much that would recover needs implementing
+and measuring, not asserting — but the headroom is real and the gap is not by design.) So:
 
 - **The overflow tax is ~zero here.** `rustc -O` (31.8 ms) and `-C overflow-checks=on`
   (32.5 ms) are within ~2% — the hot path is character compares and byte appends, no
   arithmetic — so equal-safety Rust is 2.0× ahead, the same as unchecked.
 - **Go leads (19.2 ms)** because its `for _, c := range s` over a `[]byte` is a tight byte
-  loop with cheap `append` growth and no decode; C (24.6 ms) and Rust (31.8 ms) follow on
-  the same byte-walking footing.
-- **The gap is char-iteration codegen, not the algorithm.** All five mirrors run the
-  identical streaming RLE with single-digit in-place count append; Kāra's residual is the
-  Unicode-correct `chars()` decode where the others read raw bytes — a real, identified
-  codegen-quality cost, left as an honest result rather than worked around (a byte-level
-  `s[i]` rewrite would dodge it, but `for c in s.chars()` is the natural char-iteration
-  form).
+  loop with cheap `append` growth into one buffer; C (24.6 ms) and Rust (31.8 ms) follow on
+  the same byte-buffer footing.
+- **Not the char *iteration*.** An earlier draft pinned the gap on `for c in s.chars()`
+  decoding per character — but an isolated iteration micro-bench runs *at C speed* (1.01×),
+  and the profile puts decode at only ~⅕ of the hot time behind `memmove`/`memcpy`. The gap
+  is the string-*build* path (copy + encode + allocate), not reading the input.
 
 **No par lane — by construction.** The per-iteration say is pure, but the checksum reduction
 carries a loop-borne dependency, so karac's auto-par-on-reduction pass does not fire: the
