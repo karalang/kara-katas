@@ -58,37 +58,36 @@ element-store-width fix this relies on.
 
 ## What this kata surfaced
 
-**No compiler change was needed — all three solvers typechecked, ran, and built correctly on the
-first pass,** and all three agree with the Python oracle under both `karac run` and `karac build`,
-including the `Vec[bool]` used-marker that exercises the recently-fixed sub-word element-store
-path ([#44](../44-wildcard-matching/)'s `B-2026-06-19-5`). The benchmark, though, *characterizes*
-a sharply-localized **allocation gap**, run down with a `malloc` interposer and a sampling
+All three solvers typechecked, ran, and built correctly on the first pass and agree with the
+Python oracle under both `karac run` and `karac build`, including the `Vec[bool]` used-marker that
+exercises [#44](../44-wildcard-matching/)'s sub-word element-store fix (`B-2026-06-19-5`). But the
+benchmark drove **two compiler fixes**, run down with a `malloc` interposer and a sampling
 profiler:
 
-- The workload is **allocator-bound** — a profile of the Kāra binary spends almost all of its
-  self-time in `malloc`/`_xzm_free`, while the C mirror spends most of its time in `backtrack`
-  compute. So whatever the allocation difference is, it *is* the runtime difference.
-- A `malloc`-counting interposer shows Kāra issues **exactly 2× the allocations of C** — 10,080
-  per solve vs C's 5,040 (one per permutation leaf). The 2× runtime gap *is* the 2× allocation
-  count.
-- The extra allocation is **one redundant `malloc`+`free` per element when a heap-owning value is
-  appended to a `Vec[Vec]`**. Cloning a small `Vec[i64]` without appending it costs 1 `malloc`;
-  `out.push(v.clone())` into a `Vec[Vec[i64]]` whose contents are read costs **2** — verified
-  per-element (scales 1:1 with element count, not with capacity growth), and present whether the
-  clone is written inline or `let`-bound first. The C/Rust mirrors do the identical append in a
-  single allocation. Minimal repro: a 6-line loop of `out.push(v.clone())` with the contents read
-  → 2× the `malloc`s of the C equivalent.
+- The workload is **allocator-bound** — a profile of the Kāra binary spent almost all of its
+  self-time in `malloc`/`_xzm_free`, while the C mirror spent most of its in `backtrack` compute.
+  So the allocation difference *was* the runtime difference.
+- A `malloc`-counting interposer showed Kāra issuing **exactly 2× the allocations of C** — 10,080
+  per solve vs C's 5,040. IR + per-element counting localized the extra one: **not** the append
+  (`out.push(path.clone())` is already a single-alloc move) but the signature loop's
+  `let perm = perms[j]`, which **deep-cloned the heap element even though `perm` is only read**.
+  Reading via the bare `perms[j][i]` (no element binding) already allocated 1×.
+- **Fix 1 — `B-2026-06-19-6` (clone-elision):** a conservative whitelist pass now binds a read-only,
+  non-escaping `let r = v[i]` as a *borrow* of the element (no clone, no scope-exit free) when the
+  container isn't mutated in scope — anything unproven falls back to the clone, so it can only ever
+  *over*-clone, never alias unsafely. The read loop drops from 2 → 1 malloc/elem.
+- **Fix 2 — `B-2026-06-19-7` (index-store drop):** writing the negative regression tests surfaced a
+  *separate* pre-existing crash — `out[j] = nb` (index-assigning a heap `Vec`/`String` element)
+  SIGTRAPped in AOT binaries (double-free of the moved source + leak of the old element). The
+  index-store now drops the old element and suppresses the moved source's cleanup, mirroring
+  `Vec.push`'s move discipline.
 
-Crucially the gap is **not a safety tax**: `rustc -C overflow-checks=on` (37.2 ms) ties plain
-`rustc -O` (36.7 ms) to within noise, so the checked integer math is free here. And it is **not**
-the v1 allocator baseline being "just slow" — Kāra's runtime peak RSS is in fact the *lowest* of
-all four native mirrors (1.69 MiB, under even C) and its binary ties C at 33 KiB. It is one
-specific redundant per-element copy on `Vec[Vec]` append: eliminating it (a move where the codegen
-currently copies the element buffer) would roughly **halve allocation traffic and bring this
-kernel to ~parity with C**, since the workload is allocator-bound. That is squarely the roadmap's
-stated #1 optimization lever ("allocation reduction on hot paths"); the ~2× sits *at* Kāra's
-documented v1 bar (`design.md`: "within ~2× apples-to-apples"), with parity deferred to the
-Phase 11 codegen pass.
+The gap was never a safety tax — `rustc -C overflow-checks=on` (36.8 ms) ties plain `rustc -O`
+(36.0 ms) — and it was never the v1 allocator being "just slow": it was one redundant per-element
+clone. **With Fix 1, Kāra goes from ~2× behind to ~1.2–1.3× of C/Rust — and now runs *faster than
+Go* on this kernel** (§ Benchmarks). The residual ~1.25× is the genuine per-clone cost of the
+remaining 5040 leaf snapshots (element-wise copy vs `memcpy`) plus allocator differences — well
+inside Kāra's documented v1 bar (`design.md`: "within ~2× apples-to-apples").
 
 ## Benchmarks
 
@@ -103,34 +102,38 @@ bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 ### Seq lane — runtime (single-threaded used-array backtracking)
 
-| | Rust (`-O`) | Rust (`overflow-checks=on`) | C | Go | **Kāra** | Python |
-|---|---|---|---|---|---|---|
-| time | 36.7 ms | 37.2 ms | 39.1 ms | 50.5 ms | **73.4 ms** | 741.6 ms |
-| vs Kāra | 2.00× faster | 1.97× faster (= safety) | 1.88× faster | 1.45× faster | — | 10.1× slower |
+Measured with the clone-elision fix (`B-2026-06-19-6`) landed:
 
-This is an **allocation-bound** workload — 5040 leaf `Vec[i64]` clones per solve into a growing
-`Vec[Vec[i64]]` — and Kāra trails native by ~2×, which a `malloc` interposer pins to Kāra issuing
-**exactly 2× C's allocations** (one redundant `malloc`+`free` per `Vec[Vec]` append; see *What this
-kata surfaced*). The safety-matched comparator rules out arithmetic: at **equal safety** Rust is
-still 1.97× faster, and `rustc -C overflow-checks=on` (37.2 ms) ties plain `rustc -O` (36.7 ms), so
-the checked integer math costs nothing here. Go's GC'd allocator lands between (1.45×). Python runs
-the identical algorithm interpreted, 10× behind.
+| | Rust (`-O`) | Rust (`overflow-checks=on`) | C | **Kāra** | Go | Python |
+|---|---|---|---|---|---|---|
+| time | 36.0 ms | 36.8 ms | 38.4 ms | **47.0 ms** | 49.0 ms | 725.9 ms |
+| vs Kāra | 1.30× faster | 1.28× faster (= safety) | 1.22× faster | — | 1.04× slower | 15.4× slower |
+
+This is an **allocation-bound** workload — 5040 leaf `Vec[i64]` snapshots per solve into a growing
+`Vec[Vec[i64]]`. Before the fix Kāra trailed native by ~2× (73.4 ms), which a `malloc` interposer
+pinned to Kāra issuing exactly 2× C's allocations — the signature loop's `let perm = perms[j]`
+deep-cloned each element it only read. With that clone elided (`B-2026-06-19-6`) Kāra drops to
+**47.0 ms — ~1.2–1.3× of C/Rust, and now faster than Go**. The safety-matched comparator confirms
+the residual isn't arithmetic: at **equal safety** `rustc -C overflow-checks=on` (36.8 ms) ties
+plain `rustc -O` (36.0 ms). What's left is the genuine cost of the 5040 remaining leaf clones
+(element-wise copy vs `memcpy`) plus allocator differences. Python runs the identical algorithm
+interpreted, 15× behind.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.69 MiB** | 1.77 MiB | 1.78 MiB | 9.1 MiB |
+| **runtime peak RSS** | 1.67 MiB | 1.72 MiB | **1.64 MiB** | 9.1 MiB |
 | binary size (seq) | 33.4 KiB | 455.9 KiB | **33.0 KiB** | 2434.1 KiB |
-| compile elapsed | 84.2 ms | 114.0 ms | **54.4 ms** |
-| compile peak RSS | 14.0 MiB | 31.3 MiB | **2.6 MiB** |
+| compile elapsed | 79.2 ms | 105.4 ms | **49.7 ms** |
+| compile peak RSS | 13.9 MiB | 31.3 MiB | **2.5 MiB** |
 
-Despite being slower per op, Kāra holds the **lowest runtime peak RSS of the four — 1.69 MiB,
-under even C's 1.78 MiB** — the small-object churn pool stays tighter than malloc's footprint here,
-while Go's runtime pays 9.1 MiB and Python's interpreter 8.9 MiB. The seq compute binary references
-no par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.4 KiB**, within a rounding of C's
-33.0 KiB and 13.6× under Rust. Compile favours Kāra over `rustc -O` on both elapsed (84.2 vs
-114.0 ms) and peak compiler RSS (14.0 vs 31.3 MiB); clang's 54.4 ms / 2.6 MiB is the floor.
+Runtime peak RSS is a three-way tie among the native mirrors — Kāra **1.67 MiB**, C 1.64 MiB, Rust
+1.72 MiB, all within noise — while Go's runtime pays 9.1 MiB and Python's interpreter 8.9 MiB. The
+seq compute binary references no par-scheduler runtime, so LTO + `-dead_strip` carve it to
+**33.4 KiB**, within a rounding of C's 33.0 KiB and 13.6× under Rust. Compile favours Kāra over
+`rustc -O` on both elapsed (79.2 vs 105.4 ms) and peak compiler RSS (13.9 vs 31.3 MiB); clang's
+49.7 ms / 2.5 MiB is the floor.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum reduction
 carries a loop-borne dependency, so karac's auto-par pass does not fire: the default and
@@ -155,21 +158,26 @@ carries a loop-borne dependency, so karac's auto-par pass does not fire: the def
   bindings) and interior calls forward them unmarked, per the call-site-marker rule.
 - **Checked integer arithmetic at zero cost** — the index math and the position-weighted checksum
   fold run under Kāra's default overflow checking and land dead-even with `rustc -C
-  overflow-checks=on`; the seq-lane gap here is allocation, not arithmetic.
+  overflow-checks=on`; the seq-lane residual here is allocation, not arithmetic.
 
 ---
 
-**Bug ledger:** no *correctness* bug — all three solvers typechecked, ran, and built correctly on
-the first pass and agree with the oracle under both `karac run` and `karac build`. The benchmark
-contributes a precisely-localized **performance characterization** (a candidate optimization, not a
-miscompile): appending a heap-owning value to a `Vec[Vec]` (`out.push(v.clone())`) emits **one
-redundant per-element `malloc`+`free`** — Kāra issues exactly 2× the allocations of the C/Rust
-mirrors (10,080 vs 5,040 per solve), confirmed with a `malloc` interposer and a sampling profile
-showing the workload is allocator-bound. The append currently *copies* the element buffer where a
-*move* would do; eliminating the copy would roughly halve allocation traffic and bring this
-allocator-bound kernel to ~parity with C. The ~2× sits *at* the documented v1 bar (`design.md`:
-"within ~2× apples-to-apples") and the fix is the roadmap's #1 lever ("allocation reduction on hot
-paths"), with parity deferred to the Phase 11 codegen pass. Minimal repro: a loop of
-`out.push(v.clone())` into a `Vec[Vec[i64]]` whose contents are read → 2× the `malloc`s of the C
-equivalent. See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl) for the cross-kata
-history.
+**Bug ledger:** no *correctness* bug in the solvers — all three typechecked, ran, and built
+correctly on the first pass and agree with the oracle under both `karac run` and `karac build`. The
+benchmark drove **two `karac` codegen fixes**, both landed:
+
+- **`B-2026-06-19-6` (clone-elision, fixed):** a read-only `let perm = perms[j]` over a `Vec[Vec]`
+  deep-cloned the heap element it only read — Kāra issued exactly 2× the C/Rust allocations (10,080
+  vs 5,040 per solve), confirmed with a `malloc` interposer and an allocator-bound profile. A
+  conservative whitelist pass now binds such a read-only, non-escaping index element as a *borrow*
+  (no clone, no scope-exit free) when the container isn't mutated in scope. Seq lane: **73.4 → 47.0
+  ms**, from ~2× behind to ~1.2–1.3× of C/Rust and ahead of Go.
+- **`B-2026-06-19-7` (index-store drop, fixed):** found while writing the negative regression
+  tests — `out[j] = nb` (index-assigning a heap `Vec`/`String` element) SIGTRAPped in AOT binaries
+  (double-free of the moved source + leak of the old element). The index-store now drops the old
+  element and suppresses the moved source's cleanup.
+
+The residual ~1.25× is the genuine per-clone cost of the 5040 remaining leaf snapshots
+(element-wise copy vs `memcpy`), well inside the documented v1 bar (`design.md`: "within ~2×
+apples-to-apples"). See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl) for the
+cross-kata history.
