@@ -83,6 +83,32 @@ would. No new low-level Vec/iterator codegen — it reuses the tested for-chars 
 block-return paths. So the indexed solver now builds in its natural form; the streaming and
 recursive styles never needed it.
 
+**Probing the `String` API for this kata turned up three more gaps** (one fixed, two filed),
+all visible through karac's own
+[`valid_palindrome.kara`](../../../../kara/examples/leetcode/valid_palindrome.kara), which
+documents the very char-iteration idioms #38 exercises yet did not build:
+
+- **`for c in <String>` mistyped the loop variable** as `String` / `ref String` instead of
+  `char` ([`B-2026-06-18-2`](../../../../kara/docs/bug-ledger.jsonl), typecheck, **fixed
+  [`a658f238`](../../../../kara/docs/bug-ledger.jsonl)**) — a typechecker/codegen mismatch
+  (codegen already binds the decoded codepoint as `char`), so `for c in s { c.is_alphabetic() }`
+  ran but did not build. The fix maps a String iterable's element type to `char` in
+  `element_type_of`; `for c in s` now binds `char` and the existing char predicates dispatch.
+- **`s.char_at(i)` / `s.char_count()` are unimplemented** end-to-end
+  ([`B-2026-06-18-3`](../../../../kara/docs/bug-ledger.jsonl), **open**) — the typechecker
+  rejects them and they do not function under the interpreter, so the O(n) Unicode-aware
+  access pair `design.md` documents (and `valid_palindrome.kara` centers on) is unavailable.
+- **`char.is_uppercase()` / `is_lowercase()` have no codegen handler**
+  ([`B-2026-06-18-4`](../../../../kara/docs/bug-ledger.jsonl), **open**) — the sibling
+  predicates `is_alphabetic` / `is_numeric` / `is_alphanumeric` / `is_whitespace` are wired,
+  these two are not. (Plus [`B-2026-06-18-5`](../../../../kara/docs/bug-ledger.jsonl) — a
+  bound `let it = s.chars()` value still isn't materializable in codegen, the narrower
+  sibling of the fixed collect lowering.)
+
+#38 itself builds and runs in all three styles regardless — it reaches char access through
+`.chars().collect()` + indexing (fixed above) and `for c in s.chars()`, none of which depend
+on the open items.
+
 ## Benchmarks
 
 Workload: count-and-say generalized to an arbitrary digit seed (the say-transform is
