@@ -189,10 +189,13 @@ carries a loop-borne dependency, so karac's auto-par pass does not fire: the def
 **Bug ledger:** one language gap, fixed. Probing the swap-based solver surfaced that Kāra had **no
 parallel/destructuring assignment** — `nums[start], nums[i] = nums[i], nums[start]` failed to parse,
 blocking the natural in-place swap that swap-sorts and permutation enumerators rely on. Fixed in
-`karac` (parser-level desugaring of `t1, …, tn = v1, …, vn;` into a temp-block that evaluates every
-RHS before writing any target, so it swaps; parser + codegen E2E tests, full suites green). A *false*
-gap was also recorded and corrected: hash containers exist as `Set[T]` / `Map[K,V]` (not the Rust
-`HashSet`/`HashMap`), so no stdlib work was needed — the swap solver's dedup uses the real `Set[i64]`.
+`karac` as a first-class `StmtKind::MultiAssign` statement: the parser builds it, the formatter
+round-trips the comma syntax verbatim, and a pre-resolve `desugar` pass lowers it to a temp-block
+that evaluates every RHS before writing any target (so it swaps), so every phase from the resolver
+onward sees only ordinary `let`/`=` nodes. Parser + codegen E2E tests (incl. nested-in-control-flow),
+full suites green. A *false* gap was also recorded and corrected: hash containers exist as `Set[T]` /
+`Map[K,V]` (not the Rust `HashSet`/`HashMap`), so no stdlib work was needed — the swap solver's dedup
+uses the real `Set[i64]`.
 
 The four solvers otherwise remain a clean regression exercise of three prior `karac` fixes — the
 `Vec[bool]` element-store-width fix (`B-2026-06-19-5`, kata [#44](../44-wildcard-matching/)), the
