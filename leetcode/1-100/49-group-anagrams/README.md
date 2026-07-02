@@ -166,33 +166,33 @@ seq row is the apples-to-apples comparator against the native single-file compil
 
 ### Runtime
 
-Snapshot — M5 Pro, 2026-07-02, hyperfine `--warmup 5 --runs 30`, medians (this workload is
-allocation-heavy, so σ is quoted where it matters):
+Snapshot — M5 Pro, 2026-07-02, hyperfine `--warmup 5 --runs 30`, medians:
 
 | Run | Median |
 |---|---|
-| `c    group_anagrams` (clang -O3) | **10.1 ms** |
+| `c    group_anagrams` (clang -O3) | **10.3 ms** |
 | `rust group_anagrams` (rustc -O)  | 26.3 ms |
-| `go   group_anagrams` (go build)  | 70.6 ms |
-| **`kara group_anagrams` (codegen, seq)** | **97.4 ms** |
-| `py   group_anagrams` (CPython)   | 155.6 ms |
+| **`kara group_anagrams` (codegen, seq)** | **42.8 ms** |
+| `go   group_anagrams` (go build)  | 70.9 ms |
+| `py   group_anagrams` (CPython)   | 154.4 ms |
 
-**This kata is a runtime loss for Kāra, and the reason is instructive.** Unlike the map-bound katas
-where Kāra's monomorphized `Map[K,V]` beats Rust's `HashMap`, here the map is tiny (26 entries) and
-the hot cost is the **anagram key**, computed `N × K = 800_000` times. The three fast mirrors sort
-the word's *bytes* in place (Rust `sort_unstable` on a `Vec<u8>`, C insertion-sort on a stack
-buffer, Go `sort.Slice`), then hash the result. Kāra's `String.sorted()` instead does a
-**char-granular collect–sort–rebuild**: it decodes the UTF-8 into a fresh `Vec[char]` (4 bytes per
-element), sorts that, and re-encodes a new `String` — matching the interpreter byte-for-byte on
-multi-byte input, but allocating two heap buffers per call where a byte-sort allocates one and
-touches ¼ the memory. At 97 ms / 800k calls ≈ 122 ns per key, that decode+reencode dominates.
+The hot cost of this kata is the **anagram key**, computed `N × K = 800_000` times — the map is
+tiny (26 entries), so the sort dominates. Kāra runs **1.63× slower than Rust**, **1.66× faster than
+Go**, and **3.6× faster than CPython**; C's 4× lead is a workload-shape win (its 8-char key never
+leaves the stack — zero heap allocation), not a codegen gap, so the within-abstraction comparator is
+Rust.
 
-So Kāra is **3.7× slower than Rust** and **1.4× slower than Go** here — an honest result, and a
-concrete optimization lead: an ASCII fast-path in `karac_string_sorted` (byte-sort in place when the
-string is single-byte, which every LeetCode-#49 input is) would close most of the gap without
-changing the Unicode semantics. Kāra still runs **1.6× faster than CPython**. C's 10× lead is a
-workload-shape win (no heap allocation at all — the 8-char key lives on the stack), not a codegen
-gap; the within-abstraction comparator is Rust, and that gap is the `sorted()` allocation profile.
+**This kata drove a `karac` runtime optimization.** The first cut of this bench was a *loss* for
+Kāra — **97 ms**, 3.7× slower than Rust and 1.4× slower than Go — because `String.sorted()` took a
+char-granular path on every call: decode the UTF-8 into a fresh `Vec[char]` (4 bytes/element), sort,
+re-encode a new `String`, then copy into the result buffer — three allocations and two UTF-8 passes.
+But below `0x80` a byte's value *is* its Unicode scalar value, so byte order == char order and that
+round-trip is unnecessary. `karac_string_sorted` now takes an **ASCII fast-path** (copy once, sort
+the result buffer in place: one allocation + a byte sort), falling back to the char sort only for
+multi-byte input. That single runtime change took the workload from **97 ms → 42.8 ms (2.27×)** —
+flipping the Go comparison from 1.4× slower to 1.66× faster — with output byte-identical to the
+interpreter on every input, ASCII or not (`karac` commit `4319c669`, *perf(runtime): ASCII
+byte-sort fast-path for karac_string_sorted*).
 
 ### Compile time, binary size, memory
 
@@ -201,12 +201,11 @@ size and peak RSS are single deterministic samples.
 
 | Compiler | Compile (cold) | Binary | Peak RSS |
 |---|---|---|---|
-| `clang -O3` | 51.4 ms | 32.9 KiB | 1.19 MiB |
-| **`karac build`** | **83.3 ms** | **295.5 KiB** | **2.02 MiB** |
-| `rustc -O` | 138.5 ms | 475.7 KiB | 1.94 MiB |
-| `go build` | — (excluded; mixes module + std-lib link) | 2452.3 KiB | 8.27 MiB |
+| `clang -O3` | 62.4 ms | 32.9 KiB | 1.19 MiB |
+| **`karac build`** | **82.4 ms** | **295.5 KiB** | **2.00 MiB** |
+| `rustc -O` | 151.2 ms | 475.7 KiB | 1.95 MiB |
+| `go build` | — (excluded; mixes module + std-lib link) | 2452.3 KiB | 9.28 MiB |
 
-Where Kāra wins is the toolchain envelope: it **compiles 1.66× faster than `rustc -O`**, emits a
-binary **~38% smaller than Rust** (and ~8× smaller than Go), and peaks at **2.0 MiB RSS** —
-line-ball with Rust, ~4× under Go and Python. The runtime tax is specific to this key-computation
-shape; the compile/size/memory profile is the same tight envelope Kāra shows across the corpus.
+Kāra also wins the toolchain envelope: it **compiles ~1.8× faster than `rustc -O`**, emits a binary
+**~38% smaller than Rust** (and ~8× smaller than Go), and peaks at **2.0 MiB RSS** — line-ball with
+Rust, ~4× under Go and Python.
