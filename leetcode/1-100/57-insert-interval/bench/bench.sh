@@ -149,6 +149,7 @@ build_rust     "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_kara_seq "${STEM}.kara"
+build_kara_seq "${STEM}_cap.kara"   # pre-sized (Vec.with_capacity) seq variant
 build_go_seq
 build_rayon
 build_go_par
@@ -158,6 +159,7 @@ expected=$(./target/${STEM}_kara)
 mismatch=""
 for pair in \
     "kara_seq:./target/${STEM}_kara_seq" \
+    "kara_cap:./target/${STEM}_cap_kara_seq" \
     "rust:./target/${STEM}" \
     "c:./target/${STEM}_c" \
     "go:./target/${STEM}_go_seq" \
@@ -187,6 +189,8 @@ echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach insert_interval --lane seq --mode codegen \
     --name "kara ${STEM} (seq, KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
+rt_cmd --lang kara --approach insert_interval_cap --lane seq --mode codegen \
+    --name "kara ${STEM} (seq, with_capacity)" --cmd "./target/${STEM}_cap_kara_seq"
 rt_cmd --lang rust --approach insert_interval --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
 rt_cmd --lang c --approach insert_interval --lane seq --mode native \
@@ -233,6 +237,7 @@ ce_end
 echo
 echo "=== binary size ==="
 size_put --lang kara --approach insert_interval --lane seq --mode codegen --path "target/${STEM}_kara_seq"
+size_put --lang kara --approach insert_interval_cap --lane seq --mode codegen --path "target/${STEM}_cap_kara_seq"
 size_put --lang kara --approach insert_interval --lane par --mode codegen --path "target/${STEM}_kara"
 size_put --lang c    --approach insert_interval --lane par --mode native  --path "target/${STEM}_c_par"
 size_put --lang rust --approach insert_interval --lane par --mode native  --path "target/${STEM}_rayon"
@@ -244,6 +249,7 @@ size_put --lang go   --approach insert_interval --lane seq --mode native  --path
 echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach insert_interval --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara_seq)"
+mem_put --lang kara --approach insert_interval_cap --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_cap_kara_seq)"
 mem_put --lang kara --approach insert_interval --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
 mem_put --lang c    --approach insert_interval --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_c_par)"
 mem_put --lang rust --approach insert_interval --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_rayon)"
