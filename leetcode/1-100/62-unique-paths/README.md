@@ -94,23 +94,24 @@ Snapshot — M5 Pro, 2026-07-04, hyperfine `--warmup 5 --runs 30 --shell=none`. 
 
 | Implementation | Wall time |
 |---|---|
-| c    unique_paths (clang -O3)       | 102.2 ± 0.6 ms |
-| rust unique_paths (rustc -O)        | 102.2 ± 0.8 ms |
-| go   unique_paths                   | 221.5 ± 0.6 ms |
-| **kāra unique_paths**               | **316.4 ± 4.9 ms** |
+| rust unique_paths (rustc -O)        | 103.6 ± 0.9 ms |
+| **kāra unique_paths**               | **104.9 ± 1.3 ms** |
+| c    unique_paths (clang -O3)       | 105.9 ± 2.6 ms |
+| go   unique_paths                   | 225.8 ± 1.7 ms |
 
-This is the corpus's honest counter-case: **Kāra trails C/Rust by ~3.10× and Go by ~1.43×** on a tight read-modify-write array scan — the widest per-core gap in the neighbourhood, and the opposite of its sibling linked-list kata [#61](../61-rotate-list/) (where Kāra *led* Rust by 1.36× because Rust paid `Rc<RefCell>` overhead). The gap is two specific optimiser headrooms on the *natural* rolling-DP idiom, both isolated by rebuilding the kāra mirror with one change at a time:
+**Kāra sits dead even with C and Rust** on this tight read-modify-write array scan — within 1% of both (a hair behind rustc, a hair ahead of clang) and ~2.15× ahead of Go. That parity is *new*, and it is the whole point of this entry. The kata was written as the corpus's honest counter-case: kāra trailed C/Rust by **~3.10×** here (316 ms vs 102 ms), the widest per-core gap in the neighbourhood — and the gap it exposed drove a karac codegen fix (`src/codegen/bce_length_pin.rs`, commit `b5d18320`, ledger `B-2026-07-04-6`) that closed it. It is the counterpart to sibling kata [#61](../61-rotate-list/), where kāra *led* Rust by 1.36× on a linked-list workload: found a gap, fixed the compiler, kept the natural code.
 
-| kāra variant | Wall time | isolates |
+**What the gap was.** The natural rolling-DP scan `dp[c] = dp[c] + dp[c-1]` compiled to **three bounds-checked array accesses per cell** (read `dp[c]`, read `dp[c-1]`, write `dp[c]`), and those checks blocked LLVM from forwarding the just-written `dp[c-1]` into a register. Rebuilding the kāra mirror one change at a time isolates the cause:
+
+| kāra variant (pre-fix diagnostic) | Wall time | isolates |
 |---|---|---|
-| natural kata (`dp[c] = dp[c] + dp[c-1]`, `Vec.new()` per call) | ~316 ms | — |
-| hoist the per-call `Vec` allocation (reuse one buffer) | ~220 ms | **allocation ≈ 96 ms** |
-| also carry `dp[c-1]` in a scalar (1 read + 1 write / cell) | **~80 ms** | **RMW bounds-checked triple-access ≈ 140 ms** |
+| natural kata (`dp[c] = dp[c] + dp[c-1]`, `Vec.new()` per call) | ~316 ms | the gap |
+| **no-op every per-cell bounds check** (allocation untouched) | **~105 ms** | **bounds checks ≈ 210 ms — the *entire* gap** |
+| also hoist the alloc + hand-carry `dp[c-1]` in a scalar | ~80 ms | (removes the reads outright too) |
 
-1. **Per-call `Vec` allocation (~30%).** One million `Vec[i64]` allocate/fill/drop cycles. C's `malloc`/`free` and Rust's `Vec` amortise this better; Kāra's per-call RC/allocator traffic is heavier.
-2. **The RMW inner scan (~44%).** `dp[c] = dp[c] + dp[c-1]` compiles to **three bounds-checked array accesses per cell** (read `dp[c]`, read `dp[c-1]`, write `dp[c]`). `clang -O3` and `rustc -O` forward the just-written `dp[c-1]` into a register — turning it into a scalar running value — and drop the bounds checks entirely; Kāra does neither yet.
+The load-bearing row is the middle one: with the per-cell checks off but the per-call `Vec.new()` **kept**, the identical DP already runs at C's ~105 ms. So the whole ~210 ms was the bounds checks — once they clear, LLVM performs the `dp[c-1]` store-to-load forwarding *itself* and the per-call allocation stops mattering (it optimises the fill loop too). An earlier "≈96 ms allocation + ≈140 ms RMW" split was a red herring from hoisting the alloc and the scalar-carry together; one mechanism accounts for all of it.
 
-The load-bearing evidence is the last row: with the allocation hoisted **and** `dp[c-1]` carried in a scalar, the *identical* DP runs **~80 ms — faster than clang's 102 ms**. So Kāra's backend is competitive on the arithmetic itself; the 3.1× is optimiser headroom on one array idiom, not a fundamental codegen deficit. Kata [#53](../53-maximum-subarray/)'s Kadane corroborates this: a scalar-accumulator scan with a single bounds-checked read per element already sits at **dead parity with C** (154.4 ms vs 155.0 ms). The natural rolling-DP is kept as-written here — the recurrence `dp[c] = dp[c] + dp[c-1]` is how the algorithm is taught, and hand-carrying a scalar would obscure it — so the honest 3.1× stands, with the cause pinpointed. Closing it is a karac codegen opportunity (bounds-check elision + redundant-load forwarding on monotonic-index array scans), tracked as follow-up, not routed around in the kata.
+**How it closed.** The fix teaches the compiler to prove `c < dp.len()` for the *natural* guard `while c < cols`, where `cols` is not spelled `dp.len()` but equals it — `dp` is filled to exactly `cols` elements by the counted `while j < cols` loop and never resized. A fail-closed whole-function analysis pins `cols == dp.len()`, and the existing split-check elision then drops the upper-half checks on `dp[c]` and `dp[c-1]` (`i ± k` indices included); the residual `< 0` checks fold against the loop's monotone `assume(c >= 1)`. The kata keeps its natural `dp[c] = dp[c] + dp[c-1]` form throughout — the recurrence is how the algorithm is taught, and per the corpus discipline the compiler was fixed rather than the kata hand-carried around it. Kata [#53](../53-maximum-subarray/)'s Kadane (a scalar-accumulator scan with one bounds-checked read per cell) was already at C parity (154.4 ms vs 155.0 ms) and never had the gap, confirming it was specific to the RMW multi-access idiom — now closed.
 
 ### Runtime — Python
 
@@ -166,4 +167,4 @@ Kāra's compile-memory footprint is ~7.4× clang's and ~1.5× lower than rustc's
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this array-scan DP **Kāra trails Rust by ~3.10×** — and the isolation table above pins the cause to two optimiser gaps (per-call allocation + bounds-check/redundant-load on the RMW scan), *not* the backend, since the same DP with those two idioms hand-lifted beats clang. It is the honest complement to kata #61's headline win: on the idiom Kāra optimises well (scalar-carried scans, kata #53) it matches C; on the one it does not yet (RMW array scans) it pays 3×. Both numbers are load-bearing.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this array-scan DP **Kāra now matches Rust** (within 1%) — but it did not at first, and that is why the kata earns its place: it trailed Rust by **~3.10×** here, the isolation above pinned the cause to one optimiser gap (per-cell bounds checks on the RMW scan, *not* the backend — the same DP with checks off already runs at C's speed), and closing it was a compiler fix, not a kata rewrite. It is the complement to kata #61's headline win: there kāra *led* Rust because Rust paid `Rc<RefCell>`; here kāra reached parity by teaching its own backend to elide the checks Rust and C already dropped. On the idiom kāra optimises well (scalar-carried scans, kata #53) it always matched C; the RMW array scan is the one it had to *learn*, and now does. All of these numbers are load-bearing.
