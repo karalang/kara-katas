@@ -1,0 +1,110 @@
+// Benchmark workload — Spiral Matrix II (LeetCode #59).
+//
+// M = 9 distinct sizes n = 12..20 (rotated by `idx = k % M`). K = 200,000
+// outer iters. Per iter: generate the n×n spiral matrix (boundary-shrinking
+// solver, allocating a fresh Vec[Vec[i64]] of n inner Vecs) and fold a
+// POSITION-WEIGHTED checksum over every cell into the running total.
+//
+// Two design choices matter for a meaningful measurement:
+//
+//   * Rotating n (not a fixed size) defeats loop-invariant code motion — a
+//     fixed n makes generate_matrix(n) a loop-invariant the compiler could
+//     hoist out of the K loop entirely, measuring nothing. Same role as
+//     kata 56/57's M rotated cases.
+//   * The sink reads EVERY cell (`grid[i][j] * (i*n + j + 1)`), so no mirror
+//     can dead-code the off-diagonal writes — the trap that made kata 57's
+//     first C mirror 20× too fast. All cells are materialized and read.
+//
+// The sink — the running total across all K iters — is a fixed integer all
+// mirrors (kara/rust/c/go/py) must print before timing starts; bench.sh
+// fails loudly on mismatch. Values stay well inside i64 (n ≤ 20 → n² ≤ 400,
+// per-matrix checksum ≤ ~6.4e7, × K ≤ ~1.3e13).
+//
+// The `total = total + <checksum>` accumulator is the slice-1 allow-list
+// reduction shape, so karac's default build may emit a karac_par_reduce
+// dispatch — this is a two-lane kata (seq vs auto-par), same as kata 56/57.
+
+fn generate_matrix(n: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    let mut r = 0i64;
+    while r < n {
+        grid.push(Vec.filled(n, 0i64));
+        r = r + 1i64;
+    }
+
+    let mut top = 0i64;
+    let mut bottom = n - 1i64;
+    let mut left = 0i64;
+    let mut right = n - 1i64;
+    let mut v = 1i64;
+
+    while top <= bottom and left <= right {
+        let mut c = left;
+        while c <= right {
+            grid[top][c] = v;
+            v = v + 1i64;
+            c = c + 1i64;
+        }
+        top = top + 1i64;
+
+        let mut r2 = top;
+        while r2 <= bottom {
+            grid[r2][right] = v;
+            v = v + 1i64;
+            r2 = r2 + 1i64;
+        }
+        right = right - 1i64;
+
+        if top <= bottom {
+            let mut c2 = right;
+            while c2 >= left {
+                grid[bottom][c2] = v;
+                v = v + 1i64;
+                c2 = c2 - 1i64;
+            }
+            bottom = bottom - 1i64;
+        }
+
+        if left <= right {
+            let mut r3 = bottom;
+            while r3 >= top {
+                grid[r3][left] = v;
+                v = v + 1i64;
+                r3 = r3 - 1i64;
+            }
+            left = left + 1i64;
+        }
+    }
+    grid
+}
+
+// Position-weighted fold over every cell — forces the whole matrix to be
+// materialized and read (no dead-cell elision).
+fn checksum(grid: ref Vec[Vec[i64]], n: i64) -> i64 {
+    let mut s = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        let mut j = 0i64;
+        while j < n {
+            s = s + grid[i][j] * (i * n + j + 1i64);
+            j = j + 1i64;
+        }
+        i = i + 1i64;
+    }
+    s
+}
+
+fn main() {
+    let m_sizes: i64 = 9i64;   // n = 12..20
+    let k_iters: i64 = 180000i64;
+
+    let mut total: i64 = 0i64;
+    let mut k: i64 = 0i64;
+    while k < k_iters {
+        let n: i64 = 12i64 + (k % m_sizes);
+        let g = generate_matrix(n);
+        total = total + checksum(g, n);
+        k = k + 1i64;
+    }
+    println(total);
+}
