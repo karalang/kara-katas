@@ -1,0 +1,45 @@
+// Benchmark workload — Permutation Sequence (LeetCode #60), FACTORIAL solver.
+// Rust mirror of bench/permutation_sequence.kara. Same M=9 rotated (n,k) cases,
+// K=500k, factorial-number-system generator into a fresh Vec<i64> (3 heap
+// allocations per iter — fact / digits / result — matching Kāra's three Vecs),
+// position-weighted checksum, and sink. See that file's header for rationale.
+
+fn get_permutation(n: i64, k: i64) -> Vec<i64> {
+    let mut fact: Vec<i64> = vec![1];
+    for i in 1..=n {
+        fact.push(fact[(i - 1) as usize] * i);
+    }
+    let mut digits: Vec<i64> = (1..=n).collect();
+    let mut kk = k - 1;
+    let mut result: Vec<i64> = Vec::new();
+    for pos in 0..n {
+        let block = fact[(n - 1 - pos) as usize];
+        let idx = kk / block;
+        kk %= block;
+        result.push(digits.remove(idx as usize));
+    }
+    result
+}
+
+fn checksum(perm: &[i64], n: i64) -> i64 {
+    let mut s = 0i64;
+    for i in 0..n {
+        s += perm[i as usize] * (i + 1);
+    }
+    s
+}
+
+fn main() {
+    const NTAB: [i64; 9] = [9, 8, 9, 7, 8, 9, 6, 7, 9];
+    const KTAB: [i64; 9] = [362880, 40320, 181440, 5040, 20160, 300000, 720, 2520, 250000];
+    let m: i64 = 9;
+    let k_iters: i64 = 500_000;
+
+    let mut total: i64 = 0;
+    for k in 0..k_iters {
+        let idx = (k % m) as usize;
+        let perm = get_permutation(NTAB[idx], KTAB[idx]);
+        total += checksum(&perm, NTAB[idx]);
+    }
+    println!("{}", total);
+}
