@@ -66,3 +66,78 @@ diff <(karac run climbing_stairs.kara) <(python3 climbing_stairs.py)            
 diff <(karac run climbing_stairs.kara) <(karac run climbing_stairs_dp.kara)       && echo OK
 diff <(karac run climbing_stairs.kara) <(karac run climbing_stairs_matrix.kara)   && echo OK
 ```
+
+## Benchmarks
+
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`climbing_stairs.{kara,rs,c,py}`, `go-seq/main.go`).
+
+> ⚠️ **Machine caveat.** Like katas [#63](../63-unique-paths-ii/#benchmarks)–[#69](../69-sqrtx/#benchmarks)'s container passes (and unlike the M5 Pro tables elsewhere in the corpus), the numbers below were measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5). Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; `bench/results.json` records the real host. Re-run `bench/bench.sh` on the M5 to fold comparable numbers in.
+
+**Workload.** A single `climb(n)` is O(n) with `n ≤ 45` — cheap — so the bench runs the rolling-counter ★ **K = 30,000,000** times over a sweep of `n = 1 + k%45` (every step count in `[1, 45]`), folding each result into a rolling hash `acc = (acc*131 + climb(n)) % 1_000_000_007`. Sweeping `n` re-runs the recurrence to a different depth each iteration (nothing hoistable), and the loop-carried sink keeps it seq. No allocation — the whole body is the two-counter integer-add loop. All four compiled mirrors must agree on `522887212` before timing.
+
+### Runtime — seq lane
+
+`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **Cloud-container numbers — ratios, not absolutes.**
+
+| Implementation | Wall time |
+|---|---|
+| c    climbing_stairs (clang -O3)    | 239.5 ± 5.4 ms |
+| go   climbing_stairs                | 323.1 ± 4.6 ms |
+| **kāra climbing_stairs**            | **374.3 ± 6.7 ms** |
+| rust climbing_stairs (rustc -O)     | 446.2 ± 11.5 ms |
+
+**This one goes to C, and kāra lands mid-pack** — ~1.56× behind C, but ~1.19× *ahead* of Rust, with Go in between. Two things drive the spread on this trivial Fibonacci micro-loop, and both are honest to name: (1) **`clang -O3` optimises it exceptionally** — a tight `a, b = b, a+b` loop over `n ≤ 45` is exactly the shape LLVM unrolls and schedules to the metal with no barrier in its way; (2) the native mirrors **wrap** on overflow while kāra runs its **default overflow checks** on `a + b` and `acc*131 + …` (the values never overflow here, so it is pure branch-not-taken overhead, but it is real). Rust is *slowest* not because its codegen is worse but because the `black_box(climb(n))` barrier — needed so `rustc` doesn't fold the whole constant-bounded loop away — also blocks the unrolling clang does freely; it is the honest cost of forcing the work to happen. So the takeaway is narrow: on a micro-loop this optimiser-sensitive, C's freedom to transform it wins, and kāra sits reasonably in the middle rather than at C-parity — a contrast to the scan/search katas (#66/#68) where kāra matched C. No equal-safety row is added here (unlike [#69](../69-sqrtx/)) because overflow never triggers, so the check cost is a fixed overhead, not the load-bearing gap — the gap is clang's loop transformation.
+
+### Runtime — Python
+
+| Run | Mean ± σ |
+|---|---|
+| `py climbing_stairs` (K=3M) | 2055 ± 28 ms |
+
+Python at K=3M is ~2.06 s; projecting to the compiled mirrors' K=30M (~20.6 s) puts it **~55× slower than kāra seq** — the recurrence's per-iteration integer adds run bytecode-by-bytecode, CPython's worst case.
+
+### Compile elapsed (cold)
+
+| Compiler | Time |
+|---|---|
+| clang -O3 climbing_stairs.c          | **72.9 ± 4.1 ms** |
+| rustc -O climbing_stairs.rs          | 86.0 ± 3.1 ms |
+| **karac build climbing_stairs.kara** | **126.2 ± 21.9 ms** |
+
+On this container karac compiles at ~1.73× clang and ~1.47× rustc on this small scalar program (high variance on the shared host).
+
+### Binary size
+
+| Implementation | Size |
+|---|---|
+| **kāra climbing_stairs**            | **15.4 KiB** |
+| c    climbing_stairs                | 15.6 KiB |
+| go   climbing_stairs                | 2.11 MiB |
+| rust climbing_stairs                | 3.77 MiB |
+
+Kāra's seq binary is **15.4 KiB — the smallest of the four, a hair under C's 15.6 KiB** (same as [#69](../69-sqrtx/)), and orders of magnitude below Rust's 3.8 MiB and Go's 2.1 MiB. This all-scalar, zero-allocation workload links no runtime floor — the binary is essentially the code.
+
+### Runtime memory (peak)
+
+| Implementation | Peak |
+|---|---|
+| **kāra climbing_stairs**            | **6.86 MiB** |
+| c    climbing_stairs                | 6.86 MiB |
+| rust climbing_stairs                | 6.86 MiB |
+| go   climbing_stairs                | 6.86 MiB |
+
+All four sit at the same ~6.86 MiB process/runtime floor — the working set is a handful of scalars.
+
+### Compile memory (cold)
+
+| Compiler invocation | Peak |
+|---|---|
+| **karac build climbing_stairs.kara** | **83.9 MiB** |
+| clang -O3 climbing_stairs.c          | 95.8 MiB |
+| rustc -O climbing_stairs.rs          | 99.7 MiB |
+
+On this container karac has the lowest compile-memory footprint of the three.
+
+### Why Rust is in the harness
+
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here kāra *leads* Rust (~1.19×), both trailing C's aggressively-optimised micro-loop. C calibrates the (wrapping) LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This kata is an honest "kāra doesn't always match C" data point: on a trivial recurrence loop the optimiser's freedom (and C's lack of a `black_box`-style barrier or overflow checks) puts it ahead; the load-bearing facts are the five-language sink agreement, kāra's lead over Rust, and the smallest-of-four binary.
