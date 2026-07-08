@@ -60,3 +60,82 @@ python3 text_justification.py
 diff <(karac run text_justification.kara) <(python3 text_justification.py)                  && echo OK
 diff <(karac run text_justification.kara) <(karac run text_justification_twophase.kara)     && echo OK
 ```
+
+## Benchmarks
+
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`text_justification.{kara,rs,c,py}`, `go-seq/main.go`).
+
+> ⚠️ **Machine caveat — read before comparing.** Like katas [#63](../63-unique-paths-ii/#benchmarks)–[#66](../66-plus-one/#benchmarks)'s container passes (and unlike the M5 Pro tables elsewhere in the corpus), the numbers below were measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5). **Do not compare these absolute times/sizes/RSS against sibling katas' M5 tables** — different ISA, toolchains, and a noisier host; `bench/results.json` records the real host in `env.host`/`env.note`. The **within-kata cross-language ratio** is the signal, and here it is a tight C/Rust-parity cluster (all four within ~4 %), the expected shape — no anomaly to confirm. Re-run `bench/bench.sh` on the M5 to fold comparable numbers into the corpus tables.
+
+**Workload.** A single `full_justify` is cheap, and materialising its `Vec[String]` output every call would make the benchmark measure the **allocator**, not the algorithm (the alloc-domination pitfall BENCHMARKS.md warns against). So the bench runs the *identical* greedy-pack + even-spread logic but **streams the emitted bytes** — word characters and gap spaces — straight into a rolling hash instead of building line strings. No per-call allocation (the fixed 40-word list is built once); what's measured is the algorithm's core: the greedy pack decision, the `total / gaps` + `total % gaps` spacing arithmetic, the extra-spaces-to-the-left placement, and the word-byte reads. The list is justified K = 300,000 times at a **swept** width `max_width = 10 + k % 40` (widths 10–49), so the lines re-break and the spaces re-spread every iteration — nothing is hoistable. The sink is a rolling polynomial hash `h = (h*131 + byte) % 1_000_000_007` over every emitted byte, which captures the exact justified byte stream (a one-space error changes it); all four compiled mirrors must agree on `335237798` before timing.
+
+**Seq-only kata**: the hash is a **loop-carried dependency**, so the loop is not a reduction karac's auto-par pass can split — the default `karac build` stays single-threaded, directly comparable to `rustc -O` / `clang -O3` / `go build` on a per-core basis.
+
+### Runtime — seq lane
+
+`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **Cloud-container numbers — ratios, not absolutes** (see caveat).
+
+| Implementation | Wall time |
+|---|---|
+| go   text_justification              | 376.6 ± 3.3 ms |
+| rust text_justification (rustc -O)   | 388.6 ± 2.7 ms |
+| c    text_justification (clang -O3)  | 389.8 ± 3.8 ms |
+| **kāra text_justification**          | **391.2 ± 4.8 ms** |
+
+**Kāra sits in a tight parity cluster with C and Rust** — within **0.4 % of C** and **0.7 % of Rust** (391.2 vs 389.8 vs 388.6 ms), ~1.04× behind Go; all four are within ~4 % end to end. This is the clean C/Rust-parity result the RMW/scan-family katas (#62/#63/#66) established, reproduced on the string-heavy justifier, and — like #66 and unlike #64's provisional container lead — it carries no M5 asterisk. Kāra also pays for its default overflow checks on the `h*131 + byte` hash arithmetic that `rustc -O`/`clang -O3` skip, so matching their time is an equal-*result* at a stricter safety posture.
+
+### Runtime — Python
+
+| Run | Mean ± σ |
+|---|---|
+| `py text_justification` (K=30k) | 785.5 ± 29.0 ms |
+
+Python at K=30k is ~0.79 s; projecting to the compiled mirrors' K=300k (~7.9 s) puts it **~20× slower than kāra seq** — the per-iteration body is the whole pack+spread over 40 words, which CPython runs statement-by-statement.
+
+### Compile elapsed (cold)
+
+`--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
+
+| Compiler | Time |
+|---|---|
+| clang -O3 text_justification.c          | **88.2 ± 2.1 ms** |
+| rustc -O text_justification.rs          | 112.0 ± 7.9 ms |
+| **karac build text_justification.kara** | **183.4 ± 14.4 ms** |
+
+On this container karac compiles at ~2.08× clang and ~1.64× rustc — slower than both, consistent with #63–66's container runs. Small-single-file compile time is dominated by process/LLVM-init overhead that differs across the toolchain sets.
+
+### Binary size
+
+| Implementation | Size |
+|---|---|
+| c    text_justification                | 15.8 KiB |
+| **kāra text_justification**            | **19.5 KiB** |
+| go   text_justification                | 2.11 MiB |
+| rust text_justification                | 3.78 MiB |
+
+Kāra's seq binary is **19.5 KiB — within a few KiB of C's 15.8 KiB**, and orders of magnitude below Rust's 3.8 MiB and Go's 2.1 MiB. Notably this is *far* below the ~324 KiB the DP-kata bench binaries (#62–66) hit on the same toolchain: this workload's only allocation is the one-time word-list build, so it never links the runtime's libstd panic/format floor that the `Vec[i64]` push-heavy DP loops pulled in — the same "no auto-par, no sort → tiny binary" effect kata #62's M5 § Binary size describes.
+
+### Runtime memory (peak)
+
+| Implementation | Peak |
+|---|---|
+| **kāra text_justification**            | **6.89 MiB** |
+| c    text_justification                | 6.89 MiB |
+| rust text_justification                | 6.89 MiB |
+| go   text_justification                | 6.89 MiB |
+
+All four sit at the same ~6.89 MiB floor — the working set (a 40-word list + a scalar hash) is tiny, so peak RSS is the process/runtime base, identical across the compiled mirrors on this container.
+
+### Compile memory (cold)
+
+| Compiler invocation | Peak |
+|---|---|
+| **karac build text_justification.kara** | **82.7 MiB** |
+| clang -O3 text_justification.c          | 94.4 MiB |
+| rustc -O text_justification.rs          | 101.6 MiB |
+
+On this container karac has the lowest compile-memory footprint of the three.
+
+### Why Rust is in the harness
+
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. On this greedy-pack + even-spread simulation kāra matches C and Rust to within 1 % — the clean C/Rust-parity result the scan-family katas established, holding on a control-flow-heavy string workload (greedy fit + integer space arithmetic + byte reads) rather than a numeric scan. The load-bearing claim is the five-language sink agreement and that kāra reaches C's time at its stricter (overflow-checked) safety posture, with a near-C binary size.
