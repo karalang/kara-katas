@@ -143,10 +143,10 @@ rt_cmd --lang go --approach text_justification --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — Python (K=100k scaled-down) ==="
+echo "=== runtime — Python (K=30k scaled-down) ==="
 rt_begin --warmup 2 --runs 10
 rt_cmd --lang python --approach text_justification --lane seq --mode interp \
-    --name "py   ${STEM} (K=100k)" --cmd "python3 ${STEM}.py"
+    --name "py   ${STEM} (K=30k)" --cmd "python3 ${STEM}.py"
 rt_end
 
 echo
