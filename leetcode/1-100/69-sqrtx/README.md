@@ -69,7 +69,7 @@ diff <(karac run sqrtx.kara) <(karac run sqrtx_bits.kara)   && echo OK
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`sqrtx.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Like katas [#63](../63-unique-paths-ii/#benchmarks)–[#68](../68-text-justification/#benchmarks)'s container passes (and unlike the M5 Pro tables elsewhere in the corpus), the numbers below were measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5). Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; `bench/results.json` records the real host. Re-run `bench/bench.sh` on the M5 to fold comparable numbers in.
+> ✅ **M5-confirmed (2026-07-08).** The numbers below were measured on the corpus's **Apple M5 Pro reference machine** (arm64, clang 21 / rustc 1.95 / go 1.26), replacing the earlier x86-64 cloud-container snapshot. **The equal-safety headline holds:** kāra 235.8 ms ties `rustc -O -C overflow-checks=on` at 234.6 ms (within noise), while the wrapping native builds (c 134.4, rust 167.8, go 177.7 ms) are faster only because they skip the overflow checks. Kāra's checked-multiply codegen is at parity with Rust's checked-multiply codegen on the M5, same as the container pass showed.
 
 **Workload.** A single ⌊√x⌋ is O(log x) — cheap — so the bench runs the binary-search ★ **K = 3,000,000** times over a **Knuth-multiplicative sweep** `x = (k·2654435761) % 2³¹`, scattering `x` across the full `[0, 2³¹)` range so every iteration searches a different value (nothing hoistable) and the search runs its full ~31-step depth. No allocation — the whole body is the search loop (an integer `mid*mid ≤ x` compare per step). The sink is a rolling polynomial hash `acc = (acc*131 + r) % 1_000_000_007` over the results; all four compiled mirrors must agree on `759234816` before timing.
 
@@ -77,68 +77,68 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 This kata is the corpus's clean illustration of the BENCHMARKS.md **equal-safety** rule. The hot `mid*mid` is a **checked** multiply in Kāra (overflow trap by default) but a **wrapping** one under `rustc -O`/`clang -O3` — and `mid*mid` *genuinely* overflows i32 here, so the checks are load-bearing, not hypothetical. Comparing checked-Kāra against unchecked-Rust is apples-to-oranges; the honest comparison adds a `rustc -O -C overflow-checks=on` row.
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded. **M5 Pro numbers.**
 
 | Implementation | Wall time | Integer overflow |
 |---|---|---|
-| rust sqrtx (rustc -O)                 | 309.6 ± 2.5 ms | **wraps silently** |
-| c    sqrtx (clang -O3)                | 364.7 ± 1.0 ms | **wraps silently** |
-| go   sqrtx                            | 381.9 ± 1.3 ms | **wraps silently** |
-| **kāra sqrtx**                        | **422.7 ± 2.3 ms** | **checked (traps)** |
-| rust sqrtx (`-C overflow-checks=on`)  | 429.7 ± 17.6 ms | **checked (panics)** |
+| c    sqrtx (clang -O3)                | 134.4 ± 1.8 ms | **wraps silently** |
+| rust sqrtx (rustc -O)                 | 167.8 ± 0.7 ms | **wraps silently** |
+| go   sqrtx                            | 177.7 ± 1.3 ms | **wraps silently** |
+| rust sqrtx (`-C overflow-checks=on`)  | 234.6 ± 4.3 ms | **checked (panics)** |
+| **kāra sqrtx**                        | **235.8 ± 5.4 ms** | **checked (traps)** |
 
-Read the table in two halves. Against the **default** (wrapping) native builds kāra is ~1.37× behind Rust and ~1.16× behind C — but that gap is almost entirely the **cost of the overflow checks kāra runs and they don't**. The load-bearing row is the last one: at **equal safety**, kāra's 422.7 ms **matches — in fact slightly beats — `rustc -O -C overflow-checks=on` at 429.7 ms** (and with far tighter variance, ±2.3 vs ±17.6 ms). So Kāra's checked-multiply codegen is competitive with Rust's checked-multiply codegen; the apparent "slowness" is the price of not silently wrapping, a price Rust pays identically when you ask it to. This is exactly the case the corpus discipline exists to frame honestly — quoting only the kāra-vs-default-Rust ratio would misrepresent a *safety* difference as a *codegen* one.
+Read the table in two halves. Against the **default** (wrapping) native builds kāra is ~1.40× behind Rust and ~1.75× behind C — but that gap is almost entirely the **cost of the overflow checks kāra runs and they don't**. The load-bearing pair is the last two rows: at **equal safety**, kāra's 235.8 ms **ties `rustc -O -C overflow-checks=on` at 234.6 ms** — a 0.5 % gap, inside the run-to-run noise (kāra ±5.4, rust-ofl ±4.3 ms). So Kāra's checked-multiply codegen is on par with Rust's checked-multiply codegen; the apparent "slowness" is the price of not silently wrapping `mid*mid`, a price Rust pays identically when you ask it to. This is exactly the case the corpus discipline exists to frame honestly — quoting only the kāra-vs-default-Rust ratio would misrepresent a *safety* difference as a *codegen* one.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py sqrtx` (K=300k) | 839.0 ± 9.4 ms |
+| `py sqrtx` (K=300k) | 408.6 ± 3.0 ms |
 
-Python at K=300k is ~0.84 s; projecting to the compiled mirrors' K=3M (~8.4 s) puts it **~20× slower than kāra seq** — the per-iteration body is the whole ~31-step binary search, run in bytecode.
+Python at K=300k is ~0.41 s; projecting to the compiled mirrors' K=3M (~4.1 s) puts it **~17× slower than kāra seq** — the per-iteration body is the whole ~31-step binary search, run in bytecode.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 sqrtx.c          | **69.3 ± 4.7 ms** |
-| rustc -O sqrtx.rs          | 88.0 ± 2.3 ms |
-| **karac build sqrtx.kara** | **116.1 ± 5.6 ms** |
+| clang -O3 sqrtx.c          | **35.8 ms** |
+| rustc -O sqrtx.rs          | 67.9 ms |
+| **karac build sqrtx.kara** | **76.3 ms** |
 
-On this container karac compiles at ~1.68× clang and ~1.32× rustc — its **tightest compile-time gap** of the recent katas, on this small scalar single-file program.
+On the M5 karac compiles at ~2.1× clang and just ~1.12× rustc — a near-tie with rustc, on this small scalar single-file program.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| **kāra sqrtx**            | **15.4 KiB** |
-| c    sqrtx                | 15.6 KiB |
-| go   sqrtx                | 2.11 MiB |
-| rust sqrtx                | 3.77 MiB |
+| c    sqrtx                | 32.6 KiB |
+| **kāra sqrtx**            | **33.1 KiB** |
+| go   sqrtx                | 2.38 MiB |
+| rust sqrtx                | 455.3 KiB |
 
-Kāra's seq binary is **15.4 KiB — the smallest of the four, a hair under C's 15.6 KiB**, and orders of magnitude below Rust's 3.8 MiB and Go's 2.1 MiB. This all-scalar, zero-allocation workload never links any runtime floor, so kāra's binary is essentially the code itself — even leaner than the #68 result.
+Kāra's seq binary is **33.1 KiB — within ~0.5 KiB of C's 32.6 KiB**, and orders of magnitude below Rust's 455 KiB and Go's 2.4 MiB. This all-scalar, zero-allocation workload sits at the same lean M5 floor as the other single-file katas.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| **kāra sqrtx**            | **7.02 MiB** |
-| c    sqrtx                | 7.02 MiB |
-| rust sqrtx                | 7.02 MiB |
-| go   sqrtx                | 7.02 MiB |
+| **kāra sqrtx**            | **1.00 MiB** |
+| c    sqrtx                | 1.02 MiB |
+| rust sqrtx                | 1.06 MiB |
+| go   sqrtx                | 2.64 MiB |
 
-All four sit at the same ~7.02 MiB process/runtime floor — the working set is a handful of scalars.
+Kāra's peak RSS is the **lowest of the four** — the working set is a handful of scalars, so peak is the process/runtime base; kāra's is a hair under C and Rust, with Go carrying its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **karac build sqrtx.kara** | **83.9 MiB** |
-| clang -O3 sqrtx.c          | 95.6 MiB |
-| rustc -O sqrtx.rs          | 99.4 MiB |
+| clang -O3 sqrtx.c          | **2.5 MiB** |
+| **karac build sqrtx.kara** | **18.8 MiB** |
+| rustc -O sqrtx.rs          | 24.7 MiB |
 
-On this container karac has the lowest compile-memory footprint of the three.
+On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — under rustc's.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap. Here that gap is entirely a **safety** gap: at equal overflow safety kāra matches Rust, and the only reason kāra trails the default `rustc -O` is that kāra refuses to silently wrap `mid*mid`. C calibrates the (wrapping) LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. The load-bearing claims are the five-language sink agreement, the equal-safety parity with checked Rust, and the smallest-of-four binary.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap. Here that gap is entirely a **safety** gap: at equal overflow safety kāra matches Rust, and the only reason kāra trails the default `rustc -O` is that kāra refuses to silently wrap `mid*mid`. C calibrates the (wrapping) LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. The load-bearing claims are the five-language sink agreement, the equal-safety parity with checked Rust, a near-C binary, and the lowest peak RSS of the four.
