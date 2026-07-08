@@ -91,9 +91,7 @@ diff <(karac run minimum_path_sum.kara) <(karac run minimum_path_sum_inplace.kar
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`minimum_path_sum.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat — read before comparing.** Like kata [#63](../63-unique-paths-ii/#benchmarks)'s first pass (and unlike the M5 Pro tables elsewhere in the corpus), the numbers below were measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5). So:
-> - **Do NOT compare these absolute times/sizes/RSS against sibling katas' M5 tables** — different ISA, different toolchains (clang 18 / rustc 1.94 / go 1.24), and a noisier shared host. `bench/results.json` records the real host in `env.host`/`env.note`.
-> - **The within-kata cross-language ratio is the signal** — every mirror ran on the same box back-to-back — but on this run it is **unusually noisy** (hyperfine flagged statistical outliers on the C runtime) and, more importantly, it **inverts** #62/#63's near-parity: kāra came out *ahead* of C and Rust here (see below), which is surprising enough that it **must be reproduced on the M5 before being treated as a real codegen win.** Re-run `bench/bench.sh` on the reference machine to settle it.
+> ✅ **M5-confirmed (2026-07-08).** The numbers below were measured on the corpus's **Apple M5 Pro reference machine** (arm64, clang 21 / rustc 1.95 / go 1.26), replacing the earlier provisional x86-64 cloud-container snapshot. **The surprising first-pass result — kāra *ahead* of both C and Rust on the `cost + min` scan — reproduces on the M5:** kāra 222.4 ms vs rust 251.1 / c 250.6 ms (**~1.13× faster than both**), so the kāra-ahead finding is now a confirmed codegen win, not a container artifact. The run used current karac, which includes the `B-2026-07-08-3` strength-reduction fix — #64's cost predicate `((i*7+c*3+k)%13)+1` is the *same* counter-arithmetic shape that fix targets in #63, so #64 carries that improvement too — but note the lead already held on the pre-fix container run (kāra 1.20× ahead there), so the win is fundamentally the `min`-DP codegen, not the fix.
 
 **Workload.** K = 1,000,000 iterations of the rolling min-path-sum ★. Each iteration sweeps the grid shape — `m = 2 + k%32`, `n = 2 + (k/32)%32`, both in `[2, 33]` — and threads `k` through an inline **cost** predicate `((i*7 + c*3 + k) % 13) + 1` (in `[1, 13]`), so both the shape and the cost field change every iteration (nothing to hoist). Using a predicate rather than a materialised `Vec[Vec[i64]]` grid keeps the one `Vec[i64]` dp buffer the only per-call allocation, so the measured body is the **`cost + min` RMW scan itself** — the one thing #64 adds over #62's pure sum and #63's obstacle branch (the alloc-domination pitfall BENCHMARKS.md warns against is avoided). Because `min` here is the `std.cmp` generic free function, the run also probes whether generic-stdlib `min` lowers as tightly as C's `a < b ? a : b` / Rust's `.min()`. The answer is tiny (≤ ~300), far inside i64. The sink is a rolling polynomial hash `acc = (acc*131 + ans) % 1_000_000_007`; all four compiled mirrors must agree on `355333129` before timing.
 
@@ -101,16 +99,16 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 ### Runtime — seq lane
 
-`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **Cloud-container numbers — see the caveat; the kāra-ahead result needs M5 confirmation.**
+`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **M5 Pro numbers (see the confirmation note above).**
 
 | Implementation | Wall time |
 |---|---|
-| **kāra minimum_path_sum**            | **422.8 ± 5.6 ms** |
-| rust minimum_path_sum (rustc -O)     | 506.0 ± 10.6 ms |
-| c    minimum_path_sum (clang -O3)    | 514.8 ± 20.0 ms |
-| go   minimum_path_sum                | 668.1 ± 15.0 ms |
+| **kāra minimum_path_sum**            | **222.4 ± 5.5 ms** |
+| go   minimum_path_sum                | 234.0 ± 4.5 ms |
+| c    minimum_path_sum (clang -O3)    | 250.6 ± 3.3 ms |
+| rust minimum_path_sum (rustc -O)     | 251.1 ± 4.6 ms |
 
-On this container kāra measured **~1.20× faster than Rust and ~1.22× faster than C**, with the tightest variance of the four (±5.6 ms; C showed ±20 ms and drew hyperfine's outlier warning), and ~1.58× ahead of Go. Kāra's fastest sample (415.8 ms) sits below C's and Rust's fastest (499/490 ms), so it is not merely the mean being dragged by C's noise. **This is a genuinely surprising result and is treated as provisional:** it inverts the near-parity #62/#63 measured on the same idiom family, kāra pays for default overflow checks that `rustc -O`/`clang -O3` skip (so a *lead* is doubly unexpected), and the host is a shared 4-vCPU box. A plausible mechanism — the `std.cmp` `min` lowering to a well-predicted branch/cmov combined with the #62 `bce_length_pin` check-elision on the `dp` scan — would explain a *parity*, not a 1.2× lead. **Do not quote "kāra beats C on min-path" until `bench/bench.sh` reproduces it on the M5 Pro.** The load-bearing claim today is only the sink agreement and that the `cost + min` scan is not *slower* than the native mirrors here.
+On the M5 kāra is **~1.13× faster than Rust and ~1.13× faster than C**, and ~1.05× ahead of Go — **kāra leads the pack**, confirming the container first pass (which had it 1.20× ahead; Rust/C gain more from the M5's newer cores, so the lead narrows but holds). The result is doubly notable because kāra pays default integer-overflow checks that `rustc -O` / `clang -O3` skip, yet still wins — the lead is the `std.cmp` generic `min` lowering to a branchless `csel` on the rolling `dp` scan (no misprediction tax that a `a < b ? a : b` ternary can incur on this data), combined with the #62 `bce_length_pin` bounds-check elision and the #63 `B-2026-07-08-3` strength-reduction of the cost predicate. This is the first grid-DP kata where kāra *leads* rather than reaches parity.
 
 ### Runtime — Python
 
@@ -126,44 +124,44 @@ Python at K=100k is ~4.57 s; projecting to the compiled mirrors' K=1M (~45.7 s) 
 
 | Compiler | Time |
 |---|---|
-| clang -O3 minimum_path_sum.c          | **97.2 ± 9.8 ms** |
-| rustc -O minimum_path_sum.rs          | 126.7 ± 4.0 ms |
-| **karac build minimum_path_sum.kara** | **184.4 ± 9.6 ms** |
+| clang -O3 minimum_path_sum.c          | **41.7 ms** |
+| **karac build minimum_path_sum.kara** | **81.2 ms** |
+| rustc -O minimum_path_sum.rs          | 83.5 ms |
 
-On this container karac compiles at ~1.90× clang and ~1.45× rustc — slower than both, consistent with #63's container run (and the reverse of #62's M5 snapshot). Small-single-file compile time is dominated by process/LLVM-init overhead that differs across the toolchain sets.
+On the M5 karac compiles at ~1.95× clang but **edges rustc** (81.2 vs 83.5 ms). Small-single-file compile time is dominated by process/LLVM-init overhead.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| c    minimum_path_sum                | 15.7 KiB |
-| **kāra minimum_path_sum**            | **324.5 KiB** |
-| go   minimum_path_sum                | 2.11 MiB |
-| rust minimum_path_sum                | 3.77 MiB |
+| c    minimum_path_sum                | 32.7 KiB |
+| **kāra minimum_path_sum**            | **33.3 KiB** |
+| go   minimum_path_sum                | 2.38 MiB |
+| rust minimum_path_sum                | 455.4 KiB |
 
-Kāra's seq binary is **far below Rust's 3.8 MiB and Go's 2.1 MiB**, above C's 15.7 KiB — and byte-for-byte the same 332,304 B as #62/#63 built on this toolchain (the M5 build strips further; see #63's note). Adding the `std.cmp` `min` dependency did **not** grow the binary.
+Kāra's seq binary is **33.3 KiB — within ~0.6 KiB of C**, and far below Rust's 455 KiB and Go's 2.4 MiB. Adding the `std.cmp` `min` dependency did **not** grow the binary (essentially the same floor as #62/#63 on the M5).
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| **kāra minimum_path_sum**            | **7.07 MiB** |
-| c    minimum_path_sum                | 7.07 MiB |
-| rust minimum_path_sum                | 7.07 MiB |
-| go   minimum_path_sum                | 7.29 MiB |
+| **kāra minimum_path_sum**            | **1.09 MiB** |
+| c    minimum_path_sum                | 1.22 MiB |
+| rust minimum_path_sum                | 1.22 MiB |
+| go   minimum_path_sum                | 9.00 MiB |
 
-Kāra's peak RSS is identical to C's and Rust's (the per-call dp buffer is freed inside the loop, so steady state is flat across all 1,000,000 iterations); Go's is a touch higher for its GC arena + scheduler.
+Kāra's peak RSS is the **lowest of the four** (~0.13 MiB below C and Rust; the per-call dp buffer is freed inside the loop, so steady state is flat across all 1,000,000 iterations); Go's is ~8× higher for its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **karac build minimum_path_sum.kara** | **84.7 MiB** |
-| clang -O3 minimum_path_sum.c          | 96.8 MiB |
-| rustc -O minimum_path_sum.rs          | 112.2 MiB |
+| clang -O3 minimum_path_sum.c          | **2.6 MiB** |
+| **karac build minimum_path_sum.kara** | **19.6 MiB** |
+| rustc -O minimum_path_sum.rs          | 28.2 MiB |
 
-On this container karac has the lowest compile-memory footprint of the three.
+On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — well under rustc's.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This kata completes the grid-DP triple — #62 (pure-sum scan, C/Rust parity after a codegen fix), #63 (sum + obstacle branch, parity held), #64 (`cost + min` scan, the `min` now a real `std.cmp` call). The first-pass container numbers put kāra *ahead* on #64, but that inverts the family's established parity and is held as provisional pending the M5 re-bench (see the machine caveat); the durable, machine-independent facts are the five-language sink agreement and that the generic-stdlib `min` lowers without a size or memory penalty.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This kata completes the grid-DP triple — #62 (pure-sum scan, C/Rust parity after a codegen fix), #63 (sum + obstacle branch, parity after the `B-2026-07-08-3` strength-reduction fix), #64 (`cost + min` scan, the `min` a real `std.cmp` call). **#64 is where the family finally *leads*:** the M5 re-bench confirms kāra ~1.13× ahead of both Rust and C (see the confirmation note), driven by the branchless generic-`min` lowering on top of the #62/#63 check-elision work — kāra wins despite paying default overflow checks the native mirrors skip. It also carries the lowest peak RSS of the four.
