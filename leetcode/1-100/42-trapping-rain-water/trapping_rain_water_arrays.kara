@@ -15,16 +15,9 @@
 // for O(n) and an explicit allocation, the allocating contrast to the two-pointer scan
 // (mirrors how [#41](../41-first-missing-positive/)'s boolean seen-table contrasts its
 // in-place solvers). The input is a read-only `Slice[i64]`; both maxima arrays are fresh
-// `Vec[i64]` built per call. `imin`/`imax` are local helpers — the one spot bare comparisons
-// aren't enough. n ≤ 2·10⁴ and heights ≤ 10⁵, so every value and the running sum fit i64.
-
-fn imin(a: i64, b: i64) -> i64 {
-    if a < b { a } else { b }
-}
-
-fn imax(a: i64, b: i64) -> i64 {
-    if a > b { a } else { b }
-}
+// `Vec[i64]` built per call. `min`/`max` are the `std.cmp` free functions (Phase 8) — the one
+// spot bare comparisons aren't enough. n ≤ 2·10⁴ and heights ≤ 10⁵, so every value and the
+// running sum fit i64.
 
 fn trap(height: Slice[i64], n: i64) -> i64 {
     if n == 0i64 {
@@ -37,7 +30,7 @@ fn trap(height: Slice[i64], n: i64) -> i64 {
         if i == 0i64 {
             left_max.push(height[0]);
         } else {
-            left_max.push(imax(left_max[i - 1i64], height[i]));
+            left_max.push(max(left_max[i - 1i64], height[i]));
         }
         i = i + 1i64;
     }
@@ -51,14 +44,14 @@ fn trap(height: Slice[i64], n: i64) -> i64 {
     right_max[n - 1i64] = height[n - 1i64];
     let mut j = n - 2i64;
     while j >= 0i64 {
-        right_max[j] = imax(right_max[j + 1i64], height[j]);
+        right_max[j] = max(right_max[j + 1i64], height[j]);
         j = j - 1i64;
     }
     // Pass 3: sum min(left_max, right_max) - height over every column.
     let mut water = 0i64;
     let mut k = 0i64;
     while k < n {
-        water = water + (imin(left_max[k], right_max[k]) - height[k]);
+        water = water + (min(left_max[k], right_max[k]) - height[k]);
         k = k + 1i64;
     }
     water
