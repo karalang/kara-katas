@@ -62,6 +62,20 @@ build_rust() {
     fi
 }
 
+# Equal-safety comparator (BENCHMARKS.md overflow-safety rule): the fib
+# recurrence `next = a + b` and the `acc*131 + …` sink are CHECKED in kāra
+# (overflow trap by default) but WRAPPING under `rustc -O` / `clang -O3`. So
+# comparing checked-kāra against wrapping-Rust is apples-to-oranges; this row
+# builds `rustc -O -C overflow-checks=on` for the honest equal-safety headline.
+build_rust_ovf() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
 build_c() {
     local src="$1"
     local out="target/$(basename "$src" .c)_c"
@@ -92,6 +106,7 @@ build_go_seq() {
 }
 
 build_rust "${STEM}.rs"
+build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
@@ -134,6 +149,8 @@ rt_cmd --lang kara --approach climbing_stairs --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach climbing_stairs --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
+rt_cmd --lang rust --approach climbing_stairs_overflow_checks --lane seq --mode native \
+    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
 rt_cmd --lang c --approach climbing_stairs --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach climbing_stairs --lane seq --mode native \

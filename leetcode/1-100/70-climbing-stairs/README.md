@@ -71,73 +71,74 @@ diff <(karac run climbing_stairs.kara) <(karac run climbing_stairs_matrix.kara) 
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`climbing_stairs.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Like katas [#63](../63-unique-paths-ii/#benchmarks)–[#69](../69-sqrtx/#benchmarks)'s container passes (and unlike the M5 Pro tables elsewhere in the corpus), the numbers below were measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5). Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; `bench/results.json` records the real host. Re-run `bench/bench.sh` on the M5 to fold comparable numbers in.
+> ✅ **M5-confirmed (2026-07-08), with an equal-safety row added.** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, clang 21 / rustc 1.95 / go 1.26), replacing the x86-64 container snapshot. The container pass declined to add a `rustc -O -C overflow-checks=on` row (reasoning the gap was clang's loop transformation, not overflow); the M5 investigation shows that was incomplete — the equal-safety row is exactly what pinpoints the gap. At **equal safety** kāra (210.3 ms) trails checked Rust (`-C overflow-checks=on`, **111.3 ms**) by **1.89×**, and the whole difference is **loop unrolling**: `rustc` runtime-unrolls the two-counter fib loop 4×; kāra's stock `default<O2>` pipeline leaves runtime unrolling off, so the loop stays rolled. Root-caused and tracked as ledger **`B-2026-07-08-24`** (a blunt global flip was measured and rejected — it regresses other katas; see the entry).
 
 **Workload.** A single `climb(n)` is O(n) with `n ≤ 45` — cheap — so the bench runs the rolling-counter ★ **K = 30,000,000** times over a sweep of `n = 1 + k%45` (every step count in `[1, 45]`), folding each result into a rolling hash `acc = (acc*131 + climb(n)) % 1_000_000_007`. Sweeping `n` re-runs the recurrence to a different depth each iteration (nothing hoistable), and the loop-carried sink keeps it seq. No allocation — the whole body is the two-counter integer-add loop. All four compiled mirrors must agree on `522887212` before timing.
 
 ### Runtime — seq lane
 
-`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **Cloud-container numbers — ratios, not absolutes.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded. **M5 Pro numbers.**
 
-| Implementation | Wall time |
-|---|---|
-| c    climbing_stairs (clang -O3)    | 239.5 ± 5.4 ms |
-| go   climbing_stairs                | 323.1 ± 4.6 ms |
-| **kāra climbing_stairs**            | **374.3 ± 6.7 ms** |
-| rust climbing_stairs (rustc -O)     | 446.2 ± 11.5 ms |
+| Implementation | Wall time | Integer overflow |
+|---|---|---|
+| rust climbing_stairs (`-C overflow-checks=on`) | 111.3 ± 2.4 ms | **checked (panics)** |
+| rust climbing_stairs (rustc -O)     | 169.6 ± 1.5 ms | **wraps silently** |
+| c    climbing_stairs (clang -O3)    | 170.4 ± 0.7 ms | **wraps silently** |
+| go   climbing_stairs                | 187.5 ± 2.3 ms | **wraps silently** |
+| **kāra climbing_stairs**            | **210.3 ± 4.5 ms** | **checked (traps)** |
 
-**This one goes to C, and kāra lands mid-pack** — ~1.56× behind C, but ~1.19× *ahead* of Rust, with Go in between. Two things drive the spread on this trivial Fibonacci micro-loop, and both are honest to name: (1) **`clang -O3` optimises it exceptionally** — a tight `a, b = b, a+b` loop over `n ≤ 45` is exactly the shape LLVM unrolls and schedules to the metal with no barrier in its way; (2) the native mirrors **wrap** on overflow while kāra runs its **default overflow checks** on `a + b` and `acc*131 + …` (the values never overflow here, so it is pure branch-not-taken overhead, but it is real). Rust is *slowest* not because its codegen is worse but because the `black_box(climb(n))` barrier — needed so `rustc` doesn't fold the whole constant-bounded loop away — also blocks the unrolling clang does freely; it is the honest cost of forcing the work to happen. So the takeaway is narrow: on a micro-loop this optimiser-sensitive, C's freedom to transform it wins, and kāra sits reasonably in the middle rather than at C-parity — a contrast to the scan/search katas (#66/#68) where kāra matched C. No equal-safety row is added here (unlike [#69](../69-sqrtx/)) because overflow never triggers, so the check cost is a fixed overhead, not the load-bearing gap — the gap is clang's loop transformation.
+Read this in two halves. Against the **wrapping** natives (c/rust-`-O` ≈ 170 ms) kāra is ~1.24× behind — part overflow-check tax on `a + b` / `acc*131 + …` (the values never overflow here, so it is branch-not-taken overhead, but real), part the unroll gap below. But the **load-bearing row is the equal-safety one**: `rustc -O -C overflow-checks=on` runs at **111.3 ms — 1.52× faster than its own wrapping build** and **1.89× faster than kāra**. Overflow checks making Rust *faster* is the tell: they hand LLVM the nsw facts that trip its **runtime loop unroller**, which unrolls the fib loop 4× (confirmed in the disassembly — four `adds` per back-edge vs one). kāra emits the same checked `adds` but its stock `default<O2>` pipeline leaves runtime unrolling **off**, so the loop stays rolled — one checked add + branch per iteration. So at equal safety the gap is **not** overflow-check cost and **not** (as the container pass guessed) clang's freedom to transform — it is specifically **kāra not runtime-unrolling a counted loop that Rust does**. Enabling it in isolation closes kāra to parity (190→114 ms on this loop, no size cost), but a blunt global flip regresses other katas (#1 −8 %, #63 −12 % on wall) — so it is tracked as a scoped optimizer project, **`B-2026-07-08-24`**, not shipped. This is the corpus's clearest single-kata *loss*, and it is a real, localized codegen gap.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py climbing_stairs` (K=3M) | 2055 ± 28 ms |
+| `py climbing_stairs` (K=3M) | 778.9 ± 6.3 ms |
 
-Python at K=3M is ~2.06 s; projecting to the compiled mirrors' K=30M (~20.6 s) puts it **~55× slower than kāra seq** — the recurrence's per-iteration integer adds run bytecode-by-bytecode, CPython's worst case.
+Python at K=3M is ~0.78 s; projecting to the compiled mirrors' K=30M (~7.8 s) puts it **~37× slower than kāra seq** — the recurrence's per-iteration integer adds run bytecode-by-bytecode, CPython's worst case.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 climbing_stairs.c          | **72.9 ± 4.1 ms** |
-| rustc -O climbing_stairs.rs          | 86.0 ± 3.1 ms |
-| **karac build climbing_stairs.kara** | **126.2 ± 21.9 ms** |
+| clang -O3 climbing_stairs.c          | **36.0 ms** |
+| rustc -O climbing_stairs.rs          | 67.8 ms |
+| **karac build climbing_stairs.kara** | **74.8 ms** |
 
-On this container karac compiles at ~1.73× clang and ~1.47× rustc on this small scalar program (high variance on the shared host).
+On the M5 karac compiles at ~2.08× clang and just ~1.10× rustc — a near-tie with rustc on this small scalar program.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| **kāra climbing_stairs**            | **15.4 KiB** |
-| c    climbing_stairs                | 15.6 KiB |
-| go   climbing_stairs                | 2.11 MiB |
-| rust climbing_stairs                | 3.77 MiB |
+| c    climbing_stairs                | 32.7 KiB |
+| **kāra climbing_stairs**            | **33.1 KiB** |
+| go   climbing_stairs                | 2.38 MiB |
+| rust climbing_stairs                | 455.4 KiB |
 
-Kāra's seq binary is **15.4 KiB — the smallest of the four, a hair under C's 15.6 KiB** (same as [#69](../69-sqrtx/)), and orders of magnitude below Rust's 3.8 MiB and Go's 2.1 MiB. This all-scalar, zero-allocation workload links no runtime floor — the binary is essentially the code.
+Kāra's seq binary is **33.1 KiB — within ~0.4 KiB of C's 32.7 KiB** (same lean M5 floor as [#69](../69-sqrtx/)), and orders of magnitude below Rust's 455 KiB and Go's 2.4 MiB.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| **kāra climbing_stairs**            | **6.86 MiB** |
-| c    climbing_stairs                | 6.86 MiB |
-| rust climbing_stairs                | 6.86 MiB |
-| go   climbing_stairs                | 6.86 MiB |
+| **kāra climbing_stairs**            | **1.00 MiB** |
+| c    climbing_stairs                | 1.02 MiB |
+| rust climbing_stairs                | 1.05 MiB |
+| go   climbing_stairs                | 2.67 MiB |
 
-All four sit at the same ~6.86 MiB process/runtime floor — the working set is a handful of scalars.
+Kāra's peak RSS is the **lowest of the four** — the working set is a handful of scalars, so peak is the process/runtime base; kāra's edges under C and Rust, with Go carrying its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **karac build climbing_stairs.kara** | **83.9 MiB** |
-| clang -O3 climbing_stairs.c          | 95.8 MiB |
-| rustc -O climbing_stairs.rs          | 99.7 MiB |
+| clang -O3 climbing_stairs.c          | **2.5 MiB** |
+| **karac build climbing_stairs.kara** | **18.6 MiB** |
+| rustc -O climbing_stairs.rs          | 24.8 MiB |
 
-On this container karac has the lowest compile-memory footprint of the three.
+On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — under rustc's.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here kāra *leads* Rust (~1.19×), both trailing C's aggressively-optimised micro-loop. C calibrates the (wrapping) LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This kata is an honest "kāra doesn't always match C" data point: on a trivial recurrence loop the optimiser's freedom (and C's lack of a `black_box`-style barrier or overflow checks) puts it ahead; the load-bearing facts are the five-language sink agreement, kāra's lead over Rust, and the smallest-of-four binary.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, at **equal safety**, that gap is a **loss**: kāra trails checked Rust 1.89× because Rust runtime-unrolls the fib loop and kāra doesn't (`B-2026-07-08-24`). C calibrates the (wrapping) LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This is the corpus's honest "kāra doesn't always win" data point — a real, localized codegen gap (loop unrolling), not a safety artifact and not measurement noise. The load-bearing facts are the five-language sink agreement, the identified-and-tracked unroll gap, and that kāra still holds a near-C binary and the lowest peak RSS of the four.
