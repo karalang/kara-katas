@@ -76,7 +76,7 @@ diff <(karac run set_matrix_zeroes.kara) <(karac run set_matrix_zeroes_markers.k
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`set_matrix_zeroes.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-10).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **Kāra is the fastest of the four on the M5 too** — in wall-clock *and* total CPU work. The also-rans reorder with the hardware (this workload is allocation/`realloc`-bound, so their order tracks the platform's allocator + GC, not the marker sweep): Go rises from slowest on the container to 2nd on the M5 as its concurrent GC overlaps on fast cores, while C's `realloc`-of-`realloc` becomes the slowest. `bench/results.json` records the M5 host.
 
 **Workload.** The O(1)-space first-row/col marker algorithm (the ★), run **K = 100,000** times over a freshly built **20×20** matrix — each iteration fills the matrix with non-zero values, punches **three** zeros at `k`-dependent positions (so three rows + three columns get zeroed and the rest survive, keeping the result non-degenerate), runs `set_zeroes` in place, and folds the surviving grid into a rolling hash `acc = (acc*131 + v) % 1_000_000_007`. All five mirrors must agree on `222485272` before timing.
 
@@ -84,18 +84,18 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 The kata builds the matrix as a **`Vec[Vec[i64]]`** with **`Vec.new()` + `push`** — a *growing* dynamic array of *growing* rows. So every mirror here builds it the same way — Rust `Vec<Vec<i64>>::push`, Go `[][]int64` `append`, C a `realloc`-doubling vector of `realloc`-doubling rows, Python list-of-lists `append` — **not** a fixed 2-D array, which would be an apples-to-oranges heap-vs-stack comparison (the [#72](../72-edit-distance/) lesson). At **equal data-structure semantics**:
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. **M5 Pro numbers.** kāra/Rust/C are strictly single-threaded (99.7 % CPU); Go's runtime uses ~1.18 cores (118 % CPU) for concurrent GC — but here kāra leads it on both wall-clock and user-CPU, so the GC overlap doesn't change the ranking.
 
-| Implementation | Wall time | Matrix storage |
-|---|---|---|
-| **kāra set_matrix_zeroes**            | **450.1 ± 6.3 ms** | `Vec.new()+push` (grows) |
-| c    set_matrix_zeroes (clang -O3)    | 716.3 ± 14.5 ms | `realloc`-doubling |
-| rust set_matrix_zeroes (rustc -O)     | 805.6 ± 17.0 ms | `Vec::push` (grows) |
-| go   set_matrix_zeroes                | 1053.3 ± 22.2 ms | `append` (grows) |
+| Implementation | Wall time | User-CPU | CPU % | Matrix storage |
+|---|---|---|---|---|
+| **kāra set_matrix_zeroes**            | **222.7 ± 1.7 ms** | **220.9 ms** | 99.6 % | `Vec.new()+push` (grows) |
+| go   set_matrix_zeroes                | 361.7 ± 2.6 ms | 387.2 ms | 118 % | `append` (grows) |
+| rust set_matrix_zeroes (rustc -O)     | 415.4 ± 13.5 ms | 413.1 ms | 99.7 % | `Vec::push` (grows) |
+| c    set_matrix_zeroes (clang -O3)    | 499.1 ± 20.3 ms | 496.2 ms | 99.7 % | `realloc`-doubling |
 
-**Kāra is the fastest of the four** when everyone builds the matrix the way the kata does — ahead of C's `realloc`-grow (1.59×), Rust's `Vec::push` (1.79×), and Go's `append` (2.34×). This is the same inversion [#72](../72-edit-distance/) documented: kāra's growing-`Vec` codegen + allocator path is *efficient*, and a naïve fixed-2-D-array mirror would understate kāra by comparing its heap `Vec` against native stack storage. It's the counterpart to the equal-*safety* row in [#69](../69-sqrtx/) and the equal-*memory-semantics* row in [#98](../98-validate-binary-search-tree/) — the honest cross-language number requires matching the **data-structure discipline**, not just the algorithm.
+**Kāra is the fastest of the four** when everyone builds the matrix the way the kata does — 1.62× ahead of Go's `append`, 1.87× ahead of Rust's `Vec::push`, and 2.24× ahead of C's `realloc`-grow, and it leads on *total CPU work* too (Go is the only mirror to exceed one core, ~1.18× via concurrent GC, but its 387 ms user-time is still well behind kāra's 221 ms). This is the same inversion [#72](../72-edit-distance/) documented: kāra's growing-`Vec` codegen + allocator path is *efficient*, and a naïve fixed-2-D-array mirror would understate kāra by comparing its heap `Vec` against native stack storage. It's the counterpart to the equal-*safety* row in [#69](../69-sqrtx/) and the equal-*memory-semantics* row in [#98](../98-validate-binary-search-tree/) — the honest cross-language number requires matching the **data-structure discipline**, not just the algorithm.
 
-**Single-threaded, honestly.** The loop-carried hash is not a reduction karac's auto-par pass can split, so the default `karac build` stays serial — verified equal to `KARAC_AUTO_PAR=0` (450 vs 467 ms, `User ≈ wall` on both). So this is a fair seq-vs-seq comparison against `rustc -O` / `clang -O3` / `go build`, not auto-par vs single-core.
+**Single-threaded, honestly.** The loop-carried hash is not a reduction karac's auto-par pass can split — `karac build --concurrency-report` reports `<no parallelization opportunities detected>`, so the default `karac build` stays serial (kāra runs at 99.6 % CPU, `User ≈ wall`). So this is a fair seq-vs-seq comparison against `rustc -O` / `clang -O3` / `go build`, not auto-par vs single-core.
 
 One honest qualifier: this is **allocation/`realloc`-dominated** — all four spend most of their time building and freeing the 20×20 `Vec`-of-`Vec` each iteration, so it measures growing-dynamic-array throughput as much as the marker sweep itself. A fixed 2-D-array discipline would be faster for everyone, but is a *different* data structure than the kata's `Vec[Vec[i64]]`.
 
@@ -103,52 +103,52 @@ One honest qualifier: this is **allocation/`realloc`-dominated** — all four sp
 
 | Run | Mean ± σ |
 |---|---|
-| `py set_matrix_zeroes` (same K=100k) | 12535 ± 155 ms |
+| `py set_matrix_zeroes` (same K=100k) | 3871 ± 20 ms |
 
-Python runs the **same** K=100,000 and agrees on the sink, so it is cross-checked (not scaled down). At ~12.5 s it is **~28× slower than kāra seq** — the gap the compiled path buys on this allocation- and index-heavy workload.
+Python runs the **same** K=100,000 and agrees on the sink, so it is cross-checked (not scaled down). At ~3.9 s it is **~17× slower than kāra seq** — the gap the compiled path buys on this allocation- and index-heavy workload.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| rustc -O set_matrix_zeroes.rs          | **206.4 ms** |
-| clang -O3 set_matrix_zeroes.c          | 224.6 ms |
-| **karac build set_matrix_zeroes.kara** | **297.4 ms** |
+| clang -O3 set_matrix_zeroes.c          | **88.6 ms** |
+| **karac build set_matrix_zeroes.kara** | **90.1 ms** |
+| rustc -O set_matrix_zeroes.rs          | 106.4 ms |
 
-On this container karac compiles at ~1.32× clang and ~1.44× rustc for this file.
+On the M5 karac compiles at ~1.02× clang — a near-tie — and **~1.18× faster than rustc** (90.1 vs 106.4 ms) for this file.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| c    set_matrix_zeroes                | 19.8 KiB |
-| **kāra set_matrix_zeroes**            | **324.5 KiB** |
-| go   set_matrix_zeroes                | 2.12 MiB |
-| rust set_matrix_zeroes                | 3.78 MiB |
+| c    set_matrix_zeroes                | 32.8 KiB |
+| **kāra set_matrix_zeroes**            | **33.4 KiB** |
+| rust set_matrix_zeroes                | 455.8 KiB |
+| go   set_matrix_zeroes                | 2.38 MiB |
 
-The `Vec`-heavy solver links the runtime's allocation/panic floor, so kāra's binary is 324.5 KiB — the same ~324 KiB floor as the other `Vec`-based katas ([#62](../62-unique-paths/)–[#66](../66-plus-one/), [#72](../72-edit-distance/)) — still far below Rust's 3.8 MiB and Go's 2.1 MiB, above C's 19.8 KiB.
+On the M5 the runtime's allocation/panic floor dead-strips away, so kāra's `Vec`-heavy binary is **33.4 KiB — within ~0.6 KiB of C's 32.8 KiB**, the same lean ~33 KiB floor as the other `Vec`-based katas ([#62](../62-unique-paths/)–[#66](../66-plus-one/), [#72](../72-edit-distance/)) — far below Rust's 455.8 KiB and Go's 2.38 MiB. (A ~10× drop from the container's 324.5 KiB, which linked an unstripped floor.)
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    set_matrix_zeroes                | 1.66 MiB |
-| rust set_matrix_zeroes                | 2.11 MiB |
-| **kāra set_matrix_zeroes**            | **2.29 MiB** |
-| go   set_matrix_zeroes                | 7.36 MiB |
+| **kāra set_matrix_zeroes**            | **1.09 MiB** |
+| rust set_matrix_zeroes                | 1.16 MiB |
+| c    set_matrix_zeroes                | 1.19 MiB |
+| go   set_matrix_zeroes                | 9.53 MiB |
 
-Kāra/C/Rust sit within ~0.6 MiB of each other (each matrix allocated and freed inside the loop — flat steady state, no leak across 100,000 iterations); Go's 7.36 MiB reflects its GC arena churning the `append`-grown slices.
+Kāra/Rust/C sit within ~0.1 MiB of each other (each matrix allocated and freed inside the loop — flat steady state, no leak across 100,000 iterations), kāra the leanest; Go's 9.53 MiB reflects its GC arena churning the `append`-grown slices. (Absolute figures differ from the container's because macOS `time -l` "peak memory footprint" accounts differently than Linux max-RSS — compare within a host.)
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **karac build set_matrix_zeroes.kara** | **87.1 MiB** |
-| clang -O3 set_matrix_zeroes.c          | 99.8 MiB |
-| rustc -O set_matrix_zeroes.rs          | 111.0 MiB |
+| clang -O3 set_matrix_zeroes.c          | **2.5 MiB** |
+| **karac build set_matrix_zeroes.kara** | **21.0 MiB** |
+| rustc -O set_matrix_zeroes.rs          | 29.9 MiB |
 
-On this container karac has the lowest compile-memory footprint of the three.
+On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — under rustc's 29.9 MiB.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, with both building the matrix via a growing `Vec`, **kāra leads Rust 1.79×** (and C 1.59×, Go 2.34×). C calibrates the `realloc` floor, Go is the GC/`append` data point, Python the ergonomic foil. The load-bearing facts: the five-language sink agreement, that kāra is the *fastest* of the four at equal growing-`Vec` semantics, and — as [#72](../72-edit-distance/) first showed — that comparing kāra's heap `Vec[Vec]` against a native fixed 2-D array would understate it.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, with both building the matrix via a growing `Vec`, **kāra leads Rust 1.87×** (and C 2.24×, Go 1.62×). C calibrates the `realloc` floor, Go is the GC/`append` data point (and the multicore-GC case — 118 % CPU, yet still behind kāra), Python the ergonomic foil. The load-bearing facts: the five-language sink agreement, that kāra is the *fastest* of the four — in wall-clock and total CPU work — at equal growing-`Vec` semantics, and — as [#72](../72-edit-distance/) first showed — that comparing kāra's heap `Vec[Vec]` against a native fixed 2-D array would understate it.
