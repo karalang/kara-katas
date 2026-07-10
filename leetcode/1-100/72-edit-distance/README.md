@@ -70,77 +70,77 @@ diff <(karac run edit_distance.kara) <(karac run edit_distance_rolling.kara)    
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`edit_distance.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.10 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; `bench/results.json` records the real host. Re-run `bench/bench.sh` on the M5 to fold comparable numbers in.
+> ✅ **M5-confirmed (2026-07-10).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The ranking changed with the hardware — and that change *is* the result:** because this workload is allocation/`realloc`-bound (see the fairness note below), the absolute ordering tracks the platform's allocator and GC, not DP compute. On the container kāra led outright and Go was slowest; on the M5, Go's concurrent GC — the only mirror that uses more than one core — takes the lowest *wall-clock*, while C's `realloc`-doubling becomes the slowest. Among the strictly single-threaded mirrors (kāra/Rust/C, all 99.9 % CPU) **kāra is still the fastest**, and measured as *total CPU work* kāra beats even Go. `bench/results.json` records the M5 host.
 
 **Workload.** The rolling O(n)-space Levenshtein DP, run **K = 400,000** times over per-iteration-generated length-24 string pairs (a 4-letter alphabet, both strings varying with `k` so nothing is hoistable and matches/mismatches mix). The sink is a rolling hash `acc = (acc*131 + d) % 1_000_000_007`; all four compiled mirrors must agree on `313564903` before timing.
 
-### A benchmark-fairness note (this is the headline)
+### A benchmark-fairness note (load-bearing)
 
 The kata builds each DP row with **`Vec.new()` + `push`** — a *growing* dynamic array. A first draft of these mirrors used fixed **stack arrays** in C/Rust/Go (`int64_t prev[L+1]`), which do **zero heap allocation** — and against those kāra looked **~6× slower**. That comparison is **apples-to-oranges**: heap `Vec` vs stack array is a data-structure difference, not a codegen one. So every mirror here instead builds its rows by **appending to a growing dynamic array** — Rust `Vec::push`, Go `append`, C `realloc`-doubling, Python `list.append` — matching kāra's `Vec.new()+push`. At **equal data-structure semantics**:
 
-`--warmup 2 --runs 10 --shell=none`. All single-threaded. **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. **M5 Pro numbers.** kāra/Rust/C are strictly single-threaded (99.9 % CPU); Go's runtime uses ~1.28 cores (128 % CPU) for concurrent GC, so its wall-clock is *not* a like-for-like single-core number — its *user*-CPU time is actually higher than kāra's (see below).
 
-| Implementation | Wall time | Row storage |
-|---|---|---|
-| **kāra edit_distance**              | **2153 ± 36 ms** | `Vec.new()+push` (grows) |
-| c    edit_distance (clang -O3)      | 2354 ± 28 ms | `realloc`-doubling |
-| rust edit_distance (rustc -O)       | 2860 ± 53 ms | `Vec::push` (grows) |
-| go   edit_distance                  | 3640 ± 78 ms | `append` (grows) |
+| Implementation | Wall time | User-CPU | CPU % | Row storage |
+|---|---|---|---|---|
+| go   edit_distance                  | **982.7 ± 11 ms** | 1098 ms | 128 % | `append` (grows) |
+| **kāra edit_distance**              | **1069.9 ± 32 ms** | **1065 ms** | 99.9 % | `Vec.new()+push` (grows) |
+| rust edit_distance (rustc -O)       | 1339 ± 89 ms | 1335 ms | 99.9 % | `Vec::push` (grows) |
+| c    edit_distance (clang -O3)      | 2073 ± 93 ms | 2067 ms | 99.9 % | `realloc`-doubling |
 
-**Kāra is the fastest of the four** when everyone builds rows the way the kata does — ahead of C's `realloc`-grow (1.09×), Rust's `Vec::push` (1.33×), and Go's `append` (1.69×). The story fully inverts from the naive stack-array draft: kāra's growing-`Vec` codegen + allocator path is *efficient*, and the earlier "6×" was a measurement artifact. This is the counterpart to the equal-*safety* row in [#69](../69-sqrtx/) and the equal-*memory-semantics* row in [#98](../98-validate-binary-search-tree/) — a reminder that the honest cross-language number requires matching the data-structure discipline, not just the algorithm.
+**Kāra is the fastest single-threaded implementation** — 1.25× faster than Rust and 1.94× faster than C, all three pinned at 99.9 % CPU. Go posts a lower *wall-clock* (982.7 ms vs kāra's 1069.9 ms, 1.09×) but only by spending ~1.28 cores on **concurrent GC**; measured as *total CPU work* the order flips back — kāra's 1065 ms user-time is below Go's 1098 ms, so kāra does the least work of all four and Go's edge is bought with a second core. This inverts the x86-container ordering (where kāra led outright and Go, unable to overlap GC on 4 slow vCPUs, was slowest), and that inversion is the point: the run is **allocation/`realloc`-bound**, so absolute wall-clock tracks the platform's allocator + GC, not the DP. It's the allocation-side counterpart to the equal-*safety* row in [#69](../69-sqrtx/) and the equal-*memory-semantics* row in [#98](../98-validate-binary-search-tree/) — the honest cross-language number requires matching both the data-structure discipline *and* the core budget.
 
-Two honest qualifiers: (1) this is **allocation/`realloc`-dominated** — all four spend 2–3.6 s mostly on growing arrays, so it measures growing-dynamic-array throughput as much as the DP itself. A fixed/pre-sized-array discipline is ~6× faster for everyone (a stack-array C measured ~358 ms) but is a *different* data structure than the kata's `Vec`. (2) The row length is statically knowable, so a pre-sizing codegen pass — kāra's `Vec.new()`+counted-`push` → pre-sized fill (ledger `B-2026-07-08-7`, currently **reverted** for regressing kata #63) — would cut the allocation for kāra specifically; even without it, kāra leads here.
+Two honest qualifiers: (1) this is **allocation/`realloc`-dominated** — all four spend ~1–2 s mostly on growing arrays, so it measures growing-dynamic-array throughput as much as the DP itself. A fixed/pre-sized-array discipline is several times faster for everyone but is a *different* data structure than the kata's `Vec`. (2) The row length is statically knowable, so a pre-sizing codegen pass — kāra's `Vec.new()`+counted-`push` → pre-sized fill (ledger `B-2026-07-08-7`, currently **reverted** for regressing kata #63) — would cut the allocation for kāra specifically; even without it, kāra leads the single-threaded field here.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py edit_distance` (K=40k) | 2875 ± 62 ms |
+| `py edit_distance` (K=40k) | 944 ± 7 ms |
 
-Python at K=40k is ~2.9 s; projecting to the compiled mirrors' K=400k (~28.7 s) puts it **~13× slower than kāra seq** — narrowed by the workload being allocation- rather than compute-bound.
+Python at K=40k is ~0.94 s; projecting to the compiled mirrors' K=400k (~9.4 s) puts it **~8.8× slower than kāra seq** — narrowed by the workload being allocation- rather than compute-bound.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 edit_distance.c          | **130.5 ms** |
-| rustc -O edit_distance.rs          | 167.2 ms |
-| **karac build edit_distance.kara** | **243.6 ms** |
+| clang -O3 edit_distance.c          | **44.6 ms** |
+| **karac build edit_distance.kara** | **83.7 ms** |
+| rustc -O edit_distance.rs          | 89.8 ms |
 
-On this container karac compiles at ~1.87× clang and ~1.46× rustc.
+On the M5 karac compiles at ~1.88× clang and — flipping the container result — **~1.07× *faster* than rustc** (83.7 vs 89.8 ms), sitting between clang and rustc.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
-| c    edit_distance                | 15.8 KiB |
-| **kāra edit_distance**            | **324.6 KiB** |
-| go   edit_distance                | 2.12 MiB |
-| rust edit_distance                | 3.77 MiB |
+| c    edit_distance                | 32.8 KiB |
+| **kāra edit_distance**            | **33.4 KiB** |
+| rust edit_distance                | 455.9 KiB |
+| go   edit_distance                | 2.38 MiB |
 
-Unlike the all-scalar katas ([#69](../69-sqrtx/)/[#70](../70-climbing-stairs/), ~15 KiB), the `Vec`-heavy DP links the runtime's allocation/panic floor, so kāra's binary is 324.6 KiB — still far below Rust's 3.8 MiB and Go's 2.1 MiB, above C's 15.8 KiB (the same ~324 KiB floor as the DP katas [#62](../62-unique-paths/)–[#66](../66-plus-one/)).
+Kāra's `Vec`-heavy DP binary is **33.4 KiB — within ~0.6 KiB of C's 32.8 KiB**, and orders of magnitude below Rust's 455.9 KiB and Go's 2.38 MiB. On the M5 the runtime's allocation/panic floor dead-strips away (correct staticlib-LTO archive), so the `Vec`-heavy DP sits at the *same* lean ~33 KiB floor as the scalar katas [#69](../69-sqrtx/)/[#70](../70-climbing-stairs/) and the sibling DP katas [#62](../62-unique-paths/)–[#66](../66-plus-one/) — a ~10× drop from the container's 324.6 KiB, which linked an unstripped floor.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| **kāra edit_distance**            | **6.89 MiB** |
-| c    edit_distance                | 6.89 MiB |
-| rust edit_distance                | 6.89 MiB |
-| go   edit_distance                | 9.95 MiB |
+| **kāra edit_distance**            | **1.11 MiB** |
+| rust edit_distance                | 1.13 MiB |
+| c    edit_distance                | 1.17 MiB |
+| go   edit_distance                | 9.38 MiB |
 
-Kāra/C/Rust sit at the same ~6.89 MiB floor (each row allocated and freed inside the loop — flat steady state, no leak across 400,000 iterations); Go's 9.95 MiB reflects its GC arena churning the `append`-grown slices.
+Kāra/Rust/C sit at the same ~1.1 MiB floor (each row allocated and freed inside the loop — flat steady state, no leak across 400,000 iterations), kāra marginally the leanest; Go's 9.38 MiB reflects its GC arena churning the `append`-grown slices. (Absolute figures are lower than the container's because macOS `time -l` "peak memory footprint" accounts differently than Linux max-RSS — compare within a host, not across.)
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **karac build edit_distance.kara** | **82.8 MiB** |
-| clang -O3 edit_distance.c          | 94.8 MiB |
-| rustc -O edit_distance.rs          | 108.2 MiB |
+| clang -O3 edit_distance.c          | **2.5 MiB** |
+| **karac build edit_distance.kara** | **19.7 MiB** |
+| rustc -O edit_distance.rs          | 27.8 MiB |
 
-On this container karac has the lowest compile-memory footprint of the three.
+On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — under rustc's 27.8 MiB.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, with both building rows via a growing `Vec`, **kāra leads Rust 1.33×** (and C 1.09×, Go 1.69×). C calibrates the `realloc` floor, Go is the GC/`append` data point, Python the ergonomic foil. The load-bearing facts: the five-language sink agreement, that kāra is the *fastest* of the four at equal growing-`Vec` semantics, and the reminder that comparing kāra's heap `Vec` against native *stack arrays* (the naive draft) understates it by ~6×.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, with both building rows via a growing `Vec`, **kāra leads Rust 1.25×** (and C 1.94×). C calibrates the `realloc` floor, Go is the GC/`append` data point — and the cautionary multicore-GC case (fastest wall-clock, but on ~1.28 cores), Python the ergonomic foil. The load-bearing facts: the five-language sink agreement, that kāra is the *fastest single-threaded* mirror and does the *least total CPU work* of all four at equal growing-`Vec` semantics, and the reminder that comparing kāra's heap `Vec` against native *stack arrays* (the naive draft) understates it by ~6×.
