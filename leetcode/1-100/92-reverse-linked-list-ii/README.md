@@ -98,6 +98,20 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
+### Where the gap to C comes from (perf ceiling)
+
+Profiled on the M5 (instructions retired + IPC via `/usr/bin/time -l`, disassembly via `otool -tV`). kāra retires **17.3 B instructions at 6.27 IPC** vs C's **14.8 B at 7.16** — a 1.17× instruction × 1.14× IPC ≈ 1.33× cycle gap. It is **not** what you'd first guess:
+
+- **Not refcounting.** `karac query cost-summary` reports `rc_ops: 0`, and the `fold` inner loop (35.6M iterations) disassembles to a clean read — no per-node refcount inc/dec. kāra's ownership pass already elides the count traffic to scope boundaries.
+- **Not borrow-flag checks** (none emitted), **not the allocator** (kāra calls plain `malloc`/`free`, same as C), and **not `Option` tags** (`Option[ListNode]` is niche/null-pointer optimized — `match cur.next` compiles to a `cbnz` null check, identical to C). The only equal-safety cost is **2 overflow-check branches** in `fold` (C wraps).
+
+The gap is two things:
+
+1. **The 8-byte refcount header.** kāra allocates **24 B/node** (`malloc #0x18` — `{rc, val, next}`); C allocates **16 B** (`#0x10` — `{val, next}`). On 35.6M allocations/run that 50% width is the dominant memory-bandwidth cost and the IPC driver — a header the ownership pass *proved it never mutates in the hot path*.
+2. **Two-pass teardown.** kāra folds (read walk) then drops (free walk) in two passes; C fuses them into one (`fold_and_free`: read → next → `free`).
+
+What would close #1: kāra **already has** a "headerless cluster" elision (`emit_headerless_alloc`) that drops the rc header and makes nodes C-sized — but it doesn't fire here. The head-insertion reversal does **three displacing `next`-stores in a loop**, which fails the elision's `b2` gate (*"displacement-free shape: exactly one link-store site"*, a conservative v1 default-deny rule). Extending that gate to cover in-place displacing list surgery that provably keeps refcount ≤ 1 is the corpus-wide compiler lever — shared with the linked-list siblings [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/). It is genuine ownership-analysis work, not a quick win; recorded here as the known ceiling.
+
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — at **matched reference semantics** (`shared struct` vs `Rc<RefCell>`), the same direct comparison as the linked-list siblings. C's raw-pointer list is the metal floor, Go the GC data point, Python (a fraction of the iteration count, timed separately) the ergonomic foil.
