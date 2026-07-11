@@ -76,7 +76,7 @@ diff <(karac run search_rotated_ii.kara) <(karac run search_rotated_ii_skiplow.k
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`search_rotated_ii.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-10).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The M5 corrects an earlier claim:** the container had kāra *ahead* of overflow-checked Rust, but on the M5's faster pipeline kāra is **last of five** (behind C, Go, and both Rust builds). Unusually the gap is **not** instruction count — kāra retires the *same* instructions as equal-safety Rust but pipelines them ~10 % worse (IPC 3.55 vs 3.89): an instruction-*scheduling* flavor of the diffuse codegen-quality gap (`B-2026-07-10-5`). `bench/results.json` records the M5 host.
 
 **Workload.** A single rotated binary search is O(log n), so the bench is a **build-once + punch**: one rotated sorted array with duplicates (each value `0..1000` appears **twice**, then rotated — **N = 2000**) is built once, then searched **K = 17,000,000** times for targets sweeping present and absent values (`target = iter % 1050`), folding each `true`/`false` outcome through a **rolling polynomial hash**. The loop-carried hash serialises the punch loop and keeps every search's result observable so nothing hoists; the measured work is the search's comparison/branch loop over cache-resident reads. All five compiled mirrors must agree on `700567695` before timing.
 
@@ -84,20 +84,20 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| c    search_rotated_ii (clang -O3)                    | 695.7 ± 12.7 ms |
-| go   search_rotated_ii                                | 715.8 ± 13.9 ms |
-| rust search_rotated_ii (rustc -O)                     | 788.4 ± 16.6 ms |
-| **kāra search_rotated_ii**                            | **811.7 ± 25.8 ms** |
-| rust search_rotated_ii (rustc -O, overflow-checks=on) | 826.6 ± 18.2 ms |
+| c    search_rotated_ii (clang -O3)                    | **137.8 ± 3.0 ms** |
+| go   search_rotated_ii                                | 148.0 ± 7.1 ms |
+| rust search_rotated_ii (rustc -O)                     | 167.3 ± 3.2 ms |
+| rust search_rotated_ii (rustc -O, overflow-checks=on) | 203.4 ± 3.7 ms |
+| **kāra search_rotated_ii**                            | **219.9 ± 1.5 ms** |
 
-Kāra tracks its semantic peer closely — ~1.03× `rustc -O`, and **ahead of overflow-checked Rust** (811.7 < 826.6 ms), so at **equal safety** (kāra checks integer overflow by default) kāra edges past Rust on this branch-heavy search. The branch-mispredict-bound loop is where a native C/Go pointer walk keeps a modest lead (C ~1.17× under kāra, Go just behind), and where overflow checks cost Rust ~5% — a cost kāra absorbs into a tighter codegen. Python (K=300000, ~0.48 s at 1/56 the native iteration count) is timed separately.
+On the M5 kāra is **last of five** — 1.60× behind the C floor, 1.31× behind wrapping `rustc -O`, and 1.08× behind equal-safety `rustc -O -C overflow-checks=on` (203.4 ms). Two things make this kata unusual. First, **overflow checks actually cost here** (~22 %: Rust jumps 167.3 → 203.4 ms with `overflow-checks=on`) — the midpoint arithmetic and rolling-hash fold sit on the hot path — so equal-safety Rust is the fair peer, and kāra trails it by 1.08×. Second, that 1.08× is **not** extra work: kāra retires **3.554 G instructions to rust_ovf's 3.540 G** — essentially identical — but at a **lower IPC (3.55 vs 3.89)**, so it burns ~10 % more cycles. This is the *instruction-scheduling* flavor of the diffuse codegen-quality gap (`B-2026-07-10-5`), distinct from the instruction-*density* flavor of [#76](../76-minimum-window-substring/)/[#79](../79-word-search/): kāra's code for this branch-and-index loop simply schedules a little worse on the M5 pipeline. The larger 1.60× gap vs **C** is the safety cost both kāra and Rust pay (rust_ovf is itself 1.48× C) plus that IPC deficit. Python (K=300000, ~0.17 s at 1/56 the native iteration count) is timed separately.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+Compile-cold on the M5: clang 43.1 ms < **karac 84.0 ms** < rustc 85.3 ms (karac ~1.02× faster than rustc, ~1.95× clang). Binary 33.4 KiB (C parity), runtime RSS 1.1 MiB (~C). Full records in [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this branch-heavy binary search kāra tracks `rustc -O` closely. C calibrates the metal floor, Go is the other native data point, Python (run at a fraction of the iteration count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here it is an honest **loss**: kāra trails equal-safety `rustc -O -C overflow-checks=on` by 1.08× on the M5, not from doing more work (instruction counts match) but from ~10 % worse instruction scheduling (IPC 3.55 vs 3.89). C calibrates the metal floor, Go is the other native data point, Python (run at a fraction of the iteration count, timed separately) the ergonomic foil. Another case where measuring on the reference machine turned the container's rosy "kāra ahead of Rust" reading into a precise, honest gap — exactly why Rust stays in the harness.
