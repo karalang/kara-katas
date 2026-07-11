@@ -17,10 +17,11 @@ nums = [0,0,1,1,1,1,2,3,3]  -> k=7, nums[:7] = [0,0,1,1,2,3,3]
 |---|---|---|
 | **Two-pointer, `nums[k-2]` look-back** ★ | [`remove_duplicates_ii.kara`](remove_duplicates_ii.kara) ✓ via `karac run` / `karac build` | [`remove_duplicates_ii.py`](remove_duplicates_ii.py) ✓ |
 | **Generalized keep-at-most-`m` (run counter)** | [`remove_duplicates_ii_general.kara`](remove_duplicates_ii_general.kara) ✓ | — |
+| **Two-pointer over a `mut Slice[i64]` view** | [`remove_duplicates_ii_slice.kara`](remove_duplicates_ii_slice.kara) ✓ | — |
 
-`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output across all seven test cases, under default (auto-par on) and `KARAC_AUTO_PAR=0` builds alike, and both approaches agree with each other and with the Python mirror.
+`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output across all seven test cases, under default (auto-par on) and `KARAC_AUTO_PAR=0` builds alike, and all three approaches agree with each other and with the Python mirror. All three compile with **zero diagnostics**.
 
-## Two ways to cap a run at two
+## Three ways to cap a run at two
 
 **Two-pointer with a two-slot look-back** ([`remove_duplicates_ii.kara`](remove_duplicates_ii.kara), the ★) is the canonical O(1)-space sweep. A write cursor `k` trails the read cursor `i`; the value at `i` is kept only when it differs from the one **two positions back in the already-written prefix**:
 
@@ -43,15 +44,18 @@ for each run of equal value v:
 
 With `m = 2` the output is byte-identical to the ★; `m = 1` would be the plain "remove duplicates" of kata [#26](../26-remove-duplicates-from-sorted-array/). It's a distinct surface — an inner run-scan loop with a compound `while i < n and nums[i] == v` condition and an explicit counter — and the recursion-free cross-check that the look-back trick is correct.
 
+**Two-pointer over a `mut Slice[i64]` view** ([`remove_duplicates_ii_slice.kara`](remove_duplicates_ii_slice.kara)) is the ★'s exact algorithm re-typed to the **most faithful encoding of the LeetCode contract**. Rather than owning a `mut ref Vec[i64]`, the dedup takes a `mut Slice[i64]` — a mutable *window* onto the caller's storage. It can overwrite within bounds and read its own `.len()`, but it cannot grow or shrink the backing `Vec`, which is exactly the "modify `nums` in place, return `k`" shape. At the call site `remove_dups(mut nums)` coerces the `ref mut Vec[i64]` to a `mut Slice[i64]` (design.md's `ref mut Vec[T] → mut Slice[T]` boundary coercion) — the same borrow form kata [#26](../26-remove-duplicates-from-sorted-array/) (the `m = 1` sibling), [#31](../31-next-permutation/), and [#88](../88-merge-sorted-array/) use. A separate ownership + codegen path from the owning ★, verified to land byte-identical.
+
 ## Kāra features exercised
 
 - **In-place index-assignment reading another index** — `nums[k] = nums[i]` writes into the same `mut ref Vec[i64]` it reads from, with `k` trailing `i`; the whole dedup is this one converging-pointer write.
 - **`nums[k - 2]` look-back into the written prefix** — the ★'s correctness hinges on indexing two slots back in the *result* being built, an index computed from the write cursor.
 - **Compound loop condition with short-circuit `and`** — the generalized variant's inner `while i < n and nums[i] == v` relies on `and` short-circuiting so `nums[i]` is never read at `i == n` (kāra uses `and`/`or`, not `&&`/`||`).
 - **`mut ref Vec[i64]` threading + call-site marker** — `remove_dups(mut nums)` marks the fresh owned `nums` at the call site; the callee mutates in place and returns the new length.
+- **`mut Slice[i64]` view + boundary coercion** — the slice variant hands the dedup a mutable window; `remove_dups(mut nums)` coerces `ref mut Vec[i64]` → `mut Slice[i64]` at the call boundary, and the sweep is bounded by the slice's own `.len()` (a distinct ownership + codegen surface from the owning form; both compile clean).
 - **Fixed-size `Array[i64, 9]` case tables** — each test case's values are a stack `Array[i64, 9]` sliced to a length by `make`, then copied into a fresh `Vec[i64]` so the in-place dedup doesn't clobber the source.
 
-**v1 note.** Arrays are short and all values fit i64; the per-case sink folds `k` plus the surviving prefix into a running polynomial hash so it's both length- and content-sensitive across the seven cases. Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; the ★ compiles with **zero diagnostics**.
+**v1 note.** Arrays are short and all values fit i64; the per-case sink folds `k` plus the surviving prefix into a running polynomial hash so it's both length- and content-sensitive across the seven cases. All three solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; all three compile with **zero diagnostics**.
 
 ## Running
 
@@ -60,8 +64,9 @@ With `m = 2` the output is byte-identical to the ★; `m = 1` would be the plain
 karac run   remove_duplicates_ii.kara
 karac build remove_duplicates_ii.kara && ./remove_duplicates_ii
 
-# The generalized keep-at-most-m variant (identical output):
-karac run remove_duplicates_ii_general.kara
+# The other two variants (identical output):
+karac run remove_duplicates_ii_general.kara   # generalized keep-at-most-m
+karac run remove_duplicates_ii_slice.kara     # mut Slice[i64] view
 
 # Python
 python3 remove_duplicates_ii.py
@@ -69,6 +74,7 @@ python3 remove_duplicates_ii.py
 # Verify they all agree
 diff <(karac run remove_duplicates_ii.kara) <(python3 remove_duplicates_ii.py)                    && echo OK
 diff <(karac run remove_duplicates_ii.kara) <(karac run remove_duplicates_ii_general.kara)        && echo OK
+diff <(karac run remove_duplicates_ii.kara) <(karac run remove_duplicates_ii_slice.kara)          && echo OK
 ```
 
 ## Benchmarks
