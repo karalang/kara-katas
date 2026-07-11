@@ -1,18 +1,21 @@
-// Benchmark workload — Sort Colors (LeetCode #75).
-// Rust mirror of bench/sort_colors.kara. Dutch National Flag one-pass sort over a
-// Vec<i64> allocated ONCE (n=500) and reused: each of K=200_000 iterations refills
-// it in place with a k-dependent {0,1,2} pattern, sorts in place, and folds the
-// result into a rolling polynomial hash. The measured work is the sort's
-// data-dependent branches and swaps, not allocation. See ../README.md § Benchmarks.
+// Benchmark workload — Sort Colors (LeetCode #75), seq lane.
+// Rust single-threaded mirror of bench/sort_colors.kara. A batch of K=2000
+// independent Dutch National Flag sorts of n=59999 {0,1,2} arrays (length not a
+// multiple of 3, so the sorted result depends on the seed), each hashed, combined
+// through a plain associative sum. This is the single-threaded baseline; the
+// rayon variant (rayon/) is the hand-tuned parallel comparator for Kāra's
+// auto-par. See ../README.md § Benchmarks.
 
-fn sort_colors(a: &mut Vec<i64>) {
-    let n = a.len();
-    if n == 0 {
-        return;
+fn sort_and_hash(seed: i64) -> i64 {
+    let n: i64 = 59999;
+    let mut a: Vec<i64> = Vec::new();
+    for j in 0..n {
+        a.push((j * 7 + seed) % 3);
     }
+
     let mut low: usize = 0;
     let mut mid: usize = 0;
-    let mut high: i64 = n as i64 - 1;
+    let mut high: i64 = n - 1;
     while mid as i64 <= high {
         if a[mid] == 0 {
             a.swap(low, mid);
@@ -25,24 +28,19 @@ fn sort_colors(a: &mut Vec<i64>) {
             high -= 1;
         }
     }
+
+    let mut acc: i64 = 0;
+    for j in 0..n as usize {
+        acc = (acc * 131 + a[j]) % 1_000_000_007;
+    }
+    acc
 }
 
 fn main() {
-    const N: i64 = 500;
-    const TOTAL: i64 = 200_000;
-    const MODULUS: i64 = 1_000_000_007;
-
-    let mut a: Vec<i64> = vec![0; N as usize];
-
-    let mut acc: i64 = 0;
-    for k in 0..TOTAL {
-        for j in 0..N {
-            a[j as usize] = (j * 7 + k * 13) % 3;
-        }
-        sort_colors(&mut a);
-        for j in 0..N as usize {
-            acc = (acc * 131 + a[j]) % MODULUS;
-        }
+    const TOTAL: i64 = 2000;
+    let mut sum: i64 = 0;
+    for i in 0..TOTAL {
+        sum += sort_and_hash(i);
     }
-    println!("{}", acc);
+    println!("{}", sum);
 }

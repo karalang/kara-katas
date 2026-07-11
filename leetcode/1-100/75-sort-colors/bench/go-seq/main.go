@@ -1,20 +1,22 @@
-// Benchmark workload — Sort Colors (LeetCode #75).
-// Go single-threaded mirror of bench/sort_colors.{kara,rs,c}. Dutch National Flag
-// one-pass sort over an []int64 allocated ONCE (n=500) and reused: each of
-// K=200,000 iterations refills it in place with a k-dependent {0,1,2} pattern,
-// sorts in place, and folds the result into a rolling polynomial hash. The
-// measured work is the sort's data-dependent branches and swaps, not allocation.
-// See ../README.md § Benchmarks.
+// Benchmark workload — Sort Colors (LeetCode #75), seq lane.
+// Go single-threaded mirror of bench/sort_colors.{kara,rs,c}. A batch of K=2000
+// independent Dutch National Flag sorts of n=59999 {0,1,2} arrays (each grown by
+// append from empty, matching Kāra's Vec.new()+push), each hashed, combined
+// through a plain associative sum. Single-threaded baseline; go-par/ is the
+// goroutine parallel comparator for Kāra's auto-par. See ../README.md.
 
 package main
 
 import "fmt"
 
-func sortColors(a []int64) {
-	n := int64(len(a))
-	if n == 0 {
-		return
+const n int64 = 59999
+
+func sortAndHash(seed int64) int64 {
+	var a []int64
+	for j := int64(0); j < n; j++ {
+		a = append(a, (j*7+seed)%3)
 	}
+
 	low, mid, high := int64(0), int64(0), n-1
 	for mid <= high {
 		if a[mid] == 0 {
@@ -28,24 +30,19 @@ func sortColors(a []int64) {
 			high--
 		}
 	}
+
+	var acc int64 = 0
+	for j := int64(0); j < n; j++ {
+		acc = (acc*131 + a[j]) % 1000000007
+	}
+	return acc
 }
 
 func main() {
-	const n int64 = 500
-	const total int64 = 200000
-	const modulus int64 = 1000000007
-
-	a := make([]int64, n)
-
-	var acc int64 = 0
-	for k := int64(0); k < total; k++ {
-		for j := int64(0); j < n; j++ {
-			a[j] = (j*7 + k*13) % 3
-		}
-		sortColors(a)
-		for j := int64(0); j < n; j++ {
-			acc = (acc*131 + a[j]) % modulus
-		}
+	const total int64 = 2000
+	var sum int64 = 0
+	for i := int64(0); i < total; i++ {
+		sum += sortAndHash(i)
 	}
-	fmt.Println(acc)
+	fmt.Println(sum)
 }

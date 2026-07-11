@@ -1,24 +1,36 @@
 /*
- * Benchmark workload — Sort Colors (LeetCode #75).
- * C mirror of bench/sort_colors.kara. Dutch National Flag one-pass sort over an
- * int64_t buffer malloc'd ONCE (n=500) and reused: each of K=200,000 iterations
- * refills it in place with a k-dependent {0,1,2} pattern, sorts in place, and
- * folds the result into a rolling polynomial hash. The measured work is the
- * sort's data-dependent branches and swaps, not allocation.
- * See ../README.md § Benchmarks.
+ * Benchmark workload — Sort Colors (LeetCode #75), seq lane.
+ * C single-threaded mirror of bench/sort_colors.kara. A batch of K=2000
+ * independent Dutch National Flag sorts of n=59999 {0,1,2} arrays (length not a
+ * multiple of 3, so the sorted result depends on the seed), each hashed, combined
+ * through a plain associative sum. Single-threaded baseline; sort_colors_par.c is
+ * the pthreads parallel comparator for Kara's auto-par. See ../README.md.
  */
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-static void sort_colors(int64_t *a, int64_t n) {
-    if (n == 0) return;
-    int64_t low = 0, mid = 0, high = n - 1;
+#define N 59999
+
+/* Builds a fresh GROWING buffer per call (realloc-doubling from empty), matching
+ * Kara's Vec.new()+push growth inside the function — NOT a malloc(N) upfront —
+ * so the per-call allocation/growth cost is apples-to-apples (the #72 lesson). */
+static int64_t sort_and_hash(int64_t seed) {
+    int64_t *a = NULL;
+    int64_t len = 0, cap = 0;
+    for (int64_t j = 0; j < N; j++) {
+        if (len == cap) {
+            cap = cap ? cap * 2 : 1;
+            a = (int64_t *)realloc(a, sizeof(int64_t) * (size_t)cap);
+        }
+        a[len++] = (j * 7 + seed) % 3;
+    }
+
+    int64_t low = 0, mid = 0, high = N - 1;
     while (mid <= high) {
         if (a[mid] == 0) {
             int64_t t = a[low]; a[low] = a[mid]; a[mid] = t;
-            low++;
-            mid++;
+            low++; mid++;
         } else if (a[mid] == 1) {
             mid++;
         } else {
@@ -26,22 +38,19 @@ static void sort_colors(int64_t *a, int64_t n) {
             high--;
         }
     }
+
+    int64_t acc = 0;
+    for (int64_t j = 0; j < N; j++)
+        acc = (acc * 131 + a[j]) % 1000000007;
+    free(a);
+    return acc;
 }
 
 int main(void) {
-    const int64_t n = 500, total = 200000, modulus = 1000000007;
-    int64_t *a = (int64_t *)malloc(sizeof(int64_t) * (size_t)n);
-
-    int64_t acc = 0;
-    for (int64_t k = 0; k < total; k++) {
-        for (int64_t j = 0; j < n; j++)
-            a[j] = (j * 7 + k * 13) % 3;
-        sort_colors(a, n);
-        for (int64_t j = 0; j < n; j++)
-            acc = (acc * 131 + a[j]) % modulus;
-    }
-    printf("%lld\n", (long long)acc);
-
-    free(a);
+    const int64_t total = 2000;
+    int64_t sum = 0;
+    for (int64_t i = 0; i < total; i++)
+        sum += sort_and_hash(i);
+    printf("%lld\n", (long long)sum);
     return 0;
 }
