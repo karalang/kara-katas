@@ -1,0 +1,124 @@
+// Benchmark workload — Scramble String (LeetCode #87).
+// Two lanes over ONE workload: a batch of K=60000 INDEPENDENT scramble decisions (the
+// memoized ★). Each iteration builds a length-12 string s1 and a per-iteration
+// permutation s2 (s2[j] = s1[(j*5 + iter) % 12], a coprime-step permutation, so no
+// call hoists), runs the O(n⁴) top-down memoized scramble, and folds the FILLED MEMO
+// STATE into a work-sensitive per-iteration checksum. The K checksums are combined
+// through a plain associative SUM (order-independent, so parallel == sequential).
+//
+//   - SEQ lane: the batch run single-threaded — kara (KARAC_AUTO_PAR=0) vs
+//     rustc -O / clang -O3 / go build per-core.
+//   - PAR lane: the SAME batch, parallel — the default `karac build` AUTO-PARALLELIZES
+//     the `for k in 0..K` sum reduction with NO hand-written parallel code, raced
+//     against hand-tuned C-pthreads / rayon / goroutines (kata #75/#84/#86 framing).
+//
+// This is a compute-bound recursion (the memo is the only allocation), so it parallel-
+// scales well — the clean auto-par case in contrast to #86's allocation-bound list
+// workload. See ../README.md § Benchmarks.
+
+fn scramble(s1: ref Vec[u8], i1: i64, s2: ref Vec[u8], i2: i64, len: i64,
+        memo: mut ref Vec[i64], n: i64) -> bool {
+    if len == 0i64 {
+        return true;
+    }
+    let key = (i1 * n + i2) * (n + 1i64) + len;
+    if memo[key] != -1i64 {
+        return memo[key] == 1i64;
+    }
+    let mut equal = true;
+    let mut k = 0i64;
+    while k < len {
+        if s1[i1 + k] != s2[i2 + k] {
+            equal = false;
+            break;
+        }
+        k = k + 1i64;
+    }
+    if equal {
+        memo[key] = 1i64;
+        return true;
+    }
+    let mut counts: Vec[i64] = Vec.new();
+    let mut c = 0i64;
+    while c < 26i64 {
+        counts.push(0i64);
+        c = c + 1i64;
+    }
+    k = 0i64;
+    while k < len {
+        let a = (s1[i1 + k] as i64) - 97i64;
+        let b = (s2[i2 + k] as i64) - 97i64;
+        counts[a] = counts[a] + 1i64;
+        counts[b] = counts[b] - 1i64;
+        k = k + 1i64;
+    }
+    c = 0i64;
+    while c < 26i64 {
+        if counts[c] != 0i64 {
+            memo[key] = 0i64;
+            return false;
+        }
+        c = c + 1i64;
+    }
+    let mut split = 1i64;
+    while split < len {
+        if scramble(s1, i1, s2, i2, split, memo, n)
+            and scramble(s1, i1 + split, s2, i2 + split, len - split, memo, n) {
+            memo[key] = 1i64;
+            return true;
+        }
+        if scramble(s1, i1, s2, i2 + len - split, split, memo, n)
+            and scramble(s1, i1 + split, s2, i2, len - split, memo, n) {
+            memo[key] = 1i64;
+            return true;
+        }
+        split = split + 1i64;
+    }
+    memo[key] = 0i64;
+    false
+}
+
+fn one(len: i64, seed: i64) -> i64 {
+    let mut s1: Vec[u8] = Vec.new();
+    let mut s2: Vec[u8] = Vec.new();
+    let mut j = 0i64;
+    while j < len {
+        s1.push((97i64 + (j % 8i64)) as u8);
+        j = j + 1i64;
+    }
+    j = 0i64;
+    while j < len {
+        s2.push(s1[(j * 5i64 + seed) % len]);
+        j = j + 1i64;
+    }
+    let cells = len * len * (len + 1i64);
+    let mut memo: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < cells {
+        memo.push(-1i64);
+        i = i + 1i64;
+    }
+    let r = if scramble(s1, 0i64, s2, 0i64, len, mut memo, len) { 1i64 } else { 0i64 };
+    // Work-sensitive checksum: fold the filled memo state so the sink reflects the
+    // actual recursion, not just the boolean answer.
+    let mut h = r;
+    i = 0i64;
+    while i < cells {
+        h = (h * 131i64 + (memo[i] + 2i64)) % 1000000007i64;
+        i = i + 1i64;
+    }
+    h
+}
+
+fn main() {
+    let len = 12i64;
+    let total = 60000i64;
+
+    // Associative sum over K independent scramble decisions; the default build auto-
+    // parallelizes this `for` reduction, KARAC_AUTO_PAR=0 keeps it single-threaded.
+    let mut sum = 0i64;
+    for k in 0..total {
+        sum = sum + one(len, k);
+    }
+    println(f"{sum}");
+}

@@ -1,0 +1,129 @@
+// LeetCode #87: Scramble String — recursive split with char-count pruning.
+//
+// s2 is a "scramble" of s1 if s1 can be turned into s2 by the following recursive
+// process: split the string into two non-empty halves, optionally swap them, and
+// recursively scramble each half. So s2 is a scramble of s1 iff there is SOME split
+// point where either
+//
+//   (no swap) s1[..k] scrambles to s2[..k]   AND s1[k..] scrambles to s2[k..]
+//   (swap)    s1[..k] scrambles to s2[len-k..] AND s1[k..] scrambles to s2[..len-k]
+//
+// The recursion works on index windows of two `Vec[u8]` (no substring copies): a call
+// is `scramble(s1, i1, s2, i2, len)`. Two prunes keep the exponential branching in
+// check: an identical window is trivially a scramble (return true early), and if the
+// two windows don't have the same MULTISET of letters they can never match (return
+// false) — the classic anagram check that cuts almost every dead branch. Only the
+// windows that survive both prunes fan out over the `len - 1` split points, each tried
+// with and without the swap.
+
+fn scramble(s1: ref Vec[u8], i1: i64, s2: ref Vec[u8], i2: i64, len: i64) -> bool {
+    // Prune 1: identical window.
+    let mut equal = true;
+    let mut k = 0i64;
+    while k < len {
+        if s1[i1 + k] != s2[i2 + k] {
+            equal = false;
+            break;
+        }
+        k = k + 1i64;
+    }
+    if equal {
+        return true;
+    }
+
+    // Prune 2: different letter multiset → impossible.
+    let mut counts: Vec[i64] = Vec.new();
+    let mut c = 0i64;
+    while c < 26i64 {
+        counts.push(0i64);
+        c = c + 1i64;
+    }
+    k = 0i64;
+    while k < len {
+        let a = (s1[i1 + k] as i64) - 97i64;
+        let b = (s2[i2 + k] as i64) - 97i64;
+        counts[a] = counts[a] + 1i64;
+        counts[b] = counts[b] - 1i64;
+        k = k + 1i64;
+    }
+    c = 0i64;
+    while c < 26i64 {
+        if counts[c] != 0i64 {
+            return false;
+        }
+        c = c + 1i64;
+    }
+
+    // Fan out over split points, each with and without the swap.
+    let mut split = 1i64;
+    while split < len {
+        if scramble(s1, i1, s2, i2, split)
+            and scramble(s1, i1 + split, s2, i2 + split, len - split) {
+            return true;
+        }
+        if scramble(s1, i1, s2, i2 + len - split, split)
+            and scramble(s1, i1 + split, s2, i2, len - split) {
+            return true;
+        }
+        split = split + 1i64;
+    }
+    false
+}
+
+fn to_vec(s: String) -> Vec[u8] {
+    let b = s.bytes();
+    let mut v: Vec[u8] = Vec.new();
+    let mut i = 0i64;
+    while i < b.len() {
+        v.push(b[i]);
+        i = i + 1i64;
+    }
+    v
+}
+
+fn report(s1: String, s2: String, acc: mut ref i64) {
+    let a = to_vec(s1);
+    let b = to_vec(s2);
+    let n = a.len();
+    let found = if b.len() == n {
+        scramble(a, 0i64, b, 0i64, n)
+    } else {
+        false
+    };
+    println(f"{s1} ~ {s2}: {found}");
+    let bit = if found { 1i64 } else { 0i64 };
+    acc = (acc * 131i64 + bit + 1i64) % 1000000007i64;
+}
+
+fn main() {
+    let mut acc = 0i64;
+
+    // LeetCode examples.
+    report("great", "rgeat", mut acc);        // true
+    report("abcde", "caebd", mut acc);        // false
+    report("a", "a", mut acc);                // true
+
+    // Empty and singletons.
+    report("", "", mut acc);                  // true
+    report("ab", "ba", mut acc);              // true (swap)
+    report("ab", "ab", mut acc);              // true (identity)
+
+    // Small trues built by swapping halves.
+    report("abc", "bca", mut acc);            // true
+    report("abcd", "badc", mut acc);          // true
+    report("abcd", "cdab", mut acc);          // true
+    report("aabb", "bbaa", mut acc);          // true
+
+    // Non-obvious scrambles (verified against the brute-force enumeration).
+    report("abcd", "acbd", mut acc);          // true
+    report("abcde", "edcba", mut acc);        // true (full reverse is a scramble here)
+
+    // Anagram but NOT a scramble — prune 2 passes, every split fails (LeetCode ex. 2
+    // already covers this with abcde~caebd; abc~abd below is the non-anagram reject).
+    report("abc", "abd", mut acc);            // false (not even an anagram)
+
+    // A longer scramble.
+    report("greatabc", "rgeatabc", mut acc);  // true (great->rgeat, abc kept)
+
+    println(f"sink: {acc}");
+}

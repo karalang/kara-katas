@@ -1,0 +1,131 @@
+// LeetCode #87: Scramble String — top-down memoized recursion.
+//
+// Same recursion as scramble_string.kara (the ★), but the (i1, i2, len) window result
+// is cached in a flat tri-state memo (-1 unknown, 0 false, 1 true), turning the
+// exponential fan-out into a polynomial O(n⁴) search: there are O(n²·n) distinct
+// windows and each does O(n) split work. The memo is a single `Vec[i64]` of length
+// n·n·(n+1), indexed by `(i1·n + i2)·(n+1) + len`, threaded `mut ref` through the
+// recursion and reset per string pair. The two cheap prunes (identical window, letter
+// multiset) run before the cache write, so the memo only ever stores the outcome of
+// the split fan-out. A distinct surface from the ★ — a flat 3D memo with tri-state
+// cells — that must agree with it byte-for-byte.
+
+fn scramble(s1: ref Vec[u8], i1: i64, s2: ref Vec[u8], i2: i64, len: i64,
+        memo: mut ref Vec[i64], n: i64) -> bool {
+    if len == 0i64 {
+        return true;
+    }
+    let key = (i1 * n + i2) * (n + 1i64) + len;
+    if memo[key] != -1i64 {
+        return memo[key] == 1i64;
+    }
+
+    // Prune 1: identical window.
+    let mut equal = true;
+    let mut k = 0i64;
+    while k < len {
+        if s1[i1 + k] != s2[i2 + k] {
+            equal = false;
+            break;
+        }
+        k = k + 1i64;
+    }
+    if equal {
+        memo[key] = 1i64;
+        return true;
+    }
+
+    // Prune 2: different letter multiset → impossible.
+    let mut counts: Vec[i64] = Vec.new();
+    let mut c = 0i64;
+    while c < 26i64 {
+        counts.push(0i64);
+        c = c + 1i64;
+    }
+    k = 0i64;
+    while k < len {
+        let a = (s1[i1 + k] as i64) - 97i64;
+        let b = (s2[i2 + k] as i64) - 97i64;
+        counts[a] = counts[a] + 1i64;
+        counts[b] = counts[b] - 1i64;
+        k = k + 1i64;
+    }
+    c = 0i64;
+    while c < 26i64 {
+        if counts[c] != 0i64 {
+            memo[key] = 0i64;
+            return false;
+        }
+        c = c + 1i64;
+    }
+
+    // Fan out over split points, each with and without the swap.
+    let mut split = 1i64;
+    while split < len {
+        if scramble(s1, i1, s2, i2, split, memo, n)
+            and scramble(s1, i1 + split, s2, i2 + split, len - split, memo, n) {
+            memo[key] = 1i64;
+            return true;
+        }
+        if scramble(s1, i1, s2, i2 + len - split, split, memo, n)
+            and scramble(s1, i1 + split, s2, i2, len - split, memo, n) {
+            memo[key] = 1i64;
+            return true;
+        }
+        split = split + 1i64;
+    }
+    memo[key] = 0i64;
+    false
+}
+
+fn to_vec(s: String) -> Vec[u8] {
+    let b = s.bytes();
+    let mut v: Vec[u8] = Vec.new();
+    let mut i = 0i64;
+    while i < b.len() {
+        v.push(b[i]);
+        i = i + 1i64;
+    }
+    v
+}
+
+fn report(s1: String, s2: String, acc: mut ref i64) {
+    let a = to_vec(s1);
+    let b = to_vec(s2);
+    let n = a.len();
+    let found = if b.len() == n {
+        // Fresh memo of size n·n·(n+1), all -1.
+        let mut memo: Vec[i64] = Vec.new();
+        let cells = n * n * (n + 1i64);
+        let mut i = 0i64;
+        while i < cells {
+            memo.push(-1i64);
+            i = i + 1i64;
+        }
+        scramble(a, 0i64, b, 0i64, n, mut memo, n)
+    } else {
+        false
+    };
+    println(f"{s1} ~ {s2}: {found}");
+    let bit = if found { 1i64 } else { 0i64 };
+    acc = (acc * 131i64 + bit + 1i64) % 1000000007i64;
+}
+
+fn main() {
+    let mut acc = 0i64;
+    report("great", "rgeat", mut acc);
+    report("abcde", "caebd", mut acc);
+    report("a", "a", mut acc);
+    report("", "", mut acc);
+    report("ab", "ba", mut acc);
+    report("ab", "ab", mut acc);
+    report("abc", "bca", mut acc);
+    report("abcd", "badc", mut acc);
+    report("abcd", "cdab", mut acc);
+    report("aabb", "bbaa", mut acc);
+    report("abcd", "acbd", mut acc);
+    report("abcde", "edcba", mut acc);
+    report("abc", "abd", mut acc);
+    report("greatabc", "rgeatabc", mut acc);
+    println(f"sink: {acc}");
+}
