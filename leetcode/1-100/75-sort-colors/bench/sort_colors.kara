@@ -1,0 +1,67 @@
+// Benchmark workload — Sort Colors (LeetCode #75).
+// Dutch National Flag one-pass sort (the kata's ★). The array is allocated ONCE
+// (n=500) and REUSED: each of K=200_000 iterations refills it in place with a
+// k-dependent {0,1,2} pattern, sorts it in place, and folds the sorted result
+// into a rolling polynomial hash. Allocating once and refilling in place (rather
+// than growing a fresh Vec per iteration, kata #73's regime) keeps the measured
+// work the SORT's data-dependent branches and swaps, not allocation. The
+// loop-carried hash is not a reduction the auto-par pass can split. See
+// ../README.md § Benchmarks.
+
+fn sort_colors(a: mut ref Vec[i64]) {
+    let n = a.len();
+    if n == 0i64 {
+        return;
+    }
+    let mut low = 0i64;
+    let mut mid = 0i64;
+    let mut high = n - 1i64;
+    while mid <= high {
+        if a[mid] == 0i64 {
+            a[low], a[mid] = a[mid], a[low];
+            low = low + 1i64;
+            mid = mid + 1i64;
+        } else if a[mid] == 1i64 {
+            mid = mid + 1i64;
+        } else {
+            a[mid], a[high] = a[high], a[mid];
+            high = high - 1i64;
+        }
+    }
+}
+
+fn main() {
+    let n = 500i64;
+    let total = 200000i64;
+    let modulus = 1000000007i64;
+
+    // Allocate the working array once.
+    let mut a: Vec[i64] = Vec.new();
+    let mut j = 0i64;
+    while j < n {
+        a.push(0i64);
+        j = j + 1i64;
+    }
+
+    let mut acc = 0i64;
+    let mut k = 0i64;
+    while k < total {
+        // Refill in place with a k-dependent {0,1,2} pattern.
+        j = 0i64;
+        while j < n {
+            a[j] = (j * 7i64 + k * 13i64) % 3i64;
+            j = j + 1i64;
+        }
+
+        sort_colors(mut a);
+
+        // Fold the sorted array.
+        j = 0i64;
+        while j < n {
+            acc = (acc * 131i64 + a[j]) % modulus;
+            j = j + 1i64;
+        }
+        k = k + 1i64;
+    }
+    println(f"{acc}");
+}
