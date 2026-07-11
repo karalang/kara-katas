@@ -41,7 +41,7 @@ Only survivors fan out over the `len − 1` split points, each tried with and wi
 ## Kāra features exercised
 
 - **Window-indexed recursion over `Vec[u8]`** — `scramble(s1, i1, s2, i2, len)` recurses on index windows without copying substrings; `String.bytes()` builds the byte vectors.
-- **Byte → letter-index arithmetic** — `(s1[i1 + k] as i64) - 97` maps `'a'..'z'` into a 26-slot `Vec[i64]` count table for the multiset prune (`u8` → `i64` cast, the path hardened by ledger `B-2026-07-11-2`).
+- **Byte → letter-index arithmetic into a stack `Array[i64, 26]`** — `(s1[i1 + k] as i64) - 97` maps `'a'..'z'` into a fixed 26-slot count table (a stack `Array`, re-zeroed each call — *not* a per-call `Vec`, which would heap-allocate inside the hot recursion; see the profiling note under Benchmarks) for the multiset prune (`u8` → `i64` cast, the path hardened by ledger `B-2026-07-11-2`).
 - **Flat 3D memo with tri-state cells** — the memoised variant threads a `mut ref Vec[i64]` sized `n·n·(n+1)`, computing the linear index `(i1·n + i2)·(n+1) + len` and reading/writing `-1`/`0`/`1` (index-assignment into a mutable Vec, kata [#80](../80-remove-duplicates-from-sorted-array-ii/)'s surface).
 - **Short-circuit `and` over recursive calls** — `scramble(...) and scramble(...)` relies on `and` short-circuiting so the second (expensive) recursion only runs when the first succeeds.
 - **Auto-parallelised batch reduction** — the benchmark's `for k in 0..K { sum += one(k) }` is an associative reduction the default build **auto-parallelises** with no parallel source (see Benchmarks).
@@ -84,23 +84,25 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | Implementation | Wall time |
 |---|---|
 | rust scramble_string (rustc -O, overflow-checks=on) | 643.8 ± 10.1 ms |
-| c    scramble_string (clang -O3)                     | 679.5 ± 11.4 ms |
-| rust scramble_string (rustc -O)                      | 708.0 ± 8.3 ms |
-| **kāra scramble_string (`KARAC_AUTO_PAR=0`)**        | **826.6 ± 27.7 ms** |
-| go   scramble_string                                 | 1115.9 ± 66.5 ms |
+| c    scramble_string (clang -O3)                     | 682.8 ± 13.3 ms |
+| rust scramble_string (rustc -O)                      | 708.1 ± 8.3 ms |
+| **kāra scramble_string (`KARAC_AUTO_PAR=0`)**        | **727.3 ± 11.7 ms** |
+| go   scramble_string                                 | 1104.7 ± 45.3 ms |
 
-Single-threaded, kāra trails the C/Rust cluster by ~1.17–1.28× on this recursion-heavy DP — the branchy `O(n⁴)` memoised search is where its codegen gives up the most ground — while staying well ahead of Go (~1.35×). (Curiously, overflow-checked Rust edged plain `-O` on this run; both are within a few percent.) Python at K=4000 is ~1.3 s, timed separately.
+Single-threaded, kāra sits ~1.03× behind plain `rustc -O` and ~1.07× behind C — a **narrow** gap on a recursion-heavy `O(n⁴)` DP — with only equal-safety `rust_ovf` clearly ahead (1.13×), and Go well behind (~1.52×). (Overflow-checked Rust edging plain `-O` here is a real, repeatable quirk of this branchy loop.)
+
+> **Profiling note.** An earlier draft of this kata had kāra ~1.22× behind C. Profiling on this container (the production-representative target) split the gap in two: (1) a **self-inflicted** part — the char-count table was written as a per-call `Vec.new()` instead of a stack `Array[i64, 26]` (the shape C/Rust use), heap-allocating on every recursive call; fixing it recovered ~9% and the 826→727 ms above. (2) A **residual codegen** part — at *equal safety* kāra's hot `scramble` emits **24 bounds/overflow-check branches to `rust_ovf`'s 15** (LLVM elides rustc's but not kāra's); this is the known instruction-density gap tracked in the kara repo's ledger as `B-2026-07-10-5`, to which this kata's data was added. Python at K=4000 is ~1.3 s, timed separately.
 
 #### Par lane — auto-par vs hand-tuned, NOT comparable to seq (`--warmup 5 --runs 30`)
 
 | Implementation | Wall time |
 |---|---|
-| c    scramble_string (pthreads — metal floor)          | 175.3 ± 8.6 ms |
-| rust scramble_string (rayon `into_par_iter`)           | 185.3 ± 4.4 ms |
-| **kāra scramble_string (auto-par, NO parallel code)**  | **218.2 ± 8.6 ms** |
-| go   scramble_string (goroutines + WaitGroup)          | 595.6 ± 20.4 ms |
+| c    scramble_string (pthreads — metal floor)          | 179.5 ± 10.4 ms |
+| rust scramble_string (rayon `into_par_iter`)           | 184.9 ± 5.4 ms |
+| **kāra scramble_string (auto-par, NO parallel code)**  | **208.4 ± 14.4 ms** |
+| go   scramble_string (goroutines + WaitGroup)          | 568.4 ± 54.5 ms |
 
-The payoff: this compute-bound recursion parallel-scales cleanly, and kāra's **default build auto-parallelises it with zero parallel source** — no threads, no rayon, just `for k in 0..K { sum += one(k) }` — for a **3.79× self-speedup** over its own seq lane (826.6 → 218.2 ms) on 4 vCPU. That closes most of the single-threaded gap: in the par lane kāra lands ~1.18× behind hand-tuned rayon and ~1.24× off the raw-pthreads floor (versus ~1.20–1.28× behind them single-threaded), and it is **2.7× ahead of the goroutine version** (595.6 ms — Go's per-iteration allocation and scheduler overhead don't recover under parallelism). The auto-par lifts kāra from *behind* the native seq cluster to *within a whisker of* hand-tuned parallel Rust, for free. Records in [`results.container-x86.json`](bench/results.container-x86.json).
+The payoff: this compute-bound recursion parallel-scales cleanly, and kāra's **default build auto-parallelises it with zero parallel source** — no threads, no rayon, just `for k in 0..K { sum += one(k) }` — for a **3.49× self-speedup** over its own seq lane (727.3 → 208.4 ms) on 4 vCPU. It lands ~1.13× behind hand-tuned rayon and ~1.16× off the raw-pthreads floor, and **2.7× ahead of the goroutine version** (568.4 ms — Go's per-iteration allocation and scheduler overhead don't recover under parallelism). Kāra's free auto-par sits within a whisker of hand-tuned parallel Rust. Records in [`results.container-x86.json`](bench/results.container-x86.json).
 
 ### Why Rust is in the harness
 
