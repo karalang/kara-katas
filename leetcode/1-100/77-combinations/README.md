@@ -17,8 +17,9 @@ n = 1, k = 1  ->  [[1]]
 |---|---|---|
 | **Start-indexed backtracking** ★ | [`combinations.kara`](combinations.kara) ✓ via `karac run` / `karac build` | [`combinations.py`](combinations.py) ✓ |
 | **+ "not enough left" prune** | [`combinations_pruned.kara`](combinations_pruned.kara) ✓ | — |
+| **Gosper's hack** — iterative bitmask enumeration | [`combinations_bitmask.kara`](combinations_bitmask.kara) ✓ | — |
 
-`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output across all eight test cases, under default (auto-par on) and `KARAC_AUTO_PAR=0` builds alike, and both approaches agree with each other and with the Python mirror.
+`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output across all eight test cases, under default (auto-par on) and `KARAC_AUTO_PAR=0` builds alike, and all three approaches agree with each other and with the Python mirror.
 
 ## The backtracking — one mutable path, snapshot at the leaf
 
@@ -38,6 +39,16 @@ Recursing with `start = i + 1` keeps the path strictly increasing, so every `k`-
 
 **+ prune** ([`combinations_pruned.kara`](combinations_pruned.kara)) adds the standard cutoff: with `need = k - path.len()` values still to pick, the last start value that can still complete is `n - need + 1`, so the loop runs `start ..= n - need + 1` instead of `start ..= n` — dead branches (too few numbers left) are never entered. Same combinations, a trimmed tree.
 
+**Gosper's hack** ([`combinations_bitmask.kara`](combinations_bitmask.kara)) is a completely different lens — **no recursion at all**. Each combination is a bitmask with exactly `k` bits set (bit `j` ⇒ number `j+1`), and the hack walks to the next-larger integer with the same popcount in O(1) bit ops:
+
+```
+c = x & (0 - x)                 # isolate the lowest set bit
+r = x + c                       # ripple past that run of ones
+x = (((x ^ r) >> 2) / c) | r    # slide the trailing ones back down
+```
+
+from `(1 << k) - 1` until `x` reaches `1 << n`. Gosper emits masks in integer order, not lexicographic, so the decoded combinations are sorted (a small selection sort over `Vec[Vec[i64]]`) to line up with the ★. It's the pure bit-twiddling method — the same bitmask-as-set idea kata [#51](../51-n-queens/) uses — and, as a distinct codegen surface (shifts / `&` / `|` / `^` / integer divide / the `Vec[Vec]` element swap), a deliberate probe that these lower identically across interpreter, JIT and codegen.
+
 ## Kāra features exercised
 
 - **Recursion threading `mut ref Vec[i64]` + `mut ref Vec[Vec[i64]]`** — `path` and the output accumulator recurse as mutable borrows; the root call writes the call-site markers (`mut path`, `mut out`) since both are fresh owned bindings, interior calls forward the already-`mut ref` bindings unmarked (the call-site-marker rule, shared with kata [#39](../39-combination-sum/)).
@@ -45,6 +56,7 @@ Recursing with `start = i + 1` keeps the path strictly increasing, so every `k`-
 - **`path.push(i)` / `path.pop()` bracketing** — the choose/undo backtracking move on a `Vec[i64]` stack.
 - **`Vec[Vec[i64]]` indexed read** — `combos[c]` in the harness binds a combination out of the result for printing/hashing (the borrowed-nested-collection read of kata [#48](../48-rotate-image/)).
 - **`k == 0` edge** — `combine(4, 0)` yields the single empty combination `[]`, exercising the length-0 base case and an empty `Vec[i64]` snapshot.
+- **Bitwise ops + `Vec[Vec[i64]]` element swap** — the Gosper variant exercises `<<` / `>>` / `&` / `|` / `^` / integer `/` and `x & (0 - x)`, plus swapping two `Vec[i64]` rows in place (`out[i], out[min_idx] = out[min_idx], out[i]`); all lower identically across every engine.
 
 **v1 note.** Counts (up to `C(20,10) = 184,756`) and values fit i64 trivially; the per-case sink is `count:hash` so it is both count- and content-sensitive. Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`.
 
@@ -55,8 +67,9 @@ Recursing with `start = i + 1` keeps the path strictly increasing, so every `k`-
 karac run   combinations.kara
 karac build combinations.kara && ./combinations
 
-# The pruned variant (identical output):
+# The pruned and Gosper's-hack variants (identical output):
 karac run combinations_pruned.kara
+karac run combinations_bitmask.kara
 
 # Python
 python3 combinations.py
@@ -64,6 +77,7 @@ python3 combinations.py
 # Verify they all agree
 diff <(karac run combinations.kara) <(python3 combinations.py)              && echo OK
 diff <(karac run combinations.kara) <(karac run combinations_pruned.kara)   && echo OK
+diff <(karac run combinations.kara) <(karac run combinations_bitmask.kara)  && echo OK
 ```
 
 ## Benchmarks
