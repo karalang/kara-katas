@@ -2,23 +2,25 @@
 # Wall-clock comparison across implementations of LeetCode #84.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Seq-only kata: the monotonic-stack pass (the ★) is O(n). To keep every call doing
-# genuinely different work (so nothing hoists), each iteration builds a FRESH sawtooth
-# histogram whose phase depends on the iteration index (heights[j] = (j + iter) % 50,
-# N=2000), runs largest_rectangle, and folds the area through a rolling polynomial
-# hash, K=108000 iterations. The per-iteration build (a 1D heap array) and the per-call
-# stack (a 1D heap array) allocation are part of the measured work, alongside the
-# double-indexed heights[stack[..]] chase. EQUAL DATA STRUCTURE: every mirror uses 1D
-# heap arrays (kara Vec[i64], rust Vec<i64>, c malloc'd int64_t*, go []int64) for both
-# the histogram and the stack. The loop-carried hash is NOT a reduction karac's
-# auto-par pass can split, so the default `karac build` stays single-threaded (verified
-# equal to KARAC_AUTO_PAR=0). EQUAL-SAFETY: karac checks integer overflow by default
-# while `rustc -O` wraps, so a `rustc -O -C overflow-checks=on` row is included as the
-# faithful like-for-like (kata #69's discipline). Python runs a smaller K (pure-Python
-# is slow at full scale) — timed separately, NOT cross-checked. Same discipline as kata
-# #72/#73.
+# Two lanes over ONE workload: a batch of K=108000 INDEPENDENT largest-rectangle
+# computations (the kata's ★). Each iteration builds a fresh sawtooth histogram whose
+# phase depends on the iteration index (heights[j] = (j + iter) % 50, N=2000, so no
+# call hoists), runs the monotonic-stack pass, and the K areas are combined through a
+# plain associative SUM (order-independent, so parallel == sequential).
 #
-# Requires: hyperfine, rustc, clang, go, karac (with --features llvm).
+#   - SEQ lane: the batch run single-threaded — kara (KARAC_AUTO_PAR=0) vs
+#     rustc -O / clang -O3 / go build per-core.
+#   - PAR lane: the SAME batch, parallel — the default `karac build` AUTO-
+#     PARALLELIZES the `for i in 0..K` sum reduction with NO hand-written parallel
+#     code, raced against hand-tuned C-pthreads / rayon / goroutines. Same auto-par-
+#     vs-hand-tuned framing as kata #1.
+#
+# EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so
+# a `rustc -O -C overflow-checks=on` row is included in the seq lane (kata #69's
+# discipline). Python runs a smaller K (pure-Python is slow at full scale) — timed
+# separately, NOT cross-checked.
+#
+# Requires: hyperfine, rustc, cargo (rayon), clang, go, karac (with --features llvm).
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -34,6 +36,7 @@ require() {
 
 require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
+require cargo     "rustup (https://rustup.rs)  — needed for the rayon par-lane variant"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
 require go        "brew install go  or your distro's golang package"
 require karac     "cargo install --path . --features llvm  (from kara checkout)"
@@ -59,69 +62,97 @@ print_mem() {
 mkdir -p target
 
 build_rust() {
-    local src="$1"
-    local out="target/$(basename "$src" .rs)"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        rustc -O "$src" -o "$out"
+    local out="target/${STEM}"
+    if [ ! -x "$out" ] || [ "${STEM}.rs" -nt "$out" ]; then
+        echo "compiling ${STEM}.rs ..." >&2
+        rustc -O "${STEM}.rs" -o "$out"
     fi
 }
-
 build_rust_ovf() {
-    local src="$1"
-    local out="target/$(basename "$src" .rs)_ovf"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
-        echo "compiling $src (overflow-checks=on) ..." >&2
-        rustc -O -C overflow-checks=on "$src" -o "$out"
+    local out="target/${STEM}_ovf"
+    if [ ! -x "$out" ] || [ "${STEM}.rs" -nt "$out" ]; then
+        echo "compiling ${STEM}.rs (overflow-checks=on) ..." >&2
+        rustc -O -C overflow-checks=on "${STEM}.rs" -o "$out"
     fi
 }
-
 build_c() {
-    local src="$1"
-    local out="target/$(basename "$src" .c)_c"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        clang -O3 "$src" -o "$out"
+    local out="target/${STEM}_c"
+    if [ ! -x "$out" ] || [ "${STEM}.c" -nt "$out" ]; then
+        echo "compiling ${STEM}.c ..." >&2
+        clang -O3 "${STEM}.c" -o "$out"
     fi
 }
-
-build_kara() {
-    local src="$1"
-    local stem="$(basename "$src" .kara)"
-    local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
-        mv "$stem" "$out"
+build_c_par() {
+    local out="target/${STEM}_c_par"
+    if [ ! -x "$out" ] || [ "${STEM}_par.c" -nt "$out" ]; then
+        echo "compiling ${STEM}_par.c (pthreads) ..." >&2
+        clang -O3 "${STEM}_par.c" -o "$out" -lpthread
     fi
 }
-
+build_kara() {          # default build → auto-par (PAR lane)
+    local out="target/${STEM}_kara"
+    if [ ! -x "$out" ] || [ "${STEM}.kara" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling ${STEM}.kara (default, auto-par) ..." >&2
+        karac build "${STEM}.kara" >/dev/null
+        mv "${STEM}" "$out"
+    fi
+}
+build_kara_seq() {      # KARAC_AUTO_PAR=0 → single-threaded twin (SEQ lane)
+    local out="target/${STEM}_kara_seq"
+    if [ ! -x "$out" ] || [ "${STEM}.kara" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling ${STEM}.kara (KARAC_AUTO_PAR=0, seq) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "${STEM}.kara" >/dev/null
+        mv "${STEM}" "$out"
+    fi
+}
 build_go_seq() {
     local out="target/${STEM}_go_seq"
-    local src="go-seq/main.go"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+    if [ ! -x "$out" ] || [ "go-seq/main.go" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling go-seq ..." >&2
         ( cd go-seq && go build -o "../$out" . )
     fi
 }
+build_go_par() {
+    local out="target/${STEM}_go_par"
+    if [ ! -x "$out" ] || [ "go-par/main.go" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+build_rayon() {
+    local out="target/${STEM}_rayon"
+    if [ ! -x "$out" ] || [ "rayon/src/main.rs" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f rayon/target/release/${STEM}_rayon "$out"
+    fi
+}
 
-build_rust     "${STEM}.rs"
-build_rust_ovf "${STEM}.rs"
-build_c        "${STEM}.c"
-build_kara     "${STEM}.kara"
+build_rust
+build_rust_ovf
+build_c
+build_c_par
+build_kara
+build_kara_seq
 build_go_seq
+build_go_par
+build_rayon
 
-# Sink agreement — every compiled mirror's stdout must be byte-identical before
-# timing. Over K=108000 passes the fold is a fixed constant; Python runs a
-# smaller K and is intentionally excluded from this check.
-expected="184973043"
+# Sink agreement — every mirror in BOTH lanes must be byte-identical before
+# timing (the associative sum is order-independent, so par == seq). Python runs a
+# different (1/10) K and is intentionally excluded.
+expected="67500000"
 mismatch=""
 for pair in \
-    "kara:./target/${STEM}_kara" \
+    "kara_seq:./target/${STEM}_kara_seq" \
+    "kara_par:./target/${STEM}_kara" \
     "rust:./target/${STEM}" \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
-    "go:./target/${STEM}_go_seq"; do
+    "c_par:./target/${STEM}_c_par" \
+    "go:./target/${STEM}_go_seq" \
+    "go_par:./target/${STEM}_go_par" \
+    "rayon:./target/${STEM}_rayon"; do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -133,18 +164,18 @@ if [ -n "$mismatch" ]; then
     echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara/rust/rust_ovf/c/go): $expected"
+echo "sink (all seq+par mirrors): $expected"
 echo
 
 bench_begin id=84 slug=largest_rectangle group=1-100 \
     title="Largest Rectangle in Histogram" \
-    workload="K=108000 monotonic-stack largest-rectangle passes over a fresh sawtooth histogram (N=2000, phase = iter), per-area rolling-hash fold / polynomial-hash sink" \
+    workload="K=108000 independent monotonic-stack largest-rectangle passes over fresh sawtooth histograms (N=2000, phase=iter), associative-sum reduction (auto-par vs hand-tuned) / sink" \
     sink="$expected"
 
-echo "=== runtime — seq lane (apples-to-apples, single-threaded) ==="
-rt_begin --warmup 5 --runs 30
+echo "=== runtime — SEQ lane (single-threaded) ==="
+rt_begin --warmup 3 --runs 20
 rt_cmd --lang kara --approach largest_rectangle --lane seq --mode codegen \
-    --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
+    --name "kara ${STEM} (KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach largest_rectangle --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
 rt_cmd --lang rust --approach largest_rectangle_ovf --lane seq --mode native \
@@ -156,7 +187,23 @@ rt_cmd --lang go --approach largest_rectangle --lane seq --mode native \
 rt_end
 
 echo
-echo "=== runtime — Python (smaller K, timed separately, not cross-checked) ==="
+echo "=== runtime — PAR LANE: auto-par vs hand-tuned vs metal floor ==="
+# kara's default build auto-parallelizes the `for i in 0..K` sum reduction with NO
+# parallel source. C-pthreads is the bare-metal floor; rayon and goroutines are the
+# hand-tuned comparators. NOT comparable to the single-thread seq rows above.
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach largest_rectangle --lane par --mode codegen \
+    --name "kara ${STEM} (auto-par, NO parallel code)" --cmd "./target/${STEM}_kara"
+rt_cmd --lang c --approach largest_rectangle --lane par --mode native \
+    --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
+rt_cmd --lang rust --approach largest_rectangle --lane par --mode native \
+    --name "rust ${STEM} (rayon par_iter)" --cmd "./target/${STEM}_rayon"
+rt_cmd --lang go --approach largest_rectangle --lane par --mode native \
+    --name "go   ${STEM} (goroutines + WaitGroup)" --cmd "./target/${STEM}_go_par"
+rt_end
+
+echo
+echo "=== runtime — Python (1/10 K, timed separately, not cross-checked) ==="
 rt_begin --warmup 2 --runs 10
 rt_cmd --lang python --approach largest_rectangle --lane seq --mode interp \
     --name "py   ${STEM} (K=4000)" --cmd "python3 ${STEM}.py"
@@ -179,39 +226,31 @@ ce_end
 
 echo
 echo "=== binary size ==="
-size_put --lang kara --approach largest_rectangle --lane seq --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach largest_rectangle --lane seq --mode codegen --path "target/${STEM}_kara_seq"
+size_put --lang kara --approach largest_rectangle --lane par --mode codegen --path "target/${STEM}_kara"
 size_put --lang rust --approach largest_rectangle --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach largest_rectangle --lane seq --mode native  --path "target/${STEM}_c"
+size_put --lang c    --approach largest_rectangle --lane par --mode native  --path "target/${STEM}_c_par"
 size_put --lang go   --approach largest_rectangle --lane seq --mode native  --path "target/${STEM}_go_seq"
 
 echo
 echo "=== runtime memory (peak) ==="
-mem_put --lang kara --approach largest_rectangle --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang kara --approach largest_rectangle --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara_seq)"
+mem_put --lang kara --approach largest_rectangle --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
 mem_put --lang rust --approach largest_rectangle --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
 mem_put --lang c    --approach largest_rectangle --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
 mem_put --lang go   --approach largest_rectangle --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"
 
 echo
 echo "=== compile memory (cold) ==="
-for src in "${STEM}.kara"; do
-    stem="$(basename "$src" .kara)"
-    rm -f "target/${stem}_kara" "$stem"
-    bytes=$(mem_peak karac build "$src")
-    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
-    cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
-done
-for src in "${STEM}.rs"; do
-    stem="$(basename "$src" .rs)"
-    out="target/$stem"
-    rm -f "$out"
-    cmem_put --lang rust --approach "$stem" --mode native --bytes "$(mem_peak rustc -O "$src" -o "$out")"
-done
-for src in "${STEM}.c"; do
-    stem="$(basename "$src" .c)"
-    out="target/${stem}_c"
-    rm -f "$out"
-    cmem_put --lang c --approach "$stem" --mode native --bytes "$(mem_peak clang -O3 "$src" -o "$out")"
-done
+rm -f "target/${STEM}_kara" "${STEM}"
+bytes=$(mem_peak karac build "${STEM}.kara")
+mv "${STEM}" "target/${STEM}_kara" 2>/dev/null || true
+cmem_put --lang kara --approach largest_rectangle --mode codegen --bytes "$bytes"
+rm -f "target/${STEM}"
+cmem_put --lang rust --approach largest_rectangle --mode native --bytes "$(mem_peak rustc -O "${STEM}.rs" -o "target/${STEM}")"
+rm -f "target/${STEM}_c"
+cmem_put --lang c --approach largest_rectangle --mode native --bytes "$(mem_peak clang -O3 "${STEM}.c" -o "target/${STEM}_c")"
 
 echo
 bench_emit

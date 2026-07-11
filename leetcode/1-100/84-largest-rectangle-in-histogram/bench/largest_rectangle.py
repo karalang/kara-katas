@@ -2,8 +2,8 @@
 
 Python mirror of bench/largest_rectangle.kara. Each iteration builds a fresh sawtooth
 histogram (heights[j] = (j + iter) % 50, N=2000), runs the monotonic-stack
-largest_rectangle, and folds the area through a rolling polynomial hash. Runs a
-smaller K (pure-Python is slow); timed separately, NOT cross-checked. See ../README.md.
+largest_rectangle, and adds the area into an associative sum. Runs a smaller K
+(pure-Python is slow); timed separately, NOT cross-checked. See ../README.md.
 """
 
 
@@ -32,12 +32,10 @@ def build(n, iter_):
 def main():
     n = 2000
     total = 4000
-    modulus = 1000000007
     total_sum = 0
     for k in range(total):
         h = build(n, k)
-        area = largest_rectangle(h, n)
-        total_sum = (total_sum * 131 + (area + 1)) % modulus
+        total_sum += largest_rectangle(h, n)
     print(total_sum)
 
 

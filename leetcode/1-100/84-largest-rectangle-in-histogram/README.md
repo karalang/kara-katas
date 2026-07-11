@@ -74,28 +74,38 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 > ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
 
-**Workload.** The monotonic-stack pass is O(n). To keep every call doing genuinely different work (so nothing hoists), each iteration builds a **fresh sawtooth histogram** whose phase depends on the iteration index — `heights[j] = (j + iter) % 50`, **N = 2000** — then runs `largest_rectangle` (the ★) and folds the area through a **rolling polynomial hash**. The short sawtooth period means many pops per pass, exercising the stack; the per-iteration build and per-call stack allocation are part of the measured work, alongside the double-indexed `heights[stack[..]]` chase. **K = 108,000** iterations. All five compiled mirrors must agree on `184973043` before timing.
+**Two lanes over one workload.** A batch of **K = 108,000 independent** largest-rectangle computations: each iteration builds a **fresh sawtooth histogram** whose phase depends on the iteration index — `heights[j] = (j + iter) % 50`, **N = 2000**, so no call hoists — runs `largest_rectangle` (the ★), and the K areas are combined through a plain **associative sum** (order-independent, so parallel and sequential produce the same total). The short sawtooth period means many pops per pass; the per-iteration build and per-call stack allocation are part of the measured work, alongside the double-indexed `heights[stack[..]]` chase. All nine seq + par mirrors must agree on `67500000` before timing.
+
+- **Seq lane** — the batch run single-threaded: kāra (`KARAC_AUTO_PAR=0`) vs `rustc -O` / `clang -O3` / `go build` per-core.
+- **Par lane** — the *same* batch, parallel: the default `karac build` **auto-parallelises the `for k in 0..K` sum reduction with no hand-written parallel code**, raced against hand-tuned C-pthreads, rayon, and goroutines (kata [#75](../75-sort-colors/)'s framing).
 
 **Equal data structure.** Every mirror uses **1D heap arrays** — kāra `Vec[i64]`, Rust `Vec<i64>`, C `malloc`'d `int64_t*`, Go `[]int64` — for both the histogram and the stack, so the comparison is codegen-vs-codegen.
 
-**Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
+**Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So the seq lane includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+#### Seq lane — single-threaded (`--warmup 3 --runs 20`)
 
 | Implementation | Wall time |
 |---|---|
-| c    largest_rectangle (clang -O3)                    | 534.7 ± 14.1 ms |
-| **kāra largest_rectangle**                            | **800.4 ± 14.0 ms** |
-| rust largest_rectangle (rustc -O, overflow-checks=on) | 801.0 ± 13.3 ms |
-| rust largest_rectangle (rustc -O)                     | 864.9 ± 16.7 ms |
-| go   largest_rectangle                                | 1600.6 ± 61.3 ms |
+| c    largest_rectangle (clang -O3)                    | 539.6 ± 20.7 ms |
+| **kāra largest_rectangle (`KARAC_AUTO_PAR=0`)**       | **823.2 ± 17.5 ms** |
+| rust largest_rectangle (rustc -O)                     | 885.9 ± 34.8 ms |
+| rust largest_rectangle (rustc -O, overflow-checks=on) | 895.3 ± 23.8 ms |
+| go   largest_rectangle                                | 1677.7 ± 64.6 ms |
 
-At **equal safety** the two land in a **dead heat** — kāra `800.4` vs overflow-checked Rust `801.0` ms, within a millisecond — and kāra is actually **ahead of plain `rustc -O`** (864.9 ms) here too (on this run the branchy stack pass schedules a hair faster with overflow checks *on*, so plain `-O` is the slower Rust build). C's unchecked pointer stack is the floor at ~1.50× under kāra; Go trails ~2× — its per-iteration slice allocation is heavy on the GC (see the RSS gap below). Python at 1/27 the iteration count is ~1.94 s, timed separately.
+Single-threaded, kāra is **ahead of both Rust builds** (823.2 vs 885.9 / 895.3 ms) — and the equal-safety comparison (`overflow-checks=on`, 895.3) is the widest gap in kāra's favour. C's unchecked pointer stack is the floor at ~1.53× under kāra; Go trails ~2× (per-iteration slice churn on the GC). Python at K=4000 is ~2.0 s, timed separately.
 
-**RSS.** Peak resident set is **2.22 MiB** for kāra and 2.11 for Rust, against C's 1.53 — and Go's **12.7 MiB**, the per-iteration `[]int64` churn inflating its GC heap by ~6× (records in [`results.container-x86.json`](bench/results.container-x86.json)).
+#### Par lane — auto-par vs hand-tuned, NOT comparable to seq (`--warmup 5 --runs 30`)
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+| Implementation | Wall time |
+|---|---|
+| c    largest_rectangle (pthreads — metal floor)         | 166.3 ± 23.5 ms |
+| rust largest_rectangle (rayon `into_par_iter`)          | 235.1 ± 6.9 ms |
+| **kāra largest_rectangle (auto-par, NO parallel code)** | **244.7 ± 16.2 ms** |
+| go   largest_rectangle (goroutines + WaitGroup)         | 928.6 ± 24.1 ms |
+
+The headline: **kāra's default build parallelises the batch with zero parallel source** — no threads, no rayon, no annotations, just `for k in 0..K { sum += … }` — and lands **within ~4% of hand-tuned rayon** (244.7 vs 235.1 ms), a step behind the raw-pthreads floor (~1.47×), and **3.8× ahead of the goroutine version** (928.6 ms — its per-iteration slice allocation punishes Go's GC hard under parallelism). Against its own single-threaded seq lane (823.2 ms) that is a **3.36× self-speedup** on 4 vCPU, for free. Records in [`results.container-x86.json`](bench/results.container-x86.json).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this stack-driven pass over freshly-built arrays kāra sits right with `rustc -O`. C calibrates the metal floor, Go is the other native data point (its per-iteration slice churn shows in GC time here), Python (run at a fraction of the iteration count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — single-threaded kāra edges ahead of `rustc -O` on this stack-driven pass, and in the par lane kāra's zero-code auto-par matches hand-tuned rayon (`into_par_iter`). C calibrates the metal floor in both lanes, Go is the other native data point (its per-iteration slice churn shows in GC time, badly so under parallelism), Python (run at a fraction of the iteration count, timed separately) the ergonomic foil.

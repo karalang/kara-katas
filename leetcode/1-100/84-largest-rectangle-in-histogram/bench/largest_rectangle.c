@@ -1,9 +1,10 @@
 /*
  * Benchmark workload — Largest Rectangle in Histogram (LeetCode #84).
- * C mirror of bench/largest_rectangle.kara. Each iteration builds a fresh sawtooth
- * histogram (heights[j] = (j + iter) % 50, N=2000) as a malloc'd array, runs the
- * monotonic-stack largest_rectangle (its stack a fresh malloc'd array), and folds the
- * area through a rolling polynomial hash. Same N/K. See ../README.md § Benchmarks.
+ * C mirror of bench/largest_rectangle.kara (SEQ lane). Each iteration builds a fresh
+ * sawtooth histogram (heights[j] = (j + iter) % 50, N=2000) as a malloc'd array, runs
+ * the monotonic-stack largest_rectangle (its stack a fresh malloc'd array), and adds
+ * the area into an associative sum. Same N/K. The largest_rectangle_par.c sibling
+ * parallelises the same reduction with pthreads. See ../README.md § Benchmarks.
  */
 #include <stdio.h>
 #include <stdint.h>
@@ -36,12 +37,11 @@ static int64_t *build(int64_t n, int64_t iter) {
 }
 
 int main(void) {
-    const int64_t n = 2000, total = 108000, modulus = 1000000007;
+    const int64_t n = 2000, total = 108000;
     int64_t sum = 0;
     for (int64_t k = 0; k < total; k++) {
         int64_t *h = build(n, k);
-        int64_t area = largest_rectangle(h, n);
-        sum = (sum * 131 + (area + 1)) % modulus;
+        sum += largest_rectangle(h, n);
         free(h);
     }
     printf("%lld\n", (long long)sum);

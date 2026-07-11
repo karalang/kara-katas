@@ -1,13 +1,18 @@
 // Benchmark workload — Largest Rectangle in Histogram (LeetCode #84).
-// The monotonic-stack pass (the ★) is O(n). To keep every call doing genuinely
-// different work (so nothing hoists), each iteration builds a fresh sawtooth histogram
-// whose phase depends on the iteration index — heights[j] = (j + iter) % 50, N=2000 —
-// then runs largest_rectangle and folds the area through a rolling polynomial hash.
-// The sawtooth's short period means many pops per pass, exercising the stack. The
-// per-iteration build (a Vec[i64]) and the per-call stack (a Vec[i64]) allocation are
+// Two lanes over ONE workload: a batch of K=108000 INDEPENDENT largest-rectangle
+// computations (the ★). Each iteration builds a fresh sawtooth histogram whose phase
+// depends on the iteration index — heights[j] = (j + iter) % 50, N=2000, so no call
+// hoists — runs the monotonic-stack pass, and the K areas are combined through a plain
+// associative SUM (order-independent, so parallel == sequential).
+//
+//   - SEQ lane: the batch run single-threaded — kara (KARAC_AUTO_PAR=0) vs
+//     rustc -O / clang -O3 / go build per-core.
+//   - PAR lane: the SAME batch, parallel — the default `karac build` AUTO-PARALLELIZES
+//     the `for k in 0..K` sum reduction with NO hand-written parallel code, raced
+//     against hand-tuned C-pthreads / rayon / goroutines (kata #75's framing).
+//
+// The per-iteration build (a Vec[i64]) and per-call stack (a Vec[i64]) allocation are
 // part of the measured work, alongside the double-indexed heights[stack[..]] chase.
-// K=108000 iterations. The loop-carried hash is not an auto-par-splittable reduction,
-// so the default build stays single-threaded (verified equal to KARAC_AUTO_PAR=0).
 // See ../README.md § Benchmarks.
 
 fn largest_rectangle(heights: ref Vec[i64], n: i64) -> i64 {
@@ -49,15 +54,13 @@ fn build(n: i64, iter: i64) -> Vec[i64] {
 fn main() {
     let n = 2000i64;
     let total = 108000i64;
-    let modulus = 1000000007i64;
 
+    // Associative sum over K independent largest-rectangle computations; the default
+    // build auto-parallelizes this `for` reduction, KARAC_AUTO_PAR=0 keeps it seq.
     let mut sum = 0i64;
-    let mut k = 0i64;
-    while k < total {
+    for k in 0..total {
         let h = build(n, k);
-        let area = largest_rectangle(h, n);
-        sum = (sum * 131i64 + (area + 1i64)) % modulus;
-        k = k + 1i64;
+        sum = sum + largest_rectangle(h, n);
     }
     println(f"{sum}");
 }

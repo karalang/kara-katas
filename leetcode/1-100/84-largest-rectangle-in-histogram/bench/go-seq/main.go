@@ -1,8 +1,8 @@
 // Benchmark workload — Largest Rectangle in Histogram (LeetCode #84).
-// Go mirror of ../largest_rectangle.kara. Each iteration builds a fresh sawtooth
-// histogram (heights[j] = (j + iter) % 50, N=2000) as a []int64, runs the
-// monotonic-stack largestRectangle (its stack a fresh []int64), and folds the area
-// through a rolling polynomial hash. Same N/K.
+// Go mirror of ../largest_rectangle.kara (SEQ lane). Each iteration builds a fresh
+// sawtooth histogram (heights[j] = (j + iter) % 50, N=2000) as a []int64, runs the
+// monotonic-stack largestRectangle (its stack a fresh []int64), and adds the area into
+// an associative sum. Same N/K. The go-par/ sibling parallelises with goroutines.
 package main
 
 import "fmt"
@@ -46,12 +46,10 @@ func build(n, iter int64) []int64 {
 func main() {
 	const n = 2000
 	const total = 108000
-	const modulus = 1000000007
 	var sum int64 = 0
 	for k := int64(0); k < total; k++ {
 		h := build(n, k)
-		area := largestRectangle(h, n)
-		sum = (sum*131 + (area + 1)) % modulus
+		sum += largestRectangle(h, n)
 	}
 	fmt.Println(sum)
 }
