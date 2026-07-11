@@ -83,7 +83,7 @@ diff <(karac run inorder.kara) <(karac run inorder_iter.kara)   && echo OK
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`inorder.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** Numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json) (Intel Xeon @ 2.80 GHz, 4 vCPU; karac from current `main` 7de42d3, rustc 1.94, clang 18, go 1.24). The corpus's canonical **Apple M5 Pro** `results.json` is added on the reference machine; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal.
+> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.5.0; `karac 0.1.0` from `main` `a84a8624`, `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. This alloc-heavy kata's cross-language *ordering* differs sharply between the two hosts — see the note below the table.
 
 **Workload.** A traversal of a *fixed* tree would be hoisted (a loop-invariant tree gives a constant fold), so this is a **build-then-traverse** workload (the [#98](../98-validate-binary-search-tree/) shape): each of **K = 320,000** iterations builds a fresh **63-node balanced tree** (`shared struct TreeNode`, RC-allocated) and folds the ★'s recursive inorder walk into a rolling polynomial hash **in visit order** — so the sink is order-sensitive and a wrong traversal order changes the number. Folding *during* the walk (a threaded accumulator) rather than collecting a `Vec[i64]` keeps this a **pure traversal bench**, not an allocation bench; the only allocation is `build`'s per-iteration tree, which every mirror also pays. All five compiled mirrors must agree on `85325436` before timing.
 
@@ -91,21 +91,23 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried hash is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **x86 container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried hash is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Apple M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| c    inorder (clang -O3, malloc tree)            | 658.6 ± 17.6 ms |
-| **kāra inorder**                                 | **709.3 ± 20.7 ms** |
-| rust inorder (rustc -O, Box)                      | 732.6 ± 31.6 ms |
-| rust inorder (rustc -O, overflow-checks=on)       | 746.5 ± 26.8 ms |
-| go   inorder (`*Node`, GC)                        | 937.7 ± 44.4 ms |
+| go   inorder (`*Node`, GC)                        | 318.4 ± 2.8 ms |
+| c    inorder (clang -O3, malloc tree)            | 396.8 ± 7.1 ms |
+| **kāra inorder**                                 | **406.1 ± 10.3 ms** |
+| rust inorder (rustc -O, overflow-checks=on)       | 413.9 ± 8.0 ms |
+| rust inorder (rustc -O, Box)                      | 416.5 ± 7.0 ms |
 
-Kāra is **2nd of five and beats both Rust builds** — 1.03× ahead of plain `rustc -O` and 1.05× ahead of equal-safety `rustc -O -C overflow-checks=on`, both on `Box` trees — trailing only the **raw-pointer C floor by 1.08×** and ahead of Go by **1.32×**. This is the same favourable tree/RC regime as the sibling [#98](../98-validate-binary-search-tree/): the recursion is **pointer-chase latency-bound** (each node dereferences two child links before it can recurse), so kāra's higher IPC covers its extra bounds/overflow-check instructions, and the traversal itself carries **no refcount traffic** (the ownership pass elides the count ops to scope boundaries — the tree is single-owner).
+**Kāra beats both Rust `Box` builds and ties the C floor.** At matched safety kāra is **1.02× ahead of `rustc -O -C overflow-checks=on`**, and it also edges plain `rustc -O` (**1.03×**) — both on single-owner `Box` trees, so kāra's RC nodes out-run Rust's *non*-refcounted ones. Against the raw-pointer C floor it is now a **statistical dead heat** (406.1 ± 10.3 vs 396.8 ± 7.1, 1.02×, overlapping ranges) — the whole native field bunches inside ~5 % (397–417 ms). This is the same pointer-chase-latency-bound tree regime as the sibling [#98](../98-validate-binary-search-tree/): each node dereferences two child links before it can recurse, so kāra's higher IPC absorbs its extra bounds/overflow-check instructions, and the traversal carries **no refcount traffic** (the ownership pass elides the count ops to scope boundaries — the tree is single-owner).
 
-**The gap to C is the 8-byte RC header**, not the traversal: kāra allocates 32 B/node (`{rc, val, left, right}`) against C's 24 B (`{val, left, right}`), and on 63 × 320,000 ≈ 20 M allocations/run that width is the memory-bandwidth cost separating kāra from the raw-`malloc` floor — the same header ceiling documented for the linked-list sibling [#92](../92-reverse-linked-list-ii/). Even so, kāra's **binary is 15.4 KiB** (smaller than C's 15.8 KiB, ~140× smaller than Go's 2.2 MiB) and peak RSS **1.6 MiB** (tied with C, vs Go's 7.9 MiB). Python (K = 40,000, a fraction of the native iterations) is timed separately at 1471 ms.
+**Why the C gap vanished on the M5: the RC header is free here.** The container showed kāra trailing C by 1.08×, charged to the 8-byte RC header — kāra allocates 32 B/node (`{rc, val, left, right}`) vs C's 24 B (`{val, left, right}`), and this is an alloc-heavy kata (63 × 320,000 ≈ **20 M allocations/run**). But on macOS the allocator's 16-byte quantum rounds **both** `malloc(24)` and `malloc(32)` into the **same 32-byte slot** (measured: `malloc_size` returns 32 for each) — so C's nodes physically occupy 32 B anyway and kāra's header lands in padding C already pays for. The width penalty is a Linux-allocator artifact, not a fundamental cost; the header ceiling documented for [#92](../92-reverse-linked-list-ii/) still holds where the allocator packs 24 B tightly, just not here.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+**The Go inversion.** Go leaps from *last* on the container (938 ms) to *fastest* on the M5 (318 ms, **1.28× ahead of kāra**) — the classic alloc-bound container→M5 flip: 20 M allocations/run is exactly where Go's bump-allocator + concurrent GC shines on fast native cores. It is not merely a multicore-wall artifact (Go runs 108 % CPU, 345 ms total CPU, still under kāra's 405 ms), but the trade is memory: Go holds **9.5 MiB** peak RSS against kāra's **1.0 MiB** (identical to C) and ships a **2.4 MiB** binary against kāra's **33.1 KiB** (C parity at 32.8 KiB) — ~9× the RSS and ~73× the binary for a 1.28× wall-time edge. Python (K = 40,000, a fraction of the native iterations) is timed separately at 440 ms.
+
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 
