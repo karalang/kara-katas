@@ -74,7 +74,7 @@ diff <(karac run reverse_between.kara) <(karac run reverse_between_threeptr.kara
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`reverse_between.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.5.0; `karac 0.1.0`, `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. The cross-language *ordering* itself differs between the two — see the note below the table.
 
 **Workload.** The reverse mutates/re-links the list, so — like kata [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/) — each iteration builds a **fresh M = 200-node** list and reverses a **~100-node window** whose start shifts per iteration (`left = 1 + iter%50`, `right = left+100`, so no call hoists). For **K = 178,000** iterations (seeded by the loop index) it builds, reverses, and folds the result through a **rolling polynomial hash**. Per-iteration node allocation is part of the measured work — fair, since every mirror allocates its nodes — alongside the RC-node pointer-chase reversal. All five compiled mirrors must agree on `147795689` before timing.
 
@@ -82,19 +82,21 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Apple M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| c    reverse_between (clang -O3, malloc list)          | 605.2 ± 24.6 ms |
-| **kāra reverse_between**                               | **805.6 ± 30.7 ms** |
-| rust reverse_between (rustc -O, overflow-checks=on)    | 886.0 ± 17.9 ms |
-| rust reverse_between (rustc -O)                        | 910.7 ± 32.7 ms |
-| go   reverse_between (`*Node`, GC)                     | 1155.8 ± 27.4 ms |
+| c    reverse_between (clang -O3, malloc list)          | 453.3 ± 12.7 ms |
+| go   reverse_between (`*Node`, GC)                     | 458.5 ± 5.5 ms |
+| **kāra reverse_between**                               | **637.5 ± 17.0 ms** |
+| rust reverse_between (rustc -O)                        | 677.8 ± 15.1 ms |
+| rust reverse_between (rustc -O, overflow-checks=on)    | 684.8 ± 10.7 ms |
 
-At **matched reference semantics** kāra lands **2nd — ahead of both Rust builds and Go** — behind only raw-pointer C. Kāra's `shared struct` beats Rust's `Rc<RefCell<ListNode>>` by ~1.10–1.13× (the `RefCell` borrow-flag check on every node access is the gap, the same pattern as [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/)), and beats GC-managed Go by ~1.43× — with **1.54 MiB** peak RSS to Go's **7.47 MiB**. C's unchecked raw-pointer list is the floor at ~1.33× under kāra. Python (K=6000, a fraction of the native iterations) is timed separately.
+**The headline holds: at matched reference semantics kāra beats both Rust builds** — `shared struct` vs `Rc<RefCell<ListNode>>`, kāra ~1.06–1.07× faster (the `RefCell` borrow-flag check on every node access is the gap, the same pattern as [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/)). Raw-pointer C is the floor at ~1.41× under kāra.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+**What changed from the container:** Go — the *slowest* mirror on the shared x86 container (1155 ms, last place) — is nearly tied with C on the M5, landing kāra in **3rd** here rather than 2nd. This is the alloc-bound container→M5 inversion: each iteration allocates a fresh 200-node list, and Go's GC allocator runs far better on fast native cores than on the noisy shared container (its 107 % CPU is a sliver of concurrent-GC help, not a multicore-wall-clock artifact — it wins on total CPU too, 491 vs kāra's 636 ms). But the trade is memory: kāra holds **1.0 MiB** peak RSS and a **33.9 KiB** binary against Go's **9.2 MiB** and **2.43 MiB** — ~9× less RSS and a ~74× smaller binary for a 1.39× wall-time gap. Python (K=6000, a fraction of the native iterations) is timed separately.
+
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 
