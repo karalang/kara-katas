@@ -1,0 +1,99 @@
+// Benchmark workload — Minimum Window Substring (LeetCode #76).
+// Sliding-window need/have algorithm (the kata's ★). A fixed n=50000 sequence over
+// a 4-symbol alphabet is built ONCE; each of K=5000 iterations runs min_window
+// against a k-dependent 3-symbol target (cycled through 6 patterns so the result
+// varies with k and nothing hoists), folding (start, len) into a rolling hash. The
+// window scan is O(n) per call and is what's measured. The alphabet is represented
+// as small integers (0..3) so the count tables index by value directly — the kata
+// itself exercises the String.bytes() u8-index path (fixed in kara B-2026-07-11-2).
+// See ../README.md § Benchmarks.
+
+fn min_window(s: ref Vec[i64], t: ref Vec[i64]) -> Array[i64, 2] {
+    let n = s.len();
+    let m = t.len();
+    if m > n {
+        return [-1i64, 0i64];
+    }
+
+    let mut need: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < 4i64 {
+        need.push(0i64);
+        i = i + 1i64;
+    }
+    let mut required = 0i64;
+    i = 0i64;
+    while i < m {
+        let c = t[i];
+        if need[c] == 0i64 {
+            required = required + 1i64;
+        }
+        need[c] = need[c] + 1i64;
+        i = i + 1i64;
+    }
+
+    let mut have: Vec[i64] = Vec.new();
+    i = 0i64;
+    while i < 4i64 {
+        have.push(0i64);
+        i = i + 1i64;
+    }
+
+    let mut formed = 0i64;
+    let mut l = 0i64;
+    let mut best_start = -1i64;
+    let mut best_len = 0i64;
+    let mut r = 0i64;
+    while r < n {
+        let cr = s[r];
+        have[cr] = have[cr] + 1i64;
+        if have[cr] == need[cr] {
+            formed = formed + 1i64;
+        }
+        while formed == required {
+            let win = r - l + 1i64;
+            if best_start == -1i64 or win < best_len {
+                best_start = l;
+                best_len = win;
+            }
+            let cl = s[l];
+            have[cl] = have[cl] - 1i64;
+            if have[cl] < need[cl] {
+                formed = formed - 1i64;
+            }
+            l = l + 1i64;
+        }
+        r = r + 1i64;
+    }
+
+    [best_start, best_len]
+}
+
+fn main() {
+    let n = 50000i64;
+    let total = 5000i64;
+    let modulus = 1000000007i64;
+
+    // Build the fixed sequence once (alphabet {0,1,2,3}).
+    let mut s: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        s.push((i * 7i64) % 4i64);
+        i = i + 1i64;
+    }
+
+    // Six 3-symbol targets, cycled by k so min_window's result varies.
+    let targets: Vec[Vec[i64]] = [[0i64, 1i64, 2i64], [1i64, 2i64, 3i64], [2i64, 3i64, 0i64],
+                                  [3i64, 0i64, 1i64], [0i64, 2i64, 3i64], [1i64, 3i64, 0i64]];
+
+    let mut acc = 0i64;
+    let mut k = 0i64;
+    while k < total {
+        let t = targets[k % 6i64];
+        let res = min_window(s, t);
+        acc = (acc * 131i64 + (res[0] + 1i64)) % modulus;
+        acc = (acc * 131i64 + res[1]) % modulus;
+        k = k + 1i64;
+    }
+    println(f"{acc}");
+}
