@@ -85,7 +85,7 @@ diff <(karac run restore_ip.kara) <(karac run restore_ip_loops.kara)     && echo
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`restore_ip.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** Numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json) (Intel Xeon @ 2.80 GHz, 4 vCPU; karac from current `main` 7de42d3, rustc 1.94, clang 18, go 1.24). The corpus's canonical **Apple M5 Pro** `results.json` is added on the reference machine; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal.
+> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.5.0; `karac 0.1.0` from `main` `a84a8624`, `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. The cross-language *ordering* itself differs between the two — see the note below the table.
 
 **Workload.** The kata's engine is the **segment enumeration + validity test** (which three cut points give four valid 0–255 segments). Building the address strings would make this an allocation bench, so instead the bench **folds** the segment values of every valid quadruple through a rolling polynomial hash — no strings. Digits are computed inline from the iteration index so nothing hoists, and the three-dot triple loop with the leading-zero / ≤255 test runs over them, **K = 6,500,000** times (acc seeded by the loop index). All five compiled mirrors must agree on `467547481` before timing.
 
@@ -93,19 +93,21 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried hash is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **x86 container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried hash is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Apple M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| **kāra restore_ip**                                | **592.0 ± 19.5 ms** |
-| c    restore_ip (clang -O3)                         | 649.4 ± 26.6 ms |
-| rust restore_ip (rustc -O)                          | 670.5 ± 24.1 ms |
-| rust restore_ip (rustc -O, overflow-checks=on)      | 801.9 ± 43.7 ms |
-| go   restore_ip                                     | 1077.3 ± 47.0 ms |
+| rust restore_ip (rustc -O)                          | 141.1 ± 1.5 ms |
+| **kāra restore_ip**                                 | **144.4 ± 0.9 ms** |
+| c    restore_ip (clang -O3)                          | 153.7 ± 2.1 ms |
+| rust restore_ip (rustc -O, overflow-checks=on)      | 182.8 ± 3.3 ms |
+| go   restore_ip                                     | 345.6 ± 7.1 ms |
 
-On this honest scalar field kāra is **fastest of five** — **1.10× ahead of C**, **1.13× ahead of plain `rustc -O`**, **1.35× ahead of equal-safety `rustc -O -C overflow-checks=on`**, and **1.82× ahead of Go**. The enumeration is branch-heavy (the leading-zero and ≤255 guards, plus the three data-dependent loop bounds), so it is **latency-bound on branch resolution** rather than throughput-bound — the same favourable regime as the recursion-bound backtracking siblings [#77](../77-combinations/)/[#78](../78-subsets/)/[#90](../90-subsets-ii/), where kāra's higher IPC covers its extra bounds/overflow-check instructions. Binary 15.4 KiB (C parity, ~140× smaller than Go's 2.2 MiB), peak RSS ~1.6 MiB (equal to C). Python (K = 200,000, a fraction of the native iterations) is timed separately at 2530 ms.
+**The equal-safety headline holds and sharpens.** Kāra checks integer overflow by default, and at matched safety it is **1.27× ahead of `rustc -O -C overflow-checks=on`** and **1.06× ahead of clang C** — while landing within **~2 %** of *un*checked `rustc -O` (a statistical dead heat: 144.4 ± 0.9 vs 141.1 ± 1.5, overlapping ranges), and **2.39× ahead of Go**. The tell is the cost of the overflow guards themselves: adding them costs **Rust ~30 %** (141 → 183 ms) but kāra only a few percent, so kāra-*with*-checks nearly matches Rust-*without* and clears Rust-*with* by a wide margin. The enumeration is branch-heavy (the leading-zero and ≤255 guards, plus the three data-dependent loop bounds), so it is **latency-bound on branch resolution** rather than throughput-bound — the same favourable regime as the recursion-bound backtracking siblings [#77](../77-combinations/)/[#78](../78-subsets/)/[#90](../90-subsets-ii/), where kāra's higher IPC absorbs its extra bounds/overflow-check instructions (fully vs C and equal-safety Rust; to within noise vs unchecked Rust). Binary **33.1 KiB** (C parity at 32.7 KiB, ~73× smaller than Go's 2.4 MiB), peak RSS **1.0 MiB** (identical to C). Python (K = 200,000, a fraction of the native iterations) is timed separately at 827 ms.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+**What changed from the container.** On the shared x86 container kāra was outright *fastest of five* (592 ms, ahead of C and both Rust builds); on the M5's wider out-of-order core the whole native field compresses to 141–154 ms and plain `rustc -O` nudges ~2 % ahead, dropping kāra to a near-tied **2nd**. The ordering shift is the cross-host variation the machine note warns about — the *equal-safety* comparison (kāra ahead of C and of overflow-checked Rust) is stable across both hosts; only the gap to overflow-*wrapping* Rust flips sign, and only by a hair.
+
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 
