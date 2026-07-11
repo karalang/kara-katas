@@ -1,0 +1,80 @@
+// LeetCode #80: Remove Duplicates from Sorted Array II — generalized keep-at-most-m.
+//
+// Same in-place dedup as remove_duplicates_ii.kara (the ★), but instead of the
+// two-slot look-back it makes the cap explicit: walk each *run* of equal values and
+// copy at most `m` of them forward. With m = 2 the output is identical to the ★ —
+// the generalization is the point (m = 1 would be the plain "remove duplicates" of
+// kata #26). A distinct surface: an inner run-scan loop with a compound
+// `while i < n and nums[i] == v` condition and an explicit run counter, rather than
+// the ★'s single sweep with a `nums[k-2]` peek.
+
+fn remove_dups_keep(nums: mut ref Vec[i64], m: i64) -> i64 {
+    let n = nums.len();
+    let mut k = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        let v = nums[i];
+        let mut run = 0i64;
+        while i < n and nums[i] == v {
+            if run < m {
+                nums[k] = nums[i];
+                k = k + 1i64;
+            }
+            run = run + 1i64;
+            i = i + 1i64;
+        }
+    }
+    k
+}
+
+fn report(vals: ref Vec[i64], acc: mut ref i64) {
+    let mut nums: Vec[i64] = Vec.new();
+    let n = vals.len();
+    let mut i = 0i64;
+    while i < n {
+        nums.push(vals[i]);
+        i = i + 1i64;
+    }
+    let k = remove_dups_keep(mut nums, 2i64);
+
+    print(f"k={k}: [");
+    let mut j = 0i64;
+    while j < k {
+        if j > 0i64 {
+            print(", ");
+        }
+        print(f"{nums[j]}");
+        j = j + 1i64;
+    }
+    println("]");
+
+    let mut a = (acc * 131i64 + (k + 1i64)) % 1000000007i64;
+    let mut p = 0i64;
+    while p < k {
+        a = (a * 131i64 + (nums[p] + 1i64)) % 1000000007i64;
+        p = p + 1i64;
+    }
+    acc = a;
+}
+
+fn make(vals: Array[i64, 9], len: i64) -> Vec[i64] {
+    let mut v: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < len {
+        v.push(vals[i]);
+        i = i + 1i64;
+    }
+    v
+}
+
+fn main() {
+    let mut acc = 0i64;
+    report(make([1i64, 1i64, 1i64, 2i64, 2i64, 3i64, 0i64, 0i64, 0i64], 6i64), mut acc);
+    report(make([0i64, 0i64, 1i64, 1i64, 1i64, 1i64, 2i64, 3i64, 3i64], 9i64), mut acc);
+    report(make([1i64, 2i64, 3i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64], 3i64), mut acc);
+    report(make([1i64, 1i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64], 2i64), mut acc);
+    report(make([7i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64], 1i64), mut acc);
+    report(make([0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64], 0i64), mut acc);
+    report(make([5i64, 5i64, 5i64, 5i64, 0i64, 0i64, 0i64, 0i64, 0i64], 4i64), mut acc);
+    println(f"sink: {acc}");
+}
