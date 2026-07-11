@@ -1,0 +1,63 @@
+// Benchmark workload — Largest Rectangle in Histogram (LeetCode #84).
+// The monotonic-stack pass (the ★) is O(n). To keep every call doing genuinely
+// different work (so nothing hoists), each iteration builds a fresh sawtooth histogram
+// whose phase depends on the iteration index — heights[j] = (j + iter) % 50, N=2000 —
+// then runs largest_rectangle and folds the area through a rolling polynomial hash.
+// The sawtooth's short period means many pops per pass, exercising the stack. The
+// per-iteration build (a Vec[i64]) and the per-call stack (a Vec[i64]) allocation are
+// part of the measured work, alongside the double-indexed heights[stack[..]] chase.
+// K=108000 iterations. The loop-carried hash is not an auto-par-splittable reduction,
+// so the default build stays single-threaded (verified equal to KARAC_AUTO_PAR=0).
+// See ../README.md § Benchmarks.
+
+fn largest_rectangle(heights: ref Vec[i64], n: i64) -> i64 {
+    let mut stack: Vec[i64] = Vec.new();
+    let mut max_area = 0i64;
+    let mut i = 0i64;
+    while i <= n {
+        let h = if i < n { heights[i] } else { 0i64 };
+        while stack.len() > 0i64 and heights[stack[stack.len() - 1i64]] > h {
+            let top = stack[stack.len() - 1i64];
+            stack.pop();
+            let height = heights[top];
+            let width = if stack.len() == 0i64 {
+                i
+            } else {
+                i - stack[stack.len() - 1i64] - 1i64
+            };
+            let area = height * width;
+            if area > max_area {
+                max_area = area;
+            }
+        }
+        stack.push(i);
+        i = i + 1i64;
+    }
+    max_area
+}
+
+fn build(n: i64, iter: i64) -> Vec[i64] {
+    let mut h: Vec[i64] = Vec.new();
+    let mut j = 0i64;
+    while j < n {
+        h.push((j + iter) % 50i64);
+        j = j + 1i64;
+    }
+    h
+}
+
+fn main() {
+    let n = 2000i64;
+    let total = 108000i64;
+    let modulus = 1000000007i64;
+
+    let mut sum = 0i64;
+    let mut k = 0i64;
+    while k < total {
+        let h = build(n, k);
+        let area = largest_rectangle(h, n);
+        sum = (sum * 131i64 + (area + 1i64)) % modulus;
+        k = k + 1i64;
+    }
+    println(f"{sum}");
+}
