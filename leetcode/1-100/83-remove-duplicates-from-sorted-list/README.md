@@ -84,7 +84,7 @@ diff <(karac run remove_duplicates_list.kara) <(karac run remove_duplicates_list
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`remove_duplicates_list.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. Same shift as its sibling [#82](../82-remove-duplicates-from-sorted-list-ii/): kāra's `shared struct` still beats Rust's `Rc<RefCell>` at equal reference semantics (1.08-1.10×), but Go's GC-managed pointer list leapfrogs to the front, so kāra lands 3rd of five. `bench/results.json` records the M5 host.
 
 **Workload.** The dedup mutates/re-links the list, so — like kata [#21](../21-merge-two-sorted-lists/)/[#82](../82-remove-duplicates-from-sorted-list-ii/) — each iteration builds a **fresh** sorted list and runs `delete_duplicates`. The list is an **M = 300** run with **every value duplicated** (`[0,0,1,1,2,2,…]`, so the keep-one dedup halves it uniformly). For **K = 70,000** iterations (seeded by the loop index so nothing hoists) it builds, dedups, and folds the survivors through a **rolling polynomial hash**. Per-iteration node allocation is part of the measured work — fair, since every mirror allocates its nodes. All five compiled mirrors must agree on `674382658` before timing.
 
@@ -92,19 +92,19 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| c    remove_duplicates_list (clang -O3)                    | 600.8 ± 12.8 ms |
-| **kāra remove_duplicates_list**                           | **809.7 ± 32.3 ms** |
-| rust remove_duplicates_list (rustc -O)                    | 999.8 ± 30.2 ms |
-| rust remove_duplicates_list (rustc -O, overflow-checks=on)| 1034.4 ± 41.2 ms |
-| go   remove_duplicates_list                               | 1294.5 ± 39.0 ms |
+| go   remove_duplicates_list                               | **493.0 ± 8.0 ms** |
+| c    remove_duplicates_list (clang -O3)                    | 494.1 ± 6.0 ms |
+| **kāra remove_duplicates_list**                           | **673.2 ± 9.0 ms** |
+| rust remove_duplicates_list (rustc -O)                    | 729.2 ± 12.0 ms |
+| rust remove_duplicates_list (rustc -O, overflow-checks=on)| 739.6 ± 12.0 ms |
 
-The same ordering as its `m = 2` sibling [#82](../82-remove-duplicates-from-sorted-list-ii/): kāra **2nd of five — ahead of both Rust builds and Go**, behind only raw-pointer C. At matched reference semantics kāra's `shared struct` beats Rust's `Rc<RefCell<ListNode>>` by ~1.24× (the `RefCell` borrow-flag check on every node access is the gap), and beats GC-managed Go by ~1.60×; overflow checks cost Rust another ~3%. C's unchecked raw-pointer list is the floor at ~1.35× under kāra. Python (K=3500, ~0.54 s at 1/20 the native iteration count) is timed separately.
+The **load-bearing result holds** exactly as in sibling [#82](../82-remove-duplicates-from-sorted-list-ii/): at matched reference semantics kāra's `shared struct` beats Rust's `Rc<RefCell<ListNode>>` — **1.08×** ahead of `rustc -O` and **1.10×** ahead of overflow-checked Rust (the `RefCell` borrow-flag check on every node access is the gap). What changed from the container is the top: **Go's GC-managed list jumps to fastest** (493.0 ms, tied with C at 494.1 — arm64 loves the fresh-list-per-iteration churn), so kāra lands **3rd of five**, 1.37× behind the Go/C front, still ahead of both Rusts. Overflow checks are free here (allocation/pointer-bound). Python (K=3500, ~0.54 s at 1/20 the native iteration count) is timed separately.
 
-**Binary size & RSS.** As with #82, the kāra binary is **15.4 KiB** — on par with C, ~20× smaller than compute siblings — because this RC-allocation loop is not an auto-parallelisation candidate, so no scheduler runtime links in; peak RSS is **1.54 MiB** (tied with C, lowest), versus Go's **7.43 MiB** GC heap. See [`results.container-x86.json`](bench/results.container-x86.json).
+**Binary size & RSS.** The kāra binary is **33.1 KiB** (C parity) and peak RSS ~1.05 MiB (tied with C, lowest), versus Go's GC heap. See [`bench/results.json`](bench/results.json).
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
 

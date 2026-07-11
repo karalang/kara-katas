@@ -69,23 +69,23 @@ diff <(karac run gray_code.kara) <(karac run gray_code_reflect.kara)      && ech
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`gray_code.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. Still a **five-way dead heat** — all five land within **0.4 %** (≤ 2.2 ms) of each other, kāra included. `bench/results.json` records the M5 host.
 
 **Workload.** The closed form `gray(i) = i ^ (i >> 1)` generates the **N = 65536** codes. Storing them into a Vec is a **vectorizable refill loop** the optimizer would erase (`BENCHMARKS.md` pitfall), so the bench **folds** each code through a **rolling polynomial hash** — the loop-carried hash serialises the pass and keeps the shift/XOR observable. For **K = 2500** iterations (seeded by the loop index, each code XOR-ed with the iteration index so nothing hoists) it rolls the 65536 codes into a per-iteration accumulator, then combines those. The measured work is the shift/XOR + multiply-add-mod fold inner loop — **pure scalar arithmetic, no arrays**. All five compiled mirrors must agree on `140491298` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| go   gray_code                                | 751.8 ± 2.7 ms |
-| **kāra gray_code**                            | **788.0 ± 1.7 ms** |
-| c    gray_code (clang -O3)                     | 789.0 ± 5.3 ms |
-| rust gray_code (rustc -O, overflow-checks=on)  | 789.4 ± 2.3 ms |
-| rust gray_code (rustc -O)                      | 790.8 ± 6.7 ms |
+| go   gray_code                                | **511.0 ± 3.0 ms** |
+| c    gray_code (clang -O3)                     | 511.5 ± 3.0 ms |
+| rust gray_code (rustc -O, overflow-checks=on)  | 512.3 ± 3.0 ms |
+| rust gray_code (rustc -O)                      | 512.9 ± 3.0 ms |
+| **kāra gray_code**                            | **513.2 ± 3.0 ms** |
 
-A **five-way dead heat** — kāra, C, and both Rust builds land within **~3 ms** of each other (well inside the noise), with kāra nominally 2nd of five and ahead of C and both Rust variants. This is a **latency-bound** loop: the `acc = (acc·131 + …) % mod` fold is a tight dependency chain (multiply → add → mod, each waiting on the last), so the shift/XOR bit-ops — and kāra's overflow checks — execute in the shadow of that chain and cost nothing. Only Go edges ahead (~1.05×). At equal safety kāra ties `rustc -O -C overflow-checks=on` exactly (788.0 vs 789.4 ms). Python at K=120 (1/20 the iterations) is ~0.91 s, timed separately.
+A **five-way dead heat** — all five land within **0.4 %** (511.0 to 513.2 ms), kāra nominally last but tied to the millisecond. This is a deeply **latency-bound** loop: the `acc = (acc·131 + …) % mod` fold is a tight dependency chain (multiply → add → mod, each waiting on the last), so IPC is *below 1* (kāra 0.87, C 0.78) and the wall-clock is set entirely by that chain's latency. Kāra retires 1.11× C's instructions (2.02 G vs 1.82 G) — its shift/XOR + overflow-check work — but every extra instruction executes in the chain's shadow for free, so the clocks tie (the `B-2026-07-10-5` latency-hidden regime at its most extreme). At equal safety kāra ties `rustc -O -C overflow-checks=on` to within a millisecond. Python is timed separately.
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
 

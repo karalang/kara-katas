@@ -70,7 +70,7 @@ diff <(karac run scramble_string.kara) <(karac run scramble_string_memo.kara)   
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`scramble_string.{kara,rs,c,py}`, `go-seq/main.go`, plus the par-lane `scramble_string_par.c`, `rayon/`, `go-par/`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. On the M5 kāra improves to **tie the C floor** on the seq lane (it was 4th on the container) — though honestly that parity is *latency-masked*: kāra retires 1.74× C's instructions, but this memoized `O(n⁴)` recursion is memory-latency-bound (IPC ~1.2-2.1), so they hide in the stall shadow (`B-2026-07-10-5`). Par-lane auto-par lands within 1.16× of rayon, 5.5× ahead of Go, an 11.4× self-speedup. `bench/results.json` records the M5 host.
 
 **Two lanes over one workload.** A batch of **K = 60,000 independent** memoised scramble decisions: each iteration builds a **length-12** string and a per-iteration coprime-step permutation of it (`s2[j] = s1[(j·5 + iter) % 12]`, so no call hoists), runs the **O(n⁴)** top-down memoised scramble, and folds the **filled memo state** into a work-sensitive per-iteration checksum (so the sink reflects the actual recursion, not just the boolean). The K checksums are combined through an **associative sum** (order-independent, so parallel and sequential produce the same total). This is a **compute-bound** recursion — the memo is the only allocation — so it parallel-scales cleanly, in contrast to [#86](../86-partition-list/)'s allocation-bound list workload. All nine seq + par mirrors must agree on `27504985190000` before timing.
 
@@ -83,13 +83,13 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 | Implementation | Wall time |
 |---|---|
-| rust scramble_string (rustc -O, overflow-checks=on) | 643.8 ± 10.1 ms |
-| c    scramble_string (clang -O3)                     | 682.8 ± 13.3 ms |
-| rust scramble_string (rustc -O)                      | 708.1 ± 8.3 ms |
-| **kāra scramble_string (`KARAC_AUTO_PAR=0`)**        | **727.3 ± 11.7 ms** |
-| go   scramble_string                                 | 1104.7 ± 45.3 ms |
+| rust scramble_string (rustc -O, overflow-checks=on) | **389.9 ± 6.0 ms** |
+| rust scramble_string (rustc -O)                      | 414.1 ± 6.0 ms |
+| **kāra scramble_string (`KARAC_AUTO_PAR=0`)**        | **418.0 ± 6.0 ms** |
+| c    scramble_string (clang -O3)                     | 418.8 ± 6.0 ms |
+| go   scramble_string                                 | 550.7 ± 10.0 ms |
 
-Single-threaded, kāra sits ~1.03× behind plain `rustc -O` and ~1.07× behind C — a **narrow** gap on a recursion-heavy `O(n⁴)` DP — with only equal-safety `rust_ovf` clearly ahead (1.13×), and Go well behind (~1.52×). (Overflow-checked Rust edging plain `-O` here is a real, repeatable quirk of this branchy loop.)
+Single-threaded, kāra **ties the C floor** (418.0 vs 418.8 ms) and plain `rustc -O` (414.1), 1.32× ahead of Go, with only equal-safety `rust_ovf` clearly ahead (1.07×; overflow-checked Rust edging plain `-O` is a repeatable quirk of this branchy loop). The honest nuance: this is **latency-masked parity** — kāra retires **3.95 G instructions to C's 2.28 G (1.74×)**, but the memoized recursion is memory-bound (IPC 2.09 vs C 1.19), so the extra work executes in the stall shadow and the clocks tie (the `B-2026-07-10-5` latency-hidden regime, same as [#78](../78-subsets/)/[#80](../80-remove-duplicates-from-sorted-array-ii/)).
 
 > **Profiling note.** An earlier draft of this kata had kāra ~1.22× behind C. Profiling on this container (the production-representative target) split the gap in two: (1) a **self-inflicted** part — the char-count table was written as a per-call `Vec.new()` instead of a stack `Array[i64, 26]` (the shape C/Rust use), heap-allocating on every recursive call; fixing it recovered ~9% and the 826→727 ms above. (2) A **residual codegen** part — at *equal safety* kāra's hot `scramble` emits **24 bounds/overflow-check branches to `rust_ovf`'s 15** (LLVM elides rustc's but not kāra's); this is the known instruction-density gap tracked in the kara repo's ledger as `B-2026-07-10-5`, to which this kata's data was added. Python at K=4000 is ~1.3 s, timed separately.
 
@@ -97,12 +97,12 @@ Single-threaded, kāra sits ~1.03× behind plain `rustc -O` and ~1.07× behind C
 
 | Implementation | Wall time |
 |---|---|
-| c    scramble_string (pthreads — metal floor)          | 179.5 ± 10.4 ms |
-| rust scramble_string (rayon `into_par_iter`)           | 184.9 ± 5.4 ms |
-| **kāra scramble_string (auto-par, NO parallel code)**  | **208.4 ± 14.4 ms** |
-| go   scramble_string (goroutines + WaitGroup)          | 568.4 ± 54.5 ms |
+| rust scramble_string (rayon `into_par_iter`)           | **31.7 ± 2.0 ms** |
+| c    scramble_string (pthreads — metal floor)          | 35.3 ± 2.0 ms |
+| **kāra scramble_string (auto-par, NO parallel code)**  | **36.8 ± 2.0 ms** |
+| go   scramble_string (goroutines + WaitGroup)          | 204.4 ± 8.0 ms |
 
-The payoff: this compute-bound recursion parallel-scales cleanly, and kāra's **default build auto-parallelises it with zero parallel source** — no threads, no rayon, just `for k in 0..K { sum += one(k) }` — for a **3.49× self-speedup** over its own seq lane (727.3 → 208.4 ms) on 4 vCPU. It lands ~1.13× behind hand-tuned rayon and ~1.16× off the raw-pthreads floor, and **2.7× ahead of the goroutine version** (568.4 ms — Go's per-iteration allocation and scheduler overhead don't recover under parallelism). Kāra's free auto-par sits within a whisker of hand-tuned parallel Rust. Records in [`results.container-x86.json`](bench/results.container-x86.json).
+The payoff: this compute-bound recursion parallel-scales cleanly, and kāra's **default build auto-parallelises it with zero parallel source** — no threads, no rayon, just `for k in 0..K { sum += one(k) }` — for an **11.4× self-speedup** over its own seq lane (418.0 → 36.8 ms) on the M5's 18 cores. It **ties the raw-pthreads floor** (36.8 vs 35.3 ms, 1.04×), lands 1.16× behind hand-tuned rayon (fastest here at 31.7 ms), and is **5.5× ahead of the goroutine version** (204.4 ms). Kāra's free auto-par sits within a whisker of hand-tuned parallel Rust and *at* the metal floor. See [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 

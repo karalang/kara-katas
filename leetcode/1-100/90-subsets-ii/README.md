@@ -82,25 +82,25 @@ diff <(karac run subsets_ii.kara) <(karac run subsets_ii_iterative.kara)    && e
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`subsets_ii.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The win holds:** kāra is fastest of five (tied with equal-safety Rust), ahead of C, wrapping Rust, and Go on this latency-bound dedup backtracking. `bench/results.json` records the M5 host.
 
 **Workload.** The emit-at-every-node dedup backtracking (the ★) run as an **enumerate-and-fold** (kata [#78](../78-subsets/)'s shape): the recursion visits every **unique** subset node of a sorted multiset — **8 distinct values each repeated twice** (`[0,0,1,1,…,7,7]`), so the `i == start or nums[i] != nums[i-1]` skip rule fires throughout and the tree has **3⁸ = 6561** unique subsets (not 2¹⁶) — and folds each node's path into a threaded accumulator (no `Vec`-of-`Vec` storage, so the measured work is the **DFS recursion + the dedup test**, not allocation). Enumerated **K = 2700** times, the acc seeded with the loop index so nothing hoists. All five compiled mirrors must agree on `96157880` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
 
 | Implementation | Wall time |
 |---|---|
-| rust subsets_ii (rustc -O, overflow-checks=on) | 796.3 ± 6.8 ms |
-| **kāra subsets_ii**                            | **797.5 ± 3.9 ms** |
-| c    subsets_ii (clang -O3)                     | 856.7 ± 15.4 ms |
-| rust subsets_ii (rustc -O)                      | 864.5 ± 2.8 ms |
-| go   subsets_ii                                 | 886.7 ± 4.4 ms |
+| **kāra subsets_ii**                            | **500.2 ± 4.0 ms** |
+| rust subsets_ii (rustc -O, overflow-checks=on) | 500.4 ± 4.0 ms |
+| rust subsets_ii (rustc -O)                      | 532.5 ± 5.0 ms |
+| c    subsets_ii (clang -O3)                     | 536.9 ± 6.0 ms |
+| go   subsets_ii                                 | 604.0 ± 6.0 ms |
 
-Kāra **dead-heats overflow-checked Rust for the lead** (797.5 vs 796.3 ms, within a millisecond) and sits **ahead of C (~1.07×), plain `rustc -O` (~1.08×), and Go (~1.11×)**. This recursion-bound dedup backtracking is **latency-bound** — call/return plus the reused path's push/pop memory traffic stall the pipeline (even C runs at low IPC here) — so kāra's extra bounds/overflow-check instructions execute in the stall shadow and cost nothing, landing it at the front. It's the same regime as siblings [#77](../77-combinations/)/[#78](../78-subsets/) (kāra at the C floor / dead heat on backtracking). Python at K=300 (1/9 the iterations) is ~1.57 s, timed separately.
+Kāra is **fastest of five** — a dead heat with equal-safety Rust for the lead (500.2 vs 500.4 ms, within noise) and **ahead of C (1.07×), plain `rustc -O` (1.06×), and Go (1.21×)**. This recursion-bound dedup backtracking is **latency-bound** (call/return + the reused path's push/pop memory traffic stall the pipeline — C runs at IPC 1.06 here), and kāra actually pipelines it *better* (IPC 1.42): it retires 1.26× C's instructions (3.23 G vs 2.55 G) yet finishes ahead of C, because the higher IPC more than covers the extra bounds/overflow-check work — and it matches equal-safety Rust exactly (3.23 G ≈ rust_ovf 3.21 G, same IPC). Same favorable regime as siblings [#77](../77-combinations/)/[#78](../78-subsets/). Python is timed separately.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+Binary 33.1 KiB (C parity), RSS ~C. See [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 
