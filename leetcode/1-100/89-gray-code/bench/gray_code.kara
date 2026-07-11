@@ -1,0 +1,30 @@
+// Benchmark workload — Gray Code (LeetCode #89).
+// The kata's ★ is the closed form gray(i) = i ^ (i >> 1). Storing 2ⁿ codes into a Vec
+// is a vectorizable refill loop the optimizer would erase (BENCHMARKS.md pitfall), so
+// the bench instead FOLDS each code through a rolling polynomial hash — the loop-
+// carried hash serialises the pass and keeps the bit-ops observable. For K=2500
+// iterations (seeded by the loop index, and each folded code XOR-ed with the iteration
+// index so nothing hoists) it rolls the N=65536 gray codes into a per-iteration acc,
+// then combines those. The measured work is the shift/XOR + fold inner loop. See
+// ../README.md § Benchmarks.
+
+fn main() {
+    let n = 65536i64;
+    let total = 2500i64;
+    let modulus = 1000000007i64;
+
+    let mut sum = 0i64;
+    let mut iter = 0i64;
+    while iter < total {
+        let mut acc = iter;
+        let mut i = 0i64;
+        while i < n {
+            let g = i ^ (i >> 1i64);
+            acc = (acc * 131i64 + (g ^ iter)) % modulus;
+            i = i + 1i64;
+        }
+        sum = (sum * 131i64 + acc) % modulus;
+        iter = iter + 1i64;
+    }
+    println(f"{sum}");
+}
