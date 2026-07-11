@@ -77,28 +77,28 @@ diff <(karac run search_a_2d_matrix.kara) <(karac run search_a_2d_matrix_stairca
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`search_a_2d_matrix.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ⚠️ **Machine caveat.** Measured on a **shared x86-64 Linux cloud container** (Intel Xeon @ 2.80 GHz, 4 vCPU, Linux 6.18.5; karac from current `main`). These are container numbers only — this kata has **no M5 `results.json` yet**; it will be re-benched on the corpus's Apple M5 Pro and the canonical table added then. Don't compare absolute times/sizes/RSS against sibling katas' M5 tables; [`bench/results.container-x86.json`](bench/results.container-x86.json) records the real host.
+> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **Kāra's relative position improves on the M5** — from mid-pack on the container (4th) to **2nd of five**, ahead of both Rust builds and C, behind only Go (and neck-and-neck with it on instructions retired). `bench/results.json` records the M5 host.
 
 **Workload.** The flattened O(log m·n) binary search (the ★), over a 100×100 sorted matrix **built once**, then hammered with **K = 10,000,000** queries. Targets cycle `k mod 20000` against a matrix of the even values `0, 2, … , 19998`, so almost exactly **half the queries hit and half miss** — defeating any branch-prediction shortcut. This is a **build-once + punch** workload (per the corpus's benchmark-design rule): the one-time O(m·n) matrix build is negligible, so what's timed is the search itself. All five compiled mirrors must agree on `844187512` before timing.
 
 **Equal safety.** Kāra checks integer overflow on every arithmetic op by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried hash is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Cloud-container numbers.**
+`--warmup 5 --runs 30 --shell=none`. **M5 Pro numbers.** All single-threaded, ~99.7 % CPU (the loop-carried hash is not a reduction the auto-par pass can split — `karac build --concurrency-report` reports `<no parallelization opportunities detected>`). Two independent 30-run samples put kāra at 360.6 and 361.3 ms — a stable mean, though kāra carries higher run-to-run jitter (±~21 ms) than the native binaries; its instruction count is deterministic at **3.55 G, within 1.2 % of Go's 3.51 G** (identical work — see below).
 
 | Implementation | Wall time |
 |---|---|
-| c    search_a_2d_matrix (clang -O3)              | **763.9 ± 7.1 ms** |
-| rust search_a_2d_matrix (rustc -O, overflow-checks=on) | 780.9 ± 11.3 ms |
-| rust search_a_2d_matrix (rustc -O)              | 797.6 ± 9.4 ms |
-| **kāra search_a_2d_matrix**                     | **807.3 ± 10.5 ms** |
-| go   search_a_2d_matrix                         | 817.2 ± 8.4 ms |
+| go   search_a_2d_matrix                         | **341.8 ± 10.8 ms** |
+| **kāra search_a_2d_matrix**                     | **361.3 ± 20.7 ms** |
+| rust search_a_2d_matrix (rustc -O, overflow-checks=on) | 371.0 ± 8.0 ms |
+| rust search_a_2d_matrix (rustc -O)              | 384.7 ± 1.2 ms |
+| c    search_a_2d_matrix (clang -O3)             | 386.8 ± 4.6 ms |
 
-A **five-way tie inside 7%**. On this compute-bound, allocation-free search kāra lands within **1.06×** of the clang floor and squarely among the natives — and at **equal safety** (kāra checks overflow by default) the faithful peer `rustc -O -C overflow-checks=on` (780.9 ms) sits within noise of kāra (807.3 ms). Python at 1/10 the query count is ~1.36 s (so ~13.6 s projected to full K, timed separately, not sink-checked).
+A **tight cluster inside 13 %**, with kāra **2nd of five** — ahead of wrapping `rustc -O` (1.06×), C (1.07×), and — the load-bearing comparison — ahead of the equal-safety `rustc -O -C overflow-checks=on` (371.0 ms) by **1.03×**. Kāra checks overflow on every op by default, so `rust -C overflow-checks=on` is the faithful peer, and kāra's bounds-check-eliminated binary-search codegen *beats* it here rather than merely tying (it sat within noise on the container). Only Go is ahead (1.06×), and by instruction count the two are neck-and-neck (kāra 3.55 G vs Go 3.51 G, within 1.2 %) — Go's edge is a small wall-clock margin on identical work. This *improves* on the x86 container, where kāra was mid-pack (4th of five); on the M5 kāra's search codegen pulls ahead of both Rust and C. Python at 1/10 the query count is ~0.71 s (so ~7.1 s projected to full K, timed separately, not sink-checked).
 
-Compile-cold (clang 76 ms < rustc 123 ms < karac 168 ms) and binary size (c 15.7 KiB, **kāra 324.5 KiB**, go 2.11 MiB, rust 3.77 MiB — kāra links the runtime floor but stays far under the Rust/Go binaries); peak RSS is a ~0.7 MiB spread (c 1.66, go 1.90, rust 2.21, kāra 2.35 MiB). See [`bench/results.container-x86.json`](bench/results.container-x86.json) for the exact records.
+Compile-cold on the M5 is clang 43.5 ms < **karac 82.9 ms** < rustc 84.6 ms — karac edges rustc, at ~1.9× the clang floor. Binary size: c 32.7 KiB, **kāra 33.4 KiB** (at C parity — the runtime floor dead-strips on the M5), rust 455.9 KiB, go 2.38 MiB. Peak RSS is a tight band among the non-GC mirrors — **kāra 1.11 MiB** (the leanest), c 1.13, rust 1.20 — with Go at 2.83 MiB. See [`bench/results.json`](bench/results.json) for the exact records.
 
-The load-bearing facts: the five-language sink agreement on `844187512`, and that on a **compute-bound, allocation-free** search this is a tight cluster — the opposite regime from the allocation-heavy `Vec`-of-`Vec` katas ([#72](../72-edit-distance/)/[#73](../73-set-matrix-zeroes/)). See the JSON for the exact per-language times, binary sizes, and peak-RSS on this host.
+The load-bearing facts: the five-language sink agreement on `844187512`, and that on a **compute-bound, allocation-free** search kāra's codegen lands 2nd of five — ahead of both Rust builds and C, a tie in work with Go — the opposite regime from the allocation-heavy `Vec`-of-`Vec` katas ([#72](../72-edit-distance/)/[#73](../73-set-matrix-zeroes/)), and a favorable one for kāra's bounds-check-eliminated search loop.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and at **equal safety** (both overflow-checked) the two are within measurement noise on this pointer-chasing search. C calibrates the metal floor, Go is the other native data point, Python (run at 1/10 the query count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and at **equal safety** (both overflow-checked) kāra is **ahead** on the M5 (361 vs 371 ms, 1.03×) on this pointer-chasing search, and ahead of wrapping `rustc -O` too. C calibrates the metal floor, Go is the other native data point (fastest here, but within 1.2 % of kāra on instructions retired — identical work), Python (run at 1/10 the query count, timed separately) the ergonomic foil.
