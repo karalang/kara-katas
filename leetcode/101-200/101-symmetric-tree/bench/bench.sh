@@ -134,7 +134,7 @@ fi
 echo "sink (kara/rust/rust_ovf/c/go): $expected"
 echo
 
-bench_begin id=101 slug=is_symmetric group=1-100 \
+bench_begin id=101 slug=is_symmetric group=101-200 \
     title="Symmetric Tree" \
     workload="build 8 trees once, then K=8000000 reps of recursive is_symmetric on a data-dependent-selected tree (idx=acc%8), folding each verdict into a rolling polynomial hash" \
     sink="$expected"

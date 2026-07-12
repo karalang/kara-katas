@@ -71,23 +71,23 @@ diff <(karac run is_symmetric.kara) <(karac run is_symmetric_serial.kara)   && e
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`is_symmetric.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
+> **Machine.** The canonical numbers below are the corpus's **Apple M5 Pro** run — [`bench/results.json`](bench/results.json) (karac from kara `main 034a6b03`). A shared **x86-64 Linux cloud-container** reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. On the container kāra trailed the seq leader by **3.01×** (Rust 2.87×); on the M5 that gap shrinks to **2.39×** (Rust 2.38×) — the container-flagged RC/traversal gap eased substantially on the M5 (the [#98](../../1-100/98-validate-binary-search-tree/) pattern the container note predicted), so it is a per-node cost, not a tracked regression.
 
 **Workload.** Build 8 trees once (15-node subtrees; even index symmetric via a mirrored subtree, odd index asymmetric via a plain-copied subtree), then **K = 8,000,000** reps of recursive `is_symmetric` on a **data-dependent-selected** tree (`idx = acc%8`, seeded by the running hash, so nothing hoists), folding each verdict into a rolling polynomial hash. Each mirror uses its natural read-only tree node: Kāra `shared` (RC), C/Go raw pointer, **Rust `Box` + `&`-borrow**. All five compiled mirrors must agree on `80745775` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../../1-100/69-sqrtx/)'s discipline) — though on a pure-traversal loop the fold's `acc*131` is the only arithmetic, so it barely moves.
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
+`--warmup 5 --runs 30 --shell=none`. All single-threaded. **Apple M5 Pro numbers** (canonical; sink `80745775` agreed by all five mirrors before timing):
 
 | Implementation | Wall time |
 |---|---|
-| c    is_symmetric (clang -O3, `*Node`)              | 197.3 ± 5.2 ms |
-| rust is_symmetric (rustc -O, overflow-checks=on)     | 201.6 ± 2.3 ms |
-| rust is_symmetric (rustc -O, `Box` + borrow)        | 207.1 ± 11.2 ms |
-| go   is_symmetric (`*Node`, GC)                     | 361.1 ± 4.7 ms |
-| **kāra is_symmetric**                               | **594.8 ± 11.3 ms** |
+| c    is_symmetric (clang -O3, `*Node`)              | 107.2 ± 1.5 ms |
+| rust is_symmetric (rustc -O, `Box` + borrow)        | 107.6 ± 2.2 ms |
+| rust is_symmetric (rustc -O, overflow-checks=on)     | 107.7 ± 2.5 ms |
+| go   is_symmetric (`*Node`, GC)                     | 196.6 ± 4.6 ms |
+| **kāra is_symmetric**                               | **256.1 ± 6.0 ms** |
 
-This is the read-only crossed-traversal twin of [#100](../../1-100/100-same-tree/) (same-tree): a pointer-chase with `match` + field-access per node and nothing to amortize, so Kāra's per-node RC/traversal overhead is again the exposed cost — see #100's benchmark note for the profiled RC-retain-vs-traversal-codegen split (~11 % / the rest). Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical). The kāra binary size there is a symbolizer-inflated build-linkage artifact (~15 KB on a correct build), independent of the runtime numbers.
+kāra is **2.39×** the seq leader (C), **2.38×** Rust, **1.30×** Go. This is the read-only crossed-traversal twin of [#100](../../1-100/100-same-tree/) (same-tree): a pointer-chase with `match` + field-access per node and nothing to amortize, so Kāra's per-node RC/traversal overhead is again the exposed cost — see #100's benchmark note for the profiled RC-retain-vs-traversal-codegen split (~11 % / the rest). On M5, C, Rust, and overflow-checked Rust land in a three-way tie (~107 ms) — the fold's lone `acc*131` makes the overflow check free, as expected on a pure-traversal loop. Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference). The M5 kāra binary is **33.3 KiB**, matching C's 32.9 KiB (a correct lean build); the container file's 328 KiB kāra size was a symbolizer-inflated linkage artifact, and peak RSS (1.0 MiB) is on par with Rust and C.
 
 ### Why Rust is in the harness
 
