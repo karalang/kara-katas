@@ -1,0 +1,43 @@
+// #97 micro-bench: reads-only get_unchecked variant (writes stay checked; no set_unchecked).
+// Same as bench/interleave.kara but the hot RHS reads use get_unchecked — isolates the
+// bounds-check cost of the index-dense DP. Same K, same sink 940211674.
+fn is_interleave(s1: String, s2: String, s3: String) -> bool {
+    let a = s1.bytes(); let b = s2.bytes(); let c = s3.bytes();
+    let n = a.len(); let m = b.len();
+    if n + m != c.len() { return false; }
+    let stride = m + 1i64;
+    let mut dp: Vec[bool] = Vec.filled((n + 1i64) * stride, false);
+    dp[0] = true;
+    unsafe {
+        let mut j = 1i64;
+        while j <= m { dp[j] = dp.get_unchecked(j - 1i64) and (b.get_unchecked(j - 1i64) == c.get_unchecked(j - 1i64)); j = j + 1i64; }
+        let mut i = 1i64;
+        while i <= n {
+            dp[i * stride] = dp.get_unchecked((i - 1i64) * stride) and (a.get_unchecked(i - 1i64) == c.get_unchecked(i - 1i64));
+            let mut jj = 1i64;
+            while jj <= m {
+                let up = dp.get_unchecked((i - 1i64) * stride + jj) and (a.get_unchecked(i - 1i64) == c.get_unchecked(i + jj - 1i64));
+                let left = dp.get_unchecked(i * stride + jj - 1i64) and (b.get_unchecked(jj - 1i64) == c.get_unchecked(i + jj - 1i64));
+                dp[i * stride + jj] = up or left;
+                jj = jj + 1i64;
+            }
+            i = i + 1i64;
+        }
+        dp.get_unchecked(n * stride + m)
+    }
+}
+fn main() {
+    let s1s = ["baacccbabbacacabbbcabbcc", "abcababacbbacbcbccbcac", "abbaabbabacbcaaccbbcbcca", "bacaccbbaaacbaaaabaaaa", "cbabaabcacccbccaabbbc", "bacaacaccaccacabcbbcccb", "aaaccbbbcbaabbbcabbbbabc", "abbabbabcbcccaaacabbccbb", "caccbacaaacabbbcccb", "cccbacbaacbbbcbaaccbb", "aacbcaccaabbaababcccbc", "bbacbaabbabbaabccbacccaa"];
+    let s2s = ["baabaabbbcaccbcaaaaa", "cacccaaaccaaacccbcacabc", "bbacbacccccbaabccaacc", "ccbbaabcaacaccccbcccaca", "abaaabbbbccbaaccca", "babaaccaccbaaaacbcccc", "bbacaaaabaabbabacbcb", "ccbbabaaabaccababacacbbc", "bbccaabcbabcbcacacbccacc", "ccabccacabbbaabacbacb", "babcaabacabcbbcacab", "abbaacaabccbcaababbbbbc"];
+    let s3s = ["baabcaabcacabbbabbcaccbacabccaaaaaabbbcabbcc", "cabacccacbaaabaccacaaabbaccbccbcbccacbcacabcc", "bbaabbaabcbabcacbccaccbbcaaabacccaaccbbcbccca", "baccacccbbbaabaaabccabaacaccccbaacabaaaaccaca", "acbababaaabbbbcacbcbaacccabccccacaabbbc", "babbaacaaaccaccacccabccacabcabbcaccbaacbcccc", "aaabbacacaacabbbaabbbacbabacbcbabbbcabbbbabc", "cabbacbbbabbaaabaacbcbcacccabaaabacacbcbabcbccbb", "bcbacccacababcacbabcaabccaaacabbcbcccccbacc", "cccccbaabcbcacacacbabbbbcbbaabacbacbaaccbb", "aabcabbccaaacbaccabacabbbcbacaabababcccbc", "abbbbaaaccabaabcacbbbabcbaabaabbabbbcbcbaccccaa"];
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 400000i64 {
+        let idx = acc % 12i64;
+        let ok = is_interleave(s1s[idx], s2s[idx], s3s[idx]);
+        let bit = if ok { 1i64 } else { 0i64 };
+        acc = (acc * 131i64 + bit + 1i64) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
