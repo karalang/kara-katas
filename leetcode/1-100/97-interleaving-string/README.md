@@ -75,15 +75,17 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 `--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
 
-| Implementation | Wall time |
-|---|---|
-| c    interleave (clang -O3, calloc table)          | 258.3 ± 4.0 ms |
-| rust interleave (rustc -O, Vec)                     | 361.2 ± 2.8 ms |
-| rust interleave (rustc -O, overflow-checks=on)       | 481.9 ± 8.0 ms |
-| go   interleave (slice, GC)                         | 492.0 ± 3.2 ms |
-| **kāra interleave**                                 | **583.2 ± 5.5 ms** |
+| Implementation | Wall time | Bounds-checked? |
+|---|---|---|
+| c    interleave (clang -O3, calloc table)          | 260.8 ± 12.2 ms | no |
+| rust interleave (rustc -O, Vec)                     | 368.4 ± 20.8 ms | elided |
+| rust interleave (rustc -O, overflow-checks=on)       | 488.8 ± 9.6 ms | elided |
+| go   interleave (slice, GC)                         | 499.6 ± 4.8 ms | **yes** |
+| **kāra interleave**                                 | **514.4 ± 18.1 ms** | **yes** |
 
-**On this container kāra trails — the honest cost of bounds-checking an index-dense inner loop.** Every DP cell does five-plus **bounds-checked array reads** — `dp[up]`, `dp[left]`, `s1[i-1]`, `s2[j-1]`, and `s3[i+j-1]` — and kāra checks all of them by default, while `clang -O3` and release Rust elide the checks entirely (and Go's are cheaper here). So kāra is **2.26× behind C**, **1.61× behind unchecked Rust**, and — the equal-safety line that usually saves it — still **1.21× behind `rustc -O -C overflow-checks=on`**. That last gap is the tell: overflow checks aren't the bottleneck here (they cost Rust ~33 %, 361 → 482 ms, and kāra clears checked Rust on the *arithmetic*-bound sibling [#96](../96-unique-binary-search-trees/)); it is the **per-element bounds check** on a loop that is almost nothing *but* array reads, where kāra has no compute to hide the check behind. This is the mirror image of #96 (arithmetic-heavy → kāra fastest of five): the two katas bracket where kāra's default safety is free (compute-bound) and where it bites (index-bound). Bounds-check *elision* on provably-in-range DP indices is the codegen headroom this kata points at. Go's slice bounds checks land it between the Rust builds and kāra (492 ms, at 7.4 MiB RSS vs kāra's 2.5 MiB); C's raw `calloc` table with no checks at all is the floor. Python (K = 20,000, a fraction of the compiled iterations, timed separately at **1131 ms**, not cross-checked) is the ergonomic foil.
+**The ordering is by memory safety, and among bounds-checked languages kāra is a tie.** Every DP cell does five-plus indexed array reads — `dp[up]`, `dp[left]`, `s1[i-1]`, `s2[j-1]`, `s3[i+j-1]` — so this is an almost-pure array-indexing loop with little compute to hide a per-access check behind. The three implementations that **bounds-check every access** cluster tightly — checked Rust 489 ms, Go 500 ms, **kāra 514 ms** (kāra is within **1.05×** of equal-safety `rustc -O -C overflow-checks=on` and **1.03×** of Go) — while the two that skip the checks pull ahead: `clang -O3` (260 ms, no checks) and `rustc -O` (368 ms, whose slice checks LLVM largely *elides* on the provably-in-range indices). So the honest gap here is **the cost of bounds-checking an index-dense loop**, not a codegen deficit: micro-benchmarked, replacing kāra's checked `dp[i]`/`bytes[i]` reads with `unsafe { …get_unchecked(i) }` drops it to **~400 ms — matching unchecked `rustc -O` (368 ms)**, confirming kāra's generated arithmetic/loop code is competitive and the delta is entirely the checks Rust/LLVM prove away and kāra does not (yet). Bounds-check *elision* on monotone DP indices is the codegen headroom this kata points at. This is the mirror image of the arithmetic-bound sibling [#96](../96-unique-binary-search-trees/), where kāra is *fastest* of five: the two katas bracket where kāra's default safety is free (compute-bound) and where it costs (index-bound). C's raw `calloc` table with no checks is the floor; Go pays its slice checks too (500 ms, at 7.3 MiB RSS vs kāra's 2.5 MiB). Python (K = 20,000, a fraction of the compiled iterations, timed separately at **1145 ms**, not cross-checked) is the ergonomic foil.
+
+> **Apples-to-apples note.** All five mirrors allocate the DP table with a **single sized zero-init** (Kāra `Vec.filled(n, false)`, C `calloc`, Rust `vec![false; n]`, Go `make`) — an earlier draft built the Kāra table with an N-`push` loop, which added ~12 % (583 → 514 ms) of allocation churn the sized-alloc mirrors don't pay; that was fixed before these numbers.
 
 **Flagged for the M5 re-bench** — the checked-vs-unchecked-indexing gap is a codegen property that should carry to the M5, but the corpus has seen container orderings compress on the wider out-of-order core, so treat the *margin* as a data point.
 
