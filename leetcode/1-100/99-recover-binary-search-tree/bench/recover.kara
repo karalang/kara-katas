@@ -1,0 +1,62 @@
+// Benchmark workload for LeetCode #99 — build a 31-node BST once, then K reps of
+// corrupt (swap two data-dependent-index node values) + fold the corrupted tree +
+// recover (adjacent-descent inorder scan). The corruption indices come from the
+// running hash (idx = acc%n), so nothing hoists; recover must correctly restore
+// the tree each rep or the next corrupted-checksum — and the sink — diverges.
+// Each mirror uses its natural shared-mutable node (Kara RC / C malloc / Rust
+// Rc<RefCell> / Go *Node), collecting nodes inorder and swapping their values.
+shared struct TreeNode { mut val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => { if v < n.val { n.left = insert(n.left, v); } else { n.right = insert(n.right, v); } Some(n) }
+    }
+}
+fn collect(node: Option[TreeNode], out: mut ref Vec[TreeNode]) {
+    match node { None => {} Some(n) => { collect(n.left, out); out.push(n); collect(n.right, out); } }
+}
+fn sum_inorder(node: Option[TreeNode], acc: mut ref i64) -> Option[TreeNode] {
+    match node {
+        None => {}
+        Some(n) => { sum_inorder(n.left, acc); acc = (acc * 131i64 + n.val) % 1000000007i64; sum_inorder(n.right, acc); }
+    }
+    node
+}
+fn recover(root: Option[TreeNode]) -> Option[TreeNode] {
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    collect(root, mut nodes);
+    let mut fi = -1i64; let mut si = -1i64; let mut i = 1i64;
+    while i < nodes.len() {
+        if nodes[i - 1i64].val > nodes[i].val { if fi < 0i64 { fi = i - 1i64; } si = i; }
+        i = i + 1i64;
+    }
+    if fi >= 0i64 { let t = nodes[fi].val; nodes[fi].val = nodes[si].val; nodes[si].val = t; }
+    root
+}
+fn corrupt2(root: Option[TreeNode], a: i64, b: i64) -> Option[TreeNode] {
+    let mut ns: Vec[TreeNode] = Vec.new();
+    collect(root, mut ns);
+    if a != b { let t = ns[a].val; ns[a].val = ns[b].val; ns[b].val = t; }
+    root
+}
+fn main() {
+    // Build a fixed 31-node BST.
+    let vals = [16i64,8i64,24i64,4i64,12i64,20i64,28i64,2i64,6i64,10i64,14i64,18i64,22i64,26i64,30i64,1i64,3i64,5i64,7i64,9i64,11i64,13i64,15i64,17i64,19i64,21i64,23i64,25i64,27i64,29i64,31i64];
+    let mut root: Option[TreeNode] = None;
+    let mut k = 0i64;
+    while k < vals.len() { root = insert(root, vals[k]); k = k + 1i64; }
+    let n = vals.len();
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 700000i64 {
+        let a = acc % n;
+        let b = (acc * 7i64 + 3i64) % n;
+        root = corrupt2(root, a, b);
+        let mut cs = 0i64;
+        root = sum_inorder(root, mut cs);
+        acc = (acc * 131i64 + cs) % 1000000007i64;
+        root = recover(root);
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
