@@ -42,8 +42,8 @@ is_mirror(a, b):
 
 ## Kāra features exercised
 
-- **`shared struct TreeNode` (RC), read-only crossed walk** — the ★ compares two subtrees in the crossed lockstep that defines mirroring, without mutating anything. Node type mirrors kata [#100](../100-same-tree/).
-- **Recursive deep clone with a swap** (`mirror`) — the test *trees* are constructed as `root { left: L, right: mirror(L) }`, where `mirror` deep-clones a subtree swapping left/right at every level (the RC-clone surface hardened by [#95](../95-unique-binary-search-trees-ii/)'s fixes); a plain `copy_tree` builds the asymmetric cases.
+- **`shared struct TreeNode` (RC), read-only crossed walk** — the ★ compares two subtrees in the crossed lockstep that defines mirroring, without mutating anything. Node type mirrors kata [#100](../../1-100/100-same-tree/).
+- **Recursive deep clone with a swap** (`mirror`) — the test *trees* are constructed as `root { left: L, right: mirror(L) }`, where `mirror` deep-clones a subtree swapping left/right at every level (the RC-clone surface hardened by [#95](../../1-100/95-unique-binary-search-trees-ii/)'s fixes); a plain `copy_tree` builds the asymmetric cases.
 - **Nested `match` on paired `Option[shared]`** — the four-way `None`/`Some` case analysis on the two crossed children.
 - **`mut ref String` double serialization** — the second solver emits a normal and a mirror preorder through `mut ref String` accumulators and compares them.
 
@@ -75,7 +75,7 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Workload.** Build 8 trees once (15-node subtrees; even index symmetric via a mirrored subtree, odd index asymmetric via a plain-copied subtree), then **K = 8,000,000** reps of recursive `is_symmetric` on a **data-dependent-selected** tree (`idx = acc%8`, seeded by the running hash, so nothing hoists), folding each verdict into a rolling polynomial hash. Each mirror uses its natural read-only tree node: Kāra `shared` (RC), C/Go raw pointer, **Rust `Box` + `&`-borrow**. All five compiled mirrors must agree on `80745775` before timing.
 
-**Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline) — though on a pure-traversal loop the fold's `acc*131` is the only arithmetic, so it barely moves.
+**Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../../1-100/69-sqrtx/)'s discipline) — though on a pure-traversal loop the fold's `acc*131` is the only arithmetic, so it barely moves.
 
 `--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
 
@@ -87,8 +87,8 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | go   is_symmetric (`*Node`, GC)                     | 361.1 ± 4.7 ms |
 | **kāra is_symmetric**                               | **594.8 ± 11.3 ms** |
 
-This is the read-only crossed-traversal twin of [#100](../100-same-tree/) (same-tree): a pointer-chase with `match` + field-access per node and nothing to amortize, so Kāra's per-node RC/traversal overhead is again the exposed cost — see #100's benchmark note for the profiled RC-retain-vs-traversal-codegen split (~11 % / the rest). Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical). The kāra binary size there is a symbolizer-inflated build-linkage artifact (~15 KB on a correct build), independent of the runtime numbers.
+This is the read-only crossed-traversal twin of [#100](../../1-100/100-same-tree/) (same-tree): a pointer-chase with `match` + field-access per node and nothing to amortize, so Kāra's per-node RC/traversal overhead is again the exposed cost — see #100's benchmark note for the profiled RC-retain-vs-traversal-codegen split (~11 % / the rest). Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical). The kāra binary size there is a symbolizer-inflated build-linkage artifact (~15 KB on a correct build), independent of the runtime numbers.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at matched read-only tree traversal (`shared` handle walk vs `Box` + `&`-borrow). C's raw pointer chase is the metal floor, Go the GC data point, Python (run at a fraction of the iteration count, timed separately, not cross-checked) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../../1-100/1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at matched read-only tree traversal (`shared` handle walk vs `Box` + `&`-borrow). C's raw pointer chase is the metal floor, Go the GC data point, Python (run at a fraction of the iteration count, timed separately, not cross-checked) the ergonomic foil.
