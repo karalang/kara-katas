@@ -1,0 +1,104 @@
+// LeetCode #102: Binary Tree Level Order Traversal — the canonical BFS (frontier queue).
+//
+// The textbook breadth-first solution: hold the current level as a `Vec[TreeNode]`
+// frontier, emit its values as one row, then build the NEXT level by collecting every
+// child of the frontier left-to-right and advancing `current = next`. Each outer
+// iteration is exactly one tree level, so the rows come out in level order directly —
+// no depth bookkeeping. Node type mirrors kata [#100](../../1-100/100-same-tree/) —
+// a `shared struct TreeNode` (RC).
+//
+// The `current = next` frontier advance is the idiom that surfaced compiler bug
+// B-2026-07-12-30 (reassigning a `Vec[shared]` local leaked the overwritten frontier's
+// elements); it is fixed as of kara `924cd05`, so this natural BFS now compiles and runs
+// leak-clean, byte-identical to the DFS solvers.
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => {
+            if v < n.val {
+                n.left = insert(n.left, v);
+            } else {
+                n.right = insert(n.right, v);
+            }
+            Some(n)
+        }
+    }
+}
+
+fn level_order(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    let mut result: Vec[Vec[i64]] = Vec.new();
+    let mut current: Vec[TreeNode] = Vec.new();
+    match root {
+        None => {}
+        Some(n) => { current.push(n); }
+    }
+    while current.len() > 0i64 {
+        let mut row: Vec[i64] = Vec.new();
+        let mut next: Vec[TreeNode] = Vec.new();
+        let mut i = 0i64;
+        while i < current.len() {
+            let node = current[i];
+            row.push(node.val);
+            match node.left {
+                None => {}
+                Some(l) => { next.push(l); }
+            }
+            match node.right {
+                None => {}
+                Some(r) => { next.push(r); }
+            }
+            i = i + 1i64;
+        }
+        result.push(row);
+        current = next;
+    }
+    result
+}
+
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    let mut i = 0i64;
+    while i < nums.len() {
+        root = insert(root, nums[i]);
+        i = i + 1i64;
+    }
+    root
+}
+
+fn main() {
+    let base = [8i64, 4i64, 12i64, 2i64, 6i64, 10i64, 14i64, 1i64, 3i64, 5i64, 7i64];
+    let mut acc = 0i64;
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() {
+            nums.push(base[(k + t) % base.len()]);
+            k = k + 1i64;
+        }
+        let root = build(nums);
+        let levels = level_order(root);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() {
+                acc = (acc * 131i64 + lvl[vi]) % 1000000007i64;
+                vi = vi + 1i64;
+            }
+            li = li + 1i64;
+        }
+        println(f"tree {t}: {levels.len()} levels");
+        t = t + 1i64;
+    }
+    println(f"sink: {acc}");
+}

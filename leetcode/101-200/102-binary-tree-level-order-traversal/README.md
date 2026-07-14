@@ -19,13 +19,14 @@ Return the node values **grouped by depth** — row 0 is the root, row 1 its chi
 | Approach | Kāra | Python |
 |---|---|---|
 | **DFS carrying the depth** ★ | [`level_order.kara`](level_order.kara) ✓ | [`level_order.py`](level_order.py) ✓ |
+| **BFS frontier queue (`current = next`)** | [`level_order_bfs.kara`](level_order_bfs.kara) ✓ | — |
 | **Level-by-level DFS (height + per-depth collect)** | [`level_order_bylevel.kara`](level_order_bylevel.kara) ✓ | — |
 
-`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output for both approaches, under the default (auto-par on) build and `KARAC_AUTO_PAR=0` alike; the two Kāra approaches agree with **each other** and with the Python mirror. An independent **ground-truth check** confirms the traversal: the DFS-with-depth level order equals a genuinely different **BFS** level order — a queue that dequeues a whole level per iteration — on a case battery **and on 20,000 randomised fuzz trees**, zero mismatches. Both solvers compile with zero diagnostics.
+`✓` runs end-to-end today. Interpreter (`karac run --interp`), JIT (`karac run`), and codegen (`karac build`) produce identical output for all three approaches, under the default (auto-par on) build and `KARAC_AUTO_PAR=0` alike; the three Kāra approaches agree with **each other** and with the Python mirror. An independent **ground-truth check** confirms the traversal: the DFS-with-depth level order equals a genuinely different **BFS** level order — a queue that dequeues a whole level per iteration — on a case battery **and on 20,000 randomised fuzz trees**, zero mismatches. All three solvers compile with zero diagnostics and are valgrind-clean.
 
-## Two ways to reach level order
+## Three ways to reach level order
 
-Both produce the same `Vec[Vec[i64]]`; they differ in how they visit the tree.
+All three produce the same `Vec[Vec[i64]]`; they differ in how they visit the tree.
 
 **DFS carrying the depth** ([`level_order.kara`](level_order.kara), the ★): a single depth-first walk suffices if each node knows its depth. Keep one output row per depth; when a node at depth `d` is visited, append its value to row `d` (creating that row the first time depth `d` is reached). Because DFS visits a node before either child and the left child before the right, each row fills strictly left to right — exactly level order, in O(n) with no queue.
 
@@ -38,6 +39,8 @@ dfs(node, depth, result):
     dfs(node.right, depth+1, result)
 ```
 
+**BFS frontier queue** ([`level_order_bfs.kara`](level_order_bfs.kara)): the textbook breadth-first solution. Hold the current level as a `Vec[TreeNode]` frontier, emit its values as one row, then build the *next* level by collecting every child of the frontier left-to-right and advancing `current = next`. Each outer iteration is exactly one tree level, so the rows come out in level order with no depth bookkeeping — the most direct statement of "level order" there is.
+
 **Level-by-level DFS** ([`level_order_bylevel.kara`](level_order_bylevel.kara)): first compute the tree's `height` by recursion, then for each depth `d` in `0 .. height` run a `collect_level(node, target=d, cur=0, row)` DFS that descends to exactly depth `d` and appends the nodes it finds there. A distinct mechanism — one pass *per level* that never grows rows on the fly — which must land on the identical grouping the depth-indexed single pass produces.
 
 ## Kāra features exercised
@@ -46,8 +49,13 @@ dfs(node, depth, result):
 - **`mut ref Vec[Vec[i64]]` accumulator, grown mid-recursion** — the DFS threads the nested result through recursive calls as a `mut ref`, pushing a fresh inner `Vec.new()` the first time each depth is reached and `result[depth].push(...)`-ing into it. Forwarding a `mut ref` parameter to the recursive calls **drops** the call-site `mut` marker (the value is already a mutable borrow in scope) — the natural nested-Vec-accumulator shape.
 - **Nested `Vec` index + push** — `result[depth].push(n.val)` pushes onto an inner `Vec` reached by index of the outer `Vec`, the two-level container write at the heart of the problem.
 - **`Option[shared]` niche match on the recursion** — each step matches the `Option[TreeNode]` child handle (`None` bottoms out, `Some(n)` descends), passing the shared node **by value** (a cheap RC-handle pass).
+- **`Vec[TreeNode]` frontier with `current = next` reassignment** — the BFS solver holds the current level as a `Vec` of shared node handles and advances the frontier by overwriting the whole variable (`current = next`). Reassigning a `Vec[shared]` local must release the shared elements the old frontier held before dropping it — the exact surface of compiler bug B-2026-07-12-30 (see below).
 
-**v1 note.** Trees stay within the `≤ 2000`-node constraint. The sink folds each tree's level structure — level count, each level's size, and every value in order — into a running polynomial hash. Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; they agree with each other, the Python mirror, and the BFS-equality + fuzz ground truth.
+### A codegen bug this kata surfaced (now fixed)
+
+The BFS solver's frontier advance — `current = next`, overwriting a `Vec[TreeNode]` local with the next level — originally **leaked** on `karac build`: reassigning a `Vec` whose elements are shared (RC) nodes freed the old buffer but skipped the per-element rc-dec, so the whole overwritten frontier leaked (`definitely lost`, x86-visible; interp was clean). Per the repo's "never route around — fix or file it" rule, that gap was filed as [`B-2026-07-12-30`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) with a minimal repro and a clean counterpart. It is **fixed** as of kara [`924cd05`](https://github.com/karalang/kara/commit/924cd05): the `Assign` identifier-target path now runs the old value's element-releasing walk before the store when the element carries a non-trivial per-element drop (rc-dec for a shared struct/enum, tag-guarded `karac_drop_Option_<payload>` for `Option[shared]`), matching the scope-exit drop exactly and never double-releasing. So [`level_order_bfs.kara`](level_order_bfs.kara) — the most natural statement of the problem — now compiles and runs leak-clean, byte-identical to the two DFS solvers across every surface. The kata initially shipped the two queue-free DFS forms while the bug was open; the BFS form joins them now that the fix has landed.
+
+**v1 note.** Trees stay within the `≤ 2000`-node constraint. The sink folds each tree's level structure — level count, each level's size, and every value in order — into a running polynomial hash. All three solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; they agree with each other, the Python mirror, and the BFS-equality + fuzz ground truth, and are valgrind-clean.
 
 ## Running
 
@@ -56,7 +64,8 @@ dfs(node, depth, result):
 karac run   level_order.kara
 karac build level_order.kara && ./level_order
 
-# The level-by-level variant (identical output):
+# The BFS-frontier and level-by-level variants (identical output):
+karac run level_order_bfs.kara
 karac run level_order_bylevel.kara
 
 # Python
@@ -64,6 +73,7 @@ python3 level_order.py
 
 # Verify they all agree
 diff <(karac run level_order.kara) <(python3 level_order.py)              && echo OK
+diff <(karac run level_order.kara) <(karac run level_order_bfs.kara)     && echo OK
 diff <(karac run level_order.kara) <(karac run level_order_bylevel.kara)  && echo OK
 
 # Ground truth: DFS-with-depth level order == independent BFS level order (battery + 20k fuzz)
