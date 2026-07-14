@@ -1,0 +1,71 @@
+// Benchmark workload for LeetCode #102 — build 8 BSTs once, then K reps of
+// level_order (DFS carrying the depth) on a data-dependent-selected tree
+// (idx = acc%8, seeded by the running hash so nothing hoists), folding the whole
+// result — level count, each level's size, and every value — into a rolling hash.
+// Each rep allocates a fresh Vec[Vec[i64]] result (one inner Vec per depth), so the
+// workload is allocation-bound: the per-rep churn is the nested-Vec build + drop.
+// Kara uses `shared` RC nodes, C `malloc` pointers, Rust Box + &-borrow, Go GC *Node.
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => { if v < n.val { n.left = insert(n.left, v); } else { n.right = insert(n.right, v); } Some(n) }
+    }
+}
+fn dfs(node: Option[TreeNode], depth: i64, result: mut ref Vec[Vec[i64]]) {
+    match node {
+        None => {}
+        Some(n) => {
+            if depth == result.len() { result.push(Vec.new()); }
+            result[depth].push(n.val);
+            dfs(n.left, depth + 1i64, result);
+            dfs(n.right, depth + 1i64, result);
+        }
+    }
+}
+fn level_order(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    let mut result: Vec[Vec[i64]] = Vec.new();
+    dfs(root, 0i64, mut result);
+    result
+}
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None; let mut i = 0i64;
+    while i < nums.len() { root = insert(root, nums[i]); i = i + 1i64; }
+    root
+}
+fn main() {
+    // 8 distinct 15-node BSTs, built once (rotating the insert order changes each shape).
+    let base = [16i64,8i64,24i64,4i64,12i64,20i64,28i64,2i64,6i64,10i64,14i64,18i64,22i64,26i64,30i64];
+    let mut pool: Vec[Option[TreeNode]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() {
+            nums.push(base[(k + t) % base.len()]);
+            k = k + 1i64;
+        }
+        pool.push(build(nums));
+        t = t + 1i64;
+    }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 1500000i64 {
+        let idx = acc % 8i64;
+        let levels = level_order(pool[idx]);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() {
+                acc = (acc * 131i64 + lvl[vi]) % 1000000007i64;
+                vi = vi + 1i64;
+            }
+            li = li + 1i64;
+        }
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}

@@ -1,0 +1,112 @@
+// LeetCode #102: Binary Tree Level Order Traversal — level-by-level DFS (height-driven).
+//
+// A distinct route to the same rows: first find the tree's HEIGHT, then for each depth
+// `d` from 0 to height-1 run a DFS that collects only the nodes AT that depth (descending
+// left-before-right, so the row fills left to right). O(n * height) rather than the single
+// O(n) pass of the DFS-with-depth ★, but it needs no shared worklist and no accumulator
+// threaded across siblings — each level is an independent top-down scan. Node type mirrors
+// kata [#100](../../1-100/100-same-tree/) — a `shared struct TreeNode` (RC).
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => {
+            if v < n.val {
+                n.left = insert(n.left, v);
+            } else {
+                n.right = insert(n.right, v);
+            }
+            Some(n)
+        }
+    }
+}
+
+fn height(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0i64,
+        Some(n) => {
+            let lh = height(n.left);
+            let rh = height(n.right);
+            if lh > rh {
+                1i64 + lh
+            } else {
+                1i64 + rh
+            }
+        }
+    }
+}
+
+// Append the values of every node at exactly `target` depth (cur_depth counts down the walk).
+fn collect_level(node: Option[TreeNode], target: i64, cur_depth: i64, row: mut ref Vec[i64]) {
+    match node {
+        None => {}
+        Some(n) => {
+            if cur_depth == target {
+                row.push(n.val);
+            } else {
+                collect_level(n.left, target, cur_depth + 1i64, row);
+                collect_level(n.right, target, cur_depth + 1i64, row);
+            }
+        }
+    }
+}
+
+fn level_order(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    let h = height(root);
+    let mut result: Vec[Vec[i64]] = Vec.new();
+    let mut d = 0i64;
+    while d < h {
+        let mut row: Vec[i64] = Vec.new();
+        collect_level(root, d, 0i64, mut row);
+        result.push(row);
+        d = d + 1i64;
+    }
+    result
+}
+
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    let mut i = 0i64;
+    while i < nums.len() {
+        root = insert(root, nums[i]);
+        i = i + 1i64;
+    }
+    root
+}
+
+fn main() {
+    let base = [8i64, 4i64, 12i64, 2i64, 6i64, 10i64, 14i64, 1i64, 3i64, 5i64, 7i64];
+    let mut acc = 0i64;
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() {
+            nums.push(base[(k + t) % base.len()]);
+            k = k + 1i64;
+        }
+        let root = build(nums);
+        let levels = level_order(root);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() {
+                acc = (acc * 131i64 + lvl[vi]) % 1000000007i64;
+                vi = vi + 1i64;
+            }
+            li = li + 1i64;
+        }
+        println(f"tree {t}: {levels.len()} levels");
+        t = t + 1i64;
+    }
+    println(f"sink: {acc}");
+}
