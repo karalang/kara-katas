@@ -1,0 +1,50 @@
+// Benchmark workload for LeetCode #110 — build 8 balanced 31-node trees once (distinct value
+// ranges), then K reps of the bottom-up single-pass is_balanced on a DATA-DEPENDENT-selected
+// tree (idx = acc%8, seeded by the running hash so nothing hoists), folding each verdict into a
+// rolling hash. The trees are balanced, so `check` runs the FULL post-order (no early -1),
+// making this a READ-ONLY per-node traversal — each rep matches Option[shared] and reads a
+// field per node, no allocation — the exposed RC/traversal regime (cf. #104). Kara passes
+// Option[shared] by value, rc-inc/dec'ing every visited node; C/Go use raw pointers, Rust a Box
+// walked by &-borrow. The check recursion's left/right calls are independent but the `lh == -1`
+// short-circuit serializes them; auto-par's granularity cutoff (B-2026-07-15-4, fixed) leaves
+// the 31-node walks sequential either way (default byte-equal to KARAC_AUTO_PAR=0).
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn check(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0i64,
+        Some(n) => {
+            let lh = check(n.left);
+            if lh == -1i64 { return -1i64; }
+            let rh = check(n.right);
+            if rh == -1i64 { return -1i64; }
+            let diff = lh - rh;
+            let absdiff = if diff < 0i64 { -diff } else { diff };
+            if absdiff > 1i64 { return -1i64; }
+            if lh > rh { 1i64 + lh } else { 1i64 + rh }
+        }
+    }
+}
+fn is_balanced(root: Option[TreeNode]) -> bool { check(root) != -1i64 }
+fn build_balanced(lo: i64, hi: i64) -> Option[TreeNode] {
+    if lo > hi { return None; }
+    let mid = (lo + hi) / 2i64;
+    let node = TreeNode { val: mid, left: None, right: None };
+    node.left = build_balanced(lo, mid - 1i64);
+    node.right = build_balanced(mid + 1i64, hi);
+    Some(node)
+}
+fn main() {
+    let mut pool: Vec[Option[TreeNode]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 { pool.push(build_balanced(t * 100i64, t * 100i64 + 30i64)); t = t + 1i64; }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 3000000i64 {
+        let idx = acc % 8i64;
+        let bal = is_balanced(pool[idx]);
+        let bit = if bal { 1i64 } else { 0i64 };
+        acc = (acc * 131i64 + bit + 1i64) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
