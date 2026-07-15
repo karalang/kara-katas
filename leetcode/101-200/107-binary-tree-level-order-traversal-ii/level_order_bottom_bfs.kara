@@ -1,0 +1,115 @@
+// LeetCode #107: Binary Tree Level Order Traversal II — BFS frontier, then reverse rows.
+//
+// Plain breadth-first level order, emitted bottom-up. Hold the current level as a
+// `Vec[TreeNode]` frontier, collect its values top-down into a list of rows (advancing
+// `current = next` each level), then reverse the row order so the deepest level comes first.
+// A distinct mechanism from the recursive depth-indexed collect (an explicit level-by-level
+// queue), landing on the identical bottom-up grouping. Node type mirrors kata
+// [#102](../102-binary-tree-level-order-traversal/) — a `shared struct TreeNode` (RC); the
+// frontier is a `Vec[TreeNode]` advanced by `current = next`.
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => {
+            if v < n.val {
+                n.left = insert(n.left, v);
+            } else {
+                n.right = insert(n.right, v);
+            }
+            Some(n)
+        }
+    }
+}
+
+fn level_order_bottom(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    // First collect levels top-down (row 0 = root level).
+    let mut topdown: Vec[Vec[i64]] = Vec.new();
+    let mut current: Vec[TreeNode] = Vec.new();
+    match root {
+        None => {}
+        Some(n) => { current.push(n); }
+    }
+    while current.len() > 0i64 {
+        let mut row: Vec[i64] = Vec.new();
+        let mut next: Vec[TreeNode] = Vec.new();
+        let mut i = 0i64;
+        while i < current.len() {
+            let node = current[i];
+            row.push(node.val);
+            match node.left {
+                None => {}
+                Some(l) => { next.push(l); }
+            }
+            match node.right {
+                None => {}
+                Some(r) => { next.push(r); }
+            }
+            i = i + 1i64;
+        }
+        topdown.push(row);
+        current = next;
+    }
+    // Then emit deepest-first.
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut d = topdown.len() - 1i64;
+    while d >= 0i64 {
+        let len = topdown[d].len();
+        let mut newrow: Vec[i64] = Vec.new();
+        let mut j = 0i64;
+        while j < len {
+            newrow.push(topdown[d][j]);
+            j = j + 1i64;
+        }
+        out.push(newrow);
+        d = d - 1i64;
+    }
+    out
+}
+
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    let mut i = 0i64;
+    while i < nums.len() {
+        root = insert(root, nums[i]);
+        i = i + 1i64;
+    }
+    root
+}
+
+fn main() {
+    let base = [8i64, 4i64, 12i64, 2i64, 6i64, 10i64, 14i64, 1i64, 3i64, 5i64, 7i64];
+    let mut acc = 0i64;
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() {
+            nums.push(base[(k + t) % base.len()]);
+            k = k + 1i64;
+        }
+        let root = build(nums);
+        let levels = level_order_bottom(root);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() {
+                acc = (acc * 131i64 + lvl[vi]) % 1000000007i64;
+                vi = vi + 1i64;
+            }
+            li = li + 1i64;
+        }
+        println(f"tree {t}: {levels.len()} levels");
+        t = t + 1i64;
+    }
+    println(f"sink: {acc}");
+}
