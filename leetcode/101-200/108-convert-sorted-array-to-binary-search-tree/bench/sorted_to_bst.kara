@@ -1,0 +1,50 @@
+// Benchmark workload for LeetCode #108 — build 8 sorted arrays once (15 elements each,
+// distinct values), then K reps of recursive middle-pick sorted_to_bst on a DATA-DEPENDENT-
+// selected array (idx = acc%8, seeded by the running hash so nothing hoists), folding the
+// built tree's shape+value serialization into a rolling hash. Each rep allocates a fresh
+// 15-node balanced tree and drops it, so the workload is ALLOCATION-bound. Kara uses `shared`
+// RC nodes, C `malloc` pointers, Rust Box, Go GC *Node. The `build` recursion's two calls are
+// independent; auto-par's granularity cutoff (B-2026-07-15-4, fixed) leaves the 15-node
+// subtree builds sequential, so the default build stays single-threaded (byte-equal to ap0).
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn build(arr: ref Vec[i64], lo: i64, hi: i64) -> Option[TreeNode] {
+    if lo > hi { return None; }
+    let mid = (lo + hi) / 2i64;
+    let node = TreeNode { val: arr[mid], left: None, right: None };
+    node.left = build(arr, lo, mid - 1i64);
+    node.right = build(arr, mid + 1i64, hi);
+    Some(node)
+}
+fn sorted_to_bst(arr: ref Vec[i64]) -> Option[TreeNode] {
+    let n = arr.len();
+    build(arr, 0i64, n - 1i64)
+}
+fn ser(node: Option[TreeNode], acc: mut ref i64) {
+    match node {
+        None => { acc = (acc * 131i64 + 1i64) % 1000000007i64; }
+        Some(n) => { acc = (acc * 131i64 + (n.val + 2i64)) % 1000000007i64; ser(n.left, acc); ser(n.right, acc); }
+    }
+}
+fn main() {
+    // 8 sorted arrays of length 15, distinct value ranges (t*100 .. t*100+14).
+    let mut arrs: Vec[Vec[i64]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut arr: Vec[i64] = Vec.new();
+        let mut i = 0i64;
+        while i < 15i64 { arr.push(t * 100i64 + i); i = i + 1i64; }
+        arrs.push(arr);
+        t = t + 1i64;
+    }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 1200000i64 {
+        let idx = acc % 8i64;
+        let root = sorted_to_bst(arrs[idx]);
+        let mut s = 0i64;
+        ser(root, mut s);
+        acc = (acc * 131i64 + s) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}

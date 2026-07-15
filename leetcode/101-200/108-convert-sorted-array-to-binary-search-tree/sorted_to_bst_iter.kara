@@ -1,0 +1,93 @@
+// LeetCode #108: Convert Sorted Array to Binary Search Tree — iterative stack construction.
+//
+// A distinct route to the same balanced BST: instead of recursing, drive the divide-and-
+// conquer with an explicit worklist of (node, lo, hi) frames. Create a placeholder root over
+// the whole array, then repeatedly pop a frame, set that node's value to `arr[mid]`, and — for
+// each non-empty half — attach a fresh placeholder child and push its `(child, sub-lo, sub-hi)`
+// frame. When the worklist empties, every node's value and links are filled. Using the same
+// `mid = (lo + hi) / 2` as the recursive ★, it builds the byte-identical tree. Node type
+// mirrors kata [#105](../105-construct-binary-tree-from-preorder-and-inorder-traversal/) — a
+// `shared struct TreeNode` (RC); the frames live in three parallel stacks, a `Vec[TreeNode]`
+// of shared handles plus two `Vec[i64]` range bounds, and the node stack is advanced by
+// `stack.pop()` (the surface hardened by kara `a384971`).
+
+shared struct TreeNode {
+    mut val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn sorted_to_bst(arr: ref Vec[i64]) -> Option[TreeNode] {
+    let n = arr.len();
+    if n == 0i64 {
+        return None;
+    }
+    let root = TreeNode { val: 0i64, left: None, right: None };
+    let mut nodes: Vec[TreeNode] = Vec.new();
+    let mut los: Vec[i64] = Vec.new();
+    let mut his: Vec[i64] = Vec.new();
+    nodes.push(root);
+    los.push(0i64);
+    his.push(n - 1i64);
+    while nodes.len() > 0i64 {
+        let top = nodes.len() - 1i64;
+        let lo = los[top];
+        let hi = his[top];
+        match los.pop() { None => {} Some(_) => {} }
+        match his.pop() { None => {} Some(_) => {} }
+        match nodes.pop() {
+            None => {}
+            Some(node) => {
+                let mid = (lo + hi) / 2i64;
+                node.val = arr[mid];
+                if lo <= mid - 1i64 {
+                    let lc = TreeNode { val: 0i64, left: None, right: None };
+                    node.left = Some(lc);
+                    nodes.push(lc);
+                    los.push(lo);
+                    his.push(mid - 1i64);
+                }
+                if mid + 1i64 <= hi {
+                    let rc = TreeNode { val: 0i64, left: None, right: None };
+                    node.right = Some(rc);
+                    nodes.push(rc);
+                    los.push(mid + 1i64);
+                    his.push(hi);
+                }
+            }
+        }
+    }
+    Some(root)
+}
+
+fn ser(node: Option[TreeNode], acc: mut ref i64) {
+    match node {
+        None => { acc = (acc * 131i64 + 1i64) % 1000000007i64; }
+        Some(n) => {
+            acc = (acc * 131i64 + (n.val + 2i64)) % 1000000007i64;
+            ser(n.left, acc);
+            ser(n.right, acc);
+        }
+    }
+}
+
+fn main() {
+    let mut acc = 0i64;
+    let mut t = 0i64;
+    while t < 8i64 {
+        let len = 8i64 + t;
+        let mut arr: Vec[i64] = Vec.new();
+        let mut i = 0i64;
+        while i < len {
+            arr.push(t + 1i64 + i);
+            i = i + 1i64;
+        }
+        let root = sorted_to_bst(arr);
+        let mut s = 0i64;
+        ser(root, mut s);
+        acc = (acc * 1000003i64 + s) % 1000000007i64;
+        println(f"array {t}: len {len} sig {s}");
+        t = t + 1i64;
+    }
+    println(f"sink: {acc}");
+}
