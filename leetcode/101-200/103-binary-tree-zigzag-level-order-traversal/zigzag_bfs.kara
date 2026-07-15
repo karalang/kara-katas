@@ -1,0 +1,118 @@
+// LeetCode #103: Binary Tree Zigzag Level Order Traversal — BFS frontier, directional emit.
+//
+// The breadth-first form: hold the current level as a `Vec[TreeNode]` frontier, read off its
+// values as one row, and emit that row in the level's direction — left-to-right on even
+// levels, reversed on odd ones — while building the next frontier left-to-right as usual.
+// The frontier always advances `current = next`; only the ROW EMISSION alternates, which is
+// the cleanest statement of "zigzag": the traversal is plain BFS, the zigzag is just which
+// end each row is read from. Node type mirrors [#102](../102-binary-tree-level-order-traversal/)
+// — a `shared struct TreeNode` (RC); the frontier is a `Vec[TreeNode]` of shared handles.
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => {
+            if v < n.val {
+                n.left = insert(n.left, v);
+            } else {
+                n.right = insert(n.right, v);
+            }
+            Some(n)
+        }
+    }
+}
+
+fn zigzag(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    let mut result: Vec[Vec[i64]] = Vec.new();
+    let mut current: Vec[TreeNode] = Vec.new();
+    match root {
+        None => {}
+        Some(n) => { current.push(n); }
+    }
+    let mut ltr = true;
+    while current.len() > 0i64 {
+        // Read the frontier's values left-to-right, then emit in the level's direction.
+        let mut row: Vec[i64] = Vec.new();
+        let mut i = 0i64;
+        while i < current.len() {
+            row.push(current[i].val);
+            i = i + 1i64;
+        }
+        if ltr {
+            result.push(row);
+        } else {
+            let mut rev: Vec[i64] = Vec.new();
+            let mut j = row.len() - 1i64;
+            while j >= 0i64 {
+                rev.push(row[j]);
+                j = j - 1i64;
+            }
+            result.push(rev);
+        }
+        // Build the next frontier (always in tree order, left child then right).
+        let mut next: Vec[TreeNode] = Vec.new();
+        let mut k = 0i64;
+        while k < current.len() {
+            let node = current[k];
+            match node.left {
+                None => {}
+                Some(l) => { next.push(l); }
+            }
+            match node.right {
+                None => {}
+                Some(r) => { next.push(r); }
+            }
+            k = k + 1i64;
+        }
+        current = next;
+        ltr = not ltr;
+    }
+    result
+}
+
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None;
+    let mut i = 0i64;
+    while i < nums.len() {
+        root = insert(root, nums[i]);
+        i = i + 1i64;
+    }
+    root
+}
+
+fn main() {
+    let base = [8i64, 4i64, 12i64, 2i64, 6i64, 10i64, 14i64, 1i64, 3i64, 5i64, 7i64];
+    let mut acc = 0i64;
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() {
+            nums.push(base[(k + t) % base.len()]);
+            k = k + 1i64;
+        }
+        let root = build(nums);
+        let levels = zigzag(root);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() {
+                acc = (acc * 131i64 + lvl[vi]) % 1000000007i64;
+                vi = vi + 1i64;
+            }
+            li = li + 1i64;
+        }
+        println(f"tree {t}: {levels.len()} levels");
+        t = t + 1i64;
+    }
+    println(f"sink: {acc}");
+}

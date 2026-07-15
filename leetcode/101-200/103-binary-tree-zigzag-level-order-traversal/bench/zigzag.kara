@@ -1,0 +1,80 @@
+// Benchmark workload for LeetCode #103 — build 8 BSTs once, then K reps of zigzag level
+// order (DFS-with-depth + reverse odd rows) on a DATA-DEPENDENT-selected tree (idx = acc%8,
+// seeded by the running hash so nothing hoists), folding the whole result — level count,
+// each level's size, and every value — into a rolling hash. Each rep allocates a fresh
+// Vec[Vec[i64]] result (rows + the reversed-odd emit), so the workload is ALLOCATION-bound.
+// Kara uses `shared` RC nodes, C `malloc` pointers, Rust Box + &-borrow, Go GC *Node.
+// The DFS's two recursive calls both write the shared `rows` accumulator, so auto-par leaves
+// it sequential (verified byte-equal to KARAC_AUTO_PAR=0).
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn insert(root: Option[TreeNode], v: i64) -> Option[TreeNode] {
+    match root {
+        None => Some(TreeNode { val: v, left: None, right: None }),
+        Some(n) => { if v < n.val { n.left = insert(n.left, v); } else { n.right = insert(n.right, v); } Some(n) }
+    }
+}
+fn dfs(node: Option[TreeNode], depth: i64, rows: mut ref Vec[Vec[i64]]) {
+    match node {
+        None => {}
+        Some(n) => {
+            if depth == rows.len() { rows.push(Vec.new()); }
+            rows[depth].push(n.val);
+            dfs(n.left, depth + 1i64, rows);
+            dfs(n.right, depth + 1i64, rows);
+        }
+    }
+}
+fn zigzag(root: Option[TreeNode]) -> Vec[Vec[i64]] {
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    dfs(root, 0i64, mut rows);
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    let mut d = 0i64;
+    while d < rows.len() {
+        let len = rows[d].len();
+        let mut newrow: Vec[i64] = Vec.new();
+        if d % 2i64 == 0i64 {
+            let mut i = 0i64;
+            while i < len { newrow.push(rows[d][i]); i = i + 1i64; }
+        } else {
+            let mut i = len - 1i64;
+            while i >= 0i64 { newrow.push(rows[d][i]); i = i - 1i64; }
+        }
+        out.push(newrow);
+        d = d + 1i64;
+    }
+    out
+}
+fn build(nums: Vec[i64]) -> Option[TreeNode] {
+    let mut root: Option[TreeNode] = None; let mut i = 0i64;
+    while i < nums.len() { root = insert(root, nums[i]); i = i + 1i64; }
+    root
+}
+fn main() {
+    let base = [16i64,8i64,24i64,4i64,12i64,20i64,28i64,2i64,6i64,10i64,14i64,18i64,22i64,26i64,30i64];
+    let mut pool: Vec[Option[TreeNode]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 {
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < base.len() { nums.push(base[(k + t) % base.len()]); k = k + 1i64; }
+        pool.push(build(nums));
+        t = t + 1i64;
+    }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 600000i64 {
+        let idx = acc % 8i64;
+        let levels = zigzag(pool[idx]);
+        acc = (acc * 131i64 + levels.len()) % 1000000007i64;
+        let mut li = 0i64;
+        while li < levels.len() {
+            let lvl = levels[li];
+            acc = (acc * 131i64 + lvl.len()) % 1000000007i64;
+            let mut vi = 0i64;
+            while vi < lvl.len() { acc = (acc * 131i64 + lvl[vi]) % 1000000007i64; vi = vi + 1i64; }
+            li = li + 1i64;
+        }
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
