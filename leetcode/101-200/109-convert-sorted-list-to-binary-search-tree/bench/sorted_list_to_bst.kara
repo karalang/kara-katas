@@ -1,0 +1,61 @@
+// Benchmark workload for LeetCode #109 — build 8 sorted linked lists once (15 nodes each,
+// distinct value ranges), then K reps of the array-conversion sorted_list_to_bst on a
+// DATA-DEPENDENT-selected list (idx = acc%8, seeded by the running hash so nothing hoists),
+// folding the built tree's shape+value serialization into a rolling hash. Because the lists
+// are `shared` (RC), the pool keeps each alive across reps — every rep walks the same list
+// read-only into a fresh Vec[i64] and builds a fresh 15-node balanced tree, so the workload is
+// ALLOCATION-bound (the intermediate array + the tree). Kara uses `shared` RC nodes, C `malloc`
+// pointers, Rust Box, Go GC. The middle-pick recursion's two calls are independent; auto-par's
+// granularity cutoff (B-2026-07-15-4, fixed) leaves the 15-node subtree builds sequential, so
+// the default build stays single-threaded (byte-equal to KARAC_AUTO_PAR=0).
+shared struct ListNode { val: i64, mut next: Option[ListNode] }
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn build_from_arr(arr: ref Vec[i64], lo: i64, hi: i64) -> Option[TreeNode] {
+    if lo > hi { return None; }
+    let mid = (lo + hi) / 2i64;
+    let node = TreeNode { val: arr[mid], left: None, right: None };
+    node.left = build_from_arr(arr, lo, mid - 1i64);
+    node.right = build_from_arr(arr, mid + 1i64, hi);
+    Some(node)
+}
+fn sorted_list_to_bst(head: Option[ListNode]) -> Option[TreeNode] {
+    let mut arr: Vec[i64] = Vec.new();
+    let mut cur = head;
+    let mut going = true;
+    while going {
+        match cur {
+            None => { going = false; }
+            Some(n) => { arr.push(n.val); cur = n.next; }
+        }
+    }
+    let n = arr.len();
+    build_from_arr(arr, 0i64, n - 1i64)
+}
+fn ser(node: Option[TreeNode], acc: mut ref i64) {
+    match node {
+        None => { acc = (acc * 131i64 + 1i64) % 1000000007i64; }
+        Some(n) => { acc = (acc * 131i64 + (n.val + 2i64)) % 1000000007i64; ser(n.left, acc); ser(n.right, acc); }
+    }
+}
+fn build_list(len: i64, off: i64) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    let mut i = len - 1i64;
+    while i >= 0i64 { head = Some(ListNode { val: off + 1i64 + i, next: head }); i = i - 1i64; }
+    head
+}
+fn main() {
+    let mut pool: Vec[Option[ListNode]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 { pool.push(build_list(15i64, t * 100i64)); t = t + 1i64; }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 1000000i64 {
+        let idx = acc % 8i64;
+        let root = sorted_list_to_bst(pool[idx]);
+        let mut s = 0i64;
+        ser(root, mut s);
+        acc = (acc * 131i64 + s) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
