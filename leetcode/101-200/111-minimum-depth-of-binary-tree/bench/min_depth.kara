@@ -1,0 +1,45 @@
+// Benchmark workload for LeetCode #111 — build 8 balanced 31-node trees once (distinct value
+// ranges), then K reps of recursive min_depth on a DATA-DEPENDENT-selected tree (idx = acc%8,
+// seeded by the running hash so nothing hoists), folding each min depth into a rolling hash.
+// The DFS computes both subtree depths at every node, so on a balanced tree it is a FULL
+// read-only post-order traversal — each rep matches Option[shared] and reads a field per node,
+// no allocation — the exposed RC/traversal regime (cf. #104, #110). Kara passes Option[shared]
+// by value, rc-inc/dec'ing every visited node; C/Go use raw pointers, Rust a Box walked by
+// &-borrow. The two recursive calls are independent but auto-par's granularity cutoff
+// (B-2026-07-15-4, fixed) leaves the 31-node walks sequential (default byte-equal to ap0).
+shared struct TreeNode { val: i64, mut left: Option[TreeNode], mut right: Option[TreeNode] }
+fn min_depth(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0i64,
+        Some(n) => {
+            let ld = min_depth(n.left);
+            let rd = min_depth(n.right);
+            if ld == 0i64 { 1i64 + rd }
+            else if rd == 0i64 { 1i64 + ld }
+            else if ld < rd { 1i64 + ld }
+            else { 1i64 + rd }
+        }
+    }
+}
+fn build_balanced(lo: i64, hi: i64) -> Option[TreeNode] {
+    if lo > hi { return None; }
+    let mid = (lo + hi) / 2i64;
+    let node = TreeNode { val: mid, left: None, right: None };
+    node.left = build_balanced(lo, mid - 1i64);
+    node.right = build_balanced(mid + 1i64, hi);
+    Some(node)
+}
+fn main() {
+    let mut pool: Vec[Option[TreeNode]] = Vec.new();
+    let mut t = 0i64;
+    while t < 8i64 { pool.push(build_balanced(t * 100i64, t * 100i64 + 30i64)); t = t + 1i64; }
+    let mut acc = 1i64;
+    let mut rep = 0i64;
+    while rep < 3000000i64 {
+        let idx = acc % 8i64;
+        let d = min_depth(pool[idx]);
+        acc = (acc * 131i64 + d + 1i64) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}")
+}
