@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "kata": {
+    "id": "118",
+    "slug": "generate",
+    "group": "101-200",
+    "title": "Pascal's Triangle",
+    "workload": "each rep generates a full Pascal's triangle of a data-dependent row count (rows=30+acc%16, so 30..45, seeded by the running hash so generate() can't be hoisted) as a nested Vec[Vec[i64]] built row by row with the additive recurrence, folding every entry into a rolling hash; K=80000 reps \u2014 the nested-Vec construction regime (cf. #115's DP table)",
+    "sink": "218564937"
+  },
+  "env": {
+    "host": "Intel Xeon @ 2.10GHz (cloud container)",
+    "cores": "4",
+    "os": "Linux 6.18.5",
+    "karac": "karac 0.1.0 (main c96505b)",
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "clang": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+    "go": "go version go1.24.7 linux/amd64",
+    "hyperfine": "hyperfine 1.18.0",
+    "measured_at": "2026-07-16T23:45:00Z",
+    "note": "Measured on a shared x86-64 Linux cloud container (karac built from kara main c96505b), NOT the corpus's Apple M5 Pro. Canonical M5 numbers in the sibling results.json are left untouched \u2014 this is a container reference run (same two-file pattern as #114-#117). Absolute times/sizes/RSS are NOT comparable across the two files; only within-file cross-language ratios are the signal. Seq lane on this host (fastest first): c 379.4ms < kara 482.6ms < go 679.3ms < rust 959.5ms < rust_ovf 1042.5ms. kara lands 1.27x behind C (nested long** per-row malloc) and ~2x AHEAD of Rust's Vec<Vec<i64>>. DECOMPOSITION: kara's compiler auto-pre-sizes the balanced-if push rows (the presize pass, kara B-2026-07-16-11/17), so hand-writing with_capacity in kara adds nothing (485ms as-is == 493ms hand-wc, 1.01x); Rust's identical Vec::new()+push pays ~1.91x for push-growth realloc (rust with_capacity 545ms vs Vec::new 1042ms), and kara stays 1.13x ahead of even hand-pre-sized Rust. The kara binary is 324 KiB here \u2014 the heap-growth backtrace-symbolizer artifact (nested Vec[Vec] per rep retains it, cf. #115), ~15 KiB on a correct build. All mirrors agree on the sink; correctness verified in-repo across interp/JIT/AOT/auto-par and valgrind-clean. Re-run bench.sh on the M5 to fold comparable numbers into the corpus tables."
+  },
+  "measurements": [
+    {
+      "lang": "c",
+      "approach": "generate",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 379.4179,
+        "stddev_ms": 3.8198,
+        "median_ms": 377.8396,
+        "min_ms": 375.2045,
+        "max_ms": 390.1714,
+        "user_ms": 378.4369,
+        "system_ms": 0.6638,
+        "cpu_pct": 99.9,
+        "runs": 30
+      },
+      "binary_bytes": 16112,
+      "runtime_peak_rss_bytes": 1613824
+    },
+    {
+      "lang": "go",
+      "approach": "generate",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 679.2996,
+        "stddev_ms": 29.7275,
+        "median_ms": 669.2568,
+        "min_ms": 643.7712,
+        "max_ms": 733.7235,
+        "user_ms": 713.4127,
+        "system_ms": 94.885,
+        "cpu_pct": 119.0,
+        "runs": 30
+      },
+      "binary_bytes": 2214024,
+      "runtime_peak_rss_bytes": 8056832
+    },
+    {
+      "lang": "kara",
+      "approach": "generate",
+      "lane": "seq",
+      "mode": "codegen",
+      "runtime": {
+        "mean_ms": 482.5658,
+        "stddev_ms": 7.8546,
+        "median_ms": 480.569,
+        "min_ms": 472.2657,
+        "max_ms": 510.6695,
+        "user_ms": 481.881,
+        "system_ms": 0.3986,
+        "cpu_pct": 99.9,
+        "runs": 30
+      },
+      "binary_bytes": 332320,
+      "runtime_peak_rss_bytes": 2412544
+    },
+    {
+      "lang": "rust",
+      "approach": "generate",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 959.5029,
+        "stddev_ms": 12.604,
+        "median_ms": 956.5668,
+        "min_ms": 940.0297,
+        "max_ms": 990.1268,
+        "user_ms": 958.6079,
+        "system_ms": 0.5321,
+        "cpu_pct": 100.0,
+        "runs": 30
+      },
+      "binary_bytes": 3957176,
+      "runtime_peak_rss_bytes": 2310144
+    },
+    {
+      "lang": "rust",
+      "approach": "generate_ovf",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 1042.4777,
+        "stddev_ms": 19.4241,
+        "median_ms": 1037.2762,
+        "min_ms": 1021.6489,
+        "max_ms": 1091.4571,
+        "user_ms": 1041.217,
+        "system_ms": 0.9315,
+        "cpu_pct": 100.0,
+        "runs": 30
+      },
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
+    },
+    {
+      "lang": "python",
+      "approach": "generate",
+      "lane": "seq",
+      "mode": "interp",
+      "runtime": {
+        "mean_ms": 617.212,
+        "stddev_ms": 19.7346,
+        "median_ms": 609.9986,
+        "min_ms": 599.1939,
+        "max_ms": 654.1349,
+        "user_ms": 613.5958,
+        "system_ms": 3.5168,
+        "cpu_pct": 100.0,
+        "runs": 10
+      },
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
+    }
+  ],
+  "compile": [
+    {
+      "lang": "c",
+      "approach": "generate",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 122.1282,
+        "stddev_ms": 3.0516,
+        "median_ms": 121.3799,
+        "min_ms": 117.7706,
+        "max_ms": 127.539,
+        "user_ms": 74.1102,
+        "system_ms": 47.5713,
+        "cpu_pct": 99.6,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 101388288
+    },
+    {
+      "lang": "kara",
+      "approach": "generate",
+      "mode": "codegen",
+      "elapsed": {
+        "mean_ms": 419.0511,
+        "stddev_ms": 56.1347,
+        "median_ms": 388.5491,
+        "min_ms": 367.5561,
+        "max_ms": 536.68,
+        "user_ms": 314.4899,
+        "system_ms": 104.9695,
+        "cpu_pct": 100.1,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 110100480
+    },
+    {
+      "lang": "rust",
+      "approach": "generate",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 171.0536,
+        "stddev_ms": 5.2038,
+        "median_ms": 169.4139,
+        "min_ms": 165.7719,
+        "max_ms": 180.7477,
+        "user_ms": 122.1853,
+        "system_ms": 64.9037,
+        "cpu_pct": 109.4,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 116858880
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+// LeetCode #118 — binomial (multiplicative) variant.
+//
+// Each row is a row of binomial coefficients, so entry `C(i, j)` can be produced directly from its
+// left neighbour without reading the previous row at all: `C(i, 0) = 1` and
+// `C(i, j) = C(i, j-1) * (i - j + 1) / j`. Every intermediate is an exact integer (a binomial
+// coefficient), so the integer division is exact. A distinct mechanism from the additive
+// `generate.kara` (no dependence on the already-built table), which must produce the identical
+// triangle — same `triangle_hash`.
+
+fn generate(num_rows: i64) -> Vec[Vec[i64]] {
+    let mut tri: Vec[Vec[i64]] = Vec.new();
+    let mut i = 0i64;
+    while i < num_rows {
+        let mut row: Vec[i64] = Vec.new();
+        let mut c = 1i64; // C(i, 0)
+        let mut j = 0i64;
+        while j <= i {
+            row.push(c);
+            // Advance to C(i, j+1) = C(i, j) * (i - j) / (j + 1).
+            c = c * (i - j) / (j + 1i64);
+            j = j + 1i64;
+        }
+        tri.push(row);
+        i = i + 1i64;
+    }
+    tri
+}
+
+fn triangle_hash(tri: ref Vec[Vec[i64]]) -> i64 {
+    let mut h = 1i64;
+    let mut i = 0i64;
+    while i < tri.len() {
+        let row = tri[i];
+        let mut j = 0i64;
+        while j < row.len() {
+            h = (h * 131i64 + row[j]) % 1000000007i64;
+            j = j + 1i64;
+        }
+        h = (h * 31i64 + row.len() + 7i64) % 1000000007i64;
+        i = i + 1i64;
+    }
+    h
+}
+
+fn main() {
+    let small = generate(8i64);
+    let mut r = 0i64;
+    while r < small.len() {
+        let row = small[r];
+        let mut line = "";
+        let mut c = 0i64;
+        while c < row.len() {
+            if c > 0i64 {
+                line = line + " ";
+            }
+            line = line + f"{row[c]}";
+            c = c + 1i64;
+        }
+        println(f"row {r}: {line}");
+        r = r + 1i64;
+    }
+
+    let mut acc = 0i64;
+    let mut n = 1i64;
+    while n <= 30i64 {
+        let tri = generate(n);
+        let h = triangle_hash(tri);
+        acc = (acc * 131i64 + h) % 1000000007i64;
+        n = n + 1i64;
+    }
+    println(f"sink: {acc}");
+}
