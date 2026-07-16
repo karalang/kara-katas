@@ -1,0 +1,120 @@
+// Benchmark harness for LeetCode #116 — O(1)-space next-pointer population (the ★).
+// See ../README.md § Benchmarks. Each rep builds a fresh depth-9 PERFECT tree (511 nodes) over a
+// DATA-DEPENDENT value base (base = acc%100, seeded by the running hash so nothing hoists), wires
+// every node's `next` with the constant-space level-threading, and folds a level-order hash (which
+// reads back the `next` pointers). K = 40000 reps — the mutate regime: shared-node ALLOCATION
+// (511 RC nodes built + freed) plus in-place `next` pointer wiring per rep.
+
+shared struct Node {
+    val: i64,
+    mut left: Option[Node],
+    mut right: Option[Node],
+    mut next: Option[Node],
+}
+
+fn connect(root: Option[Node]) {
+    let mut leftmost = root;
+    let mut going = true;
+    while going {
+        match leftmost {
+            None => {
+                going = false;
+            }
+            Some(lm) => {
+                match lm.left {
+                    None => {
+                        going = false;
+                    }
+                    Some(_) => {
+                        let mut head = leftmost;
+                        let mut inner = true;
+                        while inner {
+                            match head {
+                                None => {
+                                    inner = false;
+                                }
+                                Some(h) => {
+                                    match h.left {
+                                        None => {}
+                                        Some(hl) => {
+                                            hl.next = h.right;
+                                        }
+                                    }
+                                    match h.right {
+                                        None => {}
+                                        Some(hr) => {
+                                            match h.next {
+                                                None => {}
+                                                Some(hn) => {
+                                                    hr.next = hn.left;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    head = h.next;
+                                }
+                            }
+                        }
+                        leftmost = lm.left;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn build_perfect(idx: i64, max_idx: i64, base: i64) -> Option[Node] {
+    if idx > max_idx {
+        return None;
+    }
+    let node = Node { val: idx + base, left: None, right: None, next: None };
+    node.left = build_perfect(2i64 * idx, max_idx, base);
+    node.right = build_perfect(2i64 * idx + 1i64, max_idx, base);
+    Some(node)
+}
+
+fn level_hash(root: Option[Node]) -> i64 {
+    let mut h = 1i64;
+    let mut leftmost = root;
+    let mut going = true;
+    while going {
+        match leftmost {
+            None => {
+                going = false;
+            }
+            Some(lm) => {
+                let mut cur = leftmost;
+                let mut inner = true;
+                while inner {
+                    match cur {
+                        None => {
+                            inner = false;
+                        }
+                        Some(c) => {
+                            h = (h * 131i64 + c.val + 1i64) % 1000000007i64;
+                            cur = c.next;
+                        }
+                    }
+                }
+                h = (h * 31i64 + 7i64) % 1000000007i64;
+                leftmost = lm.left;
+            }
+        }
+    }
+    h
+}
+
+fn main() {
+    let max_idx = 511i64; // depth-9 perfect tree
+    let mut acc = 0i64;
+    let mut rep = 0i64;
+    while rep < 40000i64 {
+        let base = acc % 100i64;
+        let root = build_perfect(1i64, max_idx, base);
+        connect(root);
+        let h = level_hash(root);
+        acc = (acc * 131i64 + h) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}");
+}
