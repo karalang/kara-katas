@@ -30,7 +30,7 @@ one row, updated in place right-to-left:   row[k] = row[k] + row[k-1]
 
 ## Kāra features exercised
 
-- **In-place index-assignment** — `row[k] = row[k] + row[k-1]` reads two elements and writes one back on the same `Vec[i64]`, the core surface of a rolling-1D DP. (This is the pattern that surfaced the performance gap below.)
+- **In-place index-assignment** — `row[k] = row[k] + row[k-1]` reads two elements and writes one back on the same `Vec[i64]`, the core surface of a rolling-1D DP. (This is the pattern that surfaced — and drove the fix of — the bounds-check gap `B-2026-07-17-1`, and exposed the residual `B-2026-07-17-14` beneath it; see Benchmarks.)
 - **Descending counted loop** — `while k >= 1 { ..; k = k - 1 }`, a backward index walk.
 - **Exact integer division in the binomial form** — `c = c * (n - j) / (j + 1)`, relying on the binomial-coefficient divisibility identity.
 
@@ -67,30 +67,30 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Node representation & equal safety.** All mirrors use one flat array: Kāra `Vec[i64]`, Rust `Vec<i64>`, Go `[]int64`, C `long[]` (one `malloc` per rep). Kāra checks integer overflow **and array bounds** by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on overflow (Rust's bounds checks are elided by LLVM in this loop — see below).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
+`--warmup 5 --runs 30`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note — this container run is noisier than usual, so read the *ratios*, not the absolute ms):
 
 | Implementation | Wall time | Store |
 |---|---|---|
-| c    get_row (clang -O3)                             | 239.0 ± 9.2 ms | `long[]` |
-| rust get_row (rustc -O)                             | 274.4 ± 10.7 ms | `Vec<i64>` |
-| rust get_row (rustc -O, overflow-checks=on)          | 311.3 ± 5.5 ms | `Vec<i64>` |
-| **kāra get_row**                                    | **416.2 ± 15.3 ms** | **`Vec[i64]`** |
-| go   get_row (`[]int64`)                            | 439.4 ± 12.7 ms | `[]int64` |
+| c    get_row (clang -O3)                             | 238.2 ± 8.7 ms | `long[]` |
+| rust get_row (rustc -O)                             | 226.3 ± 7.6 ms | `Vec<i64>` |
+| rust get_row (rustc -O, overflow-checks=on)          | 289.1 ± 27.9 ms | `Vec<i64>` |
+| **kāra get_row**                                    | **341.4 ± 20.4 ms** | **`Vec[i64]`** |
+| go   get_row (`[]int64`)                            | 448.3 ± 75.5 ms | `[]int64` |
 
-**Kāra trails here — 1.34× behind equal-safety Rust and 1.74× behind C — and this kata found *why*: a bounds check the compiler doesn't eliminate on the in-place update loop.** 🐛 It is filed as a compiler gap, not worked around here — [kara `B-2026-07-17-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl). asm isolation of the AOT binary pins it precisely:
+**This kata found — and drove the fix of — a bounds-check-elimination gap, and then surfaced a second, smaller one underneath it.** The hot loop is `while k >= 1 { row[k] = row[k] + row[k-1]; k = k-1 }`, an in-place descending update.
 
-- The hot loop `while k >= 1 { row[k] = row[k] + row[k-1]; k = k-1 }` emits, per iteration, `cmp %rbx,%rdx; ja <panic>` (a **bounds check** — one check covers both `row[k]` and `row[k-1]`, since `k-1 < k`) followed by `jo <panic>` (the overflow check).
-- The **sibling** `row_hash` fold loop (`while j < row.len() { .. row[j] .. }`) in the *same binary* has **no** bounds check — kāra's BCE fired there. So the pass handles the canonical forward `j < v.len()` (and the binary-search `mid`, [kata #34](../../1-100/34-find-first-and-last-position-of-element-in-sorted-array/)), but **not** this pattern: `k` is bounded by the *outer* loop variable (`k ≤ i-1`, `i ≤ rowIndex`, `len = rowIndex+1`), so `k < len` holds only **transitively**.
-- The overflow check is **not** the gap: it is present in both Kāra and the equal-safety Rust row, and Rust's own overflow tax is only ~13% (`rustc -O` 274 ms → `overflow-checks=on` 311 ms). The residual 311 → 416 ms is the bounds check LLVM elides for Rust and kāra keeps.
+**① Bounds check — FIXED ([kara `B-2026-07-17-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), fix `6474a73`).** Kāra used to emit a per-iteration `cmp %rbx,%rdx; ja <panic>` bounds check on `row[k]` (one check covers `row[k]` and `row[k-1]`, since `k-1 < k`) that LLVM elides for Rust but kāra kept — because `k` is bounded by the *outer* loop variable only **transitively** (`k ≤ i-1`, `i ≤ rowIndex`, `len = rowIndex+1`), a chain LLVM's interval passes can't derive. The compiler now recognises this rolling-1D-DP shape (`compute_descending_skips`) and proves `k ≤ k_init = i-1 ≤ rowIndex-1 < rowIndex+1 = row.len()` from a length pin + the enclosing counter's bound, then skips the upper-half check kara-side. The descending loop's asm is now `add; jo; mov; dec; cmp $1; ja` — **no bounds check**, only the `jo` overflow check and the guard. A `KARAC_BCE_DESC_SKIP=0` A/B pins the win: the skip moves kāra from **1.29× → 1.19×** behind equal-safety Rust on this bench (valgrind-clean, ASAN-gated).
 
-So on a rolling-1D-DP shape, Kāra pays a per-iteration bounds check its optimizer can't yet prove redundant — the same BCE class as the *fixed* binary-search gap ([kara `B-2026-06-16-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)), a distinct index-derivation pattern. Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`). Python is listed at **1115 ms but ran K = 22,000 — 1/20 of the compiled iterations** (pure-Python is ~20× slower per rep; timed separately, not cross-checked), so its wall-clock is not comparable.
+**② Guard strength reduction — the residual ([kara `B-2026-07-17-14`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), open).** With the bounds check gone, an asm diff of the update loop shows the ~1.18× residual is a *different* gap: kāra emits `dec %rdx; cmp $0x1,%rdx; ja` (8 insns) where equal-safety Rust emits `dec %rdi; jne` (7 insns) — Rust folds the `k >= 1` guard into the decrement's flags, kāra keeps a separate `cmp $1`. One extra dependent instruction per iteration on a tight O(k²) loop. Filed as a loop-guard-strength-reduction gap, distinct from the bounds-check class ①.
 
-kāra holds **2.3 MiB** peak RSS (above C's 1.5 MiB, level with Rust's 2.1 MiB, a third of Go's 7.7 MiB). The kāra binary measures **324 KiB** here — the heap-growth backtrace-symbolizer artifact (one `Vec` allocated + freed per rep retains it, cf. [#115](../115-distinct-subsequences/)/[#118](../118-pascals-triangle/)), ~15 KiB on a correct build, flagged for the M5.
+The overflow check (`jo`) is **not** the gap — it is present in both kāra and the equal-safety Rust row (Rust's own overflow tax is ~1.28×: `rustc -O` 226 ms → `overflow-checks=on` 289 ms). Verified correct **and** valgrind-clean (`0 errors`). Python (pure-Python, ~20× slower per rep, run at a fraction of K, timed separately, not cross-checked) is not comparable and omitted from the table.
 
-**Flagged for the M5 re-bench** — container orderings can shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/)); treat the *margins* as data points. The direction — Kāra behind C and equal-safety Rust because of the un-eliminated bounds check — is a codegen fact, not a microarchitectural quirk, so it should hold until `B-2026-07-17-1` is addressed.
+kāra holds a small peak RSS (level with Rust, a fraction of Go's). The kāra binary carries the heap-growth backtrace-symbolizer artifact (one `Vec` allocated + freed per rep retains it, cf. [#115](../115-distinct-subsequences/)/[#118](../118-pascals-triangle/)), ~15 KiB on a correct build, flagged for the M5.
+
+**Flagged for the M5 re-bench** — container orderings can shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/)), and this particular container run was noisy; treat the *margins* as data points. The direction — kāra now within ~1.18× of equal-safety Rust after the bounds-check fix, the residual being the `cmp $1` guard (`B-2026-07-17-14`) — is a codegen fact, not a microarchitectural quirk.
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../../1-100/1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at a matched in-place rolling-1D DP (`Vec[i64]` vs `Vec<i64>`), where the equal-safety comparison exposes a **bounds-check-elimination** gap: LLVM proves the in-place index in-range and drops the check, kāra's BCE does not yet (filed as `B-2026-07-17-1`). That is exactly the dogfood loop's job — a natural in-place DP surfaced a concrete, isolated codegen improvement. C's unchecked `long[]` is the metal floor, Go the GC data point, Python (run at a fraction of the iteration count, timed separately, not cross-checked) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../../1-100/1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at a matched in-place rolling-1D DP (`Vec[i64]` vs `Vec<i64>`). The equal-safety comparison first exposed a **bounds-check-elimination** gap (`B-2026-07-17-1`) — now **fixed** by a kara-side descending-loop skip — and then a residual **guard-strength-reduction** gap (`B-2026-07-17-14`) underneath it. That is exactly the dogfood loop's job: a natural in-place DP surfaced two concrete, isolated codegen improvements, one already landed. C's unchecked `long[]` is the metal floor, Go the GC data point, Python (run at a fraction of the iteration count, timed separately, not cross-checked) the ergonomic foil.

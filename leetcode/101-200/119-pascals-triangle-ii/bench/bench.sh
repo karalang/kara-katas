@@ -8,8 +8,10 @@
 # building one Vec[i64] of length rowIndex+1 and updating it in place right-to-left
 # (row[k] = row[k] + row[k-1]), folding every entry. Dominated by the O(k^2) in-place updates — a
 # single small Vec per rep. C uses a malloc'd long[], Go a []int64, Rust a Vec<i64>; Kara a Vec[i64].
-# NOTE: on this pattern kara keeps a per-iteration bounds check LLVM elides for Rust (kara
-# B-2026-07-17-1), so kara trails equal-safety Rust here. Default `karac build` == KARAC_AUTO_PAR=0.
+# NOTE: kara B-2026-07-17-1 (the per-iteration bounds check on this in-place descending update) is
+# FIXED (fix 6474a73) — codegen now elides it kara-side. A residual ~1.18x vs equal-safety Rust
+# remains from a DIFFERENT gap, B-2026-07-17-14 (open): the `while k >= 1` guard emits `dec; cmp $1; ja`
+# where rust folds it into `dec; jne`. Default `karac build` == KARAC_AUTO_PAR=0.
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.
