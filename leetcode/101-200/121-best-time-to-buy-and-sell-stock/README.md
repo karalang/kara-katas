@@ -38,6 +38,8 @@ python3 one_pass.py
 
 ## Benchmarks
 
+> **Machine.** The canonical numbers below are an **Apple M5 Pro** run ([`bench/results.json`](bench/results.json)). A shared **x86-64 Linux cloud-container** reference run is folded in separately ([`bench/results.container-x86.json`](bench/results.container-x86.json)); absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal. The container run reproduces the headline — **kāra at equal-safety parity with `rustc -O -C overflow-checks=on`** (both ~32 ms there, ~1.3× behind wrapping `rust -O`, the overflow-check tax) — though its short ~30 ms workload is noisier, so the M5 run is the stable reference.
+
 ### How to run
 
 ```bash
