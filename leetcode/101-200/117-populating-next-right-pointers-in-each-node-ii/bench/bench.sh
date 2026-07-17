@@ -133,7 +133,7 @@ fi
 echo "sink (kara/rust/rust_ovf/c/go): $expected"
 echo
 
-bench_begin id=116 slug=connect group=101-200 \
+bench_begin id=117 slug=connect group=101-200 \
     title="Populating Next Right Pointers in Each Node II" \
     workload="each rep builds a fresh ~500-node pseudo-random BST (fixed shape, data-dependent value base=acc%100) and populates every node next pointer with the O(1)-space dummy-head threading (arbitrary-tree form), folding a level-order hash that reads the next chain back; K=16000 reps — the mutate regime (shared-node allocation + in-place next pointer wiring), the arbitrary-tree sibling of #116" \
     sink="$expected"

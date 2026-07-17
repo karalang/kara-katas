@@ -1,0 +1,48 @@
+// Benchmark harness for LeetCode #119 — in-place single-row Pascal (the ★).
+// See ../README.md § Benchmarks. Each rep computes the rowIndex-th row for a DATA-DEPENDENT rowIndex
+// (row_index = 30 + acc%20, so 30..49 — seeded by the running hash so get_row() can't be hoisted),
+// building one `Vec[i64]` of length rowIndex+1 and updating it IN PLACE right-to-left, then folds
+// every entry. K = 440000 reps — the in-place index-assignment regime: a single small Vec per rep
+// (no nested allocation), dominated by the O(k^2) in-place `row[j] = row[j] + row[j-1]` updates.
+
+fn get_row(row_index: i64) -> Vec[i64] {
+    let mut row: Vec[i64] = Vec.new();
+    let mut j = 0i64;
+    while j <= row_index {
+        row.push(1i64);
+        j = j + 1i64;
+    }
+    let mut i = 2i64;
+    while i <= row_index {
+        let mut k = i - 1i64;
+        while k >= 1i64 {
+            row[k] = row[k] + row[k - 1i64];
+            k = k - 1i64;
+        }
+        i = i + 1i64;
+    }
+    row
+}
+
+fn row_hash(row: ref Vec[i64]) -> i64 {
+    let mut h = 1i64;
+    let mut j = 0i64;
+    while j < row.len() {
+        h = (h * 131i64 + row[j]) % 1000000007i64;
+        j = j + 1i64;
+    }
+    (h * 31i64 + row.len() + 7i64) % 1000000007i64
+}
+
+fn main() {
+    let mut acc = 0i64;
+    let mut rep = 0i64;
+    while rep < 440000i64 {
+        let row_index = 30i64 + (acc % 20i64);
+        let row = get_row(row_index);
+        let h = row_hash(row);
+        acc = (acc * 131i64 + h) % 1000000007i64;
+        rep = rep + 1i64;
+    }
+    println(f"{acc}");
+}
