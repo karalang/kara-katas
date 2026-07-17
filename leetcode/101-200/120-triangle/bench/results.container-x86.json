@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "kata": {
+    "id": "120",
+    "slug": "triangle",
+    "group": "101-200",
+    "title": "Triangle",
+    "workload": "build one Vec[Vec[i64]] triangle of N=200 rows ONCE, then run the O(N^2) bottom-up rolling min-path DP dp[k]=triangle[i][k]+min(dp[k],dp[k+1]) K=20000 times with a data-dependent seed (seed=acc%97, non-uniform base-row perturbation (seed+j)%7 so the winning path shifts each rep and the DP can't be hoisted), folding every result \u2014 the rolling-1D min-DP over read-only nested indexing regime",
+    "sink": "487297205"
+  },
+  "env": {
+    "host": "Intel Xeon @ 2.10GHz (cloud container)",
+    "cores": "4",
+    "os": "Linux 6.18.5",
+    "karac": "karac 0.1.0 (main, post B-2026-07-17-16)",
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "clang": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+    "go": "go version go1.24.7 linux/amd64",
+    "hyperfine": "hyperfine 1.18.0",
+    "measured_at": "2026-07-17T05:10:00Z",
+    "note": "Measured on a shared x86-64 Linux cloud container (karac from kara main), NOT the corpus's Apple M5 Pro. Canonical M5 numbers in the sibling results.json are left untouched. Absolute times/sizes/RSS NOT comparable across the two files; only within-file cross-language ratios are the signal. Seq lane (fastest first): c 363ms ~ kara 367ms < go 564ms < rust 574ms < rust_ovf 653ms. RESULT: kara TIES C (1.01x) and is ~1.56x AHEAD of rustc -O (and 1.78x ahead of equal-safety rust_ovf) EVEN THOUGH kara keeps both overflow AND bounds checks. Mechanism: kara's bounds-check elision proves the nested index triangle[i][k] / dp[k] / dp[k+1] in-range from the `while k <= i` guard and drops all three inner checks (branchless cmov min + one jo overflow, no bounds panic; ~11 panic sites in the whole binary), while idiomatic Rust keeps the nested-Vec<Vec> bounds checks (~300 panic sites). The overflow tax is NOT the gap (rust_ovf is only ~14% behind rust -O; both trail kara). All compiled mirrors agree on the sink; correctness verified across interp/JIT/AOT/auto-par and valgrind-clean. Python runs a smaller K (own sink, not cross-checked). Re-run bench.sh on the M5 to fold comparable numbers into the corpus tables."
+  },
+  "measurements": [
+    {
+      "lang": "c",
+      "approach": "triangle",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 363.4688,
+        "stddev_ms": 10.2784,
+        "median_ms": 361.7375,
+        "min_ms": 347.297,
+        "max_ms": 402.6463,
+        "user_ms": 362.7132,
+        "system_ms": 0.6243,
+        "cpu_pct": 99.9,
+        "runs": 40
+      },
+      "binary_bytes": 16112,
+      "runtime_peak_rss_bytes": 1875968
+    },
+    {
+      "lang": "kara",
+      "approach": "triangle",
+      "lane": "seq",
+      "mode": "codegen",
+      "runtime": {
+        "mean_ms": 367.3397,
+        "stddev_ms": 12.1409,
+        "median_ms": 365.9235,
+        "min_ms": 347.9834,
+        "max_ms": 405.1996,
+        "user_ms": 366.5476,
+        "system_ms": 0.7582,
+        "cpu_pct": 99.9,
+        "runs": 40
+      },
+      "binary_bytes": 336624,
+      "runtime_peak_rss_bytes": 2592768
+    },
+    {
+      "lang": "rust",
+      "approach": "triangle",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 573.5422,
+        "stddev_ms": 20.6024,
+        "median_ms": 568.0077,
+        "min_ms": 547.9049,
+        "max_ms": 643.5303,
+        "user_ms": 571.6242,
+        "system_ms": 0.9681,
+        "cpu_pct": 99.9,
+        "runs": 40
+      },
+      "binary_bytes": 3957144,
+      "runtime_peak_rss_bytes": 2355200
+    },
+    {
+      "lang": "rust",
+      "approach": "triangle_ovf",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 653.1943,
+        "stddev_ms": 20.3714,
+        "median_ms": 646.3814,
+        "min_ms": 628.4337,
+        "max_ms": 720.3071,
+        "user_ms": 651.834,
+        "system_ms": 1.1434,
+        "cpu_pct": 99.9,
+        "runs": 40
+      },
+      "binary_bytes": 3957984,
+      "runtime_peak_rss_bytes": 2355200
+    },
+    {
+      "lang": "go",
+      "approach": "triangle",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 563.7507,
+        "stddev_ms": 32.9126,
+        "median_ms": 555.8451,
+        "min_ms": 526.9347,
+        "max_ms": 729.6936,
+        "user_ms": 559.7987,
+        "system_ms": 8.4945,
+        "cpu_pct": 99.9,
+        "runs": 40
+      },
+      "binary_bytes": 2213767,
+      "runtime_peak_rss_bytes": 7102464
+    },
+    {
+      "lang": "python",
+      "approach": "triangle",
+      "lane": "seq",
+      "mode": "interp",
+      "runtime": {
+        "mean_ms": null,
+        "stddev_ms": null,
+        "note": "K=2000, own sink 766597945, timed separately, NOT cross-checked",
+        "runs": 0
+      },
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
+    }
+  ],
+  "compile": [
+    {
+      "lang": "c",
+      "approach": "triangle",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 170.0,
+        "stddev_ms": null,
+        "runs": 1,
+        "note": "rough single-run"
+      },
+      "compile_peak_rss_bytes": null
+    },
+    {
+      "lang": "rust",
+      "approach": "triangle",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 452.0,
+        "stddev_ms": null,
+        "runs": 1,
+        "note": "rough single-run"
+      },
+      "compile_peak_rss_bytes": null
+    },
+    {
+      "lang": "kara",
+      "approach": "triangle",
+      "mode": "codegen",
+      "elapsed": {
+        "mean_ms": 202.0,
+        "stddev_ms": null,
+        "runs": 1,
+        "note": "rough single-run"
+      },
+      "compile_peak_rss_bytes": null
+    }
+  ]
+}

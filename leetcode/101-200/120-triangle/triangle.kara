@@ -1,0 +1,72 @@
+// LeetCode #120: Triangle — minimum path sum from top to bottom, O(n) extra space (★).
+//
+// Given a triangle, return the minimum path sum from the apex to the base, stepping each row to an
+// ADJACENT index (`j` or `j+1`). The O(n)-space trick is a BOTTOM-UP rolling row: seed `dp` with the
+// last triangle row, then for each row `i` from the second-to-last up to the apex, collapse in place
+// `dp[k] = triangle[i][k] + min(dp[k], dp[k+1])`. `dp[0]` is the answer. One `Vec[i64]` rolls
+// upward; the `triangle` (a `Vec[Vec[i64]]`) is read-only — the surface here is nested indexing
+// `triangle[i][k]` feeding a rolling-1D in-place min-DP (distinct from #119's single-row add-roll).
+
+fn minimum_total(triangle: ref Vec[Vec[i64]]) -> i64 {
+    let n = triangle.len();
+    if n == 0i64 {
+        return 0i64;
+    }
+    // Seed dp with the base row.
+    let mut dp: Vec[i64] = Vec.filled(n, 0i64);
+    let mut j = 0i64;
+    while j < n {
+        dp[j] = triangle[n - 1i64][j];
+        j = j + 1i64;
+    }
+    // Roll upward: each row collapses into dp in place.
+    let mut i = n - 2i64;
+    while i >= 0i64 {
+        let mut k = 0i64;
+        while k <= i {
+            let a = dp[k];
+            let b = dp[k + 1i64];
+            let m = if a < b { a } else { b };
+            dp[k] = triangle[i][k] + m;
+            k = k + 1i64;
+        }
+        i = i - 1i64;
+    }
+    dp[0i64]
+}
+
+fn main() {
+    // LeetCode example 1: [[2],[3,4],[6,5,7],[4,1,8,3]] -> 2+3+5+1 = 11.
+    let t1: Vec[Vec[i64]] = [[2i64], [3i64, 4i64], [6i64, 5i64, 7i64], [4i64, 1i64, 8i64, 3i64]];
+    println(f"example1: {minimum_total(t1)}");
+
+    // LeetCode example 2: single apex.
+    let t2: Vec[Vec[i64]] = [[-10i64]];
+    println(f"example2: {minimum_total(t2)}");
+
+    // A wider triangle with a clear minimum.
+    let t3: Vec[Vec[i64]] = [[1i64], [2i64, 3i64], [4i64, 5i64, 6i64], [7i64, 8i64, 9i64, 10i64], [11i64, 12i64, 13i64, 14i64, 15i64]];
+    println(f"example3: {minimum_total(t3)}");
+
+    // Deterministic sink: build triangles of growing height with data-dependent
+    // values and fold every minimum path — a run==build determinism anchor.
+    let mut acc = 0i64;
+    let mut h = 1i64;
+    while h <= 40i64 {
+        let mut tri: Vec[Vec[i64]] = Vec.new();
+        let mut i = 0i64;
+        while i < h {
+            let mut row: Vec[i64] = Vec.new();
+            let mut j = 0i64;
+            while j <= i {
+                row.push((i * 31i64 + j * 17i64 + h * 7i64) % 100i64);
+                j = j + 1i64;
+            }
+            tri.push(row);
+            i = i + 1i64;
+        }
+        acc = (acc * 131i64 + minimum_total(tri) + h) % 1000000007i64;
+        h = h + 1i64;
+    }
+    println(f"sink: {acc}");
+}
