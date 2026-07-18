@@ -10,9 +10,11 @@ Given an array of strings `strs`, return the longest common prefix shared by all
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| Vertical scanning (column-by-column) | O(S) time, O(1) extra (+ output) | [`vertical.kara`](vertical.kara) ✓ via `karac run` | [`vertical.py`](vertical.py) ✓ |
+| Vertical scanning (column-by-column) | O(S) time, O(1) extra (+ output) | [`vertical.kara`](vertical.kara) ✓ | [`vertical.py`](vertical.py) ✓ |
 
-`✓` runs end-to-end today. `S` is the total number of characters scanned, bounded by `min-length × count`.
+`✓` runs end-to-end today under `karac run` (tree-walk) **and** `karac build` (AOT, default auto-par and `KARAC_AUTO_PAR=0` alike), byte-identical to the Python mirror. `S` is the total number of characters scanned, bounded by `min-length × count`.
+
+> **Compiler bug surfaced & fixed by this kata.** The `String.push(char)` prefix-rebuild loop (and the bench's `make_string` char-push loop) was mis-lowered through the Vec *tabulate* reduction path under `karac build`: a `String` shares `Vec`'s `{ptr,len,cap}` layout, so the lowering reserved `trip_count × 1` bytes and did fixed-stride element stores, but each `push` writes a 4-byte char slot — a silent 3-bytes-per-char heap-buffer-overflow (valgrind: `Invalid write of size 4`). It ran clean only under the interpreter, so this row was previously marked `✓ via karac run` only. Fixed in the compiler ([kara `B-2026-07-18-15`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)) — a String accumulator now bails out of the tabulate/Collect lowerings to the correct per-push codegen. The kata now builds and is valgrind/ASAN-clean.
 
 ### Why vertical scanning?
 
@@ -33,8 +35,9 @@ The `col >= other.len() or other[col] != c` guard leans on `or`'s short-circuit:
 ## Running
 
 ```bash
-# Kāra
-karac run vertical.kara
+# Kāra — interpreter and codegen produce the same output today.
+karac run   vertical.kara
+karac build vertical.kara && ./vertical
 
 # Python (3.10+ for PEP 604 union syntax)
 python3 vertical.py
