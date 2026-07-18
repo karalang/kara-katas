@@ -156,3 +156,8 @@ auto-par output-ordering bug **`B-2026-06-13-18`** (surfaced by the slice partne
 [#171](../../101-200/171-excel-sheet-column-number/)) covers this kata's
 `report(...)` print sequence too — fixed (`48145ad4`). See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
+
+**Ledger cross-ref:** `B-2026-07-09-14` (fixed) — the default `karac build`
+(auto-par ON) fanned this kata's tiny per-call loops out through the ~70 µs
+spawn path, a pure cost-model perf regression (no correctness impact) surfaced
+by this kata's bench lane.
