@@ -69,7 +69,24 @@ Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, a
 
 **Equal safety.** Kāra checks integer overflow (and the `Option[TreeNode]` unwrap) by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on overflow.
 
-> **Canonical numbers pending a quiet host.** All five mirrors are written and **cross-verified to produce the identical sink** (`15576480`), and [`bench.sh`](bench/bench.sh) runs them all. A preliminary container run was attempted but the shared host was **too noisy to publish** — a trivial `clang -O3` C binary spanned **429 ms … 3152 ms** across a single 12-run batch (a 7× spread from neighbour-tenant interference), which contaminates every cross-language ratio. Rather than commit numbers measured on a demonstrably unreliable host, `results.container-x86.json` is deferred to a clean reference run (`bash bench/bench.sh` on a quiet host). This kata's value as a dogfood — a correct, valgrind-clean RC-tree traversal verified on every surface — does not depend on the timing table.
+`--warmup 8 --runs 50`. All single-threaded (every row ~100% CPU). **x86-64 container numbers** ([`bench/results.container-x86.json`](bench/results.container-x86.json), sink `15576480`):
+
+| Implementation | Wall time | Binary | Peak RSS |
+|---|---|---|---|
+| c    max_path_sum (clang -O3)                    | **397 ± 25 ms** | 16 KiB | 34.3 MiB |
+| **kāra max_path_sum (codegen)**                  | **760 ± 45 ms** | 337 KiB | 51.3 MiB |
+| go   max_path_sum                                | 1068 ± 106 ms | 2.2 MiB | 27.8 MiB |
+| rust max_path_sum (rustc -O)                     | 1821 ± 205 ms | 3.9 MiB | 51.2 MiB |
+| rust max_path_sum (rustc -O, overflow-checks=on) | 1830 ± 231 ms | 3.9 MiB | 51.3 MiB |
+
+**Kāra lands second — behind C, ahead of Go and both Rust rows — on this pointer-chasing RC-tree traversal.** Two measured findings frame the ordering honestly:
+
+- **C's edge is instruction count, not magic.** A cachegrind decomposition (mini workload) reads **c 73.8 M** instructions vs **kāra 118.1 M** vs **rust(Box) 116.2 M** — clang emits ~1.6× leaner recursion codegen, which is the whole C-vs-kāra gap (kāra is 1.9× C's wall time, ≈ its instruction ratio).
+- **Kāra ≈ Rust in instructions, yet ~2× faster in wall-clock — and I can't fully explain it.** kāra and `rustc -O` emit near-identical instruction counts (118 M vs 116 M) and near-identical *modelled* cache misses, so cachegrind does **not** account for kāra's ~2.4× wall-time lead over `rustc -O`. Even an owned-`Box` Rust tree (dropping the `Rc` refcount kāra's `shared struct` carries) measures ~1.37 s here, still well behind kāra's 760 ms. The margin is a real-hardware memory-behaviour effect I did not root-cause — reported as a **measured observation, not a language-superiority claim**.
+
+**Equal safety.** The two Rust rows (`-O` vs `-O -C overflow-checks=on`) sit within noise of each other, so the overflow-check tax is negligible on this pointer-bound workload — kāra's default overflow + `Option[TreeNode]`-unwrap checks are likewise in the noise, not the reason for the Rust gap.
+
+> **Reproducibility caveat.** This is a shared cloud container; the ordering held across four independent runs, but absolute times carry ~6–13% run-to-run variance (the `rust` rows most). Only within-file ratios are the signal — never compare these absolutes to another host's.
 
 ### Why Rust is in the harness
 
