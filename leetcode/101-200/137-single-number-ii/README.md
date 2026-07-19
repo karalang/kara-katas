@@ -35,7 +35,7 @@ Running both and asserting they agree is a self-check that also exercises the fu
 - **32-bit two's-complement masking + sign extension** in i64 — `x & 0xFFFFFFFF`, then subtract `2³²` when the top bit is set.
 - **`ref Vec[i64]` read-only parameters** — the two helpers borrow the same `nums` (see the note below).
 
-> **Compiler friction surfaced by this kata (open).** Writing the two helpers as `fn helper(nums: Vec[i64])` (owned) and calling both on the same `nums` makes `karac check` hard-error (`value 'nums' moved here, used again here`) — yet `karac build` **and** `karac run` accept that exact program, compile it, and run it correctly and valgrind-clean. The two front-ends disagree on validity; filed as [kara `B-2026-07-19-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (check-vs-build ownership false-positive — the reused owned arg is resolved by codegen's RC/copy fallback, which `check` should treat as an rc-fallback rather than a hard error). The idiomatic declaration for a read-only function is `ref Vec[i64]` anyway, which this solver uses.
+> **Compiler friction surfaced by this kata (open).** Writing the two helpers as `fn helper(nums: Vec[i64])` (owned) and calling both on the same `nums` makes `karac check` hard-error (`value 'nums' moved here, used again here`) — yet `karac build` **and** `karac run` accept that exact program, compile it, and run it correctly and valgrind-clean. The two front-ends disagree on validity; filed as [kara `B-2026-07-19-3`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (check-vs-build ownership false-positive — the reused owned arg is resolved by codegen's RC/copy fallback, which `check` should treat as an rc-fallback rather than a hard error). The idiomatic declaration for a read-only function is `ref Vec[i64]` anyway, which this solver uses.
 
 ## Running
 
@@ -48,4 +48,4 @@ diff <(karac run single_number.kara) <(python3 single_number.py) && echo OK
 
 ## Notes
 
-Dogfood-first bit-manipulation kata: it verifies the full `i64` bitwise operator set is codegen-correct (interp==build), cross-checks two independent bit tricks at runtime, and surfaced the check-vs-build ownership divergence `B-2026-07-19-2`.
+Dogfood-first bit-manipulation kata: it verifies the full `i64` bitwise operator set is codegen-correct (interp==build), cross-checks two independent bit tricks at runtime, and surfaced the check-vs-build ownership divergence `B-2026-07-19-3`.
