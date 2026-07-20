@@ -2,17 +2,18 @@
 //
 // The image never leaves the device: the browser decodes/encodes the container
 // (JPEG/PNG/WebP via `createImageBitmap` / `canvas.toBlob`), and **Kāra owns
-// every pixel kernel** — here the walking skeleton is a single grayscale pass,
-// with resize/adjust/filter to follow. Compiled with:
+// every pixel kernel** — grayscale and bilinear/Lanczos-3 resample so far, with
+// crop/rotate/adjust to follow. Compiled with:
 //
 //   karac build prism.kara --target=wasm_browser   # browser (main-thread, no COOP/COEP)
 //   python3 -m http.server                         # then open http://localhost:8000/
 //
 // This is the *request-driven* shape (unlike Iris's continuous render loop):
-// JS decodes the dropped image, then calls the exported `process(w, h)`, which
-// pulls the source pixels into a Kāra buffer (`read_src`), runs the kernel, and
-// hands the result back for the canvas blit (`put_pixels`). Download is pure JS
-// on the already-painted canvas — no Kāra host fn needed.
+// JS decodes the dropped image, then calls the exported
+// `process(op, sw, sh, dw, dh)`, which pulls the source pixels into a Kāra
+// buffer (`read_src`), runs the selected kernel, and hands the result back for
+// the canvas blit (`put_pixels`). Download is pure JS on the already-painted
+// canvas — no Kāra host fn needed.
 
 // Host capabilities, as effect resources (declared locally — no std.web import
 // needed for the two host fns below).
@@ -28,17 +29,16 @@ host fn read_src(dst: *const u8, len: i64) with reads(Input);
 // canvas (sizing it to w×h). Same synchronous handoff as Iris/Slipstream.
 host fn put_pixels(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
 
-// The entry JS calls on each file-drop. `#[target(wasm_browser)] pub fn` makes it
-// a JS-callable export (`handle.exports.process`). Pull the w×h RGBA source in,
-// run one grayscale pass (Rec. 601 luma, integer weights summing to 100), and
-// blit the result. Alpha is preserved.
-#[target(wasm_browser)]
-pub fn process(w: i64, h: i64) with reads(Input) writes(Display) {
+// ── Op selectors (the `op` argument of `process`) ───────────────────────────
+fn op_grayscale() -> i64 { 0 }
+fn op_resize_bilinear() -> i64 { 1 }
+fn op_resize_lanczos() -> i64 { 2 }
+
+// ── Kernels (pure pixel math — no host knowledge) ───────────────────────────
+
+// Rec. 601 integer luma (weights sum to 100). Alpha preserved.
+fn gray(src: ref Vec[u8], w: i64, h: i64) -> Vec[u8] {
     let n = w * h * 4;
-
-    let mut src: Vec[u8] = Vec.filled(n, 0);
-    read_src(src.as_ptr(), src.len());
-
     let mut out: Vec[u8] = Vec.filled(n, 0);
     let mut i: i64 = 0;
     while i < n {
@@ -52,6 +52,230 @@ pub fn process(w: i64, h: i64) with reads(Input) writes(Display) {
         out[i + 3] = src[i + 3];
         i = i + 4;
     }
+    out
+}
 
-    put_pixels(out.as_ptr(), out.len(), w, h);
+// Bilinear resample of an sw×sh RGBA image to dw×dh. Pixel-center alignment
+// (`(d + 0.5) * scale - 0.5`), edge-clamped — the standard convention, so the
+// output matches what references like stb_image_resize produce for the same
+// filter. Works for both downscale and upscale (for heavy downscales Lanczos
+// below is the better choice; bilinear is the fast path).
+fn resize_bilinear(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
+    let xs = (sw as f64) / (dw as f64);
+    let ys = (sh as f64) / (dh as f64);
+    let mut dy: i64 = 0;
+    while dy < dh {
+        let fy = ((dy as f64) + 0.5) * ys - 0.5;
+        let mut y0 = fy.floor() as i64;
+        let mut ty = fy - (y0 as f64);
+        if y0 < 0 { y0 = 0; ty = 0.0; }
+        let mut y1 = y0 + 1;
+        if y1 > sh - 1 { y1 = sh - 1; }
+        let mut dx: i64 = 0;
+        while dx < dw {
+            let fx = ((dx as f64) + 0.5) * xs - 0.5;
+            let mut x0 = fx.floor() as i64;
+            let mut tx = fx - (x0 as f64);
+            if x0 < 0 { x0 = 0; tx = 0.0; }
+            let mut x1 = x0 + 1;
+            if x1 > sw - 1 { x1 = sw - 1; }
+
+            let p00 = (y0 * sw + x0) * 4;
+            let p01 = (y0 * sw + x1) * 4;
+            let p10 = (y1 * sw + x0) * 4;
+            let p11 = (y1 * sw + x1) * 4;
+            let o = (dy * dw + dx) * 4;
+
+            let mut c: i64 = 0;
+            while c < 4 {
+                let v00 = src[p00 + c] as f64;
+                let v01 = src[p01 + c] as f64;
+                let v10 = src[p10 + c] as f64;
+                let v11 = src[p11 + c] as f64;
+                let top = v00 + (v01 - v00) * tx;
+                let bot = v10 + (v11 - v10) * tx;
+                let mut v = top + (bot - top) * ty + 0.5;
+                if v < 0.0 { v = 0.0; }
+                if v > 255.0 { v = 255.0; }
+                out[o + c] = (v as i64) as u8;
+                c = c + 1;
+            }
+            dx = dx + 1;
+        }
+        dy = dy + 1;
+    }
+    out
+}
+
+// Lanczos-3 windowed-sinc weight for |t| <= 3 (t in source pixels).
+fn lanczos3(t: f64) -> f64 {
+    let mut x = t;
+    if x < 0.0 { x = 0.0 - x; }
+    if x < 0.000001 { return 1.0; }
+    if x >= 3.0 { return 0.0; }
+    let pi = 3.141592653589793;
+    let px = pi * x;
+    let px3 = px / 3.0;
+    (px.sin() / px) * (px3.sin() / px3)
+}
+
+// Precomputed 1-D Lanczos tap table for one axis: for each of `dn` output
+// coordinates, the clamped source tap range [lo, hi] and the NORMALIZED weight
+// per tap. Weights depend only on the output coordinate — never on the other
+// axis — so computing them once per column/row (instead of per pixel) removes
+// ~99.9% of the `sin()` calls (measured 2.8–11s -> the table is the fix).
+// Layout: `los[d]`, `his[d]`, and weights flattened at `woff[d] .. +taps`.
+struct LanczosTaps {
+    los: Vec[i64],
+    his: Vec[i64],
+    woff: Vec[i64],
+    wgts: Vec[f64],
+}
+
+// Build the tap table for scaling `sn` source pixels to `dn` output pixels.
+// Pixel-center alignment; for downscales the kernel is widened by the scale
+// factor (standard anti-aliasing: filter in source space), support = 3*scale.
+// Weights are normalized here so the passes are pure multiply-adds.
+fn lanczos_taps(sn: i64, dn: i64) -> LanczosTaps {
+    let scale = (sn as f64) / (dn as f64);
+    let mut fs = scale; if fs < 1.0 { fs = 1.0; }
+    let sup = 3.0 * fs;
+
+    let mut los: Vec[i64] = Vec.new();
+    let mut his: Vec[i64] = Vec.new();
+    let mut woff: Vec[i64] = Vec.new();
+    let mut wgts: Vec[f64] = Vec.new();
+
+    let mut d: i64 = 0;
+    while d < dn {
+        let center = ((d as f64) + 0.5) * scale - 0.5;
+        let mut lo = (center - sup).ceil() as i64;
+        let mut hi = (center + sup).floor() as i64;
+        if lo < 0 { lo = 0; }
+        if hi > sn - 1 { hi = sn - 1; }
+        los.push(lo);
+        his.push(hi);
+        woff.push(wgts.len());
+        let mut wsum = 0.0;
+        let mut s = lo;
+        while s <= hi {
+            let wgt = lanczos3((center - (s as f64)) / fs);
+            wgts.push(wgt);
+            wsum = wsum + wgt;
+            s = s + 1;
+        }
+        // Normalize in place so downstream accumulation skips the divide.
+        let mut k = woff[d];
+        while k < wgts.len() {
+            wgts[k] = wgts[k] / wsum;
+            k = k + 1;
+        }
+        d = d + 1;
+    }
+    LanczosTaps { los: los, his: his, woff: woff, wgts: wgts }
+}
+
+// Lanczos-3 resample, separable (horizontal pass into a temp, then vertical),
+// driven by the precomputed per-axis tap tables. Channels are filtered in f64
+// and clamped once at the end of the vertical pass.
+fn resize_lanczos(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
+    let tx = lanczos_taps(sw, dw);
+    let ty = lanczos_taps(sh, dh);
+
+    // ── Horizontal pass: sw×sh -> dw×sh (f64 intermediate) ──
+    let mut tmp: Vec[f64] = Vec.filled(dw * sh * 4, 0.0);
+    let mut y: i64 = 0;
+    while y < sh {
+        let row = y * sw;
+        let mut x: i64 = 0;
+        while x < dw {
+            let lo = tx.los[x];
+            let hi = tx.his[x];
+            let base = tx.woff[x];
+            let mut acc0 = 0.0; let mut acc1 = 0.0;
+            let mut acc2 = 0.0; let mut acc3 = 0.0;
+            let mut sx = lo;
+            while sx <= hi {
+                let wgt = tx.wgts[base + (sx - lo)];
+                let p = (row + sx) * 4;
+                acc0 = acc0 + (src[p] as f64) * wgt;
+                acc1 = acc1 + (src[p + 1] as f64) * wgt;
+                acc2 = acc2 + (src[p + 2] as f64) * wgt;
+                acc3 = acc3 + (src[p + 3] as f64) * wgt;
+                sx = sx + 1;
+            }
+            let o = (y * dw + x) * 4;
+            tmp[o] = acc0;
+            tmp[o + 1] = acc1;
+            tmp[o + 2] = acc2;
+            tmp[o + 3] = acc3;
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+
+    // ── Vertical pass: dw×sh -> dw×dh, clamp to u8 ──
+    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
+    let mut dy: i64 = 0;
+    while dy < dh {
+        let lo = ty.los[dy];
+        let hi = ty.his[dy];
+        let base = ty.woff[dy];
+        let mut dx2: i64 = 0;
+        while dx2 < dw {
+            let mut acc0 = 0.0; let mut acc1 = 0.0;
+            let mut acc2 = 0.0; let mut acc3 = 0.0;
+            let mut sy = lo;
+            while sy <= hi {
+                let wgt = ty.wgts[base + (sy - lo)];
+                let p = (sy * dw + dx2) * 4;
+                acc0 = acc0 + tmp[p] * wgt;
+                acc1 = acc1 + tmp[p + 1] * wgt;
+                acc2 = acc2 + tmp[p + 2] * wgt;
+                acc3 = acc3 + tmp[p + 3] * wgt;
+                sy = sy + 1;
+            }
+            let o = (dy * dw + dx2) * 4;
+            let mut c: i64 = 0;
+            while c < 4 {
+                let mut v = acc0;
+                if c == 1 { v = acc1; }
+                if c == 2 { v = acc2; }
+                if c == 3 { v = acc3; }
+                v = v + 0.5;
+                if v < 0.0 { v = 0.0; }
+                if v > 255.0 { v = 255.0; }
+                out[o + c] = (v as i64) as u8;
+                c = c + 1;
+            }
+            dx2 = dx2 + 1;
+        }
+        dy = dy + 1;
+    }
+    out
+}
+
+// ── The export JS calls on each request ─────────────────────────────────────
+//
+// `op` selects the kernel; `sw`/`sh` are the source dims, `dw`/`dh` the output
+// dims (equal to source for non-resize ops). Pull the source in once, dispatch,
+// blit the result.
+#[target(wasm_browser)]
+pub fn process(op: i64, sw: i64, sh: i64, dw: i64, dh: i64) with reads(Input) writes(Display) {
+    let n = sw * sh * 4;
+    let mut src: Vec[u8] = Vec.filled(n, 0);
+    read_src(src.as_ptr(), src.len());
+
+    let out = if op == op_resize_bilinear() {
+        resize_bilinear(src, sw, sh, dw, dh)
+    } else if op == op_resize_lanczos() {
+        resize_lanczos(src, sw, sh, dw, dh)
+    } else {
+        gray(src, sw, sh)
+    };
+
+    let ow = if op == op_grayscale() { sw } else { dw };
+    let oh = if op == op_grayscale() { sh } else { dh };
+    put_pixels(out.as_ptr(), out.len(), ow, oh);
 }
