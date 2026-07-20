@@ -355,6 +355,25 @@
   });
   $("another").addEventListener("click", () => fileEl.click());
 
+  // ── Test hook (verify_browser.mjs drives the real pipeline through this) ──
+  // Not part of the product surface; lets the CDP harness inject decoded
+  // pixels (skipping only the file-picker) and read canvas state back. Every
+  // op still flows through the real buttons → apply() → wasm → put_pixels.
+  window.__prism = {
+    ready: () => ready.then(() => true),
+    loadPixels: (arr, w, h) => {
+      orig = new Uint8ClampedArray(arr); origW = w; origH = h;
+      undoStack.length = 0;
+      adopt(new Uint8ClampedArray(orig), w, h);
+      dropEl.style.display = "none";
+      stage.style.display = "flex";
+      setMeta("loaded (test hook)");
+    },
+    setSel: (x, y, w, h) => { sel = { x, y, w, h }; $("docrop").disabled = false; },
+    dims: () => ({ w: curW, h: curH }),
+    pixel: (x, y) => [...ctx2d.getImageData(x, y, 1, 1).data],
+  };
+
   // ── Drop / file wiring ───────────────────────────────────────────────────
   dropEl.addEventListener("click", () => fileEl.click());
   fileEl.addEventListener("change", () => loadFile(fileEl.files[0]));

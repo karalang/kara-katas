@@ -3,6 +3,7 @@
 #
 #   ./build.sh                 # build prism.wasm + prism.js next to index.html
 #   ./build.sh --serve         # build, then serve on http://localhost:8000
+#   ./build.sh --verify        # build, then drive the page in headless Chrome
 #   KARAC=/path/to/karac ./build.sh
 #
 # Prism is a SEQUENTIAL wasm_browser build — it runs on the main thread, so it
@@ -18,9 +19,13 @@ KARAC="${KARAC:-../../../kara/target/debug/karac}"
 echo "==> building prism (wasm_browser) with $KARAC"
 "$KARAC" build prism.kara --target=wasm_browser
 
-echo "==> node smoke test (grayscale over a known image)"
+echo "==> node smoke test (all kernels, exact oracles)"
 node test_node.mjs
 
+if [[ "${1:-}" == "--verify" ]]; then
+  echo "==> real-browser verification (headless Chrome over CDP)"
+  exec node verify_browser.mjs
+fi
 if [[ "${1:-}" == "--serve" ]]; then
   echo "==> serving on http://localhost:8000 (Ctrl-C to stop)"
   exec python3 -m http.server 8000

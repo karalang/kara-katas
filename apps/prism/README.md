@@ -22,8 +22,12 @@ the compute. Tracked in the compiler's dogfooding roster
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
   (crop → resize → adjust …), with an 8-step Undo and an Original reset.
-- The worker-pool/SIMD parallel pass (`--features wasm-threads`), EXIF
-  awareness, and a real-browser CDP test are the next slices.
+- **Real-browser verified**: `verify_browser.mjs` drives the actual page in
+  headless Chrome over CDP — wasm instantiation, load, grayscale via the real
+  button (oracle-exact canvas pixels), undo, rotate, resize, crop, all chained
+  on one working image (`./build.sh --verify`).
+- The worker-pool/SIMD parallel pass (`--features wasm-threads`) and EXIF
+  awareness are the next slices.
 
 ## Build & run
 
