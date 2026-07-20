@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prism — local image workbench (nothing uploaded)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #07090f; color: #d7e0f0;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    padding: 26px 18px 40px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  p.sub { margin: 0; opacity: .7; max-width: 620px; text-align: center; }
+  .badge { color: #63e6a8; font-weight: 600; }
+  #drop {
+    width: min(720px, 92vw); min-height: 260px;
+    border: 1.5px dashed #2b3a5e; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; cursor: pointer;
+    background: #0b1120; transition: border-color .15s, background .15s;
+  }
+  #drop.hot { border-color: #6fd3ff; background: #0e1730; }
+  #drop .big { font-size: 15px; color: #cfe0ff; }
+  #drop .small { font-size: 12px; opacity: .6; }
+  #stagewrap { display: none; flex-direction: column; align-items: center; gap: 12px; }
+  canvas {
+    max-width: min(720px, 92vw); height: auto;
+    border: 1px solid #1d2740; border-radius: 8px; background: #000;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  button {
+    background: #111a2e; color: #cfe0ff; border: 1px solid #243a5e;
+    border-radius: 6px; padding: 7px 13px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #6fd3ff; }
+  button.primary { background: #1d3a66; border-color: #6fd3ff; color: #fff; }
+  #meta { font-size: 12px; opacity: .7; white-space: pre; text-align: center; }
+  #note { opacity: .55; max-width: 640px; text-align: center; font-size: 12px; }
+  code { color: #9ad0ff; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+  <h1>Prism</h1>
+  <p class="sub">A local image workbench. Drop a photo — it's processed
+    <span class="badge">entirely in your browser</span>, and
+    <b>never uploaded</b>. The pixel math runs in Kāra compiled to WebAssembly;
+    the browser only decodes and re-encodes the file.</p>
+
+  <div id="drop">
+    <div class="big">Drop an image here, or click to choose</div>
+    <div class="small">JPEG · PNG · WebP — stays on your device</div>
+    <input id="file" type="file" accept="image/*" />
+  </div>
+
+  <div id="stagewrap">
+    <canvas id="screen"></canvas>
+    <div id="meta"></div>
+    <div class="row">
+      <button id="grayscale" class="primary">Grayscale</button>
+      <button id="reset">Original</button>
+      <button id="download">Download PNG</button>
+      <button id="another">Open another…</button>
+    </div>
+  </div>
+
+  <p id="note">Where's the upload? There isn't one — open the Network tab and
+    watch it stay empty. The image is decoded to pixels by the browser, handed
+    to a Kāra <code>process(w, h)</code> export that runs the grayscale kernel,
+    and blitted back to the canvas. Download re-encodes the canvas locally.</p>
+
+<script type="module">
+  import { instantiate } from "./prism.js";
+
+  const dropEl   = document.getElementById("drop");
+  const fileEl   = document.getElementById("file");
+  const stage    = document.getElementById("stagewrap");
+  const canvas   = document.getElementById("screen");
+  const ctx2d    = canvas.getContext("2d");
+  const metaEl   = document.getElementById("meta");
+
+  // The decoded source the Kāra side pulls in via `read_src`. Kept on the main
+  // thread; a sequential wasm_browser build runs host fns on the main thread too.
+  let srcPixels = null;   // Uint8ClampedArray RGBA
+  let srcW = 0, srcH = 0;
+  let origImageData = null; // for the "Original" button
+
+  // ── Host fns (the `kara_host` imports) ────────────────────────────────────
+  // read_src: JS copies the decoded source pixels into wasm memory at `dst`.
+  // put_pixels: JS reads the processed RGBA out of wasm memory and paints it.
+  const host = {
+    read_src(dst, len, ctx) {
+      const n = Number(len);
+      new Uint8Array(ctx.memory.buffer, Number(dst), n).set(srcPixels.subarray(0, n));
+    },
+    put_pixels(ptr, len, w, h, ctx) {
+      const n = Number(len), W = Number(w), H = Number(h);
+      const view = new Uint8ClampedArray(ctx.memory.buffer, Number(ptr), n);
+      const copy = new Uint8ClampedArray(n); copy.set(view); // detach from wasm memory
+      canvas.width = W; canvas.height = H;
+      ctx2d.putImageData(new ImageData(copy, W, H), 0, 0);
+    },
+  };
+
+  const ready = instantiate(host).catch((e) => {
+    metaEl.textContent = "failed to load wasm: " + (e && e.message ? e.message : e);
+    console.error(e);
+    throw e;
+  });
+
+  function setMeta(extra) {
+    metaEl.textContent = `${srcW} × ${srcH}px · ${(srcW * srcH / 1e6).toFixed(1)} MP` +
+      (extra ? `  ·  ${extra}` : "");
+  }
+
+  async function loadFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const bmp = await createImageBitmap(file);
+    srcW = bmp.width; srcH = bmp.height;
+    // Decode to RGBA via a scratch canvas.
+    const scratch = document.createElement("canvas");
+    scratch.width = srcW; scratch.height = srcH;
+    const sctx = scratch.getContext("2d");
+    sctx.drawImage(bmp, 0, 0);
+    origImageData = sctx.getImageData(0, 0, srcW, srcH);
+    srcPixels = origImageData.data;
+    bmp.close && bmp.close();
+
+    // Show the original immediately.
+    canvas.width = srcW; canvas.height = srcH;
+    ctx2d.putImageData(origImageData, 0, 0);
+    dropEl.style.display = "none";
+    stage.style.display = "flex";
+    setMeta("loaded");
+  }
+
+  async function runGrayscale() {
+    if (!srcPixels) return;
+    const handle = await ready;
+    const t0 = performance.now();
+    handle.exports.process(BigInt(srcW), BigInt(srcH));
+    setMeta(`grayscale in ${(performance.now() - t0).toFixed(1)} ms`);
+  }
+
+  function showOriginal() {
+    if (!origImageData) return;
+    canvas.width = srcW; canvas.height = srcH;
+    ctx2d.putImageData(origImageData, 0, 0);
+    setMeta("original");
+  }
+
+  function download() {
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "prism.png";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  }
+
+  // ── Wiring ────────────────────────────────────────────────────────────────
+  dropEl.addEventListener("click", () => fileEl.click());
+  fileEl.addEventListener("change", () => loadFile(fileEl.files[0]));
+  ["dragenter", "dragover"].forEach((ev) =>
+    dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove("hot"); }));
+  dropEl.addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
+  // Allow dropping onto the whole window once an image is loaded.
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+  document.getElementById("grayscale").addEventListener("click", runGrayscale);
+  document.getElementById("reset").addEventListener("click", showOriginal);
+  document.getElementById("download").addEventListener("click", download);
+  document.getElementById("another").addEventListener("click", () => fileEl.click());
+</script>
+</body>
+</html>

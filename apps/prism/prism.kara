@@ -1,0 +1,57 @@
+// Prism — a fully-local, in-browser image workbench in one Kāra source.
+//
+// The image never leaves the device: the browser decodes/encodes the container
+// (JPEG/PNG/WebP via `createImageBitmap` / `canvas.toBlob`), and **Kāra owns
+// every pixel kernel** — here the walking skeleton is a single grayscale pass,
+// with resize/adjust/filter to follow. Compiled with:
+//
+//   karac build prism.kara --target=wasm_browser   # browser (main-thread, no COOP/COEP)
+//   python3 -m http.server                         # then open http://localhost:8000/
+//
+// This is the *request-driven* shape (unlike Iris's continuous render loop):
+// JS decodes the dropped image, then calls the exported `process(w, h)`, which
+// pulls the source pixels into a Kāra buffer (`read_src`), runs the kernel, and
+// hands the result back for the canvas blit (`put_pixels`). Download is pure JS
+// on the already-painted canvas — no Kāra host fn needed.
+
+// Host capabilities, as effect resources (declared locally — no std.web import
+// needed for the two host fns below).
+effect resource Display; // the <canvas> we paint, reached via `put_pixels`
+effect resource Input;   // the decoded source pixels JS holds, read via `read_src`
+
+// JS copies `len` bytes of RGBA source pixels into wasm memory at `dst`. The
+// call is synchronous, so the buffer is filled before we read it. (`*const u8`
+// mirrors the `put_pixels` handoff idiom; the callee writes through it.)
+host fn read_src(dst: *const u8, len: i64) with reads(Input);
+
+// JS reads `len` bytes of RGBA at `ptr` out of wasm memory and blits them to the
+// canvas (sizing it to w×h). Same synchronous handoff as Iris/Slipstream.
+host fn put_pixels(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
+
+// The entry JS calls on each file-drop. `#[target(wasm_browser)] pub fn` makes it
+// a JS-callable export (`handle.exports.process`). Pull the w×h RGBA source in,
+// run one grayscale pass (Rec. 601 luma, integer weights summing to 100), and
+// blit the result. Alpha is preserved.
+#[target(wasm_browser)]
+pub fn process(w: i64, h: i64) with reads(Input) writes(Display) {
+    let n = w * h * 4;
+
+    let mut src: Vec[u8] = Vec.filled(n, 0);
+    read_src(src.as_ptr(), src.len());
+
+    let mut out: Vec[u8] = Vec.filled(n, 0);
+    let mut i: i64 = 0;
+    while i < n {
+        let r = src[i] as i64;
+        let g = src[i + 1] as i64;
+        let b = src[i + 2] as i64;
+        let y = (r * 30 + g * 59 + b * 11) / 100;
+        out[i] = y as u8;
+        out[i + 1] = y as u8;
+        out[i + 2] = y as u8;
+        out[i + 3] = src[i + 3];
+        i = i + 4;
+    }
+
+    put_pixels(out.as_ptr(), out.len(), w, h);
+}
