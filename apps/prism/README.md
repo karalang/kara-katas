@@ -10,17 +10,20 @@ occupies — the same all-local-in-browser model as Squoosh, but with Kāra owni
 the compute. Tracked in the compiler's dogfooding roster
 (`kara/docs/dogfooding.md` → **Prism**).
 
-## Status — skeleton + resize
+## Status — usable workbench
 
-- File-drop → decode → **Kāra kernel** → canvas → download PNG.
-- Kernels so far: **grayscale**, **bilinear resize**, **Lanczos-3 resize**
-  (separable, precomputed normalized tap tables, anti-aliased downscale —
-  ~360 ms for a 3 MP resize, ~1.2 s for 12 MP, main-thread).
-- Request-driven: JS calls the exported `process(op, sw, sh, dw, dh)` on each
-  action; there is no render loop. UI has target-size inputs with aspect lock,
-  a method picker, and ½×/2× shortcuts.
-- Crop, rotate, adjustments, more filters, and the worker-pool/SIMD parallel
-  pass (`--features wasm-threads`) are the next slices.
+- File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
+  quality slider + encoded-size readout).
+- Kernels: **grayscale**, **bilinear resize**, **Lanczos-3 resize** (separable,
+  precomputed normalized tap tables, anti-aliased downscale — ~360 ms for a
+  3 MP resize, ~1.2 s for 12 MP, main-thread), **crop** (drag a selection on
+  the canvas), **rotate 90/180/270**, **flip H/V**, and
+  **brightness/contrast/saturation** adjust.
+- Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
+  current *working image*; each result becomes the new working image
+  (crop → resize → adjust …), with an 8-step Undo and an Original reset.
+- The worker-pool/SIMD parallel pass (`--features wasm-threads`), EXIF
+  awareness, and a real-browser CDP test are the next slices.
 
 ## Build & run
 

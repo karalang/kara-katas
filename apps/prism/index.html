@@ -10,14 +10,14 @@
   body {
     margin: 0; background: #07090f; color: #d7e0f0;
     font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
     padding: 26px 18px 40px;
   }
   h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .02em; }
-  p.sub { margin: 0; opacity: .7; max-width: 620px; text-align: center; }
+  p.sub { margin: 0; opacity: .7; max-width: 640px; text-align: center; }
   .badge { color: #63e6a8; font-weight: 600; }
   #drop {
-    width: min(720px, 92vw); min-height: 260px;
+    width: min(760px, 92vw); min-height: 260px;
     border: 1.5px dashed #2b3a5e; border-radius: 10px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; padding: 24px; text-align: center; cursor: pointer;
@@ -27,9 +27,14 @@
   #drop .big { font-size: 15px; color: #cfe0ff; }
   #drop .small { font-size: 12px; opacity: .6; }
   #stagewrap { display: none; flex-direction: column; align-items: center; gap: 12px; }
+  #stage { position: relative; }
   canvas {
-    max-width: min(720px, 92vw); height: auto;
+    display: block; max-width: min(760px, 92vw); height: auto;
     border: 1px solid #1d2740; border-radius: 8px; background: #000;
+  }
+  #cropbox {
+    position: absolute; display: none; pointer-events: none;
+    border: 1.5px dashed #6fd3ff; background: rgba(111, 211, 255, .12);
   }
   .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
   .panel {
@@ -39,17 +44,20 @@
   .panel label { font-size: 12px; opacity: .75; }
   button {
     background: #111a2e; color: #cfe0ff; border: 1px solid #243a5e;
-    border-radius: 6px; padding: 7px 13px; font: inherit; cursor: pointer;
+    border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer;
   }
   button:hover { border-color: #6fd3ff; }
   button.primary { background: #1d3a66; border-color: #6fd3ff; color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
   input[type=number], select {
     background: #0d1526; color: #d7e0f0; border: 1px solid #243a5e;
-    border-radius: 5px; padding: 6px 8px; font: inherit; width: 90px;
+    border-radius: 5px; padding: 6px 8px; font: inherit; width: 84px;
   }
   select { width: auto; }
+  input[type=range] { accent-color: #6fd3ff; width: 110px; }
+  .sl { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; opacity: .85; }
   #meta { font-size: 12px; opacity: .7; white-space: pre; text-align: center; }
-  #note { opacity: .55; max-width: 640px; text-align: center; font-size: 12px; }
+  #note { opacity: .55; max-width: 660px; text-align: center; font-size: 12px; }
   code { color: #9ad0ff; }
   input[type=file] { display: none; }
   .lock { cursor: pointer; user-select: none; opacity: .8; }
@@ -58,10 +66,9 @@
 <body>
   <h1>Prism</h1>
   <p class="sub">A local image workbench. Drop a photo — it's processed
-    <span class="badge">entirely in your browser</span>, and
-    <b>never uploaded</b>. The pixel math (grayscale, bilinear &amp; Lanczos-3
-    resize so far) runs in Kāra compiled to WebAssembly; the browser only
-    decodes and re-encodes the file.</p>
+    <span class="badge">entirely in your browser</span>, and <b>never uploaded</b>.
+    Every pixel kernel (resize, crop, rotate, adjust, grayscale) is Kāra compiled
+    to WebAssembly; the browser only decodes and re-encodes the file.</p>
 
   <div id="drop">
     <div class="big">Drop an image here, or click to choose</div>
@@ -70,7 +77,10 @@
   </div>
 
   <div id="stagewrap">
-    <canvas id="screen"></canvas>
+    <div id="stage">
+      <canvas id="screen"></canvas>
+      <div id="cropbox"></div>
+    </div>
     <div id="meta"></div>
 
     <div class="panel">
@@ -87,148 +97,265 @@
       <button id="double">2×</button>
     </div>
 
-    <div class="row">
+    <div class="panel">
+      <button id="rotl" title="rotate 90° counter-clockwise">⟲ 90°</button>
+      <button id="rotr" title="rotate 90° clockwise">⟳ 90°</button>
+      <button id="fliph" title="mirror left-right">⇋ flip H</button>
+      <button id="flipv" title="mirror top-bottom">⇅ flip V</button>
+      <button id="docrop" disabled>Crop selection</button>
       <button id="grayscale">Grayscale</button>
+    </div>
+
+    <div class="panel">
+      <div class="sl"><label>brightness <span id="briv">0</span></label>
+        <input id="bri" type="range" min="-100" max="100" value="0" /></div>
+      <div class="sl"><label>contrast <span id="conv">0</span></label>
+        <input id="con" type="range" min="-100" max="100" value="0" /></div>
+      <div class="sl"><label>saturation <span id="satv">0</span></label>
+        <input id="sat" type="range" min="-100" max="100" value="0" /></div>
+      <button id="apply" class="primary">Apply</button>
+    </div>
+
+    <div class="panel">
+      <select id="fmt">
+        <option value="image/png">PNG (lossless)</option>
+        <option value="image/jpeg">JPEG</option>
+        <option value="image/webp">WebP</option>
+      </select>
+      <div class="sl" id="qwrap" style="display:none">
+        <label>quality <span id="qv">85</span></label>
+        <input id="q" type="range" min="1" max="100" value="85" />
+      </div>
+      <button id="download" class="primary">Download</button>
+      <span id="sz" style="font-size:12px;opacity:.7"></span>
+    </div>
+
+    <div class="row">
+      <button id="undo">Undo</button>
       <button id="reset">Original</button>
-      <button id="download" class="primary">Download PNG</button>
       <button id="another">Open another…</button>
     </div>
   </div>
 
   <p id="note">Where's the upload? There isn't one — open the Network tab and
-    watch it stay empty. The image is decoded to pixels by the browser, handed
-    to a Kāra <code>process(op, sw, sh, dw, dh)</code> export that runs the
-    selected kernel, and blitted back to the canvas. Download re-encodes the
-    canvas locally.</p>
+    watch it stay empty. Each edit calls the Kāra
+    <code>process(op, w, h, …)</code> export on the working image; the result
+    becomes the new working image, so edits chain (crop → resize → adjust).
+    Drag on the image to select a crop. Download re-encodes locally.</p>
 
 <script type="module">
   import { instantiate } from "./prism.js";
 
-  const OP_GRAYSCALE = 0;
+  const OP = { GRAY: 0, BILINEAR: 1, LANCZOS: 2, CROP: 3, ROTATE: 4, FLIP: 5, ADJUST: 6 };
 
-  const dropEl = document.getElementById("drop");
-  const fileEl = document.getElementById("file");
-  const stage  = document.getElementById("stagewrap");
-  const canvas = document.getElementById("screen");
-  const ctx2d  = canvas.getContext("2d");
-  const metaEl = document.getElementById("meta");
-  const rwEl   = document.getElementById("rw");
-  const rhEl   = document.getElementById("rh");
-  const lockEl = document.getElementById("lock");
-  const methEl = document.getElementById("method");
+  const $ = (id) => document.getElementById(id);
+  const dropEl = $("drop"), fileEl = $("file"), stage = $("stagewrap");
+  const canvas = $("screen"), ctx2d = canvas.getContext("2d");
+  const cropbox = $("cropbox"), metaEl = $("meta"), szEl = $("sz");
+  const rwEl = $("rw"), rhEl = $("rh"), lockEl = $("lock"), methEl = $("method");
 
-  // The decoded source the Kāra side pulls in via `read_src`. A sequential
-  // wasm_browser build runs host fns synchronously on the main thread.
-  let srcPixels = null;   // Uint8ClampedArray RGBA
-  let srcW = 0, srcH = 0;
-  let origImageData = null;
+  // ── Working-image model ──────────────────────────────────────────────────
+  // `cur` is what every op reads (via read_src) and what each result replaces.
+  // `orig` is the loaded file for the Original button; `undoStack` holds the
+  // last few working images (small history, capped).
+  let cur = null, curW = 0, curH = 0;          // Uint8ClampedArray RGBA
+  let orig = null, origW = 0, origH = 0;
+  const undoStack = [];
+  const UNDO_MAX = 8;
   let aspectLocked = true;
 
   const host = {
     read_src(dst, len, ctx) {
       const n = Number(len);
-      new Uint8Array(ctx.memory.buffer, Number(dst), n).set(srcPixels.subarray(0, n));
+      new Uint8Array(ctx.memory.buffer, Number(dst), n).set(cur.subarray(0, n));
     },
     put_pixels(ptr, len, w, h, ctx) {
       const n = Number(len), W = Number(w), H = Number(h);
       const view = new Uint8ClampedArray(ctx.memory.buffer, Number(ptr), n);
       const copy = new Uint8ClampedArray(n); copy.set(view); // detach from wasm memory
-      canvas.width = W; canvas.height = H;
-      ctx2d.putImageData(new ImageData(copy, W, H), 0, 0);
+      adopt(copy, W, H);
     },
   };
-
   const ready = instantiate(host).catch((e) => {
     metaEl.textContent = "failed to load wasm: " + (e && e.message ? e.message : e);
-    console.error(e);
-    throw e;
+    console.error(e); throw e;
   });
 
+  function paint() {
+    canvas.width = curW; canvas.height = curH;
+    ctx2d.putImageData(new ImageData(cur, curW, curH), 0, 0);
+    clearCrop();
+  }
+  function adopt(pixels, w, h) {
+    cur = pixels; curW = w; curH = h;
+    paint();
+    rwEl.value = w; rhEl.value = h;
+  }
+  function pushUndo() {
+    undoStack.push({ p: cur, w: curW, h: curH });
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+  }
   function setMeta(extra) {
-    metaEl.textContent =
-      `source ${srcW} × ${srcH}px  ·  canvas ${canvas.width} × ${canvas.height}px` +
+    metaEl.textContent = `${curW} × ${curH}px · ${(curW * curH / 1e6).toFixed(1)} MP` +
       (extra ? `\n${extra}` : "");
   }
 
-  async function callProcess(op, dw, dh, label) {
-    if (!srcPixels) return;
+  async function apply(op, a, b, c, d, label) {
+    if (!cur) return;
     const handle = await ready;
+    pushUndo();
     const t0 = performance.now();
-    handle.exports.process(BigInt(op), BigInt(srcW), BigInt(srcH), BigInt(dw), BigInt(dh));
+    handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
+      BigInt(a), BigInt(b), BigInt(c), BigInt(d));
     setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM)`);
   }
 
   async function loadFile(file) {
     if (!file || !file.type.startsWith("image/")) return;
     const bmp = await createImageBitmap(file);
-    srcW = bmp.width; srcH = bmp.height;
     const scratch = document.createElement("canvas");
-    scratch.width = srcW; scratch.height = srcH;
+    scratch.width = bmp.width; scratch.height = bmp.height;
     const sctx = scratch.getContext("2d");
     sctx.drawImage(bmp, 0, 0);
-    origImageData = sctx.getImageData(0, 0, srcW, srcH);
-    srcPixels = origImageData.data;
+    const img = sctx.getImageData(0, 0, bmp.width, bmp.height);
     bmp.close && bmp.close();
-
-    canvas.width = srcW; canvas.height = srcH;
-    ctx2d.putImageData(origImageData, 0, 0);
-    rwEl.value = srcW; rhEl.value = srcH;
+    orig = new Uint8ClampedArray(img.data); origW = img.width; origH = img.height;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
     dropEl.style.display = "none";
     stage.style.display = "flex";
     setMeta("loaded");
   }
 
-  // ── Aspect-ratio lock ───────────────────────────────────────────────────
+  // ── Resize ───────────────────────────────────────────────────────────────
   lockEl.addEventListener("click", () => {
     aspectLocked = !aspectLocked;
     lockEl.textContent = aspectLocked ? "🔒" : "🔓";
   });
   rwEl.addEventListener("input", () => {
-    if (aspectLocked && srcW) rhEl.value = Math.max(1, Math.round(Number(rwEl.value) * srcH / srcW));
+    if (aspectLocked && curW) rhEl.value = Math.max(1, Math.round(Number(rwEl.value) * curH / curW));
   });
   rhEl.addEventListener("input", () => {
-    if (aspectLocked && srcH) rwEl.value = Math.max(1, Math.round(Number(rhEl.value) * srcW / srcH));
+    if (aspectLocked && curH) rwEl.value = Math.max(1, Math.round(Number(rhEl.value) * curW / curH));
   });
-
   function doResize() {
     const dw = Math.max(1, Math.floor(Number(rwEl.value) || 0));
     const dh = Math.max(1, Math.floor(Number(rhEl.value) || 0));
-    if (!dw || !dh) return;
+    if (!dw || !dh || (dw === curW && dh === curH)) return;
     const op = Number(methEl.value);
-    const name = op === 2 ? "lanczos-3" : "bilinear";
-    callProcess(op, dw, dh, `resize → ${dw}×${dh} (${name})`);
+    apply(op, dw, dh, 0, 0, `resize → ${dw}×${dh} (${op === 2 ? "lanczos-3" : "bilinear"})`);
   }
-  document.getElementById("resize").addEventListener("click", doResize);
-  document.getElementById("half").addEventListener("click", () => {
-    rwEl.value = Math.max(1, Math.round(srcW / 2));
-    rhEl.value = Math.max(1, Math.round(srcH / 2));
+  $("resize").addEventListener("click", doResize);
+  $("half").addEventListener("click", () => {
+    rwEl.value = Math.max(1, Math.round(curW / 2));
+    rhEl.value = Math.max(1, Math.round(curH / 2));
     doResize();
   });
-  document.getElementById("double").addEventListener("click", () => {
-    rwEl.value = srcW * 2; rhEl.value = srcH * 2;
-    doResize();
+  $("double").addEventListener("click", () => {
+    rwEl.value = curW * 2; rhEl.value = curH * 2; doResize();
   });
 
-  document.getElementById("grayscale").addEventListener("click", () =>
-    callProcess(OP_GRAYSCALE, srcW, srcH, "grayscale"));
-  document.getElementById("reset").addEventListener("click", () => {
-    if (!origImageData) return;
-    canvas.width = srcW; canvas.height = srcH;
-    ctx2d.putImageData(origImageData, 0, 0);
-    setMeta("original");
+  // ── Rotate / flip / grayscale ────────────────────────────────────────────
+  $("rotr").addEventListener("click", () => apply(OP.ROTATE, 1, 0, 0, 0, "rotate 90° cw"));
+  $("rotl").addEventListener("click", () => apply(OP.ROTATE, 3, 0, 0, 0, "rotate 90° ccw"));
+  $("fliph").addEventListener("click", () => apply(OP.FLIP, 0, 0, 0, 0, "flip horizontal"));
+  $("flipv").addEventListener("click", () => apply(OP.FLIP, 1, 0, 0, 0, "flip vertical"));
+  $("grayscale").addEventListener("click", () => apply(OP.GRAY, 0, 0, 0, 0, "grayscale"));
+
+  // ── Crop (drag a rect on the canvas) ─────────────────────────────────────
+  let sel = null, dragging = false, dragFrom = null;
+  function clearCrop() { sel = null; cropbox.style.display = "none"; $("docrop").disabled = true; }
+  function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - r.left, 0), r.width);
+    const y = Math.min(Math.max(e.clientY - r.top, 0), r.height);
+    return { x, y, r };
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    dragging = true; dragFrom = canvasPos(e);
+    canvas.setPointerCapture(e.pointerId);
   });
-  document.getElementById("download").addEventListener("click", () => {
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const p = canvasPos(e);
+    const x0 = Math.min(dragFrom.x, p.x), y0 = Math.min(dragFrom.y, p.y);
+    const w = Math.abs(p.x - dragFrom.x), h = Math.abs(p.y - dragFrom.y);
+    cropbox.style.display = "block";
+    cropbox.style.left = x0 + "px"; cropbox.style.top = y0 + "px";
+    cropbox.style.width = w + "px"; cropbox.style.height = h + "px";
+    // map display px -> image px
+    const sx = curW / p.r.width, sy = curH / p.r.height;
+    sel = {
+      x: Math.round(x0 * sx), y: Math.round(y0 * sy),
+      w: Math.max(1, Math.round(w * sx)), h: Math.max(1, Math.round(h * sy)),
+    };
+  });
+  canvas.addEventListener("pointerup", () => {
+    dragging = false;
+    if (sel && sel.w > 2 && sel.h > 2) {
+      $("docrop").disabled = false;
+      setMeta(`selection ${sel.w}×${sel.h} at (${sel.x}, ${sel.y}) — Crop selection to apply`);
+    } else {
+      clearCrop();
+    }
+  });
+  $("docrop").addEventListener("click", () => {
+    if (!sel) return;
+    const x = Math.min(sel.x, curW - 1), y = Math.min(sel.y, curH - 1);
+    const w = Math.min(sel.w, curW - x), h = Math.min(sel.h, curH - y);
+    apply(OP.CROP, x, y, w, h, `crop ${w}×${h}`);
+  });
+
+  // ── Adjust ───────────────────────────────────────────────────────────────
+  for (const [id, out] of [["bri", "briv"], ["con", "conv"], ["sat", "satv"]]) {
+    $(id).addEventListener("input", () => { $(out).textContent = $(id).value; });
+  }
+  $("apply").addEventListener("click", () => {
+    const b = Number($("bri").value), k = Number($("con").value), s = Number($("sat").value);
+    if (!b && !k && !s) return;
+    apply(OP.ADJUST, b, k, s, 0, `adjust b${b >= 0 ? "+" : ""}${b} c${k >= 0 ? "+" : ""}${k} s${s >= 0 ? "+" : ""}${s}`);
+    $("bri").value = $("con").value = $("sat").value = 0;
+    $("briv").textContent = $("conv").textContent = $("satv").textContent = "0";
+  });
+
+  // ── Download (format + quality + size) ───────────────────────────────────
+  const fmtEl = $("fmt"), qEl = $("q");
+  fmtEl.addEventListener("change", () => {
+    $("qwrap").style.display = fmtEl.value === "image/png" ? "none" : "flex";
+    szEl.textContent = "";
+  });
+  qEl.addEventListener("input", () => { $("qv").textContent = qEl.value; });
+  $("download").addEventListener("click", () => {
+    const type = fmtEl.value;
+    const q = Number(qEl.value) / 100;
     canvas.toBlob((blob) => {
+      if (!blob) { szEl.textContent = "encode failed"; return; }
+      szEl.textContent = blob.size > 1048576
+        ? (blob.size / 1048576).toFixed(2) + " MB"
+        : (blob.size / 1024).toFixed(0) + " KB";
+      const ext = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "webp";
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = "prism.png";
+      a.href = url; a.download = "prism." + ext;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, "image/png");
+    }, type, type === "image/png" ? undefined : q);
   });
-  document.getElementById("another").addEventListener("click", () => fileEl.click());
 
-  // ── Drop / file wiring ──────────────────────────────────────────────────
+  // ── History ──────────────────────────────────────────────────────────────
+  $("undo").addEventListener("click", () => {
+    const prev = undoStack.pop();
+    if (prev) { adopt(prev.p, prev.w, prev.h); setMeta("undo"); }
+  });
+  $("reset").addEventListener("click", () => {
+    if (!orig) return;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
+    setMeta("original");
+  });
+  $("another").addEventListener("click", () => fileEl.click());
+
+  // ── Drop / file wiring ───────────────────────────────────────────────────
   dropEl.addEventListener("click", () => fileEl.click());
   fileEl.addEventListener("change", () => loadFile(fileEl.files[0]));
   ["dragenter", "dragover"].forEach((ev) =>

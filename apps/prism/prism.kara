@@ -33,6 +33,10 @@ host fn put_pixels(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display
 fn op_grayscale() -> i64 { 0 }
 fn op_resize_bilinear() -> i64 { 1 }
 fn op_resize_lanczos() -> i64 { 2 }
+fn op_crop() -> i64 { 3 }
+fn op_rotate() -> i64 { 4 }
+fn op_flip() -> i64 { 5 }
+fn op_adjust() -> i64 { 6 }
 
 // ── Kernels (pure pixel math — no host knowledge) ───────────────────────────
 
@@ -256,26 +260,159 @@ fn resize_lanczos(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u
     out
 }
 
+// Crop the rect (x, y, cw, ch) out of an sw×sh image. The caller (JS) clamps
+// the rect to the image; the min-guards here are belt-and-braces.
+fn crop(src: ref Vec[u8], sw: i64, x: i64, y: i64, cw: i64, ch: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.filled(cw * ch * 4, 0);
+    let mut ry: i64 = 0;
+    while ry < ch {
+        let srow = ((y + ry) * sw + x) * 4;
+        let drow = ry * cw * 4;
+        let mut i: i64 = 0;
+        while i < cw * 4 {
+            out[drow + i] = src[srow + i];
+            i = i + 1;
+        }
+        ry = ry + 1;
+    }
+    out
+}
+
+// Rotate by `quarters` clockwise quarter-turns (1, 2, or 3). Output dims swap
+// for 1 and 3. Standard index transforms:
+//   90° CW : dst(x, y) = src(y, sh-1-x)      out = sh×sw
+//   180°   : dst(x, y) = src(sw-1-x, sh-1-y) out = sw×sh
+//   270° CW: dst(x, y) = src(sw-1-y, x)      out = sh×sw
+fn rotate(src: ref Vec[u8], sw: i64, sh: i64, quarters: i64) -> Vec[u8] {
+    let q = ((quarters % 4) + 4) % 4;
+    if q == 0 {
+        let mut out: Vec[u8] = Vec.filled(sw * sh * 4, 0);
+        let mut i: i64 = 0;
+        while i < sw * sh * 4 { out[i] = src[i]; i = i + 1; }
+        return out;
+    }
+    let ow = if q == 2 { sw } else { sh };
+    let oh = if q == 2 { sh } else { sw };
+    let mut out: Vec[u8] = Vec.filled(ow * oh * 4, 0);
+    let mut dy: i64 = 0;
+    while dy < oh {
+        let mut dx: i64 = 0;
+        while dx < ow {
+            let sx = if q == 1 { dy } else if q == 2 { sw - 1 - dx } else { sw - 1 - dy };
+            let sy = if q == 1 { sh - 1 - dx } else if q == 2 { sh - 1 - dy } else { dx };
+            let s = (sy * sw + sx) * 4;
+            let d = (dy * ow + dx) * 4;
+            out[d] = src[s];
+            out[d + 1] = src[s + 1];
+            out[d + 2] = src[s + 2];
+            out[d + 3] = src[s + 3];
+            dx = dx + 1;
+        }
+        dy = dy + 1;
+    }
+    out
+}
+
+// Mirror the image: axis 0 = horizontal (left-right), 1 = vertical (top-bottom).
+fn flip(src: ref Vec[u8], sw: i64, sh: i64, axis: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.filled(sw * sh * 4, 0);
+    let mut y: i64 = 0;
+    while y < sh {
+        let mut x: i64 = 0;
+        while x < sw {
+            let sx = if axis == 0 { sw - 1 - x } else { x };
+            let sy = if axis == 0 { y } else { sh - 1 - y };
+            let s = (sy * sw + sx) * 4;
+            let d = (y * sw + x) * 4;
+            out[d] = src[s];
+            out[d + 1] = src[s + 1];
+            out[d + 2] = src[s + 2];
+            out[d + 3] = src[s + 3];
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    out
+}
+
+// Brightness / contrast / saturation, each in -100..100 (0 = identity).
+//   brightness: add `bri * 2.55` to each channel.
+//   contrast:   the classic factor `259(c+255) / 255(259-c)` around 128.
+//   saturation: mix each channel toward the pixel's Rec.601 luma —
+//               `luma + (v - luma) * (1 + sat/100)`.
+// Applied in f64 in that order, clamped once. Alpha untouched.
+fn adjust(src: ref Vec[u8], sw: i64, sh: i64, bri: i64, con: i64, sat: i64) -> Vec[u8] {
+    let n = sw * sh * 4;
+    let mut out: Vec[u8] = Vec.filled(n, 0);
+    let badd = (bri as f64) * 2.55;
+    let cf = (259.0 * ((con as f64) + 255.0)) / (255.0 * (259.0 - (con as f64)));
+    let sf = 1.0 + (sat as f64) / 100.0;
+    let mut i: i64 = 0;
+    while i < n {
+        let mut r = (src[i] as f64) + badd;
+        let mut g = (src[i + 1] as f64) + badd;
+        let mut b = (src[i + 2] as f64) + badd;
+        r = cf * (r - 128.0) + 128.0;
+        g = cf * (g - 128.0) + 128.0;
+        b = cf * (b - 128.0) + 128.0;
+        let luma = r * 0.299 + g * 0.587 + b * 0.114;
+        r = luma + (r - luma) * sf;
+        g = luma + (g - luma) * sf;
+        b = luma + (b - luma) * sf;
+        if r < 0.0 { r = 0.0; } if r > 255.0 { r = 255.0; }
+        if g < 0.0 { g = 0.0; } if g > 255.0 { g = 255.0; }
+        if b < 0.0 { b = 0.0; } if b > 255.0 { b = 255.0; }
+        out[i] = ((r + 0.5) as i64) as u8;
+        out[i + 1] = ((g + 0.5) as i64) as u8;
+        out[i + 2] = ((b + 0.5) as i64) as u8;
+        out[i + 3] = src[i + 3];
+        i = i + 4;
+    }
+    out
+}
+
 // ── The export JS calls on each request ─────────────────────────────────────
 //
-// `op` selects the kernel; `sw`/`sh` are the source dims, `dw`/`dh` the output
-// dims (equal to source for non-resize ops). Pull the source in once, dispatch,
-// blit the result.
+// `op` selects the kernel; `sw`/`sh` are the CURRENT working-image dims; `a`..`d`
+// are op-specific:
+//   grayscale (0):        (unused)
+//   resize    (1, 2):     a = dw, b = dh
+//   crop      (3):        a = x, b = y, c = w, d = h
+//   rotate    (4):        a = clockwise quarter-turns (1 | 2 | 3)
+//   flip      (5):        a = axis (0 horizontal, 1 vertical)
+//   adjust    (6):        a = brightness, b = contrast, c = saturation (-100..100)
+// Pull the working image in once, dispatch, blit the result (the JS side adopts
+// each result as the new working image, so ops chain).
 #[target(wasm_browser)]
-pub fn process(op: i64, sw: i64, sh: i64, dw: i64, dh: i64) with reads(Input) writes(Display) {
+pub fn process(op: i64, sw: i64, sh: i64, a: i64, b: i64, c: i64, d: i64)
+    with reads(Input) writes(Display)
+{
     let n = sw * sh * 4;
     let mut src: Vec[u8] = Vec.filled(n, 0);
     read_src(src.as_ptr(), src.len());
 
+    let mut ow = sw;
+    let mut oh = sh;
     let out = if op == op_resize_bilinear() {
-        resize_bilinear(src, sw, sh, dw, dh)
+        ow = a; oh = b;
+        resize_bilinear(src, sw, sh, a, b)
     } else if op == op_resize_lanczos() {
-        resize_lanczos(src, sw, sh, dw, dh)
+        ow = a; oh = b;
+        resize_lanczos(src, sw, sh, a, b)
+    } else if op == op_crop() {
+        ow = c; oh = d;
+        crop(src, sw, a, b, c, d)
+    } else if op == op_rotate() {
+        let q = ((a % 4) + 4) % 4;
+        if q == 1 or q == 3 { ow = sh; oh = sw; }
+        rotate(src, sw, sh, a)
+    } else if op == op_flip() {
+        flip(src, sw, sh, a)
+    } else if op == op_adjust() {
+        adjust(src, sw, sh, a, b, c)
     } else {
         gray(src, sw, sh)
     };
 
-    let ow = if op == op_grayscale() { sw } else { dw };
-    let oh = if op == op_grayscale() { sh } else { dh };
     put_pixels(out.as_ptr(), out.len(), ow, oh);
 }
