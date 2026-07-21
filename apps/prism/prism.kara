@@ -124,24 +124,13 @@ fn lanczos3(t: f64) -> f64 {
     (px.sin() / px) * (px3.sin() / px3)
 }
 
-// Precomputed 1-D Lanczos tap table for one axis: for each of `dn` output
-// coordinates, the clamped source tap range [lo, hi] and the NORMALIZED weight
-// per tap. Weights depend only on the output coordinate — never on the other
-// axis — so computing them once per column/row (instead of per pixel) removes
-// ~99.9% of the `sin()` calls (measured 2.8–11s -> the table is the fix).
-// Layout: `los[d]`, `his[d]`, and weights flattened at `woff[d] .. +taps`.
-struct LanczosTaps {
-    los: Vec[i64],
-    his: Vec[i64],
-    woff: Vec[i64],
-    wgts: Vec[f64],
-}
-
-// Build the tap table for scaling `sn` source pixels to `dn` output pixels.
-// Pixel-center alignment; for downscales the kernel is widened by the scale
-// factor (standard anti-aliasing: filter in source space), support = 3*scale.
-// Weights are normalized here so the passes are pure multiply-adds.
-fn lanczos_taps(sn: i64, dn: i64) -> LanczosTaps {
+// Precomputed 1-D Lanczos tap table for one axis, as a 4-tuple
+// (los, his, woff, wgts): for each of `dn` output coordinates, the clamped
+// source tap range [lo, hi] and the NORMALIZED weight per tap (flattened at
+// woff[d]). Weights depend only on the output coordinate — never the other
+// axis — so computing them once per column/row removes ~99.9% of the `sin()`
+// calls. A tuple (not a struct) so the band tasks below capture plain Vecs.
+fn lanczos_taps(sn: i64, dn: i64) -> (Vec[i64], Vec[i64], Vec[i64], Vec[f64]) {
     let scale = (sn as f64) / (dn as f64);
     let mut fs = scale; if fs < 1.0 { fs = 1.0; }
     let sup = 3.0 * fs;
@@ -160,48 +149,46 @@ fn lanczos_taps(sn: i64, dn: i64) -> LanczosTaps {
         if hi > sn - 1 { hi = sn - 1; }
         los.push(lo);
         his.push(hi);
-        woff.push(wgts.len());
+        let base = wgts.len();
+        woff.push(base);
         let mut wsum = 0.0;
-        let mut s = lo;
-        while s <= hi {
-            let wgt = lanczos3((center - (s as f64)) / fs);
+        let mut sx = lo;
+        while sx <= hi {
+            let wgt = lanczos3((center - (sx as f64)) / fs);
             wgts.push(wgt);
             wsum = wsum + wgt;
-            s = s + 1;
+            sx = sx + 1;
         }
-        // Normalize in place so downstream accumulation skips the divide.
-        let mut k = woff[d];
+        let mut k = base;
         while k < wgts.len() {
             wgts[k] = wgts[k] / wsum;
             k = k + 1;
         }
         d = d + 1;
     }
-    LanczosTaps { los: los, his: his, woff: woff, wgts: wgts }
+    (los, his, woff, wgts)
 }
 
-// Lanczos-3 resample, separable (horizontal pass into a temp, then vertical),
-// driven by the precomputed per-axis tap tables. Channels are filtered in f64
-// and clamped once at the end of the vertical pass.
-fn resize_lanczos(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
-    let tx = lanczos_taps(sw, dw);
-    let ty = lanczos_taps(sh, dh);
-
-    // ── Horizontal pass: sw×sh -> dw×sh (f64 intermediate) ──
-    let mut tmp: Vec[f64] = Vec.filled(dw * sh * 4, 0.0);
-    let mut y: i64 = 0;
-    while y < sh {
+// One horizontal band: rows [y0, y1) of the sw-wide source resampled to dw
+// columns, returned as the band's dw*(y1-y0)*4 f64s. Pure reads of the shared
+// inputs — safe to run as one task per band.
+fn lanczos_h_band(src: ref Vec[u8], los: ref Vec[i64], his: ref Vec[i64],
+                  woff: ref Vec[i64], wgts: ref Vec[f64],
+                  sw: i64, dw: i64, y0: i64, y1: i64) -> Vec[f64] {
+    let mut band: Vec[f64] = Vec.filled((y1 - y0) * dw * 4, 0.0);
+    let mut y = y0;
+    while y < y1 {
         let row = y * sw;
         let mut x: i64 = 0;
         while x < dw {
-            let lo = tx.los[x];
-            let hi = tx.his[x];
-            let base = tx.woff[x];
+            let lo = los[x];
+            let hi = his[x];
+            let base = woff[x];
             let mut acc0 = 0.0; let mut acc1 = 0.0;
             let mut acc2 = 0.0; let mut acc3 = 0.0;
             let mut sx = lo;
             while sx <= hi {
-                let wgt = tx.wgts[base + (sx - lo)];
+                let wgt = wgts[base + (sx - lo)];
                 let p = (row + sx) * 4;
                 acc0 = acc0 + (src[p] as f64) * wgt;
                 acc1 = acc1 + (src[p + 1] as f64) * wgt;
@@ -209,38 +196,44 @@ fn resize_lanczos(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u
                 acc3 = acc3 + (src[p + 3] as f64) * wgt;
                 sx = sx + 1;
             }
-            let o = (y * dw + x) * 4;
-            tmp[o] = acc0;
-            tmp[o + 1] = acc1;
-            tmp[o + 2] = acc2;
-            tmp[o + 3] = acc3;
+            let o = ((y - y0) * dw + x) * 4;
+            band[o] = acc0;
+            band[o + 1] = acc1;
+            band[o + 2] = acc2;
+            band[o + 3] = acc3;
             x = x + 1;
         }
         y = y + 1;
     }
+    band
+}
 
-    // ── Vertical pass: dw×sh -> dw×dh, clamp to u8 ──
-    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
-    let mut dy: i64 = 0;
-    while dy < dh {
-        let lo = ty.los[dy];
-        let hi = ty.his[dy];
-        let base = ty.woff[dy];
-        let mut dx2: i64 = 0;
-        while dx2 < dw {
+// One vertical band: output rows [dy0, dy1) of the dw-wide intermediate,
+// clamped to u8. Reads all of `tmp`, writes only its own band.
+fn lanczos_v_band(tmp: ref Vec[f64], los: ref Vec[i64], his: ref Vec[i64],
+                  woff: ref Vec[i64], wgts: ref Vec[f64],
+                  dw: i64, dy0: i64, dy1: i64) -> Vec[u8] {
+    let mut band: Vec[u8] = Vec.filled((dy1 - dy0) * dw * 4, 0);
+    let mut dy = dy0;
+    while dy < dy1 {
+        let lo = los[dy];
+        let hi = his[dy];
+        let base = woff[dy];
+        let mut dx: i64 = 0;
+        while dx < dw {
             let mut acc0 = 0.0; let mut acc1 = 0.0;
             let mut acc2 = 0.0; let mut acc3 = 0.0;
             let mut sy = lo;
             while sy <= hi {
-                let wgt = ty.wgts[base + (sy - lo)];
-                let p = (sy * dw + dx2) * 4;
+                let wgt = wgts[base + (sy - lo)];
+                let p = (sy * dw + dx) * 4;
                 acc0 = acc0 + tmp[p] * wgt;
                 acc1 = acc1 + tmp[p + 1] * wgt;
                 acc2 = acc2 + tmp[p + 2] * wgt;
                 acc3 = acc3 + tmp[p + 3] * wgt;
                 sy = sy + 1;
             }
-            let o = (dy * dw + dx2) * 4;
+            let o = ((dy - dy0) * dw + dx) * 4;
             let mut c: i64 = 0;
             while c < 4 {
                 let mut v = acc0;
@@ -250,12 +243,80 @@ fn resize_lanczos(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u
                 v = v + 0.5;
                 if v < 0.0 { v = 0.0; }
                 if v > 255.0 { v = 255.0; }
-                out[o + c] = (v as i64) as u8;
+                band[o + c] = (v as i64) as u8;
                 c = c + 1;
             }
-            dx2 = dx2 + 1;
+            dx = dx + 1;
         }
         dy = dy + 1;
+    }
+    band
+}
+
+// Lanczos-3 resample, separable, fanned across the task pool in row bands:
+// horizontal pass (sw×sh -> dw×sh f64 intermediate), then vertical
+// (dw×sh -> dw×dh u8). Each band is an independent task over shared read-only
+// inputs; bands concatenate in order, so the output is byte-identical to the
+// sequential form. On a sequential build TaskGroup runs FIFO (same bytes); on
+// `--features wasm-threads` (via instantiateThreaded) the bands run on real
+// Web Worker threads.
+fn resize_lanczos(src: Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
+    let (xlos, xhis, xwoff, xwgts) = lanczos_taps(sw, dw);
+    let (ylos, yhis, ywoff, ywgts) = lanczos_taps(sh, dh);
+    let bands: i64 = 8;
+
+    // ── Horizontal pass ──
+    let mut tmp: Vec[f64] = Vec.filled(dw * sh * 4, 0.0);
+    {
+        let mut g: TaskGroup = TaskGroup.new();
+        let mut hs: Vec[TaskHandle[Vec[f64]]] = Vec.new();
+        let bh = (sh + bands - 1) / bands;
+        let mut k: i64 = 0;
+        while k < bands {
+            let y0 = k * bh;
+            let mut y1 = y0 + bh;
+            if y1 > sh { y1 = sh; }
+            if y0 < y1 {
+                let h: TaskHandle[Vec[f64]] = g.spawn(||
+                    lanczos_h_band(src, xlos, xhis, xwoff, xwgts, sw, dw, y0, y1));
+                hs.push(h);
+            }
+            k = k + 1;
+        }
+        let mut off: i64 = 0;
+        for h in hs {
+            let band: Vec[f64] = h.join();
+            let mut i: i64 = 0;
+            while i < band.len() { tmp[off + i] = band[i]; i = i + 1; }
+            off = off + band.len();
+        }
+    }
+
+    // ── Vertical pass ──
+    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
+    {
+        let mut g: TaskGroup = TaskGroup.new();
+        let mut hs: Vec[TaskHandle[Vec[u8]]] = Vec.new();
+        let bh = (dh + bands - 1) / bands;
+        let mut k: i64 = 0;
+        while k < bands {
+            let y0 = k * bh;
+            let mut y1 = y0 + bh;
+            if y1 > dh { y1 = dh; }
+            if y0 < y1 {
+                let h: TaskHandle[Vec[u8]] = g.spawn(||
+                    lanczos_v_band(tmp, ylos, yhis, ywoff, ywgts, dw, y0, y1));
+                hs.push(h);
+            }
+            k = k + 1;
+        }
+        let mut off: i64 = 0;
+        for h in hs {
+            let band: Vec[u8] = h.join();
+            let mut i: i64 = 0;
+            while i < band.len() { out[off + i] = band[i]; i = i + 1; }
+            off = off + band.len();
+        }
     }
     out
 }

@@ -17,7 +17,7 @@ cd "$(dirname "$0")"
 KARAC="${KARAC:-../../../kara/target/debug/karac}"
 
 echo "==> building prism (wasm_browser) with $KARAC"
-"$KARAC" build prism.kara --target=wasm_browser
+"$KARAC" build prism.kara --target=wasm_browser --features wasm-threads
 
 echo "==> node smoke test (all kernels, exact oracles)"
 node test_node.mjs
@@ -28,6 +28,6 @@ if [[ "${1:-}" == "--verify" ]]; then
 fi
 if [[ "${1:-}" == "--serve" ]]; then
   echo "==> serving on http://localhost:8000 (Ctrl-C to stop)"
-  exec python3 -m http.server 8000
+  exec python3 serve.py
 fi
 echo "==> done. Open index.html via any static server to run."

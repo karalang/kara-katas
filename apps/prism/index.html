@@ -144,7 +144,7 @@
     Drag on the image to select a crop. Download re-encodes locally.</p>
 
 <script type="module">
-  import { instantiate } from "./prism.js";
+  import { instantiateThreaded } from "./prism.js";
 
   const OP = { GRAY: 0, BILINEAR: 1, LANCZOS: 2, CROP: 3, ROTATE: 4, FLIP: 5, ADJUST: 6 };
 
@@ -176,7 +176,7 @@
       adopt(copy, W, H);
     },
   };
-  const ready = instantiate(host).catch((e) => {
+  const ready = instantiateThreaded(host).catch((e) => {
     metaEl.textContent = "failed to load wasm: " + (e && e.message ? e.message : e);
     console.error(e); throw e;
   });
@@ -205,9 +205,10 @@
     const handle = await ready;
     pushUndo();
     const t0 = performance.now();
-    handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
+    await handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
       BigInt(a), BigInt(b), BigInt(c), BigInt(d));
-    setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM)`);
+    const mode = handle.threaded ? "threads" : "1 thread";
+    setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM, ${mode})`);
   }
 
   async function loadFile(file) {
