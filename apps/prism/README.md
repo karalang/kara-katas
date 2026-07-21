@@ -22,10 +22,13 @@ the compute. Tracked in the compiler's dogfooding roster
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
   (crop → resize → adjust …), with an 8-step Undo and an Original reset.
-- **Multicore**: both resamplers fan across the worker pool in 8 row bands via
-  `instantiateThreaded()` (kara B-2026-07-20-13) — measured on node:
-  12 MP Lanczos 1058 → 438 ms (2.4×), 3 MP 516 → 183 ms (2.8×), 12 MP bilinear
-  upscale 1575 → 763 ms (2.1×), output **byte-identical** to sequential. One
+- **Multicore + SIMD**: both resamplers fan across the worker pool in 8 row
+  bands via `instantiateThreaded()` (kara B-2026-07-20-13), and the Lanczos
+  vertical pass runs `Vector[f64,2]` lane pairs — one v128 load per pair via
+  the adjacent-lane fusion peephole (kara B-2026-07-21-3). Measured on node:
+  12 MP Lanczos **1058 → 285 ms** (threads 2.4× × SIMD 1.5×; 4.1× vs the
+  single-thread scalar baseline), 3 MP **516 → 101 ms**, 12 MP bilinear
+  upscale 1575 → 763 ms (2.1×), output **byte-identical** throughout. One
   source: a sequential build runs the same `TaskGroup` code FIFO. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
   you get threads; without, the sequential module — same call shape.
@@ -34,7 +37,7 @@ the compute. Tracked in the compiler's dogfooding roster
   grayscale oracle pixels, undo, rotate, resize, crop, chained) AND the
   threaded leg (cross-origin isolated, threaded module picked, grayscale
   oracle, banded Lanczos resize on the pool). `./build.sh --verify`.
-- SIMD inner kernels and EXIF awareness are the next slices.
+- EXIF awareness and a horizontal-pass SIMD story (u8→f64 gather, not yet peephole-covered) are the next slices.
 
 ## Build & run
 

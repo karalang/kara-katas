@@ -251,25 +251,29 @@ fn lanczos_v_band(tmp: ref Vec[f64], los: ref Vec[i64], his: ref Vec[i64],
         let base = woff[dy];
         let mut dx: i64 = 0;
         while dx < dw {
-            let mut acc0 = 0.0; let mut acc1 = 0.0;
-            let mut acc2 = 0.0; let mut acc3 = 0.0;
+            // RG|BA lane pairs. Each `Vector[f64,2](tmp[p], tmp[p+1])` is a
+            // CONTIGUOUS f64 pair, which the adjacent-lane peephole
+            // (B-2026-07-21-3, karac 6951017) lowers as ONE vector load —
+            // the shape that was a 4.7x pessimization before the fix. The
+            // horizontal pass stays scalar: its lanes come from u8 loads +
+            // converts, which the peephole (correctly) does not cover.
+            let mut acca = Vector[f64, 2].splat(0.0);
+            let mut accb = Vector[f64, 2].splat(0.0);
             let mut sy = lo;
             while sy <= hi {
-                let wgt = wgts[base + (sy - lo)];
+                let w = Vector[f64, 2].splat(wgts[base + (sy - lo)]);
                 let p = (sy * dw + dx) * 4;
-                acc0 = acc0 + tmp[p] * wgt;
-                acc1 = acc1 + tmp[p + 1] * wgt;
-                acc2 = acc2 + tmp[p + 2] * wgt;
-                acc3 = acc3 + tmp[p + 3] * wgt;
+                acca = acca + Vector[f64, 2](tmp[p], tmp[p + 1]) * w;
+                accb = accb + Vector[f64, 2](tmp[p + 2], tmp[p + 3]) * w;
                 sy = sy + 1;
             }
             let o = ((dy - dy0) * dw + dx) * 4;
             let mut c: i64 = 0;
             while c < 4 {
-                let mut v = acc0;
-                if c == 1 { v = acc1; }
-                if c == 2 { v = acc2; }
-                if c == 3 { v = acc3; }
+                let mut v = acca[0];
+                if c == 1 { v = acca[1]; }
+                if c == 2 { v = accb[0]; }
+                if c == 3 { v = accb[1]; }
                 v = v + 0.5;
                 if v < 0.0 { v = 0.0; }
                 if v > 255.0 { v = 255.0; }
