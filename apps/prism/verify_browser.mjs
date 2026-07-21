@@ -223,9 +223,77 @@ async function main() {
   if (d.w !== 2 || d.h !== 2) throw new Error(`crop: dims ${d.w}x${d.h} != 2x2`);
   console.error("[ok] crop selection applies");
 
-  // The whole chain ran against ONE working image with no reload — the chaining
-  // model itself is what just got verified.
-  console.log("PASS — page + wasm pipeline verified in real Chrome: load, grayscale (oracle pixels), undo, rotate, resize, crop, chained.");
+  // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
+  // COOP/COEP), fresh page, assert the threaded module is picked, then prove
+  // an op produces oracle-exact pixels with the pool active.
+  stage("threaded-serve");
+  const PORT2 = PORT + 1;
+  const server2 = spawn("python3", [join(HERE, "serve.py"), String(PORT2)], { cwd: HERE, stdio: "ignore" });
+  const cleanup2 = () => { try { server2.kill("SIGKILL"); } catch {} };
+  process.on("exit", cleanup2);
+  const PAGE2 = `http://127.0.0.1:${PORT2}/index.html`;
+  if (!(await waitForHttp(PAGE2))) throw new Error("COOP/COEP server never came up");
+  const { targetId: t2 } = await cdp.send("Target.createTarget", { url: PAGE2 });
+  const { sessionId: s2 } = await cdp.send("Target.attachToTarget", { targetId: t2, flatten: true });
+  await cdp.send("Page.enable", {}, s2);
+  await cdp.send("Runtime.enable", {}, s2);
+  const evalJs2 = async (expr) => {
+    const r = await cdp.send("Runtime.evaluate",
+      { expression: expr, returnByValue: true, awaitPromise: true }, s2, 20000);
+    if (r.exceptionDetails) throw new Error("page JS threw: " + JSON.stringify(r.exceptionDetails));
+    return r.result.value;
+  };
+  stage("threaded-ready");
+  let ok2 = false;
+  for (let i = 0; i < 150; i++) {
+    try { ok2 = await evalJs2("window.__prism ? __prism.ready() : false"); } catch {}
+    if (ok2) break;
+    await sleep(200);
+  }
+  if (!ok2) throw new Error("threaded page: wasm never became ready");
+  const iso = await evalJs2("self.crossOriginIsolated === true");
+  if (!iso) throw new Error("threaded page is NOT cross-origin isolated");
+  const thr = await evalJs2("__prism.threaded()");
+  if (thr !== true) throw new Error("threaded page picked sequential (threaded=" + thr + ")");
+  console.error("[ok] threaded module active (crossOriginIsolated + threaded=true)");
+  stage("threaded-op");
+  await evalJs2(`(() => {
+    const w = 4, h = 2, a = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      if (x < 2) { a[o] = 255; } else { a[o + 1] = 255; }
+      a[o + 3] = 255;
+    }
+    __prism.loadPixels(a, w, h);
+    return true;
+  })()`);
+  await evalJs2(`document.getElementById('grayscale').click()`);
+  let gp = null;
+  for (let i = 0; i < 50; i++) {
+    await sleep(200);
+    gp = await evalJs2("__prism.pixel(0, 0)");
+    if (String(gp) === "76,76,76,255") break;
+  }
+  if (String(gp) !== "76,76,76,255") throw new Error(`threaded grayscale: pixel ${gp} != 76-gray`);
+  // Lanczos resize through the pool (the banded kernel): 4x2 -> 8x4.
+  await evalJs2(`(() => {
+    document.getElementById('method').value = '2';
+    const rw = document.getElementById('rw'), rh = document.getElementById('rh');
+    rw.value = 8; rh.value = 4;
+    document.getElementById('resize').click();
+    return true;
+  })()`);
+  let d2 = null;
+  for (let i = 0; i < 50; i++) {
+    await sleep(200);
+    d2 = await evalJs2("__prism.dims()");
+    if (d2 && d2.w === 8 && d2.h === 4) break;
+  }
+  if (!d2 || d2.w !== 8 || d2.h !== 4) throw new Error(`threaded resize: dims ${d2 && d2.w}x${d2 && d2.h} != 8x4`);
+  console.error("[ok] threaded ops: grayscale oracle + banded lanczos resize on the pool");
+  cleanup2();
+
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (load, grayscale oracle, undo, rotate, resize, crop, chained) AND threaded leg (COI + threaded pick + grayscale oracle + banded lanczos resize).");
   ws.close();
   process.exit(0);
 }

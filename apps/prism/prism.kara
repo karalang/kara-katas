@@ -59,23 +59,22 @@ fn gray(src: ref Vec[u8], w: i64, h: i64) -> Vec[u8] {
     out
 }
 
-// Bilinear resample of an sw×sh RGBA image to dw×dh. Pixel-center alignment
-// (`(d + 0.5) * scale - 0.5`), edge-clamped — the standard convention, so the
-// output matches what references like stb_image_resize produce for the same
-// filter. Works for both downscale and upscale (for heavy downscales Lanczos
-// below is the better choice; bilinear is the fast path).
-fn resize_bilinear(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
-    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
+// One bilinear band: output rows [y0, y1). Pixel-center alignment
+// (`(d + 0.5) * scale - 0.5`), edge-clamped — the standard convention. Pure
+// reads of the shared source; each task writes only its own band.
+fn bilinear_band(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64,
+                 y0: i64, y1: i64) -> Vec[u8] {
+    let mut band: Vec[u8] = Vec.filled((y1 - y0) * dw * 4, 0);
     let xs = (sw as f64) / (dw as f64);
     let ys = (sh as f64) / (dh as f64);
-    let mut dy: i64 = 0;
-    while dy < dh {
+    let mut dy = y0;
+    while dy < y1 {
         let fy = ((dy as f64) + 0.5) * ys - 0.5;
-        let mut y0 = fy.floor() as i64;
-        let mut ty = fy - (y0 as f64);
-        if y0 < 0 { y0 = 0; ty = 0.0; }
-        let mut y1 = y0 + 1;
-        if y1 > sh - 1 { y1 = sh - 1; }
+        let mut sy0 = fy.floor() as i64;
+        let mut ty = fy - (sy0 as f64);
+        if sy0 < 0 { sy0 = 0; ty = 0.0; }
+        let mut sy1 = sy0 + 1;
+        if sy1 > sh - 1 { sy1 = sh - 1; }
         let mut dx: i64 = 0;
         while dx < dw {
             let fx = ((dx as f64) + 0.5) * xs - 0.5;
@@ -85,11 +84,11 @@ fn resize_bilinear(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[
             let mut x1 = x0 + 1;
             if x1 > sw - 1 { x1 = sw - 1; }
 
-            let p00 = (y0 * sw + x0) * 4;
-            let p01 = (y0 * sw + x1) * 4;
-            let p10 = (y1 * sw + x0) * 4;
-            let p11 = (y1 * sw + x1) * 4;
-            let o = (dy * dw + dx) * 4;
+            let p00 = (sy0 * sw + x0) * 4;
+            let p01 = (sy0 * sw + x1) * 4;
+            let p10 = (sy1 * sw + x0) * 4;
+            let p11 = (sy1 * sw + x1) * 4;
+            let o = ((dy - y0) * dw + dx) * 4;
 
             let mut c: i64 = 0;
             while c < 4 {
@@ -102,12 +101,43 @@ fn resize_bilinear(src: ref Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[
                 let mut v = top + (bot - top) * ty + 0.5;
                 if v < 0.0 { v = 0.0; }
                 if v > 255.0 { v = 255.0; }
-                out[o + c] = (v as i64) as u8;
+                band[o + c] = (v as i64) as u8;
                 c = c + 1;
             }
             dx = dx + 1;
         }
         dy = dy + 1;
+    }
+    band
+}
+
+// Bilinear resample, fanned across the task pool in output-row bands — same
+// one-source FIFO-vs-threads story as resize_lanczos below; bands concatenate
+// in order, so the output is byte-identical to the sequential form.
+fn resize_bilinear(src: Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
+    let bands: i64 = 8;
+    let mut out: Vec[u8] = Vec.filled(dw * dh * 4, 0);
+    let mut g: TaskGroup = TaskGroup.new();
+    let mut hs: Vec[TaskHandle[Vec[u8]]] = Vec.new();
+    let bh = (dh + bands - 1) / bands;
+    let mut k: i64 = 0;
+    while k < bands {
+        let y0 = k * bh;
+        let mut y1 = y0 + bh;
+        if y1 > dh { y1 = dh; }
+        if y0 < y1 {
+            let h: TaskHandle[Vec[u8]] = g.spawn(||
+                bilinear_band(src, sw, sh, dw, dh, y0, y1));
+            hs.push(h);
+        }
+        k = k + 1;
+    }
+    let mut off: i64 = 0;
+    for h in hs {
+        let band: Vec[u8] = h.join();
+        let mut i: i64 = 0;
+        while i < band.len() { out[off + i] = band[i]; i = i + 1; }
+        off = off + band.len();
     }
     out
 }
