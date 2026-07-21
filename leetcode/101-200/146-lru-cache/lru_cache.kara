@@ -1,0 +1,112 @@
+// LeetCode 146 — LRU Cache.
+//
+// O(1) `get` and `put` with least-recently-used eviction. The classic design is
+// a hash map plus a doubly-linked list (most-recent at the front, LRU at the
+// back); `get`/`put` move the touched node to the front, and an over-capacity
+// `put` evicts the back.
+//
+// Representation: an INDEX-BASED node pool. `pool[0]` is the head sentinel and
+// `pool[1]` the tail sentinel; real nodes live at index 2+. `prev`/`next` are
+// `i64` pool indices (a stable, pointer-free doubly-linked list), and a
+// `Map[i64, i64]` maps each key to its pool index. This avoids RC entirely — the
+// pool owns every node — while keeping every list operation O(1).
+
+struct DNode {
+    mut key: i64,
+    mut val: i64,
+    mut prev: i64,
+    mut next: i64,
+}
+
+// Detach node `i` from the list: splice its neighbours together.
+fn unlink(pool: mut ref Vec[DNode], i: i64) {
+    let p: i64 = pool[i].prev;
+    let n: i64 = pool[i].next;
+    pool[p].next = n;
+    pool[n].prev = p;
+}
+
+// Insert node `i` at the front (immediately after the head sentinel, index 0).
+fn push_front(pool: mut ref Vec[DNode], i: i64) {
+    let first: i64 = pool[0i64].next;
+    pool[i].prev = 0i64;
+    pool[i].next = first;
+    pool[first].prev = i;
+    pool[0i64].next = i;
+}
+
+fn move_front(pool: mut ref Vec[DNode], i: i64) {
+    unlink(pool, i);
+    push_front(pool, i);
+}
+
+fn main() {
+    let cap: i64 = 2i64;
+
+    // Node pool with the two sentinels wired head <-> tail.
+    let mut pool: Vec[DNode] = Vec.new();
+    pool.push(DNode { key: 0i64, val: 0i64, prev: 1i64, next: 1i64 }); // 0 = head
+    pool.push(DNode { key: 0i64, val: 0i64, prev: 0i64, next: 0i64 }); // 1 = tail
+
+    let mut map: Map[i64, i64] = Map.new();
+    let mut size: i64 = 0i64;
+
+    // Operation tape: op[t] == 0 -> put(a,b), 1 -> get(a). Emits each get result.
+    let mut op: Vec[i64] = Vec.new();
+    let mut a: Vec[i64] = Vec.new();
+    let mut b: Vec[i64] = Vec.new();
+    // put(1,1) put(2,2) get(1) put(3,3) get(2) put(4,4) get(1) get(3) get(4)
+    op.push(0i64); a.push(1i64); b.push(1i64);
+    op.push(0i64); a.push(2i64); b.push(2i64);
+    op.push(1i64); a.push(1i64); b.push(0i64);
+    op.push(0i64); a.push(3i64); b.push(3i64);
+    op.push(1i64); a.push(2i64); b.push(0i64);
+    op.push(0i64); a.push(4i64); b.push(4i64);
+    op.push(1i64); a.push(1i64); b.push(0i64);
+    op.push(1i64); a.push(3i64); b.push(0i64);
+    op.push(1i64); a.push(4i64); b.push(0i64);
+
+    let ops: i64 = op.len();
+    let mut t: i64 = 0i64;
+    while t < ops {
+        let kind: i64 = op[t];
+        let key: i64 = a[t];
+        if kind == 1i64 {
+            // get(key)
+            if map.contains_key(key) {
+                let idx: i64 = map.get(key).unwrap();
+                move_front(mut pool, idx);
+                println(pool[idx].val.to_string());
+            } else {
+                println((0i64 - 1i64).to_string());
+            }
+        } else {
+            // put(key, val)
+            let val: i64 = b[t];
+            if map.contains_key(key) {
+                let idx: i64 = map.get(key).unwrap();
+                pool[idx].val = val;
+                move_front(mut pool, idx);
+            } else {
+                pool.push(DNode { key: key, val: val, prev: 0i64, next: 0i64 });
+                let idx: i64 = pool.len() - 1i64;
+                map.insert(key, idx);
+                push_front(mut pool, idx);
+                size = size + 1i64;
+                if size > cap {
+                    // Evict the LRU node (the one just before the tail sentinel).
+                    let lru: i64 = pool[1i64].prev;
+                    let lru_key: i64 = pool[lru].key;
+                    let evicted: Option[i64] = map.remove(lru_key);
+                    match evicted {
+                        Some(x) => {}
+                        None => {}
+                    }
+                    unlink(mut pool, lru);
+                    size = size - 1i64;
+                }
+            }
+        }
+        t = t + 1i64;
+    }
+}
