@@ -6,9 +6,11 @@
 #   ./build.sh --verify        # build, then drive the page in headless Chrome
 #   KARAC=/path/to/karac ./build.sh
 #
-# Prism is a SEQUENTIAL wasm_browser build — it runs on the main thread, so it
-# needs no SharedArrayBuffer and no COOP/COEP headers (a plain static server is
-# fine). The pixel kernels are in prism.kara; the browser does codec I/O.
+# Prism is a DUAL wasm_browser build (--features wasm-threads): prism.wasm is
+# the sequential module, prism.threads.wasm the multicore one. The page picks
+# threads when cross-origin isolated — via real COOP/COEP headers (serve.py)
+# or the vendored coi-serviceworker shim on headers-blind hosts. The pixel
+# kernels are in prism.kara; the browser does codec I/O.
 set -euo pipefail
 cd "$(dirname "$0")"
 

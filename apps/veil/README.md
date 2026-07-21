@@ -32,6 +32,9 @@ The UI states this honestly: blur/pixelate *degrade*, the bar *destroys*.
 
 Sequential `wasm_browser` build — main thread, no COOP/COEP, any static host
 serves it (`index.html + veil.js + veil.wasm` is the whole deploy).
+**Deploying:** the live copy is `karac.dev/veil`, served from the
+`karalang/website` repo's `public/veil/` — sync fresh artifacts there with
+`../sync-website.sh` (see `../DEPLOY.md`).
 
 ## Verification
 

@@ -1,74 +1,80 @@
-# Deploying Prism & Veil to karac.dev
+# Deploying Prism & Veil (karac.dev)
 
-Both apps are **fully static** — no backend, no build step on the host. Each
-`deploy/` directory is the complete site:
+**Single source of truth, one-directional flow:**
 
-| App | Bundle | Size | Suggested home |
-|---|---|---|---|
-| Prism | `apps/prism/deploy/` (`index.html`, `prism.js`, `prism.wasm`, `prism.threads.wasm`, `_headers`) | ~360 KB | `prism.karac.dev` |
-| Veil  | `apps/veil/deploy/` (`index.html`, `veil.js`, `veil.wasm`) | ~148 KB | `veil.karac.dev` |
+| What | Where | Repo |
+|---|---|---|
+| App **source + tests** (`.kara`, `index.html`, node oracles, CDP harnesses, `build.sh`) | `apps/prism/`, `apps/veil/` | **kara-katas** (this repo — build artifacts are gitignored) |
+| **Deployed artifacts** (html + js glue + wasm) | `public/prism/`, `public/veil/` | **karalang/website** — served verbatim at `karac.dev/prism` and `karac.dev/veil` by GitHub Pages on every push to `main` |
 
-Subdomains keep the root `karac.dev` free for the language homepage, and let
-Prism's cross-origin-isolation headers apply only where they're wanted.
+Nothing is committed twice: this repo holds no built bundles, the website repo
+holds no app source.
 
-## The one header rule (Prism only)
+## Redeploy flow
 
-Prism's multicore build needs **cross-origin isolation** (SharedArrayBuffer):
+```bash
+# 1. build + verify here (node oracles + three-leg headless-Chrome CDP)
+( cd prism && ./build.sh --verify )
+( cd veil  && ./build.sh --verify )
+
+# 2. copy artifacts into a website checkout (the only direction they flow)
+./sync-website.sh /path/to/website
+
+# 3. push the website repo — GitHub Pages redeploys karac.dev automatically
+cd /path/to/website && git add public && git commit -m "Update Prism/Veil artifacts" && git push
+```
+
+Building needs the kara-tree `karac` (`--features llvm`) and `wasm-tools` on
+PATH (the ~10× debug-info strip); see each app's README.
+
+## Threads without response headers (how karac.dev/prism gets multicore)
+
+Prism's multicore build needs **cross-origin isolation** (SharedArrayBuffer),
+which normally requires two response headers:
 
 ```
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-`prism/deploy/_headers` already declares this in the format Cloudflare Pages
-and Netlify both read natively. **Without the headers the app still works** —
-the glue detects the missing isolation and falls back to the single-threaded
-module automatically (the meta line shows "1 thread" instead of "threads").
-Veil is single-threaded by design and needs no headers.
+GitHub Pages **cannot set response headers**, so Prism ships the vendored
+**coi-serviceworker** shim (MIT, gzuidhof/coi-serviceworker v0.1.7 —
+`prism/coi-serviceworker.min.js`): on a headers-blind host it registers a
+service worker that injects COOP/COEP client-side and reloads once; after
+that first-visit reload, `crossOriginIsolated` is true and the threaded
+module (`prism.threads.wasm`) loads. On a host that already sends the
+headers, the shim is a no-op. Appending `?seq` to the URL skips it and pins
+the single-threaded fallback. Veil is single-threaded by design and needs
+none of this.
 
-## Cloudflare Pages (recommended)
+If you ever host on a headers-capable platform (Cloudflare Pages / Netlify),
+you can serve the headers directly with a `_headers` file:
 
-Per app (5 minutes each):
-
-1. Cloudflare dashboard → **Workers & Pages → Create → Pages →
-   Upload assets** ("direct upload"). Name the project (`prism` / `veil`).
-2. Drag the contents of the app's `deploy/` directory in and deploy.
-   (`_headers` is picked up automatically.)
-3. Project → **Custom domains → Set up a custom domain** →
-   `prism.karac.dev` (resp. `veil.karac.dev`). If karac.dev's DNS is on
-   Cloudflare this is one click; otherwise add the CNAME it shows you
-   (`prism.karac.dev → <project>.pages.dev`). TLS is automatic.
-
-Redeploys: re-run the app's `./build.sh`, re-copy into `deploy/`
-(or just upload the app dir's fresh artifacts), drag-and-drop again — or wire
-`wrangler pages deploy deploy/` into CI later.
-
-## Alternatives
-
-- **Netlify**: drag `deploy/` onto app.netlify.com/drop; `_headers` works
-  as-is; add the custom domain in Site settings.
-- **Vercel**: works, but move the header rule into `vercel.json`
-  (`headers` key) — Vercel ignores `_headers`.
-- **GitHub Pages**: hosts the files fine but **cannot set response headers**,
-  so Prism runs in single-threaded fallback there. Fine for Veil.
+```
+/prism/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+```
 
 ## Post-deploy verification (2 minutes)
 
-On the live `prism.karac.dev`:
+On the live `karac.dev/prism`:
 
-1. DevTools console: `crossOriginIsolated` → must print `true`
-   (if `false`, the headers aren't being served).
-2. Drop a photo, click a resize — the meta line should read
+1. First visit may reload once (the shim installing); DevTools console then
+   shows `COOP/COEP Service Worker registered`.
+2. Console: `crossOriginIsolated` → must print `true`.
+3. Drop a photo, click a resize — the meta line should read
    `… ms (Kāra/WASM, threads)`.
-3. The privacy claim, live: keep the **Network tab** open while editing —
+4. The privacy claim, live: keep the **Network tab** open while editing —
    after the initial page load, zero requests.
 
-The same checks minus the isolation bits apply to Veil.
+The same checks minus the isolation bits apply to `karac.dev/veil`.
 
 ## Provenance
 
-Bundles are built by each app's `./build.sh` (requires the kara-tree `karac`
-with `--features llvm` and `wasm-tools` on PATH for the ~10× debug-info
-strip) and verified before shipping by `test_node.mjs` (exact-oracle kernel
-tests) plus `verify_browser.mjs` (real-Chrome CDP drive of the actual page —
-for Prism: both the sequential-fallback and threaded legs).
+Artifacts are built by each app's `./build.sh` and verified before shipping
+by `test_node.mjs` (exact-oracle kernel tests) plus `verify_browser.mjs`
+(real-Chrome CDP drive of the actual page — for Prism: the `?seq`
+sequential-fallback leg, the real-COOP/COEP threaded leg, AND the coi-shim
+leg that simulates GitHub Pages: headerless server → SW-injected isolation →
+threaded module + pixel oracle).

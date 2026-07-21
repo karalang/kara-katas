@@ -31,12 +31,18 @@ the compute. Tracked in the compiler's dogfooding roster
   upscale 1575 → 763 ms (2.1×), output **byte-identical** throughout. One
   source: a sequential build runs the same `TaskGroup` code FIFO. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
-  you get threads; without, the sequential module — same call shape.
-- **Real-browser verified, both legs**: `verify_browser.mjs` drives the actual
-  page in headless Chrome over CDP — the sequential-fallback leg (load,
-  grayscale oracle pixels, undo, rotate, resize, crop, chained) AND the
-  threaded leg (cross-origin isolated, threaded module picked, grayscale
-  oracle, banded Lanczos resize on the pool). `./build.sh --verify`.
+  you get threads; without, the vendored **coi-serviceworker** shim (MIT,
+  gzuidhof/coi-serviceworker v0.1.7) registers a service worker that injects
+  the headers client-side and reloads once — so even a headers-blind host
+  like GitHub Pages gets the multicore module. `?seq` in the URL skips the
+  shim and pins the single-threaded fallback.
+- **Real-browser verified, three legs**: `verify_browser.mjs` drives the
+  actual page in headless Chrome over CDP — the sequential-fallback leg
+  (`?seq`: fallback pinned + load, grayscale oracle pixels, undo, rotate,
+  resize, crop, chained), the threaded leg (real COOP/COEP headers, threaded
+  module picked, grayscale oracle, banded Lanczos resize on the pool), AND
+  the coi-shim leg (headerless server → SW-injected isolation → threaded +
+  oracle — the GitHub Pages simulation). `./build.sh --verify`.
 - EXIF awareness and a horizontal-pass SIMD story (u8→f64 gather, not yet peephole-covered) are the next slices.
 
 ## Build & run
@@ -48,8 +54,11 @@ the compute. Tracked in the compiler's dogfooding roster
 
 `karac` comes from the sibling Kāra compiler checkout by default
 (`../../../kara/target/debug/karac`); override with `KARAC=/path/to/karac`.
-A plain static server suffices — this is a sequential (main-thread) wasm_browser
-build, so no COOP/COEP headers are needed.
+Any static server works: with COOP/COEP headers (`serve.py`) the threaded
+module loads directly; without them the coi-serviceworker shim supplies the
+isolation after a one-time reload. **Deploying:** the live copy is
+`karac.dev/prism`, served from the `karalang/website` repo's `public/prism/`
+— sync fresh artifacts there with `../sync-website.sh` (see `apps/DEPLOY.md`).
 
 ## Regression harness
 

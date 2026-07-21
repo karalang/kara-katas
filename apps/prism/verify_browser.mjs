@@ -17,7 +17,10 @@ import { join } from "node:path";
 const PORT = 8763;
 const CDP_PORT = 9412;
 const HERE = new URL(".", import.meta.url).pathname;
-const PAGE_URL = `http://127.0.0.1:${PORT}/index.html`;
+// `?seq` tells the coi-serviceworker shim in index.html NOT to register, so
+// this leg exercises the true single-threaded fallback on a headerless server.
+const PAGE_URL = `http://127.0.0.1:${PORT}/index.html?seq`;
+const PAGE_URL_COI = `http://127.0.0.1:${PORT}/index.html`;
 
 function findChrome() {
   const candidates = [
@@ -150,7 +153,11 @@ async function main() {
     await sleep(150);
   }
   if (!ok) throw new Error("wasm never became ready (instantiate failed?)");
-  console.error("[ok] wasm instantiated");
+  const iso1 = await evalJs("self.crossOriginIsolated === true");
+  if (iso1) throw new Error("?seq leg is cross-origin isolated — coi shim registered anyway?");
+  const thr1 = await evalJs("__prism.threaded()");
+  if (thr1 !== false) throw new Error("?seq leg picked threaded (escape hatch broken)");
+  console.error("[ok] wasm instantiated (sequential fallback, ?seq honored)");
 
   // Inject a known 4x2 image through the test hook: left half red, right green.
   stage("load");
@@ -293,7 +300,59 @@ async function main() {
   console.error("[ok] threaded ops: grayscale oracle + banded lanczos resize on the pool");
   cleanup2();
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (load, grayscale oracle, undo, rotate, resize, crop, chained) AND threaded leg (COI + threaded pick + grayscale oracle + banded lanczos resize).");
+  // ── Phase 3: COI-SHIM leg — the GitHub Pages simulation. Same headerless
+  // server as phase 1, but WITHOUT ?seq: coi-serviceworker registers, reloads
+  // the page once, and the reloaded document is cross-origin isolated, so the
+  // threaded module gets picked with no server-side headers at all.
+  stage("coi-shim");
+  const { targetId: t3 } = await cdp.send("Target.createTarget", { url: PAGE_URL_COI });
+  const { sessionId: s3 } = await cdp.send("Target.attachToTarget", { targetId: t3, flatten: true });
+  await cdp.send("Page.enable", {}, s3);
+  await cdp.send("Runtime.enable", {}, s3);
+  const evalJs3 = async (expr) => {
+    const r = await cdp.send("Runtime.evaluate",
+      { expression: expr, returnByValue: true, awaitPromise: true }, s3, 20000);
+    if (r.exceptionDetails) throw new Error("page JS threw: " + JSON.stringify(r.exceptionDetails));
+    return r.result.value;
+  };
+  // Poll across the shim's mid-flight reload: evaluate can fail during the
+  // navigation, and the pre-reload document reports isolated=false — keep
+  // polling until the post-reload document is isolated AND the wasm is live.
+  stage("coi-shim-ready");
+  let ok3 = false;
+  for (let i = 0; i < 150; i++) {
+    try {
+      ok3 = await evalJs3(
+        "self.crossOriginIsolated === true && window.__prism ? __prism.ready() : false");
+    } catch {}
+    if (ok3) break;
+    await sleep(200);
+  }
+  if (!ok3) throw new Error("coi-shim page never became isolated+ready (SW failed to register?)");
+  const thr3 = await evalJs3("__prism.threaded()");
+  if (thr3 !== true) throw new Error("coi-shim page picked sequential (threaded=" + thr3 + ")");
+  stage("coi-shim-op");
+  await evalJs3(`(() => {
+    const w = 4, h = 2, a = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      if (x < 2) { a[o] = 255; } else { a[o + 1] = 255; }
+      a[o + 3] = 255;
+    }
+    __prism.loadPixels(a, w, h);
+    return true;
+  })()`);
+  await evalJs3(`document.getElementById('grayscale').click()`);
+  let gp3 = null;
+  for (let i = 0; i < 50; i++) {
+    await sleep(200);
+    gp3 = await evalJs3("__prism.pixel(0, 0)");
+    if (String(gp3) === "76,76,76,255") break;
+  }
+  if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
+  console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
+
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained), threaded leg (real COOP/COEP headers + banded lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }
