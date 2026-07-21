@@ -10,12 +10,14 @@ Given a reference to a node in a connected undirected graph, return a deep copy 
 
 | Approach | Complexity | Kāra | Python |
 |---|---|---|---|
-| DFS recursive: clone-on-visit, memoize by val | O(N + M) time, O(N) space | [`dfs.kara`](dfs.kara) ✓ via `karac run` | [`dfs.py`](dfs.py) ✓ |
-| BFS iterative: queue + visited map | O(N + M) time, O(N) space | [`bfs.kara`](bfs.kara) ✓ via `karac run` | [`bfs.py`](bfs.py) ✓ |
+| DFS recursive: clone-on-visit, memoize by val | O(N + M) time, O(N) space | [`dfs.kara`](dfs.kara) ✓ | [`dfs.py`](dfs.py) ✓ |
+| BFS iterative: queue + visited map | O(N + M) time, O(N) space | [`bfs.kara`](bfs.kara) ✓ | [`bfs.py`](bfs.py) ✓ |
 
-`✓` marks agreement with the Python mirror under **`karac run --interp`**. Both variants ship the same per-node work (clone-once, link-once) and the same complexity; BFS just iterates a queue instead of the call stack.
+`✓` marks agreement with the Python mirror under **interpreter, JIT, and codegen** (output). Both variants ship the same per-node work (clone-once, link-once) and the same complexity; BFS just iterates a queue instead of the call stack.
 
-> **Run/build divergence — a real compiler bug this kata surfaced.** Under `karac build` (and JIT) both variants diverge from the interpreter — BFS panics on `unwrap()`, DFS prints garbage. Root cause: [kara `B-2026-07-21-13`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — pushing a **bare `shared struct` element** aliased from a pool `Vec` into another node's `Vec[Node]` (`nodes[i].neighbors.push(nodes[j])` — the canonical adjacency-list build) is **not RC-retained**, so when the local pool `Vec` drops (the function returns one node) the still-referenced neighbor is freed → use-after-free. This is **not** a kata bug and not worked around here — the code is the natural adjacency-list construction, and it correctly exposes the missing retain. The kata is verified against its oracle under `karac run --interp` pending the compiler fix (`Vec.push` retains `Option[shared]` bindings/fields already; the bare-`shared`-element arm is missing).
+> **A compiler bug this kata surfaced — now fixed.** Originally both variants diverged under `karac build`/JIT (BFS `unwrap()` panic, DFS garbage) while the interpreter was correct. Root cause: [kara `B-2026-07-21-13`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — pushing a **bare `shared struct` element** aliased from a pool `Vec` into another node's `Vec[Node]` (`nodes[i].neighbors.push(nodes[j])` — the canonical adjacency-list build) was **not RC-retained**, so when the local pool `Vec` dropped (the function returns one node) the still-referenced neighbor was freed → use-after-free. **Fixed** (`share_shared_struct_ref_for_arg`, the bare-`shared` sibling of the existing `Option[shared]` push-retain): `karac build`/JIT now match the interpreter and the Python mirror on **all** cases. Not worked around in the kata — the natural adjacency-list construction correctly exposed the missing retain.
+>
+> **Residual — inherent RC limitation (not a bug).** The cloned graph's `neighbors` are **strong** `Vec[Node]` edges, so a graph with a cycle (e.g. the default 4-cycle) forms a strong reference cycle that reference counting cannot reclaim — it leaks by construction, the graph analog of the [#141](../141-linked-list-cycle/) linked-list cycle. Output is correct on every case; only the memory of the cyclic clones is not freed at exit. The leak-free variant is a **`Vec`-owned pool + `weak` neighbors** (the #141–143 model), tracked as a possible follow-up; acyclic graphs are already fully reclaimed.
 
 ## Kāra features exercised
 
