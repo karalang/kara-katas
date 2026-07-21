@@ -1,0 +1,215 @@
+// Veil — a privacy-first, fully-local image redactor in one Kāra source.
+//
+// The sensitive image never leaves the device: JS decodes the file, hands the
+// pixels to Kāra, and every redaction kernel (pixelate / box-blur / solid bar
+// over a selected rect) runs in wasm on this machine. Download re-encodes
+// locally — which also strips EXIF/GPS metadata as a side effect. Compiled:
+//
+//   karac build veil.kara --target=wasm_browser   # browser (main-thread)
+//
+// Same request-driven spine as Prism (kara-katas/apps/prism): JS calls the
+// exported `process(op, sw, sh, x, y, w, h, s)` per applied redaction; the
+// result becomes the page's new working image, so redactions accumulate.
+//
+// HONESTY NOTE (also in the README/UI): a solid bar destroys the pixels; blur
+// and pixelate only *degrade* them, and heavy-handed recovery attacks on
+// low-strength mosaics exist. The safe default for text is the bar.
+
+effect resource Display; // the <canvas> we paint, via `put_pixels`
+effect resource Input;   // the decoded source pixels JS holds, via `read_src`
+
+host fn read_src(dst: *const u8, len: i64) with reads(Input);
+host fn put_pixels(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
+
+fn op_pixelate() -> i64 { 0 }
+fn op_blur() -> i64 { 1 }
+fn op_bar() -> i64 { 2 }
+
+// ── Kernels ─────────────────────────────────────────────────────────────────
+// All three copy the source, then rewrite only the rect (x, y, w, h). The
+// caller (JS) clamps the rect to the image.
+
+// Mosaic: for each `block`×`block` tile of the rect, average the RGB inside
+// (integer mean) and fill the tile with it. Alpha is preserved per-pixel.
+fn pixelate(src: ref Vec[u8], sw: i64, sh: i64, x: i64, y: i64, w: i64, h: i64, block: i64) -> Vec[u8] {
+    let n = sw * sh * 4;
+    let mut out: Vec[u8] = Vec.filled(n, 0);
+    let mut i: i64 = 0;
+    while i < n { out[i] = src[i]; i = i + 1; }
+
+    let mut b = block;
+    if b < 2 { b = 2; }
+    let mut ty = y;
+    while ty < y + h {
+        let mut tx = x;
+        while tx < x + w {
+            // tile bounds, clipped to the rect
+            let mut ex = tx + b; if ex > x + w { ex = x + w; }
+            let mut ey = ty + b; if ey > y + h { ey = y + h; }
+            let mut r: i64 = 0; let mut g: i64 = 0; let mut bl: i64 = 0;
+            let mut cnt: i64 = 0;
+            let mut py = ty;
+            while py < ey {
+                let mut px = tx;
+                while px < ex {
+                    let p = (py * sw + px) * 4;
+                    r = r + (src[p] as i64);
+                    g = g + (src[p + 1] as i64);
+                    bl = bl + (src[p + 2] as i64);
+                    cnt = cnt + 1;
+                    px = px + 1;
+                }
+                py = py + 1;
+            }
+            let ar = (r / cnt) as u8;
+            let ag = (g / cnt) as u8;
+            let ab = (bl / cnt) as u8;
+            py = ty;
+            while py < ey {
+                let mut px = tx;
+                while px < ex {
+                    let p = (py * sw + px) * 4;
+                    out[p] = ar;
+                    out[p + 1] = ag;
+                    out[p + 2] = ab;
+                    px = px + 1;
+                }
+                py = py + 1;
+            }
+            tx = tx + b;
+        }
+        ty = ty + b;
+    }
+    out
+}
+
+// Box blur over the rect, 3 iterations of a horizontal+vertical pass with
+// radius `rad`, sampling CLAMPED TO THE RECT (pixels outside the selection
+// neither bleed in nor are read — the redacted region is self-contained).
+// Edge-normalized (divide by the taps actually included). f64 accumulate,
+// clamp at the end of each pass. Alpha preserved.
+fn blur(src: ref Vec[u8], sw: i64, sh: i64, x: i64, y: i64, w: i64, h: i64, rad: i64) -> Vec[u8] {
+    let n = sw * sh * 4;
+    let mut out: Vec[u8] = Vec.filled(n, 0);
+    let mut i: i64 = 0;
+    while i < n { out[i] = src[i]; i = i + 1; }
+
+    let mut r = rad;
+    if r < 1 { r = 1; }
+
+    // Working copy of the rect only would save memory; whole-image temp keeps
+    // the indexing simple (skeleton). Two ping-pong buffers.
+    let mut a: Vec[u8] = Vec.filled(n, 0);
+    i = 0;
+    while i < n { a[i] = out[i]; i = i + 1; }
+
+    let mut pass: i64 = 0;
+    while pass < 3 {
+        // horizontal within the rect
+        let mut py = y;
+        while py < y + h {
+            let mut px = x;
+            while px < x + w {
+                let mut lo = px - r; if lo < x { lo = x; }
+                let mut hi = px + r; if hi > x + w - 1 { hi = x + w - 1; }
+                let mut c: i64 = 0;
+                while c < 3 {
+                    let mut acc: i64 = 0;
+                    let mut k = lo;
+                    while k <= hi {
+                        acc = acc + (a[(py * sw + k) * 4 + c] as i64);
+                        k = k + 1;
+                    }
+                    out[(py * sw + px) * 4 + c] = (acc / (hi - lo + 1)) as u8;
+                    c = c + 1;
+                }
+                px = px + 1;
+            }
+            py = py + 1;
+        }
+        // vertical within the rect (reads the horizontal result)
+        py = y;
+        while py < y + h {
+            let mut px = x;
+            while px < x + w {
+                let mut lo = py - r; if lo < y { lo = y; }
+                let mut hi = py + r; if hi > y + h - 1 { hi = y + h - 1; }
+                let mut c: i64 = 0;
+                while c < 3 {
+                    let mut acc: i64 = 0;
+                    let mut k = lo;
+                    while k <= hi {
+                        acc = acc + (out[(k * sw + px) * 4 + c] as i64);
+                        k = k + 1;
+                    }
+                    a[(py * sw + px) * 4 + c] = (acc / (hi - lo + 1)) as u8;
+                    c = c + 1;
+                }
+                px = px + 1;
+            }
+            py = py + 1;
+        }
+        pass = pass + 1;
+    }
+    // final result of pass loop lives in `a` (vertical writes there); copy the
+    // rect back onto out (out already holds the untouched surroundings).
+    let mut py = y;
+    while py < y + h {
+        let mut px = x;
+        while px < x + w {
+            let p = (py * sw + px) * 4;
+            out[p] = a[p];
+            out[p + 1] = a[p + 1];
+            out[p + 2] = a[p + 2];
+            px = px + 1;
+        }
+        py = py + 1;
+    }
+    out
+}
+
+// Solid bar: fill the rect with black (shade 0) or white (shade 1), opaque.
+// The only kernel that DESTROYS the underlying pixels — the safe choice.
+fn bar(src: ref Vec[u8], sw: i64, sh: i64, x: i64, y: i64, w: i64, h: i64, shade: i64) -> Vec[u8] {
+    let n = sw * sh * 4;
+    let mut out: Vec[u8] = Vec.filled(n, 0);
+    let mut i: i64 = 0;
+    while i < n { out[i] = src[i]; i = i + 1; }
+    let v: u8 = if shade == 1 { 255 } else { 0 };
+    let mut py = y;
+    while py < y + h {
+        let mut px = x;
+        while px < x + w {
+            let p = (py * sw + px) * 4;
+            out[p] = v;
+            out[p + 1] = v;
+            out[p + 2] = v;
+            out[p + 3] = 255;
+            px = px + 1;
+        }
+        py = py + 1;
+    }
+    out
+}
+
+// ── The export ──────────────────────────────────────────────────────────────
+// `process(op, sw, sh, x, y, w, h, s)` — op 0 pixelate (s = block size),
+// 1 blur (s = radius), 2 bar (s = 0 black / 1 white). Output dims never change.
+#[target(wasm_browser)]
+pub fn process(op: i64, sw: i64, sh: i64, x: i64, y: i64, w: i64, h: i64, s: i64)
+    with reads(Input) writes(Display)
+{
+    let n = sw * sh * 4;
+    let mut src: Vec[u8] = Vec.filled(n, 0);
+    read_src(src.as_ptr(), src.len());
+
+    let out = if op == op_blur() {
+        blur(src, sw, sh, x, y, w, h, s)
+    } else if op == op_bar() {
+        bar(src, sw, sh, x, y, w, h, s)
+    } else {
+        pixelate(src, sw, sh, x, y, w, h, s)
+    };
+
+    put_pixels(out.as_ptr(), out.len(), sw, sh);
+}
