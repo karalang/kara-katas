@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Veil — local redactor (the file never leaves your device)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #07090f; color: #d7e0f0;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 26px 18px 40px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  p.sub { margin: 0; opacity: .7; max-width: 640px; text-align: center; }
+  .badge { color: #63e6a8; font-weight: 600; }
+  #drop {
+    width: min(760px, 92vw); min-height: 260px;
+    border: 1.5px dashed #2b3a5e; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; cursor: pointer;
+    background: #0b1120; transition: border-color .15s, background .15s;
+  }
+  #drop.hot { border-color: #6fd3ff; background: #0e1730; }
+  #drop .big { font-size: 15px; color: #cfe0ff; }
+  #drop .small { font-size: 12px; opacity: .6; }
+  #stagewrap { display: none; flex-direction: column; align-items: center; gap: 12px; }
+  #stage { position: relative; }
+  canvas {
+    display: block; max-width: min(760px, 92vw); height: auto;
+    border: 1px solid #1d2740; border-radius: 8px; background: #000;
+    cursor: crosshair;
+  }
+  #selbox {
+    position: absolute; display: none; pointer-events: none;
+    border: 1.5px dashed #ff9f6f; background: rgba(255, 159, 111, .14);
+  }
+  .panel {
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center;
+    background: #0b1120; border: 1px solid #1d2740; border-radius: 8px; padding: 10px 14px;
+  }
+  .panel label { font-size: 12px; opacity: .75; }
+  button {
+    background: #111a2e; color: #cfe0ff; border: 1px solid #243a5e;
+    border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #6fd3ff; }
+  button.primary { background: #66311d; border-color: #ff9f6f; color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  select {
+    background: #0d1526; color: #d7e0f0; border: 1px solid #243a5e;
+    border-radius: 5px; padding: 6px 8px; font: inherit;
+  }
+  input[type=range] { accent-color: #ff9f6f; width: 110px; }
+  .sl { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; opacity: .85; }
+  #meta { font-size: 12px; opacity: .7; white-space: pre; text-align: center; }
+  #note { opacity: .55; max-width: 660px; text-align: center; font-size: 12px; }
+  #warn { color: #ffcf6f; max-width: 660px; text-align: center; font-size: 12px; }
+  code { color: #9ad0ff; }
+  input[type=file] { display: none; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+  <h1>Veil</h1>
+  <p class="sub">Redact screenshots and photos <span class="badge">entirely in your
+    browser</span> — the sensitive file is <b>never uploaded</b>. Draw a box over
+    what should disappear; the redaction kernel (Kāra → WebAssembly) runs on your
+    machine. Downloading re-encodes the image, which also strips EXIF/GPS
+    metadata.</p>
+
+  <div id="drop">
+    <div class="big">Drop a screenshot here, or click to choose</div>
+    <div class="small">JPEG · PNG · WebP — stays on your device</div>
+    <input id="file" type="file" accept="image/*" />
+  </div>
+
+  <div id="stagewrap">
+    <div id="stage">
+      <canvas id="screen"></canvas>
+      <div id="selbox"></div>
+    </div>
+    <div id="meta"></div>
+
+    <div class="panel">
+      <select id="style">
+        <option value="2">Solid bar (destroys pixels — safest)</option>
+        <option value="0">Pixelate</option>
+        <option value="1">Blur</option>
+      </select>
+      <div class="sl" id="strwrap">
+        <label><span id="strname">strength</span> <span id="strv">12</span></label>
+        <input id="str" type="range" min="2" max="40" value="12" />
+      </div>
+      <select id="shade" style="display:inline-block">
+        <option value="0">black</option>
+        <option value="1">white</option>
+      </select>
+      <button id="applysel" class="primary" disabled>Redact selection</button>
+    </div>
+
+    <div class="row">
+      <button id="undo">Undo</button>
+      <button id="reset">Original</button>
+      <button id="download" class="primary">Download PNG</button>
+      <button id="another">Open another…</button>
+    </div>
+  </div>
+
+  <p id="warn">⚠ Blur and pixelate only <i>degrade</i> pixels — determined
+    recovery attacks on weak mosaics exist. For text (keys, names, numbers) use
+    the <b>solid bar</b>, which destroys the data.</p>
+  <p id="note">Where's the upload? There isn't one — watch the Network tab stay
+    empty. Each redaction calls the Kāra <code>process(op, w, h, x, y, rw, rh, s)</code>
+    export; the result becomes the working image, so redactions accumulate.</p>
+
+<script type="module">
+  import { instantiate } from "./veil.js";
+
+  const $ = (id) => document.getElementById(id);
+  const dropEl = $("drop"), fileEl = $("file"), stage = $("stagewrap");
+  const canvas = $("screen"), ctx2d = canvas.getContext("2d");
+  const selbox = $("selbox"), metaEl = $("meta");
+
+  let cur = null, curW = 0, curH = 0;
+  let orig = null, origW = 0, origH = 0;
+  const undoStack = [];
+  const UNDO_MAX = 12;
+
+  const host = {
+    read_src(dst, len, ctx) {
+      const n = Number(len);
+      new Uint8Array(ctx.memory.buffer, Number(dst), n).set(cur.subarray(0, n));
+    },
+    put_pixels(ptr, len, w, h, ctx) {
+      const n = Number(len);
+      const view = new Uint8ClampedArray(ctx.memory.buffer, Number(ptr), n);
+      const copy = new Uint8ClampedArray(n); copy.set(view);
+      adopt(copy, Number(w), Number(h));
+    },
+  };
+  const ready = instantiate(host).catch((e) => {
+    metaEl.textContent = "failed to load wasm: " + (e && e.message ? e.message : e);
+    console.error(e); throw e;
+  });
+
+  function paint() {
+    canvas.width = curW; canvas.height = curH;
+    ctx2d.putImageData(new ImageData(cur, curW, curH), 0, 0);
+    clearSel();
+  }
+  function adopt(pixels, w, h) { cur = pixels; curW = w; curH = h; paint(); }
+  function setMeta(extra) {
+    metaEl.textContent = `${curW} × ${curH}px` + (extra ? `  ·  ${extra}` : "");
+  }
+
+  async function applyOp(op, x, y, w, h, s, label) {
+    const handle = await ready;
+    undoStack.push({ p: cur, w: curW, h: curH });
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+    const t0 = performance.now();
+    handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
+      BigInt(x), BigInt(y), BigInt(w), BigInt(h), BigInt(s));
+    setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM)`);
+  }
+
+  async function loadFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const bmp = await createImageBitmap(file);
+    const scratch = document.createElement("canvas");
+    scratch.width = bmp.width; scratch.height = bmp.height;
+    const sctx = scratch.getContext("2d");
+    sctx.drawImage(bmp, 0, 0);
+    const img = sctx.getImageData(0, 0, bmp.width, bmp.height);
+    bmp.close && bmp.close();
+    orig = new Uint8ClampedArray(img.data); origW = img.width; origH = img.height;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
+    dropEl.style.display = "none";
+    stage.style.display = "flex";
+    setMeta("loaded — draw a box over the sensitive region");
+  }
+
+  // ── Selection (drag a rect on the canvas) ────────────────────────────────
+  let sel = null, dragging = false, dragFrom = null;
+  function clearSel() { sel = null; selbox.style.display = "none"; $("applysel").disabled = true; }
+  function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max(e.clientX - r.left, 0), r.width),
+      y: Math.min(Math.max(e.clientY - r.top, 0), r.height),
+      r,
+    };
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    dragging = true; dragFrom = canvasPos(e);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const p = canvasPos(e);
+    const x0 = Math.min(dragFrom.x, p.x), y0 = Math.min(dragFrom.y, p.y);
+    const w = Math.abs(p.x - dragFrom.x), h = Math.abs(p.y - dragFrom.y);
+    selbox.style.display = "block";
+    selbox.style.left = x0 + "px"; selbox.style.top = y0 + "px";
+    selbox.style.width = w + "px"; selbox.style.height = h + "px";
+    const sx = curW / p.r.width, sy = curH / p.r.height;
+    sel = {
+      x: Math.round(x0 * sx), y: Math.round(y0 * sy),
+      w: Math.max(1, Math.round(w * sx)), h: Math.max(1, Math.round(h * sy)),
+    };
+  });
+  canvas.addEventListener("pointerup", () => {
+    dragging = false;
+    if (sel && sel.w > 2 && sel.h > 2) {
+      $("applysel").disabled = false;
+      setMeta(`selection ${sel.w}×${sel.h} at (${sel.x}, ${sel.y})`);
+    } else clearSel();
+  });
+
+  // ── Controls ─────────────────────────────────────────────────────────────
+  const styleEl = $("style"), strEl = $("str"), shadeEl = $("shade");
+  function refreshControls() {
+    const op = Number(styleEl.value);
+    $("strwrap").style.display = op === 2 ? "none" : "flex";
+    shadeEl.style.display = op === 2 ? "inline-block" : "none";
+    $("strname").textContent = op === 0 ? "block size" : "radius";
+  }
+  styleEl.addEventListener("change", refreshControls);
+  strEl.addEventListener("input", () => { $("strv").textContent = strEl.value; });
+  refreshControls();
+
+  $("applysel").addEventListener("click", () => {
+    if (!sel) return;
+    const x = Math.min(sel.x, curW - 1), y = Math.min(sel.y, curH - 1);
+    const w = Math.min(sel.w, curW - x), h = Math.min(sel.h, curH - y);
+    const op = Number(styleEl.value);
+    const s = op === 2 ? Number(shadeEl.value) : Number(strEl.value);
+    const name = op === 0 ? "pixelate" : op === 1 ? "blur" : "bar";
+    applyOp(op, x, y, w, h, s, `${name} ${w}×${h}`);
+  });
+
+  $("undo").addEventListener("click", () => {
+    const prev = undoStack.pop();
+    if (prev) { adopt(prev.p, prev.w, prev.h); setMeta("undo"); }
+  });
+  $("reset").addEventListener("click", () => {
+    if (!orig) return;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
+    setMeta("original restored");
+  });
+  $("download").addEventListener("click", () => {
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "veil.png";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  });
+  $("another").addEventListener("click", () => fileEl.click());
+
+  // ── Test hook (CDP harness drives the real pipeline) ─────────────────────
+  window.__veil = {
+    ready: () => ready.then(() => true),
+    loadPixels: (arr, w, h) => {
+      orig = new Uint8ClampedArray(arr); origW = w; origH = h;
+      undoStack.length = 0;
+      adopt(new Uint8ClampedArray(orig), w, h);
+      dropEl.style.display = "none";
+      stage.style.display = "flex";
+      setMeta("loaded (test hook)");
+    },
+    setSel: (x, y, w, h) => { sel = { x, y, w, h }; $("applysel").disabled = false; },
+    dims: () => ({ w: curW, h: curH }),
+    pixel: (x, y) => [...ctx2d.getImageData(x, y, 1, 1).data],
+  };
+
+  // ── Drop / file wiring ───────────────────────────────────────────────────
+  dropEl.addEventListener("click", () => fileEl.click());
+  fileEl.addEventListener("change", () => loadFile(fileEl.files[0]));
+  ["dragenter", "dragover"].forEach((ev) =>
+    dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove("hot"); }));
+  dropEl.addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>
