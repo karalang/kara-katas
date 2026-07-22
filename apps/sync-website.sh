@@ -18,8 +18,8 @@ WEBSITE="${1:?usage: ./sync-website.sh /path/to/karalang-website-checkout}"
   exit 1
 }
 
-PRISM=(index.html coi-serviceworker.min.js prism.js prism.wasm prism.threads.wasm)
-VEIL=(index.html veil.js veil.wasm)
+PRISM=(index.html og.png coi-serviceworker.min.js prism.js prism.wasm prism.threads.wasm)
+VEIL=(index.html og.png veil.js veil.wasm)
 
 for f in "${PRISM[@]}"; do
   [[ -f "prism/$f" ]] || { echo "error: prism/$f missing — run prism/build.sh first" >&2; exit 1; }
