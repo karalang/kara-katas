@@ -81,13 +81,13 @@ byte-identical to the other two solvers under `karac run`, `karac build` (defaul
 `KARAC_AUTO_PAR=0`, and valgrind-clean — and it stays in the corpus as the guard for that fix. See
 the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl) entry **B-2026-07-22-12**.
 
-It also surfaced a second, milder gap: the extraction loop
-`while … { match table.remove(order[j]) { Some(g) => groups.push(g) … } }` draws a spurious
-`perf[rc-fallback]` on `g` — a binding consumed exactly once, but the loop back-edge makes the RC
-dataflow treat the single use as a re-use. `karac check` still **passes** (rc-fallback is a perf note,
-not an error) and the output/leak behavior is unaffected — the only cost is an unnecessary `Rc` on the
-extracted group. It's kept natural (not routed around) and tracked as ledger entry **B-2026-07-22-13**
-(open, perf-only).
+It also surfaced a second, milder gap — **since fixed**: the extraction loop
+`while … { match table.remove(order[j]) { Some(g) => groups.push(g) … } }` drew a spurious
+`perf[rc-fallback]` on `g` — a binding consumed exactly once, but the loop back-edge made the RC
+dataflow treat the single use as a re-use. The fix teaches the CFG to record a *Define* for
+match-arm / `if let` pattern bindings, so each iteration's `g` is correctly seen as re-bound rather
+than re-used; `karac check` now passes with **no** rc-fallback at all. Tracked as ledger entry
+**B-2026-07-22-13** (fixed). The kata was kept natural throughout (never routed around).
 
 ## Approaches
 
