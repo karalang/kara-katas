@@ -1,0 +1,85 @@
+// LeetCode 200 — Number of Islands.
+//
+// Count connected components of land (`1`) in a grid, where cells connect
+// 4-directionally (up/down/left/right). Scan the grid; each time an unvisited land
+// cell is found, that's a new island — flood-fill it to `0` so it isn't counted
+// again. The flood fill is ITERATIVE (an explicit `Vec[i64]` stack of encoded
+// `row*cols + col` positions) rather than recursive, so a large single island
+// can't overflow the call stack.
+
+fn num_islands(grid: mut ref Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    if rows == 0i64 {
+        return 0i64;
+    }
+    let cols = grid[0].len();
+    let mut count = 0i64;
+
+    let mut r = 0i64;
+    while r < rows {
+        let mut c = 0i64;
+        while c < cols {
+            if grid[r][c] == 1i64 {
+                count = count + 1i64;
+                // Iterative flood fill from (r, c).
+                let mut stack: Vec[i64] = Vec.new();
+                stack.push(r * cols + c);
+                grid[r][c] = 0i64;
+                while stack.len() > 0i64 {
+                    let idx = stack[stack.len() - 1i64];
+                    let _ = stack.pop();
+                    let cr = idx / cols;
+                    let cc = idx % cols;
+                    // up
+                    if cr > 0i64 and grid[cr - 1i64][cc] == 1i64 {
+                        grid[cr - 1i64][cc] = 0i64;
+                        stack.push((cr - 1i64) * cols + cc);
+                    }
+                    // down
+                    if cr + 1i64 < rows and grid[cr + 1i64][cc] == 1i64 {
+                        grid[cr + 1i64][cc] = 0i64;
+                        stack.push((cr + 1i64) * cols + cc);
+                    }
+                    // left
+                    if cc > 0i64 and grid[cr][cc - 1i64] == 1i64 {
+                        grid[cr][cc - 1i64] = 0i64;
+                        stack.push(cr * cols + (cc - 1i64));
+                    }
+                    // right
+                    if cc + 1i64 < cols and grid[cr][cc + 1i64] == 1i64 {
+                        grid[cr][cc + 1i64] = 0i64;
+                        stack.push(cr * cols + (cc + 1i64));
+                    }
+                }
+            }
+            c = c + 1i64;
+        }
+        r = r + 1i64;
+    }
+    return count;
+}
+
+fn report(grid: Vec[Vec[i64]]) {
+    let mut g = grid;
+    println(num_islands(mut g));
+}
+
+fn main() {
+    // One big island.
+    report([[1, 1, 1, 1, 0], [1, 1, 0, 1, 0], [1, 1, 0, 0, 0], [0, 0, 0, 0, 0]]); // 1
+
+    // Three islands.
+    report([[1, 1, 0, 0, 0], [1, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 1]]); // 3
+
+    // All water.
+    report([[0, 0], [0, 0]]);          // 0
+
+    // Checkerboard — every land cell isolated.
+    report([[1, 0, 1], [0, 1, 0], [1, 0, 1]]); // 5
+
+    // Single land cell.
+    report([[1]]);                     // 1
+
+    // A ring of land around water.
+    report([[1, 1, 1], [1, 0, 1], [1, 1, 1]]); // 1
+}
