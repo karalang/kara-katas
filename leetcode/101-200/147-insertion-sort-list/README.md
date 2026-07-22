@@ -40,13 +40,15 @@ Then traverse from `head` via `next` (weak reads upgraded to `Option[Node]`) and
 - **Weak-read scan** — `match nodes[prev].next { Some(nxt) => … }` walks the sorted prefix by upgrading each weak link and reading `nxt.id`.
 - **`String` join** of the emitted values for output.
 
-## Compiler friction surfaced by this kata
+## Compiler friction surfaced & fixed by this kata
 
-Insertion-sort splicing on a `weak`-next list surfaced **two** distinct `karac` bugs — both filed, neither worked around:
+Insertion-sort splicing on a `weak`-next list surfaced **two** distinct `karac` bugs — both **fixed in the compiler** ([kara `e1ddb43`](https://github.com/karalang/kara/commit/e1ddb43)), neither worked around:
 
-1. **Spurious `E0500` on the weak-to-weak splice** — the canonical `nodes[i].next = nodes[prev].next` (both sides indexing the same `Vec[shared]`, RHS a `weak`-field read) makes `karac check` report `value 'nodes' moved here, used again here`, while `karac build`/`run` compile and run it **correctly** and **valgrind-clean** (the reuse takes the advisory RC fallback). A strong-element RHS (`nodes[i].next = nodes[prev]`, the #143 shape) is not flagged — the false-positive is specific to the extra `weak`-field access on the RHS. Advisory (ownership errors other than aliased exclusive borrows do not block the build), so the kata keeps the natural splice. Filed as [kara `B-2026-07-21-20`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl).
+1. **Spurious `E0500` on the weak-to-weak splice** ([kara `B-2026-07-21-20`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)) — the canonical `nodes[i].next = nodes[prev].next` (both sides indexing the same `Vec[shared]`, RHS a `weak`-field read) made `karac check` report `value 'nodes' moved here, used again here`. You cannot move out through an index projection, so the RHS `nodes[prev].next` is a *read* of `nodes`, not a consume — the ownership pass now classifies the container root below an index as `Read`, matching the bare-element form (`nodes[i].next = nodes[prev]`, the #143 shape) which was never flagged.
 
-2. **Double-free / leak when the successor is materialized into a strong temp** — writing the splice as `let after: Option[Node] = nodes[prev].next; nodes[i].next = after; …` (upgrade the weak read to a strong `Option[Node]`, then store it back into a `weak` field) `check`s clean but **leaks the upgraded node** (40 bytes for a single splice) and **double-frees** across multiple splices (`free(): double free detected`). The direct weak-to-weak copy above avoids the strong round-trip and is memory-correct. Filed as [kara `B-2026-07-21-21`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl).
+2. **Double-free / leak when the successor is materialized into a strong temp** ([kara `B-2026-07-21-21`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)) — writing the splice as `let after: Option[Node] = nodes[prev].next; nodes[i].next = after; …` (upgrade the weak read to a strong `Option[Node]`, then store it back into a `weak` field) leaked the upgraded node (40 bytes/splice) and double-freed across several splices. A weak-field read is a *borrow* (no strong retain), so the `Option[shared]` binding owned no `+1` to balance its scope-exit refcount decrement; codegen now emits the matching balancing inner rc-inc when a weak read initializes such a binding. Both the direct weak-to-weak copy (shipped) and the materialize-then-restore form are now memory-correct.
+
+Both fixes carry regression tests (`ownership::test_weak_field_read_index_assign_no_spurious_move`, `memory_sanitizer::asan_weak_read_into_option_binding_then_weak_store_no_leak`). With them, this kata now `karac check`s cleanly.
 
 ## Running
 
