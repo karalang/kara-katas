@@ -35,6 +35,37 @@ Slopes are kept **exact** — no floating point, no precision loss. The directio
 - **Integer-exact geometry** — `gcd` (Euclid), `abs_i64`, sign normalization; overflow-checked `i64` arithmetic throughout.
 - **`Vec[Point]`** of a plain (Copy-ish) struct, indexed field reads `pts[j].x` / `pts[i].y` in the hot double loop.
 
+## Benchmarks
+
+> **Machine.** Container-only reference run so far — a shared **x86-64 Linux cloud container** ([`bench/results.container-x86.json`](bench/results.container-x86.json)); canonical Apple-M5 numbers (`bench/results.json`) are pending a maintainer run. Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
+
+The `bench/` workload is a **map-free, sort-based** variant of the shipped kata (same anchor + normalized-slope algorithm, but each anchor's reduced-integer slope keys `dx*4096+dy` are collected into an array, **sorted**, and the longest equal run is counted) — chosen so C can mirror it with `qsort` and no hand-rolled hash map. `N = 1200` deterministic LCG points, `K = 8` outer iterations; all five mirrors print the same sink (`696`), and `bench.sh` fails loudly on mismatch.
+
+### How to run
+
+```bash
+brew install hyperfine    # one-time, also needs rustc, clang, go, karac
+./bench/bench.sh
+```
+
+### Two lanes: seq codegen, and the auto-par headline
+
+Container snapshot, hyperfine `--warmup 5 --runs 30`:
+
+| Lane | Run | Mean ± σ | vs kāra-seq |
+|---|---|---|---|
+| par | **kāra `max_points` (codegen, auto-par)** | **152.2 ± 8.9 ms** | **3.9× faster** |
+| seq | rust `max_points` (`-O`) | 297.9 ± 5.4 ms | 1.98× ahead |
+| seq | rust `max_points` (`overflow-checks=on`) | 302.9 ± 8.7 ms | 1.95× ahead |
+| seq | **kāra `max_points` (codegen, `KARAC_AUTO_PAR=0`)** | **591.4 ± 6.2 ms** | — |
+| seq | c `max_points` (`clang -O3`, `qsort`) | 649.6 ± 8.6 ms | kāra 1.10× ahead |
+| seq | go `max_points` (`sort.Slice`) | 802.5 ± 11.7 ms | kāra 1.36× ahead |
+| — | python `max_points` | 2385 ± 52 ms | (scale only) |
+
+**Seq lane (single-threaded, fair).** Kāra's sequential codegen is ~2× behind `rust -O`, but **ahead of both C and Go**. The reason is the per-anchor sort: C's `qsort` and Go's `sort.Slice` call their comparator through a function pointer / closure (not inlined), a well-known indirect-call tax, while `rust`'s `sort_unstable` and Kāra's `Vec.sort()` inline the `i64` comparison. So Rust leads and Kāra lands between Rust and C.
+
+**Auto-par lane (the headline).** The outer loop over anchors is embarrassingly parallel — each anchor's slope tally is independent — and the **default** `karac build` **auto-parallelizes it with zero source annotation**. That is a **3.9× wall-clock speedup** over Kāra's own seq lane, and it beats even single-threaded `rust -O` by **~1.95×** (and C by 4.3×, Go by 5.3×) on the container's 4 cores. Both Kāra lanes agree with all mirrors on the sink; correctness is verified across interp / JIT / AOT and `run == build == auto-par` (see below). This is the flagship auto-parallelization doing real work on an idiomatic O(n²) kernel — the same source, no `par` blocks, no threads written by hand.
+
 ## Running
 
 ```bash
