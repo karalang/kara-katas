@@ -55,16 +55,52 @@ order — no post-hoc sort of the groups needed, and no dependence on hash-itera
 Python oracle mirrors it exactly (`dict.setdefault` + `list(values())`), so `karac run`,
 `karac build`, and `python3` agree byte-for-byte.
 
+### The third variant: a real `Map[String, Vec[String]]` of lists
+
+`map_of_lists.kara` writes the phrasing most people reach for first — map each key straight to **its
+list of words** — while keeping determinism with a side `Vec[String]` of keys in first-seen order.
+Because Kāra has no in-place map-value mutation, appending to a group is a **read-modify-reinsert**:
+`get` the current `Vec[String]`, `push` the word, and `insert` it back, **overwriting** the key; the
+final groups are then `remove`d out of the map in first-seen order. This is a genuinely different
+ownership surface from the index-map solvers — it stresses per-value drop of a *heap-of-heaps* map
+value — and it is worth writing precisely because it exercises code the other two never touch.
+
+## What this kata surfaced (grouping container)
+
+**A second real codegen leak — now fixed in `karac`.** Overwriting an existing key on a
+`Map[K, Vec[String]]` and discarding `insert`'s `Option` result leaked the **displaced old list**
+(both its inner Strings and its outer buffer); the parallel `Map.remove` discard leaked the same
+way. Only shared/RC map values were being reclaimed on a discarded overwrite — owned `String` /
+`Vec` values fell through. Writing `map_of_lists.kara` naturally exercised exactly that path (the
+append-reinsert overwrite), and it leaked under `karac build` + valgrind while `karac run` was clean.
+
+Rather than route around it (the index-map solvers already avoid it), **the compiler was fixed**: the
+discard path now reclaims an owned-heap map value through the value's full per-value drop, so a
+`Vec[String]` value deep-drops its inner Strings *and* the outer buffer. `map_of_lists.kara` is now
+byte-identical to the other two solvers under `karac run`, `karac build` (default auto-par), and
+`KARAC_AUTO_PAR=0`, and valgrind-clean — and it stays in the corpus as the guard for that fix. See
+the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl) entry **B-2026-07-22-12**.
+
+It also surfaced a second, milder gap: the extraction loop
+`while … { match table.remove(order[j]) { Some(g) => groups.push(g) … } }` draws a spurious
+`perf[rc-fallback]` on `g` — a binding consumed exactly once, but the loop back-edge makes the RC
+dataflow treat the single use as a re-use. `karac check` still **passes** (rc-fallback is a perf note,
+not an error) and the output/leak behavior is unaffected — the only cost is an unnecessary `Rc` on the
+extracted group. It's kept natural (not routed around) and tracked as ledger entry **B-2026-07-22-13**
+(open, perf-only).
+
 ## Approaches
 
-| Approach | File | Fingerprint |
-|---|---|---|
-| **Sorted-string key** ★ | [`sorted_key.kara`](sorted_key.kara) | `word.sorted()` |
-| **Count signature** | [`count_signature.kara`](count_signature.kara) | 26-bucket tally → delimited String |
-| Oracle | [`group_anagrams.py`](group_anagrams.py) | `''.join(sorted(w))` |
+| Approach | File | Fingerprint | Grouping container |
+|---|---|---|---|
+| **Sorted-string key** ★ | [`sorted_key.kara`](sorted_key.kara) | `word.sorted()` | index map + `Vec[Vec[String]]` |
+| **Count signature** | [`count_signature.kara`](count_signature.kara) | 26-bucket tally → delimited String | index map + `Vec[Vec[String]]` |
+| **Map of lists** | [`map_of_lists.kara`](map_of_lists.kara) | 26-bucket tally | `Map[String, Vec[String]]` |
+| Oracle | [`group_anagrams.py`](group_anagrams.py) | `''.join(sorted(w))` | `dict[str, list]` |
 
-Everything below `anagram_key` is line-for-line identical between the two `.kara` files — the kata's
-whole point is that the grouping machinery is fingerprint-agnostic.
+Everything below `anagram_key` is line-for-line identical between the first two `.kara` files — the
+kata's whole point is that the grouping machinery is fingerprint-agnostic. The third,
+`map_of_lists.kara`, keeps the same fingerprint but swaps the grouping *container* (see below).
 
 ## What this kata surfaced
 
@@ -124,9 +160,10 @@ karac build sorted_key.kara && ./sorted_key
 # Python oracle
 python3 group_anagrams.py
 
-# Verify all three agree (and the count-signature solver too)
-diff <(karac run sorted_key.kara)          <(python3 group_anagrams.py) && echo OK
-diff <(karac build sorted_key.kara >/dev/null && ./sorted_key) \
+# Verify all solvers agree (with each other and the oracle)
+diff <(karac run sorted_key.kara)     <(python3 group_anagrams.py) && echo OK
+diff <(karac run count_signature.kara) <(karac run map_of_lists.kara) && echo OK
+diff <(karac build map_of_lists.kara >/dev/null && ./map_of_lists) \
      <(karac build count_signature.kara >/dev/null && ./count_signature) && echo OK
 ```
 
