@@ -41,6 +41,23 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 > **Compiler friction surfaced by this kata.** A `Map[K, shared V]` value store was the first design considered (nodes held directly in the map). That path hit [kara `B-2026-07-19-16`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): a **discarded** `m.remove(k);` over a `Map` of shared values leaks the removed node (the value is moved out into `Some(old)`, which the discarded expression statement never drops; binding + consuming it is clean). The kata uses the **index-pool** design instead — a legitimate, common LRU technique that keeps the map's values plain `i64` indices, avoiding shared-value ownership in the map entirely — and the gap is filed for a later fix.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 278.7 ms | 0.43× |
+| **Kāra (codegen)** | 643.8 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 1.26 s | 1.96× |
+| Rust `-O` | 1.27 s | 1.98× |
+| Go | 2.02 s | 3.13× |
+| Python (scale lane) | 21.21 s | 32.94× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
