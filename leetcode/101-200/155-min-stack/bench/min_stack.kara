@@ -1,0 +1,85 @@
+// Benchmark workload for LeetCode #155 — Min Stack (DESIGN kata).
+//
+// Op-sequence driver: a deterministic 32-bit LCG (overflow-safe in i64) generates
+// a long push/pop/getMin/top stream that is replayed against the kata's min-stack
+// (a value stack plus a parallel running-minimum stack; free functions take
+// `mut ref` / `ref`, so every mutating call carries the `mut` call-site marker).
+// The op mix is a reflected random walk — when the stack is empty a pop/getMin/top
+// becomes a push — so memory stays bounded while push/pop/query interleave
+// data-dependently. Each getMin / top return value is folded into the sink. The
+// per-op branch and the value-dependent min bookkeeping do not vectorize. Sink =
+// the accumulated getMin/top values over the whole op stream.
+
+struct MinStack {
+    mut data: Vec[i64],
+    mut mins: Vec[i64],
+}
+
+fn ms_new() -> MinStack {
+    return MinStack { data: Vec.new(), mins: Vec.new() };
+}
+
+fn ms_push(st: mut ref MinStack, x: i64) {
+    st.data.push(x);
+    let m = st.mins.len();
+    if m == 0i64 or x <= st.mins[m - 1i64] {
+        st.mins.push(x);
+    } else {
+        st.mins.push(st.mins[m - 1i64]);
+    }
+}
+
+fn ms_pop(st: mut ref MinStack) {
+    st.data.pop();
+    st.mins.pop();
+}
+
+fn ms_top(st: ref MinStack) -> i64 {
+    return st.data[st.data.len() - 1i64];
+}
+
+fn ms_get_min(st: ref MinStack) -> i64 {
+    return st.mins[st.mins.len() - 1i64];
+}
+
+fn main() {
+    let ops = 90000000i64;
+    let cap = 100000i64;
+
+    let mut st = ms_new();
+    let mut state = 12345i64;
+    let mut sz = 0i64;
+    let mut sink = 0i64;
+
+    let mut i = 0i64;
+    while i < ops {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        // Derive the op from high bits — an LCG's low bits have a short period.
+        let op = (state / 1024i64) % 4i64;
+        if sz == 0i64 {
+            // Empty: a pop/query is impossible, so push instead.
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let val = state % 2000000i64 - 1000000i64;
+            ms_push(mut st, val);
+            sz = sz + 1i64;
+        } else if sz >= cap {
+            // Full: force a pop so memory stays bounded.
+            ms_pop(mut st);
+            sz = sz - 1i64;
+        } else if op == 0i64 {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let val = state % 2000000i64 - 1000000i64;
+            ms_push(mut st, val);
+            sz = sz + 1i64;
+        } else if op == 1i64 {
+            ms_pop(mut st);
+            sz = sz - 1i64;
+        } else if op == 2i64 {
+            sink = sink + ms_get_min(st);
+        } else {
+            sink = sink + ms_top(st);
+        }
+        i = i + 1i64;
+    }
+    println(sink);
+}

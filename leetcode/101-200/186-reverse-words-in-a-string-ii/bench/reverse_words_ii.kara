@@ -1,0 +1,84 @@
+// Benchmark workload for LeetCode #186 — Reverse Words in a String II.
+//
+// Build-once + punch: a large single-space-separated word buffer is generated
+// once as i64 character codes (letters 97..122, space 32) from a deterministic
+// 32-bit LCG (overflow-safe in i64). Then the in-place two-reversal word-reversal
+// (reverse the whole buffer, then reverse each word back) is run `PASSES` times;
+// before each pass one letter is rotated so the optimizer cannot hoist. The
+// reversal is a pointer-converging swap loop plus a data-dependent word-boundary
+// scan — a memory-bound, non-vectorizing kernel. Sink = sum of per-pass Horner
+// checksums (mod 1e9+7) of the buffer bytes.
+
+fn reverse_range(a: mut ref Vec[i64], lo: i64, hi: i64) {
+    let mut i = lo;
+    let mut j = hi;
+    while i < j {
+        let t = a[i];
+        a[i] = a[j];
+        a[j] = t;
+        i = i + 1i64;
+        j = j - 1i64;
+    }
+}
+
+fn reverse_words(a: mut ref Vec[i64], n: i64) {
+    if n > 0i64 {
+        reverse_range(a, 0i64, n - 1i64);
+    }
+    let mut start = 0i64;
+    let mut i = 0i64;
+    while i <= n {
+        if i == n or a[i] == 32i64 {
+            if i > start {
+                reverse_range(a, start, i - 1i64);
+            }
+            start = i + 1i64;
+        }
+        i = i + 1i64;
+    }
+}
+
+fn main() {
+    let target_len = 30000i64;
+    let passes = 3000i64;
+
+    let mut buf: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut first = true;
+    while buf.len() < target_len {
+        if first {
+            first = false;
+        } else {
+            buf.push(32i64);
+        }
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let wlen = 1i64 + (state % 8i64);
+        let mut w = 0i64;
+        while w < wlen {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            buf.push(97i64 + (state % 26i64));
+            w = w + 1i64;
+        }
+    }
+
+    let n = buf.len();
+    let modv = 1000000007i64;
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        let idx = (p * 131i64 + 7i64) % n;
+        if buf[idx] != 32i64 {
+            buf[idx] = 97i64 + (((buf[idx] - 97i64) + 1i64) % 26i64);
+        }
+        reverse_words(mut buf, n);
+        let mut cs = 0i64;
+        let mut k = 0i64;
+        while k < n {
+            cs = (cs * 131i64 + buf[k]) % modv;
+            k = k + 1i64;
+        }
+        sink = sink + cs;
+        p = p + 1i64;
+    }
+    println(sink);
+}

@@ -1,0 +1,34 @@
+// Benchmark workload for LeetCode #190 — Reverse Bits.
+//
+// A streaming kernel: a deterministic 32-bit LCG (overflow-safe in i64) produces
+// COUNT values one at a time, and each is fed through the 32-step bit-reversal.
+// The PRNG is a loop-carried chain (each state depends on the previous) and the
+// reverse itself is a 32-iteration loop-carried shift/mask, so nothing vectorizes
+// — a genuine scalar bit-twiddling throughput bench with no allocation. Per-op work
+// is tiny, so COUNT is large. Sink = running sum of the reversed values (each < 2^32,
+// so the sum stays well inside i64 for this COUNT — no wrap).
+
+fn reverse_bits(n: i64) -> i64 {
+    let mut result = 0i64;
+    let mut x = n;
+    let mut i = 0i64;
+    while i < 32i64 {
+        result = (result << 1i64) | (x & 1i64);
+        x = x >> 1i64;
+        i = i + 1i64;
+    }
+    return result;
+}
+
+fn main() {
+    let count = 8000000i64;
+    let mut state = 12345i64;
+    let mut sink = 0i64;
+    let mut i = 0i64;
+    while i < count {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        sink = sink + reverse_bits(state);
+        i = i + 1i64;
+    }
+    println(sink);
+}

@@ -1,0 +1,82 @@
+// Benchmark workload for LeetCode #199 — Binary Tree Right Side View.
+//
+// Build-once + punch: a large complete binary tree is built once in the corpus
+// index-pool form (`Vec[Node]` with i64 child indices, -1 = null; node i's children
+// are 2i+1 / 2i+2), its values seeded by a deterministic 32-bit LCG (overflow-safe
+// in i64). The level-order right-side-view BFS is then run `PASSES` times, each
+// preceded by a single node-value flip so the traversal can't be hoisted. Each pass
+// walks every node once and allocates a fresh `next` level vector per level (an
+// allocation-churn + pointer-chasing kernel that does not vectorize). Sink = sum of
+// every visible (rightmost-per-level) node value over all passes.
+
+struct Node {
+    mut val: i64,
+    mut left: i64,
+    mut right: i64,
+}
+
+fn right_view(nodes: ref Vec[Node], root: i64) -> Vec[i64] {
+    let mut result: Vec[i64] = Vec.new();
+    if root == -1i64 {
+        return result;
+    }
+    let mut level: Vec[i64] = Vec.new();
+    level.push(root);
+    while level.len() > 0i64 {
+        // The rightmost node on this level is the one you can see.
+        result.push(nodes[level[level.len() - 1i64]].val);
+        let mut next: Vec[i64] = Vec.new();
+        let m = level.len();
+        let mut j = 0i64;
+        while j < m {
+            let idx = level[j];
+            if nodes[idx].left != -1i64 {
+                next.push(nodes[idx].left);
+            }
+            if nodes[idx].right != -1i64 {
+                next.push(nodes[idx].right);
+            }
+            j = j + 1i64;
+        }
+        level = next;
+    }
+    return result;
+}
+
+fn main() {
+    let n = 8191i64; // complete tree, 13 full levels
+    let passes = 40000i64;
+
+    // Build the complete-tree node pool once (PRNG values 0..999).
+    let mut nodes: Vec[Node] = Vec.new();
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let v = (state >> 16i64) % 1000i64;
+        let li = 2i64 * i + 1i64;
+        let ri = 2i64 * i + 2i64;
+        let lc = if li < n { li } else { -1i64 };
+        let rc = if ri < n { ri } else { -1i64 };
+        nodes.push(Node { val: v, left: lc, right: rc });
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Punch one node's value so the view result can't be hoisted.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let idx = state % n;
+        nodes[idx].val = (state >> 16i64) % 1000i64;
+        let view = right_view(nodes, 0i64);
+        let vn = view.len();
+        let mut k = 0i64;
+        while k < vn {
+            sink = sink + view[k];
+            k = k + 1i64;
+        }
+        p = p + 1i64;
+    }
+    println(sink);
+}

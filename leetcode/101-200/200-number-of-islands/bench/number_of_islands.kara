@@ -1,0 +1,98 @@
+// Benchmark workload for LeetCode #200 — Number of Islands.
+//
+// Build-once + punch: a large 0/1 grid (flat row-major `Vec[i64]`) is generated once
+// with a deterministic 32-bit LCG (overflow-safe in i64). Each pass persistently
+// flips one cell in the master grid, copies it into a scratch grid, and counts
+// connected land components by iterative stack flood-fill (encoded r*cols+c
+// positions) — the flood fill mutates its grid to 0 as it goes, so the scratch copy
+// is restored from the master every pass. The flood fill's data-dependent stack
+// growth and 4-neighbour probing do NOT vectorize. Sink = sum of island counts over
+// all passes.
+
+fn num_islands(grid: mut ref Vec[i64], rows: i64, cols: i64) -> i64 {
+    let mut count = 0i64;
+    let mut r = 0i64;
+    while r < rows {
+        let mut c = 0i64;
+        while c < cols {
+            if grid[r * cols + c] == 1i64 {
+                count = count + 1i64;
+                let mut stack: Vec[i64] = Vec.new();
+                stack.push(r * cols + c);
+                grid[r * cols + c] = 0i64;
+                while stack.len() > 0i64 {
+                    let idx = stack[stack.len() - 1i64];
+                    let _ = stack.pop();
+                    let cr = idx / cols;
+                    let cc = idx % cols;
+                    if cr > 0i64 and grid[(cr - 1i64) * cols + cc] == 1i64 {
+                        grid[(cr - 1i64) * cols + cc] = 0i64;
+                        stack.push((cr - 1i64) * cols + cc);
+                    }
+                    if cr + 1i64 < rows and grid[(cr + 1i64) * cols + cc] == 1i64 {
+                        grid[(cr + 1i64) * cols + cc] = 0i64;
+                        stack.push((cr + 1i64) * cols + cc);
+                    }
+                    if cc > 0i64 and grid[cr * cols + (cc - 1i64)] == 1i64 {
+                        grid[cr * cols + (cc - 1i64)] = 0i64;
+                        stack.push(cr * cols + (cc - 1i64));
+                    }
+                    if cc + 1i64 < cols and grid[cr * cols + (cc + 1i64)] == 1i64 {
+                        grid[cr * cols + (cc + 1i64)] = 0i64;
+                        stack.push(cr * cols + (cc + 1i64));
+                    }
+                }
+            }
+            c = c + 1i64;
+        }
+        r = r + 1i64;
+    }
+    return count;
+}
+
+fn main() {
+    let rows = 80i64;
+    let cols = 80i64;
+    let passes = 13000i64;
+    let total = rows * cols;
+
+    // Build the master grid once (PRNG, ~45% land).
+    let mut master: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut g = 0i64;
+    while g < total {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        if (state >> 16i64) % 100i64 < 45i64 {
+            master.push(1i64);
+        } else {
+            master.push(0i64);
+        }
+        g = g + 1i64;
+    }
+
+    // Scratch grid reused each pass (restored from master).
+    let mut work: Vec[i64] = Vec.new();
+    let mut w = 0i64;
+    while w < total {
+        work.push(0i64);
+        w = w + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Persistently punch one master cell so each pass differs.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let idx = state % total;
+        master[idx] = 1i64 - master[idx];
+        // Restore scratch from master.
+        let mut i = 0i64;
+        while i < total {
+            work[i] = master[i];
+            i = i + 1i64;
+        }
+        sink = sink + num_islands(mut work, rows, cols);
+        p = p + 1i64;
+    }
+    println(sink);
+}

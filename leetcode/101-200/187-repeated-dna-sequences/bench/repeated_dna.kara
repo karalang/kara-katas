@@ -1,0 +1,75 @@
+// Benchmark workload for LeetCode #187 — Repeated DNA Sequences.
+//
+// Build-once + punch: a large DNA base buffer (values 0..3 = A/C/G/T) is
+// generated once with a deterministic 32-bit LCG (overflow-safe in i64), then the
+// length-10 duplicate-window scan is run `PASSES` times, each preceded by a single
+// base flip so the optimizer cannot hoist the repeated work. Each window's 10 bases
+// are folded into a 20-bit rolling hash (2 bits/base, masked) — an exact key, no
+// collisions — and duplicates are detected with a direct-address 2^20 count table.
+// A per-pass STAMP array marks a cell fresh for the current pass, so the table is
+// reused without an O(2^20) memset each pass (the C-style hand-rolled table, used
+// UNIFORMLY across all five languages — no set/map divergence). The rolling hash is
+// loop-carried and the table scatter is data-dependent, so the scan does NOT
+// vectorize. Sink = total number of 1->2 (first-repeat) transitions over all passes.
+
+fn scan(bases: ref Vec[i64], stamp: mut ref Vec[i64], cnt: mut ref Vec[i64], n: i64, pass: i64) -> i64 {
+    let mask = 1048575i64; // 2^20 - 1
+    let mut hash = 0i64;
+    let mut dups = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        hash = ((hash << 2i64) | bases[i]) & mask;
+        if i >= 9i64 {
+            let key = hash;
+            if stamp[key] != pass {
+                stamp[key] = pass;
+                cnt[key] = 0i64;
+            }
+            let c = cnt[key] + 1i64;
+            cnt[key] = c;
+            if c == 2i64 {
+                dups = dups + 1i64;
+            }
+        }
+        i = i + 1i64;
+    }
+    return dups;
+}
+
+fn main() {
+    let n = 1000000i64;
+    let passes = 30i64;
+    let tablesize = 1048576i64; // 2^20
+
+    // Build the DNA base buffer once (PRNG, values 0..3).
+    let mut bases: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut b = 0i64;
+    while b < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        bases.push((state >> 16i64) % 4i64);
+        b = b + 1i64;
+    }
+
+    // Direct-address stamp + count tables (stamp avoids a per-pass memset).
+    let mut stamp: Vec[i64] = Vec.new();
+    let mut cnt: Vec[i64] = Vec.new();
+    let mut t = 0i64;
+    while t < tablesize {
+        stamp.push(-1i64);
+        cnt.push(0i64);
+        t = t + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Punch one base so the scan can't be hoisted across passes.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let idx = state % n;
+        bases[idx] = (state >> 16i64) % 4i64;
+        sink = sink + scan(bases, mut stamp, mut cnt, n, p);
+        p = p + 1i64;
+    }
+    println(sink);
+}

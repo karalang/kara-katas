@@ -1,0 +1,81 @@
+// Benchmark workload for LeetCode #157 — Read N Characters Given Read4.
+//
+// Build-once + punch. A deterministic 32-bit LCG (overflow-safe in i64) fills
+// one large source buffer (alphabet 0..25) once. The kernel then drains the
+// buffer with the #157 `read(want)` state machine — repeated `read4` chunks of
+// <=4, copying only as many as still needed and DROPPING the surplus a chunk
+// straddling the `want` boundary pulled (the #157 lossy behavior) — PASSES
+// times, rewinding the cursor and punching one source char before each pass so
+// the optimizer cannot hoist the drain. Every copied char is folded into a
+// rolling checksum (loop-carried multiply chain — does NOT vectorize). Sink =
+// the accumulated checksum over all passes.
+
+struct Reader {
+    mut pos: i64,
+    mut chk: i64,
+}
+
+fn read4(src: ref Vec[i64], rd: mut ref Reader) -> i64 {
+    let m = src.len();
+    let mut cnt = 0i64;
+    while cnt < 4i64 and rd.pos < m {
+        rd.pos = rd.pos + 1i64;
+        cnt = cnt + 1i64;
+    }
+    return cnt;
+}
+
+fn read(src: ref Vec[i64], rd: mut ref Reader, want: i64) -> i64 {
+    let mut total = 0i64;
+    let mut acc = rd.chk;
+    let mut eof = false;
+    while total < want and not eof {
+        let start = rd.pos;
+        let cnt = read4(src, rd);
+        if cnt == 0i64 {
+            eof = true;
+        } else {
+            let take = if total + cnt <= want { cnt } else { want - total };
+            let mut k = 0i64;
+            while k < take {
+                acc = (acc * 1103515245i64 + src[start + k] + 1i64) & 2147483647i64;
+                k = k + 1i64;
+            }
+            total = total + take;
+        }
+    }
+    rd.chk = acc;
+    return total;
+}
+
+fn main() {
+    let size = 50000i64;
+    let want = 7i64;
+    let passes = 3200i64;
+
+    let mut src: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut c = 0i64;
+    while c < size {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        src.push(state % 26i64);
+        c = c + 1i64;
+    }
+
+    let mut rd = Reader { pos: 0i64, chk: 0i64 };
+    let mut pass = 0i64;
+    while pass < passes {
+        let idx = (pass * 131i64 + 7i64) % size;
+        src[idx] = (src[idx] + 1i64) % 26i64;
+        rd.pos = 0i64;
+        let mut cont = true;
+        while cont {
+            let got = read(src, mut rd, want);
+            if got == 0i64 {
+                cont = false;
+            }
+        }
+        pass = pass + 1i64;
+    }
+    println(rd.chk);
+}

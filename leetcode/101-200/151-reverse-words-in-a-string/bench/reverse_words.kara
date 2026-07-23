@@ -1,0 +1,88 @@
+// Benchmark workload for LeetCode #151 — Reverse Words in a String.
+//
+// Build-once + punch: one large byte buffer (letters a-z and spaces) is generated
+// once with a deterministic 32-bit LCG (overflow-safe in i64). Bytes are held as
+// i64 values. Each pass first PERTURBS one byte (flipping a letter <-> space, so
+// word boundaries move and the work cannot be hoisted), then runs reverse-words:
+// a single scan collects each maximal non-space run as a (start,end) word slice,
+// after which the words are emitted back-to-front joined by a single space. The
+// emitted output bytes are folded into a polynomial rolling hash — this replaces
+// materializing an output buffer and keeps the accumulator bounded in i64. Both
+// the boundary scan and the hash fold are data-dependent and loop-carried, so
+// nothing vectorizes. Sink = the rolling hash over every pass's output bytes.
+
+fn main() {
+    let len = 200000i64;
+    let passes = 320i64;
+    let modp = 1000000007i64;
+    let space = 32i64;
+
+    let mut buf: Vec[i64] = Vec.new();
+    let mut ws: Vec[i64] = Vec.new();
+    let mut we: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < len {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        if state % 100i64 < 15i64 {
+            buf.push(space);
+        } else {
+            buf.push(97i64 + state % 26i64);
+        }
+        ws.push(0i64);
+        we.push(0i64);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Perturb one byte so word boundaries shift across passes.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let idx = state % len;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        if state % 100i64 < 15i64 {
+            buf[idx] = space;
+        } else {
+            buf[idx] = 97i64 + state % 26i64;
+        }
+
+        // Scan words: each maximal non-space run is one (start,end) slice.
+        i = 0i64;
+        let mut m = 0i64;
+        while i < len {
+            while i < len and buf[i] == space {
+                i = i + 1i64;
+            }
+            if i >= len {
+                // no more words
+                i = len;
+            } else {
+                let start = i;
+                while i < len and buf[i] != space {
+                    i = i + 1i64;
+                }
+                ws[m] = start;
+                we[m] = i;
+                m = m + 1i64;
+            }
+        }
+
+        // Emit words back-to-front joined by a single space; fold into the hash.
+        let mut k = m - 1i64;
+        while k >= 0i64 {
+            if k < m - 1i64 {
+                sink = (sink * 131i64 + space) % modp;
+            }
+            let mut j = ws[k];
+            let e = we[k];
+            while j < e {
+                sink = (sink * 131i64 + buf[j]) % modp;
+                j = j + 1i64;
+            }
+            k = k - 1i64;
+        }
+        p = p + 1i64;
+    }
+    println(sink);
+}

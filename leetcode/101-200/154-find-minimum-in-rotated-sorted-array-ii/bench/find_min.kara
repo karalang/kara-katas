@@ -1,0 +1,63 @@
+// Benchmark workload for LeetCode #154 — Find Minimum in Rotated Sorted Array II.
+//
+// Build-once-buffer + punch: for each of K punches a fresh rotated-sorted array
+// WITH DUPLICATES is generated in place with a deterministic 32-bit LCG
+// (overflow-safe in i64), then the kata's duplicate-aware binary search finds its
+// minimum. Each array is built by walking a nondecreasing running value `cur`
+// (started at a per-punch PRNG `start`, incremented by a mostly-zero branchy step
+// so duplicates are dense) and scattering it into rotated positions `(k+rot)%n`.
+// The dense duplicates drive the search onto its O(n) `hi -= 1` branch — the
+// data-dependent path the kata exists to exercise — while the branchy running-sum
+// generation does not vectorize. Sink = sum of the found minimums over all punches.
+
+fn find_min(nums: ref Vec[i64], n: i64) -> i64 {
+    let mut lo = 0i64;
+    let mut hi = n - 1i64;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2i64;
+        if nums[mid] > nums[hi] {
+            lo = mid + 1i64;
+        } else if nums[mid] < nums[hi] {
+            hi = mid;
+        } else {
+            hi = hi - 1i64;
+        }
+    }
+    return nums[lo];
+}
+
+fn main() {
+    let n = 2000i64;
+    let punches = 75000i64;
+
+    let mut arr: Vec[i64] = Vec.new();
+    let mut z = 0i64;
+    while z < n {
+        arr.push(0i64);
+        z = z + 1i64;
+    }
+
+    let mut state = 12345i64;
+    let mut sink = 0i64;
+    let mut pn = 0i64;
+    while pn < punches {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let start = state % 1000000i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let rot = state % n;
+
+        let mut cur = start;
+        let mut k = 0i64;
+        while k < n {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let inc = if state % 5i64 == 0i64 { (state / 5i64) % 4i64 } else { 0i64 };
+            cur = cur + inc;
+            arr[(k + rot) % n] = cur;
+            k = k + 1i64;
+        }
+
+        sink = sink + find_min(arr, n);
+        pn = pn + 1i64;
+    }
+    println(sink);
+}

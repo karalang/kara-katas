@@ -1,0 +1,69 @@
+// Benchmark workload for LeetCode #159 — Longest Substring with At Most Two
+// Distinct Characters.
+//
+// Build-once + punch. A deterministic 32-bit LCG (overflow-safe in i64) fills
+// one large char buffer (alphabet 0..7) once. The kernel then runs the classic
+// two-pointer sliding window (`longest`) over many fixed-width sub-ranges of the
+// buffer, REPS times, punching one character before each rep so the optimizer
+// cannot hoist the repeated scan. The window's distinct-char count is tracked in
+// a small fixed count table (the kata's Map[char,i64] modeled as a flat
+// ALPHABET-sized array — the C mirror hand-rolls the identical table). The
+// inner "shrink from the left while >2 distinct" loop is data-dependent, so the
+// window does NOT vectorize. Sink = sum of every window length found.
+
+fn longest(buf: ref Vec[i64], lo: i64, hi: i64, alphabet: i64) -> i64 {
+    // Fresh count table per call (the kata's Map.new()-per-call, flat form).
+    let mut counts: Vec[i64] = Vec.new();
+    let mut a = 0i64;
+    while a < alphabet { counts.push(0i64); a = a + 1i64; }
+    let mut ndist = 0i64;
+    let mut left = lo;
+    let mut best = 0i64;
+    let mut right = lo;
+    while right < hi {
+        let c = buf[right];
+        if counts[c] == 0i64 { ndist = ndist + 1i64; }
+        counts[c] = counts[c] + 1i64;
+        while ndist > 2i64 {
+            let lc = buf[left];
+            counts[lc] = counts[lc] - 1i64;
+            if counts[lc] == 0i64 { ndist = ndist - 1i64; }
+            left = left + 1i64;
+        }
+        let w = right - left + 1i64;
+        if w > best { best = w; }
+        right = right + 1i64;
+    }
+    return best;
+}
+
+fn main() {
+    let size = 20000i64;
+    let alphabet = 8i64;
+    let width = 96i64;
+    let reps = 100i64;
+
+    let mut buf: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut c = 0i64;
+    while c < size {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        buf.push(state % alphabet);
+        c = c + 1i64;
+    }
+
+    let ranges = size - width;
+    let mut sink = 0i64;
+    let mut rep = 0i64;
+    while rep < reps {
+        let idx = (rep * 131i64 + 7i64) % size;
+        buf[idx] = (buf[idx] + 1i64) % alphabet;
+        let mut start = 0i64;
+        while start < ranges {
+            sink = sink + longest(buf, start, start + width, alphabet);
+            start = start + 1i64;
+        }
+        rep = rep + 1i64;
+    }
+    println(sink);
+}

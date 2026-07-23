@@ -1,0 +1,83 @@
+// Benchmark workload for LeetCode #188 — Best Time to Buy and Sell Stock IV.
+//
+// Build-once + punch: a price array is generated once with a deterministic 32-bit
+// LCG (overflow-safe in i64), then the O(n*k) two-array transaction DP is run for
+// `ROUNDS` rounds, each with a fresh PRNG `k` (kept below n/2 so the unlimited
+// shortcut never triggers) AND a single price flip, so neither the k nor the array
+// is constant across rounds — the optimizer cannot hoist a round's DP. The inner
+// recurrence buy[t]=max(buy[t], sell[t-1]-price); sell[t]=max(sell[t], buy[t]+price)
+// is loop-carried through t and data-dependent (max), so it does NOT vectorize.
+// Sink = sum of the best profit over all rounds.
+
+fn max_i64(a: i64, b: i64) -> i64 { if a > b { return a; } return b; }
+
+fn max_profit(k: i64, prices: ref Vec[i64]) -> i64 {
+    let n = prices.len();
+    if n == 0i64 or k == 0i64 {
+        return 0i64;
+    }
+    if k >= n / 2i64 {
+        let mut profit = 0i64;
+        let mut i = 1i64;
+        while i < n {
+            if prices[i] > prices[i - 1i64] {
+                profit = profit + (prices[i] - prices[i - 1i64]);
+            }
+            i = i + 1i64;
+        }
+        return profit;
+    }
+
+    let neg = -1000000000i64; // below any achievable holding value
+    let mut buy: Vec[i64] = Vec.new();
+    let mut sell: Vec[i64] = Vec.new();
+    let mut j = 0i64;
+    while j <= k {
+        buy.push(neg);
+        sell.push(0i64);
+        j = j + 1i64;
+    }
+
+    let mut d = 0i64;
+    while d < n {
+        let price = prices[d];
+        let mut t = 1i64;
+        while t <= k {
+            buy[t] = max_i64(buy[t], sell[t - 1i64] - price);
+            sell[t] = max_i64(sell[t], buy[t] + price);
+            t = t + 1i64;
+        }
+        d = d + 1i64;
+    }
+    return sell[k];
+}
+
+fn main() {
+    let n = 2000i64;
+    let kmax = 50i64;
+    let rounds = 5000i64;
+
+    // Build the price array once (PRNG, values 0..999).
+    let mut prices: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        prices.push((state >> 16i64) % 1000i64);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut round = 0i64;
+    while round < rounds {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let k = 1i64 + state % kmax;
+        // Punch one price so the DP result changes each round.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let idx = state % n;
+        prices[idx] = (state >> 16i64) % 1000i64;
+        sink = sink + max_profit(k, prices);
+        round = round + 1i64;
+    }
+    println(sink);
+}
