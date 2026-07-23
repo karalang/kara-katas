@@ -1,42 +1,78 @@
-"""Benchmark workload for LeetCode #138 — Copy List with Random Pointer (Python; scale lane)."""
+"""Benchmark workload for LeetCode #138 — Copy List with Random Pointer (Python; scale lane).
+
+Pointer-graph mirror of copy_random_list.kara: N Node objects (a linear `next`
+chain plus one `random` edge each) are built once; the graph is deep-copied K
+times, one `random` edge repointed before each copy (the punch) so nothing
+hoists. `random` is a plain reference (Python's cyclic GC reclaims the
+graph, matching Kāra's weak-random reclamation). Sink = running total of a
+checksum over each copy's (val, next-id, random-id).
+"""
+
+
+class Node:
+    __slots__ = ("val", "id", "next", "random")
+
+    def __init__(self, val, id):
+        self.val = val
+        self.id = id
+        self.next = None
+        self.random = None
+
+
+def build(vals, rnd):
+    n = len(vals)
+    nodes = [Node(vals[i], i) for i in range(n)]
+    for i in range(n):
+        if i + 1 < n:
+            nodes[i].next = nodes[i + 1]
+        if rnd[i] >= 0:
+            nodes[i].random = nodes[rnd[i]]
+    return nodes
+
+
+def deep_copy(orig):
+    n = len(orig)
+    copies = [Node(orig[i].val, orig[i].id) for i in range(n)]
+    for i in range(n):
+        if i + 1 < n:
+            copies[i].next = copies[i + 1]
+        if orig[i].random is not None:
+            copies[i].random = copies[orig[i].random.id]
+    return copies
+
+
+def checksum(copies):
+    s = 0
+    for c in copies:
+        next_id = c.next.id if c.next is not None else -1
+        rand_id = c.random.id if c.random is not None else -1
+        s += c.val + next_id * 7 + rand_id * 13
+    return s
 
 
 def main():
     n = 3000
-    k = 40000
+    k = 4000
 
-    oval = [0] * n
-    onext = [0] * n
-    ornd = [0] * n
+    vals = []
+    rnd = []
     state = 12345
     for i in range(n):
         state = (state * 1103515245 + 12345) & 2147483647
-        oval[i] = (state >> 16) % 1000
-        onext[i] = i + 1 if i + 1 < n else -1
+        vals.append((state >> 16) % 1000)
         state = (state * 1103515245 + 12345) & 2147483647
         r = state >> 16
-        ornd[i] = -1 if r % 4 == 0 else r % n
+        rnd.append(-1 if r % 4 == 0 else r % n)
 
-    map_ = [0] * n
-    nval = [0] * n
-    nnext = [0] * n
-    nrnd = [0] * n
+    orig = build(vals, rnd)
 
     sink = 0
     for p in range(k):
         ii = p % n
-        ornd[ii] = (p * 37 + 11) % n
-
-        for i in range(n):
-            nval[i] = oval[i]
-            map_[i] = i
-        for i in range(n):
-            nnext[i] = -1 if onext[i] == -1 else map_[onext[i]]
-            nrnd[i] = -1 if ornd[i] == -1 else map_[ornd[i]]
-        checksum = 0
-        for i in range(n):
-            checksum += nval[i] + nnext[i] * 7 + nrnd[i] * 13
-        sink += checksum
+        target = (p * 37 + 11) % n
+        orig[ii].random = orig[target]
+        copies = deep_copy(orig)
+        sink += checksum(copies)
     print(sink)
 
 

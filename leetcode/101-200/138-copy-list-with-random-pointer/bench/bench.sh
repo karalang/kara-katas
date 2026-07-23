@@ -128,7 +128,7 @@ echo
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=138 slug=copy-list-with-random-pointer group=101-200 \
     title="Copy List with Random Pointer" \
-    workload="index-pool deep copy of a 3000-node random-pointer list x 40K passes (build-once + punch); Kara uses weak-ref Nodes, C/Rust/Go/Py a flat old->new map; sink=structure checksum" sink="$expected"
+    workload="pointer-graph deep copy of a 3000-node random-pointer list x 4K passes (build-once + punch); every language builds its native node graph (Kara shared struct + weak random, Rust Rc<RefCell>/Weak, C/Go/Py heap nodes); sink=structure checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
