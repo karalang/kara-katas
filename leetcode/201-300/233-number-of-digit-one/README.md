@@ -41,6 +41,39 @@ Summing that over every position gives the answer. Place values climb by `×10` 
 - **Pure integer digit arithmetic** — `/`, `%`, and a climbing `pos` power of ten, all overflow-checked `i64`; the three-way `cur` branch is the whole kernel.
 - **O(log n) loop** — one iteration per decimal position rather than per integer.
 
+## Benchmarks
+
+One call is O(log n) — trivial — so [`bench/`](bench/) turns the kernel into a
+**division-throughput** workload: sum `count_digit_one(i)` over `i` in `0..6M`.
+Each call runs ~log₁₀(i) iterations of **variable-divisor** integer `/` and `%`
+plus a data-dependent 3-way branch (`cur` 0 / 1 / ≥2), so the loop does **not**
+vectorize (hardware `idiv`, unpredictable branch) and allocates nothing — a clean
+scalar division + branch bench. All five mirrors share the algorithm and agree on
+the sink (`15533335400000`).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 318.7 ms | 0.91× |
+| Rust `-O` | 346.8 ms | 0.99× |
+| **Kāra (codegen)** | **351.5 ms** | **1.00×** |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 357.9 ms | 1.02× |
+| Go | 829.3 ms | 2.36× |
+| Python (scale lane) | 8 902 ms | 25.3× |
+
+On this division-bound scalar kernel Kāra lands **effectively tied with `rustc
+-O`** (within ~1.3%) and **ahead of overflow-checked Rust** — the honest
+equal-safety comparison, since Kāra checks integer overflow by default. It trails
+C by ~10% and beats Go by 2.4×. (Contrast the memory-bound DP in
+[#221](../221-maximal-square/), where the field compresses; a pure-ALU division
+kernel is where codegen quality shows.) Binary size: C 16 KB · **Kāra 374 KB** ·
+Go 2.2 MB · Rust 4.0 MB.
+
+Single-machine snapshot (`bench/results.container-x86.json`); see
+[`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with
+`bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
