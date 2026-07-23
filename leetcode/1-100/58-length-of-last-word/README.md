@@ -42,6 +42,23 @@ The **split** solution ([`length_of_last_word_split.kara`](length_of_last_word_s
 
 **v1 note.** `split_whitespace` and `trim_end` are not methods on `String` in Kāra v1 — both are rejected identically under `karac run` and `karac build` with a clean `no method … on type 'String'` diagnostic (a consistent absence, not a run/build divergence). The whitespace-split idiom is expressed with `split(" ")` + a `len > 0` filter; `trim()` (leading **and** trailing) does exist if a trim-based phrasing is wanted.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`12219681`). Workload: reverse-scan last-word length over 6.5M end positions in a 4M letters+spaces buffer (build-once + punch).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 458.8 ms | 0.89× |
+| Rust `-O` | 484.4 ms | 0.94× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 495.3 ms | 0.97× |
+| **Kāra (codegen)** | 513.2 ms | 1.00× |
+| Go | 586.8 ms | 1.14× |
+| Python (scale lane) | 6.11 s | 11.90× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
