@@ -29,6 +29,23 @@ The digit-square-sum map is a function, so iterating it either reaches `1` or en
 - **Digit decomposition** — `x % 10` / `x / 10` with `d*d` accumulation, under Kāra's checked arithmetic (the squared-digit sum stays tiny, so no overflow concern).
 - **Two-pointer cycle detection** — `fast = sq_digit_sum(sq_digit_sum(fast))` (double step) vs `slow` single step, terminating on `fast == 1` or `slow == fast`.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`564003`). Workload: is_happy (Floyd + digit-square-sum) over 1..4M starts (data-dependent div/branch kernel).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 447.1 ms | 0.97× |
+| **Kāra (codegen)** | 462.2 ms | 1.00× |
+| Rust `-O` | 466.7 ms | 1.01× |
+| Go | 522.3 ms | 1.13× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 550.6 ms | 1.19× |
+| Python (scale lane) | 25.38 s | 54.92× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -32,6 +32,23 @@ Each linear run is the O(1)-space rolling DP: sweep left to right holding the be
 - **`if`-expression in value position** — `let next = if take > cur { take } else { cur }` folds the max inline.
 - **Rolling two-variable DP** — `prev` / `cur` advance in lockstep; overflow-checked `i64` accumulation.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`76367382296`). Workload: one 100k positive-value array built once; run the circular House Robber DP over 130k sliding windows (loop-carried max recurrence); sink = sum of takes.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 361.8 ms | 0.57× |
+| Rust `-O` | 398.4 ms | 0.63× |
+| Go | 460.9 ms | 0.72× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 592.6 ms | 0.93× |
+| **Kāra (codegen)** | 636.5 ms | 1.00× |
+| Python (scale lane) | 33.20 s | 52.15× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

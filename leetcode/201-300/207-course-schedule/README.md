@@ -32,6 +32,23 @@ Each pair `[a, b]` becomes a directed edge `b → a`, and every node carries an 
 - **Index-pool FIFO** — a `Vec[i64]` plus a `head` cursor, the allocation-free queue idiom (enqueue = `push`, dequeue = read at `head`, advance).
 - **`ref Vec[Vec[i64]]`** — the prerequisite graph is borrowed for reading; the caller keeps ownership.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`39968130`). Workload: Kahn topological sort over 8K passes on a 5000-node / 15000-edge CSR graph (BFS traversal kernel).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 392.7 ms | 0.64× |
+| Go | 458.7 ms | 0.75× |
+| Rust `-O` | 563.9 ms | 0.92× |
+| **Kāra (codegen)** | 611.4 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 703.7 ms | 1.15× |
+| Python (scale lane) | 21.09 s | 34.49× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -32,6 +32,23 @@ The pivot is the last element (fixed, so the run is deterministic and matches th
 - **Recursion through a `mut ref Vec[i64]`** — `quickselect` and `partition` mutate one shared buffer; the fresh owned copy is passed with the call-site `mut` marker (`quickselect(mut a, …)`), while the recursive forwards carry the already-`mut ref` binding unmarked.
 - **`Slice[i64]` input copied into an owned `Vec`** so the caller's array is never disturbed.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`601411203752`). Workload: quickselect (Lomuto) run 420x, array of 120k rebuilt from the PRNG stream each pass; sum of k-th largest values.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 512.5 ms | 0.76× |
+| Go | 579.1 ms | 0.86× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 664.3 ms | 0.99× |
+| Rust `-O` | 672.8 ms | 1.00× |
+| **Kāra (codegen)** | 673.8 ms | 1.00× |
+| Python (scale lane) | 31.91 s | 47.36× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

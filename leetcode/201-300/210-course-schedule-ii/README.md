@@ -34,6 +34,23 @@ Many valid orders can exist. This solution pins a single deterministic one by se
 - **Index-pool FIFO** — `Vec[i64]` + `head` cursor, allocation-free.
 - **String assembly for output** — the order is space-joined with a `first` flag (no trailing separator).
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400425564371`). Workload: build a 20k-node/80k-edge random DAG once (CSR); run Kahn topo-sort 800 times, punching one blocked course per pass; sink = sum of emitted count + order checksum.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Go | 481.9 ms | 0.83× |
+| C `clang -O3` | 484.6 ms | 0.83× |
+| Rust `-O` | 536.3 ms | 0.92× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 581.2 ms | 1.00× |
+| **Kāra (codegen)** | 582.1 ms | 1.00× |
+| Python (scale lane) | 19.98 s | 34.32× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

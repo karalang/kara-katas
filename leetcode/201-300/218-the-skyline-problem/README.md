@@ -33,6 +33,23 @@ Because every single-building skyline is already sorted by x and merge preserves
 - **Struct value types** — `Building` and `Point` are plain two/three-field `i64` structs copied by value out of borrowed vectors (`let b = bs[lo]`, `result.push(left[i])`).
 - **`f"[{p.x},{p.h}]"` interpolation** with field access, and the `mut ref Vec[Building]` builder (`add(mut a, …)`) with the call-site `mut` marker.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`64666874995`). Workload: divide-and-conquer skyline over 24000 PRNG buildings, 100 build-once+punch re-runs; sum of x+h over all key points (allocation-heavy).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 509.9 ms | 0.61× |
+| **Kāra (codegen)** | 835.6 ms | 1.00× |
+| Go | 889.3 ms | 1.06× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 931.6 ms | 1.11× |
+| Rust `-O` | 953.5 ms | 1.14× |
+| Python (scale lane) | 15.00 s | 17.96× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -35,6 +35,23 @@ At most one of the two children can itself be non-perfect at each level, so the 
 - **Bit shift for powers of two** — `(1 << h) - 1` counts a perfect subtree without a loop.
 - **`ref Vec[Node]` recursion** — the spine walks and `count_nodes` borrow the pool read-only; recursion follows `nodes[idx].left` / `.right` indices.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`491274215`). Workload: O(log^2 n) spine-height count_nodes over every subtree of a built complete tree (pointer-chasing recursion).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Go | 418.4 ms | 0.82× |
+| C `clang -O3` | 447.1 ms | 0.88× |
+| **Kāra (codegen)** | 508.0 ms | 1.00× |
+| Rust `-O` | 510.9 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 523.9 ms | 1.03× |
+| Python (scale lane) | 7.40 s | 14.56× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

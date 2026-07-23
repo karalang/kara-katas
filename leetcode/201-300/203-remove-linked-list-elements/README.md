@@ -30,6 +30,23 @@ Two cases a beginner meets here. **Leading matches** move the head, so first adv
 - **`mut ref Vec[Node]`** threaded through the mutating `remove_elements`, with `ref Vec[Node]` for the read-only `show`.
 - **`if`-expression** for the `next` link during build and the head-skip / splice control flow.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`2840980800`). Workload: relink + remove + survivor-sum over 40K passes on a 3000-node index-pool list (pointer-chase kernel).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| **Kāra (codegen)** | 417.3 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 433.0 ms | 1.04× |
+| C `clang -O3` | 434.7 ms | 1.04× |
+| Rust `-O` | 440.2 ms | 1.05× |
+| Go | 505.2 ms | 1.21× |
+| Python (scale lane) | 17.47 s | 41.88× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

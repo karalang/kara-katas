@@ -28,6 +28,23 @@ The union area is `area(A) + area(B) − area(A ∩ B)` — add both rectangles,
 - **Pure integer arithmetic with `min`/`max`/clamp helpers** — the overlap spans fold through small `min_i64` / `max_i64` / `clamp0` functions; overflow-checked `i64` throughout (areas up to ~4·10⁸ stay well within range).
 - **Multi-argument signatures** — eight `i64` coordinates threaded through `compute_area` / `report`, no collections involved.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`451466294`). Workload: union area of ~1e8 PRNG rectangle pairs via inclusion-exclusion (scalar ALU, min/max/clamp branches).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 217.0 ms | 0.92× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 220.6 ms | 0.94× |
+| C `clang -O3` | 227.8 ms | 0.97× |
+| **Kāra (codegen)** | 235.0 ms | 1.00× |
+| Go | 294.4 ms | 1.25× |
+| Python (scale lane) | 43.31 s | 184.32× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

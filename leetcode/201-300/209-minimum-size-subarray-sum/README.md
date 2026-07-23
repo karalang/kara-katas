@@ -30,6 +30,23 @@ All elements are **positive**, which is what makes a single sliding window suffi
 - **Nested `while` sliding window** — an outer expand loop and an inner shrink loop sharing `sum` / `left`, the canonical two-pointer shape.
 - **Sentinel-guarded minimum** — `best = -1` distinguishes "no window yet" from a real length without a separate found flag, and overflow-checked `i64` arithmetic keeps the running sum honest.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`58776`). Workload: one 200k positive-int array built once; run the O(n) sliding window for 290 targets (data-dependent shrink loop); sink = sum of answers.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 427.1 ms | 0.93× |
+| Go | 444.6 ms | 0.96× |
+| **Kāra (codegen)** | 461.2 ms | 1.00× |
+| Rust `-O` | 540.4 ms | 1.17× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 570.3 ms | 1.24× |
+| Python (scale lane) | 9.27 s | 20.09× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

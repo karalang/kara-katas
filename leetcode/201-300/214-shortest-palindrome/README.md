@@ -33,6 +33,23 @@ Finding that prefix is the KMP trick. Concatenate `s + '#' + reverse(s)` and com
 - **KMP failure table in a `Vec[i64]`** — the two-cursor prefix-function with the `len = fail[len-1]` fallback, driven entirely by index arithmetic and `char` equality.
 - **`String` assembled with `push(char)`** — the reversed tail then the original, the "read as indices, build with chars" idiom.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`132598368`). Workload: KMP prefix-function (lps) over 259488 sliding windows of a binary-alphabet string; loop-carried failure-fallback kernel.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 342.2 ms | 0.84× |
+| **Kāra (codegen)** | 406.6 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 417.6 ms | 1.03× |
+| Rust `-O` | 424.9 ms | 1.04× |
+| Go | 650.3 ms | 1.60× |
+| Python (scale lane) | 39.49 s | 97.11× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

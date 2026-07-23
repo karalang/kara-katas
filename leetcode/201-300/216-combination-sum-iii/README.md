@@ -32,6 +32,23 @@ Two prunes keep it tight: digits strictly increase (so `start = d+1` avoids dupl
 - **Two `mut ref` parameters through recursion** — `path: mut ref Vec[i64]` and `results: mut ref Vec[Vec[i64]]`; the top-level call marks the fresh owned bindings (`backtrack(1, k, n, mut path, mut results)`) while the recursive calls forward the already-`mut ref` bindings unmarked.
 - **Snapshot-on-hit** — a valid path is copied into a fresh owned `Vec[i64]` before being pushed into `results`, so the still-mutating shared buffer is never aliased into the output (`Vec[Vec[i64]]` ownership, valgrind-verified).
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`2298771`). Workload: ascending-digit backtracking count over digits 1..36, summed across a k in 1..6 x n in 1..150 grid.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 442.5 ms | 0.97× |
+| C `clang -O3` | 443.5 ms | 0.97× |
+| **Kāra (codegen)** | 457.7 ms | 1.00× |
+| Go | 496.6 ms | 1.09× |
+| Rust `-O` | 516.3 ms | 1.13× |
+| Python (scale lane) | 17.77 s | 38.83× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
