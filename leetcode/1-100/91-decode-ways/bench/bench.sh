@@ -41,10 +41,6 @@ ROOT="$(cd ../../../.. && pwd)"
 
 # /usr/bin/time -l (macOS BSD time) prints a "peak memory footprint" line
 # on stderr. Single sample — memory is stable run-to-run.
-mem_peak() {
-    { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
-        | awk '/peak memory footprint/ {print $1}'
-}
 print_mem() {
     local label="$1" bytes="$2"
     local mib

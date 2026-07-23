@@ -42,10 +42,6 @@ ROOT="$(cd ../../../.. && pwd)"
 # wrapped command's own stdout, and parse the bytes column. Memory is much
 # more stable run-to-run than wall-time (no scheduling/cache variance), so a
 # single sample is honest — no hyperfine-style averaging needed.
-mem_peak() {
-    { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
-        | awk '/peak memory footprint/ {print $1}'
-}
 print_mem() {
     local label="$1" bytes="$2"
     local mib

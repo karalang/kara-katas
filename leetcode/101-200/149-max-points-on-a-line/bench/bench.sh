@@ -31,13 +31,6 @@ fi
 ROOT="$(cd ../../../.. && pwd)"
 . "$ROOT/scripts/bench-lib.sh"
 
-mem_peak() {
-    # Linux GNU time: "Maximum resident set size (kbytes): N" -> bytes.
-    # (The corpus's macOS bench uses `/usr/bin/time -l`; this cloud container
-    # is Linux, so use `-v` and scale kbytes to bytes. See ../README.md.)
-    { /usr/bin/time -v "$@" >/dev/null; } 2>&1 \
-        | awk '/Maximum resident set size/ {print $NF * 1024}'
-}
 print_mem() {
     local label="$1" bytes="$2"
     local mib

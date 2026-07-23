@@ -44,10 +44,6 @@ fi
 ROOT="$(cd ../../.. && pwd)"
 . "$ROOT/scripts/bench-lib.sh"
 
-mem_peak() {
-    { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
-        | awk '/peak memory footprint/ {print $1}'
-}
 
 mkdir -p target
 

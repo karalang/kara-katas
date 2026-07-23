@@ -41,10 +41,6 @@ ROOT="$(cd ../../../.. && pwd)"
 
 # /usr/bin/time -l (macOS BSD time) prints a "peak memory footprint" line on
 # stderr; capture it through a brace-group redirect and parse the bytes column.
-mem_peak() {
-    { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
-        | awk '/peak memory footprint/ {print $1}'
-}
 
 mkdir -p target
 

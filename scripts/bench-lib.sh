@@ -51,6 +51,20 @@ BENCH_JSON="${BENCH_JSON:-1}"
 
 _bench_on() { [ "$BENCH_JSON" = "1" ]; }
 
+# mem_peak CMD... -> peak RSS bytes. Portable across GNU time (Linux, -v,
+# kbytes) and BSD time (macOS, -l, bytes). Python is the authoring parity
+# oracle, not a timed lane, so it is skipped unless KARA_BENCH_INCLUDE_PY=1.
+mem_peak() {
+    if [ "${KARA_BENCH_INCLUDE_PY:-0}" != "1" ] && [ "${1:-}" = "python3" ]; then echo 0; return 0; fi
+    if /usr/bin/time -v true >/dev/null 2>&1; then
+        { /usr/bin/time -v "$@" >/dev/null; } 2>&1 \
+            | awk '/Maximum resident set size/ {print $NF * 1024}'
+    else
+        { /usr/bin/time -l "$@" >/dev/null; } 2>&1 \
+            | awk '/peak memory footprint/ {print $1}'
+    fi
+}
+
 # --- metadata + env capture -------------------------------------------------
 
 bench_begin() {
@@ -149,6 +163,7 @@ rt_cmd() {
             *) echo "rt_cmd: unknown arg '$1'" >&2; shift ;;
         esac
     done
+    if [ "$lang" = "python" ] && [ "${KARA_BENCH_INCLUDE_PY:-0}" != "1" ]; then return 0; fi
     printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$lang" "$approach" "$lane" "$mode" \
         >>"$BENCH_TMP/rt_map.tsv"
     _RT_ARGS+=(--command-name "$name" "$cmd")
@@ -156,6 +171,9 @@ rt_cmd() {
 
 rt_end() {
     _bench_on || return 0
+    # No comparators queued (e.g. a Python-only batch skipped via the gate in
+    # rt_cmd when KARA_BENCH_INCLUDE_PY!=1) — nothing to run or merge.
+    [ "${#_RT_ARGS[@]}" -eq 0 ] && return 0
     hyperfine --warmup "$_RT_WARMUP" --runs "$_RT_RUNS" --shell=none \
         --export-json "$BENCH_TMP/_rt_batch.json" \
         "${_RT_ARGS[@]}"
@@ -261,6 +279,7 @@ mem_put() {
             *) echo "mem_put: unknown arg '$1'" >&2; shift ;;
         esac
     done
+    if [ "$lang" = "python" ] && [ "${KARA_BENCH_INCLUDE_PY:-0}" != "1" ]; then return 0; fi
     printf '  %-8s %-14s %-4s %-8s %10s bytes (%7s MiB)\n' \
         "$lang" "$approach" "$lane" "$mode" "$bytes" "$(_fmt_mib "$bytes")"
     _bench_on || return 0
