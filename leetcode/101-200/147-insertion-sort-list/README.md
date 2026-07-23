@@ -50,6 +50,23 @@ Insertion-sort splicing on a `weak`-next list surfaced **two** distinct `karac` 
 
 Both fixes carry regression tests (`ownership::test_weak_field_read_index_assign_no_spurious_move`, `memory_sanitizer::asan_weak_read_into_option_binding_then_weak_store_no_leak`). With them, this kata now `karac check`s cleanly.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`17988497295154`). Workload: insertion-sort an index-pool linked list (N nodes) x passes, position-weighted checksum sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| **Kāra (codegen)** | 261.4 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 263.2 ms | 1.01× |
+| Rust `-O` | 263.4 ms | 1.01× |
+| C `clang -O3` | 266.4 ms | 1.02× |
+| Go | 309.5 ms | 1.18× |
+| Python (scale lane) | 5.84 s | 22.34× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

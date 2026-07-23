@@ -31,6 +31,23 @@ Pull chunks of up to 4 characters until `n` are collected or `read4` returns emp
 - **String slicing** for both the chunk build and the tail-trim `chunk[0..take]`.
 - **`f"{len} {str}"` formatting** for output.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`1973156584`). Workload: read(7) state machine draining a 50000-char buffer x 3200 punched rewinds (lossy #157 read4); rolling-checksum fold over chars read.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 237.7 ms | 0.68× |
+| Rust `-O` | 267.8 ms | 0.76× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 292.1 ms | 0.83× |
+| **Kāra (codegen)** | 350.6 ms | 1.00× |
+| Go | 433.7 ms | 1.24× |
+| Python (scale lane) | 45.09 s | 128.61× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -32,6 +32,23 @@ A **breadth-first** sweep makes "right side view" fall out directly: process the
 - **BFS frontier as `Vec[i64]`** — each level is a vector of node indices; `level = next` **reassigns** the frontier vector every iteration (a `Vec[i64]` move-reassign in a loop), verified valgrind-clean.
 - **Struct-field index-assign** — `nodes[cur].left = li` wires children during the build.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`256749133`). Workload: level-order right-side-view BFS over an 8191-node complete index-pool tree x 40000 punched passes (per-level allocation churn + pointer-chasing; one node value flipped per pass).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 373.9 ms | 0.47× |
+| Rust `-O` | 778.5 ms | 0.99× |
+| **Kāra (codegen)** | 788.9 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 808.0 ms | 1.02× |
+| Go | 4.09 s | 5.19× |
+| Python (scale lane) | 18.06 s | 22.90× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

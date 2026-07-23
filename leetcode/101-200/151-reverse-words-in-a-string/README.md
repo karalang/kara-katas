@@ -37,6 +37,23 @@ One left-to-right pass over `s.bytes()`. Skip any run of spaces, then take the m
 
 The natural word-collection line `words.push(s[start..i].to_string())` surfaced a **run-vs-build divergence** ([kara `B-2026-07-22-6`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)): calling `.to_string()` (or `.clone()`) directly on a **string slice** `s[a..b]` compiled fine under the interpreter but failed under codegen with *"indexed-receiver method 'to_string' — element TypeExpr unknown"*. The codegen path for `obj[i].method()` assumed the indexed receiver was a `Vec`/`Slice`/`Array` element, but a String with a range index is a substring, not an element. Since a string slice is already an owned `String`, `.to_string()`/`.clone()` on it is the slice itself — **fixed in the compiler** by returning the sliced `String` directly, not worked around here. Regression test: `codegen::e2e_string_slice_to_string_method`.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`445176123`). Workload: reverse-words over a large multi-word byte buffer x passes, rolling-hash checksum sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 457.6 ms | 0.95× |
+| Go | 464.0 ms | 0.97× |
+| C `clang -O3` | 466.6 ms | 0.97× |
+| **Kāra (codegen)** | 480.4 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 510.1 ms | 1.06× |
+| Python (scale lane) | 12.25 s | 25.50× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

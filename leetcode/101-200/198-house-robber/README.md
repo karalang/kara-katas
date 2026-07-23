@@ -30,6 +30,23 @@ At each house there are two choices: **skip** it (keep the best total up to the 
 - **`max` helper** lowering to a branchless select.
 - **Empty-input edge** — `Array[i64, 0]` yields `0` (the loop never runs, `prev` stays 0).
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`130976291209`). Workload: O(1)-space rob() DP over a 5000-house PRNG array x 90000 punched passes (loop-carried max recurrence, one house flipped per pass).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 309.7 ms | 0.76× |
+| C `clang -O3` | 311.9 ms | 0.77× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 340.8 ms | 0.84× |
+| Go | 375.9 ms | 0.93× |
+| **Kāra (codegen)** | 404.9 ms | 1.00× |
+| Python (scale lane) | 29.90 s | 73.85× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

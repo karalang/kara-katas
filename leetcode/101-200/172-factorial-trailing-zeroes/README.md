@@ -30,6 +30,23 @@ A trailing zero is a factor of `10 = 2·5`. In `n!` the factors of 2 vastly outn
 - **Integer division truncation** (`n / 5` floors toward zero for non-negative `n`) driving the divide-down loop.
 - **Overflow-safe formulation** — the shrink-`m` loop sidesteps the overflow that the power-accumulation variant would trip under Kāra's default-checked arithmetic.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`153124810625000`). Workload: trailing_zeroes summed over n in 0..35M (repeated /5 factor-count loop; scalar, non-vectorizing).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 282.8 ms | 0.85× |
+| Rust `-O` | 311.9 ms | 0.94× |
+| **Kāra (codegen)** | 331.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 342.4 ms | 1.03× |
+| Go | 395.4 ms | 1.19× |
+| Python (scale lane) | 21.54 s | 64.96× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

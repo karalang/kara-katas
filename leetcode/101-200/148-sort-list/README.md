@@ -40,6 +40,23 @@ Finally, traverse from the sorted head via `next` and emit the values.
 - **Weak-read navigation** — `match nodes[i].next { Some(nx) => nx.id, None => -1 }` (`next_idx`) walks the chain by index.
 - **`if`-expression** (`let rest: i64 = if ai != -1 { ai } else { bi };`) and **`String` join** for output.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`2395271065745391`). Workload: top-down merge-sort an index-pool linked list (N nodes) x passes, position-weighted checksum sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 444.3 ms | 0.80× |
+| Go | 448.5 ms | 0.81× |
+| Rust `-O` | 505.9 ms | 0.91× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 521.8 ms | 0.94× |
+| **Kāra (codegen)** | 556.0 ms | 1.00× |
+| Python (scale lane) | 7.25 s | 13.04× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

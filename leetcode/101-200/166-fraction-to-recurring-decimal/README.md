@@ -31,6 +31,23 @@ Emit the sign and integer part, then do **long division** on the fractional part
 - **`Vec[i64]` digit accumulation** then a second pass to assemble the string with the parenthesised cycle.
 - **Sign logic** via boolean `and`/`or` (`(num < 0 and den > 0) or (num > 0 and den < 0)`), and `f"{d}"` digit interpolation.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`215566009`). Workload: 500K PRNG numerator/denominator pairs (den 2..1024) through long-division digit generation (variable-divisor idiv/mod + seen-remainder Map, non-vectorizing); sink = checksum of fractional digits. NOTE: C hand-rolls an epoch-stamped table in place of the Map (identical digit stream).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 436.9 ms | 0.17× |
+| **Kāra (codegen)** | 2.53 s | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 2.75 s | 1.09× |
+| Rust `-O` | 2.81 s | 1.11× |
+| Go | 4.93 s | 1.95× |
+| Python (scale lane) | 9.19 s | 3.63× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

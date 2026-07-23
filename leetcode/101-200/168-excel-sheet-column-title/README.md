@@ -29,6 +29,23 @@ This looks like base-26 but there is **no zero digit** — `A` is 1, not 0, and 
 - **`String.push(char)`** to assemble the reversed title, and **`Vec[char]`** to buffer the least-significant-first digits.
 - **Bijective base-26 loop** — the `x -= 1` before `% 26` / `/= 26` is the whole trick.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`21802156690`). Workload: bijective base-26 column_title conversion over the range 1..50M (subtract-1/mod-26/div-26 with data-dependent trip count and loop-carried remainder, non-vectorizing); sink = checksum of produced letter byte values.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Go | 406.2 ms | 0.88× |
+| Rust `-O` | 444.8 ms | 0.96× |
+| **Kāra (codegen)** | 461.1 ms | 1.00× |
+| C `clang -O3` | 463.8 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 487.7 ms | 1.06× |
+| Python (scale lane) | 32.54 s | 70.56× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

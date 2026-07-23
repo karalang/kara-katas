@@ -31,6 +31,23 @@ A single O(n) sliding window. Grow the right edge one char at a time, recording 
 - **`s.chars().collect()` → `Vec[char]`** — decode UTF-8 once so the window can index chars in O(1) (`s[i]` on a `String` is deliberately a compile error).
 - **`ref Map` parameter** — the `count_of` helper borrows the map read-only.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`4218300`). Workload: two-pointer sliding window over a 20000-char buffer (alphabet 8), width-96 sub-ranges x 100 punched reps; per-call fixed count table (kata Map[char,i64] as a flat array, C hand-rolls the same); data-dependent left-shrink loop.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 453.4 ms | 0.79× |
+| Go | 532.7 ms | 0.93× |
+| **Kāra (codegen)** | 572.8 ms | 1.00× |
+| Rust `-O` | 723.4 ms | 1.26× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 725.2 ms | 1.27× |
+| Python (scale lane) | 38.65 s | 67.47× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

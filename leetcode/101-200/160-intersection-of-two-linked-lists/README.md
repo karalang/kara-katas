@@ -34,6 +34,23 @@ Align by length: walk each list to its length, advance the longer head by the di
 - **Weak-next traversal** — `match nodes[i].next { Some(nx) => nx.id, None => -1 }` (`next_idx`) walks each chain; a shared node is reached from both heads and freed exactly once (the pool's single strong owner), verified leak-free.
 - **`ref Vec[Node]` read-only helpers** (`length`, `advance`, `intersection`) over the shared pool.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`13990577`). Workload: two-pointer intersection-find over a 100003-node scrambled (coprime-stride) chain, two suffix lists per pass x 280 passes; cache-hostile pointer-chase walks.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| **Kāra (codegen)** | 428.9 ms | 1.00× |
+| C `clang -O3` | 433.9 ms | 1.01× |
+| Go | 459.5 ms | 1.07× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 478.4 ms | 1.12× |
+| Rust `-O` | 504.8 ms | 1.18× |
+| Python (scale lane) | 2.69 s | 6.26× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

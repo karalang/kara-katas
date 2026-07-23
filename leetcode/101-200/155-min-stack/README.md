@@ -34,6 +34,23 @@ Modelled in the corpus's method-free style: a plain `struct MinStack { data, min
 - **Call-site `mut` markers** on the fresh `let mut st` binding (`ms_push(mut st, …)`).
 - **`Vec[i64]` push/pop and last-element reads** as the stack primitives.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`-20714481296260`). Workload: PRNG push/pop/getMin/top op sequence on a min-stack, accumulated getMin/top sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 479.0 ms | 0.69× |
+| Go | 675.3 ms | 0.97× |
+| **Kāra (codegen)** | 697.7 ms | 1.00× |
+| Rust `-O` | 842.8 ms | 1.21× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 926.0 ms | 1.33× |
+| Python (scale lane) | 37.09 s | 53.16× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

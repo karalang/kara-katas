@@ -30,6 +30,23 @@ Two regimes. When `k ≥ n/2` the cap is not binding — you can take every upwa
 - **Branch on regime** — the `k ≥ n/2` greedy shortcut vs the full DP — and a large-negative sentinel that stays overflow-safe under Kāra's checked arithmetic (`neg + price` never wraps).
 - **`Slice[i64]`** input from fixed-size `Array` literals.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`121941975`). Workload: O(n*k) two-array transaction DP over a 2000-price PRNG array x 5000 rounds, fresh PRNG k (<n/2) + one price punch per round (loop-carried max recurrence).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 302.4 ms | 0.46× |
+| C `clang -O3` | 326.3 ms | 0.49× |
+| Go | 640.9 ms | 0.97× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 642.1 ms | 0.97× |
+| **Kāra (codegen)** | 660.9 ms | 1.00× |
+| Python (scale lane) | 24.49 s | 37.06× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

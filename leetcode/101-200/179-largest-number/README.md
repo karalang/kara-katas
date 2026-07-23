@@ -30,6 +30,23 @@ The entire problem is the **comparator**. To decide whether `a` should come befo
 - **`String` `+` concatenation and `<` comparison** on indexed elements.
 - **`f"{x}"` int→string** and `String.push_str` for the join.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`207909229184`). Workload: 500-element PRNG array, 400 passes each rebuilt+perturbed then insertion-sorted under the concat comparator (a-b vs b-a, numeric); sink=sum of per-pass Horner checksums of the concatenation digit stream.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 214.3 ms | 0.97× |
+| **Kāra (codegen)** | 221.4 ms | 1.00× |
+| Rust `-O` | 222.8 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 356.9 ms | 1.61× |
+| Go | 408.7 ms | 1.85× |
+| Python (scale lane) | 24.43 s | 110.36× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

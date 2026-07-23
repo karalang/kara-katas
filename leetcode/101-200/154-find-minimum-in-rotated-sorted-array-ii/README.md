@@ -36,6 +36,23 @@ The minimum lives in the *unsorted* half. Compare `nums[mid]` to `nums[hi]`:
 - **Overflow-safe midpoint** `lo + (hi - lo) / 2` and a three-way `if`/`else if`/`else` on the `nums[mid]` vs `nums[hi]` comparison.
 - **`Vec[i64]` index reads** driving the search bounds.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`37458073070`). Workload: binary-search min of many PRNG rotated-with-duplicates arrays, sum of mins sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 372.8 ms | 0.95× |
+| C `clang -O3` | 375.2 ms | 0.96× |
+| **Kāra (codegen)** | 392.0 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 403.9 ms | 1.03× |
+| Go | 759.0 ms | 1.94× |
+| Python (scale lane) | 38.64 s | 98.55× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -30,6 +30,23 @@ Because the array is **sorted**, the classic hash-map [Two Sum](../../1-100/1-tw
 - **`Array[i64, 2]` return** of the 1-based index pair, printed with `f"{r[0]} {r[1]}"`.
 - **`Array[i64, N]` → `Slice[i64]`** argument passing across several fixed-size literals.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400987230`). Workload: build-once 20K-elem sorted PRNG array + 20K two-pointer two-sum sweeps for guaranteed-solution PRNG targets (loop-carried lo/hi convergence, data-dependent branch, non-vectorizing); sink = sum of 1-based index pairs.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Go | 156.2 ms | 0.32× |
+| C `clang -O3` | 465.9 ms | 0.94× |
+| Rust `-O` | 466.5 ms | 0.94× |
+| **Kāra (codegen)** | 495.2 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 498.1 ms | 1.01× |
+| Python (scale lane) | 9.38 s | 18.95× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

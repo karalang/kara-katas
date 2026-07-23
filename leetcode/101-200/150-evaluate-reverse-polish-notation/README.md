@@ -39,6 +39,23 @@ The one subtlety is lexical: `"-"` the subtraction operator and `"-11"` the nega
 - **`ref String` params** read out of a `Vec[String]` by index (`is_op(tokens[i])`, `parse_int(tokens[i])`) — a borrow, read twice in the loop without a move.
 - **`if`-expression chain** selecting the operator to apply.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`760375256`). Workload: stack-machine eval of a large valid RPN token stream x K punches, modular result sum sink.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 448.1 ms | 0.99× |
+| **Kāra (codegen)** | 454.7 ms | 1.00× |
+| C `clang -O3` | 455.0 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 457.4 ms | 1.01× |
+| Go | 1.93 s | 4.25× |
+| Python (scale lane) | 23.87 s | 52.51× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

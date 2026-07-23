@@ -28,6 +28,23 @@ Slide a width-10 window across the string and count each 10-mer in a `Map[String
 - **`s[i..i+10].to_string()`** — an owned `String` key minted per window from a slice.
 - **`Option` match + `.clone()`** — record on the count transition, then reinsert.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`6435360`). Workload: length-10 dup-window scan over a 1M-base PRNG DNA buffer x 30 punched passes; rolling 2-bit hash + direct-address 2^20 stamp/count table (C-style, uniform across all five langs).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 655.2 ms | 0.96× |
+| C `clang -O3` | 662.5 ms | 0.97× |
+| **Kāra (codegen)** | 683.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 711.2 ms | 1.04× |
+| Go | 748.5 ms | 1.10× |
+| Python (scale lane) | 13.10 s | 19.17× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
