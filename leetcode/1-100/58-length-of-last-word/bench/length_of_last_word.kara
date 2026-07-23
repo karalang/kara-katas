@@ -1,0 +1,54 @@
+// Benchmark workload for LeetCode #58 — Length of Last Word.
+//
+// Build-once + punch: a large letters+spaces buffer is generated once with a
+// deterministic 32-bit LCG (overflow-safe in i64; values taken from the HIGH
+// bits to dodge the LCG's short-period low bits), then the last-word scan is
+// run over PASSES different end positions, each preceded by a single-cell flip
+// so the optimizer cannot hoist the repeated computation. The scan is two
+// data-dependent while loops (skip trailing spaces, then count the run) — a
+// genuine non-vectorizable scalar kernel. Sink = sum of the last-word lengths.
+
+fn last_word_len(buf: ref Vec[i64], end: i64) -> i64 {
+    let mut i = end;
+    while i >= 0i64 and buf[i] == 32i64 { i = i - 1i64; }
+    let mut len = 0i64;
+    while i >= 0i64 and buf[i] != 32i64 {
+        len = len + 1i64;
+        i = i - 1i64;
+    }
+    return len;
+}
+
+fn main() {
+    let n = 4000000i64;
+    let passes = 6500000i64;
+
+    let mut buf: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut c = 0i64;
+    while c < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let r = state >> 16i64;
+        if r % 100i64 < 18i64 {
+            buf.push(32i64);
+        } else {
+            buf.push(65i64 + r % 26i64);
+        }
+        c = c + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        let idx = (p * 97i64 + 13i64) % n;
+        if buf[idx] == 32i64 {
+            buf[idx] = 65i64 + p % 26i64;
+        } else {
+            buf[idx] = 32i64;
+        }
+        let e = (p * 89i64 + 41i64) % n;
+        sink = sink + last_word_len(buf, e);
+        p = p + 1i64;
+    }
+    println(sink);
+}

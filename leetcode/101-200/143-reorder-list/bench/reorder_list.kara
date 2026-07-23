@@ -1,0 +1,80 @@
+// Benchmark workload for LeetCode #143 — Reorder List.
+//
+// Build-once + punch: one big list of `N` valued nodes lives in an index pool
+// (values seeded once by a deterministic 32-bit LCG). Each of `K` passes performs
+// the #143 reorder — L0, Ln-1, L1, Ln-2, … (interleave with the reverse) — by
+// generating the new index order with two pointers walking inward, REWIRING the
+// `nxt` chain to follow it, then WALKING that chain from the head. Before each
+// pass one node's value is perturbed so the optimizer cannot hoist the repeated
+// reorder+walk.
+//
+// The walk is pointer-chasing over the freshly rewired chain (data-dependent,
+// non-vectorizable). Sink = Σ over passes of the position-weighted checksum of
+// the reordered walk: Σ_pos ((pos % 997) + 1) * value(node at pos).
+
+fn main() {
+    let n = 100000i64;
+    let k = 1000i64;
+    let valmod = 1000i64;
+
+    let mut vals: Vec[i64] = Vec.new();
+    let mut nxt: Vec[i64] = Vec.new();
+    let mut order: Vec[i64] = Vec.new();
+
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        vals.push((state >> 16i64) % valmod);
+        nxt.push(0i64);
+        order.push(0i64);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < k {
+        // Perturb one value.
+        let pi = p % n;
+        vals[pi] = (vals[pi] + 1i64) % valmod;
+
+        // Interleaved index order 0, n-1, 1, n-2, … via two inward pointers.
+        let mut lo = 0i64;
+        let mut hi = n - 1i64;
+        let mut idx = 0i64;
+        let mut take_lo = true;
+        while lo <= hi {
+            if take_lo {
+                order[idx] = lo;
+                lo = lo + 1i64;
+            } else {
+                order[idx] = hi;
+                hi = hi - 1i64;
+            }
+            take_lo = not take_lo;
+            idx = idx + 1i64;
+        }
+
+        // Rewire the nxt chain to follow `order`.
+        let mut r = 0i64;
+        while r + 1i64 < n {
+            nxt[order[r]] = order[r + 1i64];
+            r = r + 1i64;
+        }
+        nxt[order[n - 1i64]] = 0i64 - 1i64;
+
+        // Walk from the head via nxt; position-weighted checksum.
+        let mut cur = order[0i64];
+        let mut pos = 0i64;
+        while cur >= 0i64 {
+            let w = (pos % 997i64) + 1i64;
+            sink = sink + w * vals[cur];
+            pos = pos + 1i64;
+            cur = nxt[cur];
+        }
+
+        p = p + 1i64;
+    }
+
+    println(sink);
+}

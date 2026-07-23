@@ -1,0 +1,100 @@
+// Benchmark workload for LeetCode #85 — Maximal Rectangle.
+//
+// Build-once + punch: a large 0/1 matrix is generated once with a deterministic
+// 32-bit LCG (overflow-safe in i64; values from the HIGH bits to dodge the LCG's
+// short-period low bits). Each pass flips one cell (so the optimizer cannot
+// hoist) and recomputes the maximal all-1s rectangle: per row it grows a
+// histogram of column runs, then the largest-rectangle-in-histogram is settled
+// with a monotonic stack of increasing-height indices — a data-dependent
+// push/pop whose width math is loop-carried, so it does NOT vectorize.
+// Sink = sum of the max rectangle area over all passes.
+//
+// Natural form: `heights` is allocated fresh per maximal_rectangle call and the
+// monotonic `stack` fresh per largest_rect call (exactly as the kata does) — no
+// loop-invariant shared scratch is threaded through the punch loop.
+
+fn largest_rect(heights: ref Vec[i64]) -> i64 {
+    let n = heights.len();
+    let mut stack: Vec[i64] = Vec.new();
+    let mut best = 0i64;
+    let mut i = 0i64;
+    while i <= n {
+        let h = if i == n { 0i64 } else { heights[i] };
+        while stack.len() > 0i64 and heights[stack[stack.len() - 1i64]] >= h {
+            let top = stack[stack.len() - 1i64];
+            let height = heights[top];
+            stack.pop();
+            let width = if stack.len() == 0i64 {
+                i
+            } else {
+                i - stack[stack.len() - 1i64] - 1i64
+            };
+            let area = height * width;
+            if area > best {
+                best = area;
+            }
+        }
+        stack.push(i);
+        i = i + 1i64;
+    }
+    return best;
+}
+
+fn maximal_rectangle(matrix: ref Vec[Vec[i64]], rows: i64, cols: i64) -> i64 {
+    let mut heights: Vec[i64] = Vec.filled(cols, 0i64);
+    let mut best = 0i64;
+    let mut r = 0i64;
+    while r < rows {
+        let mut c = 0i64;
+        while c < cols {
+            if matrix[r][c] == 1i64 {
+                heights[c] = heights[c] + 1i64;
+            } else {
+                heights[c] = 0i64;
+            }
+            c = c + 1i64;
+        }
+        let a = largest_rect(heights);
+        if a > best {
+            best = a;
+        }
+        r = r + 1i64;
+    }
+    return best;
+}
+
+fn main() {
+    let rows = 70i64;
+    let cols = 70i64;
+    let passes = 11000i64;
+
+    let mut matrix: Vec[Vec[i64]] = Vec.new();
+    let mut state = 12345i64;
+    let mut r = 0i64;
+    while r < rows {
+        let mut rowv: Vec[i64] = Vec.new();
+        let mut c = 0i64;
+        while c < cols {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            if (state >> 16i64) % 100i64 < 62i64 {
+                rowv.push(1i64);
+            } else {
+                rowv.push(0i64);
+            }
+            c = c + 1i64;
+        }
+        matrix.push(rowv);
+        r = r + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        let rr = p % rows;
+        let cc = (p * 131i64 + 7i64) % cols;
+        matrix[rr][cc] = 1i64 - matrix[rr][cc];
+        sink = sink + maximal_rectangle(matrix, rows, cols);
+        p = p + 1i64;
+    }
+    println(sink);
+}

@@ -1,0 +1,82 @@
+// Benchmark workload for LeetCode #144 — Binary Tree Preorder Traversal.
+//
+// Build-once + punch: a large binary tree is built ONCE into an index pool
+// (BST insertion of PRNG values, node 0 = root), then ITERATIVE preorder with an
+// explicit stack is run `PASSES` times. Each pass first bumps one node's value so
+// the optimizer cannot hoist the repeated traversal. The traversal is a genuine
+// pointer-chase over an index pool with a data-dependent push pattern (a node
+// pushes 0/1/2 children depending on structure), so it does NOT vectorize.
+// Sink = a position-weighted checksum of the visit order, summed over all passes.
+//
+// The stack is a preallocated Vec used with an explicit stack pointer (no
+// pop()/clear()), so every language runs the identical algorithm.
+
+fn main() {
+    let n = 50000i64;
+    let passes = 400i64;
+
+    // Node pool.
+    let mut val: Vec[i64] = Vec.new();
+    let mut left: Vec[i64] = Vec.new();
+    let mut right: Vec[i64] = Vec.new();
+
+    // Generate node values with the shared LCG (high bits), init children to -1.
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        val.push(state / 65536i64);
+        left.push(0i64 - 1i64);
+        right.push(0i64 - 1i64);
+        i = i + 1i64;
+    }
+
+    // Wire a binary tree by BST insertion; node 0 is the root.
+    i = 1i64;
+    while i < n {
+        let mut cur = 0i64;
+        let mut placed = false;
+        while not placed {
+            if val[i] < val[cur] {
+                if left[cur] < 0i64 { left[cur] = i; placed = true; }
+                else { cur = left[cur]; }
+            } else {
+                if right[cur] < 0i64 { right[cur] = i; placed = true; }
+                else { cur = right[cur]; }
+            }
+        }
+        i = i + 1i64;
+    }
+
+    // Preallocated explicit stack.
+    let mut stack: Vec[i64] = Vec.new();
+    let mut z = 0i64;
+    while z < n { stack.push(0i64); z = z + 1i64; }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Perturb one node so the traversal can't be hoisted across passes.
+        let idx = p % n;
+        val[idx] = val[idx] + 1i64;
+
+        let mut sp = 0i64;
+        stack[sp] = 0i64;        // push root
+        sp = sp + 1i64;
+        let mut pos = 0i64;
+        let mut acc = 0i64;
+        while sp > 0i64 {
+            sp = sp - 1i64;
+            let node = stack[sp];
+            acc = acc + val[node] * (pos + 1i64);
+            pos = pos + 1i64;
+            let r = right[node];
+            let l = left[node];
+            if r >= 0i64 { stack[sp] = r; sp = sp + 1i64; }
+            if l >= 0i64 { stack[sp] = l; sp = sp + 1i64; }
+        }
+        sink = sink + acc;
+        p = p + 1i64;
+    }
+    println(sink);
+}

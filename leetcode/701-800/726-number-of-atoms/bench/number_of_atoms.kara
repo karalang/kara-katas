@@ -1,0 +1,183 @@
+// Benchmark workload for LeetCode #726 — Number of Atoms.
+//
+// Build-once + punch: one large, always-valid chemical formula is generated ONCE
+// (a byte buffer of self-balanced chunks — elements `Upper[lower]Count`, groups
+// `(...)mult`, and one nesting level — all filled by the shared LCG), then the
+// formula is PARSED `PASSES` times. Each pass first bumps one count/multiplier
+// digit so the optimizer cannot hoist the repeated parse.
+//
+// The parser is the canonical stack-of-counts design: a left-to-right byte scan
+// emits (element-id, count) pairs and pushes emit-list indices on a paren stack;
+// a closing `)mult` folds the multiplier back over the whole group's range; the
+// emit list is then tallied into a MAP of element-id -> total. This is a
+// genuinely data-dependent byte dispatch (paren / letter / digit) with a
+// pointer-like range fold — it does NOT vectorize. Sink = an order-independent
+// checksum (sum of id * total over the id space), summed over all passes.
+//
+// Map choice per language (honest cross-language mirror): Kāra `Map[i64,i64]`,
+// Rust `HashMap`, Go `map`, Python `dict`; C hand-rolls a flat table over the
+// bounded element-id range. All five run the identical parse + fold + tally.
+
+fn is_upper(b: u8) -> bool { b >= b'A' and b <= b'Z' }
+fn is_lower(b: u8) -> bool { b >= b'a' and b <= b'z' }
+fn is_digit(b: u8) -> bool { b >= b'0' and b <= b'9' }
+
+fn draw_hi(state: i64) -> i64 {
+    (state * 1103515245i64 + 12345i64) & 2147483647i64
+}
+
+// Append one element `Upper [lower] Count(1..9)`; record the count-digit offset.
+fn emit_element(buf: mut ref Vec[u8], dpos: mut ref Vec[i64], state0: i64) -> i64 {
+    let mut state = draw_hi(state0);
+    let du = state / 65536i64;
+    buf.push(((b'A' as i64) + du % 6i64) as u8);
+    if (du / 6i64) % 2i64 == 0i64 {
+        state = draw_hi(state);
+        let dl = state / 65536i64;
+        buf.push(((b'a' as i64) + dl % 3i64) as u8);
+    }
+    state = draw_hi(state);
+    let dc = state / 65536i64;
+    buf.push(((b'1' as i64) + dc % 9i64) as u8);
+    dpos.push(buf.len() - 1i64);
+    return state;
+}
+
+// Append a group multiplier digit (2..9); record its offset.
+fn emit_mult(buf: mut ref Vec[u8], dpos: mut ref Vec[i64], state0: i64) -> i64 {
+    let state = draw_hi(state0);
+    let dm = state / 65536i64;
+    buf.push(((b'0' as i64) + 2i64 + dm % 8i64) as u8);
+    dpos.push(buf.len() - 1i64);
+    return state;
+}
+
+fn main() {
+    let num_chunks = 20000i64;
+    let passes = 400i64;
+    let id_range = 24i64;
+
+    // Generate the formula buffer once from self-balanced chunk templates.
+    let mut buf: Vec[u8] = Vec.new();
+    let mut dpos: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+
+    let mut ch = 0i64;
+    while ch < num_chunks {
+        state = draw_hi(state);
+        let tt = (state / 65536i64) % 5i64;
+        if tt == 0i64 {
+            state = emit_element(mut buf, mut dpos, state);
+        } else if tt == 1i64 {
+            state = emit_element(mut buf, mut dpos, state);
+            state = emit_element(mut buf, mut dpos, state);
+        } else if tt == 2i64 {
+            buf.push(b'(');
+            state = emit_element(mut buf, mut dpos, state);
+            state = emit_element(mut buf, mut dpos, state);
+            buf.push(b')');
+            state = emit_mult(mut buf, mut dpos, state);
+        } else if tt == 3i64 {
+            buf.push(b'(');
+            state = emit_element(mut buf, mut dpos, state);
+            buf.push(b'(');
+            state = emit_element(mut buf, mut dpos, state);
+            state = emit_element(mut buf, mut dpos, state);
+            buf.push(b')');
+            state = emit_mult(mut buf, mut dpos, state);
+            buf.push(b')');
+            state = emit_mult(mut buf, mut dpos, state);
+        } else {
+            buf.push(b'(');
+            state = emit_element(mut buf, mut dpos, state);
+            state = emit_element(mut buf, mut dpos, state);
+            state = emit_element(mut buf, mut dpos, state);
+            buf.push(b')');
+            state = emit_mult(mut buf, mut dpos, state);
+        }
+        ch = ch + 1i64;
+    }
+
+    let n = buf.len();
+    let ndig = dpos.len();
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Bump one digit so the parse can't be hoisted across passes.
+        let pos = dpos[p % ndig];
+        let old = buf[pos] as i64;
+        buf[pos] = ((b'1' as i64) + ((old - (b'1' as i64) + 1i64) % 9i64)) as u8;
+
+        let mut nid: Vec[i64] = Vec.new();
+        let mut counts: Vec[i64] = Vec.new();
+        let mut pst: Vec[i64] = Vec.new();
+
+        let mut i = 0i64;
+        while i < n {
+            let b = buf[i];
+            if b == b'(' {
+                pst.push(nid.len());
+                i = i + 1i64;
+            } else if b == b')' {
+                i = i + 1i64;
+                let mut mult = 0i64;
+                let mut have = false;
+                while i < n and is_digit(buf[i]) {
+                    mult = mult * 10i64 + ((buf[i] - b'0') as i64);
+                    have = true;
+                    i = i + 1i64;
+                }
+                if not have { mult = 1i64; }
+                let start = pst.pop().unwrap();
+                let mut k = start;
+                while k < nid.len() {
+                    counts[k] = counts[k] * mult;
+                    k = k + 1i64;
+                }
+            } else if is_upper(b) {
+                let up = (b - b'A') as i64;
+                i = i + 1i64;
+                let mut low = 0i64;
+                if i < n and is_lower(buf[i]) {
+                    low = ((buf[i] - b'a') as i64) + 1i64;
+                    i = i + 1i64;
+                }
+                let id = up * 4i64 + low;
+                let mut c = 0i64;
+                let mut have2 = false;
+                while i < n and is_digit(buf[i]) {
+                    c = c * 10i64 + ((buf[i] - b'0') as i64);
+                    have2 = true;
+                    i = i + 1i64;
+                }
+                if not have2 { c = 1i64; }
+                nid.push(id);
+                counts.push(c);
+            } else {
+                i = i + 1i64;
+            }
+        }
+
+        // Tally the emit list into a map of element-id -> total.
+        let mut map: Map[i64, i64] = Map.new();
+        let mut e = 0i64;
+        let m = nid.len();
+        while e < m {
+            let id = nid[e];
+            map.insert(id, map.get_or(id, 0i64) + counts[e]);
+            e = e + 1i64;
+        }
+
+        // Order-independent checksum over the element-id space.
+        let mut checksum = 0i64;
+        let mut id2 = 0i64;
+        while id2 < id_range {
+            checksum = checksum + id2 * map.get_or(id2, 0i64);
+            id2 = id2 + 1i64;
+        }
+        sink = sink + checksum;
+        p = p + 1i64;
+    }
+    println(sink);
+}

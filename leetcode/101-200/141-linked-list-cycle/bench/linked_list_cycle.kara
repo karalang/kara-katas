@@ -1,0 +1,93 @@
+// Benchmark workload for LeetCode #141 — Linked List Cycle.
+//
+// Build-once + punch: `K` linked lists are laid out once in a shared index pool
+// (`nxt[i]` = the next node's global index, or -1 for the end). Each list's tail
+// either points back into the list (a cycle) or terminates, chosen by a
+// deterministic 32-bit LCG (high bits). Floyd's tortoise-and-hare then detects
+// each list's cycle, `PASSES` times; before every pass one list's tail is
+// toggled (cycle <-> null) so the optimizer cannot hoist the repeated scans.
+//
+// The traversal is pure pointer-chasing (`slow = nxt[slow]`, `fast` two hops) —
+// data-dependent, non-vectorizable. Sink = Σ over passes of (k+1) for every list
+// k currently detected as cyclic (an index-weighted cycle count).
+
+fn has_cycle(nxt: ref Vec[i64], head: i64) -> bool {
+    let mut slow = head;
+    let mut fast = head;
+    let mut go = true;
+    while go {
+        fast = nxt[fast];
+        if fast < 0i64 { return false; }
+        fast = nxt[fast];
+        if fast < 0i64 { return false; }
+        slow = nxt[slow];
+        if slow == fast { return true; }
+    }
+    return false;
+}
+
+fn main() {
+    let k_lists = 1000i64;
+    let len = 60i64;
+    let passes = 3000i64;
+    let cycpct = 50i64;
+    let pool = k_lists * len;
+
+    let mut nxt: Vec[i64] = Vec.new();
+    let mut p = 0i64;
+    while p < pool {
+        nxt.push(0i64);
+        p = p + 1i64;
+    }
+    let mut target: Vec[i64] = Vec.new();
+    let mut tail: Vec[i64] = Vec.new();
+
+    let mut state = 12345i64;
+
+    let mut k = 0i64;
+    while k < k_lists {
+        let base = k * len;
+        let mut j = 0i64;
+        while j < len - 1i64 {
+            nxt[base + j] = base + j + 1i64;
+            j = j + 1i64;
+        }
+        let t = base + len - 1i64;
+        tail.push(t);
+
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let coin = (state >> 16i64) % 100i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let tl = (state >> 16i64) % len;
+        target.push(base + tl);
+
+        if coin < cycpct {
+            nxt[t] = base + tl;
+        } else {
+            nxt[t] = 0i64 - 1i64;
+        }
+        k = k + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut pass = 0i64;
+    while pass < passes {
+        let idx = pass % k_lists;
+        let ti = tail[idx];
+        if nxt[ti] < 0i64 {
+            nxt[ti] = target[idx];
+        } else {
+            nxt[ti] = 0i64 - 1i64;
+        }
+        let mut kk = 0i64;
+        while kk < k_lists {
+            if has_cycle(nxt, kk * len) {
+                sink = sink + kk + 1i64;
+            }
+            kk = kk + 1i64;
+        }
+        pass = pass + 1i64;
+    }
+
+    println(sink);
+}

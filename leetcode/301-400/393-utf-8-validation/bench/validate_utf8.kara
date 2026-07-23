@@ -1,0 +1,127 @@
+// Benchmark workload for LeetCode #393 — UTF-8 Validation.
+//
+// Build-once + punch: a large byte buffer is generated ONCE as `R` fixed-width
+// records of `W` bytes each. Every record is filled to its exact width with
+// WHOLE, well-formed UTF-8 characters (1–4 bytes, chosen by the shared LCG), so
+// a clean record validates true; ~8% of character slots instead drop an invalid
+// lead byte (a bare continuation) that makes the whole record invalid. The
+// one-pass validator then scans every record `PASSES` times, and each pass first
+// flips one byte so the optimizer cannot hoist the repeated work.
+//
+// The validator's per-byte dispatch — classify the lead byte (0/2/3/4-byte
+// shape) then verify exactly that many `10xxxxxx` continuations — is a genuinely
+// data-dependent branch keyed on the lead-byte pattern, so it does NOT vectorize.
+// Sink = the count of valid records, summed over all passes.
+
+fn lead_len(b: u8) -> i64 {
+    if b & 0x80u8 == 0x00u8 {
+        1i64
+    } else if b & 0xE0u8 == 0xC0u8 {
+        2i64
+    } else if b & 0xF0u8 == 0xE0u8 {
+        3i64
+    } else if b & 0xF8u8 == 0xF0u8 {
+        4i64
+    } else {
+        0i64
+    }
+}
+
+fn is_continuation(b: u8) -> bool {
+    b & 0xC0u8 == 0x80u8
+}
+
+// Validate the W-byte window [base, base + w) of `data`.
+fn validate_window(data: ref Vec[u8], base: i64, w: i64) -> bool {
+    let end = base + w;
+    let mut i = base;
+    while i < end {
+        let need = lead_len(data[i]);
+        if need == 0i64 {
+            return false;
+        }
+        if i + need > end {
+            return false;
+        }
+        let mut k = 1i64;
+        while k < need {
+            if not is_continuation(data[i + k]) {
+                return false;
+            }
+            k = k + 1i64;
+        }
+        i = i + need;
+    }
+    return true;
+}
+
+fn main() {
+    let records = 40000i64;
+    let w = 32i64;
+    let passes = 60i64;
+    let total = records * w;
+
+    // Build the byte buffer: R records, each filled to exactly W bytes with
+    // whole valid characters; ~8% of slots inject an invalid lead byte.
+    let mut data: Vec[u8] = Vec.new();
+    let mut z = 0i64;
+    while z < total { data.push(0u8); z = z + 1i64; }
+
+    let mut state = 12345i64;
+    let mut rec = 0i64;
+    while rec < records {
+        let base = rec * w;
+        let mut filled = 0i64;
+        while filled < w {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let r = state / 65536i64;
+            let cat = r % 100i64;
+            let sub = r / 100i64;
+            let rem = w - filled;
+            if cat < 8i64 {
+                // Corruption: a bare continuation used as a lead -> invalid.
+                data[base + filled] = (128i64 + (sub % 64i64)) as u8;
+                filled = filled + 1i64;
+            } else if cat < 60i64 or rem < 2i64 {
+                data[base + filled] = (sub % 128i64) as u8;
+                filled = filled + 1i64;
+            } else if cat < 80i64 or rem < 3i64 {
+                data[base + filled] = (192i64 + (sub % 32i64)) as u8;
+                data[base + filled + 1i64] = (128i64 + (sub % 64i64)) as u8;
+                filled = filled + 2i64;
+            } else if cat < 93i64 or rem < 4i64 {
+                data[base + filled] = (224i64 + (sub % 16i64)) as u8;
+                data[base + filled + 1i64] = (128i64 + (sub % 64i64)) as u8;
+                data[base + filled + 2i64] = (128i64 + (sub % 64i64)) as u8;
+                filled = filled + 3i64;
+            } else {
+                data[base + filled] = (240i64 + (sub % 8i64)) as u8;
+                data[base + filled + 1i64] = (128i64 + (sub % 64i64)) as u8;
+                data[base + filled + 2i64] = (128i64 + (sub % 64i64)) as u8;
+                data[base + filled + 3i64] = (128i64 + (sub % 64i64)) as u8;
+                filled = filled + 4i64;
+            }
+        }
+        rec = rec + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Flip one byte so the scan can't be hoisted across passes.
+        let idx = (p * 40009i64) % total;
+        data[idx] = (255i64 - (data[idx] as i64)) as u8;
+
+        let mut count = 0i64;
+        let mut rec2 = 0i64;
+        while rec2 < records {
+            if validate_window(data, rec2 * w, w) {
+                count = count + 1i64;
+            }
+            rec2 = rec2 + 1i64;
+        }
+        sink = sink + count;
+        p = p + 1i64;
+    }
+    println(sink);
+}
