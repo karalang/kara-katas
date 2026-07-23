@@ -32,6 +32,23 @@ The traversal is iterative with an explicit stack: push the entire left spine, t
 - **Iterative in-order with a `Vec[i64]` stack** — `push`/`pop` (→ `Option`, matched) drive the spine-and-visit loop, whose condition `cur != -1 or stack.len() > 0` handles both live cursor and pending stack.
 - **Early exit** — returns at `count == k` rather than materialising the full sorted order.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`151017441029646`). Workload: iterative in-order kth_smallest over a 3000-node BST, 140k queries with varying k (pointer-chasing traversal).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 488.5 ms | 0.25× |
+| Rust `-O` | 778.7 ms | 0.40× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 796.5 ms | 0.41× |
+| Go | 1.71 s | 0.88× |
+| **Kāra (codegen)** | 1.94 s | 1.00× |
+| Python (scale lane) | 25.79 s | 13.28× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -35,6 +35,23 @@ Because `*` and `/` collapse into the stack top right away while `+`/`-` only le
 - **Truncating integer division** — `t / num` relies on Kāra's toward-zero `/`; the mirror replicates it explicitly to stay byte-identical on negatives.
 - **"Apply on operator or last char"** — a single condition drives both the mid-string operator handling and the trailing flush.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`945506243`). Workload: calculate() over one big PRNG +-*/ expression run K times (precedence term-stack, truncating div).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 507.1 ms | 0.73× |
+| **Kāra (codegen)** | 696.7 ms | 1.00× |
+| Rust `-O` | 713.7 ms | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 777.4 ms | 1.12× |
+| Go | 1.02 s | 1.47× |
+| Python (scale lane) | 33.04 s | 47.42× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

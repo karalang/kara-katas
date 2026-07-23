@@ -30,6 +30,23 @@ A positive power of two has exactly **one** set bit. Subtracting 1 flips that bi
 - **Bitwise AND and subtraction on `i64`** — `n & (n - 1)`, the single-expression test, including the `2^31` / `2^30` cases well within `i64` range.
 - **Guard-then-return** — the `n <= 0` early return keeps the bit test on the domain where it's meaningful.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`1269530`). Workload: is_power_of_two over a 130M-step LCG stream, masked to 0..1024 (loop-carried PRNG, count of powers).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 177.5 ms | 0.81× |
+| Rust `-O` | 188.3 ms | 0.86× |
+| **Kāra (codegen)** | 218.3 ms | 1.00× |
+| C `clang -O3` | 232.2 ms | 1.06× |
+| Go | 241.5 ms | 1.11× |
+| Python (scale lane) | 32.86 s | 150.49× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

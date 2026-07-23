@@ -33,6 +33,23 @@ The underlying queue is an index-pool FIFO: a `Vec[i64]` with a `head` cursor �
 - **`mut ref` mutation discipline** — `stack_push` / `stack_pop` take `mut ref Queue` (they mutate) and are called with the `mut` marker on the owned binding (`stack_pop(mut s)`); `stack_top` / `stack_empty` take `ref Queue` (read-only) and need no marker. The compiler enforces exactly this split.
 - **Mutable struct field** — `head` is `mut` (reassigned on dequeue); `data` is mutated only through `push` (no `mut` needed for a method-call mutation of a field).
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`451784582`). Workload: PRNG-driven push/pop/top sequence on the queue-backed stack (O(n) costly-push rotations).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 209.4 ms | 0.60× |
+| **Kāra (codegen)** | 348.5 ms | 1.00× |
+| Rust `-O` | 375.5 ms | 1.08× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 430.8 ms | 1.24× |
+| Go | 2.71 s | 7.77× |
+| Python (scale lane) | 46.20 s | 132.58× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

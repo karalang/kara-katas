@@ -36,6 +36,23 @@ The second half is never longer than the first, so for odd length the middle nod
 - **Two-hop pointer arithmetic** — the midpoint loop reads `nodes[nodes[fast].next].next`, a double index through the pool, guarded so it never dereferences past the end.
 - **`mut ref Vec[Node]`** — `is_palindrome` mutates the list (it reverses a half), so it takes `mut ref` and forwards it to `reverse`; the driver passes the owned list with the `mut` marker.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`900`). Workload: is_palindrome (midpoint + in-place reverse + compare) over a 50k-node list, 1800 passes with a middle-value punch.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 429.8 ms | 0.99× |
+| **Kāra (codegen)** | 433.4 ms | 1.00× |
+| Rust `-O` | 447.1 ms | 1.03× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 455.0 ms | 1.05× |
+| Go | 468.6 ms | 1.08× |
+| Python (scale lane) | 12.02 s | 27.72× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
