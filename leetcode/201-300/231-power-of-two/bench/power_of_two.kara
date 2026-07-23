@@ -1,0 +1,29 @@
+// Benchmark workload for LeetCode #231 — Power of Two.
+//
+// One `is_power_of_two` call is two instructions, so the bench turns it into a
+// throughput kernel: a deterministic 32-bit LCG (overflow-safe in i64) feeds a
+// masked value into `is_power_of_two` on every one of N iterations. The LCG
+// state is loop-carried, so the loop does NOT vectorize — each iteration must
+// finish the multiply-add before the next value exists. The masked domain
+// (0..1024) keeps ~1% of values true, so the accumulated count is measurable.
+// Sink = number of powers of two seen.
+
+fn is_power_of_two(n: i64) -> bool {
+    if n <= 0i64 { return false; }
+    return (n & (n - 1i64)) == 0i64;
+}
+
+fn main() {
+    let n = 130000000i64;
+    let mask = 1023i64;
+    let mut state = 12345i64;
+    let mut sink = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let v = state & mask;
+        if is_power_of_two(v) { sink = sink + 1i64; }
+        i = i + 1i64;
+    }
+    println(sink);
+}

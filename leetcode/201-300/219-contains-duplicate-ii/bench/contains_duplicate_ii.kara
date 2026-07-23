@@ -1,0 +1,54 @@
+// Benchmark workload for LeetCode #219 — Contains Duplicate II.
+//
+// The kata's kernel is a value->last-index hash map: as it scans, a value whose
+// previous index is within window k is a "nearby duplicate". One boolean query
+// short-circuits on the first hit, so it cannot sustain a benchmark. The bench
+// keeps the identical map kernel but runs it as a full sweep that COUNTS nearby
+// duplicates, over every window width k in 1..KMAX, on ONE big PRNG array. Every
+// k forces a full value->index scan (real map throughput, no early-exit erosion);
+// the per-element get+insert with a data-dependent gap branch does not vectorize.
+// Sink = total nearby-duplicate hits summed over all k. (Same scaling spirit as
+// #216 counting combinations instead of listing them.) The value range M is
+// prime so it does not align with the LCG's power-of-two lattice.
+
+fn count_nearby(nums: ref Vec[i64], k: i64) -> i64 {
+    let mut last: Map[i64, i64] = Map.new();
+    let n = nums.len();
+    let mut hits = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        let x = nums[i];
+        match last.get(x) {
+            Some(j) => {
+                if i - j <= k { hits = hits + 1i64; }
+            }
+            None => {}
+        }
+        let _ = last.insert(x, i);
+        i = i + 1i64;
+    }
+    return hits;
+}
+
+fn main() {
+    let n = 1000000i64;
+    let kmax = 40i64;
+    let m = 49999i64;
+
+    let mut nums: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut c = 0i64;
+    while c < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        nums.push(state % m);
+        c = c + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut k = 1i64;
+    while k <= kmax {
+        sink = sink + count_nearby(nums, k);
+        k = k + 1i64;
+    }
+    println(sink);
+}

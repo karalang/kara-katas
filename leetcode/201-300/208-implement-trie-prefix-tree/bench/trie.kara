@@ -1,0 +1,80 @@
+// Benchmark workload for LeetCode #208 — Implement Trie (Prefix Tree).
+//
+// Build-once + punch: a trie is built ONCE from NWORDS deterministic PRNG words
+// over a small alphabet (index-pool representation — all nodes in one flat Vec,
+// children keyed by letter), then NQUERY PRNG query words are walked against it.
+// Each walk is a data-dependent pointer chase `cur = children[cur*ALPHA + c]`
+// (a loop-carried dependent load that does NOT vectorize). Sink accumulates a
+// weighted count of prefix hits and exact-word hits.
+
+fn main() {
+    let alpha = 5i64;
+    let nwords = 30000i64;
+    let nquery = 8000000i64;
+
+    let mut children: Vec[i64] = Vec.new();
+    let mut is_end: Vec[i64] = Vec.new();
+    let mut a = 0i64;
+    while a < alpha { children.push(0i64); a = a + 1i64; }
+    is_end.push(0i64);              // root at index 0
+
+    let mut state = 12345i64;
+
+    // Build phase.
+    let mut w = 0i64;
+    while w < nwords {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let len = 2i64 + state % 7i64;
+        let mut cur = 0i64;
+        let mut k = 0i64;
+        while k < len {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let c = state % alpha;
+            let nxt = children[cur * alpha + c];
+            if nxt == 0i64 {
+                let idx = is_end.len();
+                let mut aa = 0i64;
+                while aa < alpha { children.push(0i64); aa = aa + 1i64; }
+                is_end.push(0i64);
+                children[cur * alpha + c] = idx;
+                cur = idx;
+            } else {
+                cur = nxt;
+            }
+            k = k + 1i64;
+        }
+        is_end[cur] = 1i64;
+        w = w + 1i64;
+    }
+
+    // Query phase.
+    let mut sink = 0i64;
+    let mut q = 0i64;
+    while q < nquery {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let len = 2i64 + state % 7i64;
+        let mut cur = 0i64;
+        let mut alive = true;
+        let mut k = 0i64;
+        while k < len {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let c = state % alpha;
+            if alive {
+                let nxt = children[cur * alpha + c];
+                if nxt == 0i64 {
+                    alive = false;
+                } else {
+                    cur = nxt;
+                }
+            }
+            k = k + 1i64;
+        }
+        if alive {
+            sink = sink + 1i64;
+            if is_end[cur] == 1i64 { sink = sink + 2i64; }
+        }
+        q = q + 1i64;
+    }
+
+    println(sink);
+}

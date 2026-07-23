@@ -1,0 +1,79 @@
+// Benchmark workload for LeetCode #230 — Kth Smallest Element in a BST.
+//
+// Build-once + punch: one BST of N nodes is built once by ordinary BST insertion
+// from a deterministic 32-bit LCG stream, then `kth_smallest` is answered for
+// QUERIES different k values (the same LCG stream, continued, picks each k in
+// 1..N). Every query re-runs the iterative in-order walk with an explicit stack
+// (push the left spine, visit, step right) until it reaches the k-th node — a
+// pointer-chasing traversal over the index-pool arrays with a loop-carried `cur`
+// cursor and data-dependent stack pushes, so it does not vectorize. Sink = sum
+// of every k-th value returned.
+
+struct Node {
+    val: i64,
+    mut left: i64,
+    mut right: i64,
+}
+
+fn insert(nodes: mut ref Vec[Node], root: i64, v: i64) -> i64 {
+    if root == -1i64 {
+        let idx = nodes.len();
+        nodes.push(Node { val: v, left: -1i64, right: -1i64 });
+        return idx;
+    }
+    if v < nodes[root].val {
+        let l = insert(nodes, nodes[root].left, v);
+        nodes[root].left = l;
+    } else {
+        let r = insert(nodes, nodes[root].right, v);
+        nodes[root].right = r;
+    }
+    return root;
+}
+
+fn kth_smallest(nodes: ref Vec[Node], root: i64, k: i64) -> i64 {
+    let mut stack: Vec[i64] = Vec.new();
+    let mut cur = root;
+    let mut count = 0i64;
+    while cur != -1i64 or stack.len() > 0i64 {
+        while cur != -1i64 {
+            stack.push(cur);
+            cur = nodes[cur].left;
+        }
+        let node = match stack.pop() {
+            Some(v) => v,
+            None => -1i64,
+        };
+        count = count + 1i64;
+        if count == k {
+            return nodes[node].val;
+        }
+        cur = nodes[node].right;
+    }
+    return -1i64;
+}
+
+fn main() {
+    let n = 3000i64;
+    let queries = 140000i64;
+
+    let mut nodes: Vec[Node] = Vec.new();
+    let mut root = -1i64;
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        root = insert(mut nodes, root, state);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut q = 0i64;
+    while q < queries {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let k = 1i64 + (state % n);
+        sink = sink + kth_smallest(nodes, root, k);
+        q = q + 1i64;
+    }
+    println(sink);
+}

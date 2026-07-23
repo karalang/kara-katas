@@ -1,0 +1,63 @@
+// Benchmark workload for LeetCode #206 — Reverse Linked List.
+//
+// Build-once + punch on an index-pool list (`val[]` + `next[]`, -1 = null). A big
+// list of N PRNG values is built once. Each pass bumps one node's value (so the
+// pass result changes and can't be hoisted), re-links the list to forward order,
+// reverses it in place with the three-cursor idiom, then walks the reversed order
+// computing a POSITION-WEIGHTED checksum — which makes the reversal observable
+// (weight depends on post-reversal position). The reverse and the weighted walk
+// are pointer chases (`cur = next[cur]`), inherently serial and non-vectorizable.
+// Sink = sum of the position-weighted checksums over all passes.
+
+fn main() {
+    let n = 3000i64;
+    let passes = 40000i64;
+    let vrange = 100i64;
+
+    let mut val: Vec[i64] = Vec.new();
+    let mut nxt: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        val.push(state % vrange);
+        nxt.push(-1i64);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        // Perturb one value so each pass differs (un-hoistable).
+        let hit = p % n;
+        val[hit] = val[hit] + 1i64;
+        // Re-link to forward order 0 -> 1 -> ... -> n-1.
+        let mut r = 0i64;
+        while r < n {
+            if r + 1i64 < n { nxt[r] = r + 1i64; } else { nxt[r] = -1i64; }
+            r = r + 1i64;
+        }
+        // Reverse in place (three cursors).
+        let mut prev = -1i64;
+        let mut cur = 0i64;
+        while cur != -1i64 {
+            let saved = nxt[cur];
+            nxt[cur] = prev;
+            prev = cur;
+            cur = saved;
+        }
+        let head = prev;
+        // Position-weighted walk over the reversed order.
+        let mut pass_sum = 0i64;
+        let mut idx = 0i64;
+        let mut c = head;
+        while c != -1i64 {
+            pass_sum = pass_sum + (idx + 1i64) * val[c];
+            idx = idx + 1i64;
+            c = nxt[c];
+        }
+        sink = sink + pass_sum;
+        p = p + 1i64;
+    }
+    println(sink);
+}

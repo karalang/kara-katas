@@ -1,0 +1,79 @@
+// Benchmark workload for LeetCode #232 — Implement Queue using Stacks.
+//
+// Synthetic driver: a deterministic 32-bit LCG drives a long stream of queue
+// operations against the two-stack FIFO. A driver-side size counter keeps the
+// queue bounded near CAP — when empty (or a coin-flip says grow) it pushes onto
+// the inbox, otherwise it pops (or, one time in four, peeks) the front. Every
+// pop/peek forces the amortized `refill` that pours the inbox into the outbox,
+// so the two-stack mechanics (push, pop, the reversing pour) are all exercised.
+// The queue state is loop-carried and the branch is data-dependent on the LCG,
+// so the driver does not vectorize. Sink = sum of every popped and peeked value.
+
+struct MyQueue {
+    inbox: Vec[i64],
+    outbox: Vec[i64],
+}
+
+fn q_new() -> MyQueue {
+    return MyQueue { inbox: Vec.new(), outbox: Vec.new() };
+}
+
+fn q_push(q: mut ref MyQueue, x: i64) {
+    q.inbox.push(x);
+}
+
+fn refill(q: mut ref MyQueue) {
+    if q.outbox.len() == 0i64 {
+        while q.inbox.len() > 0i64 {
+            let v = match q.inbox.pop() {
+                Some(x) => x,
+                None => 0i64,
+            };
+            q.outbox.push(v);
+        }
+    }
+}
+
+fn q_pop(q: mut ref MyQueue) -> i64 {
+    refill(q);
+    return match q.outbox.pop() {
+        Some(x) => x,
+        None => -1i64,
+    };
+}
+
+fn q_peek(q: mut ref MyQueue) -> i64 {
+    refill(q);
+    return q.outbox[q.outbox.len() - 1i64];
+}
+
+fn q_empty(q: ref MyQueue) -> bool {
+    return q.inbox.len() == 0i64 and q.outbox.len() == 0i64;
+}
+
+fn main() {
+    let n = 75000000i64;
+    let cap = 4096i64;
+    let mask = 1048575i64;
+
+    let mut q = q_new();
+    let mut sz = 0i64;
+    let mut sink = 0i64;
+    let mut state = 12345i64;
+
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        if q_empty(q) or (state % 2i64 == 0i64 and sz < cap) {
+            q_push(mut q, state & mask);
+            sz = sz + 1i64;
+        } else if state % 4i64 == 0i64 {
+            sink = sink + q_peek(mut q);
+        } else {
+            sink = sink + q_pop(mut q);
+            sz = sz - 1i64;
+        }
+        i = i + 1i64;
+    }
+    println(sink);
+}

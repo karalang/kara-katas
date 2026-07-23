@@ -1,0 +1,145 @@
+// Benchmark workload for LeetCode #224 — Basic Calculator.
+//
+// Build-once + punch: a deterministic 32-bit LCG (overflow-safe in i64) builds
+// ONE long, valid, fully-balanced expression buffer of non-negative integers
+// (0..999) joined by + and -, with parenthesised groups (persistent nesting
+// depth) and occasional unary minus after an open paren. Only + and - appear, so
+// every intermediate stays small (no overflow). The buffer is raw ASCII byte
+// codes in a Vec[i64]. Then `calculate` (the kata's single left-to-right byte
+// scan with a running result + sign and a push/pop stack across parens) is run K
+// times; before each run one leading digit is perturbed so the optimizer cannot
+// hoist the repeated evaluation. The scan's digit / +/- / paren dispatch is a
+// data-dependent branch that does not vectorize. Sink = the accumulated (mod)
+// sum of the K results.
+
+// ASCII: '+'=43 '-'=45 '('=40 ')'=41 '0'=48 '9'=57
+fn calculate(bytes: ref Vec[i64], n: i64) -> i64 {
+    let mut result = 0i64;
+    let mut sign = 1i64;
+    let mut stack: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        let b = bytes[i];
+        if b >= 48i64 and b <= 57i64 {
+            let mut num = 0i64;
+            while i < n and bytes[i] >= 48i64 and bytes[i] <= 57i64 {
+                num = num * 10i64 + (bytes[i] - 48i64);
+                i = i + 1i64;
+            }
+            result = result + sign * num;
+        } else if b == 43i64 {
+            sign = 1i64;
+            i = i + 1i64;
+        } else if b == 45i64 {
+            sign = -1i64;
+            i = i + 1i64;
+        } else if b == 40i64 {
+            stack.push(result);
+            stack.push(sign);
+            result = 0i64;
+            sign = 1i64;
+            i = i + 1i64;
+        } else if b == 41i64 {
+            let saved_sign = match stack.pop() {
+                Some(v) => v,
+                None => 1i64,
+            };
+            let saved_result = match stack.pop() {
+                Some(v) => v,
+                None => 0i64,
+            };
+            result = saved_result + saved_sign * result;
+            i = i + 1i64;
+        } else {
+            i = i + 1i64;
+        }
+    }
+    return result;
+}
+
+fn push_number(buf: mut ref Vec[i64], num: i64) {
+    if num >= 100i64 {
+        buf.push(48i64 + num / 100i64);
+        buf.push(48i64 + (num / 10i64) % 10i64);
+        buf.push(48i64 + num % 10i64);
+    } else if num >= 10i64 {
+        buf.push(48i64 + num / 10i64);
+        buf.push(48i64 + num % 10i64);
+    } else {
+        buf.push(48i64 + num);
+    }
+}
+
+fn main() {
+    let nums = 250000i64;                    // operand count in the expression
+    let passes = 80i64;
+    let max_depth = 16i64;
+    let modulus = 1000000007i64;
+
+    let mut buf: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut depth = 0i64;
+
+    // First operand (0..999).
+    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    push_number(mut buf, state % 1000i64);
+
+    let mut t = 1i64;
+    while t < nums {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        if state % 2i64 == 0i64 { buf.push(43i64); } else { buf.push(45i64); }
+
+        // Open parens (bounded by max_depth).
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let opens = state % 3i64;
+        let mut opened_here = false;
+        let mut o = 0i64;
+        while o < opens {
+            if depth < max_depth {
+                buf.push(40i64);
+                depth = depth + 1i64;
+                opened_here = true;
+            }
+            o = o + 1i64;
+        }
+
+        // Optional unary minus, only right after an open paren (always valid).
+        if opened_here {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            if state % 4i64 == 0i64 { buf.push(45i64); }
+        }
+
+        // Operand.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        push_number(mut buf, state % 1000i64);
+
+        // Close parens.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let closes = state % 3i64;
+        let mut c = 0i64;
+        while c < closes {
+            if depth > 0i64 {
+                buf.push(41i64);
+                depth = depth - 1i64;
+            }
+            c = c + 1i64;
+        }
+        t = t + 1i64;
+    }
+    // Close any remaining open parens.
+    while depth > 0i64 {
+        buf.push(41i64);
+        depth = depth - 1i64;
+    }
+
+    let n = buf.len();
+    let mut sink = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        buf[0] = 48i64 + (p % 10i64);        // perturb leading digit to '0'..'9'
+        let r = calculate(buf, n);
+        sink = ((sink + r) % modulus + modulus) % modulus;
+        p = p + 1i64;
+    }
+    println(sink);
+}

@@ -1,0 +1,50 @@
+// Benchmark workload for LeetCode #209 — Minimum Size Subarray Sum.
+//
+// Build-once + punch: one large positive-integer array is generated once with a
+// deterministic LCG, then the O(n) sliding-window `min_subarray_len` is run for
+// TARGETS distinct thresholds. The window's inner shrink loop is data-dependent
+// (it runs a variable number of times per step, gated on the running sum), so the
+// scan does NOT vectorize. Sink = sum of the answers over all targets.
+
+fn min_subarray_len(target: i64, nums: ref Vec[i64], n: i64) -> i64 {
+    let mut left = 0i64;
+    let mut sum = 0i64;
+    let mut best = -1i64;
+    let mut right = 0i64;
+    while right < n {
+        sum = sum + nums[right];
+        while sum >= target {
+            let len = right - left + 1i64;
+            if best == -1i64 or len < best { best = len; }
+            sum = sum - nums[left];
+            left = left + 1i64;
+        }
+        right = right + 1i64;
+    }
+    if best == -1i64 { return 0i64; }
+    return best;
+}
+
+fn main() {
+    let n = 200000i64;
+    let targets = 290i64;
+
+    let mut nums: Vec[i64] = Vec.new();
+    let mut state = 12345i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        nums.push(1i64 + state % 100i64);          // 1..100, all positive
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut t = 0i64;
+    while t < targets {
+        let target = 200i64 + t * 80i64;
+        sink = sink + min_subarray_len(target, nums, n);
+        t = t + 1i64;
+    }
+
+    println(sink);
+}
