@@ -31,6 +31,23 @@ Scan the grid. Each time an **unvisited land cell** is found, it must belong to 
 - **`Vec[i64]` explicit stack** — `push` / peek / `pop` (→ `Option`, discarded) driving iterative DFS; positions packed as `r*cols + c` and unpacked with `/` and `%`.
 - **`mut ref Vec[Vec[i64]]` parameter** — the grid is consumed by value in `report` (`let mut g = grid`) then passed with the `mut` marker to the mutating `num_islands`.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`6469639`). Workload: iterative stack flood-fill island count over an 80x80 PRNG 0/1 grid x 13000 passes, grid restored from a persistently-punched master each pass (data-dependent stack growth, non-vectorizing).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 423.4 ms | 0.50× |
+| **Kāra (codegen)** | 850.6 ms | 1.00× |
+| Rust `-O` | 866.0 ms | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 891.6 ms | 1.05× |
+| Go | 1.33 s | 1.57× |
+| Python (scale lane) | 28.58 s | 33.61× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
