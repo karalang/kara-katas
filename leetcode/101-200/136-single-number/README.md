@@ -29,6 +29,23 @@ XOR is associative, commutative, self-inverse (`a ^ a == 0`), and has `0` as ide
 - **`ref Vec[i64]` read-only parameter** — the solver borrows `nums` without taking ownership (the idiomatic read-only-function form; sibling of #137's helpers).
 - **`^` on `i64`** — the sequential bitwise-XOR fold, interp == build == Python.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`27831520`). Workload: XOR-fold of a 280001-element pairs+unique array x 3400 passes (build-once + punch); sink=fold total.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 298.1 ms | 0.99× |
+| **Kāra (codegen)** | 299.8 ms | 1.00× |
+| Rust `-O` | 301.5 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 310.4 ms | 1.04× |
+| Go | 645.2 ms | 2.15× |
+| Python (scale lane) | 42.24 s | 140.91× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -31,6 +31,23 @@ Given a string `s` and a dictionary of words, decide whether `s` can be segmente
 - **`String.substring(j, i)`** — the `s[j..i]` prefix-piece extraction inside the double loop (a fresh heap `String` per probe — a real allocation/leak surface, verified clean).
 - **`Vec[bool]` DP table** — filled to length `n + 1`, indexed both as a read (`dp[j]`) and a write (`dp[i] = true`).
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`2602274054`). Workload: prefix-DP word break over 2.2M random windows into a build-once string; dict is a SET (flat stamped base-A table; C hand-rolls it).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 290.7 ms | 0.55× |
+| Rust `-O` | 456.1 ms | 0.86× |
+| **Kāra (codegen)** | 529.6 ms | 1.00× |
+| Go | 541.0 ms | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 599.6 ms | 1.13× |
+| Python (scale lane) | 26.03 s | 49.15× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

@@ -35,6 +35,23 @@ The histogram pass is O(cols) with a **monotonic stack** of column indices with 
 - **Monotonic `Vec[i64]` stack** with `push`/`pop` and **nested index reads** `heights[stack[stack.len()-1]]` (an index expression used as an index) in the pop-condition and width computation.
 - **`if`-expressions** for the sentinel height and the stack-empty width branch.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`225518`). Workload: histogram + monotonic-stack maximal rectangle over a 70x70 0/1 matrix x 11K passes (build-once + punch).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 490.6 ms | 0.62× |
+| Rust `-O` | 784.2 ms | 0.99× |
+| **Kāra (codegen)** | 791.2 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 839.0 ms | 1.06× |
+| Go | 874.1 ms | 1.10× |
+| Python (scale lane) | 16.79 s | 21.22× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
