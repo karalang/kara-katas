@@ -43,6 +43,23 @@ A `next` cycle is therefore **leak-free**: the `Vec` owns each node once, and th
 - **`Vec[Node]` strong ownership + weak overlay** — the cycle is reclaimed cleanly (verified), the concrete payoff of the `weak` feature.
 - **`Option[Node]` two-pointer walk** — nested `match` over the fast/slow cursors, comparing node identity by `id`.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`741750108`). Workload: Floyd tortoise/hare cycle detection over 1000 index-pool lists x 3000 perturbed passes (pointer-chasing).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 363.8 ms | 0.95× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 379.7 ms | 0.99× |
+| Go | 379.8 ms | 0.99× |
+| **Kāra (codegen)** | 384.2 ms | 1.00× |
+| Rust `-O` | 385.7 ms | 1.00× |
+| Python (scale lane) | 6.64 s | 17.28× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash

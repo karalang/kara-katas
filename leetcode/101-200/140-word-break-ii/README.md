@@ -40,6 +40,23 @@ Each recursion returns a fresh `Vec[String]` of sentences; the caller prepends i
 > - **`Vec[T].sorted()` is codegen-unimplemented** ([kara `B-2026-07-19-15`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)): the immutable, value-returning `sorted()` runs under `--interp` but fails both `build` and JIT for every element type (in-place `sort()` is fully supported). The kata uses in-place `.sort()` before returning — the supported idiomatic equivalent — and the gap is filed for a later `sorted() = clone + sort` implementation.
 > - A `perf[rc-fallback]` note fires on `word` (re-used after the `dict.contains(word)` membership check) — an accepted outcome, not an error: the value is genuinely shared across the check and the sentence-building push, so RC is the correct lowering.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`43777796`). Workload: exponential-backtracking segmentation COUNT over 80K short random inputs (dict is a SET; flat stamped base-A table).
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 468.9 ms | 0.39× |
+| Rust `-O` | 573.1 ms | 0.48× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 700.7 ms | 0.58× |
+| Go | 784.6 ms | 0.65× |
+| **Kāra (codegen)** | 1.20 s | 1.00× |
+| Python (scale lane) | 34.18 s | 28.39× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
