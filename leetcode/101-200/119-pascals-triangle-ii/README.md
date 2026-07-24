@@ -36,6 +36,21 @@ one row, updated in place right-to-left:   row[k] = row[k] + row[k-1]
 
 **v1 note.** `rowIndex` stays within the `≤ 33` constraint (the sink folds rows for `rowIndex = 0…33`). Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; they agree with each other, the Python mirror, and the binomial + `C(n,j)`-definition ground truth, and are valgrind-clean.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`72342709`). Workload: each rep computes the rowIndex-th Pascal row for a data-dependent rowIndex (30+acc%20, 30..49) as one Vec[i64] updated in place right-to-left (row[k]=row[k]+row[k-1]), folding every entry; K=440000 reps — the in-place index-assignment regime.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 225.2 ms | 0.69× |
+| C `clang -O3` | 236.7 ms | 0.72× |
+| **Kāra (codegen)** | 327.5 ms | 1.00× |
+| Go | 429.0 ms | 1.31× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
