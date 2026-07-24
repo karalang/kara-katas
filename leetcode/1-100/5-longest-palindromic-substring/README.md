@@ -30,6 +30,7 @@ There is no faster *general* algorithm in this complexity class with constant au
 
 No `Map`, no `Set`, no shared structs.
 
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`500000`). Workload: expand_around_center n=5000, K=100; O(n²) (py timed separately).
@@ -38,10 +39,10 @@ Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 809.3 ms | 0.66× |
-| Go | 877.5 ms | 0.71× |
-| C `clang -O3` | 911.2 ms | 0.74× |
-| **Kāra (codegen)** | 1.23 s | 1.00× |
+| Rust `-O` | 808.4 ms | 1.00× |
+| **Kāra (codegen)** | 809.3 ms | 1.00× |
+| Go | 905.8 ms | 1.12× |
+| C `clang -O3` | 1.10 s | 1.35× |
 
 Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -59,6 +60,8 @@ python3 expand_around_center.py
 ## Benchmarks
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`expand_around_center.{kara,rs,c}`, `go-seq/main.go`). The Python mirror is included in the long-workloads table below; it's skipped from the sink check by default (≈110 ms at this N) — set `KARA_BENCH_INCLUDE_PY=1` to opt in.
+
+> **Update 2026-07-24 — per-core seq gap closed.** The M5 Pro snapshot below (2026-06-05) predates the karac inline-hint fix (ledger `B-2026-07-24-1`): the compiler-driven inline-hint pass was under-inlining a small loop-hot `ref Vec[char]` helper (`expand`), leaving its bounds checks un-elided. With the helper now inlined, the surviving half-bounds-checks fold away and the per-core seq lane reaches **parity with Rust** (and now leads C `clang -O3`) — see the fresh x86 container table above (`bench/results.container-x86.json`, 2026-07-24). The M5 Pro numbers and "Kāra last in the seq lane" framing that follow are the **pre-fix** historical snapshot, kept for provenance; treat the container table above as the current standing.
 
 Per [`../../../BENCH.md`](../../../BENCH.md), the inner expand loop carries a strict `chars[lo] == chars[hi]` data dependency that gates the next step — so each `longest_palindrome` call stays serial. But the **outer K=100 loop is a sum-over-calls reduction**, and at K=100 the per-call O(n²) work clears the runtime auto-par gate, so karac's auto-par-on-reduction parallelizes the outer loop by default. The kata therefore has both a **seq lane** (codegen quality, `KARAC_AUTO_PAR=0`) and a **par lane** (auto-par vs hand-tuned). The seq Kāra binary is verified single-threaded via `nm -gU bench/target/expand_around_center_kara_seq | grep karac_par` (no auto-par symbols present) per BENCH.md § Implicit auto-par.
 
@@ -85,7 +88,7 @@ Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`, 
 | go   expand_around_center | 415.3 ms ± 19.2 ms | 412.0 ms | 0.87× of Kāra |
 | **kāra expand_around_center (codegen)** | **478.0 ms ± 6.5 ms** | 476.0 ms | **1.00×** (baseline) |
 
-Inner-loop-bound shape: a tight two-pointer `chars[lo] == chars[hi]` byte-comparison loop running 12.5M times per `longest_palindrome` call, with the `Vec[char]` snapshot built once per outer iteration. **Kāra is slowest of the four in this seq lane** (478.0 ms; C 286.9 at 0.60×, Rust 347.4 at 0.73×, Go 415.3 at 0.87×) — roughly 1.67× behind C, 1.38× behind Rust, 1.15× behind Go on this re-bench. The inner expand loop is exactly the shape where karac's bounds-checked indexed `Vec[char]` reads cost the most against C's raw `int32_t*` arithmetic and against rustc's loop optimizer; dominator-aware bounds-check elision is the tracked karac follow-up that would close the largest part of this gap. Honest standing today: on this inner-loop kernel Kāra lands at the back of the pack, and the chart shows that plainly.
+Inner-loop-bound shape: a tight two-pointer `chars[lo] == chars[hi]` byte-comparison loop running 12.5M times per `longest_palindrome` call, with the `Vec[char]` snapshot built once per outer iteration. **Kāra is slowest of the four in this seq lane** (478.0 ms; C 286.9 at 0.60×, Rust 347.4 at 0.73×, Go 415.3 at 0.87×) — roughly 1.67× behind C, 1.38× behind Rust, 1.15× behind Go on this re-bench. The inner expand loop is exactly the shape where karac's bounds-checked indexed `Vec[char]` reads cost the most against C's raw `int32_t*` arithmetic and against rustc's loop optimizer. **This gap has since been closed** (see the 2026-07-24 update banner above): the fix was inlining the loop-hot `expand` helper so the caller's range facts reach it and the surviving half-bounds-checks fold away — on the post-fix x86 container table above the seq lane now ties Rust and leads C. The M5 Pro row below is the pre-fix historical snapshot.
 
 ### Runtime — par lane (auto-par vs hand-tuned)
 
@@ -98,7 +101,7 @@ The outer K=100 loop is a sum-over-`longest_palindrome`-calls reduction; all fou
 | c + pthreads | raw `pthread_create`/`join` + chunk + merge | 48.1 ms ± 2.6 ms | 1.07× of Kāra |
 | go goroutines | chunk + `sync.WaitGroup` + merge | 69.5 ms ± 2.7 ms | 1.55× of Kāra |
 
-**Kāra's auto-par — with zero parallel source — lands ahead of the hand-written C+pthreads mirror (1.07×) and Go's goroutine chunking (1.55×), behind only hand-tuned rayon (1.65× ahead).** It is a ~10.7× speedup over Kāra's own seq binary (478.0 → 44.8 ms). The per-core codegen gap that puts Kāra last in the seq lane is largely absorbed here by the free parallelism: the compiler recognizes the natural serial reduction and fans it across cores without a source change.
+**Kāra's auto-par — with zero parallel source — lands ahead of the hand-written C+pthreads mirror (1.07×) and Go's goroutine chunking (1.55×), behind only hand-tuned rayon (1.65× ahead).** It is a ~10.7× speedup over Kāra's own seq binary (478.0 → 44.8 ms). On this pre-fix M5 Pro snapshot the per-core codegen gap that put Kāra last in the seq lane was largely absorbed here by the free parallelism anyway; post-fix (see the update banner above) the seq lane itself reaches parity, so the par lane now stacks free parallelism on top of an already-competitive per-core binary.
 
 ### Runtime — long workloads (Python)
 
@@ -155,7 +158,7 @@ At parity with C/Rust — the algorithm is O(1) extra space and the per-call `Ve
 
 ### Why this kata is in the harness
 
-Longest Palindromic Substring is the canonical "tight inner-loop on a byte-comparison hot path" entry: an O(n²) two-pointer expand where every iteration is one indexed read + one equality test + two integer increments, repeated millions of times with no allocator, no map lookup, and no generic dispatch in the way. This is where Kāra's codegen has to compete with rustc and clang step-for-step on instruction count — there's nowhere to hide behind stdlib quality, and on this re-bench Kāra lands **last in the seq lane** (~1.67× behind C, ~1.38× behind Rust), with bounds-checked `Vec[char]` reads carrying most of the gap and dominator-aware bounds-check elision the tracked follow-up. It is an honest "we're behind here, and the chart shows it" measurement — paired with the par lane, where Kāra's free auto-parallelism of the outer reduction puts it ahead of the hand-written C+pthreads and Go mirrors and behind only hand-tuned rayon. The same inner-loop sensitivity also makes this kata a reliable canary for karac codegen regressions: a panic-site inline-threshold regression on 2026-06-05 was caught here the day it shipped, A/B-attributed within hours, and fixed (karac `3f3b34a9`).
+Longest Palindromic Substring is the canonical "tight inner-loop on a byte-comparison hot path" entry: an O(n²) two-pointer expand where every iteration is one indexed read + one equality test + two integer increments, repeated millions of times with no allocator, no map lookup, and no generic dispatch in the way. This is where Kāra's codegen has to compete with rustc and clang step-for-step on instruction count — there's nowhere to hide behind stdlib quality. On the 2026-06-05 M5 Pro snapshot Kāra landed **last in the seq lane** (~1.67× behind C, ~1.38× behind Rust), with bounds-checked `Vec[char]` reads carrying most of the gap; that gap has **since been closed** by inlining the loop-hot `expand` helper (ledger `B-2026-07-24-1`, see the update banner above), and the post-fix x86 container table now shows the seq lane at parity with Rust and ahead of C. It was an honest "we're behind here, and the chart shows it" measurement that the harness then drove to a fix — paired with the par lane, where Kāra's free auto-parallelism of the outer reduction puts it ahead of the hand-written C+pthreads and Go mirrors and behind only hand-tuned rayon. The same inner-loop sensitivity also makes this kata a reliable canary for karac codegen regressions: a panic-site inline-threshold regression on 2026-06-05 was caught here the day it shipped, A/B-attributed within hours, and fixed (karac `3f3b34a9`).
 
 ---
 
