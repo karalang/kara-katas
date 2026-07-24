@@ -49,6 +49,21 @@ is_mirror(a, b):
 
 **v1 note.** Trees stay within the `≤ 1000`-node constraint. The sink folds each tree's boolean verdict into a running polynomial hash (order-sensitive). Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; they agree with each other, the Python mirror, and the preorder-vs-mirror-preorder + fuzz ground truth.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`80745775`). Workload: build 8 trees once, then K=8000000 reps of recursive is_symmetric on a data-dependent-selected tree (idx=acc%8), folding each verdict into a rolling polynomial hash.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 205.4 ms | 0.84× |
+| Rust `-O` | 209.5 ms | 0.86× |
+| **Kāra (codegen)** | 244.8 ms | 1.00× |
+| Go | 373.0 ms | 1.52× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
