@@ -49,6 +49,21 @@ min_depth(node):
 
 **v1 note.** Trees stay within the `≤ 10^5`-node constraint. The sink folds each tree's minimum depth into a running polynomial hash. Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`; they agree with each other, the Python mirror, and the BFS + brute-force fuzz ground truth, and are valgrind-clean.
 
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`768360140`). Workload: build 8 balanced 31-node trees once, then K=3000000 reps of recursive min_depth on a data-dependent-selected tree (idx=acc%8), folding each minimum depth into a rolling polynomial hash; read-only per-node post-order traversal (no allocation), the exposed RC/traversal regime.
+
+Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O` | 345.1 ms | 0.83× |
+| C `clang -O3` | 374.5 ms | 0.90× |
+| **Kāra (codegen)** | 417.6 ms | 1.00× |
+| Go | 430.7 ms | 1.03× |
+
+Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
