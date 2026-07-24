@@ -29,6 +29,7 @@ Walk the array once, keeping a `Set[i64]` of the values seen so far. Before inse
 - **`Set[i64]`** — `Set.new()`, `contains(x) → bool` membership test, and `insert(x)`, the hash-set primitive (Set lowers to `Map[T, ()]` in the runtime).
 - **Early-exit scan over a `Slice[i64]`** — returns on the first repeat rather than counting everything.
 
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`27979`). Workload: hash-set contains_duplicate over 239200 sliding width-800 windows of a PRNG array; count of windows with a duplicate.
@@ -37,12 +38,11 @@ Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 279.6 ms | 0.02× |
-| Rust `-O` | 8.28 s | 0.72× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 8.28 s | 0.72× |
-| **Kāra (codegen)** | 11.45 s | 1.00× |
-| Go | 15.00 s | 1.31× |
-| Python (scale lane) | 17.48 s | 1.53× |
+| C `clang -O3` | 228.5 ms | 0.03× |
+| Rust `-O` | 7.79 s | 0.94× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 7.80 s | 0.95× |
+| **Kāra (codegen)** | 8.25 s | 1.00× |
+| Go | 12.03 s | 1.46× |
 
 Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
