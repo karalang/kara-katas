@@ -92,52 +92,70 @@ across all five languages.
 
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| c | 72.8 ms ± 6.2 | **4.14× faster** |
-| go | 128.2 ms ± 7.7 | 2.35× faster |
-| rust (overflow-checks=on) | 162.0 ms ± 11.6 | 1.86× faster |
-| rust | 164.1 ms ± 10.2 | 1.84× faster |
-| **kāra** | **301.5 ms ± 12.7** | — |
+| c | 56.2 ms ± 5.6 | **3.75× faster** |
+| go | 102.6 ms ± 10.6 | 2.05× faster |
+| rust (overflow-checks=on) | 125.5 ms ± 17.2 | 1.68× faster |
+| rust | 138.1 ms ± 27.5 | 1.53× faster |
+| **kāra** | **210.7 ms ± 19.0** | — |
 
-**This is the first kata in the corpus where kāra is last among the compiled
-languages.** That result is real and is not being softened — but roughly half
-of it is one open compiler bug, and the split was measured rather than assumed.
+Kāra is still last among the compiled languages on this kata. That is the
+honest standing result for a String-keyed-map + recursion workload.
 
-### ~Half the deficit is B-2026-07-25-5, measured
+### What the B-2026-07-25-5 fix actually bought — and a corrected prediction
 
-Kāra cannot express the in-place adjacency append. `m[k].push(x)` type-checks
-and runs correctly under the interpreter but is **rejected by codegen**
-(ledger **B-2026-07-25-5**, open — found while writing this benchmark). So the
-Kāra build must do get-copy-push-insert, and because `Map.get` yields a *copy*
-that is **O(degree) per edge**, i.e. O(Σ deg²) overall. Rust's
-`entry().or_default().push()`, Go's `append(m[k], v)` and Python's `setdefault`
-are all O(1) amortized.
+This kata originally used get-copy-push-insert for the adjacency build,
+because Kāra could not express the in-place form: `m[k].push(x)` type-checked
+and ran under the interpreter but was **rejected by codegen**. That was filed
+as **B-2026-07-25-5** from this benchmark and is now **fixed** (`4416d33`), so
+the kata and its harness use the idiomatic form:
 
-To size that cost, the same program was re-run on a graph with the **same edge
-count but maximum degree 1** (one 1000-edge cycle instead of 40 cycles through
-a degree-40 hub), which removes the quadratic term entirely:
+```kara
+if not adj.contains_key(froms[i]) {
+    let empty: Vec[String] = Vec.new();
+    let _ = adj.insert(froms[i], empty);
+}
+adj[froms[i]].push(tos[i]);   // in-place; was get → push → insert
+```
 
-| Graph | kāra | rust | ratio |
+The per-airport destination sort collapsed the same way, from a three-line
+copy-back to `adj[keys[k]].sort()`.
+
+**The earlier prediction in this README was too optimistic and is corrected
+here.** Before the fix existed, a graph-shape discriminator (same edge count,
+max degree 40 → 1) suggested ~52% of Kāra's deficit was the quadratic build.
+Measuring the real fix — both binaries built from the same compiler, run in one
+hyperfine session, 50 runs, warmup 10:
+
+| Variant | mean ± σ | median | vs rust |
 |---|---|---|---|
-| max degree 40 (the bench) | 301.5 ms | 164.1 ms | 1.84× |
-| max degree 1 (discriminator) | 229.8 ms ± 6.4 | 162.2 ms ± 14.6 | **1.42×** |
+| kāra, copy-back (old) | 229.4 ms ± 10.6 | 227.6 ms | 1.82× |
+| kāra, in-place (new) | 200.7 ms ± 5.5 | 199.1 ms | 1.59× |
 
-Rust is unchanged between the two (164.1 → 162.2 ms, inside σ), confirming the
-graph shape itself costs it nothing. Kāra drops **71.7 ms**, about **52% of its
-137 ms deficit**. So:
+**~12.5% wall-clock, closing ~25% of the gap to Rust** (23–28% depending on
+whether median or min is used) — not the ~52% predicted.
 
-- **~52% of the gap is the open bug** — it should close when `m[k].push(x)`
-  lowers, with no algorithmic change to the kata.
-- **The residual 1.42× is genuine** and is the honest standing number for this
-  shape: String-keyed map operations, per-edge string copies, and allocation.
+The discriminator overestimated because reshaping the graph is not what the fix
+does. Removing the hub removes the O(Σ deg²) copies outright; the fix instead
+*trades* them for an extra `contains_key` probe per edge. The old `get` did
+double duty as presence check **and** value fetch, so the in-place form pays
+one additional String hash+probe per edge and only recovers part of the copy
+cost. A single-lookup `entry(k).or_insert(...).push(x)` chain would avoid that
+second probe and is the obvious next step.
+
+**Cross-run absolute times are not comparable on this host.** The pre-fix table
+recorded rust at 164.1 ms; the same unmodified binary measured 123.7–138.1 ms
+hours later. Only the same-session A/B above supports the attribution.
 
 ### Compile, size, memory
 
 | Metric | kāra | rust | c | go |
 |---|---|---|---|---|
-| Compile (cold) | 479.3 ms ± 36.0 | 384.8 ms ± 27.1 | 148.4 ms ± 5.5 | — |
-| Binary size | **386.3 KiB** | 3904.8 KiB | 16.2 KiB | 2208.2 KiB |
-| Runtime peak RSS | 3.4 MiB | 2.9 MiB | 1.8 MiB | 7.2 MiB |
-| Compile peak RSS | **91.0 MiB** | 140.9 MiB | 97.1 MiB | — |
+| Compile (cold) | 326.6 ms ± 7.0 | 296.1 ms ± 11.4 | 124.3 ms ± 5.0 | — |
+| Binary size | **386.4 KiB** | 3904.8 KiB | 16.2 KiB | 2208.2 KiB |
+| Runtime peak RSS | 3.5 MiB | 3.1 MiB | 1.8 MiB | 7.3 MiB |
+| Compile peak RSS | **91.0 MiB** | 141.8 MiB | 97.2 MiB | — |
+
+`karac build` lands within 10% of `rustc -O` and uses ~36% less peak memory.
 
 ### Mirror-parity notes
 
