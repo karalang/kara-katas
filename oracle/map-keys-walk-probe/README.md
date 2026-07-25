@@ -19,14 +19,18 @@ rustc -O -C overflow-checks=on walk.rs -o walk_rs
 
 ## Result (container x86, idle, 5 runs each)
 
-| | time | per key |
+| | before `bef6bbc` | after `bef6bbc` |
 |---|---|---|
-| **Kāra** | 1.70–1.73 s | ~8.3 ns |
-| Rust (`-O -C overflow-checks=on`) | 0.23–0.26 s | ~1.13 ns |
-| **ratio** | **~7.4×** | |
+| **Kāra** | 1.70–1.73 s (~8.3 ns/key) | **0.32–0.36 s** |
+| Rust (`-O -C overflow-checks=on`) | 0.23–0.26 s (~1.13 ns/key) | 0.27–0.30 s |
+| **ratio** | **~7.4×** | **~1.19×** |
 
-**The walk is the cost, not the probe.** The gap is far wider here than in #170
-itself (~2×), where ~170 `get`s per call dilute it.
+**The walk was the cost, not the probe** — the gap was far wider here than in
+#170 itself (~2×), where ~170 `get`s per call diluted it. That diagnosis drove
+the fix: LeetCode #170 went 2.06× → 1.20× on the same change.
+
+This probe stays as the regression gate for the inline walk. Re-run it before
+and after any change to map iteration.
 
 ## Why
 
@@ -41,9 +45,13 @@ register. Rust's `keys()` is an inlined typed 8-byte load.
 `linkonce_odr` function emitted into the module, so LLVM can see through it.
 That is the shape the walk needs.)
 
-## Fix direction
+## Fix (landed — `kara` `bef6bbc`, ledger B-2026-07-24-2)
 
-Emit a **mono inline bucket walk** in codegen instead of calling the runtime
-iterator — statically-known key/val sizes become plain typed loads, the index
-stays in a register, and the call disappears. Same trick `get`/`insert` already
-use (`get_or_emit_map_mono_methods`, `src/codegen/maps.rs`).
+Codegen now open-codes the scan when both map halves are scalar: for
+`slot in 0..capacity`, test `status[slot] == OCCUPIED`, load the halves
+straight from `kv[slot*stride]` / `kv[slot*stride + key_size]`. The call, the
+out-parameter memcpys and the boxed index go together, and no iterator is
+allocated — so `break` and early `return` are leak-free with no cleanup.
+
+Heap halves (`String`/`Vec` key or value) and `SortedMap` deliberately stay on
+the runtime iterator: they need the per-element clone/drop it performs.
