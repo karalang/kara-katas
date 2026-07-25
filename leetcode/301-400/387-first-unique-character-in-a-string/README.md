@@ -58,9 +58,18 @@ including the empty-string and single-character edge cases.
 
 ## Benchmarks
 
-[`bench/`](bench/) — `bash bench/bench.sh`. Numbers below are from an x86_64
-Linux container (see caveats; read [`../../../BENCHMARKS.md`](../../../BENCHMARKS.md)
-before quoting any of them).
+[`bench/`](bench/) — `bash bench/bench.sh`. Read
+[`../../../BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of these.
+
+> **Host:** measured on the shared **x86-64 Linux cloud container**, so the run
+> is committed as `bench/results.container-x86.json`, not `results.json`. Per
+> the corpus convention, `results.json` is reserved for the canonical Apple M5
+> Pro numbers and is the only file `scripts/consolidate-bench.sh` feeds into the
+> top-level `bench-results.json`. **This kata has no M5 run yet**, so it is
+> deliberately absent from the consolidated feed rather than mixing a
+> container measurement into an M5-measured chart. Absolute times here are not
+> comparable to other katas' `results.json`; only the **within-file
+> cross-language ratios** are the signal.
 
 **Workload.** Build-once + punch: a 4000-byte haystack is built once (25
 repeating chars plus a single `'z'` at the very end, so the answer sits at the
