@@ -1,0 +1,92 @@
+// Benchmark harness for LeetCode #287 — Find the Duplicate Number.
+//
+// Build-once + punch (BENCHMARKS.md): four 200,001-element arrays are built
+// once, then punched in rotation with the kata's `find_duplicate` unchanged.
+//
+// The arrays are built so Floyd's walk is LONG and RANDOM, which is the whole
+// point of benching this kata. A naive input has cycle length O(sqrt(n)), so
+// each call would do only ~600 hops and measure nothing. Instead each array
+// encodes a SINGLE n-cycle over a shuffled order: Fisher-Yates a list of
+// 1..=n with an LCG, then set arr[order[k]] = order[k+1 mod n]. The walk from
+// index 0 therefore traverses all n values in shuffled order — ~3n dependent
+// loads (slow does n, fast does 2n) over a 1.6 MB working set, with every load
+// address depending on the previous one.
+//
+// That makes this the corpus's pointer-chasing / memory-latency shape: no
+// vectorization is possible, no prefetcher can help, and the measurement is
+// dominated by load-to-use latency rather than instruction throughput.
+//
+// arr[0] points at a different cycle member per array, so the duplicate (the
+// cycle entrance) differs and the sink is not a constant.
+
+fn find_duplicate(nums: ref Vec[i64]) -> i64 {
+    let mut slow = nums[0];
+    let mut fast = nums[0];
+    slow = nums[slow];
+    fast = nums[nums[fast]];
+    while slow != fast {
+        slow = nums[slow];
+        fast = nums[nums[fast]];
+    }
+    let mut finder = nums[0];
+    while finder != slow {
+        finder = nums[finder];
+        slow = nums[slow];
+    }
+    return finder;
+}
+
+fn main() {
+    let np = 4i64;
+    let n = 200000i64;
+    let iters = 80i64;
+
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    let mut p = 0i64;
+    while p < np {
+        // order = a shuffled permutation of 1..=n (Fisher-Yates, LCG-driven).
+        let mut order: Vec[i64] = Vec.new();
+        let mut v = 1i64;
+        while v <= n {
+            order.push(v);
+            v = v + 1i64;
+        }
+        let mut x = p + 12345i64;
+        let mut k = n - 1i64;
+        while k > 0i64 {
+            x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+            let j = (x / 65536i64) % (k + 1i64);
+            let tmp = order[k];
+            order[k] = order[j];
+            order[j] = tmp;
+            k = k - 1i64;
+        }
+
+        let mut arr: Vec[i64] = Vec.new();
+        let mut z = 0i64;
+        while z <= n {
+            arr.push(0i64);
+            z = z + 1i64;
+        }
+        let mut t = 0i64;
+        while t < n {
+            let nxt = (t + 1i64) % n;
+            arr[order[t]] = order[nxt];
+            t = t + 1i64;
+        }
+        // Entry point into the cycle — different per array, so the duplicate
+        // (and therefore the sink) differs.
+        arr[0] = order[p * 37i64];
+        arrays.push(arr);
+        p = p + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        sink = (sink * 31i64 + find_duplicate(arrays[idx])) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
