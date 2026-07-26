@@ -1,0 +1,68 @@
+// Benchmark harness for LeetCode #240 — Search a 2D Matrix II.
+//
+// Build-once + punch (BENCHMARKS.md): a 1000x1000 doubly-sorted matrix is built
+// once as a flat row-major Vec, then each punch is one staircase query.
+//
+// A single query is only O(m + n) — 2000 steps — so the punch count is high
+// (120 000) rather than the matrix being enormous. That keeps the working set
+// at 8 MB, comfortably larger than L2, so the walk pays real cache misses as it
+// strides down columns.
+//
+// Targets are drawn to straddle the value range: roughly half hit and half
+// miss. A hit exits early at a random depth; a miss always runs the full
+// m + n staircase. Benching only hits or only misses would measure one branch
+// of the loop.
+
+fn search_matrix(flat: ref Vec[i64], rows: i64, cols: i64, target: i64) -> bool {
+    if rows == 0i64 or cols == 0i64 {
+        return false;
+    }
+    let mut r = 0i64;
+    let mut c = cols - 1i64;
+    while r < rows and c >= 0i64 {
+        let v = flat[r * cols + c];
+        if v == target {
+            return true;
+        } else if v > target {
+            c = c - 1i64;
+        } else {
+            r = r + 1i64;
+        }
+    }
+    return false;
+}
+
+fn main() {
+    let rows = 1000i64;
+    let cols = 1000i64;
+    let iters = 120000i64;
+
+    // value = r*3 + c*5 ascends along both axes, which is exactly the
+    // precondition the staircase walk relies on.
+    let mut flat: Vec[i64] = Vec.new();
+    let mut r = 0i64;
+    while r < rows {
+        let mut c = 0i64;
+        while c < cols {
+            flat.push(r * 3i64 + c * 5i64);
+            c = c + 1i64;
+        }
+        r = r + 1i64;
+    }
+    let maxv = (rows - 1i64) * 3i64 + (cols - 1i64) * 5i64;
+
+    let mut sink = 0i64;
+    let mut x = 12345i64;
+    let mut it = 0i64;
+    while it < iters {
+        x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+        // Bit 16 upward, not the low bits — a power-of-two-modulus LCG has
+        // very short periods in its low-order bits.
+        let target = (x / 65536i64) % (maxv + 2i64);
+        if search_matrix(flat, rows, cols, target) {
+            sink = (sink + it + 1i64) % 1000000007i64;
+        }
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
