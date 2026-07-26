@@ -1,0 +1,156 @@
+// Benchmark harness for LeetCode #127 — Word Ladder.
+//
+// Build-once + punch (BENCHMARKS.md): the word list is generated once — every
+// 5-letter word over the 5-letter alphabet {a..e}, so 3,125 words, a graph that
+// is connected with diameter 5 — then punched with 12 different (begin, end)
+// pairs.
+//
+// Each punch runs the kata's BFS unchanged: build a Map[String, i64] of the
+// whole list, then level-order expand, generating for every visited word all
+// `5 positions * 25 substitutions` candidate strings and looking each one up.
+// That is ~3,125 * 125 = 390k freshly built 5-byte Strings and 390k String-keyed
+// map lookups per punch, ~20 of every 25 of which MISS (the candidates range
+// over a..z while the list only uses a..e).
+//
+// So this is the corpus's String-and-hash-map-churn shape: allocation, hashing
+// and equality on short heap strings, with almost no arithmetic. It is the
+// workload class where kara has historically trailed (see #131), which is why
+// it is worth measuring rather than assuming.
+
+fn nth_letter(n: i64) -> char {
+    let alphabet: String = "abcdefghijklmnopqrstuvwxyz";
+    let target = n % 26i64;
+    let mut i = 0i64;
+    for ch in alphabet.chars() {
+        if i == target {
+            return ch;
+        }
+        i = i + 1i64;
+    }
+    'a'
+}
+
+fn replace_char(word: ref String, pos: i64, new_ch: char) -> String {
+    let mut out: String = "";
+    let mut i = 0i64;
+    for ch in word.chars() {
+        if i == pos {
+            out.push(new_ch);
+        } else {
+            out.push(ch);
+        }
+        i = i + 1i64;
+    }
+    out
+}
+
+fn neighbors(word: ref String, word_set: ref Map[String, i64]) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    let bytes = word.bytes();
+    let n = bytes.len();
+    let mut i = 0i64;
+    while i < n {
+        let orig = bytes[i];
+        let mut c = 0i64;
+        while c < 26i64 {
+            if (c + 97i64) != (orig as i64) {
+                let cand = replace_char(word, i, nth_letter(c));
+                match word_set.get(cand) {
+                    Some(_) => {
+                        out.push(cand);
+                    }
+                    None => {}
+                }
+            }
+            c = c + 1i64;
+        }
+        i = i + 1i64;
+    }
+    out
+}
+
+fn ladder_length(begin: String, end: String, words: ref Vec[String]) -> i64 {
+    let mut word_set: Map[String, i64] = Map.new();
+    let mut wi = 0i64;
+    while wi < words.len() {
+        word_set.insert(words[wi], 1i64);
+        wi = wi + 1i64;
+    }
+    match word_set.get(end) {
+        None => {
+            return 0i64;
+        }
+        Some(_) => {}
+    }
+
+    let mut visited: Map[String, i64] = Map.new();
+    visited.insert(begin.clone(), 1i64);
+    let mut cur: Vec[String] = Vec.new();
+    cur.push(begin);
+    let mut steps = 1i64;
+
+    while cur.len() > 0i64 {
+        let mut nxt: Vec[String] = Vec.new();
+        let mut i = 0i64;
+        while i < cur.len() {
+            let word = cur[i];
+            if word == end {
+                return steps;
+            }
+            let nbs = neighbors(word, word_set);
+            let mut j = 0i64;
+            while j < nbs.len() {
+                let nb = nbs[j];
+                match visited.get(nb) {
+                    Some(_) => {}
+                    None => {
+                        visited.insert(nb.clone(), 1i64);
+                        nxt.push(nb);
+                    }
+                }
+                j = j + 1i64;
+            }
+            i = i + 1i64;
+        }
+        cur = nxt;
+        steps = steps + 1i64;
+    }
+    0i64
+}
+
+fn main() {
+    let alpha = 5i64;   // {a..e}
+    let wlen = 5i64;
+    let iters = 17i64;
+
+    // All 5-letter words over {a..e}, in lexicographic order.
+    let mut words: Vec[String] = Vec.new();
+    let total = 3125i64;   // alpha ** wlen
+    let mut idx = 0i64;
+    while idx < total {
+        let mut w: String = "";
+        let mut d = 0i64;
+        let mut rem = idx;
+        let mut div = 625i64;   // alpha ** (wlen - 1)
+        while d < wlen {
+            let digit = rem / div;
+            w.push(nth_letter(digit));
+            rem = rem - digit * div;
+            div = div / alpha;
+            d = d + 1i64;
+        }
+        words.push(w);
+        idx = idx + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let b = (it * 257i64) % total;
+        let e = (it * 613i64 + 1234i64) % total;
+        let r = ladder_length(words[b], words[e], words);
+        sink = (sink * 31i64 + r) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}

@@ -30,8 +30,17 @@ both languages check, and Kāra's own checked-arithmetic codegen is at *exact* p
 with Rust's in isolation. Kāra even emits **fewer** instructions than safety-matched
 Rust on 16 of the corpus's collection/pointer kernels (linked lists, trees, maps,
 backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is a
-handful of string-building kernels (1-byte `push_str` loops, ~1.2×) and the
-low-cardinality sort in #1665 — both tracked.
+handful of string-shaped kernels (~1.2×) and the low-cardinality sort in #1665 —
+both tracked.
+
+**Correction (2026-07-26):** the string-shaped residual was long attributed to
+1-byte `push_str` loops. Measured on
+[#127](leetcode/101-200/127-word-ladder/), that attribution is **wrong**: a
+104k-iteration char-by-char `String` build is a dead tie with Rust (5.5 ms vs
+5.4 ms), while building and probing a `Map[String, _]` of 3,125 keys is
+**2.45×** behind an equal-hash Rust `HashMap` (37.9 ms vs 15.5 ms) — and that
+one ratio accounts for the whole kata deficit. The string-keyed map, not the
+push loop, is the thing to fix; filed as `B-2026-07-26-2`.
 
 **A second baseline caveat — CPU baseline, found 2026-07-26 and not yet
 corrected corpus-wide.** `karac build` targets **`x86-64-v3`** (Haswell+, AVX2)
