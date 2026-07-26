@@ -1,0 +1,79 @@
+// Benchmark harness for LeetCode #129 — Sum Root to Leaf Numbers.
+//
+// Build-once + punch (BENCHMARKS.md): four balanced trees are built once, then
+// each punch is a full DFS over one of them.
+//
+// DEPTH IS BOUNDED ON PURPOSE. Each path spells a base-10 number
+// (`cur = cur*10 + val`), so a depth-18 tree produces path numbers near 1e18 and
+// the sum over its leaves overflows i64 outright — and kāra traps integer
+// overflow by default, so the benchmark would abort rather than measure. At
+// 2047 nodes the depth is 11, path numbers reach ~1e11, and the sum over 1024
+// leaves stays around 1e14, comfortably inside i64. The punch count carries the
+// workload instead of the tree size.
+//
+// This is the only tree kata in the corpus built from a `shared struct` (RC)
+// rather than an index pool, so the traversal exercises reference-count traffic
+// that #235 and #236 do not.
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn sum_dfs(node: Option[TreeNode], acc: i64) -> i64 {
+    match node {
+        None => 0i64,
+        Some(n) => {
+            let cur = acc * 10i64 + n.val;
+            let left_none = match n.left { None => true, Some(_) => false };
+            let right_none = match n.right { None => true, Some(_) => false };
+            if left_none and right_none {
+                cur
+            } else {
+                sum_dfs(n.left, cur) + sum_dfs(n.right, cur)
+            }
+        }
+    }
+}
+
+fn sum_numbers(root: Option[TreeNode]) -> i64 {
+    sum_dfs(root, 0i64)
+}
+
+fn digit(i: i64, seed: i64) -> i64 {
+    ((i * 7i64 + seed * 3i64) % 9i64) + 1i64
+}
+
+fn build_balanced(lo: i64, hi: i64, seed: i64) -> Option[TreeNode] {
+    if lo > hi {
+        return None;
+    }
+    let mid = (lo + hi) / 2i64;
+    let node = TreeNode { val: digit(mid, seed), left: None, right: None };
+    node.left = build_balanced(lo, mid - 1i64, seed);
+    node.right = build_balanced(mid + 1i64, hi, seed);
+    Some(node)
+}
+
+fn main() {
+    let np = 4i64;
+    let n = 2047i64;
+    let iters = 40000i64;
+
+    let mut trees: Vec[Option[TreeNode]] = Vec.new();
+    let mut j = 0i64;
+    while j < np {
+        trees.push(build_balanced(0i64, n - 1i64, j + 1i64));
+        j = j + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        sink = (sink + sum_numbers(trees[idx])) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
