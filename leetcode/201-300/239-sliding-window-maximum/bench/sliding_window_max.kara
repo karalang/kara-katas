@@ -1,0 +1,84 @@
+// Benchmark harness for LeetCode #239 — Sliding Window Maximum.
+//
+// Build-once + punch (BENCHMARKS.md): the arrays are generated once, then each
+// punch runs the full monotonic-deque pass. Regenerating them per iteration
+// would be a vectorizable refill loop.
+//
+// Data shape matters for this algorithm. A monotonically increasing array makes
+// every back-pop fire and keeps the deque at length 1; a decreasing one never
+// pops and grows the deque to k. LCG draws sit between those extremes, so the
+// back-pop loop does a realistic variable amount of work per element rather
+// than degenerating to a best or worst case.
+
+fn max_sliding_window(nums: ref Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    let mut dq: Vec[i64] = Vec.new();
+    let mut head = 0i64;
+
+    let mut i = 0i64;
+    while i < n {
+        while dq.len() > head {
+            let back = dq[dq.len() - 1i64];
+            if nums[back] <= nums[i] {
+                let _ = dq.pop();
+            } else {
+                break;
+            }
+        }
+        dq.push(i);
+
+        if dq[head] <= i - k {
+            head = head + 1i64;
+        }
+
+        if i >= k - 1i64 {
+            out.push(nums[dq[head]]);
+        }
+        i = i + 1i64;
+    }
+    return out;
+}
+
+fn lcg(seed: i64, n: i64, cap: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut x = seed;
+    let mut t = 0i64;
+    while t < n {
+        x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+        out.push(x % cap);
+        t = t + 1i64;
+    }
+    out
+}
+
+fn main() {
+    let np = 8i64;
+    let n = 50000i64;
+    let cap = 100000i64;
+    let k = 64i64;
+    let iters = 300i64;
+
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    let mut j = 0i64;
+    while j < np {
+        arrays.push(lcg(j + 1i64, n, cap));
+        j = j + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        let res = max_sliding_window(arrays[idx], k);
+        // Position-weighted so the sink depends on window ORDER, not just the
+        // multiset of maxima — a transposition in the output would show up.
+        let mut v = 0i64;
+        while v < res.len() {
+            sink = (sink + (v + 1i64) * res[v]) % 1000000007i64;
+            v = v + 1i64;
+        }
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
