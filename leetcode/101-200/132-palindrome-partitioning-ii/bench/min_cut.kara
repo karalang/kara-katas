@@ -1,0 +1,121 @@
+// Benchmark harness for LeetCode #132 — Palindrome Partitioning II.
+//
+// Build-once + punch (BENCHMARKS.md): the case strings are built once, then
+// each punch runs the full O(n²) DP over one of them.
+//
+// The DP sibling of #131. That kata ENUMERATES every partitioning (exponential,
+// dominated by per-piece String allocation); this one only needs the minimum
+// cut count, so a table replaces the backtracking and the cost becomes a flat
+// O(n²) fill with no allocation in the inner loops. Benching both separates
+// "kāra on String churn" from "kāra on a dense 2-D table" — the same problem
+// answering two very different questions about the backend.
+//
+// ALPHABET SIZE IS THE KNOB. With a 2-letter alphabet the palindrome table is
+// dense and the `cut` loop scans many true entries; with 26 letters almost
+// nothing is a palindrome and the inner loop exits early. The set spans both so
+// neither branch of `if pal[0][i]` dominates.
+
+fn min_cut(s: String) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    if n <= 1i64 {
+        return 0i64;
+    }
+
+    let mut pal: Vec[Vec[bool]] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        let mut row: Vec[bool] = Vec.new();
+        let mut j = 0i64;
+        while j < n {
+            row.push(i == j);
+            j = j + 1i64;
+        }
+        pal.push(row);
+        i = i + 1i64;
+    }
+
+    let mut length = 2i64;
+    while length <= n {
+        let mut lo = 0i64;
+        while lo <= n - length {
+            let hi = lo + length - 1i64;
+            let ends_match = bytes[lo] == bytes[hi];
+            let inner_ok = length == 2i64 or pal[lo + 1i64][hi - 1i64];
+            if ends_match and inner_ok {
+                pal[lo][hi] = true;
+            }
+            lo = lo + 1i64;
+        }
+        length = length + 1i64;
+    }
+
+    let mut cut: Vec[i64] = Vec.new();
+    i = 0i64;
+    while i < n {
+        cut.push(0i64);
+        i = i + 1i64;
+    }
+    i = 0i64;
+    while i < n {
+        if pal[0i64][i] {
+            cut[i] = 0i64;
+        } else {
+            let mut best = i;
+            let mut j = 1i64;
+            while j <= i {
+                if pal[j][i] and (cut[j - 1i64] + 1i64) < best {
+                    best = cut[j - 1i64] + 1i64;
+                }
+                j = j + 1i64;
+            }
+            cut[i] = best;
+        }
+        i = i + 1i64;
+    }
+    cut[n - 1i64]
+}
+
+fn lcg_str(seed: i64, n: i64, alpha: i64) -> String {
+    let alphabet: String = "abcdefghijklmnopqrstuvwxyz";
+    let mut out: String = "";
+    let mut x = seed;
+    let mut k = 0i64;
+    while k < n {
+        x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+        // Bit 16 upward: a power-of-two-modulus LCG has very short periods in
+        // its low bits, which would make a 2-letter alphabet perfectly
+        // alternating rather than random.
+        let target = (x / 65536i64) % alpha;
+        let mut idx = 0i64;
+        for ch in alphabet.chars() {
+            if idx == target {
+                out.push(ch);
+            }
+            idx = idx + 1i64;
+        }
+        k = k + 1i64;
+    }
+    out
+}
+
+fn main() {
+    let n = 500i64;
+    let iters = 400i64;
+
+    let mut cases: Vec[String] = Vec.new();
+    cases.push(lcg_str(1i64, n, 2i64));    // dense palindrome table
+    cases.push(lcg_str(2i64, n, 4i64));
+    cases.push(lcg_str(3i64, n, 26i64));   // sparse
+    cases.push(lcg_str(4i64, n, 3i64));
+
+    let np = cases.len();
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        sink = (sink + min_cut(cases[idx])) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
