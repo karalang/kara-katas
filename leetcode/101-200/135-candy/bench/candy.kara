@@ -1,0 +1,92 @@
+// Benchmark harness for LeetCode #135 — Candy.
+//
+// Build-once + punch (BENCHMARKS.md): eight ratings arrays are built once, then
+// each punch runs both greedy passes plus the sum.
+//
+// The parameter is `ref Vec[i64]` rather than the kata's by-value `Vec[i64]`:
+// by value would copy 200 000 elements per call, which no mirror does and which
+// would swamp the O(n) passes being measured.
+//
+// This kata is the corpus's cleanest exercise of a DESCENDING loop — the
+// right-to-left pass walks `i = n-2` down to `0` with an index-dependent
+// condition — which is a distinct bounds-check-elimination surface from the
+// ascending loops everywhere else.
+//
+// Rating spread is the knob. A narrow range produces long runs of equal
+// ratings, where neither greedy rule fires and both passes are pure scans; a
+// wide range produces frequent strict inequalities, so the right-to-left pass
+// does real max-taking work. The set spans both.
+
+fn candy(ratings: ref Vec[i64]) -> i64 {
+    let n = ratings.len();
+    if n == 0i64 {
+        return 0i64;
+    }
+    let mut c: Vec[i64] = Vec.new();
+    let mut k = 0i64;
+    while k < n {
+        c.push(1i64);
+        k = k + 1i64;
+    }
+    let mut i = 1i64;
+    while i < n {
+        if ratings[i] > ratings[i - 1i64] {
+            c[i] = c[i - 1i64] + 1i64;
+        }
+        i = i + 1i64;
+    }
+    i = n - 2i64;
+    while i >= 0i64 {
+        if ratings[i] > ratings[i + 1i64] and c[i] <= c[i + 1i64] {
+            c[i] = c[i + 1i64] + 1i64;
+        }
+        i = i - 1i64;
+    }
+    let mut total = 0i64;
+    i = 0i64;
+    while i < n {
+        total = total + c[i];
+        i = i + 1i64;
+    }
+    total
+}
+
+fn lcg(seed: i64, n: i64, cap: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut x = seed;
+    let mut k = 0i64;
+    while k < n {
+        x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+        out.push((x / 65536i64) % cap);
+        k = k + 1i64;
+    }
+    out
+}
+
+fn main() {
+    let np = 8i64;
+    let n = 200000i64;
+    let iters = 150i64;
+
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    let mut j = 0i64;
+    while j < np {
+        // Alternating narrow (many equal neighbours) and wide (many strict
+        // inequalities) rating ranges.
+        if j % 2i64 == 0i64 {
+            arrays.push(lcg(j + 1i64, n, 4i64));
+        } else {
+            arrays.push(lcg(j + 1i64, n, 100000i64));
+        }
+        j = j + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        sink = (sink + candy(arrays[idx])) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
