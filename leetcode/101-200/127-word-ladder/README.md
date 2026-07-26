@@ -108,21 +108,46 @@ Two focused microbenchmarks, each cross-checked to an equal sink:
 | build `Map[String,i64]` of 3,125 words + look every one up, 60 rounds | 37.9 ms ± 2.9 | 15.5 ms ± 1.2 | **2.45×** |
 
 **The `push`-loop string construction is at parity. The String-keyed map is
-2.45× behind, and that single ratio accounts for the whole kata deficit.**
-
-That corrects the standing explanation in
+2.45× behind.** That corrects the standing explanation in
 [`BENCHMARKS.md`](../../../BENCHMARKS.md), which attributes the corpus's
 residual string deficit to "1-byte `push_str` loops". On this shape the push
 loop is fine.
 
-Filed as [`B-2026-07-26-2`](../../../../kara/docs/bug-ledger.md). The prime
-suspect is the erased runtime map calling its `hash_fn`/`eq_fn` through
-function **pointers** on every probe step — structurally the same indirect-call
-handicap `qsort` carries against a monomorphised sort, which
-[#274](../../201-300/274-h-index/) measured at ~2.3× in isolation. Codegen
-already has the fix pattern for the sibling container
-(`get_or_emit_set_mono_contains`), but there is no `Map` counterpart and the
-existing `Set` fast path is gated on scalar keys.
+> **This section originally continued "…and that single ratio accounts for the
+> whole kata deficit." It was wrong, and the retraction is more useful than the
+> claim.** That was an inference from the microbenchmark, not a measurement of
+> this kata. Two measured improvements to the String-keyed map have since
+> landed in `karac` — a direct rehash on growth, and a monomorphised
+> String-key lookup probe, ~1.13× each on the path each targets — and **this
+> kata did not move**: 1.82× against the equal-hash Rust lane afterwards
+> versus 1.62× before, unchanged within this container's cross-session
+> variance. The reason: ~20 of every 25 candidate lookups here **miss**, and a
+> miss stops at the first empty bucket — one byte load, no comparison — so the
+> probe was never the hot path. The remaining deficit is spread across the
+> per-candidate `String` lifecycle (build, probe, free) at ~4.25M candidates
+> per run, and re-attributing it needs one change at a time measured **against
+> this kata**, not another isolated benchmark.
+
+Filed as [`B-2026-07-26-2`](../../../../kara/docs/bug-ledger.md).
+
+The first suspect named there was the erased runtime map calling its
+`hash_fn`/`eq_fn` through function **pointers** on every probe step — by
+analogy with the `qsort` callback handicap [#274](../../201-300/274-h-index/)
+measured at ~2.3×. **That analogy was checked and is false.** Re-implementing
+the runtime's exact probe in Rust twice over the same data — once reaching
+hash/eq through stored function pointers, once calling them directly, nothing
+else changed — measures **3.6 ms vs 3.7 ms, a wash**. An indirect call whose
+target is identical on every iteration predicts perfectly; `qsort`'s callback
+hurts because it blocks inlining of a comparison that would otherwise be two
+instructions, which is not the situation for a string hash.
+
+What the erased path *did* cost was the FFI boundary itself — an opaque call
+per lookup plus the out-param protocol. Codegen now emits a monomorphised
+String-key probe (the `Map` counterpart to the existing
+`get_or_emit_set_mono_contains`, which was gated on scalar keys), worth a
+measured 1.13× on the lookup path. The ceiling for that approach is parity:
+`Map[i64, i64]`, which already took the scalar mono path, measures 1.05× of
+Rust on the same shape.
 
 ### C's 3.74× is partly a memory-model difference
 

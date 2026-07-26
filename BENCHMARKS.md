@@ -38,9 +38,25 @@ both tracked.
 [#127](leetcode/101-200/127-word-ladder/), that attribution is **wrong**: a
 104k-iteration char-by-char `String` build is a dead tie with Rust (5.5 ms vs
 5.4 ms), while building and probing a `Map[String, _]` of 3,125 keys is
-**2.45×** behind an equal-hash Rust `HashMap` (37.9 ms vs 15.5 ms) — and that
-one ratio accounts for the whole kata deficit. The string-keyed map, not the
-push loop, is the thing to fix; filed as `B-2026-07-26-2`.
+**2.45×** behind an equal-hash Rust `HashMap` (37.9 ms vs 15.5 ms). Filed as
+`B-2026-07-26-2`.
+
+**Correction to the correction (same day, after acting on it).** The sentence
+above originally continued "— and that one ratio accounts for the whole kata
+deficit." That was an *inference from a microbenchmark*, and it did not
+survive contact with a fix. Two measured improvements to the String-keyed map
+landed in `karac` (a direct rehash on growth, and a monomorphised String-key
+lookup probe; ~1.13× each on the path each targets) and **#127 did not move**
+— 1.82× against the equal-hash Rust lane afterwards versus 1.62× before, i.e.
+unchanged within this container's cross-session variance. The reason is
+visible once looked for: ~20 of every 25 candidate lookups in #127 **miss**,
+and a miss stops at the first empty bucket — one byte load, no comparison — so
+the probe was never that kata's hot path.
+
+The map really is ~2× behind and that is worth fixing on its own merits. But
+**where a corpus-level deficit lives has to be established by intervention,
+not by an isolated microbenchmark** — on this bug, isolated benchmarks
+predicted the wrong culprit twice running.
 
 **A second baseline caveat — CPU baseline, found 2026-07-26 and not yet
 corrected corpus-wide.** `karac build` targets **`x86-64-v3`** (Haswell+, AVX2)
