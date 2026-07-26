@@ -33,6 +33,35 @@ backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is 
 handful of string-building kernels (1-byte `push_str` loops, ~1.2×) and the
 low-cardinality sort in #1665 — both tracked.
 
+**A second baseline caveat — CPU baseline, found 2026-07-26 and not yet
+corrected corpus-wide.** `karac build` targets **`x86-64-v3`** (Haswell+, AVX2)
+by default on x86-64 — a deliberate deploy-baseline commitment in the language
+design (`cpu-baseline = "v3"`), not an accident. `clang -O3` and `rustc -O` at
+*their* defaults target **`x86-64` v1** (SSE2). So on x86 hosts every lane in
+this corpus compares an AVX2 Kāra binary against baseline-ISA C and Rust.
+
+How much that is worth depends entirely on whether the kernel vectorizes:
+
+- On the **vast majority** of the corpus — pointer chasing, maps, trees,
+  backtracking, string building, branchy DP — it is worth nothing measurable,
+  because none of it vectorizes at any baseline.
+- On a **vectorizable array kernel** it is worth a lot. Measured on
+  [#260](leetcode/201-300/260-single-number-iii/) (a two-pass XOR over 200k
+  `i64`): Kāra appears **1.44× ahead of C** at the two languages' defaults, and
+  the entire lead evaporates — a four-way tie inside 1.06× — once C and Rust are
+  rebuilt with `-march=x86-64-v3` / `-C target-cpu=x86-64-v3`. Forcing Kāra down
+  to `--target-cpu=x86-64` costs it the same 1.4×.
+
+Every previously published number in this corpus was measured before this was
+noticed. Nothing is being withdrawn — the bias is one-directional and only bites
+where SIMD applies, which is a small minority of these kernels, and it did not
+manufacture Kāra's *losses* (e.g. [#137](leetcode/101-200/137-single-number-ii/)
+loses 7.9× to C **with** AVX2 in hand). But **any Kāra win on an array kernel
+should be re-checked at equal baseline before it is quoted**, and new
+array-shaped katas carry an explicit equal-baseline lane, the same way the
+equal-safety `rust_ovf` lane works above. The apples-to-apples comparison
+matches *both* axes: equal safety **and** equal ISA baseline.
+
 ## Runtime — sequential lane
 
 Single-threaded, same algorithm everywhere. This is the load-bearing

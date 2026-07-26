@@ -1,0 +1,78 @@
+// Benchmark harness for LeetCode #260 — Single Number III.
+//
+// Build-once + punch (BENCHMARKS.md): four arrays of 200,002 i64 are built
+// once, then each punch runs the full two-pass XOR partition over one of them.
+//
+// Each array is `vals ++ vals ++ [s1, s2]` — every value appears exactly twice
+// with its twin ~100k elements away, so the partition branch sees a fresh
+// bit pattern per element rather than a run of adjacent equal values.
+
+fn two_singles(nums: ref Vec[i64]) -> Array[i64, 2] {
+    let mut x = 0i64;
+    let mut i = 0i64;
+    while i < nums.len() {
+        x = x ^ nums[i];
+        i = i + 1i64;
+    }
+    let bit = x & (0i64 - x); // lowest set bit of x
+
+    let mut a = 0i64;
+    let mut b = 0i64;
+    let mut j = 0i64;
+    while j < nums.len() {
+        if (nums[j] & bit) != 0i64 {
+            a = a ^ nums[j];
+        } else {
+            b = b ^ nums[j];
+        }
+        j = j + 1i64;
+    }
+    if a <= b {
+        return [a, b];
+    }
+    return [b, a];
+}
+
+fn main() {
+    let np = 4i64;
+    let k = 100000i64;
+    let iters = 2600i64;
+
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    let mut p = 0i64;
+    while p < np {
+        let mut vals: Vec[i64] = Vec.new();
+        let mut x = p + 1i64;
+        let mut t = 0i64;
+        while t < k {
+            x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+            vals.push((x / 65536i64) % 100000i64);
+            t = t + 1i64;
+        }
+        let mut arr: Vec[i64] = Vec.new();
+        let mut pass = 0i64;
+        while pass < 2i64 {
+            let mut q = 0i64;
+            while q < k {
+                arr.push(vals[q]);
+                q = q + 1i64;
+            }
+            pass = pass + 1i64;
+        }
+        // Two loners, both outside the [0, 100000) value range.
+        arr.push(999983i64 + p);
+        arr.push(1000003i64 + p);
+        arrays.push(arr);
+        p = p + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = (it * 3i64) % np;
+        let r = two_singles(arrays[idx]);
+        sink = (sink * 31i64 + r[0] + r[1] * 7i64) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
