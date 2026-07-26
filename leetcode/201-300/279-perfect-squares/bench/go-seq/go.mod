@@ -1,0 +1,3 @@
+module psq_bench
+
+go 1.24
