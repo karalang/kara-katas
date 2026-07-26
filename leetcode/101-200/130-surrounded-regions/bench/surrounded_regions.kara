@@ -1,0 +1,124 @@
+// Benchmark harness for LeetCode #130 — Surrounded Regions.
+//
+// Build-once + punch (BENCHMARKS.md): one pristine grid is built once, then
+// each punch copies it into a working grid and runs the full solve.
+//
+// The copy is deliberately INSIDE the measured region. `solve` mutates the
+// board, so every punch needs a fresh one; the alternatives are to rebuild it
+// from the LCG (a refill loop) or to un-mutate it afterwards (extra work that
+// is not part of the algorithm). A straight copy is O(rows*cols), the same
+// order as the solve itself, and every language pays it identically.
+//
+// Density is ~50% 'O', which is the interesting regime: much sparser and the
+// flood fills terminate immediately, much denser and the whole grid becomes one
+// border-connected component. At 50% the border floods reach a substantial but
+// partial fraction of the grid, so both the fill and the final sweep do real
+// work.
+
+fn flood(board: mut ref Vec[Vec[i64]], rows: i64, cols: i64, sr: i64, sc: i64) {
+    let mut stack: Vec[i64] = Vec.new();
+    stack.push(sr * cols + sc);
+    while stack.len() > 0i64 {
+        let pos = stack.pop().unwrap();
+        let r = pos / cols;
+        let c = pos % cols;
+        if board[r][c] == 1i64 {
+            board[r][c] = 2i64;
+            if r + 1i64 < rows {
+                stack.push((r + 1i64) * cols + c);
+            }
+            if r - 1i64 >= 0i64 {
+                stack.push((r - 1i64) * cols + c);
+            }
+            if c + 1i64 < cols {
+                stack.push(r * cols + (c + 1i64));
+            }
+            if c - 1i64 >= 0i64 {
+                stack.push(r * cols + (c - 1i64));
+            }
+        }
+    }
+}
+
+fn solve(board: mut ref Vec[Vec[i64]], rows: i64, cols: i64) {
+    let mut r = 0i64;
+    while r < rows {
+        let mut c = 0i64;
+        while c < cols {
+            let on_border = r == 0i64 or r == rows - 1i64 or c == 0i64 or c == cols - 1i64;
+            if on_border and board[r][c] == 1i64 {
+                flood(board, rows, cols, r, c);
+            }
+            c = c + 1i64;
+        }
+        r = r + 1i64;
+    }
+
+    let mut r2 = 0i64;
+    while r2 < rows {
+        let mut c2 = 0i64;
+        while c2 < cols {
+            if board[r2][c2] == 2i64 {
+                board[r2][c2] = 1i64;
+            } else {
+                board[r2][c2] = 0i64;
+            }
+            c2 = c2 + 1i64;
+        }
+        r2 = r2 + 1i64;
+    }
+}
+
+fn main() {
+    let rows = 300i64;
+    let cols = 300i64;
+    let iters = 400i64;
+
+    let mut pristine: Vec[Vec[i64]] = Vec.new();
+    let mut x = 5i64;
+    let mut r = 0i64;
+    while r < rows {
+        let mut row: Vec[i64] = Vec.new();
+        let mut c = 0i64;
+        while c < cols {
+            x = (x * 1103515245i64 + 12345i64) % 2147483648i64;
+            row.push((x / 65536i64) % 2i64);
+            c = c + 1i64;
+        }
+        pristine.push(row);
+        r = r + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let mut work: Vec[Vec[i64]] = Vec.new();
+        let mut a = 0i64;
+        while a < rows {
+            let mut row: Vec[i64] = Vec.new();
+            let mut b = 0i64;
+            while b < cols {
+                row.push(pristine[a][b]);
+                b = b + 1i64;
+            }
+            work.push(row);
+            a = a + 1i64;
+        }
+
+        solve(mut work, rows, cols);
+
+        let mut h = 0i64;
+        let mut p = 0i64;
+        while p < rows {
+            let mut q = 0i64;
+            while q < cols {
+                h = (h * 31i64 + work[p][q]) % 1000000007i64;
+                q = q + 1i64;
+            }
+            p = p + 1i64;
+        }
+        sink = (sink + h) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{sink}");
+}
