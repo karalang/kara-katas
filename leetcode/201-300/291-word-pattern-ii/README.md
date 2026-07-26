@@ -158,7 +158,8 @@ mirror before reporting it.
 
 `karac build` is within 8% of `rustc -O` and uses ~31% less peak memory.
 
-Python is absent from the feed (`KARA_BENCH_INCLUDE_PY` defaults to `0`).
+The Python mirror is the correctness oracle, not a measured lane — it stays
+behind the `KARA_BENCH_INCLUDE_PY` gate by design.
 
 ## Kāra features exercised
 

@@ -143,8 +143,8 @@ compiles in less memory than either rustc or clang while staying within 1.3× of
   host, not interference. Means reproduced within 1–2% across two independent
   full runs, which is the reason to trust them; the σ is the reason not to read
   anything into differences smaller than ~10%.
-- Python is not in `results.json` — `KARA_BENCH_INCLUDE_PY` defaults to `0`
-  corpus-wide. Run with `KARA_BENCH_INCLUDE_PY=1` to include it.
+- The Python mirror is the correctness oracle, not a measured lane — it stays
+  behind the `KARA_BENCH_INCLUDE_PY` gate by design.
 - Measured with a release `karac` built from the same commit as the archives.
 
 ## Kāra features exercised

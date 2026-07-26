@@ -98,5 +98,6 @@ allocate owned strings per word and both hash both directions.
 | Runtime peak RSS | 3.0 MiB | 2.1 MiB | 1.7 MiB | 7.2 MiB |
 | Compile peak RSS | **90.6 MiB** | 134.8 MiB | 96.8 MiB | — |
 
-Python is absent from the feed (`KARA_BENCH_INCLUDE_PY` defaults to `0`).
+The Python mirror is the correctness oracle, not a measured lane — it stays
+behind the `KARA_BENCH_INCLUDE_PY` gate by design.
 

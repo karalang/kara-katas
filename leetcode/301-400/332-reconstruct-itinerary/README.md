@@ -166,7 +166,8 @@ hours later. Only the same-session A/B above supports the attribution.
   workload is map- and allocation-bound, not arithmetic-bound.
 - **Python** needs `sys.setrecursionlimit`: the walk recurses once per edge and
   1000 edges exceeds CPython's default limit of 1000.
-- Python is absent from the feed (`KARA_BENCH_INCLUDE_PY` defaults to `0`).
+- The Python mirror is the correctness oracle, not a measured lane — it stays
+  behind the `KARA_BENCH_INCLUDE_PY` gate by design.
 
 ## Kāra features exercised
 

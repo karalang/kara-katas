@@ -148,8 +148,8 @@ smaller than Rust's.
   when idle, so the ~10–15% σ is intrinsic to the host. Read nothing into
   differences smaller than that — in particular the equal-hash lane and kāra
   are indistinguishable.
-- Python is absent from the feed: `KARA_BENCH_INCLUDE_PY` defaults to `0`
-  corpus-wide. Re-run with `KARA_BENCH_INCLUDE_PY=1` to include it.
+- The Python mirror is the correctness oracle, not a measured lane — it stays
+  behind the `KARA_BENCH_INCLUDE_PY` gate by design.
 
 ## Kāra features exercised
 

@@ -93,9 +93,8 @@ than only the flattering one.
 
 ### Note on the Python lane
 
-Python is absent from the feed (`KARA_BENCH_INCLUDE_PY` defaults to `0`
-corpus-wide). At this workload — 8000 punches × 20 000 characters, 160 M inner
-iterations — CPython would need minutes per run, so enabling it here is not
-practical. Its algorithmic parity was verified at reduced scale instead:
-`ITERS=40` gives sink `420` from both Python and Rust.
+The Python mirror is committed as the correctness oracle but is intentionally
+not a measured lane; `bench.sh` leaves it behind the `KARA_BENCH_INCLUDE_PY`
+gate. Its algorithmic parity was verified at reduced scale: `ITERS=40` gives
+sink `420` from both Python and Rust.
 
