@@ -33,6 +33,53 @@ backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is 
 handful of string-shaped kernels (~1.2×) and the low-cardinality sort in #1665 —
 both tracked.
 
+**Six katas are held out of this feed (2026-07-27), and why.** `bench-results.json`
+carries **238** of the corpus's 244 katas. The six absentees —
+[#128](leetcode/101-200/128-longest-consecutive-sequence/),
+[#133](leetcode/101-200/133-clone-graph/),
+[#141](leetcode/101-200/141-linked-list-cycle/),
+[#160](leetcode/101-200/160-intersection-of-two-linked-lists/),
+[#242](leetcode/201-300/242-valid-anagram/),
+[#290](leetcode/201-300/290-word-pattern/) — have their numbers parked in
+`bench/results.held-autopar.json` instead of `results.json`, because on `karac`
+`3e9a12ed` their **seq lane is not sequential**: auto-par engages *at runtime*,
+nondeterministically, on a binary built for the seq lane. Same binary, six
+consecutive runs of #160:
+
+| run | real | user | user/real |
+|---|---|---|---|
+| 1 | 0.33 s | 0.35 s | 1.06× (serial) |
+| 2 | 0.03 s | 0.24 s | 8.0× |
+| 3–6 | 0.01–0.02 s | ~0.23 s | 11–23× (parallel) |
+
+`hyperfine` then averages a blend of serial and parallel executions — which is
+where these katas' 10–33% CVs come from, and why their means (e.g. #160 at
+23.9 ms against ~160 ms for C/Rust/Go) are not a like-for-like comparison. The
+same six ran at **99.8% CPU** on x86 under the older compiler, so this is new
+behaviour, not a long-standing property of the katas. Publishing them would put
+a ~7× phantom Kāra win into the seq chart. They stay out until the underlying
+behaviour is resolved.
+
+**What the overflow tax actually is, measured (2026-07-27).** The phrase "overflow
+tax" undersells the mechanism on array kernels: checked arithmetic does not add a
+few instructions per iteration, it **forfeits vectorization entirely**. Disassembled
+on the M5 for [#122](leetcode/101-200/122-best-time-to-buy-and-sell-stock-ii/)
+(`profit += max(0, p[i]-p[i-1])` over 2M `i64`), inside the *same* Rust symbol:
+
+| build | vector instrs | overflow-check branches | mean |
+|---|---|---|---|
+| `rustc -O` (wraps) | **240** | 0 | 6.4 ms |
+| `rustc -O -C overflow-checks=on` | **0** | 29 | 15.6 ms |
+| `karac` (checks by default) | **0** | per-op `b.vs`/`b.vc` | 14.4 ms |
+
+So Kāra's apparent 2.3× deficit against `rustc -O` on this kata is a vectorized-vs-
+scalar comparison wearing a costume, and against the safety-matched build Kāra is
+**ahead** (14.4 vs 15.6 ms). Rust forfeits exactly the same vectorization when asked
+for the same guarantee — this is the price of the contract, not a `karac` codegen
+gap. It also sets the ceiling on what fixing checked-arithmetic codegen could ever
+recover on such kernels: ~2.4×, and only by teaching the vectorizer to keep the
+checks, which neither compiler does today.
+
 **Correction (2026-07-26):** the string-shaped residual was long attributed to
 1-byte `push_str` loops. Measured on
 [#127](leetcode/101-200/127-word-ladder/), that attribution is **wrong**: a
@@ -86,6 +133,31 @@ should be re-checked at equal baseline before it is quoted**, and new
 array-shaped katas carry an explicit equal-baseline lane, the same way the
 equal-safety `rust_ovf` lane works above. The apples-to-apples comparison
 matches *both* axes: equal safety **and** equal ISA baseline.
+
+**Corpus-wide correction landed (2026-07-27).** The equal-baseline lane is no
+longer per-kata and opt-in. `scripts/bench-lib.sh` now carries `isa_build_c` /
+`isa_build_rust` / `isa_rt_cmds`, wired into every migrated `bench.sh` (226 of
+244; the 18 multi-approach katas still need doing by hand). They add two twins:
+
+- **`c_v3`** — `clang -O3 -march=x86-64-v3`
+- **`rust_v3`** — `rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`, matched
+  on *both* axes at once, and therefore the single honest apples-to-apples number
+
+Each twin's output is verified against the Kāra binary's sink before it is timed,
+so a twin that traps or diverges is dropped with a warning rather than measured.
+Charts render them as optional overlays; the out-of-the-box `rust` / `c` lanes
+stay in the feed, because "what a user gets by default" is a real and separate
+question from "whose codegen is better." Both are published; neither is allowed
+to stand in for the other.
+
+**These lanes are x86-only, and that is a measured decision, not an assumption.**
+On aarch64 the helpers are deliberate no-ops. Checked on the M5 (2026-07-27):
+`clang` defaults to `-mcpu=apple-m1` and `rustc` likewise, and rebuilding at
+`-mcpu=generic` produces different binaries but statistically identical times
+(6.3–6.8 ms, σ 0.7–0.9 on #122). Forcing the lane on via `BENCH_ISA_FORCE=1
+ISA_LEVEL=native` confirms it from the other side: `c_v3` 5.93 ms vs `c` 5.93 ms,
+`rust_v3` 16.39 ms vs `rust_ovf` 16.36 ms. There is no ARM baseline gap to
+correct, so the Apple-Silicon numbers in this corpus never carried this caveat.
 
 ## Runtime — sequential lane
 
