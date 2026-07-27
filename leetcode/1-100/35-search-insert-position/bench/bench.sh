@@ -115,6 +115,9 @@ build_c            search_insert.c
 build_kara         search_insert.kara
 build_kara_seq     search_insert.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "search_insert.c"
+isa_build_rust "search_insert.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="862973806"
@@ -165,6 +168,7 @@ rt_cmd --lang c --approach search_insert --lane seq --mode native \
     --name 'c    search_insert' --cmd './target/search_insert_c'
 rt_cmd --lang go --approach search_insert --lane seq --mode native \
     --name 'go   search_insert' --cmd './target/search_insert_go_seq'
+isa_rt_cmds "search_insert" seq
 rt_end
 
 echo

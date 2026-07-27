@@ -89,6 +89,9 @@ build_rust "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "${STEM}.c"
+isa_build_rust "${STEM}.rs"
 
 # Sink agreement — every compiled mirror's stdout must be byte-identical
 # before timing. Each iter sums the merged list [0, 1, …, 2N-1]; with N=100
@@ -101,7 +104,8 @@ for pair in \
     "kara:./target/${STEM}_kara" \
     "rust:./target/${STEM}" \
     "c:./target/${STEM}_c" \
-    "go:./target/${STEM}_go_seq"; do
+    "go:./target/${STEM}_go_seq" \
+    $(isa_sinks "$STEM"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -132,6 +136,7 @@ rt_cmd --lang c --approach iterative --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach iterative --lane seq --mode native \
     --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
+isa_rt_cmds "$STEM" seq
 rt_end
 
 echo

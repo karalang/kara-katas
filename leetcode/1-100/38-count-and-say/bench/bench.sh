@@ -110,6 +110,9 @@ build_c            count_and_say.c
 build_kara         count_and_say.kara
 build_kara_seq     count_and_say.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "count_and_say.c"
+isa_build_rust "count_and_say.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="994339104"
@@ -160,6 +163,7 @@ rt_cmd --lang c --approach count_and_say --lane seq --mode native \
     --name 'c    count_and_say' --cmd './target/count_and_say_c'
 rt_cmd --lang go --approach count_and_say --lane seq --mode native \
     --name 'go   count_and_say' --cmd './target/count_and_say_go_seq'
+isa_rt_cmds "count_and_say" seq
 rt_end
 
 echo

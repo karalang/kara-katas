@@ -58,6 +58,12 @@ COLOR = {
     # arithmetic (so rust -O's silent wrapping understates the safety-matched cost).
     # Goldenrod reads as a Rust variant without colliding with the gray baseline.
     "rust_ovf": "#d4a017",
+    # Fully-matched twins (equal safety AND equal ISA) -- OPTIONAL overlays,
+    # present only on x86 runs, where karac's v3 deploy baseline outruns the
+    # v1 default clang/rustc target. On aarch64 there is no baseline gap to
+    # correct (verified 2026-07-27) so these are simply absent.
+    "rust_v3": "#e8703a",  # warm rust-red -- a Rust variant, distinct from goldenrod
+    "c_v3": "#2f8f6f",     # deep teal-green -- reads as a C variant
 }
 # The solid "Rust" line is the release default (overflow-checks OFF -- wraps
 # silently). "rust_ovf" is the equal-safety twin (overflow-checks=on) that
@@ -65,7 +71,8 @@ COLOR = {
 # rather than the cryptic "_ovf" so a lay reader sees what it is. The runtime
 # chart footnote (render_dots) spells out the contract and quantifies the tax.
 LABEL = {"kara": "Kāra", "rust": "Rust", "c": "C", "go": "Go",
-         "rust_ovf": "Rust (checked)"}
+         "rust_ovf": "Rust (checked)",
+         "rust_v3": "Rust (matched)", "c_v3": "C (matched)"}
 
 # Metric specs: (filename, title, unit-note, lane-or-None, extractor).
 # extractor(measurement-or-compile-row) -> float|None
@@ -99,7 +106,7 @@ ALL4 = ["kara", "rust", "c", "go"]
 PAR4 = ["kara", "rust", "c", "go"]   # par lane = Kāra auto-par vs Rust rayon vs Go goroutines vs C pthreads (metal floor)
 COMPILE3 = ["kara", "rust", "c"]  # Go excluded: `go build` bundles module resolution, not a single-file compile
 METRICS = [
-    ("runtime-seq", "Runtime — sequential lane", "lower = faster", "measurements", "seq", ALL4, "linear", _rt, ["rust_ovf"]),
+    ("runtime-seq", "Runtime — sequential lane", "lower = faster", "measurements", "seq", ALL4, "linear", _rt, ["rust_ovf", "rust_v3", "c_v3"]),
     ("runtime-par", "Runtime — auto-parallel lane", "lower = faster", "measurements", "par", PAR4, "linear", _rt, []),
     ("binary-seq", "Binary size — sequential lane", "lower = smaller", "measurements", "seq", ALL4, "log", _bin, []),
     ("binary-par", "Binary size — auto-parallel lane", "lower = smaller", "measurements", "par", PAR4, "log", _bin, []),

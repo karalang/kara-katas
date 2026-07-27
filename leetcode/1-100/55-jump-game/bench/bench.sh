@@ -110,6 +110,9 @@ build_c            jump_game.c
 build_kara         jump_game.kara
 build_kara_seq     jump_game.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "jump_game.c"
+isa_build_rust "jump_game.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="989962259"
@@ -160,6 +163,7 @@ rt_cmd --lang c --approach jump_game --lane seq --mode native \
     --name 'c    jump_game' --cmd './target/jump_game_c'
 rt_cmd --lang go --approach jump_game --lane seq --mode native \
     --name 'go   jump_game' --cmd './target/jump_game_go_seq'
+isa_rt_cmds "jump_game" seq
 rt_end
 
 echo

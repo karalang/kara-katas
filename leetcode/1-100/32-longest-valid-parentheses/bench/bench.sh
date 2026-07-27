@@ -110,6 +110,9 @@ build_c            longest_valid_parentheses.c
 build_kara         longest_valid_parentheses.kara
 build_kara_seq     longest_valid_parentheses.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "longest_valid_parentheses.c"
+isa_build_rust "longest_valid_parentheses.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="675510162"
@@ -160,6 +163,7 @@ rt_cmd --lang c --approach longest_valid_parentheses --lane seq --mode native \
     --name 'c    longest_valid_parentheses' --cmd './target/longest_valid_parentheses_c'
 rt_cmd --lang go --approach longest_valid_parentheses --lane seq --mode native \
     --name 'go   longest_valid_parentheses' --cmd './target/longest_valid_parentheses_go_seq'
+isa_rt_cmds "longest_valid_parentheses" seq
 rt_end
 
 echo

@@ -93,6 +93,9 @@ build_kara decode_ways.kara
 build_rust decode_ways.rs
 build_c    decode_ways.c
 build_go   go-seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "decode_ways.c"
+isa_build_rust "decode_ways.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 # Python is gated behind KARA_BENCH_INCLUDE_PY=1 because at 200_000 calls the
@@ -147,6 +150,7 @@ rt_cmd --lang c --approach decode_ways --lane seq --mode native \
     --name 'c    decode_ways (clang -O3)' --cmd './target/decode_ways_c'
 rt_cmd --lang go --approach decode_ways --lane seq --mode native \
     --name 'go   decode_ways' --cmd './target/go_seq'
+isa_rt_cmds "decode_ways" seq
 rt_end
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     echo

@@ -97,6 +97,9 @@ build_rust iterative.rs
 build_c    iterative.c
 build_kara iterative.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "iterative.c"
+isa_build_rust "iterative.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at N=100, K=500_000
@@ -149,6 +152,7 @@ rt_cmd --lang c --approach iterative --lane seq --mode native \
     --name 'c    iterative' --cmd './target/iterative_c'
 rt_cmd --lang go --approach iterative --lane seq --mode native \
     --name 'go   iterative' --cmd './target/iterative_go_seq'
+isa_rt_cmds "iterative" seq
 rt_end
 
 echo

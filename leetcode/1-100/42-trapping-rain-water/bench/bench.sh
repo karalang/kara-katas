@@ -115,6 +115,9 @@ build_c            trapping_rain_water.c
 build_kara         trapping_rain_water.kara
 build_kara_seq     trapping_rain_water.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "trapping_rain_water.c"
+isa_build_rust "trapping_rain_water.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="111821755"
@@ -165,6 +168,7 @@ rt_cmd --lang c --approach trapping_rain_water --lane seq --mode native \
     --name 'c    trapping_rain_water' --cmd './target/trapping_rain_water_c'
 rt_cmd --lang go --approach trapping_rain_water --lane seq --mode native \
     --name 'go   trapping_rain_water' --cmd './target/trapping_rain_water_go_seq'
+isa_rt_cmds "trapping_rain_water" seq
 rt_end
 
 echo

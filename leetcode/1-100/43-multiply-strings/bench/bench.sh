@@ -126,6 +126,9 @@ build_c            multiply_strings.c
 build_kara         multiply_strings.kara
 build_kara_seq     multiply_strings.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "multiply_strings.c"
+isa_build_rust "multiply_strings.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="742591719"
@@ -179,6 +182,7 @@ rt_cmd --lang c --approach multiply_strings --lane seq --mode native \
     --name 'c    multiply_strings' --cmd './target/multiply_strings_c'
 rt_cmd --lang go --approach multiply_strings --lane seq --mode native \
     --name 'go   multiply_strings' --cmd './target/multiply_strings_go_seq'
+isa_rt_cmds "multiply_strings" seq
 rt_end
 
 echo

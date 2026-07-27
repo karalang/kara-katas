@@ -112,6 +112,9 @@ build_c            valid_sudoku.c
 build_kara         valid_sudoku.kara
 build_kara_seq     valid_sudoku.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "valid_sudoku.c"
+isa_build_rust "valid_sudoku.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="291807572"
@@ -162,6 +165,7 @@ rt_cmd --lang c --approach valid_sudoku --lane seq --mode native \
     --name 'c    valid_sudoku' --cmd './target/valid_sudoku_c'
 rt_cmd --lang go --approach valid_sudoku --lane seq --mode native \
     --name 'go   valid_sudoku' --cmd './target/valid_sudoku_go_seq'
+isa_rt_cmds "valid_sudoku" seq
 rt_end
 
 echo

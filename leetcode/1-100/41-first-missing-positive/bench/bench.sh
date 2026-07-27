@@ -113,6 +113,9 @@ build_c            first_missing_positive.c
 build_kara         first_missing_positive.kara
 build_kara_seq     first_missing_positive.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "first_missing_positive.c"
+isa_build_rust "first_missing_positive.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="783878544"
@@ -163,6 +166,7 @@ rt_cmd --lang c --approach first_missing_positive --lane seq --mode native \
     --name 'c    first_missing_positive' --cmd './target/first_missing_positive_c'
 rt_cmd --lang go --approach first_missing_positive --lane seq --mode native \
     --name 'go   first_missing_positive' --cmd './target/first_missing_positive_go_seq'
+isa_rt_cmds "first_missing_positive" seq
 rt_end
 
 echo

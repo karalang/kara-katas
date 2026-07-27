@@ -110,6 +110,9 @@ build_c            search_rotated.c
 build_kara         search_rotated.kara
 build_kara_seq     search_rotated.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "search_rotated.c"
+isa_build_rust "search_rotated.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="455834850"
@@ -160,6 +163,7 @@ rt_cmd --lang c --approach search_rotated --lane seq --mode native \
     --name 'c    search_rotated' --cmd './target/search_rotated_c'
 rt_cmd --lang go --approach search_rotated --lane seq --mode native \
     --name 'go   search_rotated' --cmd './target/search_rotated_go_seq'
+isa_rt_cmds "search_rotated" seq
 rt_end
 
 echo

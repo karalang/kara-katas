@@ -112,6 +112,9 @@ build_c            rotate_image.c
 build_kara         rotate_image.kara
 build_kara_seq     rotate_image.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "rotate_image.c"
+isa_build_rust "rotate_image.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="320060006"
@@ -162,6 +165,7 @@ rt_cmd --lang c --approach rotate_image --lane seq --mode native \
     --name 'c    rotate_image' --cmd './target/rotate_image_c'
 rt_cmd --lang go --approach rotate_image --lane seq --mode native \
     --name 'go   rotate_image' --cmd './target/rotate_image_go_seq'
+isa_rt_cmds "rotate_image" seq
 rt_end
 
 echo

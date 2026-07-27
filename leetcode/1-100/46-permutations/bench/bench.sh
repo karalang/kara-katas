@@ -113,6 +113,9 @@ build_c            permutations.c
 build_kara         permutations.kara
 build_kara_seq     permutations.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "permutations.c"
+isa_build_rust "permutations.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="75196912"
@@ -163,6 +166,7 @@ rt_cmd --lang c --approach permutations --lane seq --mode native \
     --name 'c    permutations' --cmd './target/permutations_c'
 rt_cmd --lang go --approach permutations --lane seq --mode native \
     --name 'go   permutations' --cmd './target/permutations_go_seq'
+isa_rt_cmds "permutations" seq
 rt_end
 
 echo

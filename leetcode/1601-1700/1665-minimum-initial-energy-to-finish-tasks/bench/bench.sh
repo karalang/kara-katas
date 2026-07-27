@@ -93,6 +93,9 @@ build_rust_ovf greedy.rs
 build_c    greedy.c
 build_kara greedy.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "greedy.c"
+isa_build_rust "greedy.rs"
 
 expected=$(./target/greedy_kara)
 mismatch=""
@@ -141,6 +144,7 @@ rt_cmd --lang c --approach greedy --lane seq --mode native \
     --name 'c    greedy' --cmd './target/greedy_c'
 rt_cmd --lang go --approach greedy --lane seq --mode native \
     --name 'go   greedy' --cmd './target/greedy_go_seq'
+isa_rt_cmds "greedy" seq
 rt_end
 
 echo

@@ -113,6 +113,9 @@ build_c        to_hex.c
 build_kara     to_hex.kara
 build_kara_seq to_hex.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "to_hex.c"
+isa_build_rust "to_hex.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="2231199964"
@@ -163,6 +166,7 @@ rt_cmd --lang c --approach to_hex --lane seq --mode native \
     --name 'c    to_hex' --cmd './target/to_hex_c'
 rt_cmd --lang go --approach to_hex --lane seq --mode native \
     --name 'go   to_hex' --cmd './target/to_hex_go_seq'
+isa_rt_cmds "to_hex" seq
 rt_end
 
 echo

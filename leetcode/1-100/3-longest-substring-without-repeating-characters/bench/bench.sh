@@ -111,6 +111,9 @@ build_rust_ovf sliding_window.rs
 build_c    sliding_window.c
 build_kara sliding_window.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "sliding_window.c"
+isa_build_rust "sliding_window.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before
 # timing. Python skipped from sink check by default — at N=104K, K=20
@@ -166,6 +169,7 @@ rt_cmd --lang c --approach sliding_window --lane seq --mode native \
     --name 'c    sliding_window' --cmd './target/sliding_window_c'
 rt_cmd --lang go --approach sliding_window --lane seq --mode native \
     --name 'go   sliding_window' --cmd './target/sliding_window_go_seq'
+isa_rt_cmds "sliding_window" seq
 rt_end
 
 echo

@@ -113,6 +113,9 @@ build_c            sudoku_solver.c
 build_kara         sudoku_solver.kara
 build_kara_seq     sudoku_solver.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "sudoku_solver.c"
+isa_build_rust "sudoku_solver.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="667470979"
@@ -163,6 +166,7 @@ rt_cmd --lang c --approach sudoku_solver --lane seq --mode native \
     --name 'c    sudoku_solver' --cmd './target/sudoku_solver_c'
 rt_cmd --lang go --approach sudoku_solver --lane seq --mode native \
     --name 'go   sudoku_solver' --cmd './target/sudoku_solver_go_seq'
+isa_rt_cmds "sudoku_solver" seq
 rt_end
 
 echo

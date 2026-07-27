@@ -114,6 +114,9 @@ build_c            search_range.c
 build_kara         search_range.kara
 build_kara_seq     search_range.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "search_range.c"
+isa_build_rust "search_range.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="421417033"
@@ -164,6 +167,7 @@ rt_cmd --lang c --approach search_range --lane seq --mode native \
     --name 'c    search_range' --cmd './target/search_range_c'
 rt_cmd --lang go --approach search_range --lane seq --mode native \
     --name 'go   search_range' --cmd './target/search_range_go_seq'
+isa_rt_cmds "search_range" seq
 rt_end
 
 echo

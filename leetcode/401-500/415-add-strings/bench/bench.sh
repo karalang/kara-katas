@@ -113,6 +113,9 @@ build_c            add_strings.c
 build_kara         add_strings.kara
 build_kara_seq     add_strings.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "add_strings.c"
+isa_build_rust "add_strings.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="1000513006"
@@ -163,6 +166,7 @@ rt_cmd --lang c --approach add_strings --lane seq --mode native \
     --name 'c    add_strings' --cmd './target/add_strings_c'
 rt_cmd --lang go --approach add_strings --lane seq --mode native \
     --name 'go   add_strings' --cmd './target/add_strings_go_seq'
+isa_rt_cmds "add_strings" seq
 rt_end
 
 echo

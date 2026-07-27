@@ -107,6 +107,9 @@ build_rust_ovf "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "${STEM}.c"
+isa_build_rust "${STEM}.rs"
 
 # Sink agreement — every compiled mirror's stdout must be byte-identical before
 # timing. Over K=67000 scans the fold is a fixed constant; Python runs a
@@ -118,7 +121,8 @@ for pair in \
     "rust:./target/${STEM}" \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
-    "go:./target/${STEM}_go_seq"; do
+    "go:./target/${STEM}_go_seq" \
+    $(isa_sinks "$STEM"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -150,6 +154,7 @@ rt_cmd --lang c --approach remove_duplicates_ii --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach remove_duplicates_ii --lane seq --mode native \
     --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
+isa_rt_cmds "$STEM" seq
 rt_end
 
 echo

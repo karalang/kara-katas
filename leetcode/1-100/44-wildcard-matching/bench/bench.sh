@@ -111,6 +111,9 @@ build_c            wildcard_matching.c
 build_kara         wildcard_matching.kara
 build_kara_seq     wildcard_matching.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "wildcard_matching.c"
+isa_build_rust "wildcard_matching.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="494778662"
@@ -161,6 +164,7 @@ rt_cmd --lang c --approach wildcard_matching --lane seq --mode native \
     --name 'c    wildcard_matching' --cmd './target/wildcard_matching_c'
 rt_cmd --lang go --approach wildcard_matching --lane seq --mode native \
     --name 'go   wildcard_matching' --cmd './target/wildcard_matching_go_seq'
+isa_rt_cmds "wildcard_matching" seq
 rt_end
 
 echo

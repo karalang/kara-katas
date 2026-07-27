@@ -112,6 +112,9 @@ build_c            combination_sum.c
 build_kara         combination_sum.kara
 build_kara_seq     combination_sum.kara
 build_go_seq
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "combination_sum.c"
+isa_build_rust "combination_sum.rs"
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="503333481"
@@ -162,6 +165,7 @@ rt_cmd --lang c --approach combination_sum --lane seq --mode native \
     --name 'c    combination_sum' --cmd './target/combination_sum_c'
 rt_cmd --lang go --approach combination_sum --lane seq --mode native \
     --name 'go   combination_sum' --cmd './target/combination_sum_go_seq'
+isa_rt_cmds "combination_sum" seq
 rt_end
 
 echo

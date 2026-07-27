@@ -144,6 +144,9 @@ build_go_seq
 build_rayon
 build_go_par
 build_c_par
+# Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
+isa_build_c    "${STEM}.c"
+isa_build_rust "${STEM}.rs"
 
 # Sink agreement — every compiled mirror's stdout must be byte-identical
 # before timing. K=100k iterations x sum([0..1023]) = 100000 x 523776
@@ -158,7 +161,8 @@ for pair in \
     "go:./target/${STEM}_go_seq" \
     "rayon:./target/${STEM}_rayon" \
     "go_par:./target/${STEM}_go_par" \
-    "c_par:./target/${STEM}_c_par"; do
+    "c_par:./target/${STEM}_c_par" \
+    $(isa_sinks "$STEM"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -189,6 +193,7 @@ rt_cmd --lang c --approach divide_and_conquer --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach divide_and_conquer --lane seq --mode native \
     --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
+isa_rt_cmds "$STEM" seq
 rt_end
 
 echo

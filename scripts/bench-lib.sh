@@ -129,6 +129,109 @@ bench_begin() {
          }' >"$BENCH_TMP/meta.json"
 }
 
+# --- matched-ISA lane -------------------------------------------------------
+# karac commits to a v3 deploy baseline (`cpu-baseline = "v3"`), while
+# `clang -O3` and `rustc -O` default to the x86-64 v1 baseline (SSE2). On x86
+# that makes the default cross-language comparison an AVX2-vs-SSE2 fight rather
+# than a codegen comparison — measured on #260, kāra's apparent 1.44x lead over
+# C is entirely the baseline and evaporates once C and Rust are rebuilt at v3.
+#
+# These helpers add the safety-matched *and* ISA-matched twin so the honest
+# apples-to-apples number is always in the feed alongside the out-of-the-box
+# one. Both are recorded; BENCHMARKS.md states which answers which question.
+#
+# On aarch64 every helper is a deliberate no-op. Verified 2026-07-27 on the M5:
+# `clang -mcpu=apple-m1` (the macOS default) vs `-mcpu=generic` produces
+# different binaries but statistically identical times, so there is no ARM
+# baseline mismatch to correct.
+#
+#     isa_build_c    "${STEM}.c"     # -> target/<stem>_c_v3
+#     isa_build_rust "${STEM}.rs"    # -> target/<stem>_v3   (also overflow-checked)
+#     isa_sinks      "${STEM}"       # echoes the built twins for the sink check
+#     isa_rt_cmds    "${STEM}" seq   # registers the rt_cmd rows (inside rt_begin/rt_end)
+
+# True only where the v1-vs-v3 baseline gap actually exists. BENCH_ISA_FORCE=1
+# overrides the arch gate — set it together with ISA_LEVEL (e.g. ISA_LEVEL=native)
+# to exercise this path on a non-x86 host. That combination is for testing the
+# harness only; the numbers it produces are not a corpus lane.
+_isa_applies() {
+    [ "${BENCH_ISA_FORCE:-0}" = "1" ] && return 0
+    case "$(uname -m)" in
+        x86_64 | amd64) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ISA_LEVEL="${ISA_LEVEL:-x86-64-v3}"
+
+isa_build_c() {
+    _isa_applies || return 0
+    local src="$1"
+    local out="target/$(basename "$src" .c)_c_v3"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (-march=$ISA_LEVEL, matched-ISA) ..." >&2
+        clang -O3 -march="$ISA_LEVEL" "$src" -o "$out"
+    fi
+}
+
+# The fully-matched Rust twin: equal safety (overflow checks on, as kāra checks
+# by default) AND equal ISA. This is the one honest apples-to-apples lane.
+isa_build_rust() {
+    _isa_applies || return 0
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_v3"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (target-cpu=$ISA_LEVEL + overflow-checks, matched) ..." >&2
+        rustc -O -C overflow-checks=on -C target-cpu="$ISA_LEVEL" "$src" -o "$out"
+    fi
+}
+
+# Emit "name:cmd" pairs for whichever twins exist, for the caller's sink loop.
+# Empty off x86 so the caller's loop simply has nothing extra to check.
+isa_sinks() {
+    _isa_applies || return 0
+    local stem="$1"
+    [ -x "target/${stem}_c_v3" ] && printf 'c_v3:./target/%s_c_v3\n' "$stem"
+    [ -x "target/${stem}_v3" ] && printf 'rust_v3:./target/%s_v3\n' "$stem"
+    return 0
+}
+
+# Register the matched-ISA comparators. Call between rt_begin and rt_end.
+#
+# Each twin is verified against the kāra binary's output before it is registered
+# — not every kata's sink loop has a shape isa_sinks can extend, and a twin that
+# is measured but never checked is exactly how a wrong number reaches the feed.
+# (The overflow-checked twin can legitimately *trap* where `rustc -O` wraps; that
+# shows up here as a mismatch and is reported rather than silently timed.)
+_isa_reg() {
+    local lang="$1" bin="$2" stem="$3" lane="$4" label="$5" ref="$6"
+    [ -x "$bin" ] || return 0
+    if [ -n "$ref" ]; then
+        local got
+        got="$("./$bin" 2>/dev/null)" || {
+            echo "isa: $lang twin exited non-zero — lane dropped" >&2
+            return 0
+        }
+        if [ "$got" != "$ref" ]; then
+            echo "isa: $lang twin sink mismatch (got=$got want=$ref) — lane dropped" >&2
+            return 0
+        fi
+    fi
+    rt_cmd --lang "$lang" --approach "$stem" --lane "$lane" --mode native \
+        --name "$label" --cmd "./$bin"
+}
+
+isa_rt_cmds() {
+    _isa_applies || return 0
+    local stem="$1" lane="${2:-seq}" ref=""
+    [ -x "target/${stem}_kara" ] && ref="$(./target/${stem}_kara 2>/dev/null)"
+    _isa_reg c_v3 "target/${stem}_c_v3" "$stem" "$lane" \
+        "c    ${stem} (-march=$ISA_LEVEL, matched-ISA)" "$ref"
+    _isa_reg rust_v3 "target/${stem}_v3" "$stem" "$lane" \
+        "rust ${stem} (overflow-checks + target-cpu=$ISA_LEVEL, matched)" "$ref"
+    return 0
+}
+
 # --- runtime lane -----------------------------------------------------------
 # rt_begin sets warmup/runs; rt_cmd accumulates one comparator; rt_end runs the
 # single hyperfine call (all comparators interleaved, per the BENCH.md protocol)
