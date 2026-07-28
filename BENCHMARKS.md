@@ -110,7 +110,7 @@ Kāra's default-checked arithmetic against wrapping `rustc -O` and nothing else;
 their Rust column is not an equal-safety comparison: #28 `kmp_unchecked`, #30,
 #57 `insert_interval_cap`, #60 (both approaches), #69, #70, #98.
 
-**A known-flaky kata — recharacterised 2026-07-28, filed as `B-2026-07-28-2`.**
+**A known-flaky kata — recharacterised 2026-07-28, filed as `B-2026-07-28-13`.**
 #133's hand-written `par {}` binary — an 18-arm block whose every arm *reads*
 the same shared graph — dies silently, with empty stderr, in **~0.8% of runs**
 (4 in 500 on `karac 7db7009e`). An earlier revision of this file called it
