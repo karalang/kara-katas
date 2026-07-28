@@ -7,20 +7,53 @@ before anything is edited — an earlier, looser version of this script produced
 negated claims, compile-time claims judged against runtime rows, par-lane claims
 judged against seq, and sentences whose verb attached to Go rather than Kara.
 
-Precision measures now in place:
+Usage:
+  check-bench-claims.py            report contradictions, minus accepted misparses
+  check-bench-claims.py --all      report everything, ignoring the baseline
+  check-bench-claims.py --accept   record every current hit as a verified misparse
+
+Precision measures in place:
   * negation-aware      -- "does not lead C" is not a claim that it leads C
-  * lane-aware          -- a sentence under "### Compile elapsed" or a par-lane
-                           heading is never judged against the seq runtime rows
-  * comparator-aware    -- "rustc -O"/"wrapping" compares vs rust, "checked"/
-                           "overflow-checks" vs rust_ovf
+  * lane-aware          -- both the ### heading AND the sentence itself, so an
+                           inline "compiles this 2.3x faster than rustc" or a
+                           rayon/auto-par sentence is never judged against seq
+  * cross-kata-aware    -- "the alloc-bound siblings (#113 / #114) sit the other
+                           way" is a claim about OTHER katas, not this one
+  * comparator-aware    -- "rustc -O"/"wrapping" compares vs rust; "checked"/
+                           "overflow-checks"/"safety-matched" vs rust_ovf
   * magnitude-gated     -- ratios within MARGIN of parity are not contradictions
-  * subject-gated       -- the direction verb must follow a Kara mention and not
-                           be preceded by another language closer to the verb
+  * subject-gated       -- the direction verb must follow a Kara mention with no
+                           other language name between them
+
+KNOWN LIMITS -- these produce false positives and are NOT worth solving here,
+because each needs real parsing rather than another regex:
+  * verb attachment across clauses ("... than Rust's Rc<RefCell>; Go's
+    bump-allocator leads the lane" -- the lead is Go's)
+  * ratio phrasing that means the opposite ("kara is 1.14x THE SEQ LEADER (C)"
+    states a deficit, not a lead)
+  * a sentence quoting a claim in order to refute it ("turned the container's
+    rosy 'kara ahead of Rust' reading into an honest 1.06x gap")
+  * claims about a source variant the feed does not carry (#95's RC-sharing
+    generate_trees_share build)
+
+That is what the baseline is for. `--accept` records hits a human has READ and
+judged to be misparses into bench-claims-baseline.json, keyed by kata + a hash
+of the sentence + the comparator. They stay suppressed until either the sentence
+changes (hash moves) or the underlying ratio drifts more than DRIFT (25%), at
+which point the earlier judgement may no longer hold and the hit returns.
+
+Without this, every re-bench re-surfaces the same verified-fine claims and
+someone eventually "corrects" a correct one -- which is exactly what nearly
+happened to #51/#52, whose "ahead of safety-matched Rust" is TRUE against
+rust_ovf and only looked wrong because the sentence's "default-safe" matched a
+wrapping-Rust pattern.
 """
 import json
 import glob
 import os
 import re
+import sys
+import hashlib
 
 GEN = "The kata's tiny fixed inputs aren't a workload"
 SUF = ("_ovf", "_rschk", "_overflow_checks", "_chk")
@@ -39,6 +72,18 @@ OFF_LANE = re.compile(
     r"compile|binary size|memory|rss|par lane|auto-par|parallel|python|why this kata",
     re.I,
 )
+
+# A sentence can be off-lane even under an on-lane heading. These three classes
+# were all false positives in the 2026-07-28 triage:
+#   "Kara compiles this 2.3x faster than rustc -O"   -> compile lane
+#   "the auto-parallelizer's split pulls ahead"      -> par lane
+#   "the alloc-bound siblings (#113 / #114) sit ..." -> a claim about OTHER katas
+OFF_LANE_SENTENCE = re.compile(
+    r"compiles? this|compile-cold|compile \(cold\)|binary size|peak RSS"
+    r"|rayon|auto-par|auto-concurrency|intra-K[\u0101a]ra|goroutine|pthread|par \{",
+    re.I,
+)
+CROSS_KATA = re.compile(r"\.\./\d+-|\bsiblings?\b|\bcorpus's other\b", re.I)
 
 
 def norm(m):
@@ -80,6 +125,11 @@ def seq_sentences(body):
 def judge(by, sent):
     out = []
     if not re.search(r"k[āa]ra", sent, re.I):
+        return out
+    # A sentence can be off-lane even under an on-lane heading, and a sentence
+    # comparing OTHER katas is not a claim about this one. Both were confirmed
+    # false-positive classes in the 2026-07-28 triage.
+    if OFF_LANE_SENTENCE.search(sent) or CROSS_KATA.search(sent):
         return out
     for lang, pat in LANG.items():
         if not re.search(pat, sent):
@@ -134,7 +184,27 @@ def judge(by, sent):
     return out
 
 
+BASELINE = os.path.join(os.path.dirname(__file__), "bench-claims-baseline.json")
+# How far the underlying ratio may drift before a baselined hit is re-surfaced.
+DRIFT = 0.25
+
+
+def sent_key(sent):
+    return hashlib.sha1(re.sub(r"\s+", " ", sent).strip().encode()).hexdigest()[:12]
+
+
+def load_baseline():
+    if not os.path.exists(BASELINE):
+        return {}
+    return {
+        (e["kata"], e["sha"], e["lang"]): e for e in json.load(open(BASELINE))["accepted"]
+    }
+
+
 def main():
+    accept = "--accept" in sys.argv
+    show_all = "--all" in sys.argv
+    base = {} if (accept or show_all) else load_baseline()
     hits = []
     for rj in sorted(glob.glob("leetcode/*/*/bench/results.json")):
         d = os.path.dirname(os.path.dirname(rj))
@@ -150,13 +220,38 @@ def main():
         kata, by = feed_for(rj)
         for sent, heading in seq_sentences("\n".join(hand)):
             for lang, cf, worst, det in judge(by, sent):
-                hits.append((abs(worst[1] - 1), kata["id"], kata["slug"], d,
-                             lang, cf, re.sub(r"\s+", " ", sent).strip(), det, heading))
+                sha = sent_key(sent)
+                prev = base.get((kata["id"], sha, lang))
+                # Suppress a hit a human already read and accepted — UNLESS the
+                # underlying ratio has since moved materially, in which case the
+                # earlier "this is a misparse" judgement may no longer hold.
+                if prev and abs(worst[1] / prev["ratio"] - 1) <= DRIFT:
+                    continue
+                hits.append((abs(worst[1] - 1), kata["id"], kata["slug"], d, lang,
+                             cf, re.sub(r"\s+", " ", sent).strip(), det, sha, worst[1]))
 
     hits.sort(reverse=True)
-    print(f"CONTRADICTED (candidates): {len(hits)} across {len({h[1] for h in hits})} katas\n")
-    for sev, kid, slug, d, lang, cf, sent, det, heading in hits[:30]:
-        print(f"#{kid} {slug}   [severity {sev*100:.0f}%]")
+
+    if accept:
+        out = [{"kata": kid, "sha": sha, "lang": lang, "ratio": round(ratio, 4),
+                "slug": slug, "claim": sent[:160]}
+               for _, kid, slug, _, lang, _, sent, _, sha, ratio in hits]
+        json.dump({"_comment": (
+            "Claims a human READ and judged to be checker misparses, not real "
+            "contradictions. Re-surfaces automatically if the sentence changes "
+            f"(sha) or its ratio drifts more than {DRIFT:.0%}. Run with --all to "
+            "see everything including these. Never accept a hit you have not "
+            "verified against bench/results.json."),
+            "accepted": out}, open(BASELINE, "w"), indent=1)
+        print(f"accepted {len(out)} hits into {os.path.relpath(BASELINE)}")
+        return
+
+    n_sup = len(load_baseline()) if not show_all else 0
+    print(f"CONTRADICTED (candidates): {len(hits)} across {len({h[1] for h in hits})} katas"
+          + (f"   ({n_sup} accepted-as-misparse suppressed; --all to include)" if n_sup else "")
+          + "\n")
+    for sev, kid, slug, d, lang, cf, sent, det, sha, ratio in hits[:30]:
+        print(f"#{kid} {slug}   [severity {sev*100:.0f}%]  {sha}")
         print(f"   claims kara FASTER than {lang}" if cf else f"   claims kara SLOWER than {lang}")
         print(f"   feed: {det}")
         print(f"   \"{sent[:180]}\"\n")
