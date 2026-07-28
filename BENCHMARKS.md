@@ -77,13 +77,27 @@ by retargeting both compile-cost lanes to a throwaway `<stem>_kara.ce` path
 Corpus-wide check after the fix: **0** katas show a kāra `seq` lane above 150%
 CPU.
 
-**Provenance of this feed — still mixed, but far less so.** 198 of 244 katas are
-now measured on `karac 7db7009e` (121 on 2026-07-28, 77 on 2026-07-27); the
-remaining 46 sit on older June/July builds. Only katas that needed re-measuring
-for a specific fix were re-run; the rest were left on their original toolchain
-rather than swept for its own sake. The corpus-level median below therefore
-still averages across compiler generations and is softer than a single number
-implies.
+**Provenance of this feed — mixed by policy, not by backlog.** 198 of 244 katas
+are measured on `karac 7db7009e` (121 on 2026-07-28, 77 on 2026-07-27); the
+remaining 46 sit on older June/July builds.
+
+This is deliberate. `karac` is under active development, so a corpus that only
+counted as valid when every kata sat on one compiler build would be re-swept
+continuously and still be stale by the time it finished. **Katas are re-benched
+when there is a reason** — a harness fix that invalidated their numbers, a new
+lane, a claim that needs checking — not on a schedule. The cost is that the
+corpus-level median averages across compiler generations and is softer than a
+single number implies; that is the caveat to attach when quoting it, and it is
+cheaper than the treadmill.
+
+What this does **not** mean is that older rows may be *wrong*. The one defect
+this year that made stale rows actively false — the compile-cost lane clobbering
+the binary the seq lane timed — was verified cleared corpus-wide (0 of 244 katas
+show a kāra `seq` lane above 150% CPU), so "older" here means measured on an
+earlier compiler, not measured incorrectly. Rows from 2026-07-28 onward also
+carry `env.karac_build`, a fingerprint of the compiler binary, so which build
+produced a row is answerable from the JSON; older rows are datable only by
+`measured_at` and gain the fingerprint whenever they are next re-run.
 
 Note that `karac --version` reads `karac 0.1.0` on **every build ever made**,
 which is why a feed spanning three generations looked uniform and this had to be
