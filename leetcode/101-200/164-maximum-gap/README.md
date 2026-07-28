@@ -31,7 +31,7 @@ The linear-time constraint rules out comparison sorting. Key insight: if `n` val
 - **`Slice[i64]` from `Array[i64, N]`** including the empty-array `Array[i64, 0]` case (`n < 2` early-out).
 
 ## Benchmarks
-> **Machine.** Container-only reference run — a shared **x86-64 Linux cloud container** ([`bench/results.container-x86.json`](bench/results.container-x86.json)); canonical Apple-M5 numbers (`bench/results.json`) are pending a maintainer run. Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
+> **Machine.** The canonical **Apple M5 Pro** run ([`bench/results.json`](bench/results.json), 2026-07-28) is in the correction box below and is what the top-level charts use; the container table that follows immediately is the superseded x86-64 reference ([`bench/results.container-x86.json`](bench/results.container-x86.json)). Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
 
 Compute-bound, seq-only kata. The workload is **build-once + punch**: fill `N = 1_000_000` deterministic LCG values, then run `maximum_gap` `K = 30` times, perturbing one element each round so the pure function can't be hoisted. All five mirrors print the same sink (`462870`). The dominant cost is the O(n) bucket allocation + data-dependent scatter, so this doubles as an **allocator + memory-scatter** benchmark.
 
@@ -42,9 +42,9 @@ brew install hyperfine    # one-time, also needs rustc, clang, go, karac
 ./bench/bench.sh
 ```
 
-### Codegen ahead of C/Rust/Go on the allocation-bound kernel
+### Codegen ahead of Rust and Go on the allocation-bound kernel
 
-Container snapshot, hyperfine `--warmup 5 --runs 30`:
+Container snapshot, hyperfine `--warmup 5 --runs 30` — **superseded by the M5 correction below**:
 
 | Run | Mean ± σ | vs kāra |
 |---|---|---|

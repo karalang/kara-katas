@@ -37,12 +37,16 @@ Expected output (both):
 `scripts/new-bench.sh`). Read
 [`../../../BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of these.
 
-> **Host:** shared **x86-64 Linux cloud container**, committed as
-> `bench/results.container-x86.json`, not `results.json` — the latter is
-> reserved for canonical Apple M5 Pro numbers and is the only file
-> `scripts/consolidate-bench.sh` feeds into the top-level chart. This kata has
-> no M5 run, so it is deliberately absent from the consolidated feed. Only the
-> **within-file cross-language ratios** are comparable.
+> **Host:** the table below is the canonical **Apple M5 Pro** run
+> (`bench/results.json`, 2026-07-27), which `scripts/consolidate-bench.sh` feeds
+> into the top-level charts. The earlier shared **x86-64 Linux cloud container**
+> run is retained at `bench/results.container-x86.json` as a corroborating second
+> host. Absolute times are **not** comparable across the two; only within-file
+> cross-language ratios are.
+>
+> (This banner previously read "this kata has no M5 run, so it is deliberately
+> absent from the consolidated feed". Both halves are now false — the M5 run
+> exists and the kata is in the feed.)
 
 **Workload.** Build-once + punch: 6 token vectors built once from 11-operator
 expressions with differing operator cycles, then 30 punches of the full
@@ -73,7 +77,8 @@ lead is real but slight) and **Go now leads the lane**.
 > the σ on that reading (±46.3 ms on Go, ±44.3 on Kāra, i.e. ~20%) was large
 > enough that it should not have been quoted to three significant figures. The
 > Kāra-ties-Rust finding survived; the Go comparison did not.
-Overflow checks are free (221.5 vs 224.4 ms), as expected for a workload
+
+Overflow checks are free (131.2 vs 130.8 ms), as expected for a workload
 dominated by allocation and recursion rather than arithmetic.
 
 This is a **clean comparison with no caveats to attach**: no hash map, no set,
@@ -82,26 +87,40 @@ result vector per recursive call. C uses `malloc`/`realloc` rather than a
 shared scratch arena precisely so the allocation behaviour matches the other
 four — an arena would have been faster but a different algorithm.
 
-Go's 2.18× deficit is the outlier and is consistent with per-call slice
-allocation plus GC pressure at this allocation rate; it is the only lane where
-the shape clearly costs more than it does elsewhere.
+Go is the lane that moved most between hosts — from a 2.18× deficit on the
+container to a 1.33× **lead** on the M5. The per-call slice allocation and GC
+pressure are real, but on this host the GC absorbs them and comes out ahead of
+every other lane, so the earlier "Go is the outlier that pays for the shape"
+reading does not survive. It is worth noting that a 5.1× swing in one lane
+across hosts, with no source change, is itself the finding: it is why the M5 is
+the canonical host and why the container run is retained only as corroboration.
 
 ### A note on trusting single runs
 
 A quick one-shot timing before the real benchmark showed kāra at 0.19 s against
 Rust and C both at 0.23 s — i.e. kāra apparently *ahead of C*. The 30-run
-measurement shows that was noise: C is 1.46× ahead and kāra merely ties Rust.
+measurement shows that was noise: C is 1.17× ahead and kāra merely ties Rust.
 Single `time` invocations on this host are not evidence; only the hyperfine
 lanes are.
 
 ### Compile, size, memory
 
+Apple M5 Pro, 2026-07-27 (`bench/results.json`):
+
 | Metric | kāra | rust | c | go |
 |---|---|---|---|---|
-| Compile (cold) | 427.9 ms ± 94.8 | 218.1 ms ± 13.7 | 146.7 ms ± 16.6 | — |
-| Binary size | **332.9 KiB** | 3868.6 KiB | 16.1 KiB | 2166.2 KiB |
-| Runtime peak RSS | 3.1 MiB | 2.7 MiB | 2.5 MiB | 8.7 MiB |
-| Compile peak RSS | **91.0 MiB** | 114.5 MiB | 98.0 MiB | — |
+| Compile (cold) | 105.6 ms ± 0.8 | 103.6 ms ± 2.5 | 49.5 ms ± 0.4 | — |
+| Binary size | **33.5 KiB** | 457.1 KiB | 33.1 KiB | 2434.2 KiB |
+| Runtime peak RSS | **1.9 MiB** | 2.0 MiB | 2.2 MiB | 10.3 MiB |
+| Compile peak RSS | **25.8 MiB** | 30.0 MiB | 2.5 MiB | — |
+
+The binary-size row is the one that moved most: the container run read **332.9
+KiB** for Kāra against C's 16.1, and on the M5 it is **33.5 KiB against C's
+33.1 — parity**. That ~300 KiB was the container-build linkage artifact seen
+across the corpus (a heap-growing program retaining the backtrace-symbolizer
+tree that `--gc-sections` should strip), not a property of the code. Kāra also
+now holds the **lowest peak RSS of the four**, and compiles at rough parity with
+`rustc` rather than 2× slower.
 
 The Python mirror is the correctness oracle, not a measured lane — it stays
 behind the `KARA_BENCH_INCLUDE_PY` gate by design.
