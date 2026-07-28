@@ -75,6 +75,10 @@ PY
     else
         echo "FAIL $id $(tail -2 "$log" | tr '\n' ' ')"; fail=$((fail + 1))
     fi
-done < <(find "$ROOT/leetcode" -path '*/bench/bench.sh' | sort)
+# bespoke/ and backend/ carry katas too — utf8-codepoints was missed by the
+# corpus-wide ISA wiring precisely because the earlier tooling only ever walked
+# leetcode/. Searching both keeps that class of gap from recurring.
+done < <(find "$ROOT/leetcode" "$ROOT/bespoke" "$ROOT/backend" \
+    -path '*/bench/bench.sh' 2>/dev/null | sort)
 
 echo "SWEEP-DONE ok=$ok nov3=$nov3 fail=$fail"

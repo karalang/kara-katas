@@ -98,6 +98,11 @@ build_c
 build_kara
 build_kara_seq
 build_go_seq
+# Matched-ISA twins (x86 only; a no-op on aarch64). karac targets a v3 deploy
+# baseline while `clang -O3` / `rustc -O` default to v1, so without these the
+# cross-language rows on x86 compare AVX2 against SSE2. See bench-lib.sh.
+isa_build_c    utf8_codepoints.c
+isa_build_rust utf8_codepoints.rs
 
 # Sink agreement — every mirror's stdout must be byte-identical before timing.
 expected="72374800 744704645"
@@ -108,7 +113,8 @@ for pair in \
     'rust:./target/utf8_codepoints' \
     'rust_chk:./target/utf8_codepoints_rschk' \
     'c:./target/utf8_codepoints_c' \
-    'go:./target/utf8_codepoints_go_seq'; do
+    'go:./target/utf8_codepoints_go_seq' \
+    $(isa_sinks utf8_codepoints); do
     name="${pair%%:*}"; cmd="${pair#*:}"
     out=$("$cmd")
     if [ "$out" != "$expected" ]; then mismatch="$mismatch ${name}=[${out}]"; fi
@@ -142,6 +148,10 @@ rt_cmd --lang c --approach utf8_codepoints --lane seq --mode native \
     --name 'c    utf8_codepoints' --cmd './target/utf8_codepoints_c'
 rt_cmd --lang go --approach utf8_codepoints --lane seq --mode native \
     --name 'go   utf8_codepoints' --cmd './target/utf8_codepoints_go_seq'
+# Defaults are correct here: the approach name IS the stem, and ref auto-detect
+# finds target/utf8_codepoints_kara_seq (tried before _kara), which is the
+# binary the seq lane above actually times.
+isa_rt_cmds utf8_codepoints seq
 rt_end
 
 echo
