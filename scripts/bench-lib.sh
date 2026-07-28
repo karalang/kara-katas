@@ -97,8 +97,23 @@ bench_begin() {
         esac
     done
 
-    local karac_v rustc_v clang_v go_v hf_v host p0 p1 cores os now
+    local karac_v karac_id rustc_v clang_v go_v hf_v host p0 p1 cores os now
     karac_v="$(karac --version 2>/dev/null || echo unknown)"
+    # `karac --version` reads "karac 0.1.0" on every build ever made, so it
+    # carries no provenance: a feed spanning three compiler generations looks
+    # uniform. Fingerprint the actual binary instead (content hash + mtime), so
+    # "which karac produced this row" is answerable from the JSON alone.
+    karac_id="$(
+        kb="$(command -v karac 2>/dev/null)" || kb=""
+        if [ -n "$kb" ]; then
+            h="$(shasum -a 256 "$kb" 2>/dev/null | cut -c1-12)"
+            t="$(date -u -r "$kb" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                 || stat -c %y "$kb" 2>/dev/null | cut -c1-19)"
+            printf '%s %s' "${h:-unknown}" "${t:-unknown}"
+        else
+            printf 'unknown'
+        fi
+    )"
     rustc_v="$(rustc --version 2>/dev/null || echo unknown)"
     clang_v="$(clang --version 2>/dev/null | head -1 || echo unknown)"
     go_v="$(go version 2>/dev/null || echo unknown)"
@@ -117,13 +132,15 @@ bench_begin() {
     jq -n \
         --arg id "$id" --arg slug "$slug" --arg group "$group" \
         --arg title "$title" --arg workload "$workload" --arg sink "$sink" \
-        --arg karac "$karac_v" --arg rustc "$rustc_v" --arg clang "$clang_v" \
+        --arg karac "$karac_v" --arg karac_id "$karac_id" \
+        --arg rustc "$rustc_v" --arg clang "$clang_v" \
         --arg go "$go_v" --arg hf "$hf_v" --arg host "$host" \
         --arg cores "$cores" --arg os "$os" --arg now "$now" \
         '{
             kata: {id: $id, slug: $slug, group: $group, title: $title,
                    workload: $workload, sink: $sink},
             env: {host: $host, cores: $cores, os: $os, karac: $karac,
+                  karac_build: $karac_id,
                   rustc: $rustc, clang: $clang, go: $go, hyperfine: $hf,
                   measured_at: $now}
          }' >"$BENCH_TMP/meta.json"

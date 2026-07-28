@@ -53,16 +53,17 @@ min_depth(node):
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`768360140`). Workload: build 8 balanced 31-node trees once, then K=3000000 reps of recursive min_depth on a data-dependent-selected tree (idx=acc%8), folding each minimum depth into a rolling polynomial hash; read-only per-node post-order traversal (no allocation), the exposed RC/traversal regime.
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 345.1 ms | 0.83× |
-| C `clang -O3` | 374.5 ms | 0.90× |
-| **Kāra (codegen)** | 417.6 ms | 1.00× |
-| Go | 430.7 ms | 1.03× |
+| Go | 131.9 ms | 0.84× |
+| C `clang -O3` | 132.5 ms | 0.84× |
+| Rust `-O` | 146.9 ms | 0.93× |
+| **Kāra (codegen)** | 157.1 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 159.3 ms | 1.01× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

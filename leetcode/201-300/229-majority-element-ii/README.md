@@ -36,18 +36,17 @@ The vote guarantees survivors but not that they actually clear the bar — a dec
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`8162979`). Workload: two-candidate Boyer-Moore vote + verify over a width-16 sliding window across a 3M LCG array (branchy, loop-carried counts).
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 547.4 ms | 0.81× |
-| C `clang -O3` | 549.4 ms | 0.81× |
-| Rust `-O` | 592.5 ms | 0.88× |
-| Go | 664.5 ms | 0.98× |
-| **Kāra (codegen)** | 674.7 ms | 1.00× |
-| Python (scale lane) | 9.25 s | 13.71× |
+| Rust `-O` | 162.4 ms | 0.54× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 165.1 ms | 0.55× |
+| C `clang -O3` | 167.5 ms | 0.55× |
+| Go | 301.7 ms | 1.00× |
+| **Kāra (codegen)** | 302.8 ms | 1.00× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

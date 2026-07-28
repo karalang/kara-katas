@@ -33,18 +33,17 @@ Postorder = **recurse left, recurse right, then visit** — the mirror of [#144]
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`6827796872623535`). Workload: iterative postorder (two explicit index-pool stacks) over a 50k-node BST x 250 passes, pointer-chase.
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 185.3 ms | 0.87× |
-| Rust `-O` | 204.4 ms | 0.96× |
-| Go | 205.3 ms | 0.96× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 212.9 ms | 1.00× |
-| **Kāra (codegen)** | 213.3 ms | 1.00× |
-| Python (scale lane) | 5.78 s | 27.11× |
+| Go | 37.7 ms | 0.58× |
+| C `clang -O3` | 41.1 ms | 0.63× |
+| Rust `-O` | 63.5 ms | 0.98× |
+| **Kāra (codegen)** | 65.1 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 65.2 ms | 1.00× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

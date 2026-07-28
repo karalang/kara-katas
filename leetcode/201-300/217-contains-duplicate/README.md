@@ -34,17 +34,17 @@ Walk the array once, keeping a `Set[i64]` of the values seen so far. Before inse
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`27979`). Workload: hash-set contains_duplicate over 239200 sliding width-800 windows of a PRNG array; count of windows with a duplicate.
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 228.5 ms | 0.03× |
-| Rust `-O` | 7.79 s | 0.94× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 7.80 s | 0.95× |
-| **Kāra (codegen)** | 8.25 s | 1.00× |
-| Go | 12.03 s | 1.46× |
+| C `clang -O3` | 103.3 ms | 0.05× |
+| **Kāra (codegen)** | 1.98 s | 1.00× |
+| Go | 4.67 s | 2.36× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 5.07 s | 2.56× |
+| Rust `-O` | 5.08 s | 2.56× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

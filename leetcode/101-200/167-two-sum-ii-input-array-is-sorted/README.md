@@ -34,18 +34,17 @@ Because the array is **sorted**, the classic hash-map [Two Sum](../../1-100/1-tw
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400987230`). Workload: build-once 20K-elem sorted PRNG array + 20K two-pointer two-sum sweeps for guaranteed-solution PRNG targets (loop-carried lo/hi convergence, data-dependent branch, non-vectorizing); sink = sum of 1-based index pairs.
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 156.2 ms | 0.32× |
-| C `clang -O3` | 465.9 ms | 0.94× |
-| Rust `-O` | 466.5 ms | 0.94× |
-| **Kāra (codegen)** | 495.2 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 498.1 ms | 1.01× |
-| Python (scale lane) | 9.38 s | 18.95× |
+| Go | 62.5 ms | 0.27× |
+| **Kāra (codegen)** | 233.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 235.1 ms | 1.01× |
+| C `clang -O3` | 239.3 ms | 1.02× |
+| Rust `-O` | 239.7 ms | 1.03× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

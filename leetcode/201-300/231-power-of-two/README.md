@@ -34,18 +34,17 @@ A positive power of two has exactly **one** set bit. Subtracting 1 flips that bi
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`1269530`). Workload: is_power_of_two over a 130M-step LCG stream, masked to 0..1024 (loop-carried PRNG, count of powers).
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 177.5 ms | 0.81× |
-| Rust `-O` | 188.3 ms | 0.86× |
-| **Kāra (codegen)** | 218.3 ms | 1.00× |
-| C `clang -O3` | 232.2 ms | 1.06× |
-| Go | 241.5 ms | 1.11× |
-| Python (scale lane) | 32.86 s | 150.49× |
+| C `clang -O3` | 120.0 ms | 0.83× |
+| Rust `-O` | 120.5 ms | 0.84× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 124.4 ms | 0.86× |
+| **Kāra (codegen)** | 144.0 ms | 1.00× |
+| Go | 156.0 ms | 1.08× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

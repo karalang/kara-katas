@@ -39,18 +39,17 @@ The histogram pass is O(cols) with a **monotonic stack** of column indices with 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`225518`). Workload: histogram + monotonic-stack maximal rectangle over a 70x70 0/1 matrix x 11K passes (build-once + punch).
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 490.6 ms | 0.62× |
-| Rust `-O` | 784.2 ms | 0.99× |
-| **Kāra (codegen)** | 791.2 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 839.0 ms | 1.06× |
-| Go | 874.1 ms | 1.10× |
-| Python (scale lane) | 16.79 s | 21.22× |
+| C `clang -O3` | 75.0 ms | 0.60× |
+| **Kāra (codegen)** | 125.2 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 127.2 ms | 1.02× |
+| Rust `-O` | 129.4 ms | 1.03× |
+| Go | 161.5 ms | 1.29× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

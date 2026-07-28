@@ -40,18 +40,17 @@ The second half is never longer than the first, so for odd length the middle nod
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`900`). Workload: is_palindrome (midpoint + in-place reverse + compare) over a 50k-node list, 1800 passes with a middle-value punch.
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 429.8 ms | 0.99× |
-| **Kāra (codegen)** | 433.4 ms | 1.00× |
-| Rust `-O` | 447.1 ms | 1.03× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 455.0 ms | 1.05× |
-| Go | 468.6 ms | 1.08× |
-| Python (scale lane) | 12.02 s | 27.72× |
+| **Kāra (codegen)** | 237.9 ms | 1.00× |
+| C `clang -O3` | 247.0 ms | 1.04× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 248.8 ms | 1.05× |
+| Rust `-O` | 249.4 ms | 1.05× |
+| Go | 252.7 ms | 1.06× |
 
-Kāra checks integer overflow by default, so the honest baseline is `rustc -O -C overflow-checks=on`. Single-machine snapshot (`bench/results.container-x86.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
