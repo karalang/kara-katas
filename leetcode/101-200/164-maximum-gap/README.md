@@ -31,10 +31,6 @@ The linear-time constraint rules out comparison sorting. Key insight: if `n` val
 - **`Slice[i64]` from `Array[i64, N]`** including the empty-array `Array[i64, 0]` case (`n < 2` early-out).
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 > **Machine.** Container-only reference run — a shared **x86-64 Linux cloud container** ([`bench/results.container-x86.json`](bench/results.container-x86.json)); canonical Apple-M5 numbers (`bench/results.json`) are pending a maintainer run. Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
 
 Compute-bound, seq-only kata. The workload is **build-once + punch**: fill `N = 1_000_000` deterministic LCG values, then run `maximum_gap` `K = 30` times, perturbing one element each round so the pure function can't be hoisted. All five mirrors print the same sink (`462870`). The dominant cost is the O(n) bucket allocation + data-dependent scatter, so this doubles as an **allocator + memory-scatter** benchmark.
@@ -59,7 +55,25 @@ Container snapshot, hyperfine `--warmup 5 --runs 30`:
 | go `maximum_gap` | 2.744 ± 0.649 s | kāra 1.90× ahead |
 | python `maximum_gap` | 30.79 ± 0.82 s | (scale only; 3 runs) |
 
-Here Kāra's codegen is **fastest** — ahead of `clang -O3`. The kernel repeatedly allocates three ~1M-element buckets and scatters into them; the measured cost is dominated by **allocation + memory traffic**, where Kāra's allocator (reused arenas across the K calls) edges out C's `malloc`/`calloc` (higher system time — note C's `System: 63 ms` vs Kāra's `18 ms`) and Go's GC. This is a workload-specific win, not a general claim: for the tight-arithmetic kernels elsewhere in this corpus (e.g. [#152](../152-maximum-product-subarray/)) C stays ahead. Python is a **scale reference only** (run 3× — it is ~20× slower here because the per-bucket work is pathological under CPython).
+> **Correction (2026-07-28) — "fastest, ahead of `clang -O3`" is retracted.** On
+> the canonical M5 host C leads and Kāra is **1.17× behind** it:
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | c    `maximum_gap` (clang -O3) | **167.4 ± 0.8 ms** | 0.86× |
+> | **kāra `maximum_gap`** | **195.5 ± 1.7 ms** | **1.00×** |
+> | rust `maximum_gap` (rustc -O) | 232.4 ± 1.8 ms | 1.19× |
+> | rust `maximum_gap` (overflow-checks=on) | 236.1 ± 1.2 ms | 1.21× |
+> | go   `maximum_gap` | 276.5 ± 3.1 ms | 1.41× |
+>
+> The allocator story below is still the right explanation for the *shape* of
+> this kata — it is allocation- and memory-traffic-bound, which is why Kāra beats
+> both Rust builds by ~1.2× and Go by 1.41× here while losing the tight-arithmetic
+> kernels. What it does not survive is the specific "edges out C's
+> `malloc`/`calloc`" conclusion: the container run that supported it had C at a
+> system-time disadvantage that does not reproduce on this host.
+
+Kāra's codegen leads **both Rust builds and Go**, and trails only C. The kernel repeatedly allocates three ~1M-element buckets and scatters into them; the measured cost is dominated by **allocation + memory traffic**, where Kāra's allocator (reused arenas across the K calls) beats Rust's and Go's GC — but not C's `malloc`/`calloc`. This remains a workload-specific result, not a general claim: for the tight-arithmetic kernels elsewhere in this corpus (e.g. [#152](../152-maximum-product-subarray/)) C's lead is wider still. Python is a **scale reference only** (run 3× — it is ~20× slower here because the per-bucket work is pathological under CPython).
 
 ## Running
 

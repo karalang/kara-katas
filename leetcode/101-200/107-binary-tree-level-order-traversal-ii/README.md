@@ -69,10 +69,6 @@ python3 ground_truth.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`level_order_bottom.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
@@ -90,6 +86,28 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | rust level_order_bottom (rustc -O)                  | 728.8 ± 20.8 ms | `Box` + `Vec<Vec>` |
 | rust level_order_bottom (rustc -O, overflow-checks=on)| 740.4 ± 21.3 ms | `Box` + `Vec<Vec>` |
 | go   level_order_bottom (GC)                        | 978.9 ± 15.0 ms | `*Node` + `[][]int64` (GC) |
+
+> **M5 result (2026-07-28) — Kāra lands third, and Go leads.** The container
+> analysis below predicted the ordering "raw malloc < Kāra < Box/Vec < Go GC".
+> On the canonical M5 host Go is not last; it is **first**:
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | go   level_order_bottom (GC) | **401.8 ± 2.5 ms** | 0.84× |
+> | c    level_order_bottom (clang -O3) | 452.6 ± 15.5 ms | 0.95× |
+> | **kāra level_order_bottom** | **476.2 ± 15.4 ms** | **1.00×** |
+> | rust level_order_bottom | 495.2 ± 14.7 ms | 1.04× |
+> | rust level_order_bottom (overflow-checks=on) | 507.1 ± 12.8 ms | 1.06× |
+>
+> Ahead-of-Rust survived but collapsed from **30% to 4%**, and ahead-of-Go
+> inverted: Go is now **1.18× faster** than Kāra, not 74% slower. The
+> "GC-under-churn is the wrong trade for short-lived nested allocations" argument
+> — which this section also applied to [#102](../102-binary-tree-level-order-traversal/)
+> and [#103](../103-binary-tree-zigzag-level-order-traversal/) — is the part that
+> failed. A generational GC sweeping a million short-lived nested slices in bulk
+> turns out to be *well* matched to this shape, and the 4-vCPU container was
+> hiding it. C's floor also narrowed to 1.05×. The text below is the pre-M5
+> container analysis, retained for provenance.
 
 **On this allocation-bound nested-container workload Kāra lands second — ahead of Rust by 30% and Go by 74%.** Every rep builds two layers of fresh `Vec[Vec[i64]]` (the depth-indexed rows, then the deepest-first output) and tears them down, so the per-rep cost is the nested-container churn. Against its semantic peer Rust — `Box` node walked by `&`-borrow, `Vec<Vec<i64>>` result — Kāra is **1.29× ahead** (563 vs 729 ms; 563 vs 740 with overflow-checks on): building an outer vector of freshly-grown inner vectors and freeing the lot is exactly the shape Kāra's `Vec` growth handles leanest, and it stays ahead even with the per-node RC inc/decs the borrow-based Rust walk skips, because the *allocation* dominates. **C is the floor** at 464 ms (Kāra **1.21× behind**): raw `malloc`/`realloc`/`free`, no refcount, no GC. **Go trails at 979 ms** (Kāra **1.74× ahead**): its GC pays hardest on the 1 M × (two nested-slice layers) allocation churn — deferred collection being the wrong trade for short-lived nested allocations, the same GC-under-churn regime where Go placed last in [#102](../102-binary-tree-level-order-traversal/) and [#103](../103-binary-tree-zigzag-level-order-traversal/). So the ordering is by allocator overhead on short-lived nested containers — raw malloc < **Kāra RC/`Vec`** < `Box`/`Vec` < Go GC — the same nested-Vec regime where Kāra beat Rust in [#102](../102-binary-tree-level-order-traversal/) (the alloc-heavy tree siblings consistently favor Kāra's `Vec` growth over Rust's `Vec<Vec>`). Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`) over the run. Python is listed at **207 ms but ran K = 50,000 — 1/20 of the compiled iterations** (pure-Python recursion is ~20× slower per rep; timed separately, not cross-checked), so its wall-clock is not comparable.
 

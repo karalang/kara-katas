@@ -65,10 +65,6 @@ Per BENCH.md's "katas are bug-finders" discipline, the kata-17 first ship docume
 The inner-element half of the recursive drop is left to the scope-exit `FreeVecBuffer` walker, which runs at function exit when all per-alias cleanups have drained. The kata's inner loop binds `let prefix = out[i]` per iteration — this is a deliberate memory-discipline pattern, not a workaround: each per-iter `let`-binding registers a scope-exit cleanup that frees that indexed String's char buffer at end-of-iter. A version of the kata that *omits* the per-iter binding compiles correctly but leaks the per-iter inner Strings (re-measured 2026-06-06 on current karac: 15.7 MiB at K=100k vs 1.6 MiB as shipped, identical sink); this is an existing ownership limitation — move-overwrite (`out = next`) drops the replaced value's outer buffer but not its inner heap-owning elements, while scope-exit drop is deep — tracked in kara `docs/implementation_checklist/phase-7-codegen.md` § "Move-overwrite inner-element drop" (filed 2026-06-06 with isolation probes; names this kata as its natural-pull trigger: when it lands, the per-iter binding and both its comment blocks simplify away, re-bench ceremony applies).
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`letter_combinations.{kara,rs,c,py}`, `go-seq/main.go`).
 
 **Workload.** M = 8 distinct digit-strings of length 0..4 covering the full LeetCode constraint range: `""`, `"2"`, `"7"`, `"23"`, `"79"`, `"234"`, `"279"`, `"2349"` — the empty-input sentinel, single 3- and 4-letter groups, two-digit mixed shapes, and three- and four-digit cases that exercise the 4^L cardinality scaling. Per outer iter we rotate `idx = k % M` and call `letter_combinations` on that case. The output cardinality across the eight cases is `0 + 3 + 4 + 9 + 16 + 27 + 48 + 108 = 215`.
@@ -83,14 +79,23 @@ Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumul
 
 Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. Numbers below are with both karac fixes landed (see § Karac fixes the kata drove for what shipped). The 2026-05-29 snapshot read 66.3±7.0 / 68.2±7.3 / 46.2 / 45.4 — that batch's kāra/rust σ was ~3× today's on byte-identical rust/c binaries, so the ~8% downshift is the noisy old batch, not a code change.
 
-| Implementation | Wall time |
-|---|---|
-| go   letter_combinations              | **40.7 ± 0.8 ms** |
-| c    letter_combinations (clang -O3)  | 47.7 ± 3.2 ms |
-| **kāra letter_combinations (seq)**    | **76.3 ± 2.1 ms** |
-| rust letter_combinations              | 66.3 ± 2.3 ms |
+| Implementation | Wall time | vs Kāra |
+|---|---|---|
+| go   letter_combinations              | **40.0 ± 0.9 ms** | 0.36× |
+| c    letter_combinations (clang -O3)  | 70.3 ± 2.9 ms | 0.64× |
+| rust letter_combinations (overflow-checks=on) | 85.8 ± 4.4 ms | 0.78× |
+| rust letter_combinations              | 87.9 ± 1.9 ms | 0.80× |
+| **kāra letter_combinations (seq)**    | **110.1 ± 4.9 ms** | **1.00×** |
 
-**Kāra seq leads Rust by 1.01× — within σ**, a tie on this allocation-dominated workload. The 0.9 ms delta is well inside the run-to-run noise. C and Go lead Kāra/Rust by ~1.38× — the same delta to Kāra as to Rust, confirming it's the C-allocator / Go-bump-allocator + escape-analysis advantage on the small-buffer churn rather than a Kāra-specific gap. Different shape from katas 14/15/16 (sort + two-pointer, allocator-light): there the headline is the codegen-quality compare against Rust; here it's the **allocator-pressure compare against C and Go**, with Rust's bsdmalloc-on-mac+`Vec<String>` paying the same overhead as Kāra's runtime allocator.
+> **Correction (2026-07-28).** This section previously claimed "**Kāra seq leads
+> Rust by 1.01× — within σ**, a tie". That was wrong when written and is wronger
+> now: the table printed directly above it read kāra 76.3 ms against rust 66.3 ms,
+> which is Kāra **1.15× behind**, not 1.01× ahead. The prose contradicted its own
+> table. On the canonical M5 host the gap is **1.25× behind `rustc -O`** and
+> **1.28× behind the overflow-checked build** — so the equal-safety comparison
+> does not rescue it either.
+
+**Kāra is last of the four here**, and by a margin worth naming: 1.25× behind Rust, 1.57× behind C, and 2.75× behind Go. The allocator-pressure reading still holds — C and Go both beat *Rust* too, which is the sign of a small-buffer-churn workload rewarding a bump allocator and escape analysis — but the "same delta to Kāra as to Rust" framing no longer applies, because Kāra now sits a further 1.25× behind Rust on top of that shared gap. This is a genuine `Vec[String]`-churn deficit, not a shared allocator tax. Different shape from katas 14/15/16 (sort + two-pointer, allocator-light): there the headline is the codegen-quality compare against Rust; here it's the **allocator-pressure compare against C and Go**, with Rust's bsdmalloc-on-mac+`Vec<String>` paying the same overhead as Kāra's runtime allocator.
 
 ### Runtime — auto-par regime
 
