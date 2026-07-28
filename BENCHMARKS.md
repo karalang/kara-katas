@@ -72,20 +72,53 @@ by retargeting both compile-cost lanes to a throwaway `<stem>_kara.ce` path
 Corpus-wide check after the fix: **0** katas show a kāra `seq` lane above 150%
 CPU.
 
-**Provenance of this feed — three compiler generations.** 99 katas measured on
-`karac 7db7009e` with the fixed harness, 77 on `3e9a12ed`, 68 on older June/July
-builds. Only the 81 katas whose seq and default builds differ needed
-re-measuring for the fix (on the rest the two builds are byte-identical, so the
-clobber was a no-op); the remainder were left on their original toolchain rather
-than re-run. The corpus-level median below therefore averages across three
-compilers and is softer than a single number implies.
+**Provenance of this feed — still mixed, but far less so.** 198 of 244 katas are
+now measured on `karac 7db7009e` (121 on 2026-07-28, 77 on 2026-07-27); the
+remaining 46 sit on older June/July builds. Only katas that needed re-measuring
+for a specific fix were re-run; the rest were left on their original toolchain
+rather than swept for its own sake. The corpus-level median below therefore
+still averages across compiler generations and is softer than a single number
+implies.
 
-**A known-flaky kata.** #133's hand-written `par {}` binary exits on SIGTRAP in
-roughly **1.7%** of runs (1 in 60, silent, no diagnostic). At that rate a
-35-invocation hyperfine batch fails ~45% of the time, so its par-lane numbers
-should be treated as provisional. Whether this is a regression is **not**
-established — the June run's success is equally consistent with "worked then"
-and "was already flaky and got lucky."
+Note that `karac --version` reads `karac 0.1.0` on **every build ever made**,
+which is why a feed spanning three generations looked uniform and this had to be
+reconstructed from measurement dates. Runs from 2026-07-28 onward carry
+`env.karac_build` — a content hash + mtime of the compiler binary — so the
+question "which karac produced this row" is answerable from the JSON alone.
+
+**Equal-safety coverage — 243 of 249 program-rows (2026-07-28).** Auditing this
+turned up that the overflow-checked Rust twin had been encoded three different
+ways as the harness evolved, and nothing downstream knew about the third:
+
+| encoding | katas |
+|---|---|
+| `lang="rust_ovf"` | 128 |
+| `lang="rust"`, `approach="<stem>_ovf"` | 43 |
+| `lang="rust"`, `approach="<stem>_rschk"` | 22 |
+
+Reading the raw `lang` labels a checked-Rust number as plain `rustc -O` — the
+precise misattribution this lane exists to prevent — so every consumer now
+normalises all three. 54 katas genuinely had no twin at all and were comparing
+Kāra's default-checked arithmetic against wrapping `rustc -O` and nothing else;
+49 have since been given one (`ovf_build_rust` / `ovf_rt_cmds` in
+`scripts/bench-lib.sh`) and re-measured. **Eight program-rows still lack it** and
+their Rust column is not an equal-safety comparison: #28 `kmp_unchecked`, #30,
+#57 `insert_interval_cap`, #60 (both approaches), #69, #70, #98.
+
+**A known-flaky kata — recharacterised 2026-07-28, filed as `B-2026-07-28-2`.**
+#133's hand-written `par {}` binary — an 18-arm block whose every arm *reads*
+the same shared graph — dies silently, with empty stderr, in **~0.8% of runs**
+(4 in 500 on `karac 7db7009e`). An earlier revision of this file called it
+"SIGTRAP at 1.7%" on a 60-run sample; both numbers were off, and more
+importantly the failure is not only a trap. The observed exit codes are **133
+(SIGTRAP) ×3 and 139 (SIGSEGV) ×1** — the segfault means memory unsafety, not a
+trap firing on a detected condition. Output is never wrong when the process does
+exit 0 (0 bad sinks in 500 runs), so it is crash-or-correct. A worker-count
+differential points at a data race on the shared read set rather than a
+scheduler bug: **0/200 at 1 worker, 0/200 at 2, 2/200 at 18**. Its par-lane
+numbers are provisional. Whether this is a regression is still **not**
+established — at ~0.8% a clean 60-run bench is close to a coin flip, so June's
+success is no evidence of a start date, and no bisect has been done.
 
 **What the overflow tax actually is, measured (2026-07-27).** The phrase "overflow
 tax" undersells the mechanism on array kernels: checked arithmetic does not add a
@@ -199,6 +232,21 @@ collection/pointer kernels, with the only daylight to the gray `rust -O` baselin
 being the overflow checks Rust opts out of by default (see the baseline caveat
 above). The residual equal-safety gaps are string-building kernels and #1665's sort.
 Go trails on most single-threaded work.
+
+Corpus-level, sequential lane, on the 243 program-rows that carry a
+safety-matched Rust twin (2026-07-28, M5 Pro):
+
+| comparison | n | median | p10 | p90 | Kāra faster |
+|---|---|---|---|---|---|
+| vs Rust `-O -C overflow-checks=on` | 243 | **1.00×** | 0.74× | 1.20× | 130/243 (53%) |
+| vs C `clang -O3` | 249 | 1.18× | — | — | 43/249 (17%) |
+
+Read the median as "a coin flip against safety-matched Rust, and consistently
+behind C" — not as a headline. The p10/p90 spread is the real content: the
+distribution is wide in both directions, the tails are what the per-kata pages
+explain, and the figure still averages across compiler generations (see
+Provenance). The vs-C row deliberately spans all 249 rows including the 8
+without an equal-safety twin, since `clang -O3` is unaffected by that gap.
 
 ## Binary size — sequential lane
 

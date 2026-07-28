@@ -54,11 +54,22 @@ def fmt_ms(ms):
     return f"{ms:.1f} ms"
 
 
+# The equal-safety Rust twin has been encoded three different ways as the
+# harness evolved. Reading the raw lang labels a checked-Rust number as plain
+# `rustc -O`, which is the misattribution this whole lane exists to prevent.
+#   lang="rust_ovf"                     — current harness, 128 katas
+#   lang="rust", approach="<stem>_ovf"  —  43 katas
+#   lang="rust", approach="<stem>_rschk" — 22 katas (build_rust_checked)
+OVF_SUFFIXES = ("_ovf", "_rschk")
+
+
 def normalise(m):
-    """Return (lang, approach) with both ovf encodings folded into rust_ovf."""
+    """Return (lang, approach) with every ovf encoding folded into rust_ovf."""
     lang, app = m["lang"], m["approach"]
-    if lang == "rust" and app.endswith("_ovf"):
-        return "rust_ovf", app[: -len("_ovf")]
+    if lang == "rust":
+        for suf in OVF_SUFFIXES:
+            if app.endswith(suf):
+                return "rust_ovf", app[: -len(suf)]
     return lang, app
 
 
