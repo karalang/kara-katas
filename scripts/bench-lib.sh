@@ -289,14 +289,29 @@ _isa_reg() {
         --name "$label" --cmd "./$bin"
 }
 
+# isa_rt_cmds <stem> [lane] [approach] [ref]
+#
+# `approach` and `ref` are optional and default to the common case: a kata whose
+# rt_cmd approach name IS the file stem and whose kāra binary is
+# target/<stem>_kara. Katas that name things differently must pass both — #60
+# registers approaches `factorial`/`nextperm` from sources
+# `permutation_sequence*.rs` and builds to target/ps_fact_kara_seq, so relying on
+# the defaults there would emit orphan `permutation_sequence` rows AND leave ref
+# empty, which silently skips the sink verification in _isa_reg. A twin that is
+# timed but never checked is exactly how a wrong number reaches the feed.
 isa_rt_cmds() {
     _isa_applies || return 0
-    local stem="$1" lane="${2:-seq}" ref=""
-    [ -x "target/${stem}_kara" ] && ref="$(./target/${stem}_kara 2>/dev/null)"
-    _isa_reg c_v3 "target/${stem}_c_v3" "$stem" "$lane" \
-        "c    ${stem} (-march=$ISA_LEVEL, matched-ISA)" "$ref"
-    _isa_reg rust_v3 "target/${stem}_v3" "$stem" "$lane" \
-        "rust ${stem} (overflow-checks + target-cpu=$ISA_LEVEL, matched)" "$ref"
+    local stem="$1" lane="${2:-seq}" approach="${3:-$1}" ref="${4:-}"
+    if [ -z "$ref" ]; then
+        local k
+        for k in "target/${stem}_kara_seq" "target/${stem}_kara"; do
+            if [ -x "$k" ]; then ref="$("./$k" 2>/dev/null)"; break; fi
+        done
+    fi
+    _isa_reg c_v3 "target/${stem}_c_v3" "$approach" "$lane" \
+        "c    ${approach} (-march=$ISA_LEVEL, matched-ISA)" "$ref"
+    _isa_reg rust_v3 "target/${stem}_v3" "$approach" "$lane" \
+        "rust ${approach} (overflow-checks + target-cpu=$ISA_LEVEL, matched)" "$ref"
     return 0
 }
 
