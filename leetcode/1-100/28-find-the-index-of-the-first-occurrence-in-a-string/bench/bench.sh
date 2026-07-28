@@ -134,7 +134,13 @@ build_go_par() {
 }
 
 build_rust brute_force.rs
+isa_build_c    brute_force.c
+isa_build_rust brute_force.rs
+ovf_build_rust brute_force.rs
 build_rust kmp.rs
+isa_build_c    kmp.c
+isa_build_rust kmp.rs
+ovf_build_rust kmp.rs
 build_c    brute_force.c
 build_c    kmp.c
 build_kara brute_force.kara          # auto-par (par lane)
@@ -200,6 +206,8 @@ rt_cmd --lang kara --approach brute_force --lane seq --mode codegen \
     --name 'kara brute_force (seq twin)' --cmd './target/brute_force_kara_seq'
 rt_cmd --lang rust --approach brute_force --lane seq --mode native \
     --name 'rust brute_force' --cmd './target/brute_force'
+isa_rt_cmds "brute_force" seq
+ovf_rt_cmds "brute_force" "brute_force" seq
 rt_cmd --lang c --approach brute_force --lane seq --mode native \
     --name 'c    brute_force' --cmd './target/brute_force_c'
 rt_cmd --lang go --approach brute_force --lane seq --mode native \
@@ -210,6 +218,8 @@ rt_cmd --lang kara --approach kmp_unchecked --lane seq --mode codegen \
     --name 'kara kmp_unchecked (seq twin)' --cmd './target/kmp_unchecked_kara_seq'
 rt_cmd --lang rust --approach kmp --lane seq --mode native \
     --name 'rust kmp' --cmd './target/kmp'
+isa_rt_cmds "kmp" seq
+ovf_rt_cmds "kmp" "kmp" seq
 rt_cmd --lang c --approach kmp --lane seq --mode native \
     --name 'c    kmp' --cmd './target/kmp_c'
 rt_cmd --lang go --approach kmp --lane seq --mode native \

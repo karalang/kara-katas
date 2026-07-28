@@ -135,6 +135,9 @@ build_c_par() {
 }
 
 build_rust     simplify.rs
+isa_build_c    simplify.c
+isa_build_rust simplify.rs
+ovf_build_rust simplify.rs
 build_c        simplify.c
 build_kara     simplify.kara
 build_kara_seq simplify.kara
@@ -195,6 +198,8 @@ rt_cmd --lang kara --approach simplify --lane seq --mode codegen \
     --name 'kara simplify (seq, KARAC_AUTO_PAR=0)' --cmd './target/simplify_kara_seq'
 rt_cmd --lang rust --approach simplify --lane seq --mode native \
     --name 'rust simplify' --cmd './target/simplify'
+isa_rt_cmds "simplify" seq
+ovf_rt_cmds "simplify" "simplify" seq
 rt_cmd --lang c --approach simplify --lane seq --mode native \
     --name 'c    simplify' --cmd './target/simplify_c'
 rt_cmd --lang go --approach simplify --lane seq --mode native \

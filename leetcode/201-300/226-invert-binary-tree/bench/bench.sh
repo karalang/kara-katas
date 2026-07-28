@@ -82,7 +82,13 @@ build_go_seq() {
 }
 
 build_rust recursive.rs
+isa_build_c    recursive.c
+isa_build_rust recursive.rs
+ovf_build_rust recursive.rs
 build_rust iterative.rs
+isa_build_c    iterative.c
+isa_build_rust iterative.rs
+ovf_build_rust iterative.rs
 build_c    recursive.c
 build_c    iterative.c
 build_kara recursive.kara
@@ -138,8 +144,12 @@ rt_cmd --lang kara --approach iterative --lane seq --mode codegen \
     --name 'kara iterative (codegen)' --cmd './target/iterative_kara'
 rt_cmd --lang rust --approach recursive --lane seq --mode native \
     --name 'rust recursive' --cmd './target/recursive'
+isa_rt_cmds "recursive" seq
+ovf_rt_cmds "recursive" "recursive" seq
 rt_cmd --lang rust --approach iterative --lane seq --mode native \
     --name 'rust iterative' --cmd './target/iterative'
+isa_rt_cmds "iterative" seq
+ovf_rt_cmds "iterative" "iterative" seq
 rt_cmd --lang c --approach recursive --lane seq --mode native \
     --name 'c    recursive' --cmd './target/recursive_c'
 rt_cmd --lang c --approach iterative --lane seq --mode native \

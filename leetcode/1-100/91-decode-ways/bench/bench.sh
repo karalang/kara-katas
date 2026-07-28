@@ -91,6 +91,7 @@ build_go() {
 
 build_kara decode_ways.kara
 build_rust decode_ways.rs
+ovf_build_rust decode_ways.rs
 build_c    decode_ways.c
 build_go   go-seq
 # Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
@@ -146,6 +147,7 @@ rt_cmd --lang kara --approach decode_ways --lane seq --mode codegen \
     --name 'kara decode_ways' --cmd './target/decode_ways_kara'
 rt_cmd --lang rust --approach decode_ways --lane seq --mode native \
     --name 'rust decode_ways (rustc -O)' --cmd './target/decode_ways'
+ovf_rt_cmds "decode_ways" "decode_ways" seq
 rt_cmd --lang c --approach decode_ways --lane seq --mode native \
     --name 'c    decode_ways (clang -O3)' --cmd './target/decode_ways_c'
 rt_cmd --lang go --approach decode_ways --lane seq --mode native \

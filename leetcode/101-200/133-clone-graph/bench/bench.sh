@@ -111,6 +111,9 @@ build_go_par() {
 }
 
 build_rust clone_bfs.rs
+isa_build_c    clone_bfs.c
+isa_build_rust clone_bfs.rs
+ovf_build_rust clone_bfs.rs
 build_c    clone_bfs.c
 build_kara clone_bfs.kara
 build_kara clone_bfs_par.kara
@@ -164,6 +167,8 @@ rt_cmd --lang kara --approach clone_bfs --lane seq --mode codegen \
     --name 'kara clone_bfs (codegen)' --cmd './target/clone_bfs_kara'
 rt_cmd --lang rust --approach clone_bfs --lane seq --mode native \
     --name 'rust clone_bfs' --cmd './target/clone_bfs'
+isa_rt_cmds "clone_bfs" seq
+ovf_rt_cmds "clone_bfs" "clone_bfs" seq
 rt_cmd --lang c --approach clone_bfs --lane seq --mode native \
     --name 'c    clone_bfs' --cmd './target/clone_bfs_c'
 rt_cmd --lang go --approach clone_bfs --lane seq --mode native \

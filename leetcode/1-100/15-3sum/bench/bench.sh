@@ -143,6 +143,7 @@ build_c_par() {
 }
 
 build_rust     "${STEM}.rs"
+ovf_build_rust "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_kara_seq "${STEM}.kara"
@@ -194,6 +195,7 @@ rt_cmd --lang kara --approach three_sum --lane seq --mode codegen \
     --name "kara ${STEM} (seq, KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach three_sum --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
+ovf_rt_cmds "${STEM}" "three_sum" seq
 rt_cmd --lang c --approach three_sum --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach three_sum --lane seq --mode native \

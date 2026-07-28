@@ -139,7 +139,13 @@ build_go_par() {
 }
 
 build_rust linear_scan.rs
+isa_build_c    linear_scan.c
+isa_build_rust linear_scan.rs
+ovf_build_rust linear_scan.rs
 build_rust binary_search.rs
+isa_build_c    binary_search.c
+isa_build_rust binary_search.rs
+ovf_build_rust binary_search.rs
 build_c    linear_scan.c
 build_c    binary_search.c
 build_kara linear_scan.kara
@@ -222,6 +228,8 @@ rt_cmd --lang kara --approach linear_scan --lane seq --mode codegen \
     --name 'kara linear_scan (codegen)' --cmd './target/linear_scan_kara'
 rt_cmd --lang rust --approach linear_scan --lane seq --mode native \
     --name 'rust linear_scan' --cmd './target/linear_scan'
+isa_rt_cmds "linear_scan" seq
+ovf_rt_cmds "linear_scan" "linear_scan" seq
 rt_cmd --lang c --approach linear_scan --lane seq --mode native \
     --name 'c    linear_scan' --cmd './target/linear_scan_c'
 rt_cmd --lang go --approach linear_scan --lane seq --mode native \
@@ -235,6 +243,8 @@ rt_cmd --lang kara --approach binary_search --lane seq --mode codegen \
     --name 'kara binary_search (seq twin)' --cmd './target/binary_search_kara_seq'
 rt_cmd --lang rust --approach binary_search --lane seq --mode native \
     --name 'rust binary_search' --cmd './target/binary_search'
+isa_rt_cmds "binary_search" seq
+ovf_rt_cmds "binary_search" "binary_search" seq
 rt_cmd --lang c --approach binary_search --lane seq --mode native \
     --name 'c    binary_search' --cmd './target/binary_search_c'
 rt_cmd --lang go --approach binary_search --lane seq --mode native \

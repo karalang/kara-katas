@@ -149,6 +149,8 @@ build_c_par() {
 }
 
 build_rust    binary_search_partition.rs
+isa_build_c    binary_search_partition.c
+isa_build_rust binary_search_partition.rs
 build_rust_ovf    binary_search_partition.rs
 build_c       binary_search_partition.c
 build_kara    binary_search_partition.kara
@@ -214,6 +216,7 @@ rt_cmd --lang kara --approach binary_search_partition --lane seq --mode codegen 
     --name 'kara binary_search_partition (seq, KARAC_AUTO_PAR=0)' --cmd './target/binary_search_partition_kara_seq'
 rt_cmd --lang rust --approach binary_search_partition --lane seq --mode native \
     --name 'rust binary_search_partition' --cmd './target/binary_search_partition'
+isa_rt_cmds "binary_search_partition" seq
 rt_cmd --lang rust_ovf --approach binary_search_partition --lane seq --mode native \
     --name 'rust binary_search_partition (overflow-checks=on, equal-safety)' --cmd './target/binary_search_partition_ovf'
 rt_cmd --lang c --approach binary_search_partition --lane seq --mode native \

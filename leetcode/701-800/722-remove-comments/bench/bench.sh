@@ -127,6 +127,9 @@ build_c_par() {
 }
 
 build_rust     remove_comments.rs
+isa_build_c    remove_comments.c
+isa_build_rust remove_comments.rs
+ovf_build_rust remove_comments.rs
 build_c        remove_comments.c
 build_kara     remove_comments.kara
 build_kara_seq remove_comments.kara
@@ -185,6 +188,8 @@ rt_cmd --lang kara --approach remove_comments --lane seq --mode codegen \
     --name 'kara remove_comments (seq, KARAC_AUTO_PAR=0)' --cmd './target/remove_comments_kara_seq'
 rt_cmd --lang rust --approach remove_comments --lane seq --mode native \
     --name 'rust remove_comments' --cmd './target/remove_comments'
+isa_rt_cmds "remove_comments" seq
+ovf_rt_cmds "remove_comments" "remove_comments" seq
 rt_cmd --lang c --approach remove_comments --lane seq --mode native \
     --name 'c    remove_comments' --cmd './target/remove_comments_c'
 rt_cmd --lang go --approach remove_comments --lane seq --mode native \

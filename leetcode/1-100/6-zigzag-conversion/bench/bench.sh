@@ -137,6 +137,9 @@ build_c_par() {
 }
 
 build_rust     row_buffers.rs
+isa_build_c    row_buffers.c
+isa_build_rust row_buffers.rs
+ovf_build_rust row_buffers.rs
 build_c        row_buffers.c
 build_kara     row_buffers.kara
 build_kara_seq row_buffers.kara
@@ -197,6 +200,8 @@ rt_cmd --lang kara --approach row_buffers --lane seq --mode codegen \
     --name 'kara row_buffers (seq, KARAC_AUTO_PAR=0)' --cmd './target/row_buffers_kara_seq'
 rt_cmd --lang rust --approach row_buffers --lane seq --mode native \
     --name 'rust row_buffers' --cmd './target/row_buffers'
+isa_rt_cmds "row_buffers" seq
+ovf_rt_cmds "row_buffers" "row_buffers" seq
 rt_cmd --lang c --approach row_buffers --lane seq --mode native \
     --name 'c    row_buffers' --cmd './target/row_buffers_c'
 rt_cmd --lang go --approach row_buffers --lane seq --mode native \

@@ -125,6 +125,9 @@ build_c_par() {
 }
 
 build_rust     valid_palindrome.rs
+isa_build_c    valid_palindrome.c
+isa_build_rust valid_palindrome.rs
+ovf_build_rust valid_palindrome.rs
 build_c        valid_palindrome.c
 build_kara     valid_palindrome.kara
 build_kara_seq valid_palindrome.kara
@@ -177,6 +180,8 @@ rt_cmd --lang kara --approach valid_palindrome --lane seq --mode codegen \
     --name 'kara valid_palindrome (seq, KARAC_AUTO_PAR=0)' --cmd './target/valid_palindrome_kara_seq'
 rt_cmd --lang rust --approach valid_palindrome --lane seq --mode native \
     --name 'rust valid_palindrome' --cmd './target/valid_palindrome'
+isa_rt_cmds "valid_palindrome" seq
+ovf_rt_cmds "valid_palindrome" "valid_palindrome" seq
 rt_cmd --lang c --approach valid_palindrome --lane seq --mode native \
     --name 'c    valid_palindrome' --cmd './target/valid_palindrome_c'
 rt_cmd --lang go --approach valid_palindrome --lane seq --mode native \

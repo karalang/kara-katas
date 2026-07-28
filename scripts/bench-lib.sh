@@ -146,6 +146,57 @@ bench_begin() {
          }' >"$BENCH_TMP/meta.json"
 }
 
+# --- equal-safety lane ------------------------------------------------------
+# kāra checks integer overflow by default; `rustc -O` silently wraps. Timing
+# them against each other is an unequal-safety comparison that flatters Rust by
+# whatever the check costs on the workload — see BENCHMARKS.md. This lane builds
+# the `-C overflow-checks=on` twin so the honest baseline is always in the feed.
+#
+# Unlike the matched-ISA helpers below, these are NOT arch-gated: the safety
+# mismatch exists on every host.
+#
+#     ovf_build_rust "<stem>.rs"              # -> target/<stem>_ovf
+#     ovf_rt_cmds    "<stem>" <approach> seq  # registers the row (inside rt_begin/rt_end)
+
+ovf_build_rust() {
+    local src="$1"
+    local out="target/$(basename "$src" .rs)_ovf"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
+        rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
+# Register the equal-safety comparator, verifying its sink first.
+#
+# The twin is checked rather than trusted for the same reason the ISA twins are:
+# an overflow-checked binary can legitimately TRAP where `rustc -O` wraps. That
+# surfaces here as a non-zero exit and drops the lane loudly, instead of feeding
+# a wrong or truncated number into the corpus. A trap here is a finding — it
+# means the mirror relies on wrapping arithmetic that kāra would reject.
+ovf_rt_cmds() {
+    local stem="$1" approach="${2:-$1}" lane="${3:-seq}" ref="${4:-}"
+    local bin="target/${stem}_ovf" k got
+    [ -x "$bin" ] || return 0
+    if [ -z "$ref" ]; then
+        for k in "target/${stem}_kara_seq" "target/${stem}_kara"; do
+            if [ -x "$k" ]; then ref="$("./$k" 2>/dev/null)"; break; fi
+        done
+    fi
+    if [ -n "$ref" ]; then
+        got="$("./$bin" 2>/dev/null)" || {
+            echo "ovf: $stem overflow-checked twin exited non-zero (trap?) — lane dropped" >&2
+            return 0
+        }
+        if [ "$got" != "$ref" ]; then
+            echo "ovf: $stem twin sink mismatch (got=$got want=$ref) — lane dropped" >&2
+            return 0
+        fi
+    fi
+    rt_cmd --lang rust_ovf --approach "$approach" --lane "$lane" --mode native \
+        --name "rust ${stem} (overflow-checks=on, equal-safety)" --cmd "./$bin"
+}
+
 # --- matched-ISA lane -------------------------------------------------------
 # karac commits to a v3 deploy baseline (`cpu-baseline = "v3"`), while
 # `clang -O3` and `rustc -O` default to the x86-64 v1 baseline (SSE2). On x86

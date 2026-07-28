@@ -134,6 +134,9 @@ build_go_par() {
 }
 
 build_rust expand_around_center.rs
+isa_build_c    expand_around_center.c
+isa_build_rust expand_around_center.rs
+ovf_build_rust expand_around_center.rs
 build_c    expand_around_center.c
 build_kara expand_around_center.kara          # auto-par (par lane)
 build_kara_seq expand_around_center.kara      # seq twin (seq lane)
@@ -190,6 +193,8 @@ rt_cmd --lang kara --approach expand_around_center --lane seq --mode codegen \
     --name 'kara expand_around_center (seq twin)' --cmd './target/expand_around_center_kara_seq'
 rt_cmd --lang rust --approach expand_around_center --lane seq --mode native \
     --name 'rust expand_around_center' --cmd './target/expand_around_center'
+isa_rt_cmds "expand_around_center" seq
+ovf_rt_cmds "expand_around_center" "expand_around_center" seq
 rt_cmd --lang c --approach expand_around_center --lane seq --mode native \
     --name 'c    expand_around_center' --cmd './target/expand_around_center_c'
 rt_cmd --lang go --approach expand_around_center --lane seq --mode native \

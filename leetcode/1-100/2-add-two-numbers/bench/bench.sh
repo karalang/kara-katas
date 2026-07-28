@@ -94,6 +94,7 @@ build_go_seq() {
 }
 
 build_rust iterative.rs
+ovf_build_rust iterative.rs
 build_c    iterative.c
 build_kara iterative.kara
 build_go_seq
@@ -148,6 +149,7 @@ rt_cmd --lang kara --approach iterative --lane seq --mode codegen \
     --name 'kara iterative (codegen)' --cmd './target/iterative_kara'
 rt_cmd --lang rust --approach iterative --lane seq --mode native \
     --name 'rust iterative' --cmd './target/iterative'
+ovf_rt_cmds "iterative" "iterative" seq
 rt_cmd --lang c --approach iterative --lane seq --mode native \
     --name 'c    iterative' --cmd './target/iterative_c'
 rt_cmd --lang go --approach iterative --lane seq --mode native \

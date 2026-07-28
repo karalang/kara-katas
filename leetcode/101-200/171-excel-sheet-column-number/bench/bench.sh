@@ -154,6 +154,8 @@ build_c_par() {
 }
 
 build_rust     column_number.rs
+isa_build_c    column_number.c
+isa_build_rust column_number.rs
 build_rust_ovf     column_number.rs
 build_rust_checked column_number.rs
 build_c        column_number.c
@@ -203,10 +205,12 @@ rt_cmd --lang kara --approach column_number --lane seq --mode codegen \
     --name 'kara column_number (seq, KARAC_AUTO_PAR=0)' --cmd './target/column_number_kara_seq'
 rt_cmd --lang rust --approach column_number --lane seq --mode native \
     --name 'rust column_number' --cmd './target/column_number'
+isa_rt_cmds "column_number" seq
 rt_cmd --lang rust_ovf --approach column_number --lane seq --mode native \
     --name 'rust column_number (overflow-checks=on, equal-safety)' --cmd './target/column_number_ovf'
 rt_cmd --lang rust --approach column_number_rschk --lane seq --mode native \
     --name 'rust column_number (overflow-checks=on, =Kara safety)' --cmd './target/column_number_rschk'
+isa_rt_cmds "column_number_rschk" seq
 rt_cmd --lang c --approach column_number --lane seq --mode native \
     --name 'c    column_number' --cmd './target/column_number_c'
 rt_cmd --lang go --approach column_number --lane seq --mode native \

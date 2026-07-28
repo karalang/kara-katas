@@ -139,7 +139,13 @@ build_c_par() {
 }
 
 build_rust brute_force.rs
+isa_build_c    brute_force.c
+isa_build_rust brute_force.rs
+ovf_build_rust brute_force.rs
 build_rust hash_map.rs
+isa_build_c    hash_map.c
+isa_build_rust hash_map.rs
+ovf_build_rust hash_map.rs
 build_c    brute_force.c
 build_c    hash_map.c
 build_kara brute_force.kara
@@ -216,6 +222,8 @@ rt_cmd --lang kara --approach brute_force --lane seq --mode codegen \
     --name 'kara brute_force (seq, KARAC_AUTO_PAR=0)' --cmd './target/brute_force_kara_seq'
 rt_cmd --lang rust --approach brute_force --lane seq --mode native \
     --name 'rust brute_force' --cmd './target/brute_force'
+isa_rt_cmds "brute_force" seq
+ovf_rt_cmds "brute_force" "brute_force" seq
 rt_cmd --lang c --approach brute_force --lane seq --mode native \
     --name 'c    brute_force' --cmd './target/brute_force_c'
 rt_cmd --lang go --approach brute_force --lane seq --mode native \
@@ -224,6 +232,8 @@ rt_cmd --lang kara --approach hash_map --lane seq --mode codegen \
     --name 'kara hash_map (codegen)' --cmd './target/hash_map_kara'
 rt_cmd --lang rust --approach hash_map --lane seq --mode native \
     --name 'rust hash_map' --cmd './target/hash_map'
+isa_rt_cmds "hash_map" seq
+ovf_rt_cmds "hash_map" "hash_map" seq
 rt_cmd --lang c --approach hash_map --lane seq --mode native \
     --name 'c    hash_map' --cmd './target/hash_map_c'
 rt_cmd --lang go --approach hash_map --lane seq --mode native \

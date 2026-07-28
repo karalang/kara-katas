@@ -133,6 +133,9 @@ build_go_par() {
 }
 
 build_rust bfs_sieve.rs
+isa_build_c    bfs_sieve.c
+isa_build_rust bfs_sieve.rs
+ovf_build_rust bfs_sieve.rs
 build_c    bfs_sieve.c
 build_kara bfs_sieve.kara          # auto-par (par lane)
 build_kara_seq bfs_sieve.kara      # seq twin (seq lane)
@@ -189,6 +192,8 @@ rt_cmd --lang kara --approach bfs_sieve --lane seq --mode codegen \
     --name 'kara bfs_sieve (seq twin)' --cmd './target/bfs_sieve_kara_seq'
 rt_cmd --lang rust --approach bfs_sieve --lane seq --mode native \
     --name 'rust bfs_sieve' --cmd './target/bfs_sieve'
+isa_rt_cmds "bfs_sieve" seq
+ovf_rt_cmds "bfs_sieve" "bfs_sieve" seq
 rt_cmd --lang c --approach bfs_sieve --lane seq --mode native \
     --name 'c    bfs_sieve' --cmd './target/bfs_sieve_c'
 rt_cmd --lang go --approach bfs_sieve --lane seq --mode native \

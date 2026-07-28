@@ -88,6 +88,7 @@ build_go_seq() {
 }
 
 build_rust "${STEM}.rs"
+ovf_build_rust "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
@@ -134,6 +135,7 @@ rt_cmd --lang kara --approach remove_nth --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach remove_nth --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
+ovf_rt_cmds "${STEM}" "remove_nth" seq
 rt_cmd --lang c --approach remove_nth --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach remove_nth --lane seq --mode native \

@@ -142,6 +142,8 @@ build_c_par() {
 }
 
 build_rust     atoi.rs
+isa_build_c    atoi.c
+isa_build_rust atoi.rs
 build_rust_ovf     atoi.rs
 build_c        atoi.c
 build_kara     atoi.kara
@@ -204,6 +206,7 @@ rt_cmd --lang kara --approach atoi --lane seq --mode codegen \
     --name 'kara atoi (seq, KARAC_AUTO_PAR=0)' --cmd './target/atoi_kara_seq'
 rt_cmd --lang rust --approach atoi --lane seq --mode native \
     --name 'rust atoi' --cmd './target/atoi'
+isa_rt_cmds "atoi" seq
 rt_cmd --lang rust_ovf --approach atoi --lane seq --mode native \
     --name 'rust atoi (overflow-checks=on, equal-safety)' --cmd './target/atoi_ovf'
 rt_cmd --lang c --approach atoi --lane seq --mode native \

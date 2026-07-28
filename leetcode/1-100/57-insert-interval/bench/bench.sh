@@ -142,6 +142,7 @@ build_c_par() {
 }
 
 build_rust     "${STEM}.rs"
+ovf_build_rust "${STEM}.rs"
 build_c        "${STEM}.c"
 build_kara     "${STEM}.kara"
 build_kara_seq "${STEM}.kara"
@@ -193,6 +194,7 @@ rt_cmd --lang kara --approach insert_interval_cap --lane seq --mode codegen \
     --name "kara ${STEM} (seq, with_capacity)" --cmd "./target/${STEM}_cap_kara_seq"
 rt_cmd --lang rust --approach insert_interval --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
+ovf_rt_cmds "${STEM}" "insert_interval" seq
 rt_cmd --lang c --approach insert_interval --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach insert_interval --lane seq --mode native \

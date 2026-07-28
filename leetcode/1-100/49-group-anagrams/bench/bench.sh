@@ -86,6 +86,7 @@ build_go_seq() {
 }
 
 build_rust "${STEM}.rs"
+ovf_build_rust "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
@@ -139,6 +140,7 @@ rt_cmd --lang kara --approach group_anagrams --lane seq --mode codegen \
     --name 'kara group_anagrams (seq, KARAC_AUTO_PAR=0)' --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach group_anagrams --lane seq --mode native \
     --name 'rust group_anagrams' --cmd "./target/${STEM}"
+ovf_rt_cmds "${STEM}" "group_anagrams" seq
 rt_cmd --lang c --approach group_anagrams --lane seq --mode native \
     --name 'c    group_anagrams' --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach group_anagrams --lane seq --mode native \

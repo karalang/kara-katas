@@ -125,6 +125,9 @@ build_c_par() {
 }
 
 build_rust     decode_string.rs
+isa_build_c    decode_string.c
+isa_build_rust decode_string.rs
+ovf_build_rust decode_string.rs
 build_c        decode_string.c
 build_kara     decode_string.kara
 build_kara_seq decode_string.kara
@@ -183,6 +186,8 @@ rt_cmd --lang kara --approach decode_string --lane seq --mode codegen \
     --name 'kara decode_string (seq, KARAC_AUTO_PAR=0)' --cmd './target/decode_string_kara_seq'
 rt_cmd --lang rust --approach decode_string --lane seq --mode native \
     --name 'rust decode_string' --cmd './target/decode_string'
+isa_rt_cmds "decode_string" seq
+ovf_rt_cmds "decode_string" "decode_string" seq
 rt_cmd --lang c --approach decode_string --lane seq --mode native \
     --name 'c    decode_string' --cmd './target/decode_string_c'
 rt_cmd --lang go --approach decode_string --lane seq --mode native \

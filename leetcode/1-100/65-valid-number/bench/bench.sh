@@ -130,6 +130,9 @@ build_c_par() {
 }
 
 build_rust     valid.rs
+isa_build_c    valid.c
+isa_build_rust valid.rs
+ovf_build_rust valid.rs
 build_c        valid.c
 build_kara     valid.kara
 build_kara_seq valid.kara
@@ -190,6 +193,8 @@ rt_cmd --lang kara --approach valid --lane seq --mode codegen \
     --name 'kara valid (seq, KARAC_AUTO_PAR=0)' --cmd './target/valid_kara_seq'
 rt_cmd --lang rust --approach valid --lane seq --mode native \
     --name 'rust valid' --cmd './target/valid'
+isa_rt_cmds "valid" seq
+ovf_rt_cmds "valid" "valid" seq
 rt_cmd --lang c --approach valid --lane seq --mode native \
     --name 'c    valid' --cmd './target/valid_c'
 rt_cmd --lang go --approach valid --lane seq --mode native \

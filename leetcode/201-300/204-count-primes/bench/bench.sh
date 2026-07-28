@@ -90,6 +90,8 @@ build_kara() {
 }
 
 build_rust count.rs
+isa_build_c    count.c
+isa_build_rust count.rs
 build_rust_ovf count.rs
 build_c    count.c
 build_kara count.kara
@@ -173,6 +175,7 @@ rt_cmd --lang kara --approach count --lane seq --mode codegen \
     --name 'kara count (codegen, single-threaded)' --cmd './target/count_seq_kara'
 rt_cmd --lang rust --approach count --lane seq --mode native \
     --name 'rust count (single-threaded)' --cmd './target/count'
+isa_rt_cmds "count" seq
 rt_cmd --lang rust_ovf --approach count --lane seq --mode native \
     --name 'rust count (overflow-checks=on, equal-safety)' --cmd './target/count_ovf'
 rt_cmd --lang rust --approach count --lane par --mode native \
