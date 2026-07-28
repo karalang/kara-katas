@@ -69,10 +69,6 @@ diff <(karac run largest_rectangle.kara) <(karac run largest_rectangle_spans.kar
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-11 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`largest_rectangle.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. The seq lane tightens — kāra **ties equal-safety Rust** and slips just behind wrapping `rustc -O`; the par-lane auto-par (zero parallel source) lands **within 1.14× of hand-tuned rayon** and 5.3× ahead of Go, a 10.2× self-speedup on 18 cores. `bench/results.json` records the M5 host.
@@ -96,7 +92,25 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | rust largest_rectangle (rustc -O, overflow-checks=on) | 412.9 ± 6.0 ms |
 | go   largest_rectangle                                | 430.9 ± 8.0 ms |
 
-Single-threaded, kāra **ties equal-safety Rust** (409.7 vs `overflow-checks=on` 412.9 ms — within noise) and slips just behind wrapping `rustc -O` (392.2, 1.04×). C's unchecked pointer stack is the floor at 1.69× under kāra — but that is the *cost of safety* both kāra and Rust pay (overflow-checked Rust is itself 1.70× C), on this double-indexed `heights[stack[..]]` chase. Go trails at 430.9 ms. Python is timed separately.
+> **Update (2026-07-28) — Kāra now leads both Rust builds; the old text
+> understated it.** Re-measured on the same M5 host:
+>
+> | Implementation | wall time | vs Kāra |
+> |---|---|---|
+> | c    largest_rectangle (clang -O3) | **239.1 ± 0.5 ms** | 0.65× |
+> | **kāra largest_rectangle (`KARAC_AUTO_PAR=0`)** | **366.3 ± 5.4 ms** | **1.00×** |
+> | rust largest_rectangle (rustc -O) | 389.2 ± 1.2 ms | 1.06× |
+> | rust largest_rectangle (overflow-checks=on) | 406.1 ± 4.3 ms | 1.11× |
+> | go   largest_rectangle | 425.4 ± 2.8 ms | 1.16× |
+>
+> The previous reading — "ties equal-safety Rust and slips just behind wrapping
+> `rustc -O`" — is superseded in Kāra's favour: it is **1.11× ahead of the
+> overflow-checked build and 1.06× ahead of wrapping `rustc -O`**. Kāra moved
+> 409.7 → 366.3 ms (−11%) while the Rust rows moved little, so this is a
+> Kāra-side gain rather than a comparator regression. C's lead narrowed from
+> 1.69× to 1.53×.
+
+Single-threaded, kāra **leads both Rust builds** — 1.06× over wrapping `rustc -O` and 1.11× over the `overflow-checks=on` twin, which is the honest comparison since kāra checks by default. C's unchecked pointer stack remains the floor at 1.53× under kāra — but that is the *cost of safety* both kāra and Rust pay (overflow-checked Rust is itself 1.70× C), on this double-indexed `heights[stack[..]]` chase. Go trails at 425.4 ms. Python is timed separately.
 
 #### Par lane — auto-par vs hand-tuned, NOT comparable to seq (`--warmup 5 --runs 30`)
 

@@ -61,10 +61,6 @@ python3 ground_truth.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-16 snapshot; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`generate.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
@@ -73,7 +69,26 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Node representation & equal safety.** All mirrors use the **same nested structure** for parity: Kāra `Vec[Vec[i64]]`, Rust `Vec<Vec<i64>>`, Go `[][]int64`, **C `long**` with per-row `malloc`** (not a flat contiguous array — that would give C an unfair cache edge over the row-of-rows the others build). Kāra checks integer overflow by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on the additive sum.
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
+> **M5 result (2026-07-28) — every direction held; Go closed to a tie.** The
+> canonical Apple M5 Pro run (`bench/results.json`):
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | c    generate (clang -O3) | **260.5 ± 2.9 ms** | 0.88× |
+> | **kāra generate** | **297.0 ± 3.1 ms** | **1.00×** |
+> | go   generate (`[][]int64`) | 299.2 ± 3.0 ms | 1.01× |
+> | rust generate (overflow-checks=on) | 524.0 ± 14.4 ms | 1.76× |
+> | rust generate (rustc -O) | 526.2 ± 10.7 ms | 1.77× |
+>
+> This is the rare kata where the container reading survived intact. Kāra is
+> **1.14× behind C** (was 1.27×) and **1.77× ahead of both Rust builds** (the
+> "~2×" claim below, slightly rounded up). The one change is Go: it was 1.41×
+> behind Kāra on the container and is now a **dead tie** (299.2 vs 297.0 ms,
+> inside σ). Rust's overflow-checked twin costs it nothing (526.2 → 524.0 ms),
+> so the ~1.77× Kāra lead over Rust is an equal-safety result, not a
+> checking-cost artifact.
+
+`--warmup 5 --runs 30 --shell=none`. All single-threaded. The table below is the earlier **x86-64 container** run, superseded by the M5 box above:
 
 | Implementation | Wall time | Table |
 |---|---|---|
