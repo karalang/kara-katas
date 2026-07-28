@@ -18,6 +18,11 @@ Languages: **Kāra** (`karac build`), **Rust** (`rustc -O`), **C** (`clang -O3`)
 compiled languages it would flatten everything; its numbers are in the per-kata
 READMEs and the JSON feed.
 
+Python is also **opt-in per run** (`KARA_BENCH_INCLUDE_PY=1`), so which katas
+carry a `python` row tracks how each was last benched, not the corpus's
+coverage. A kata without one is the expected state, not a gap — Python is the
+authoring-parity oracle, not a timed comparison lane.
+
 **One baseline caveat, made explicit:** Kāra checks integer overflow by default;
 `rustc -O` **silently wraps** — defined behavior (not UB), but a wrong value where
 Kāra would trap. So the gray **Rust (default)** baseline is doing strictly less work
