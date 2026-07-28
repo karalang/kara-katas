@@ -106,6 +106,7 @@ build_rust_rc() {
 }
 
 build_rust "${STEM}.rs"
+ovf_build_rust "${STEM}.rs"
 build_rust_rc
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
@@ -153,6 +154,7 @@ rt_cmd --lang kara --approach validate_bst --lane seq --mode codegen \
     --name "kara ${STEM} (RC shared struct)" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach validate_bst --lane seq --mode native \
     --name "rust ${STEM} (Box<Node>)" --cmd "./target/${STEM}"
+ovf_rt_cmds "$STEM" validate_bst seq
 rt_cmd --lang rust --approach validate_bst_rc --lane seq --mode native \
     --name "rust ${STEM} (Rc<Node>, equal-mem-semantics)" --cmd "./target/${STEM}_rc"
 rt_cmd --lang c --approach validate_bst --lane seq --mode native \

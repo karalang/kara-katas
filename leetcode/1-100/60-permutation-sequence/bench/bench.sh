@@ -106,6 +106,7 @@ build_rayon() {     # dir binname out
 build_kara     permutation_sequence.kara         target/ps_fact_kara
 build_kara_seq permutation_sequence.kara         target/ps_fact_kara_seq
 build_rust     permutation_sequence.rs           target/ps_fact_rust
+ovf_build_rust permutation_sequence.rs
 build_c        permutation_sequence.c            target/ps_fact_c
 build_go       go-seq                            target/ps_fact_go_seq
 build_rayon    rayon permutation_sequence_rayon  target/ps_fact_rayon
@@ -114,6 +115,7 @@ build_rayon    rayon permutation_sequence_rayon  target/ps_fact_rayon
 build_kara     permutation_sequence_nextperm.kara            target/ps_next_kara
 build_kara_seq permutation_sequence_nextperm.kara            target/ps_next_kara_seq
 build_rust     permutation_sequence_nextperm.rs             target/ps_next_rust
+ovf_build_rust permutation_sequence_nextperm.rs
 build_c        permutation_sequence_nextperm.c              target/ps_next_c
 build_go       go-seq-np                                    target/ps_next_go_seq
 build_rayon    rayon-np permutation_sequence_nextperm_rayon target/ps_next_rayon
@@ -150,6 +152,7 @@ rt_cmd --lang kara --approach factorial --lane seq --mode codegen \
     --name "kara factorial (seq, KARAC_AUTO_PAR=0)" --cmd "./target/ps_fact_kara_seq"
 rt_cmd --lang rust --approach factorial --lane seq --mode native \
     --name "rust factorial" --cmd "./target/ps_fact_rust"
+ovf_rt_cmds "permutation_sequence" factorial seq "$(./target/ps_fact_kara_seq)"
 rt_cmd --lang c --approach factorial --lane seq --mode native \
     --name "c    factorial" --cmd "./target/ps_fact_c"
 rt_cmd --lang go --approach factorial --lane seq --mode native \
@@ -173,6 +176,7 @@ rt_cmd --lang kara --approach nextperm --lane seq --mode codegen \
     --name "kara nextperm (seq, KARAC_AUTO_PAR=0)" --cmd "./target/ps_next_kara_seq"
 rt_cmd --lang rust --approach nextperm --lane seq --mode native \
     --name "rust nextperm" --cmd "./target/ps_next_rust"
+ovf_rt_cmds "permutation_sequence_nextperm" nextperm seq "$(./target/ps_next_kara_seq)"
 rt_cmd --lang c --approach nextperm --lane seq --mode native \
     --name "c    nextperm" --cmd "./target/ps_next_c"
 rt_cmd --lang go --approach nextperm --lane seq --mode native \

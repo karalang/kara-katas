@@ -54,13 +54,18 @@ def fmt_ms(ms):
     return f"{ms:.1f} ms"
 
 
-# The equal-safety Rust twin has been encoded three different ways as the
-# harness evolved. Reading the raw lang labels a checked-Rust number as plain
-# `rustc -O`, which is the misattribution this whole lane exists to prevent.
-#   lang="rust_ovf"                     — current harness, 128 katas
-#   lang="rust", approach="<stem>_ovf"  —  43 katas
-#   lang="rust", approach="<stem>_rschk" — 22 katas (build_rust_checked)
-OVF_SUFFIXES = ("_ovf", "_rschk")
+# The equal-safety Rust twin has been encoded FOUR different ways as the harness
+# evolved. Reading the raw lang labels a checked-Rust number as plain `rustc -O`,
+# which is the misattribution this whole lane exists to prevent. Enumerated from
+# the bench.sh files rather than guessed — each of the first three counts was an
+# undercount that had to be corrected after the fact:
+#   lang="rust_ovf"                                — current harness, 128
+#   lang="rust", approach="<stem>_ovf"             —  43
+#   lang="rust", approach="<stem>_rschk"           —  22 (build_rust_checked)
+#   lang="rust", approach="<stem>_overflow_checks" —   2 (#69, #70)
+# Before adding a fifth spelling, prefer `ovf_rt_cmds` in scripts/bench-lib.sh,
+# which registers under lang="rust_ovf" and needs no suffix at all.
+OVF_SUFFIXES = ("_ovf", "_rschk", "_overflow_checks", "_chk")
 
 
 def normalise(m):

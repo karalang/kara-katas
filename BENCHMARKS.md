@@ -91,24 +91,32 @@ reconstructed from measurement dates. Runs from 2026-07-28 onward carry
 `env.karac_build` — a content hash + mtime of the compiler binary — so the
 question "which karac produced this row" is answerable from the JSON alone.
 
-**Equal-safety coverage — 243 of 249 program-rows (2026-07-28).** Auditing this
-turned up that the overflow-checked Rust twin had been encoded three different
-ways as the harness evolved, and nothing downstream knew about the third:
+**Equal-safety coverage — 249 of 251 program-rows (2026-07-28).** Auditing this
+turned up that the overflow-checked Rust twin had been encoded **four** different
+ways as the harness evolved, and nothing downstream knew about the last two:
 
 | encoding | katas |
 |---|---|
 | `lang="rust_ovf"` | 128 |
 | `lang="rust"`, `approach="<stem>_ovf"` | 43 |
 | `lang="rust"`, `approach="<stem>_rschk"` | 22 |
+| `lang="rust"`, `approach="<stem>_overflow_checks"` | 2 |
 
 Reading the raw `lang` labels a checked-Rust number as plain `rustc -O` — the
 precise misattribution this lane exists to prevent — so every consumer now
-normalises all three. 54 katas genuinely had no twin at all and were comparing
-Kāra's default-checked arithmetic against wrapping `rustc -O` and nothing else;
-49 have since been given one (`ovf_build_rust` / `ovf_rt_cmds` in
-`scripts/bench-lib.sh`) and re-measured. **Eight program-rows still lack it** and
-their Rust column is not an equal-safety comparison: #28 `kmp_unchecked`, #30,
-#57 `insert_interval_cap`, #60 (both approaches), #69, #70, #98.
+normalises all four. The count was revised upward three times while this was
+being sorted out, each time because a spelling had been assumed rather than
+enumerated; the figures above come from scanning the `bench.sh` files for
+`overflow-checks=on` and reading which row each twin is registered as. New katas
+should use `ovf_rt_cmds` (`scripts/bench-lib.sh`), which registers under
+`lang="rust_ovf"` and needs no suffix convention at all.
+
+52 katas genuinely had no twin and were comparing Kāra's default-checked
+arithmetic against wrapping `rustc -O` and nothing else; all have since been
+given one and re-measured. **Two program-rows remain without one, both by
+construction:** #28 `kmp_unchecked` and #57 `insert_interval_cap` are
+*Kāra-only* variants written to isolate the cost of the checks themselves —
+there is no Rust mirror to build, so there is nothing to match safety with.
 
 **A known-flaky kata — recharacterised 2026-07-28, filed as `B-2026-07-28-13`.**
 #133's hand-written `par {}` binary — an 18-arm block whose every arm *reads*
@@ -238,20 +246,19 @@ being the overflow checks Rust opts out of by default (see the baseline caveat
 above). The residual equal-safety gaps are string-building kernels and #1665's sort.
 Go trails on most single-threaded work.
 
-Corpus-level, sequential lane, on the 243 program-rows that carry a
+Corpus-level, sequential lane, on the 249 program-rows that carry a
 safety-matched Rust twin (2026-07-28, M5 Pro):
 
 | comparison | n | median | p10 | p90 | Kāra faster |
 |---|---|---|---|---|---|
-| vs Rust `-O -C overflow-checks=on` | 243 | **1.00×** | 0.74× | 1.20× | 130/243 (53%) |
+| vs Rust `-O -C overflow-checks=on` | 249 | **1.00×** | 0.74× | 1.20× | 133/249 (53%) |
 | vs C `clang -O3` | 249 | 1.18× | — | — | 43/249 (17%) |
 
 Read the median as "a coin flip against safety-matched Rust, and consistently
 behind C" — not as a headline. The p10/p90 spread is the real content: the
 distribution is wide in both directions, the tails are what the per-kata pages
 explain, and the figure still averages across compiler generations (see
-Provenance). The vs-C row deliberately spans all 249 rows including the 8
-without an equal-safety twin, since `clang -O3` is unaffected by that gap.
+Provenance).
 
 ## Binary size — sequential lane
 
