@@ -72,10 +72,6 @@ python3 ground_truth.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`connect.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
@@ -98,7 +94,30 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 kāra holds **1.7 MiB** peak RSS — **level with C** (1.7 MiB), below Rust's 2.1 MiB and a fraction of Go's 6.9 MiB. And because this workload nets **zero heap growth** (each rep builds, wires, and frees a fixed tree), the backtrace-symbolizer tree is stripped: the kāra binary is **15.4 KiB, at parity with C's 15.8 KiB** — vs Rust's 3.8 MiB and Go's 2.1 MiB.
 
-**Flagged for the M5 re-bench** — container orderings can shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/)); treat the *margins* as data points. The direction — Kāra ahead of safe `Rc<RefCell>` Rust and Go, behind raw C (by a build-dominated margin) — should hold, since it reflects the RC-model difference, not a microarchitectural quirk.
+> **M5 result (2026-07-28) — half the predicted direction held, half inverted.**
+> This section used to argue the direction "should hold, since it reflects the
+> RC-model difference, not a microarchitectural quirk." On the canonical M5 host:
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | go   connect | **195.7 ± 1.2 ms** | 0.66× |
+> | c    connect (clang -O3) | 244.6 ± 3.9 ms | 0.83× |
+> | **kāra connect** | **294.7 ± 5.8 ms** | **1.00×** |
+> | rust connect (rustc -O) | 338.2 ± 6.9 ms | 1.15× |
+> | rust connect (overflow-checks=on) | 342.3 ± 4.4 ms | 1.16× |
+>
+> **Ahead of safe Rust: held**, and by more than claimed — 1.15× rather than
+> 1.11×, and the overflow-checked twin costs Rust nothing on this pointer-wiring
+> workload (338.2 → 342.3 ms), so the RC-model argument survives intact.
+> **Ahead of Go: inverted.** Go is 1.51× *faster* than Kāra here, not 1.04×
+> slower. Behind C widened slightly, 1.42× → 1.20× measured differently but the
+> sign is unchanged.
+>
+> The RC-model reasoning was sound where it was actually about RC — the Rust
+> comparison, where both sides refcount. It over-reached when applied to Go,
+> which refcounts nothing and whose GC handles this build-wire-free cycle far
+> better than a container run suggested. The text below is the pre-M5 container
+> analysis, retained for provenance.
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
 

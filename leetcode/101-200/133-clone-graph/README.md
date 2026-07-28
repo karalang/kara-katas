@@ -39,10 +39,6 @@ python3 bfs.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 ### How to run
 
 ```bash
@@ -67,26 +63,47 @@ All compiled mirrors print `500` (sum of K root vals = 500 × 1); bench.sh fails
 
 Three codegen gaps surfaced while writing this kata blocked the bench path. All landed in karac (details in § Caveats below).
 
-Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four single-threaded; per BENCH.md's two-lane discipline the 18-way par row is reported separately below, not against the single-threaded comparators.
+Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-07-28, hyperfine `--warmup 5 --runs 30 --shell=none`. All five single-threaded (97–99% CPU, and 118% for Go's GC); per BENCH.md's two-lane discipline the 18-way par row is reported separately below, not against the single-threaded comparators.
 
-| Run | Mean ± σ |
-|---|---|
-| c    clone_bfs (manual memory) | 44.1 ± 1.7 ms |
-| **kāra clone_bfs (codegen)** | **25.1 ± 1.0 ms** |
-| rust clone_bfs (Rc&lt;RefCell&gt;) | 221.6 ± 2.2 ms |
-| go   clone_bfs | 232.2 ± 1.6 ms |
+| Run | Mean ± σ | CPU |
+|---|---|---|
+| c    clone_bfs (manual memory) | **52.1 ± 1.3 ms** | 97.2% |
+| **kāra clone_bfs (codegen)** | **185.1 ± 3.4 ms** | 99.0% |
+| go   clone_bfs | 233.2 ± 5.3 ms | 118.3% |
+| rust clone_bfs (Rc&lt;RefCell&gt;) | 239.9 ± 4.5 ms | 99.0% |
+| rust clone_bfs (overflow-checks=on) | 240.2 ± 3.2 ms | 99.0% |
 
-> **Post-rewrite re-bench (same day).** This snapshot is the first since the kāra sources were rewritten to the natural shared-struct shape (return the held `root_clone` alias instead of a final `visited.get` re-fetch — see § Caveats, bug #7 resolved). Kāra's −2.7% vs the morning reading is mostly batch: rust and C moved −1.2%/−1.1% on **byte-identical, not-even-rebuilt binaries**, and the residual is within σ. The natural shape costs nothing — it removes only K=500 Map lookups out of ~5.5 M per run.
+> **Retraction (2026-07-28).** Every figure and claim previously in this section
+> was wrong, and wrong in Kāra's favour. It read `kāra 25.1 ms`, "**leads Rust by
+> 8.83×**", "leads Go by 9.26×", and "**Kāra also leads C's manual-memory
+> mirror**". That 25.1 ms was **not a sequential measurement**: this kata is one
+> of the six worst-hit by the harness bug fixed in `8a48c21`, where the
+> compile-cost lane rebuilt the kāra binary *without* `KARAC_AUTO_PAR=0` and
+> `mv`'d it over the artifact the seq lane times. The seq row was silently
+> timing an **auto-parallelised** binary at 1306% CPU. Corrected, it is 185.1 ms
+> at 99.0% — a **7.3×** inflation. See [`BENCHMARKS.md`](../../../BENCHMARKS.md)
+> § Retracted.
 
-**Kāra leads Rust by 8.83×** — allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) win against `HashMap<_, _>` + `Rc<RefCell<_>>` — and leads Go by 9.26×. **Kāra also leads C's manual-memory mirror** (44.1 ms, 1.76× behind kāra): even without RC or per-node heap bookkeeping, the C baseline trails kāra's open-addressing `Map` on this allocator/hashtable-bound shape, an inversion of the stack-buffer-C-mirror role kata [#71](../../1-100/71-simplify-path/) plays. (The 2026-05-16 snapshot read kāra 155.6 ± 7.5 / rust 230.2 ± 2.5; the 06-05-morning one 151.4 ± 2.5 / 220.3 ± 1.5 — all reproduce within ~3–4%. Python's 588.3 ms reading is from 05-16 — the py mirror is gated off by default at today's K.)
+**Kāra leads both Rust builds by 1.30×** — an allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) beat `HashMap<_, _>` + `Rc<RefCell<_>>`. Rust's overflow-checked twin costs it nothing here (239.9 → 240.2 ms), which is the expected result on a pointer-chasing workload with almost no arithmetic to check. Kāra also leads Go by 1.26×.
+
+**Against C, Kāra is 3.55× behind** (52.1 vs 185.1 ms) — the reverse of what this file used to claim. C's manual-memory mirror allocates nodes from a flat bump array and never refcounts; Kāra pays RC traffic plus per-node heap bookkeeping on ~5.5M `Map` operations per run. That makes this kata a peer of [#71](../../1-100/71-simplify-path/) rather than an inversion of it: the hand-managed C baseline wins the allocator-bound shapes, and the interesting comparison is Kāra vs the *safe* languages, where it leads both.
 
 ### Runtime — par lane (explicit 18-way `par {}`)
 
-| Run | Mean ± σ | User | User / wall |
+| Run | Mean ± σ | CPU | vs kāra |
 |---|---|---|---|
-| `kara clone_bfs` (par 18-way) | 23.5 ± 0.7 ms | 310.0 ms | 13.2× |
+| c    clone_bfs (pthreads) | **10.1 ± 0.7 ms** | 961% | 0.27× |
+| rust clone_bfs (rayon) | 37.0 ± 3.5 ms | 1193% | 0.98× |
+| **`kara clone_bfs` (par 18-way)** | **37.7 ± 2.2 ms** | 1384% | **1.00×** |
+| go   clone_bfs (goroutines) | 95.3 ± 1.2 ms | 740% | 2.53× |
 
-**1.07× faster than kāra's own seq baseline** (25.1 → 23.5 ms) — the intra-Kāra seq→par speedup, reported within-lane per BENCH.md (the 05-16 snapshot's headline "10.16× faster than Rust" was a cross-lane ratio and is retired; the honest decomposition is 1.46× codegen × ~6.6× parallelism). K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice. A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription. (05-16 read 22.7 ± 1.4 — reproduces within σ; this allocator-contention-bound shape sees no June-scheduler-archive win, same as kata [#71](../../1-100/71-simplify-path/)'s malloc-bound auto-par lane.)
+**4.91× faster than kāra's own seq baseline** (185.1 → 37.7 ms) — the intra-Kāra seq→par speedup, reported within-lane per BENCH.md. The previously published figure here was "1.07× faster (25.1 → 23.5 ms)", which was meaningless: both sides of that ratio were parallel binaries, because the seq baseline it divided by was the poisoned auto-par number retracted above.
+
+Against the hand-written mirrors, Kāra's explicit `par {}` is a **dead heat with rayon** (37.7 vs 37.0 ms, inside σ) and **2.53× ahead of goroutine chunking**, while C+pthreads is **3.72× ahead of everything** — it carries the same flat-bump-allocator advantage into the par lane, and with no RC traffic there is nothing for 18 threads to contend on. Kāra draws the most CPU of the four (1384%) for the least return per core, which is the atomics cost of promoting `shared struct Node` handles to Arc across the par boundary.
+
+> **This par binary is not reliable, and the row above should be read as provisional.** `clone_bfs_par` dies with no output on stderr in roughly **0.8% of runs** — 4 in 500 on `karac 7db7009e`, with exit codes 133 (SIGTRAP) ×3 and **139 (SIGSEGV)** ×1. The segfault is the part that matters: that is memory unsafety, not a trap firing on a detected condition. Whenever the process does exit 0 the sink is correct (0 wrong answers in 500 runs), so it is crash-or-correct rather than silently wrong. The failure rate scales with worker count — 0/200 at `KARAC_PAR_WORKERS=1`, 0/200 at 2, 2/200 at 18 — which points at a data race on the `root` graph every arm reads, rather than a scheduler bug. Filed as `B-2026-07-28-13` in the kara repo, **open**. Not established as a regression: at 0.8% a clean bench run is close to a coin flip, so this kata's earlier clean runs are not evidence of a start date.
+
+K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice. A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription. (05-16 read 22.7 ± 1.4 — reproduces within σ; this allocator-contention-bound shape sees no June-scheduler-archive win, same as kata [#71](../../1-100/71-simplify-path/)'s malloc-bound auto-par lane.)
 
 `karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in hundreds of seconds on the same hardware — orders of magnitude slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 

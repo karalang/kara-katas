@@ -66,10 +66,6 @@ python3 ground_truth.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-15 snapshot; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`sorted_list_to_bst.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
@@ -94,7 +90,31 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 kāra holds **2.5 MiB** peak RSS (parity with Rust's 2.4 MiB, above C's 1.5 MiB) vs Go's **7.5 MiB**. The kāra binary measures **336 KiB** here — a build-linkage artifact of this container run (heap-growing programs retain the backtrace-symbolizer tree `--gc-sections` should strip; a correct build is ~15 KiB), independent of the runtime numbers, flagged for the M5 — vs C's 16 KiB and Go's 2.2 MiB.
 
-**Flagged for the M5 re-bench** — the Kāra-ahead-of-Rust margin here (1.12×) rests on the `Rc::clone`-per-node list walk, and the corpus has seen container tree orderings shift on the M5's wider core (see [#99](../../1-100/99-recover-binary-search-tree/)), so treat the *margin* as a data point; the C-floor and Go-last signs are robust.
+> **M5 result (2026-07-28) — the prediction above failed on every count.** This
+> section used to close by flagging the *margin* as soft while calling "the
+> C-floor and Go-last signs robust." On the canonical M5 host the ordering is
+> not a shifted version of the container's; it is nearly reversed:
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | go   sorted_list_to_bst | **287.6 ± 1.4 ms** | 0.62× |
+> | c    sorted_list_to_bst (clang -O3) | 332.0 ± 4.7 ms | 0.72× |
+> | rust sorted_list_to_bst (overflow-checks=on) | 442.3 ± 8.0 ms | 0.95× |
+> | rust sorted_list_to_bst (rustc -O) | 445.2 ± 11.5 ms | 0.96× |
+> | **kāra sorted_list_to_bst** | **463.6 ± 21.5 ms** | **1.00×** |
+>
+> **Kāra lands last, not second.** It is 1.04× behind both Rust builds (the
+> claimed 1.12× lead is gone and inverted), 1.40× behind C, and 1.61× behind Go.
+> **Go leads the lane outright** — the exact opposite of "Go trails at 601 ms"
+> and of the tree-build sibling pattern this section generalised from. C is not
+> the floor here either.
+>
+> Two lessons worth keeping, since this is what the corpus is for. First, the
+> confident half of a prediction was the wrong half: the "robust" signs broke
+> while the "soft" margin merely narrowed. Second, a GC that can bump-allocate
+> and free 1M short-lived 15-node trees in one sweep is *well* suited to this
+> shape, and the container run's ordering had been hiding that. The text below
+> is the pre-M5 container analysis, retained for provenance.
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
 
