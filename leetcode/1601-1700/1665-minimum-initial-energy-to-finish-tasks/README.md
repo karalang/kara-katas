@@ -52,6 +52,9 @@ python3 greedy.py
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-06-14 snapshot; the feed was last measured 2026-06-16.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 ### How to run
 

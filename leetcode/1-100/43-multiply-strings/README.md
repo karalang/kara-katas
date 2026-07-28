@@ -74,6 +74,8 @@ not bite here: the digit emit is a table slice by construction, and the kata is
 gated on `karac check` before its `karac run` output is trusted.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-16.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: a fixed 38-digit operand multiplied by `decimal(k)` for **`TOTAL=300 000`**
 distinct `k`, every product-string concatenated into one growing buffer, then

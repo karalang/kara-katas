@@ -62,6 +62,8 @@ diff <(karac run validate_bst.kara) <(karac run validate_bst_inorder.kara) && ec
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-09.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`validate_bst.{kara,rs,c,py}`, `validate_bst_rc.rs`, `go-seq/main.go`).
 

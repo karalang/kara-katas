@@ -87,6 +87,9 @@ diff <(karac run generate_trees.kara) <(karac run generate_trees_dp.kara)   && e
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-07-11 snapshot; the feed was last measured 2026-07-12.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`generate_trees.{kara,rs,c,py}`, `go-seq/main.go`).
 

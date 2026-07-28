@@ -59,6 +59,9 @@ diff <(karac run src/main.kara) <(python3 decode_ways.py) && echo OK
 `karac test --filter <substring>` runs only cases whose name contains the substring (e.g. `karac test "leading"` runs just `"leading zero is invalid"`).
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`decode_ways.{kara,rs,c}`, `go-seq/main.go`). The Python mirror [`bench/decode_ways.py`](bench/decode_ways.py) is gated behind `KARA_BENCH_INCLUDE_PY=1` — at 10M calls it lands in the tens of seconds and would block the bench by default.
 

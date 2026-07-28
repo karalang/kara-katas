@@ -87,6 +87,8 @@ use `Slice[i64]` / `mut Slice[i64]`; `ref Slice` was a probe that turned up a la
 soundness hole, now closed for every caller.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: a reused length-`N=100` buffer is refilled each iteration with a `k`-rotated
 permutation of `1..N`, one slot is punched out of range to create a `k`-dependent gap, and

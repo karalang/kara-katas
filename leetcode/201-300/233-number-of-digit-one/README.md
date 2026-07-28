@@ -42,6 +42,9 @@ Summing that over every position gives the answer. Place values climb by `×10` 
 - **O(log n) loop** — one iteration per decimal position rather than per integer.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 One call is O(log n) — trivial — so [`bench/`](bench/) turns the kernel into a
 **division-throughput** workload: sum `count_digit_one(i)` over `i` in `0..6M`.

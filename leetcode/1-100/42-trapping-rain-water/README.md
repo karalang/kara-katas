@@ -82,6 +82,9 @@ the idiomatic two-pointer in every language (no hand-tuning to force or forbid `
 gap is what the stock toolchains emit.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: a jagged length-`N=1000` terrain (`(i*37)%100`) is built **once**, then **`TOTAL =
 200000`** times a single slot is punched (`height[k%n] = (k*19)%100`, an O(1) tweak that shifts

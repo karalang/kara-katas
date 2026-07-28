@@ -88,6 +88,8 @@ part of the LeetCode problem (`len ≥ 1`), but exercising it is what flushed a
 latent codegen gap that any future `Array[T, 0] = []` → `Slice` would have hit.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-15.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: build one fixed rotated-sorted array of length `N = 4096` once (values
 `2·((p+ROT)%N)` — even, so odd targets miss), then run the ★ one-pass `search`

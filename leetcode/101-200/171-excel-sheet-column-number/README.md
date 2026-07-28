@@ -94,6 +94,9 @@ print sequence — which is exactly the kind of defect a multi-line-output kata 
 positioned to flush.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: parse a corpus of **50,000 distinct titles** (built once via `to_title`,
 too many for an optimizer to tabulate) round-robin **10⁸ times**, reducing to the

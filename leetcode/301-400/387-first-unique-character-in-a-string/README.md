@@ -57,6 +57,8 @@ Both implementations, all four surfaces, byte-identical to the oracle —
 including the empty-string and single-character edge cases.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 [`bench/`](bench/) — `bash bench/bench.sh`. Read
 [`../../../BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of these.

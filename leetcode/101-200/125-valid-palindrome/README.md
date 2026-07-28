@@ -91,6 +91,9 @@ follow-on in `phase-12-self-hosting.md`.
 [`32ad0c84`]: ../../../../kara/
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: check a fixed palindrome (`"A man, a plan, a canal: Panama"` × 8,
 which filters to the palindrome core `amanaplanacanalpanama` × 8 — itself a

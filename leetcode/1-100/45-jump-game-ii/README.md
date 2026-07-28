@@ -66,6 +66,8 @@ and the equal-safety Rust comparator on a tight scalar loop**, with the differen
 run-to-run noise (§ Benchmarks). That parity-with-no-asterisk is itself the finding here.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: a reachable length-`N=1000` array `nums` (entries `1 + i%4`, so every index can always
 step at least one forward and the answer is well-defined under every punch) is built **once**,

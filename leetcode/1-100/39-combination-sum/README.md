@@ -100,6 +100,8 @@ sorted / closure code, not just this kata. Full codegen (1618) + par_codegen (12
 memory_sanitizer ASAN (264) + Linux LSan (264) green; fmt + clippy clean.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-06-18 snapshot; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: enumerate combinations for a per-iteration target. **`TOTAL = 30000`** times, with
 candidates `[2,3,5,7]`, set `target = 18 + (k % 13)` (a per-iteration target, so nothing

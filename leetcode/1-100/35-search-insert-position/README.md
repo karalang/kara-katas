@@ -88,6 +88,9 @@ access, and `searchInsert` does not inline into the hot loop. No new bug surface
 this kata is the fix from #34 paying off on the most-used binary search in the set.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-06-16 snapshot; the feed was last measured 2026-06-17.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: build one fixed strictly-increasing array of length `N = 4096` once
 (`nums[p] = 2·p` — distinct, so found and insert positions never collide), then run

@@ -88,6 +88,9 @@ and a `Vec[bool]` variant — both reliably crashed pre-fix. Full codegen (1619)
 reads `s.bytes()` as a `Slice[u8]`, and the DP solvers build and index `Vec[bool]` tables.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: build `s` ("abc" repeated, length `N=240`) and a multi-star pattern `p`
 (`*abc*abc*…*abc*`, eight groups) **once**, then **`TOTAL = 300000`** times punch a single s

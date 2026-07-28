@@ -110,6 +110,8 @@ documents the very char-iteration idioms #38 exercises yet did not build:
 on the open items.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-06-18 snapshot; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: count-and-say generalized to an arbitrary digit seed (the say-transform is
 well-defined on any digit string). **`TOTAL = 12000`** times, seed the sequence with the

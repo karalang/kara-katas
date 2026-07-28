@@ -61,6 +61,9 @@ bench/bench.sh
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-07-04 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Unusually, this kata benchmarks **both solvers** — the O(n²) factorial closed form *and* the O(k·n) `next_permutation` walk — each across Kāra, Rust, C, Go, and Python, in a seq lane and an auto-par lane. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`permutation_sequence{,_nextperm}.{kara,rs,c,py}`, `go-seq{,-np}/main.go`, `rayon{,-np}/`).
 

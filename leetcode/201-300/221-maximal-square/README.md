@@ -32,6 +32,9 @@ Let `dp[i][j]` be the side length of the largest all-ones square whose **bottom-
 - **`min3` + running max** — the recurrence folded through a small helper, overflow-checked `i64` throughout.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 The kata's tiny fixed grids aren't a workload, so [`bench/`](bench/) carries a
 scaled compute variant: an 800×800 0/1 grid built once with a deterministic

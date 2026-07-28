@@ -73,6 +73,8 @@ is a **regression witness** for the #39 fixes across a richer dedup workload and
 counted factoring, rather than a new bug-finder — the corpus's other job.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: enumerate once-each combinations for a per-iteration target. **`TOTAL = 30000`**
 times, with a fixed duplicate-heavy multiset `[1,1,2,2,3,3,4,5,6,7]` (sorted once), set

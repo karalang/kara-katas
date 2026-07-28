@@ -70,6 +70,9 @@ emitted). #171's printing helper carries a real effect, which defeats that gate
 and exposed the bug. The fix serializes all output here too.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-06-15.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: render **4M distinct values** to hex, concatenated into one growing
 buffer, then byte-checksummed (sink `2 231 199 964`). Persisting the output
