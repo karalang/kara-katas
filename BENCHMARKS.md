@@ -33,32 +33,59 @@ backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is 
 handful of string-shaped kernels (~1.2×) and the low-cardinality sort in #1665 —
 both tracked.
 
-**Six katas are held out of this feed (2026-07-27), and why.** `bench-results.json`
-carries **238** of the corpus's 244 katas. The six absentees —
-[#128](leetcode/101-200/128-longest-consecutive-sequence/),
-[#133](leetcode/101-200/133-clone-graph/),
-[#141](leetcode/101-200/141-linked-list-cycle/),
-[#160](leetcode/101-200/160-intersection-of-two-linked-lists/),
-[#242](leetcode/201-300/242-valid-anagram/),
-[#290](leetcode/201-300/290-word-pattern/) — have their numbers parked in
-`bench/results.held-autopar.json` instead of `results.json`, because on `karac`
-`3e9a12ed` their **seq lane is not sequential**: auto-par engages *at runtime*,
-nondeterministically, on a binary built for the seq lane. Same binary, six
-consecutive runs of #160:
+**Retracted, and what actually happened (2026-07-28).** An earlier revision of
+this file held six katas (#128, #133, #141, #160, #242, #290) out of the feed,
+attributing their multi-threaded `seq` lanes to nondeterministic runtime
+auto-par in `karac 3e9a12ed`. **That attribution was wrong.** All 244 katas are
+back in the feed; nothing about the compiler was at fault.
 
-| run | real | user | user/real |
+The cause was in this repo's own harness. Both compile-cost lanes rebuilt the
+kāra binary to time a cold `karac build` — *without* `KARAC_AUTO_PAR=0` — and
+then `mv`'d the result over `target/<stem>_kara`, the exact artifact the seq
+runtime lane, `size_put` and `mem_put` read. Two consequences:
+
+- `size_put` / `mem_put` run after `ce_end`, so on **81 of 240** katas (every
+  one where the seq and default builds differ) binary size and peak RSS were
+  measured on the auto-par binary while runtime was measured on the seq binary
+  — mixed provenance inside a single `results.json`.
+- The *next* run of the same `bench.sh` found a "fresh" auto-par binary, so
+  `build_kara`'s mtime guard skipped the rebuild and the runtime lane silently
+  timed a **parallel** binary in a lane labelled `seq`.
+
+That second effect is what the six were. It only bites on a **re-bench**, which
+is why the x86 container — which benches each kata once — always read 99.8% CPU
+and appeared to exonerate the compiler. The corrections are large:
+
+| kata | published (poisoned) | corrected | inflation |
 |---|---|---|---|
-| 1 | 0.33 s | 0.35 s | 1.06× (serial) |
-| 2 | 0.03 s | 0.24 s | 8.0× |
-| 3–6 | 0.01–0.02 s | ~0.23 s | 11–23× (parallel) |
+| #242 | 9.51 ms @ 1178% | 96.49 ms @ 99.4% | **10.1×** |
+| #133 | 25.09 ms @ 1306% | 182.02 ms @ 98.9% | **7.3×** |
+| #128 | 9.39 ms @ 1068% | 67.43 ms @ 99.2% | **7.2×** |
+| #160 | 23.87 ms @ 1042% | 156.59 ms @ 99.6% | **6.6×** |
+| #290 | 40.45 ms @ 1008% | 152.77 ms @ 99.5% | 3.8× |
+| #141 | 156.27 ms @ 674% | 205.45 ms @ 99.6% | 1.3× |
 
-`hyperfine` then averages a blend of serial and parallel executions — which is
-where these katas' 10–33% CVs come from, and why their means (e.g. #160 at
-23.9 ms against ~160 ms for C/Rust/Go) are not a like-for-like comparison. The
-same six ran at **99.8% CPU** on x86 under the older compiler, so this is new
-behaviour, not a long-standing property of the katas. Publishing them would put
-a ~7× phantom Kāra win into the seq chart. They stay out until the underlying
-behaviour is resolved.
+#133's poisoned figure is dated **2026-06-15** — this defect has been inflating
+published Kāra seq numbers, in Kāra's own favour, for at least six weeks. Fixed
+by retargeting both compile-cost lanes to a throwaway `<stem>_kara.ce` path
+(202 `bench.sh` + `scripts/new-bench.sh`); the measured binary is never touched.
+Corpus-wide check after the fix: **0** katas show a kāra `seq` lane above 150%
+CPU.
+
+**Provenance of this feed — three compiler generations.** 99 katas measured on
+`karac 7db7009e` with the fixed harness, 77 on `3e9a12ed`, 68 on older June/July
+builds. Only the 81 katas whose seq and default builds differ needed
+re-measuring for the fix (on the rest the two builds are byte-identical, so the
+clobber was a no-op); the remainder were left on their original toolchain rather
+than re-run. The corpus-level median below therefore averages across three
+compilers and is softer than a single number implies.
+
+**A known-flaky kata.** #133's hand-written `par {}` binary exits on SIGTRAP in
+roughly **1.7%** of runs (1 in 60, silent, no diagnostic). At that rate a
+35-invocation hyperfine batch fails ~45% of the time, so its par-lane numbers
+should be treated as provisional. Whether this is a regression is **not**
+established — the June run's success is equally consistent with "worked then"
+and "was already flaky and got lucky."
 
 **What the overflow tax actually is, measured (2026-07-27).** The phrase "overflow
 tax" undersells the mechanism on array kernels: checked arithmetic does not add a

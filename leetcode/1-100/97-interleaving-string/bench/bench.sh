@@ -164,9 +164,9 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach interleave --mode codegen \
-    --prepare "rm -f target/${STEM}_kara ${STEM}" \
+    --prepare "rm -f target/${STEM}_kara.ce ${STEM}" \
     --name "karac build ${STEM}.kara" \
-    --cmd "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara\""
+    --cmd "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara.ce\""
 ce_cmd --lang rust --approach interleave --mode native \
     --prepare "rm -f target/${STEM}" \
     --name "rustc -O ${STEM}.rs" --cmd "rustc -O ${STEM}.rs -o target/${STEM}"
@@ -193,9 +193,9 @@ echo
 echo "=== compile memory (cold) ==="
 for src in "${STEM}.kara"; do
     stem="$(basename "$src" .kara)"
-    rm -f "target/${stem}_kara" "$stem"
+    rm -f "target/${stem}_kara.ce" "$stem"
     bytes=$(mem_peak karac build "$src")
-    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    mv "$stem" "target/${stem}_kara.ce" 2>/dev/null || true
     cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in "${STEM}.rs"; do

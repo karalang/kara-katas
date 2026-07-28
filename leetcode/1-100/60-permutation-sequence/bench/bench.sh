@@ -203,13 +203,13 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach factorial --mode codegen \
-    --prepare "rm -f target/ps_fact_kara permutation_sequence" \
+    --prepare "rm -f target/ps_fact_kara.ce permutation_sequence" \
     --name "karac build factorial" \
-    --cmd "sh -c \"karac build permutation_sequence.kara >/dev/null && mv permutation_sequence target/ps_fact_kara\""
+    --cmd "sh -c \"karac build permutation_sequence.kara >/dev/null && mv permutation_sequence target/ps_fact_kara.ce\""
 ce_cmd --lang kara --approach nextperm --mode codegen \
-    --prepare "rm -f target/ps_next_kara permutation_sequence_nextperm" \
+    --prepare "rm -f target/ps_next_kara.ce permutation_sequence_nextperm" \
     --name "karac build nextperm" \
-    --cmd "sh -c \"karac build permutation_sequence_nextperm.kara >/dev/null && mv permutation_sequence_nextperm target/ps_next_kara\""
+    --cmd "sh -c \"karac build permutation_sequence_nextperm.kara >/dev/null && mv permutation_sequence_nextperm target/ps_next_kara.ce\""
 ce_cmd --lang rust --approach factorial --mode native \
     --prepare "rm -f target/ps_fact_rust" \
     --name "rustc -O factorial" --cmd "rustc -O permutation_sequence.rs -o target/ps_fact_rust"

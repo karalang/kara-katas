@@ -221,9 +221,9 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach "\$STEM" --mode codegen \\
-    --prepare "rm -f target/\${STEM}_kara \${STEM}" \\
+    --prepare "rm -f target/\${STEM}_kara.ce \${STEM}" \\
     --name "karac build \${STEM}.kara" \\
-    --cmd "sh -c \\"karac build \${STEM}.kara >/dev/null && mv \${STEM} target/\${STEM}_kara\\""
+    --cmd "sh -c \\"karac build \${STEM}.kara >/dev/null && mv \${STEM} target/\${STEM}_kara.ce\\""
 ce_cmd --lang rust --approach "\$STEM" --mode native \\
     --prepare "rm -f target/\${STEM}" \\
     --name "rustc -O \${STEM}.rs" --cmd "rustc -O \${STEM}.rs -o target/\${STEM}"
