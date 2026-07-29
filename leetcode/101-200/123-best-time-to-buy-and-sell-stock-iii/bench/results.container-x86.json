@@ -5,20 +5,20 @@
     "slug": "best-time-to-buy-and-sell-stock-iii",
     "group": "101-200",
     "title": "Best Time to Buy and Sell Stock III",
-    "workload": "at-most-two-transactions DP (relax buy1/sell1/buy2/sell2 across one pass, answer sell2) over N=2,000,000 LCG prices in [1,4096], K=10 SERIAL outer calls (each perturbs the opening price by the previous result \u2014 a single-threaded dependency chain matching the mirrors), sum-of-results sink",
+    "workload": "at-most-two-transactions DP: relax buy1/sell1/buy2/sell2 across one pass, answer sell2; N=2,000,000 LCG prices in [1,4096], K=10 SERIAL outer calls (each perturbs the opening price by the previous result, keeping the bench single-threaded like the mirrors), sum-of-results sink",
     "sink": "81900"
   },
   "env": {
-    "host": "Intel Xeon @ 2.10GHz (cloud container)",
+    "host": "x86_64",
     "cores": "4",
     "os": "Linux 6.18.5",
-    "karac": "karac 0.1.0 (main, post B-2026-07-17-16)",
+    "karac": "karac 0.1.0",
+    "karac_build": "056a6bf270af 2026-07-28T23:11:15Z",
     "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
     "clang": "Ubuntu clang version 18.1.3 (1ubuntu1)",
     "go": "go version go1.24.7 linux/amd64",
     "hyperfine": "hyperfine 1.18.0",
-    "measured_at": "2026-07-17T06:20:00Z",
-    "note": "Measured on a shared x86-64 Linux cloud container (karac from kara main), NOT the corpus's Apple M5 Pro. Absolute times/sizes/RSS NOT comparable across hosts; only within-file cross-language ratios are the signal. Seq lane (fastest first): c 42ms ~ rust 43ms < go 47ms ~ rust_ovf 48ms ~ kara 49ms. RESULT: kara is at EQUAL-SAFETY PARITY with rust_ovf (both ~48-49ms, ~1.15x behind wrapping rust -O / C). The ~1.15x vs rust -O is the OVERFLOW-CHECK tax (the four-state DP has 4 overflow-checked ops per element), not a codegen gap: kara's inner loop is 4 branchless cmovg relaxations (buy1/sell1/buy2/sell2) + 4 jo overflow checks, with the forward index prices[i] bounds-check-elided (1 panic site in the whole binary) \u2014 the same instruction budget rust_ovf carries. SINGLE-THREADED: the K=10 outer loop is intentionally a SERIAL dependency chain (each rep perturbs data[0] by the previous result); a naive `sum += max_profit(data)` reduce would auto-parallelize under kara's default (raising CPU to ~200% and adding scheduling variance), which would be an unfair comparison against the single-threaded mirrors \u2014 the serial loop keeps kara sequential like #121/#122. All mirrors agree on the sink; correctness verified across interp/JIT/AOT/auto-par and vs a four-state==general-k-DP==brute-force ground truth. Python (timed separately) omitted. Re-run bench.sh on the M5 for a canonical results.json."
+    "measured_at": "2026-07-29T01:19:31Z"
   },
   "measurements": [
     {
@@ -27,75 +27,37 @@
       "lane": "seq",
       "mode": "native",
       "runtime": {
-        "mean_ms": 42.2084,
-        "stddev_ms": 1.4708,
-        "median_ms": 42.1506,
-        "min_ms": 38.5279,
-        "max_ms": 45.6974,
-        "user_ms": 36.9613,
-        "system_ms": 5.1944,
-        "cpu_pct": 99.0,
-        "runs": 60
+        "mean_ms": 63.0294,
+        "stddev_ms": 7.6011,
+        "median_ms": 60.7995,
+        "min_ms": 54.4762,
+        "max_ms": 86.4699,
+        "user_ms": 50.6584,
+        "system_ms": 11.5749,
+        "cpu_pct": 98.7,
+        "runs": 30
       },
       "binary_bytes": 16112,
       "runtime_peak_rss_bytes": 17469440
     },
     {
-      "lang": "rust",
+      "lang": "c_v3",
       "approach": "max_profit",
       "lane": "seq",
       "mode": "native",
       "runtime": {
-        "mean_ms": 42.716,
-        "stddev_ms": 1.8989,
-        "median_ms": 42.6044,
-        "min_ms": 39.6938,
-        "max_ms": 52.9347,
-        "user_ms": 37.1182,
-        "system_ms": 5.5452,
-        "cpu_pct": 99.0,
-        "runs": 60
+        "mean_ms": 52.7766,
+        "stddev_ms": 3.0472,
+        "median_ms": 52.1748,
+        "min_ms": 48.4116,
+        "max_ms": 65.2347,
+        "user_ms": 42.4013,
+        "system_ms": 10.0193,
+        "cpu_pct": 99.3,
+        "runs": 30
       },
-      "binary_bytes": 3956872,
-      "runtime_peak_rss_bytes": 18145280
-    },
-    {
-      "lang": "rust",
-      "approach": "max_profit_ovf",
-      "lane": "seq",
-      "mode": "native",
-      "runtime": {
-        "mean_ms": 48.4996,
-        "stddev_ms": 1.2194,
-        "median_ms": 48.4196,
-        "min_ms": 45.8654,
-        "max_ms": 51.2836,
-        "user_ms": 43.0222,
-        "system_ms": 5.4267,
-        "cpu_pct": 99.0,
-        "runs": 60
-      },
-      "binary_bytes": 3957064,
-      "runtime_peak_rss_bytes": 18079744
-    },
-    {
-      "lang": "kara",
-      "approach": "max_profit",
-      "lane": "seq",
-      "mode": "codegen",
-      "runtime": {
-        "mean_ms": 48.9301,
-        "stddev_ms": 1.8215,
-        "median_ms": 48.63,
-        "min_ms": 46.7493,
-        "max_ms": 55.3012,
-        "user_ms": 44.0209,
-        "system_ms": 4.8498,
-        "cpu_pct": 99.0,
-        "runs": 60
-      },
-      "binary_bytes": 336528,
-      "runtime_peak_rss_bytes": 18468864
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
     },
     {
       "lang": "go",
@@ -103,18 +65,147 @@
       "lane": "seq",
       "mode": "native",
       "runtime": {
-        "mean_ms": 47.2434,
-        "stddev_ms": 13.9895,
-        "median_ms": 42.4634,
-        "min_ms": 39.4054,
-        "max_ms": 103.2917,
-        "user_ms": 42.9406,
-        "system_ms": 6.2437,
-        "cpu_pct": 99.0,
-        "runs": 60
+        "mean_ms": 58.9283,
+        "stddev_ms": 6.8044,
+        "median_ms": 56.431,
+        "min_ms": 51.5611,
+        "max_ms": 78.0632,
+        "user_ms": 46.1936,
+        "system_ms": 14.8025,
+        "cpu_pct": 103.5,
+        "runs": 30
       },
       "binary_bytes": 2213521,
       "runtime_peak_rss_bytes": 17981440
+    },
+    {
+      "lang": "kara",
+      "approach": "max_profit",
+      "lane": "seq",
+      "mode": "codegen",
+      "runtime": {
+        "mean_ms": 79.6951,
+        "stddev_ms": 3.7115,
+        "median_ms": 78.6514,
+        "min_ms": 74.9996,
+        "max_ms": 92.6479,
+        "user_ms": 68.4687,
+        "system_ms": 10.9145,
+        "cpu_pct": 99.6,
+        "runs": 30
+      },
+      "binary_bytes": 340720,
+      "runtime_peak_rss_bytes": 18464768
+    },
+    {
+      "lang": "rust",
+      "approach": "max_profit",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 55.0405,
+        "stddev_ms": 1.7173,
+        "median_ms": 54.878,
+        "min_ms": 51.8131,
+        "max_ms": 59.1647,
+        "user_ms": 44.763,
+        "system_ms": 10.0385,
+        "cpu_pct": 99.6,
+        "runs": 30
+      },
+      "binary_bytes": 3956872,
+      "runtime_peak_rss_bytes": 18079744
+    },
+    {
+      "lang": "rust_ovf",
+      "approach": "max_profit",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 60.5631,
+        "stddev_ms": 2.0478,
+        "median_ms": 60.2228,
+        "min_ms": 56.9611,
+        "max_ms": 65.3897,
+        "user_ms": 49.0875,
+        "system_ms": 11.1901,
+        "cpu_pct": 99.5,
+        "runs": 30
+      },
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
+    },
+    {
+      "lang": "rust_v3",
+      "approach": "max_profit",
+      "lane": "seq",
+      "mode": "native",
+      "runtime": {
+        "mean_ms": 59.7385,
+        "stddev_ms": 1.8993,
+        "median_ms": 59.7594,
+        "min_ms": 55.3215,
+        "max_ms": 64.9295,
+        "user_ms": 50.3789,
+        "system_ms": 9.0902,
+        "cpu_pct": 99.5,
+        "runs": 30
+      },
+      "binary_bytes": null,
+      "runtime_peak_rss_bytes": null
+    }
+  ],
+  "compile": [
+    {
+      "lang": "c",
+      "approach": "max_profit",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 119.4208,
+        "stddev_ms": 3.6677,
+        "median_ms": 119.5808,
+        "min_ms": 113.0862,
+        "max_ms": 126.9055,
+        "user_ms": 77.5741,
+        "system_ms": 41.6855,
+        "cpu_pct": 99.9,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 101535744
+    },
+    {
+      "lang": "kara",
+      "approach": "max_profit",
+      "mode": "codegen",
+      "elapsed": {
+        "mean_ms": 352.7745,
+        "stddev_ms": 10.6475,
+        "median_ms": 354.1318,
+        "min_ms": 338.9837,
+        "max_ms": 373.8448,
+        "user_ms": 232.2741,
+        "system_ms": 121.1204,
+        "cpu_pct": 100.2,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 95027200
+    },
+    {
+      "lang": "rust",
+      "approach": "max_profit",
+      "mode": "native",
+      "elapsed": {
+        "mean_ms": 158.8967,
+        "stddev_ms": 5.3727,
+        "median_ms": 158.0494,
+        "min_ms": 152.5848,
+        "max_ms": 170.3453,
+        "user_ms": 108.1846,
+        "system_ms": 66.2581,
+        "cpu_pct": 109.8,
+        "runs": 10
+      },
+      "compile_peak_rss_bytes": 116813824
     }
   ]
 }
