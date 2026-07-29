@@ -192,8 +192,8 @@ The map really is ~2× behind and that is worth fixing on its own merits. But
 not by an isolated microbenchmark** — on this bug, isolated benchmarks
 predicted the wrong culprit twice running.
 
-**A second baseline caveat — CPU baseline, found 2026-07-26 and not yet
-corrected corpus-wide.** `karac build` targets **`x86-64-v3`** (Haswell+, AVX2)
+**A second baseline caveat — CPU baseline, found 2026-07-26, now measured across
+all 245 katas.** `karac build` targets **`x86-64-v3`** (Haswell+, AVX2)
 by default on x86-64 — a deliberate deploy-baseline commitment in the language
 design (`cpu-baseline = "v3"`), not an accident. `clang -O3` and `rustc -O` at
 *their* defaults target **`x86-64` v1** (SSE2). So on x86 hosts every lane in
@@ -221,10 +221,13 @@ array-shaped katas carry an explicit equal-baseline lane, the same way the
 equal-safety `rust_ovf` lane works above. The apples-to-apples comparison
 matches *both* axes: equal safety **and** equal ISA baseline.
 
-**Corpus-wide correction landed (2026-07-27).** The equal-baseline lane is no
-longer per-kata and opt-in. `scripts/bench-lib.sh` now carries `isa_build_c` /
-`isa_build_rust` / `isa_rt_cmds`, wired into every migrated `bench.sh` (226 of
-244; the 18 multi-approach katas still need doing by hand). They add two twins:
+**Corpus-wide correction landed (2026-07-27), and measured 2026-07-29.** The
+equal-baseline lane is no longer per-kata and opt-in. `scripts/bench-lib.sh`
+carries `isa_build_c` / `isa_build_rust` / `isa_rt_cmds`, wired into **every**
+`bench.sh` — 244 under `leetcode/` plus `bespoke/utf8-codepoints`, which the
+original migration missed because the tooling only walked `leetcode/`. An x86
+sweep has since run the lane on all 245, so the numbers below are measured
+rather than projected. They add two twins:
 
 - **`c_v3`** — `clang -O3 -march=x86-64-v3`
 - **`rust_v3`** — `rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`, matched
@@ -232,6 +235,48 @@ longer per-kata and opt-in. `scripts/bench-lib.sh` now carries `isa_build_c` /
 
 Each twin's output is verified against the Kāra binary's sink before it is timed,
 so a twin that traps or diverges is dropped with a warning rather than measured.
+
+**What the measured lane actually shows (245 katas, 250 comparable groups, x86
+container).** The effect is real but far narrower than the #260 discovery
+suggested, and the honest summary is *concentrated*, not *corpus-wide*:
+
+| | |
+|---|---|
+| C `-O3` → `-march=x86-64-v3`, median | **1.005×** — nothing |
+| …mean / p90 / max | 1.072× / 1.14× / 12.04× |
+| groups gaining >15% from v3 | **21 / 250 (8%)** |
+| groups *losing* >15% to v3 | **14 / 250** |
+| Rust `-O` → `rust_v3` (safety+ISA), median | 0.980× |
+| Rust overflow-checks alone, median | 1.038× |
+
+Three things follow, and the first two cut against the original framing:
+
+- **On the median kata the ISA baseline is worth nothing.** Reading the earlier
+  #260 result as a corpus-wide tax on every x86 comparison was wrong; it is a
+  vectorizable-array-kernel effect that most of this corpus never triggers.
+- **v3 is not uniformly a speedup for C.** It is >15% *slower* on 14 groups —
+  more groups than it helps by that margin. Verified in isolation on
+  [#64](leetcode/1-100/64-minimum-path-sum/): `1.38 ± 0.08×` slower at v3, ~6σ,
+  on a serial `dp[c] = cost + imin(dp[c], dp[c-1])` recurrence that **neither**
+  build vectorizes. The v3 codegen is 572 asm lines vs 325 and issues 5 `cmov`
+  against 1 — clang speculates both `imin` arms into conditional moves, which
+  lengthens a dependency chain it cannot hide. So "matched ISA" is not a synonym
+  for "stronger C," and on such kernels the default `c -O3` lane is the *harder*
+  comparison for Kāra, not the easier one.
+- **Of Kāra's leads over C, 7 do not survive equal baseline** (18 nominal flips,
+  7 past the noise floor below): #122, #137, #45, #260, #153 (both approaches),
+  #268. Kāra leads `c_v3` in 46 of 250 groups.
+
+**Read nothing under ~1.15× from container-x86 data.** Median relative σ on that
+shared 4-core host is 5.7% and p90 is 15.7%, so sub-1.15× gaps are not
+distinguishable from noise — a first pass at the bullet above counted 18 flips
+before gating, and a separately flagged "v3 pessimizes #42 by 1.31×" evaporated
+to `1.03 ± 0.13×` when re-run on an idle machine. Absolute times are also **not**
+comparable across katas measured hours apart: re-benching five katas ~18h later
+found every lane 6–22% slower in every language (median 0.86×, uniform across C,
+Go, Rust, and Kāra alike), which is host drift, not codegen. Only within-file
+ratios are safe, which is exactly what the single interleaved `hyperfine` call
+per `rt` block exists to guarantee.
 Charts render them as optional overlays; the out-of-the-box `rust` / `c` lanes
 stay in the feed, because "what a user gets by default" is a real and separate
 question from "whose codegen is better." Both are published; neither is allowed
