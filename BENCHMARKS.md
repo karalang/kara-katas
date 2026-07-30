@@ -38,6 +38,38 @@ backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is 
 handful of string-shaped kernels (~1.2×) and the low-cardinality sort in #1665 —
 both tracked.
 
+**Three-way decomposition of the overflow tax, measured on
+[#228](leetcode/201-300/228-summary-ranges/) (2026-07-30, x86 container).** The
+caveat above is easy to read as special pleading, so here it is isolated against
+*both* reference toolchains on one kernel — a linear range scan with a
+loop-carried `start` and a data-dependent break, i.e. the shape where the tax is
+worst. All four binaries print the same sink (`333678318888000`):
+
+| build | mean |
+|---|---|
+| `clang -O3 -march=x86-64-v3`, unchecked | 245.0 ms |
+| `clang -O3 -march=x86-64-v3` + `__builtin_add_overflow` on every add | **1124 ms** |
+| **`karac build`** | **1107 ms** |
+| `rustc -O` (wraps) | 268.8 ms |
+| `rustc -O -C overflow-checks=on` | 1293 ms |
+
+Both reference compilers pay **4.6–4.8×** for the same guarantee Kāra gives by
+default, and Kāra's checked lowering is *faster than either* — marginally ahead
+of clang's own `__builtin_add_overflow` codegen and 14% ahead of safety-matched
+Rust. So the 4.19× that this kata shows against `rust -O`, and the 4.73× against
+`clang -O3`, measure the semantics, not `karac`. Reducing that cost is a
+**check-elision** problem (prove the add cannot overflow, as the bounds-check
+elision tiers do for indices) — not a lowering problem; there is no evidence of
+headroom in how the checks are emitted.
+
+Practical consequence for anyone ranking this corpus: **ranking by `kara/c_v3`
+or `kara/rust` does not surface Kāra weaknesses on arithmetic-heavy kernels — it
+surfaces the overflow tax.** A 2026-07-30 pass over the x86 feed ranked the
+corpus by `kara/rust` and produced nine katas above 2×; re-ranked against
+`rust_ovf`, six of the seven sequential ones sat at **0.87×–1.01×** (#228 0.87,
+#169 0.91, #62 0.96, #11/#163/#188 ~1.01) and only #1665 survived, at 1.99×,
+exactly as this section already said. Use the `rust_ovf` column.
+
 **Retracted, and what actually happened (2026-07-28).** An earlier revision of
 this file held six katas (#128, #133, #141, #160, #242, #290) out of the feed,
 attributing their multi-threaded `seq` lanes to nondeterministic runtime
