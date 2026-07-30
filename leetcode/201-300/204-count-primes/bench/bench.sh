@@ -2,7 +2,7 @@
 # Wall-clock comparison across implementations of LeetCode #204.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Kara's `bench/count.kara` carries a `#[par_unordered]` attribute that
+# Kara's `bench/count.kara` carries a `#[par_order_free]` attribute that
 # opts the outer loop into the auto-par collect-style codegen path
 # (Phase 3 in karac-rust). Rust/C/Python are idiomatic single-threaded
 # implementations — the comparison framing is "auto-par Kara vs the code
@@ -170,7 +170,7 @@ bench_begin id=204 slug=count-primes group=201-300 \
 echo "=== runtime ==="
 rt_begin --warmup 3 --runs 10
 rt_cmd --lang kara --approach count --lane par --mode codegen \
-    --name 'kara count (codegen, #[par_unordered])' --cmd './target/count_kara'
+    --name 'kara count (codegen, #[par_order_free])' --cmd './target/count_kara'
 rt_cmd --lang kara --approach count --lane seq --mode codegen \
     --name 'kara count (codegen, single-threaded)' --cmd './target/count_seq_kara'
 rt_cmd --lang rust --approach count --lane seq --mode native \

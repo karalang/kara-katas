@@ -39,7 +39,7 @@ Every kata's bench has at least the seq lane: single-threaded, no library help, 
 
 When the workload's outer loop has no cross-iteration data dependency, the kata adds a **parallel lane**. The comparison shifts from "is Kāra's compiler at parity?" to "is Kāra's built-in auto-par competitive with neighboring languages' parallel offerings?"
 
-- **Kāra**: `bench/<approach>.kara` — same source as the seq mirror but with `#[par_unordered]` (or whatever parallel attribute fits) on the outer loop. Exercises the karac runtime's `karac_par_reduce` path.
+- **Kāra**: `bench/<approach>.kara` — same source as the seq mirror but with `#[par_order_free]` (or whatever parallel attribute fits) on the outer loop. Exercises the karac runtime's `karac_par_reduce` path.
 - **Rust + rayon**: `bench/rayon/` — its own Cargo project (rayon is a third-party crate; no `rustc` single-file path). Carries `Cargo.toml` + `Cargo.lock` (committed for reproducibility) + `src/main.rs` using `.into_par_iter().filter(...).collect()` or whichever rayon idiom matches the shape.
 - **Go goroutines**: `bench/go-par/` — its own Go module (each Go executable needs a module root). `goroutines + sync.WaitGroup`, per-worker private slice, final merge — mirrors Kāra and rayon's per-worker-partials shape.
 
@@ -53,7 +53,7 @@ The two-lane discipline locked in after kata #204 (2026-05-21) — see [`leetcod
 
 ### Implicit auto-par — when karac parallelizes the seq mirror
 
-The par-lane subsection above describes *explicit* opt-in via `#[par_unordered]`. Karac also has **implicit** auto-par paths that fire on a seq-mirror source without any attribute — most prominently the post-`74f81cd` reduction-recognition pass that rewrites `let mut acc = 0; while … { acc += f(…); }` shapes into a `karac_par_reduce` dispatch when the body is non-memory-bound and per-iter cost clears the runtime gate. The seq mirror is silently elevated into a par-flavored binary; the seq-lane comparator set (rustc-O / clang-O3 / `go build`) stays single-threaded, and the resulting wall-time ratio is **cross-lane**.
+The par-lane subsection above describes *explicit* opt-in via `#[par_order_free]`. Karac also has **implicit** auto-par paths that fire on a seq-mirror source without any attribute — most prominently the post-`74f81cd` reduction-recognition pass that rewrites `let mut acc = 0; while … { acc += f(…); }` shapes into a `karac_par_reduce` dispatch when the body is non-memory-bound and per-iter cost clears the runtime gate. The seq mirror is silently elevated into a par-flavored binary; the seq-lane comparator set (rustc-O / clang-O3 / `go build`) stays single-threaded, and the resulting wall-time ratio is **cross-lane**.
 
 This protocol locked in 2026-05-23 after kata #91 and kata #4 hit it in opposite ways — see [`leetcode/1-100/91-decode-ways/README.md`](leetcode/1-100/91-decode-ways/) (wasteful activation, karac-fixed) and [`leetcode/1-100/4-median-of-two-sorted-arrays/README.md`](leetcode/1-100/4-median-of-two-sorted-arrays/) (legitimate win, both numbers reported) for the worked examples.
 
@@ -144,7 +144,7 @@ build_c    <each>.c
 build_kara <each>.kara
 build_go   go-seq   # builds bench/go-seq/main.go via its own go.mod
 # Par-lane only:
-build_kara <each>.kara   # the #[par_unordered] one
+build_kara <each>.kara   # the #[par_order_free] one
 ( cd rayon && cargo build --release --quiet )
 cp -f rayon/target/release/<bin> target/<bin>
 build_go   go-par
@@ -165,7 +165,7 @@ hyperfine --warmup 3 --runs 10 --shell=none \
     --command-name 'c    count'                    './target/count_c' \
     --command-name 'go   count (single-threaded)'  './target/count_go_seq' \
     # Par lane (only when the workload has one):
-    --command-name 'kara count (#[par_unordered])' './target/count_par_kara' \
+    --command-name 'kara count (#[par_order_free])' './target/count_par_kara' \
     --command-name 'rust count (rayon par_iter)'   './target/count_rayon' \
     --command-name 'go   count (goroutines)'       './target/count_go_par'
 
@@ -200,7 +200,7 @@ The compile-elapsed block was added 2026-05-20 per [`karac-rust/brainstorming/ar
 bench/
 ├── bench.sh                # the driver
 ├── <approach>.kara         # single-file Kara mirror (seq, or seq+par if .kara
-│                           #   carries #[par_unordered])
+│                           #   carries #[par_order_free])
 ├── <approach>.rs           # single-file rustc -O mirror (seq)
 ├── <approach>.c            # single-file clang -O3 mirror (seq)
 ├── <approach>.py           # optional Python mirror (often sink-only)
@@ -236,7 +236,7 @@ When the kata has both seq and par lanes, interleave them with a `Lane` column s
 | Lane | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|---|
 | par | rust count (rayon par_iter)               | **36.7 ms ± 1.1 ms** | 561.4 ms | ~1530% (~15 cores) |
-| par | **kāra count (codegen, #[par_unordered])** | **48.2 ms ± 3.3 ms** | 551.6 ms | ~1150% (~11 cores) |
+| par | **kāra count (codegen, #[par_order_free])** | **48.2 ms ± 3.3 ms** | 551.6 ms | ~1150% (~11 cores) |
 | par | go   count (goroutines)                   | **50.4 ms ± 1.2 ms** | 523.8 ms | ~1040% (~10 cores) |
 | seq | go   count                                | **456.0 ms ± 2.5 ms** | 489.8 ms | 107% |
 | seq | **kāra count**                            | **509.8 ms ± 4.4 ms** | 505.0 ms | 99% |
@@ -247,7 +247,7 @@ When the kata has both seq and par lanes, interleave them with a `Lane` column s
 Notes that should always accompany the table:
 
 - The two-lane framing intro: "Both comparisons stay within their lane; cross-lane wall-time ratios are not meaningful."
-- One paragraph per lane with the lane's headline finding, written as a within-lane ratio ("Kāra/C/Rust are within 0.5% of each other"; "Kāra `#[par_unordered]` is 1.31× slower than `rayon`").
+- One paragraph per lane with the lane's headline finding, written as a within-lane ratio ("Kāra/C/Rust are within 0.5% of each other"; "Kāra `#[par_order_free]` is 1.31× slower than `rayon`").
 - For seq-only katas, drop the `Lane` column and present a flat 4-row table (Kāra, Rust, C, Go).
 
 ### Compile elapsed (cold)

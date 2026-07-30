@@ -1,6 +1,6 @@
 // Rayon-parallel mirror of the LeetCode 204 bench. The natural
 // rayon-idiomatic shape: `.into_par_iter().filter(...).collect()`
-// — same shape Kara's `#[par_unordered] for ... acc.push(...)`
+// — same shape Kara's `#[par_order_free] for ... acc.push(...)`
 // lowers to: workers each accumulate a private Vec<i64>, merged at
 // the end into one final Vec<i64>.
 //

@@ -15,7 +15,7 @@
 #
 #     rt_begin --warmup 3 --runs 10
 #     rt_cmd --lang kara --approach count --lane par --mode codegen \
-#         --name 'kara count (codegen, #[par_unordered])' --cmd ./target/count_kara
+#         --name 'kara count (codegen, #[par_order_free])' --cmd ./target/count_kara
 #     rt_cmd --lang rust --approach count --lane seq --mode native \
 #         --name 'rust count (single-threaded)' --cmd ./target/count
 #     rt_end

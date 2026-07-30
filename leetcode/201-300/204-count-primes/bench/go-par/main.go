@@ -1,7 +1,7 @@
 // LeetCode 204 — Go goroutine-parallel mirror. Spawns
 // `runtime.NumCPU()` workers, each scanning a chunk of `[0, n)`
 // into a private `[]int64`, then a final merge into a flat result.
-// Same shape Kāra's `#[par_unordered]` and Rust's `rayon` use:
+// Same shape Kāra's `#[par_order_free]` and Rust's `rayon` use:
 // per-worker partials, no shared accumulator during the loop, final
 // concat at the end. Same sink as the other par-lane mirrors for
 // N = 10_000_000.
