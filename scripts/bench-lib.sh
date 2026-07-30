@@ -531,6 +531,25 @@ cmem_put() {
 bench_emit() {
     _bench_on || return 0
     local out="${BENCH_OUT:-results.json}"
+
+    # Provenance guard: `results.json` is the CANONICAL feed and is measured on
+    # the Apple-silicon reference host. Running a bench on any other machine
+    # without setting BENCH_OUT silently overwrites a canonical record with
+    # numbers from a different CPU, core count, and OS — the file still looks
+    # well-formed, so nothing downstream catches it. (This bit during the x86
+    # container sweep: a bare `./bench.sh` replaced #86's M5 Pro row set with
+    # 4-core Linux numbers. isa-batch.sh was unaffected because it exports
+    # BENCH_OUT.) Refuse instead, and name the variable to set.
+    if [ "$out" = "results.json" ] && [ "$(uname -s)" != "Darwin" ]; then
+        echo "bench: refusing to write the canonical results.json from $(uname -s)/$(uname -m)." >&2
+        echo "bench: it holds Apple-silicon reference numbers; overwriting it here" >&2
+        echo "bench: would silently mix hosts in one feed." >&2
+        echo "bench: set BENCH_OUT to a host-specific file, e.g." >&2
+        echo "bench:     BENCH_OUT=results.container-x86.json ./bench.sh" >&2
+        echo "bench: (override with BENCH_ALLOW_CANONICAL=1 if you really mean it.)" >&2
+        [ "${BENCH_ALLOW_CANONICAL:-0}" = "1" ] || { rm -rf "$BENCH_TMP"; return 1; }
+    fi
+
     python3 "$_BENCH_LIB_DIR/bench-emit.py" "$BENCH_TMP" "$out"
     rm -rf "$BENCH_TMP"
 }
