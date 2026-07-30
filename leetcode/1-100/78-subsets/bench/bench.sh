@@ -144,8 +144,7 @@ rt_cmd --lang kara --approach subsets --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach subsets --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach subsets_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "subsets" seq
 rt_cmd --lang c --approach subsets --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach subsets --lane seq --mode native \

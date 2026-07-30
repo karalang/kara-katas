@@ -142,6 +142,7 @@ build_kara_seq bfs_sieve.kara      # seq twin (seq lane)
 build_go_seq
 # par-lane comparators for bfs_sieve
 build_rust_rayon bfs_sieve_rayon
+ovf_build_rayon bfs_sieve
 build_c_par      bfs_sieve_par.c
 build_go_par     bfs_sieve_go_par
 
@@ -207,6 +208,7 @@ rt_cmd --lang kara --approach bfs_sieve --lane par --mode codegen \
     --name 'kara bfs_sieve (auto-par)' --cmd './target/bfs_sieve_kara'
 rt_cmd --lang rust --approach bfs_sieve --lane par --mode native \
     --name 'rust bfs_sieve (rayon)' --cmd './target/bfs_sieve_rayon'
+ovf_rt_cmds "bfs_sieve" "bfs_sieve" par
 rt_cmd --lang c --approach bfs_sieve --lane par --mode native \
     --name 'c    bfs_sieve (pthreads)' --cmd './target/bfs_sieve_par_c'
 rt_cmd --lang go --approach bfs_sieve --lane par --mode native \

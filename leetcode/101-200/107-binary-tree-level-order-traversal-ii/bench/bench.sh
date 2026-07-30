@@ -144,8 +144,7 @@ rt_cmd --lang kara --approach level_order_bottom --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach level_order_bottom --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach level_order_bottom_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "level_order_bottom" seq
 rt_cmd --lang c --approach level_order_bottom --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach level_order_bottom --lane seq --mode native \

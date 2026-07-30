@@ -144,8 +144,7 @@ rt_cmd --lang kara --approach search_a_2d_matrix --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach search_a_2d_matrix --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach search_a_2d_matrix_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "search_a_2d_matrix" seq
 rt_cmd --lang c --approach search_a_2d_matrix --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach search_a_2d_matrix --lane seq --mode native \

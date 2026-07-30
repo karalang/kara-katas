@@ -178,8 +178,7 @@ rt_cmd --lang kara --approach sort_colors --lane seq --mode codegen \
     --name "kara ${STEM} (KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach sort_colors --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach sort_colors_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "sort_colors" seq
 rt_cmd --lang c --approach sort_colors --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach sort_colors --lane seq --mode native \

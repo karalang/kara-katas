@@ -146,8 +146,7 @@ rt_cmd --lang kara --approach get_row --lane seq --mode codegen \
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach get_row --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach get_row_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "get_row" seq
 rt_cmd --lang c --approach get_row --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach get_row --lane seq --mode native \

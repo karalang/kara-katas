@@ -182,8 +182,7 @@ rt_cmd --lang kara --approach scramble_string --lane seq --mode codegen \
     --name "kara ${STEM} (KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach scramble_string --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach scramble_string_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "scramble_string" seq
 rt_cmd --lang c --approach scramble_string --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach scramble_string --lane seq --mode native \

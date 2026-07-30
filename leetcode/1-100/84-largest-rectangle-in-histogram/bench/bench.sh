@@ -178,8 +178,7 @@ rt_cmd --lang kara --approach largest_rectangle --lane seq --mode codegen \
     --name "kara ${STEM} (KARAC_AUTO_PAR=0)" --cmd "./target/${STEM}_kara_seq"
 rt_cmd --lang rust --approach largest_rectangle --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach largest_rectangle_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "largest_rectangle" seq
 rt_cmd --lang c --approach largest_rectangle --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach largest_rectangle --lane seq --mode native \

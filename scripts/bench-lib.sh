@@ -155,8 +155,9 @@ bench_begin() {
 # Unlike the matched-ISA helpers below, these are NOT arch-gated: the safety
 # mismatch exists on every host.
 #
-#     ovf_build_rust "<stem>.rs"              # -> target/<stem>_ovf
-#     ovf_rt_cmds    "<stem>" <approach> seq  # registers the row (inside rt_begin/rt_end)
+#     ovf_build_rust  "<stem>.rs"              # -> target/<stem>_ovf
+#     ovf_build_rayon "<stem>"                 # -> target/<stem>_rayon_ovf  (par lane)
+#     ovf_rt_cmds     "<stem>" <approach> seq  # registers the row (inside rt_begin/rt_end)
 
 ovf_build_rust() {
     local src="$1"
@@ -164,6 +165,31 @@ ovf_build_rust() {
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
         echo "compiling $src (overflow-checks=on, equal-safety) ..." >&2
         rustc -O -C overflow-checks=on "$src" -o "$out"
+    fi
+}
+
+# Equal-safety twin for the PAR lane.
+#
+# The par-lane Rust competitor is a rayon crate (`rayon/src/main.rs` + Cargo.toml),
+# not a single file, so ovf_build_rust cannot produce its checked twin — which is
+# why the par lane had NO equal-safety comparator at all while every seq lane had
+# one. That asymmetry is exactly the shape of mistake the ovf lane exists to
+# prevent: the par rows could only ever be read against a `rustc -O` binary that
+# silently wraps.
+#
+# Built into a SEPARATE CARGO_TARGET_DIR. RUSTFLAGS is part of cargo's fingerprint,
+# so sharing `rayon/target` would make the ovf and non-ovf builds evict each other
+# and force a full rebuild on every alternation.
+ovf_build_rayon() {
+    local stem="$1"
+    local out="target/${stem}_rayon_ovf"
+    local src="rayon/src/main.rs"
+    [ -f "$src" ] || return 0
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (overflow-checks=on, equal-safety) ..." >&2
+        ( cd rayon && CARGO_TARGET_DIR=target-ovf RUSTFLAGS="-C overflow-checks=on" \
+            cargo build --release --quiet ) || return 0
+        cp -f "rayon/target-ovf/release/${stem}_rayon" "$out" || return 0
     fi
 }
 
@@ -176,7 +202,13 @@ ovf_build_rust() {
 # means the mirror relies on wrapping arithmetic that kāra would reject.
 ovf_rt_cmds() {
     local stem="$1" approach="${2:-$1}" lane="${3:-seq}" ref="${4:-}"
-    local bin="target/${stem}_ovf" k got
+    local bin="target/${stem}_ovf" k got label="rust ${stem}"
+    # The par lane's Rust competitor is the rayon crate, so its equal-safety twin
+    # is the one ovf_build_rayon produced, not the single-file rustc build.
+    if [ "$lane" = par ] && [ -x "target/${stem}_rayon_ovf" ]; then
+        bin="target/${stem}_rayon_ovf"
+        label="rust ${stem} rayon"
+    fi
     [ -x "$bin" ] || return 0
     if [ -z "$ref" ]; then
         for k in "target/${stem}_kara_seq" "target/${stem}_kara"; do
@@ -194,7 +226,7 @@ ovf_rt_cmds() {
         fi
     fi
     rt_cmd --lang rust_ovf --approach "$approach" --lane "$lane" --mode native \
-        --name "rust ${stem} (overflow-checks=on, equal-safety)" --cmd "./$bin"
+        --name "${label} (overflow-checks=on, equal-safety)" --cmd "./$bin"
 }
 
 # --- matched-ISA lane -------------------------------------------------------

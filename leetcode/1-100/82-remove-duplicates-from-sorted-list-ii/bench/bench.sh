@@ -148,8 +148,7 @@ rt_cmd --lang kara --approach remove_duplicates_ii_list --lane seq --mode codege
     --name "kara ${STEM}" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach remove_duplicates_ii_list --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
-rt_cmd --lang rust --approach remove_duplicates_ii_list_ovf --lane seq --mode native \
-    --name "rust ${STEM} (overflow-checks=on)" --cmd "./target/${STEM}_ovf"
+ovf_rt_cmds "${STEM}" "remove_duplicates_ii_list" seq
 rt_cmd --lang c --approach remove_duplicates_ii_list --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach remove_duplicates_ii_list --lane seq --mode native \
