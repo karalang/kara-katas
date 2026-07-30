@@ -1,76 +1,97 @@
 # fstring-arg-borrow-divergence
 
-**A call's parameter modes change depending on whether it sits inside an f-string
-interpolation.** A bare (owning) parameter is consumed in statement position and
+**A call's parameter modes changed depending on whether it sat inside an f-string
+interpolation.** A bare (owning) parameter was consumed in statement position and
 merely borrowed inside `f"{...}"` — same signature, same call, two semantics.
 
-Surfaced writing kata [#243](../../leetcode/201-300/243-shortest-word-distance/),
-whose first draft declared `words: Slice[String]` and called a `report` helper
-repeatedly on one array.
+Surfaced writing kata [#243](../../leetcode/201-300/243-shortest-word-distance/).
+Filed as `kara` ledger **B-2026-07-29-28**, **fixed by `c8bce5d3`**.
 
 ## The three programs
 
 ```bash
 karac build moves.kara    && ./moves       # bare param consumes: DROP inside callee
-karac build borrows.kara  && ./borrows     # inside f"{}": no consume, DROP at caller's last use
-karac check  rejected.kara                 # same call under plain println(): correctly REJECTED
+karac check  borrows.kara                  # the bug: WAS accepted, now REJECTED
+karac check  rejected.kara                 # same call under plain println(): always REJECTED
 ```
 
 `consume` declares `t: Tracked` with no `ref`, so it owns its argument. A user
-`impl Drop` makes the release observable:
+`impl Drop` made the release observable:
 
-| Call position | `karac check` | Where the destructor runs |
+| Call position | before `c8bce5d3` | after |
 |---|---|---|
-| `let n = consume(t);` | accepted (one call) | **inside `consume`**, before it returns |
-| `println(consume(t));` twice | **rejected** — `value 't' moved here, used again here` | — |
-| `let a = f"{consume(t)}";` twice | **accepted** | once, at `t`'s **last use in the caller** |
+| `let n = consume(t);` | accepted; destructor **inside `consume`** | unchanged |
+| `println(consume(t));` twice | **rejected** — `value 't' moved here, used again here` | unchanged |
+| `let a = f"{consume(t)}";` twice | **accepted** — one drop, at `t`'s last use in the *caller* | **rejected**, same as every other position |
 
-So `consume(t)` inside an interpolation never consumes `t`: two calls on one
-value are legal, and the value the callee declared ownership of outlives it.
+So before the fix, `consume(t)` inside an interpolation never consumed `t`: two
+calls on one value were legal, and the value the callee declared ownership of
+outlived it.
 
-## What this is not
+## Root cause
 
-Three explanations ruled out by probe, because each looked likely first:
+Simpler than this file's original hypothesis, which guessed the interpolation's
+documented borrow was being applied "one level too deep". It was not applying a
+borrow at all — **the pass never looked inside the hole.**
+`ExprKind::InterpolatedStringLit` was grouped with the leaf literals
+(`Integer`/`StringLit`/…) in **two** walkers:
+
+- `src/use_classifier.rs` — classifies uses; the arm body was `{}`, so a hole's
+  expression was never walked.
+- `src/cfg.rs` — lowers expressions to CFG nodes; same grouping, returned `cur`
+  unchanged, so `direct_uam_candidates` had no node at which to find a witness.
+
+Both had to be fixed. Patching either alone changes nothing observable — which
+is why the first attempt looked like a complete no-op and sent the search after a
+second diagnostic emitter that did not exist.
+
+Holes are now walked in `Mode::Reading`, which preserves design.md § String
+Interpolation (L4667): `{expr}` desugars to `expr.to_string()` with
+`Display.to_string(ref self)` borrowing the receiver, so a value may still appear
+in multiple `{}` slots without being consumed. The `Call`/`MethodCall` arms
+derive their own argument modes from the callee's signature independently of the
+enclosing mode, and that is what restores the nested move.
+
+## What it was not
+
+Three explanations ruled out by probe, each of which looked likely first:
 
 - **Not the print-borrow rule.** `B-2026-07-02-21` made `println(s); println(s)`
-  legal by giving the print family `ref` argument modes. That is about println's
-  *own* argument and does not reach a nested call's parameter modes —
-  `rejected.kara` is the control, and it is rejected.
+  legal by giving the print family `ref` argument modes. That governs println's
+  *own* argument and never reached a nested call's parameter modes —
+  `rejected.kara` is the control, and it was rejected before the fix too.
 - **Not `Slice` semantics.** Bare `Slice[T]`/`Vec[T]` params consuming their
-  argument is deliberate language design, settled in `B-2026-07-01-10`: that
-  entry offered "declare the params `ref`" or "give `Slice[T]` borrow mode by
-  default" and chose the first, declaring `ref Slice[f64]` across `stats.kara`.
-  The repro here uses a plain user struct, so `Slice` is not involved at all.
-- **Not memory unsafety.** Exactly one drop, no double-free, and nothing
-  poisoned reading the payload under `MallocScribble=1 MallocPreScribble=1`.
-  `--interp`, JIT and `karac build` all agree. This is a *borrow*, not a
-  use-after-free. An earlier reading of the drop order as an early consume
-  followed by a use-after-destructor was wrong — it was drop-at-last-use.
+  argument is deliberate design, settled in `B-2026-07-01-10`. The repro uses a
+  plain user struct, so `Slice` is not involved at all.
+- **Not memory unsafety.** Exactly one drop, no double-free, and nothing poisoned
+  reading the payload under `MallocScribble=1 MallocPreScribble=1`; `--interp`,
+  JIT and `karac build` all agreed. It was a *borrow*, not a use-after-free — the
+  checker and codegen were self-consistent, both treating it as one. An
+  intermediate reading of the drop order as an early consume followed by a
+  use-after-destructor was wrong; it was drop-at-last-use.
 
-## Root-cause hypothesis
+## What the fix caught
 
-design.md § String Interpolation (L4667) specifies that `{expr}` desugars to
-`expr.to_string()` and that `Display.to_string(ref self)` **borrows the
-receiver**, "so the same value can appear in multiple `{}` slots without being
-consumed". That rule is correct and intended for the interpolated *value* —
-`f"{t}"` must not consume `t`.
+Real code was relying on this. Sweeping all 687 `.kara` files in this repo with
+pre- and post-fix binaries, two katas newly failed `karac check`, both genuine
+latent use-after-moves that the bug had hidden:
 
-The behaviour here looks like that borrow being applied one level too deep: the
-ownership pass appears to treat the whole interpolated expression as a borrow
-context instead of borrowing only its result, so it never descends into a nested
-call's arguments to classify them against the callee's declared modes. Codegen
-agrees with the checker, which is why the two stay self-consistent and nothing
-crashes.
+- [#87](../../leetcode/1-100/87-scramble-string/) — `to_vec(s1)` / `to_vec(s2)`
+  consume, then `f"{s1} ~ {s2}: {found}"` uses both.
+- [#93](../../leetcode/1-100/93-restore-ip-addresses/) — `restore(str)` consumes,
+  then `f"\"{str}\": {count}"` uses it.
 
-## Why it matters
+Both are fixed by declaring the read-only params `ref` — the same lesson #243
+started from. Output was never wrong (codegen defensive-copies the reuse, which is
+why they passed A/B all along), so this made the source say what it meant. All
+four surfaces re-verified against the Python mirrors afterwards.
 
-Not memory safety — **release timing**. For a value whose purpose is
-release-on-consume (a lock guard, a file handle, a `Secret`), writing the
-consuming call inside an f-string silently defers the release from inside the
-callee to the caller's last-use point. `oracle/moves.kara` releases before the
-next statement; `oracle/borrows.kara` holds it across two more calls. And
-`karac check` accepts reuse that the declared signature forbids, so the
-ownership pass is not a reliable gate in that position.
+Six codegen tests in the `kara` repo failed for the same reason and were repaired
+the same way. Making these uses visible also exposes them to rc-promotion, so #93
+now draws a conservative `perf[rc-fallback]` for `path`: the consume and the use
+are on disjoint branches (the `part == 4` arm returns), so the Rc is unnecessary
+but safe — `rc_values` fires for dominance-*incomparable* consume/use by design.
+Not measured for perf impact.
 
 ## ablations/
 
@@ -78,7 +99,10 @@ The narrowing probes, one case per file. `<owner>_<elem>_<ret>.kara` is the
 owner × element-type × return-type matrix that established bare `Slice` params
 consume (and that `Array` of a `Copy` element escapes because it *is* `Copy`, and
 that the return type is irrelevant). `<case>__<callform>.kara` is the call-form
-matrix — `stmt` / `bare` / `arith` all reject, `fstring` alone is accepted:
+matrix: before the fix `stmt` / `bare` / `arith` rejected and **`fstring` alone
+was accepted**, which is what localised the bug. After the fix all four reject
+uniformly — so the three `*__fstring.kara` files are now expected failures, and
+that they fail is the regression test.
 
 ```bash
 for f in ablations/*.kara; do
