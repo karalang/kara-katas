@@ -17,6 +17,16 @@
 #   ./scripts/isa-batch.sh 10           # next 10
 #   ./scripts/isa-batch.sh --list       # show what's stale, run nothing
 #   ./scripts/isa-batch.sh --all        # every stale kata in one batch (~10h)
+#   ./scripts/isa-batch.sh --only 28,163 # just these kata ids (still stale-filtered)
+#   ./scripts/isa-batch.sh --only @file  # ids from a file, one per line
+#
+# `--only` exists because a full re-sweep is usually NOT worth its wall-clock.
+# Measured over the first 18 katas of the single-build re-sweep, refreshing a
+# stale kata moved the corpus medians ~1% (kara/rust 1.054 -> 1.041): the large
+# stale deficits that motivated the sweep (#191 12.77x -> 1.30x, #28 kmp 6.66x
+# -> 1.00x) were two shapes hit by two specific landed fixes, not a corpus-wide
+# effect. So the decision-relevant subset is the handful of katas whose recorded
+# ratio is bad enough to act on -- refresh those, not all 246.
 #
 # Staleness is deliberately defined against the LIVE karac, not against a
 # pinned id: the point of the re-sweep is a corpus measured by ONE compiler, so
@@ -55,34 +65,58 @@ fi
 
 n=25
 mode=run
-case "${1:-}" in
-    --list) mode=list ;;
-    --all)  n=100000 ;;
-    '')     ;;
-    *)
-        case "$1" in
-            *[!0-9]* | '')
-                echo "isa-batch: expected a batch size, --list, or --all; got '$1'" >&2
+ONLY=""
+# Parsed as a LOOP, not a case on $1 alone: `--only 28 --list` must list rather
+# than silently run the benches, which is what a $1-only parse did.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --list) mode=list ;;
+        --all)  n=100000 ;;
+        --only)
+            if [ -z "${2:-}" ]; then
+                echo "isa-batch: --only needs a comma-separated id list or @file" >&2
                 exit 2
-                ;;
-            *) n="$1" ;;
-        esac
-        ;;
-esac
+            fi
+            case "$2" in
+                @*)
+                    f="${2#@}"
+                    [ -r "$f" ] || { echo "isa-batch: cannot read $f" >&2; exit 2; }
+                    ONLY="$(tr '\n' ',' <"$f")"
+                    ;;
+                *) ONLY="$2" ;;
+            esac
+            n=100000
+            shift
+            ;;
+        *[!0-9]* | '')
+            echo "isa-batch: expected a batch size, --list, --all, or --only; got '$1'" >&2
+            exit 2
+            ;;
+        *) n="$1" ;;
+    esac
+    shift
+done
 
 # Stale = results file absent, unreadable, or stamped by a different karac.
 # Emitted as "<bench-dir>\t<kata-id>\t<stamp>" so the caller keeps the id for
 # logging without re-deriving it from the path.
+# ONLY is matched against the kata id's leading number (or the whole directory
+# name for non-numeric ids like `utf8-codepoints`), so `--only 28` selects
+# 28-find-the-index-of-the-first-occurrence-in-a-string without needing the slug.
 stale_list() {
-    python3 - "$CUR" <<'PY'
+    ISA_ONLY="$ONLY" python3 - "$CUR" <<'PY'
 import glob, json, sys, os
 cur = sys.argv[1]
+only = [t.strip() for t in os.environ.get('ISA_ONLY', '').split(',') if t.strip()]
 files = sorted(glob.glob('leetcode/*/*/bench/bench.sh') +
                glob.glob('bespoke/*/bench/bench.sh') +
                glob.glob('backend/*/bench/bench.sh'))
 out = os.environ.get('BENCH_OUT', 'results.container-x86.json')
 for b in files:
     d = os.path.dirname(b)
+    kata = os.path.basename(os.path.dirname(d))
+    if only and kata not in only and kata.split('-')[0] not in only:
+        continue
     res = os.path.join(d, out)
     try:
         stamp = json.load(open(res)).get('env', {}).get('karac_build', '').split()
