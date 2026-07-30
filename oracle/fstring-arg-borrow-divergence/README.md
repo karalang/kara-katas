@@ -91,7 +91,25 @@ the same way. Making these uses visible also exposes them to rc-promotion, so #9
 now draws a conservative `perf[rc-fallback]` for `path`: the consume and the use
 are on disjoint branches (the `part == 4` arm returns), so the Rc is unnecessary
 but safe — `rc_values` fires for dominance-*incomparable* consume/use by design.
-Not measured for perf impact.
+
+**Measured, and it costs nothing.** Not "below the noise floor" — the emitted code
+is byte-identical pre- and post-fix. `restore_ip.kara` builds to the same sha256
+under both compilers (`4e1668d6f54151f7c104`), as does a scaled 40k-punch harness
+around the same `backtrack`/`path` shape, under `KARAC_AUTO_PAR=0` and the default
+auto-par build alike (`45233e37d55840f47d39`). No Rc reaches the binary.
+
+Two things that fell out of measuring it:
+
+- **The note's wording overstates.** It says `RC fallback inserted for 'path'`
+  while codegen inserts nothing; for this shape it is analysis-level only.
+- **Timing could not have answered this.** hyperfine on the two *identical*
+  binaries reported `1.13 ± 0.24×`, and a self-vs-self control on one binary
+  reported `1.05 ± 0.21×` at load 6.22 — the same spread from a guaranteed-zero
+  difference. Nothing under ~1.15× on that machine at that load carries
+  information. Binary identity is the evidence.
+- **`bench/` is the wrong instrument here.** `bench/restore_ip.kara` measures
+  `restore_fold`, a different formulation with no `path` threading, and draws no
+  rc note at all — hence the purpose-built harness.
 
 ## ablations/
 

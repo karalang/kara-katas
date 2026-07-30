@@ -1,0 +1,122 @@
+// Scaled harness around the EXACT shape that gained the rc-fallback in kata #93,
+// so the cost of that Rc can be measured. The kata's own main runs LeetCode-tiny
+// inputs (timing noise), and bench/restore_ip.kara measures a different
+// formulation (`restore_fold`) with no `path` threading at all — so neither can
+// answer this.
+//
+// `backtrack` is copied verbatim from leetcode/1-100/93-restore-ip-addresses/
+// restore_ip.kara. The load-bearing detail is `path: String` being CONSUMED by
+// `out.push(path)` on the `part == 4` arm and USED by `f"{path}.{seg}"` further
+// down. Those sites are on disjoint branches (the consume arm returns), but they
+// are dominance-INCOMPARABLE, so post-c8bce5d3 rc-promotion inserts an Rc for
+// `path` where the pre-fix compiler saw no second use at all.
+//
+// Punch loop: 12-digit numeric strings, each fully enumerated. Every recursion
+// level builds a fresh `f"{path}.{seg}"`, so `path` is threaded through four
+// levels per solution — the Rc, if it costs anything, costs it here.
+
+fn to_bytes(str: ref String) -> Vec[u8] {
+    let b = str.bytes();
+    let mut v: Vec[u8] = Vec.new();
+    let mut i = 0i64;
+    while i < b.len() {
+        v.push(b[i]);
+        i = i + 1i64;
+    }
+    v
+}
+
+fn backtrack(s: ref Vec[u8], n: i64, start: i64, part: i64, path: String,
+        out: mut ref Vec[String]) {
+    if part == 4i64 {
+        if start == n {
+            out.push(path);
+        }
+        return;
+    }
+    let mut len = 1i64;
+    while len <= 3i64 {
+        if start + len > n {
+            break;
+        }
+        let mut val = 0i64;
+        let mut seg: String = "";
+        let mut i = 0i64;
+        while i < len {
+            let d = (s[start + i] as i64) - 48i64;
+            val = val * 10i64 + d;
+            seg.push_str(f"{d}");
+            i = i + 1i64;
+        }
+        let valid = (len == 1i64 or s[start] != 48u8) and val <= 255i64;
+        if valid {
+            let newpath = if part == 0i64 {
+                seg
+            } else {
+                f"{path}.{seg}"
+            };
+            backtrack(s, n, start + len, part + 1i64, newpath, out);
+        }
+        len = len + 1i64;
+    }
+}
+
+fn restore(str: ref String) -> Vec[String] {
+    let s = to_bytes(str);
+    let n = s.len();
+    let mut out: Vec[String] = Vec.new();
+    backtrack(s, n, 0i64, 0i64, "", mut out);
+    out
+}
+
+// Overflow-free 31-bit LCG; draws use bits 16..23.
+fn lcg(state: i64) -> i64 {
+    (state * 1103515245i64 + 12345i64) & 2147483647i64
+}
+
+fn main() {
+    let iters = 40000i64;
+
+    // Build the 12-digit subjects once (build-once + punch, BENCHMARKS.md).
+    // Digits {1,2} at length 8: every 1-3 digit group is <=222 and never has a
+    // leading zero, so all 19 four-part splits of each subject are VALID. That
+    // maximises how often `f"{path}.{seg}"` runs — the configuration most likely
+    // to expose a cost for the Rc on `path`. If nothing shows here, nothing
+    // shows in the kata.
+    let mut digits: Vec[String] = Vec.new();
+    digits.push("1"); digits.push("2");
+
+    let mut subjects: Vec[String] = Vec.new();
+    let mut state = 1i64;
+    let mut j = 0i64;
+    while j < 64i64 {
+        let mut sj: String = "";
+        let mut k = 0i64;
+        while k < 8i64 {
+            state = lcg(state);
+            sj.push_str(digits[(state / 65536i64) % 2i64]);
+            k = k + 1i64;
+        }
+        subjects.push(sj);
+        j = j + 1i64;
+    }
+
+    // Sink: rolling polynomial hash of the solution counts and their lengths —
+    // loop-carried, so the punch loop stays sequential by construction.
+    let mut acc = 0i64;
+    let mut it = 0i64;
+    while it < iters {
+        let idx = it % 64i64;
+        let ips = restore(subjects[idx]);
+        let c = ips.len();
+        let mut tot = 0i64;
+        let mut q = 0i64;
+        while q < c {
+            tot = tot + ips[q].len();
+            q = q + 1i64;
+        }
+        acc = (acc * 131i64 + c * 7i64 + tot) % 1000000007i64;
+        it = it + 1i64;
+    }
+    println(f"{acc}");
+}
