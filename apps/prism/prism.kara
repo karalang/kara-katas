@@ -41,11 +41,25 @@ fn op_adjust() -> i64 { 6 }
 // ── Kernels (pure pixel math — no host knowledge) ───────────────────────────
 
 // Rec. 601 integer luma (weights sum to 100). Alpha preserved.
+//
+// Written as `for p in 0..w * h` with `i = p * 4` rather than the obvious
+// `while i < n { ... i = i + 4 }`. The strided form is not what the auto-par
+// proof accepts — it wants `for v in lo..hi` over a unit-stride range — so the
+// while version silently ran single-threaded. Restated this way, the compiler
+// proves iteration `p` touches `out` only within `[p*4, (p+1)*4)` and fans it
+// out: 1.32x at 12 MP on 4 cores (22.1 ms/rep against 29.3 ms/rep), output
+// identical. Ask it yourself:
+//
+//     karac query concurrency prism.kara
+//
+// The 1.32x is real but well under the resize kernels' 1.5-2.2x, which is what
+// a genuinely bandwidth-bound kernel looks like: four byte loads and a little
+// integer arithmetic per pixel leaves little for extra cores to do.
 fn gray(src: ref Vec[u8], w: i64, h: i64) -> Vec[u8] {
     let n = w * h * 4;
     let mut out: Vec[u8] = Vec.filled(n, 0);
-    let mut i: i64 = 0;
-    while i < n {
+    for p in 0..w * h {
+        let i = p * 4;
         let r = src[i] as i64;
         let g = src[i + 1] as i64;
         let b = src[i + 2] as i64;
@@ -54,7 +68,6 @@ fn gray(src: ref Vec[u8], w: i64, h: i64) -> Vec[u8] {
         out[i + 1] = y as u8;
         out[i + 2] = y as u8;
         out[i + 3] = src[i + 3];
-        i = i + 4;
     }
     out
 }

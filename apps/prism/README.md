@@ -14,7 +14,8 @@ the compute. Tracked in the compiler's dogfooding roster
 
 - File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
   quality slider + encoded-size readout).
-- Kernels: **grayscale**, **bilinear resize**, **Lanczos-3 resize** (separable,
+- Kernels: **grayscale** (fans out too, 1.32x — see below), **bilinear
+  resize**, **Lanczos-3 resize** (separable,
   precomputed normalized tap tables, anti-aliased downscale — 360 ms for a
   12 MP → 3 MP downscale on the worker pool, 97 ms for 3 MP → 0.75 MP; see
   the measured table below), **crop** (drag a selection on the canvas),
@@ -50,7 +51,18 @@ the compute. Tracked in the compiler's dogfooding roster
 
   The figures this README quoted before the conversion came off the band build
   on a different machine, so they are not comparable to these and are not
-  reproduced. Threads come from `instantiateThreaded()`
+  reproduced.
+
+  **`grayscale` fans out as well**, once written as `for p in 0..w * h` with
+  `i = p * 4`. It had been a strided `while i < n { … i = i + 4 }`, which is not
+  a shape the proof accepts — it wants a unit-stride `for v in lo..hi` — so it
+  had been running single-threaded without saying so. Restated, it measures
+  **1.32x** at 12 MP on 4 cores (22.1 ms/rep against 29.3 ms/rep), output
+  identical. That is well under the resize kernels' 1.5–2.2x, and it should be:
+  four byte loads and a little integer arithmetic per pixel is close to pure
+  memory streaming, so there is not much for extra cores to do. The remaining
+  kernels (`crop`, `rotate`, `flip`, `adjust`) are still `while` loops and still
+  sequential. Threads come from `instantiateThreaded()`
   (kara B-2026-07-20-13); a sequential build runs the same source. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
   you get threads; without, the vendored **coi-serviceworker** shim (MIT,
