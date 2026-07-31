@@ -22,7 +22,18 @@
 #define ALPHA 5
 #define TOTAL 3125
 #define ITERS 17
-#define MAPCAP 8192 /* power of two, > 2x TOTAL */
+
+/* The word set and visited set are shaped to match the runtime's Set[T] rather
+ * than presized to the workload: heap-allocated per call (like the kata's
+ * `Set.new()`) and freed after, capacity 16 initially, power of two, linear
+ * probing, doubling with a full rehash when (len + 1) * 4 > capacity * 3 --
+ * the runtime map's 75% load factor, which Set[T] shares because it lowers to
+ * a Map with a zero-width value. The previous fixed 8192-entry static tables
+ * were presized past the 3125-word working set and merely memset, so they
+ * never allocated, grew, or rehashed, while the kata's sets climb
+ * 16 -> 32 -> ... -> 8192. Presizing to the answer is not a C advantage, it is
+ * a different program. */
+#define INITIAL_CAPACITY 16UL
 
 typedef char Word[NAMELEN];
 
@@ -30,6 +41,12 @@ typedef struct {
     Word key;
     unsigned char used;
 } Slot;
+
+typedef struct {
+    Slot *slots;
+    size_t cap;
+    size_t len;
+} Set;
 
 static unsigned long long fx_hash(const char *s) {
     unsigned long long h = 0;
@@ -40,52 +57,85 @@ static unsigned long long fx_hash(const char *s) {
     return h;
 }
 
-static void map_clear(Slot *m) {
-    memset(m, 0, sizeof(Slot) * MAPCAP);
+static void map_init(Set *m) {
+    m->cap = INITIAL_CAPACITY;
+    m->len = 0;
+    m->slots = (Slot *)calloc(m->cap, sizeof(Slot));
 }
 
-static Slot *slot_for(Slot *m, const char *key) {
-    size_t h = (size_t)(fx_hash(key) & (MAPCAP - 1));
-    while (m[h].used && strcmp(m[h].key, key) != 0) {
-        h = (h + 1) & (MAPCAP - 1);
+static void map_free(Set *m) {
+    free(m->slots);
+    m->slots = NULL;
+}
+
+static Slot *slot_for(Set *m, const char *key) {
+    size_t mask = m->cap - 1;
+    size_t h = (size_t)(fx_hash(key) & mask);
+    while (m->slots[h].used && strcmp(m->slots[h].key, key) != 0) {
+        h = (h + 1) & mask;
     }
-    return &m[h];
+    return &m->slots[h];
 }
 
-static int map_has(Slot *m, const char *key) {
+static int map_has(Set *m, const char *key) {
     return slot_for(m, key)->used;
 }
 
-static void map_put(Slot *m, const char *key) {
-    Slot *s = slot_for(m, key);
-    if (!s->used) {
-        s->used = 1;
-        memcpy(s->key, key, NAMELEN);
+static void map_grow(Set *m) {
+    Slot *old = m->slots;
+    size_t ocap = m->cap;
+
+    m->cap = ocap * 2;
+    m->slots = (Slot *)calloc(m->cap, sizeof(Slot));
+
+    for (size_t i = 0; i < ocap; i++) {
+        if (old[i].used) {
+            Slot *s = slot_for(m, old[i].key);
+            s->used = 1;
+            memcpy(s->key, old[i].key, NAMELEN);
+        }
     }
+    free(old);
+}
+
+static void map_put(Set *m, const char *key) {
+    Slot *s = slot_for(m, key);
+    if (s->used) {
+        return;
+    }
+    /* runtime map: resize when (len + tombstones + 1) * 4 > capacity * 3 */
+    if ((m->len + 1) * 4 > m->cap * 3) {
+        map_grow(m);
+        s = slot_for(m, key);
+    }
+    s->used = 1;
+    memcpy(s->key, key, NAMELEN);
+    m->len++;
 }
 
 static char nth_letter(long long n) {
     return (char)('a' + (n % 26));
 }
 
-static Slot word_set[MAPCAP];
-static Slot visited[MAPCAP];
+static Set word_set;
+static Set visited;
 static Word cur[TOTAL];
 static Word nxt[TOTAL];
 static Word nbs[WLEN * 26];
 
 static long long ladder_length(const char *begin, const char *end,
                                const Word *words) {
-    map_clear(word_set);
+    map_init(&word_set);
     for (long long i = 0; i < TOTAL; i++) {
-        map_put(word_set, words[i]);
+        map_put(&word_set, words[i]);
     }
-    if (!map_has(word_set, end)) {
+    if (!map_has(&word_set, end)) {
+        map_free(&word_set);
         return 0;
     }
 
-    map_clear(visited);
-    map_put(visited, begin);
+    map_init(&visited);
+    map_put(&visited, begin);
     long long ncur = 0;
     memcpy(cur[ncur++], begin, NAMELEN);
     long long steps = 1;
@@ -95,6 +145,8 @@ static long long ladder_length(const char *begin, const char *end,
         for (long long i = 0; i < ncur; i++) {
             const char *word = cur[i];
             if (strcmp(word, end) == 0) {
+                map_free(&visited);
+                map_free(&word_set);
                 return steps;
             }
             /* neighbors() */
@@ -107,15 +159,15 @@ static long long ladder_length(const char *begin, const char *end,
                         Word cand;
                         memcpy(cand, word, NAMELEN);
                         cand[pos] = nth_letter(c);
-                        if (map_has(word_set, cand)) {
+                        if (map_has(&word_set, cand)) {
                             memcpy(nbs[nnb++], cand, NAMELEN);
                         }
                     }
                 }
             }
             for (long long j = 0; j < nnb; j++) {
-                if (!map_has(visited, nbs[j])) {
-                    map_put(visited, nbs[j]);
+                if (!map_has(&visited, nbs[j])) {
+                    map_put(&visited, nbs[j]);
                     memcpy(nxt[nnxt++], nbs[j], NAMELEN);
                 }
             }
@@ -124,6 +176,8 @@ static long long ladder_length(const char *begin, const char *end,
         ncur = nnxt;
         steps++;
     }
+    map_free(&visited);
+    map_free(&word_set);
     return 0;
 }
 
