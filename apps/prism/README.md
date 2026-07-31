@@ -53,16 +53,30 @@ the compute. Tracked in the compiler's dogfooding roster
   on a different machine, so they are not comparable to these and are not
   reproduced.
 
-  **`grayscale` fans out as well**, once written as `for p in 0..w * h` with
-  `i = p * 4`. It had been a strided `while i < n { … i = i + 4 }`, which is not
-  a shape the proof accepts — it wants a unit-stride `for v in lo..hi` — so it
-  had been running single-threaded without saying so. Restated, it measures
-  **1.32x** at 12 MP on 4 cores (22.1 ms/rep against 29.3 ms/rep), output
-  identical. That is well under the resize kernels' 1.5–2.2x, and it should be:
-  four byte loads and a little integer arithmetic per pixel is close to pure
-  memory streaming, so there is not much for extra cores to do. The remaining
-  kernels (`crop`, `rotate`, `flip`, `adjust`) are still `while` loops and still
-  sequential. Threads come from `instantiateThreaded()`
+  **Every kernel now fans out — all eight loops.** The rest were `while` loops,
+  which the proof does not accept: it wants a unit-stride `for v in lo..hi`, so
+  a row loop written `while y < sh { … y = y + 1 }` and a pixel loop written
+  `while i < n { … i = i + 4 }` both ran single-threaded without saying so.
+  Restating each one (the strided pixel loops become `for p in 0..w * h` with
+  `i = p * 4`) is the whole change — no concurrency code, no annotations. Per
+  kernel at 12 MP on 4 cores, medians of 7, setup subtracted, every output
+  identical to its `KARAC_AUTO_PAR=0` twin:
+
+  | kernel | sequential | fanned out | |
+  |---|---|---|---|
+  | `rotate` | 117.4 ms | **33.4 ms** | 3.52× |
+  | `adjust` | 94.9 ms | **49.8 ms** | 1.91× |
+  | `flip` | 25.4 ms | **19.2 ms** | 1.33× |
+  | `grayscale` | 29.3 ms | **22.1 ms** | 1.32× |
+  | `crop` | 21.4 ms | **19.7 ms** | 1.08× |
+
+  The spread is the interesting part, and it tracks what each kernel is limited
+  by rather than how much code it contains. `rotate` wins biggest by far because
+  its reads are *transposed* — every output row gathers from a different source
+  column, so it misses cache constantly and is latency-bound; extra cores hide
+  latency very well. `adjust` is next because it does real f64 work per pixel.
+  `crop` gains almost nothing: it is a contiguous row-by-row `memcpy`, already
+  running at memory bandwidth, and no number of cores makes RAM faster. Threads come from `instantiateThreaded()`
   (kara B-2026-07-20-13); a sequential build runs the same source. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
   you get threads; without, the vendored **coi-serviceworker** shim (MIT,

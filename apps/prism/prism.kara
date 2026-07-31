@@ -42,19 +42,10 @@ fn op_adjust() -> i64 { 6 }
 
 // Rec. 601 integer luma (weights sum to 100). Alpha preserved.
 //
-// Written as `for p in 0..w * h` with `i = p * 4` rather than the obvious
-// `while i < n { ... i = i + 4 }`. The strided form is not what the auto-par
-// proof accepts — it wants `for v in lo..hi` over a unit-stride range — so the
-// while version silently ran single-threaded. Restated this way, the compiler
-// proves iteration `p` touches `out` only within `[p*4, (p+1)*4)` and fans it
-// out: 1.32x at 12 MP on 4 cores (22.1 ms/rep against 29.3 ms/rep), output
-// identical. Ask it yourself:
-//
-//     karac query concurrency prism.kara
-//
-// The 1.32x is real but well under the resize kernels' 1.5-2.2x, which is what
-// a genuinely bandwidth-bound kernel looks like: four byte loads and a little
-// integer arithmetic per pixel leaves little for extra cores to do.
+// `for p in 0..w * h` with `i = p * 4`, not the obvious
+// `while i < n { ... i = i + 4 }` — see the note above `crop` for why every
+// kernel here is written that way. 1.32x; four byte loads and a little integer
+// arithmetic per pixel is near-pure memory streaming, so extra cores add little.
 fn gray(src: ref Vec[u8], w: i64, h: i64) -> Vec[u8] {
     let n = w * h * 4;
     let mut out: Vec[u8] = Vec.filled(n, 0);
@@ -279,10 +270,36 @@ fn resize_lanczos(src: Vec[u8], sw: i64, sh: i64, dw: i64, dh: i64) -> Vec[u8] {
 
 // Crop the rect (x, y, cw, ch) out of an sw×sh image. The caller (JS) clamps
 // the rect to the image; the min-guards here are belt-and-braces.
+// ── Why every loop below is a `for` and not a `while` ───────────────────────
+//
+// The auto-par proof only reads `for v in lo..hi` over a unit-stride range. A
+// row loop written `while y < sh { ... y = y + 1 }` and a pixel loop written
+// `while i < n { ... i = i + 4 }` are the same computation, but neither is a
+// shape it can reason about — so both ran single-threaded, silently, while the
+// resize kernels next door fanned out. Restating them is the entire change:
+// no concurrency code, no annotations, no band splitting.
+//
+// Measured at 12 MP on 4 cores, medians of 7, setup subtracted, every output
+// identical to its `KARAC_AUTO_PAR=0` twin:
+//
+//     rotate    117.4 -> 33.4 ms   3.52x
+//     adjust     94.9 -> 49.8 ms   1.91x
+//     flip       25.4 -> 19.2 ms   1.33x
+//     grayscale  29.3 -> 22.1 ms   1.32x
+//     crop       21.4 -> 19.7 ms   1.08x
+//
+// The spread tracks what each kernel is *limited by*, not how big it is.
+// `rotate` wins most because its reads are transposed — each output row gathers
+// from a different source column, so it misses cache constantly and is
+// latency-bound, which parallelizes well. `crop` gains nearly nothing: it is a
+// contiguous row `memcpy` already running at memory bandwidth, and cores do not
+// make RAM faster. Ask the compiler yourself:
+//
+//     karac query concurrency prism.kara
+//
 fn crop(src: ref Vec[u8], sw: i64, x: i64, y: i64, cw: i64, ch: i64) -> Vec[u8] {
     let mut out: Vec[u8] = Vec.filled(cw * ch * 4, 0);
-    let mut ry: i64 = 0;
-    while ry < ch {
+    for ry in 0..ch {
         let srow = ((y + ry) * sw + x) * 4;
         let drow = ry * cw * 4;
         let mut i: i64 = 0;
@@ -290,7 +307,6 @@ fn crop(src: ref Vec[u8], sw: i64, x: i64, y: i64, cw: i64, ch: i64) -> Vec[u8] 
             out[drow + i] = src[srow + i];
             i = i + 1;
         }
-        ry = ry + 1;
     }
     out
 }
@@ -311,8 +327,7 @@ fn rotate(src: ref Vec[u8], sw: i64, sh: i64, quarters: i64) -> Vec[u8] {
     let ow = if q == 2 { sw } else { sh };
     let oh = if q == 2 { sh } else { sw };
     let mut out: Vec[u8] = Vec.filled(ow * oh * 4, 0);
-    let mut dy: i64 = 0;
-    while dy < oh {
+    for dy in 0..oh {
         let mut dx: i64 = 0;
         while dx < ow {
             let sx = if q == 1 { dy } else if q == 2 { sw - 1 - dx } else { sw - 1 - dy };
@@ -325,7 +340,6 @@ fn rotate(src: ref Vec[u8], sw: i64, sh: i64, quarters: i64) -> Vec[u8] {
             out[d + 3] = src[s + 3];
             dx = dx + 1;
         }
-        dy = dy + 1;
     }
     out
 }
@@ -333,8 +347,7 @@ fn rotate(src: ref Vec[u8], sw: i64, sh: i64, quarters: i64) -> Vec[u8] {
 // Mirror the image: axis 0 = horizontal (left-right), 1 = vertical (top-bottom).
 fn flip(src: ref Vec[u8], sw: i64, sh: i64, axis: i64) -> Vec[u8] {
     let mut out: Vec[u8] = Vec.filled(sw * sh * 4, 0);
-    let mut y: i64 = 0;
-    while y < sh {
+    for y in 0..sh {
         let mut x: i64 = 0;
         while x < sw {
             let sx = if axis == 0 { sw - 1 - x } else { x };
@@ -347,7 +360,6 @@ fn flip(src: ref Vec[u8], sw: i64, sh: i64, axis: i64) -> Vec[u8] {
             out[d + 3] = src[s + 3];
             x = x + 1;
         }
-        y = y + 1;
     }
     out
 }
@@ -364,8 +376,8 @@ fn adjust(src: ref Vec[u8], sw: i64, sh: i64, bri: i64, con: i64, sat: i64) -> V
     let badd = (bri as f64) * 2.55;
     let cf = (259.0 * ((con as f64) + 255.0)) / (255.0 * (259.0 - (con as f64)));
     let sf = 1.0 + (sat as f64) / 100.0;
-    let mut i: i64 = 0;
-    while i < n {
+    for p in 0..sw * sh {
+        let i = p * 4;
         let mut r = (src[i] as f64) + badd;
         let mut g = (src[i + 1] as f64) + badd;
         let mut b = (src[i + 2] as f64) + badd;
@@ -383,7 +395,6 @@ fn adjust(src: ref Vec[u8], sw: i64, sh: i64, bri: i64, con: i64, sat: i64) -> V
         out[i + 1] = ((g + 0.5) as i64) as u8;
         out[i + 2] = ((b + 0.5) as i64) as u8;
         out[i + 3] = src[i + 3];
-        i = i + 4;
     }
     out
 }
