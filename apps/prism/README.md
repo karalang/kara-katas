@@ -22,14 +22,24 @@ the compute. Tracked in the compiler's dogfooding roster
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
   (crop → resize → adjust …), with an 8-step Undo and an Original reset.
-- **Multicore + SIMD**: both resamplers fan across the worker pool in 8 row
-  bands via `instantiateThreaded()` (kara B-2026-07-20-13), and the Lanczos
-  vertical pass runs `Vector[f64,2]` lane pairs — one v128 load per pair via
-  the adjacent-lane fusion peephole (kara B-2026-07-21-3). Measured on node:
-  12 MP Lanczos **1058 → 285 ms** (threads 2.4× × SIMD 1.5×; 4.1× vs the
-  single-thread scalar baseline), 3 MP **516 → 101 ms**, 12 MP bilinear
-  upscale 1575 → 763 ms (2.1×), output **byte-identical** throughout. One
-  source: a sequential build runs the same `TaskGroup` code FIFO. The page
+- **Multicore + SIMD, with no parallel code in the source**: the resamplers
+  are ordinary sequential `for` loops. The compiler proves that iteration `dy`
+  writes the output only within `[dy * (4 * dw), (dy + 1) * (4 * dw))` — so no
+  two rows can touch the same slot — and fans them across the worker pool by
+  itself. Ask it: `karac query concurrency prism.kara.resize_bilinear`. The
+  Lanczos vertical pass additionally runs `Vector[f64,2]` lane pairs — one v128
+  load per pair via the adjacent-lane fusion peephole (kara B-2026-07-21-3).
+  This replaced a hand-rolled band fan-out (an arbitrary `let bands = 8`, ceil
+  division, tail clamping, a `Vec[TaskHandle[Vec[u8]]]` and an in-order concat
+  with offset tracking, plus a `*_band` helper per kernel whose `y0`/`y1`
+  parameters existed only to serve the banding). Deleting it made the code
+  **faster**: measured natively at 1600×1200 → 800×600, Lanczos runs 37.4 ms
+  against the band version's 48.8 ms (**23% faster**, 2.08× vs sequential,
+  output byte-identical) — the compiler writes straight into the output buffer,
+  where the band version paid a per-band allocation plus a concat copy. The
+  12 MP / 3 MP browser figures previously quoted here were measured on the band
+  build and are pending a re-bench. Threads come from `instantiateThreaded()`
+  (kara B-2026-07-20-13); a sequential build runs the same source. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
   you get threads; without, the vendored **coi-serviceworker** shim (MIT,
   gzuidhof/coi-serviceworker v0.1.7) registers a service worker that injects
