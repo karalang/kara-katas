@@ -114,10 +114,10 @@ arithmetic.
 The four-way spread is dominated by **string-representation and lookup
 choices**, not by codegen quality:
 
-- **C is fastest because its map is a linear scan.** The map and set never hold
-  more than 3 live entries (the pattern has 3 distinct letters), so a compact
-  array beats any hash table. That is the natural C structure at this size, and
-  it is *not* the same data structure the other four use.
+- **C runs the same hash table as everyone else.** It used to run a compact
+  association list with a linear scan, on the reasoning that the map never
+  holds more than 3 live entries. That was a parity break, and it has been
+  reverted — see the correction below.
 - **Go avoids two copies Rust and kāra both pay.** Go string slices are views,
   so `s[si:end]` allocates nothing, and a `map[string]string` read returns a
   header. Rust's `map.get(key).cloned()` and kāra's `match map.get(key)` both
@@ -148,6 +148,35 @@ Fixing all three took C from 288 ms to 93.3 ms, a **3.1×** swing. The corpus
 rule that mirrors implement the same *algorithm* does not protect against a
 mirror being naively *written*; a surprising ranking is a signal to audit the
 mirror before reporting it.
+
+### A correction to the correction
+
+Defect 1 above was misdiagnosed, and the fix overshot. The mirror was rewritten
+to a compact association list with a linear scan, on the reasoning that
+unbounded probe growth was "an artifact of the mirror, not a property of C."
+
+That reasoning does not hold. The kata allocates **one** map and **one** set for
+the whole search (`mut ref` parameters, `Map.new()` once in the caller) and
+inserts and removes at every backtracking step, so the runtime map really does
+accumulate tombstones and really does keep resizing — the runtime's growth
+trigger, `(len + tombstones + 1) * 4 > capacity * 3`, counts tombstones, and
+`resize` only ever doubles. See
+[#220](../220-contains-duplicate-iii/README.md), where the same insert/remove
+window costs 2.4× once the C mirror models it. Swapping in a structure with
+nothing to accumulate did not remove an artifact; it removed the cost every
+other lane pays.
+
+What the first revision actually got wrong was the **missing resize**, not the
+tombstones. The runtime compacts tombstones away on every doubling, so probe
+chains stay bounded — the growth is real but not pathological. The mirror now
+runs open addressing with the runtime's exact tombstone-inclusive trigger,
+compacting resize, first-tombstone-reuse on insert, and FxHash with the
+compiler's seed.
+
+Restoring the hash table costs **109.7 ms → 142.2 ms (1.30×)** against the
+association-list version — a modest, non-degenerate difference, which is itself
+the evidence that the original 3.1× blowup was the absent resize rather than
+hashing.
 
 ### Compile, size, memory
 
