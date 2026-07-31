@@ -18,7 +18,6 @@
 #define N_NODES 2000
 #define HALF_DEG 5
 #define K_CLONES 500
-#define MAP_CAP 4096
 
 typedef struct Node {
     int64_t val;
@@ -27,50 +26,97 @@ typedef struct Node {
     size_t cap_neighbors;
 } Node;
 
-static int64_t map_keys[MAP_CAP];
-static Node *map_vals[MAP_CAP];
-static bool map_used[MAP_CAP];
+/* The visited map is shaped to match the runtime's Map[K,V] rather than
+ * presized to the workload: heap-allocated per clone (like the kata's
+ * `Map.new()`) and freed after, capacity 16 initially, power of two, linear
+ * probing, doubling with a full rehash when (len + 1) * 4 > capacity * 3 --
+ * the runtime map's 75% load factor -- and FxHash with the same seed the
+ * compiler synthesizes (a single zext + multiply for a <= 8-byte primitive
+ * key). The previous fixed 4096-entry static table was presized past the
+ * 2000-node working set and merely memset, so it never allocated, grew, or
+ * rehashed, while the kata's map climbs 16 -> 32 -> ... -> 4096 on each of the
+ * 500 clones. Presizing to the answer is not a C advantage, it is a different
+ * program. */
+#define INITIAL_CAPACITY 16UL
+#define FXHASH_SEED 0x517cc1b727220a95ULL
+
+static int64_t *map_keys;
+static Node **map_vals;
+static bool *map_used;
+static size_t map_cap;
+static size_t map_len;
 
 static inline size_t hash_key(int64_t k) {
-    uint64_t x = (uint64_t)k;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-    x = x ^ (x >> 31);
-    return (size_t)(x & (MAP_CAP - 1));
+    return (size_t)((uint64_t)k * FXHASH_SEED);
 }
 
 static void map_reset(void) {
-    memset(map_used, 0, sizeof map_used);
+    map_cap = INITIAL_CAPACITY;
+    map_len = 0;
+    map_keys = (int64_t *)malloc(map_cap * sizeof(int64_t));
+    map_vals = (Node **)malloc(map_cap * sizeof(Node *));
+    map_used = (bool *)calloc(map_cap, sizeof(bool));
+}
+
+static void map_release(void) {
+    free(map_keys);
+    free(map_vals);
+    free(map_used);
+}
+
+static size_t map_slot(int64_t k) {
+    size_t mask = map_cap - 1;
+    size_t h = hash_key(k) & mask;
+    while (map_used[h] && map_keys[h] != k) {
+        h = (h + 1) & mask;
+    }
+    return h;
 }
 
 static Node *map_get(int64_t k) {
-    size_t h = hash_key(k);
-    for (;;) {
-        if (!map_used[h]) {
-            return NULL;
+    size_t h = map_slot(k);
+    return map_used[h] ? map_vals[h] : NULL;
+}
+
+static void map_grow(void) {
+    int64_t *ok = map_keys;
+    Node **ov = map_vals;
+    bool *ou = map_used;
+    size_t ocap = map_cap;
+
+    map_cap = ocap * 2;
+    map_keys = (int64_t *)malloc(map_cap * sizeof(int64_t));
+    map_vals = (Node **)malloc(map_cap * sizeof(Node *));
+    map_used = (bool *)calloc(map_cap, sizeof(bool));
+
+    for (size_t i = 0; i < ocap; i++) {
+        if (ou[i]) {
+            size_t h = map_slot(ok[i]);
+            map_used[h] = true;
+            map_keys[h] = ok[i];
+            map_vals[h] = ov[i];
         }
-        if (map_keys[h] == k) {
-            return map_vals[h];
-        }
-        h = (h + 1) & (MAP_CAP - 1);
     }
+    free(ok);
+    free(ov);
+    free(ou);
 }
 
 static void map_insert(int64_t k, Node *v) {
-    size_t h = hash_key(k);
-    for (;;) {
-        if (!map_used[h]) {
-            map_used[h] = true;
-            map_keys[h] = k;
-            map_vals[h] = v;
-            return;
-        }
-        if (map_keys[h] == k) {
-            map_vals[h] = v;
-            return;
-        }
-        h = (h + 1) & (MAP_CAP - 1);
+    size_t h = map_slot(k);
+    if (map_used[h]) {
+        map_vals[h] = v;
+        return;
     }
+    /* runtime map: resize when (len + tombstones + 1) * 4 > capacity * 3 */
+    if ((map_len + 1) * 4 > map_cap * 3) {
+        map_grow();
+        h = map_slot(k);
+    }
+    map_used[h] = true;
+    map_keys[h] = k;
+    map_vals[h] = v;
+    map_len++;
 }
 
 static Node *make_node(int64_t val, size_t neighbor_cap) {
@@ -138,7 +184,9 @@ static Node *clone_graph(Node *root) {
     }
 
     free(queue);
-    return map_get(root_val);
+    Node *out = map_get(root_val);
+    map_release();
+    return out;
 }
 
 int main(void) {
