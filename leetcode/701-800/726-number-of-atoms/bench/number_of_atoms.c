@@ -1,6 +1,97 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* The element-count map is hand-rolled (C has no stdlib hash map) as an
+ * open-addressing, linear-probing table shaped to match the runtime's
+ * Map[i64,i64]: heap-allocated per pass like the kata's `Map.new()` and freed
+ * after, capacity 16 initially, power of two, doubling with a full rehash when
+ * (len + 1) * 4 > capacity * 3 -- the runtime map's 75% load factor -- and
+ * FxHash with the same seed the compiler synthesizes (a single zext + multiply
+ * for a <= 8-byte primitive key).
+ *
+ * The previous version was `mapc[id]`, a direct-address array over the 24-wide
+ * id range, zeroed per pass. That is not a fast map, it is the absence of one:
+ * no hash, no probe, no growth, and it only works because element ids happen to
+ * be small and dense. Rust, Go and the kata all hash. */
+
+#define INITIAL_CAPACITY 16UL
+#define FXHASH_SEED 0x517cc1b727220a95ULL
+
+static long *m_keys;
+static long *m_vals;
+static unsigned char *m_used;
+static size_t m_cap;
+static size_t m_len;
+
+static void map_init(void) {
+    m_cap = INITIAL_CAPACITY;
+    m_len = 0;
+    m_keys = malloc(m_cap * sizeof(long));
+    m_vals = malloc(m_cap * sizeof(long));
+    m_used = calloc(m_cap, 1);
+}
+
+static void map_free(void) {
+    free(m_keys);
+    free(m_vals);
+    free(m_used);
+}
+
+static size_t map_slot(long k) {
+    size_t mask = m_cap - 1;
+    size_t h = (size_t)((unsigned long)k * FXHASH_SEED) & mask;
+    while (m_used[h] && m_keys[h] != k) {
+        h = (h + 1) & mask;
+    }
+    return h;
+}
+
+static long map_get_or(long k, long dflt) {
+    size_t h = map_slot(k);
+    return m_used[h] ? m_vals[h] : dflt;
+}
+
+static void map_grow(void) {
+    long *ok = m_keys;
+    long *ov = m_vals;
+    unsigned char *ou = m_used;
+    size_t ocap = m_cap;
+
+    m_cap = ocap * 2;
+    m_keys = malloc(m_cap * sizeof(long));
+    m_vals = malloc(m_cap * sizeof(long));
+    m_used = calloc(m_cap, 1);
+
+    for (size_t i = 0; i < ocap; i++) {
+        if (ou[i]) {
+            size_t h = map_slot(ok[i]);
+            m_used[h] = 1;
+            m_keys[h] = ok[i];
+            m_vals[h] = ov[i];
+        }
+    }
+    free(ok);
+    free(ov);
+    free(ou);
+}
+
+static void map_insert(long k, long v) {
+    size_t h = map_slot(k);
+    if (m_used[h]) {
+        m_vals[h] = v;
+        return;
+    }
+    /* runtime map: resize when (len + tombstones + 1) * 4 > capacity * 3 */
+    if ((m_len + 1) * 4 > m_cap * 3) {
+        map_grow();
+        h = map_slot(k);
+    }
+    m_used[h] = 1;
+    m_keys[h] = k;
+    m_vals[h] = v;
+    m_len++;
+}
+
 static int is_upper(int b) { return b >= 'A' && b <= 'Z'; }
 static int is_lower(int b) { return b >= 'a' && b <= 'z'; }
 static int is_digit(int b) { return b >= '0' && b <= '9'; }
@@ -41,7 +132,6 @@ int main(void) {
     long *nid = malloc(max_emit * sizeof(long));
     long *cnt = malloc(max_emit * sizeof(long));
     long *pst = malloc(max_emit * sizeof(long));
-    long *mapc = malloc(id_range * sizeof(long));
 
     long sink = 0;
     for (long p = 0; p < passes; p++) {
@@ -76,13 +166,16 @@ int main(void) {
             }
         }
 
-        for (long z = 0; z < id_range; z++) mapc[z] = 0;
-        for (long e = 0; e < ne; e++) mapc[nid[e]] += cnt[e];
+        map_init();
+        for (long e = 0; e < ne; e++) {
+            map_insert(nid[e], map_get_or(nid[e], 0) + cnt[e]);
+        }
         long checksum = 0;
-        for (long z = 0; z < id_range; z++) checksum += z * mapc[z];
+        for (long z = 0; z < id_range; z++) checksum += z * map_get_or(z, 0);
+        map_free();
         sink += checksum;
     }
     printf("%ld\n", sink);
-    free(buf); free(dpos); free(nid); free(cnt); free(pst); free(mapc);
+    free(buf); free(dpos); free(nid); free(cnt); free(pst);
     return 0;
 }
