@@ -15,9 +15,10 @@ the compute. Tracked in the compiler's dogfooding roster
 - File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
   quality slider + encoded-size readout).
 - Kernels: **grayscale**, **bilinear resize**, **Lanczos-3 resize** (separable,
-  precomputed normalized tap tables, anti-aliased downscale — ~360 ms for a
-  3 MP resize, ~1.2 s for 12 MP, main-thread), **crop** (drag a selection on
-  the canvas), **rotate 90/180/270**, **flip H/V**, and
+  precomputed normalized tap tables, anti-aliased downscale — 360 ms for a
+  12 MP → 3 MP downscale on the worker pool, 97 ms for 3 MP → 0.75 MP; see
+  the measured table below), **crop** (drag a selection on the canvas),
+  **rotate 90/180/270**, **flip H/V**, and
   **brightness/contrast/saturation** adjust.
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
@@ -36,9 +37,20 @@ the compute. Tracked in the compiler's dogfooding roster
   **faster**: measured natively at 1600×1200 → 800×600, Lanczos runs 37.4 ms
   against the band version's 48.8 ms (**23% faster**, 2.08× vs sequential,
   output byte-identical) — the compiler writes straight into the output buffer,
-  where the band version paid a per-band allocation plus a concat copy. The
-  12 MP / 3 MP browser figures previously quoted here were measured on the band
-  build and are pending a re-bench. Threads come from `instantiateThreaded()`
+  where the band version paid a per-band allocation plus a concat copy.
+  **Re-benched in the browser** on the converted build (`node
+  bench_browser.mjs`, median of 7, headless Chrome, 4-core Linux; both legs
+  drive the shipped artifacts through the same span the UI's own ms readout
+  reports):
+
+  | lanczos-3 downscale | sequential (`?seq`) | threaded (COOP/COEP) | |
+  |---|---|---|---|
+  | 12 MP → 3 MP | 802 ms | **360 ms** | 2.23× |
+  | 3 MP → 0.75 MP | 152 ms | **97 ms** | 1.57× |
+
+  The figures this README quoted before the conversion came off the band build
+  on a different machine, so they are not comparable to these and are not
+  reproduced. Threads come from `instantiateThreaded()`
   (kara B-2026-07-20-13); a sequential build runs the same source. The page
   auto-picks: with COOP/COEP headers (`./build.sh --serve` uses `serve.py`)
   you get threads; without, the vendored **coi-serviceworker** shim (MIT,

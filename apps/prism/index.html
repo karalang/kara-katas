@@ -400,6 +400,24 @@
     setSel: (x, y, w, h) => { sel = { x, y, w, h }; $("docrop").disabled = false; },
     dims: () => ({ w: curW, h: curH }),
     pixel: (x, y) => [...ctx2d.getImageData(x, y, 1, 1).data],
+    // Timed resize for bench_browser.mjs. Spans exactly what the `setMeta`
+    // readout in `apply()` reports — the `process` call including the
+    // put_pixels canvas write — so a bench number and the number a user sees
+    // in the UI are the same measurement. Re-adopts the original image before
+    // each rep (outside the timed span) so every rep resizes the same source.
+    bench: async (op, dw, dh, reps) => {
+      const handle = await ready;
+      const times = [];
+      for (let i = 0; i < reps; i++) {
+        adopt(new Uint8ClampedArray(orig), origW, origH);
+        const t0 = performance.now();
+        await handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
+          BigInt(dw), BigInt(dh), 0n, 0n);
+        times.push(performance.now() - t0);
+      }
+      times.sort((a, b) => a - b);
+      return { median: times[times.length >> 1], threaded: handle.threaded };
+    },
   };
 
   // ── Drop / file wiring ───────────────────────────────────────────────────

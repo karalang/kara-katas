@@ -282,7 +282,8 @@ async function main() {
     if (String(gp) === "76,76,76,255") break;
   }
   if (String(gp) !== "76,76,76,255") throw new Error(`threaded grayscale: pixel ${gp} != 76-gray`);
-  // Lanczos resize through the pool (the banded kernel): 4x2 -> 8x4.
+  // Lanczos resize through the pool: 4x2 -> 8x4. The fan-out is the
+  // compiler's — the hand-rolled band split this used to name is gone.
   await evalJs2(`(() => {
     document.getElementById('method').value = '2';
     const rw = document.getElementById('rw'), rh = document.getElementById('rh');
@@ -297,7 +298,7 @@ async function main() {
     if (d2 && d2.w === 8 && d2.h === 4) break;
   }
   if (!d2 || d2.w !== 8 || d2.h !== 4) throw new Error(`threaded resize: dims ${d2 && d2.w}x${d2 && d2.h} != 8x4`);
-  console.error("[ok] threaded ops: grayscale oracle + banded lanczos resize on the pool");
+  console.error("[ok] threaded ops: grayscale oracle + lanczos resize on the pool");
   cleanup2();
 
   // ── Phase 3: COI-SHIM leg — the GitHub Pages simulation. Same headerless
@@ -352,7 +353,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained), threaded leg (real COOP/COEP headers + banded lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }
