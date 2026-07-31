@@ -7,55 +7,125 @@
  * exactly 26 distinct anagram groups arise. K=40 outer iterations. Stdout
  * sink: K * 26 = 1040.
  *
- * C has no hashmap in libc, so this carries a small open-addressing,
- * linear-probing hashmap keyed by the NUL-terminated sorted string (FNV-1a
- * hash), same shape as kata 1's hash_map.c. The map is reset per call to match
- * Kāra's `Map.new()` per `count_groups` invocation. The 8-char key is sorted
+ * C has no hashmap in libc, so this carries an open-addressing, linear-probing
+ * hashmap keyed by the NUL-terminated sorted string. The 8-char key is sorted
  * with an insertion sort (tiny, branch-cheap for L=8).
+ *
+ * The table is shaped to match the runtime's Map[K,V] rather than presized to
+ * the workload:
+ *
+ *   - heap-allocated per call, like the kata's `Map.new()`, and freed on the
+ *     way out;
+ *   - capacity 16 initially, power of two, linear probing;
+ *   - grow (double + full rehash) when (len + 1) * 4 > capacity * 3, i.e. the
+ *     same 75% load factor as the runtime map;
+ *   - FxHash over the key bytes with the same seed and rotate the compiler
+ *     synthesizes (h = rotl(h,5) ^ byte; h *= SEED, from h = 0), replacing the
+ *     FNV-1a this mirror used.
+ *
+ * The previous fixed 64-entry stack table was presized to just past the
+ * 26-key working set, so it never allocated, grew, or rehashed, while the
+ * kata's map climbs 16 -> 32 -> 64 on each of the 40 calls. Presizing to the
+ * answer is not a C advantage, it is a different program.
  *
  * See ../README.md § Benchmarks for what the numbers mean.
  */
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define WORD_LEN 8
 #define N 20000
 #define G 1000
 #define L 8
-#define CAP 64 /* power of two, >= 2 * sigma where sigma = 26 here */
+
+#define INITIAL_CAPACITY 16UL
+#define FXHASH_SEED 0x517cc1b727220a95ULL
 
 static const char ALPHABET[26] = "abcdefghijklmnopqrstuvwxyz";
 
 /* Open-addressing string->i64 map. keys[] hold NUL-terminated sorted words. */
 typedef struct {
-    char keys[CAP][WORD_LEN + 1];
-    int used[CAP];
+    char (*keys)[WORD_LEN + 1];
+    long long *vals;
+    unsigned char *used;
+    size_t cap;
+    size_t len;
 } Map;
 
-static uint64_t fnv1a(const char *s) {
-    uint64_t h = 1469598103934665603ULL;
+static uint64_t fxhash(const char *s) {
+    uint64_t h = 0;
     for (; *s; ++s) {
-        h ^= (uint64_t)(unsigned char)*s;
-        h *= 1099511628211ULL;
+        h = ((h << 5) | (h >> 59)) ^ (uint64_t)(unsigned char)*s;
+        h *= FXHASH_SEED;
     }
     return h;
 }
 
-/* Insert key if absent; returns 1 when a NEW slot was opened, else 0. */
-static int map_touch(Map *m, const char *key) {
-    uint64_t idx = fnv1a(key) & (CAP - 1);
-    for (;;) {
-        if (!m->used[idx]) {
-            m->used[idx] = 1;
-            memcpy(m->keys[idx], key, WORD_LEN + 1);
-            return 1;
-        }
-        if (strcmp(m->keys[idx], key) == 0) {
-            return 0;
-        }
-        idx = (idx + 1) & (CAP - 1);
+static void map_init(Map *m) {
+    m->cap = INITIAL_CAPACITY;
+    m->len = 0;
+    m->keys = malloc(m->cap * (WORD_LEN + 1));
+    m->vals = malloc(m->cap * sizeof(long long));
+    m->used = calloc(m->cap, 1);
+}
+
+static void map_free(Map *m) {
+    free(m->keys);
+    free(m->vals);
+    free(m->used);
+}
+
+static size_t map_slot(const Map *m, const char *key) {
+    size_t mask = m->cap - 1;
+    size_t h = (size_t)fxhash(key) & mask;
+    while (m->used[h] && strcmp(m->keys[h], key) != 0) {
+        h = (h + 1) & mask;
     }
+    return h;
+}
+
+static void map_grow(Map *m) {
+    char(*ok)[WORD_LEN + 1] = m->keys;
+    long long *ov = m->vals;
+    unsigned char *ou = m->used;
+    size_t ocap = m->cap;
+
+    m->cap = ocap * 2;
+    m->keys = malloc(m->cap * (WORD_LEN + 1));
+    m->vals = malloc(m->cap * sizeof(long long));
+    m->used = calloc(m->cap, 1);
+
+    for (size_t i = 0; i < ocap; i++) {
+        if (ou[i]) {
+            size_t h = map_slot(m, ok[i]);
+            m->used[h] = 1;
+            memcpy(m->keys[h], ok[i], WORD_LEN + 1);
+            m->vals[h] = ov[i];
+        }
+    }
+    free(ok);
+    free(ov);
+    free(ou);
+}
+
+/* Insert key if absent; returns 1 when a NEW slot was opened, else 0. */
+static int map_touch(Map *m, const char *key, long long v) {
+    size_t h = map_slot(m, key);
+    if (m->used[h]) {
+        return 0;
+    }
+    /* runtime map: resize when (len + tombstones + 1) * 4 > capacity * 3 */
+    if ((m->len + 1) * 4 > m->cap * 3) {
+        map_grow(m);
+        h = map_slot(m, key);
+    }
+    m->used[h] = 1;
+    memcpy(m->keys[h], key, WORD_LEN + 1);
+    m->vals[h] = v;
+    m->len++;
+    return 1;
 }
 
 static void sort8(char *w) {
@@ -72,16 +142,17 @@ static void sort8(char *w) {
 
 static long count_groups(char words[N][WORD_LEN + 1]) {
     Map m;
-    memset(m.used, 0, sizeof(m.used));
+    map_init(&m);
     long groups = 0;
     char key[WORD_LEN + 1];
     for (int i = 0; i < N; ++i) {
         memcpy(key, words[i], WORD_LEN + 1);
         sort8(key);
-        if (map_touch(&m, key)) {
+        if (map_touch(&m, key, groups)) {
             ++groups;
         }
     }
+    map_free(&m);
     return groups;
 }
 
