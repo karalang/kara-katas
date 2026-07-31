@@ -15,20 +15,19 @@ func add(ds *TwoSum, number int64) {
 }
 
 func find(ds *TwoSum, value int64) bool {
-	found := false
 	for k := range ds.counts {
 		complement := value - k
 		if complement == k {
 			if ds.counts[k] >= 2 {
-				found = true
+				return true
 			}
 		} else {
 			if _, ok := ds.counts[complement]; ok {
-				found = true
+				return true
 			}
 		}
 	}
-	return found
+	return false
 }
 
 func main() {

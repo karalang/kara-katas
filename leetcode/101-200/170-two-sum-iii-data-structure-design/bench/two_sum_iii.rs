@@ -13,20 +13,19 @@ fn add(ds: &mut TwoSum, number: i64) {
 }
 
 fn find(ds: &TwoSum, value: i64) -> bool {
-    let mut found = false;
     for k in ds.counts.keys() {
         let complement = value - k;
         if complement == *k {
             if let Some(c) = ds.counts.get(k) {
                 if *c >= 2 {
-                    found = true;
+                    return true;
                 }
             }
         } else if ds.counts.get(&complement).is_some() {
-            found = true;
+            return true;
         }
     }
-    found
+    false
 }
 
 fn main() {
