@@ -159,7 +159,7 @@ if [ -n "$mismatch" ]; then
     exit 1
 fi
 echo "sink seq (kara/rust/c/go): $expected"
-echo "sink par (kara clone_bfs_par / rayon / pthreads-C / goroutine-Go): $expected"
+echo "sink par (rayon / pthreads-C / goroutine-Go; kara par lane withdrawn): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py=$(python3 clone_bfs.py)
     if [ "$py" != "$expected" ]; then
@@ -249,7 +249,8 @@ fi
 
 echo
 echo "=== compile memory (cold) ==="
-for src in clone_bfs.kara clone_bfs_par.kara; do
+# clone_bfs_par.kara omitted: does not compile (see the par-lane note above).
+for src in clone_bfs.kara; do
     stem="$(basename "$src" .kara)"
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
