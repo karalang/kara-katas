@@ -129,6 +129,11 @@ bench_begin() {
     os="$(uname -sr)"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+    # BENCH_NOTE survives a re-bench. Results files are regenerated from
+    # scratch, so a note hand-added to the JSON is silently lost the next time
+    # the kata is measured; export BENCH_NOTE from a bench.sh instead, which is
+    # source and travels with the thing it explains. Omitted entirely when empty
+    # so the other 245 results files gain no empty field.
     jq -n \
         --arg id "$id" --arg slug "$slug" --arg group "$group" \
         --arg title "$title" --arg workload "$workload" --arg sink "$sink" \
@@ -136,13 +141,15 @@ bench_begin() {
         --arg rustc "$rustc_v" --arg clang "$clang_v" \
         --arg go "$go_v" --arg hf "$hf_v" --arg host "$host" \
         --arg cores "$cores" --arg os "$os" --arg now "$now" \
+        --arg note "${BENCH_NOTE:-}" \
         '{
             kata: {id: $id, slug: $slug, group: $group, title: $title,
                    workload: $workload, sink: $sink},
-            env: {host: $host, cores: $cores, os: $os, karac: $karac,
+            env: ({host: $host, cores: $cores, os: $os, karac: $karac,
                   karac_build: $karac_id,
                   rustc: $rustc, clang: $clang, go: $go, hyperfine: $hf,
                   measured_at: $now}
+                  + (if $note == "" then {} else {note: $note} end))
          }' >"$BENCH_TMP/meta.json"
 }
 

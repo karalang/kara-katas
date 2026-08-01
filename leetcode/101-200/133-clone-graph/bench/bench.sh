@@ -116,6 +116,8 @@ isa_build_rust clone_bfs.rs
 ovf_build_rust clone_bfs.rs
 build_c    clone_bfs.c
 build_kara clone_bfs.kara
+export BENCH_NOTE="kara par row WITHDRAWN (kara B-2026-08-01-33): clone_bfs_par.kara does not compile — a shared struct reachable from more than one par branch is a compile error by design, and even pure reads race on the non-atomic refcount. The kara par figure once recorded here came from a stale pre-gate binary that raced (~0.8% SIGSEGV/SIGTRAP, kara B-2026-07-28-13). It is withdrawn, not re-measured. The c/rust/go par rows are retained: they share the same read-only graph lock-free, having no refcount to race, and no legal Kara formulation matches them. See the par-lane section of ../README.md."
+
 # --- kara par lane WITHDRAWN (kara B-2026-08-01-33) ------------------------
 # clone_bfs_par.kara does not compile: a `shared struct` reachable from more
 # than one `par {}` branch is a compile error by design (design.md § Rc vs Arc)
