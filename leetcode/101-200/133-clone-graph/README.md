@@ -51,7 +51,7 @@ brew install hyperfine    # one-time, also needs rustc (rustup)
 | File | What it does |
 |---|---|
 | [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Serial baseline mirroring `clone_bfs.rs` line-for-line — `curr_clone` hoisted out of the inner for-nb loop to match Rust's shape; returns the held `root_clone` alias directly (natural post-bug-7 shape, see § Caveats). |
-| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500), one per core on M5 Pro. The two-phase Rc→Arc algorithm promotes shared-struct handles when they escape across the par barrier. |
+| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500). **Does not compile** — a `shared struct` reachable from >1 par branch is a compile error by design (kara `B-2026-08-01-33`); kept as a live marker of that gap, skipped by `bench.sh`. See § Runtime — par lane. |
 | [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator (gated behind `KARA_BENCH_INCLUDE_PY=1`) |
 | [`bench/clone_bfs.rs`](bench/clone_bfs.rs) | Algorithmic mirror; uses `Rc<RefCell<Node>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O`; `black_box(&nodes[0])` keeps LLVM from hoisting the K loop |
 | [`bench/clone_bfs.c`](bench/clone_bfs.c) | Algorithmic mirror, hand-rolled manual-memory baseline; compiled with `clang -O3` |
@@ -88,22 +88,62 @@ Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-07-28, hype
 
 **Against C, Kāra is 3.55× behind** (52.1 vs 185.1 ms) — the reverse of what this file used to claim. C's manual-memory mirror allocates nodes from a flat bump array and never refcounts; Kāra pays RC traffic plus per-node heap bookkeeping on ~5.5M `Map` operations per run. That makes this kata a peer of [#71](../../1-100/71-simplify-path/) rather than an inversion of it: the hand-managed C baseline wins the allocator-bound shapes, and the interesting comparison is Kāra vs the *safe* languages, where it leads both.
 
-### Runtime — par lane (explicit 18-way `par {}`)
+### Runtime — par lane (explicit 18-way `par {}`) — **kāra row WITHDRAWN**
 
 | Run | Mean ± σ | CPU | vs kāra |
 |---|---|---|---|
-| c    clone_bfs (pthreads) | **10.1 ± 0.7 ms** | 961% | 0.27× |
-| rust clone_bfs (rayon) | 37.0 ± 3.5 ms | 1193% | 0.98× |
-| **`kara clone_bfs` (par 18-way)** | **37.7 ± 2.2 ms** | 1384% | **1.00×** |
-| go   clone_bfs (goroutines) | 95.3 ± 1.2 ms | 740% | 2.53× |
+| c    clone_bfs (pthreads) | **10.1 ± 0.7 ms** | 961% | — |
+| rust clone_bfs (rayon) | 37.0 ± 3.5 ms | 1193% | — |
+| go   clone_bfs (goroutines) | 95.3 ± 1.2 ms | 740% | — |
 
-**4.91× faster than kāra's own seq baseline** (185.1 → 37.7 ms) — the intra-Kāra seq→par speedup, reported within-lane per BENCH.md. The previously published figure here was "1.07× faster (25.1 → 23.5 ms)", which was meaningless: both sides of that ratio were parallel binaries, because the seq baseline it divided by was the poisoned auto-par number retracted above.
+> **`clone_bfs_par.kara` does not compile, and its previously published row is
+> withdrawn — not re-measured.** `karac build` refuses it:
+>
+> ```
+> error[ownership]: shared struct `Node` cannot be accessed from multiple
+> concurrent tasks (binding `root` reachable from two par-block branches)
+> ```
+>
+> That refusal is **correct**, per design.md § Rc vs Arc: a `shared struct`
+> reachable from more than one concurrent branch is a compile error. Rc→Arc
+> promotion covers a sole-ownership move into exactly **one** branch, not an
+> 18-way read-only fan-out. The reason is refcount traffic, not mutation —
+> `emit_rc_inc` is a plain load/add/store, so even pure **reads** race.
+>
+> The withdrawn row read **37.7 ± 2.2 ms**, a dead heat with rayon and a claimed
+> 4.91× over kāra's own sequential baseline. It was produced by a **stale
+> pre-gate binary**: the gate landed 2026-07-13, and `bench.sh` only rebuilds
+> when the source or installed `karac` is newer than the cached binary, so a
+> pre-gate artifact survived. That binary is the one that died in ~0.8% of runs
+> with SIGSEGV/SIGTRAP — filed as `B-2026-07-28-13`, now **closed** as a
+> stale-binary artifact rather than a codegen or runtime defect.
+>
+> An earlier version of this section, and of the kata's own header comment,
+> claimed the two-phase Rc→Arc algorithm made `root` thread-safe across the par
+> boundary "with no source-level annotation". **That was wrong**; the numbers
+> that rested on it are gone.
 
-Against the hand-written mirrors, Kāra's explicit `par {}` is a **dead heat with rayon** (37.7 vs 37.0 ms, inside σ) and **2.53× ahead of goroutine chunking**, while C+pthreads is **3.72× ahead of everything** — it carries the same flat-bump-allocator advantage into the par lane, and with no RC traffic there is nothing for 18 threads to contend on. Kāra draws the most CPU of the four (1384%) for the least return per core, which is the atomics cost of promoting `shared struct Node` handles to Arc across the par boundary.
+The C/rust/go par mirrors are retained above because they remain valid: each
+shares the same read-only graph across threads lock-free, having no refcount to
+race. There is **no legal Kāra formulation that matches them** — the language's
+answers are `par struct` + `Mutex[T]` (mutual exclusion for a structure nobody
+mutates, a cost the mirrors do not pay) or N private copies of read-only data.
+Publishing either against a lock-free mirror would break the cross-language
+parity rule, so the lane stays empty. Filed as `B-2026-08-01-33` in the kara
+repo, **open**.
 
-> **This par binary is not reliable, and the row above should be read as provisional.** `clone_bfs_par` dies with no output on stderr in roughly **0.8% of runs** — 4 in 500 on `karac 7db7009e`, with exit codes 133 (SIGTRAP) ×3 and **139 (SIGSEGV)** ×1. The segfault is the part that matters: that is memory unsafety, not a trap firing on a detected condition. Whenever the process does exit 0 the sink is correct (0 wrong answers in 500 runs), so it is crash-or-correct rather than silently wrong. The failure rate scales with worker count — 0/200 at `KARAC_PAR_WORKERS=1`, 0/200 at 2, 2/200 at 18 — which points at a data race on the `root` graph every arm reads, rather than a scheduler bug. Filed as `B-2026-07-28-13` in the kara repo, **open**. Not established as a regression: at 0.8% a clean bench run is close to a coin flip, so this kata's earlier clean runs are not evidence of a start date.
+`bench/clone_bfs_par.kara` is kept in the tree, uncompilable, as a live marker:
+if that gap ever gains an answer the file starts building and the lane returns.
+`bench.sh` skips it — leaving the build in place failed the **whole** kata's
+bench, taking the working sequential lane down with it.
 
-K clones are independent (each builds its own `visited` Map and `queue` VecDeque), so an explicit `par {}` fork-join with 18 branches lets every core on M5 Pro work. The two-phase Rc→Arc algorithm promotes `shared struct Node` handles to Arc automatically when they escape across the par boundary — no source-level annotation. Not 18× linear: branch-startup cost, Arc atomics, hash-table contention on shared input, and the 6-perf-vs-12-efficiency core asymmetry each take a slice. A sweep at K=500 / N ∈ {6, 8, 12, 18, 24} on the same hardware identified N=18 as the optimum; N=24 regresses ~5% from oversubscription. (05-16 read 22.7 ± 1.4 — reproduces within σ; this allocator-contention-bound shape sees no June-scheduler-archive win, same as kata [#71](../../1-100/71-simplify-path/)'s malloc-bound auto-par lane.)
+The recommended way to write a parallel graph workload in Kāra today is an
+index-pool / adjacency representation (`Vec[Vec[i64]]`, indices instead of
+handles), which sidesteps RC entirely and is trivially shareable read-only —
+the corpus idiom already used by [#222](../../201-300/222-count-complete-tree-nodes/)
+and [#234](../../201-300/234-palindrome-linked-list/). That is a **different
+program**, so it belongs as a new approach rather than an edit to this one.
+
 
 `karac run clone_bfs.kara` (tree-walk interpreter) completes the same workload in hundreds of seconds on the same hardware — orders of magnitude slower than Rust. That row is dropped from the table for the same reason 1-two-sum drops `kara brute_force (interp)`: it measures interpreter dispatch, not algorithm cost.
 

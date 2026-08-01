@@ -11,9 +11,28 @@
 // imbalance is small enough that the longest branch still determines
 // wall-clock.
 //
-// Kara's two-phase Rc→Arc algorithm promotes shared-struct handles to Arc
-// when they escape across a parallel region, so the input `root` and the
-// per-branch cloned graphs are thread-safe without any annotation.
+// DOES NOT COMPILE — DELIBERATELY KEPT. `karac build` refuses this file:
+//
+//     error[ownership]: shared struct `Node` cannot be accessed from multiple
+//     concurrent tasks (binding `root` reachable from two par-block branches)
+//
+// and that refusal is CORRECT, per design.md § Rc vs Arc: a `shared struct`
+// reachable from more than one concurrent branch is a compile error. Rc→Arc
+// promotion covers a sole-ownership move into exactly ONE branch, not an
+// 18-way read-only fan-out. The reason is refcount traffic, not mutation —
+// `emit_rc_inc` is a plain load/add/store, so even pure READS race.
+//
+// An earlier revision of this header claimed promotion made `root` "thread-safe
+// without any annotation". That was wrong, and the numbers once published from
+// it came from a stale pre-gate binary that raced (~0.8% of runs died with
+// SIGSEGV/SIGTRAP — kara B-2026-07-28-13, closed as a stale-binary artifact).
+//
+// The file stays in the tree as a live marker of the expressiveness gap filed
+// as kara B-2026-08-01-33: there is no way to share an immutable structure
+// across tasks read-only without either `par struct`+Mutex (mutual exclusion
+// for something nobody mutates) or N private copies. If that ever gains an
+// answer, this file starts compiling and the par lane can come back. bench.sh
+// skips it; see the § Runtime — par lane note in ../README.md.
 
 shared struct Node {
     val: i64,
