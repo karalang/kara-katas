@@ -51,7 +51,7 @@ brew install hyperfine    # one-time, also needs rustc (rustup)
 | File | What it does |
 |---|---|
 | [`bench/clone_bfs.kara`](bench/clone_bfs.kara) | N=2000, K=500. Serial baseline mirroring `clone_bfs.rs` line-for-line — `curr_clone` hoisted out of the inner for-nb loop to match Rust's shape; returns the held `root_clone` alias directly (natural post-bug-7 shape, see § Caveats). |
-| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500). **Does not compile** — a `shared struct` reachable from >1 par branch is a compile error by design (correctly: RC atomicity is a type property, so a traversal would race on the interior nodes). Kept as a live marker of the narrower gap tracked as kara `B-2026-08-01-33` (no freeze point for a compound `mut` field), skipped by `bench.sh`. See § Runtime — par lane. |
+| [`bench/clone_bfs_par.kara`](bench/clone_bfs_par.kara) | Same per-clone BFS as `clone_bfs.kara`, but the K=500 outer loop is split into **18 par-block branches** (28 × 14 + 27 × 4 = 500). **Does not compile** — a `shared struct` reachable from >1 par branch is a compile error by design (correctly: RC atomicity is a type property, so a traversal would race on the interior nodes). Kept as a live marker of the gap tracked as kara `B-2026-08-01-33` (the `shared struct` RC tier is excluded from parallelism on both surfaces), skipped by `bench.sh`. See § Runtime — par lane. |
 | [`bench/clone_bfs.py`](bench/clone_bfs.py) | Algorithmic mirror — same N, K, graph generator (gated behind `KARA_BENCH_INCLUDE_PY=1`) |
 | [`bench/clone_bfs.rs`](bench/clone_bfs.rs) | Algorithmic mirror; uses `Rc<RefCell<Node>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O`; `black_box(&nodes[0])` keeps LLVM from hoisting the K loop |
 | [`bench/clone_bfs.c`](bench/clone_bfs.c) | Algorithmic mirror, hand-rolled manual-memory baseline; compiled with `clang -O3` |
@@ -130,19 +130,31 @@ race.
 Kāra has a lock-free answer for cross-task sharing in general — a **`par struct`
 with immutable fields is freely readable across tasks**, no `Mutex`, no
 annotation at the use site (the compiler says so in its own `mut`-field
-diagnostic, and it is verified). What blocks **this** type is narrower:
-`Node.neighbors` must be `mut` to link a cyclic graph after its nodes exist, and
-a `mut` **compound** field on a `par struct` requires `Mutex[T]` — `Atomic[T]`
-covers only scalars. Kāra has no **freeze point**, so the graph would carry that
-Mutex through its entirely read-only traversal phase, a cost the mirrors do not
-pay. Publishing that against a lock-free mirror would break the cross-language
-parity rule, so the lane stays empty. Tracked as `B-2026-08-01-33` in the kara
-repo, **open**.
+diagnostic, and it is verified). What is closed off is the **`shared struct`
+(RC) tier specifically** — it cannot participate in parallelism on *either*
+surface. An explicit `par {}` hard-errors, as above; and auto-par, the **default
+build path**, silently declines any loop body touching a plain `shared` value
+(`concurrency.rs`'s B-2026-07-16-6 gate — same non-atomic-refcount reason, no
+diagnostic at the decline site). So the Rc-vs-Arc decision is forced at
+type-declaration time, before the author knows whether the value will ever cross
+a parallel region.
 
-(An earlier revision of this paragraph claimed there was "no legal Kāra
-formulation" for read-only cross-task sharing at all. That was wrong and is
-corrected here and in the ledger entry — the restriction is specific to a type
-needing construction-time mutation of a compound field.)
+This kata sits at the awkward end of that. `Node.neighbors` must be `mut` to
+link a cyclic graph after its nodes exist, and a `mut` **compound** field on a
+`par struct` requires `Mutex[T]` — `Atomic[T]` covers only scalars. So the only
+legal formulation holds a lock through an entirely read-only traversal phase, a
+cost the mirrors do not pay. Publishing that against a lock-free mirror would
+break the cross-language parity rule, so the lane stays empty. Tracked as
+`B-2026-08-01-33` in the kara repo, **open**, severity **high**, with three
+candidate fixes recorded there: par-capture RC elision, whole-program atomicity
+promotion, or a freeze point.
+
+(This paragraph has been corrected twice. An early revision claimed there was
+"no legal Kāra formulation" for read-only cross-task sharing at all — wrong;
+`par struct` does exactly that. A later one framed the remaining gap as solely
+the missing **freeze point** — too narrow, and it assigned the work to the
+author rather than the compiler, which is what the current text and the ledger
+entry fix.)
 
 `bench/clone_bfs_par.kara` is kept in the tree, uncompilable, as a live marker:
 if that gap ever gains an answer the file starts building and the lane returns.
