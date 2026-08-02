@@ -28,10 +28,16 @@
 // SIGSEGV/SIGTRAP — kara B-2026-07-28-13, closed as a stale-binary artifact).
 //
 // The file stays in the tree as a live marker of the expressiveness gap filed
-// as kara B-2026-08-01-33: there is no way to share an immutable structure
-// across tasks read-only without either `par struct`+Mutex (mutual exclusion
-// for something nobody mutates) or N private copies. If that ever gains an
-// answer, this file starts compiling and the par lane can come back. bench.sh
+// as kara B-2026-08-01-33. NOTE that entry was originally overstated and has
+// been corrected: `par struct` with IMMUTABLE fields DOES share across tasks
+// lock-free (verified), so read-only cross-task sharing is expressible in
+// general. What blocks THIS type is narrower — `Node.neighbors` must be `mut`
+// to link a cyclic graph after its nodes exist, and a `mut` COMPOUND field on a
+// `par struct` requires `Mutex[T]` (`Atomic[T]` covers only scalars). There is
+// no freeze point that would let the graph become immutable once built, so it
+// would carry that Mutex through its entirely read-only traversal phase — a
+// cost the lock-free C/rust/go mirrors do not pay. If a freeze/finalize ever
+// lands, this file starts compiling and the par lane can come back. bench.sh
 // skips it; see the § Runtime — par lane note in ../README.md.
 
 shared struct Node {
