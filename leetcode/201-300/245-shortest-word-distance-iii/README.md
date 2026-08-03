@@ -63,6 +63,56 @@ That is worth recording rather than skipping. This kata's Kāra surface is delib
 - **`Array[String, N]` coercing into `ref Slice[String]`** at every call site with no copy.
 - **`min` as a generic `std.cmp` free function**, and `else if` chains on mutually exclusive arms (split variant).
 
+## Benchmarks
+
+### How to run
+
+```bash
+brew install hyperfine    # one-time, also needs rustc (rustup), clang, go
+./bench/bench.sh
+```
+
+[`bench/`](bench/) carries a scaled cross-language variant — same algorithm and a shared deterministic LCG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`604519376`).
+
+**The workload is deliberately identical to [#243](../243-shortest-word-distance/)'s** — same 256-word vocabulary, same LCG, same 20,000-word list, same 2,000 punches — so the two benches are directly comparable. #245's scan *is* #243's with one constraint dropped, so the gap between them is exactly what supporting the same-word case costs: one extra `String` comparison per matched slot, and a short-circuit `or` in the hot test instead of an `else if` chain. Half the punches are same-word queries (the case #243 cannot answer), alternated rather than segregated so the branch predictor can't learn the pattern and turn half the run into a different measurement.
+
+Carried over from #243: every word is 9 bytes sharing the prefix `"delta"` so no comparison exits on length or first byte; every slot holds its own copy so no lane can shortcut on shared data pointers (Go's `strings.Clone`); and the scan has no early exit, so measured work is data-independent.
+
+### Runtime — sequential lane
+
+Container x86-64, 2026-08-03, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–101% CPU. `karac` targets a **v3** deploy baseline, so `c_v3` and `rust_v3` are the ISA-matched comparators; `rust_v3` is also overflow-checked.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` | 217.5 ± 8.8 ms | 0.79× |
+| Rust `-O` (wrapping) | 221.9 ± 5.5 ms | 0.81× |
+| Rust overflow-checked @ x86-64-v3 | 233.9 ± 10.1 ms | 0.85× |
+| C `clang -O3` | 256.5 ± 8.7 ms | 0.94× |
+| C `clang -O3` @ x86-64-v3 | 260.2 ± 8.1 ms | 0.95× |
+| **Kāra (codegen)** | **274.2 ± 9.3 ms** | 1.00× |
+| Go | 331.5 ± 14.8 ms | 1.21× |
+
+**Kāra is 1.05× behind ISA-matched C and 1.17× behind equal-safety Rust, and leads Go by 1.21×.**
+
+**Overflow checks are free here — and that is the interesting half.** Rust wrapping is 221.9 ms, checked is 217.5 ms; the checked build is nominally *faster*, which with σ ≈ 5–9 ms simply means the two are indistinguishable. That reproduces #243 (115.5 → 115.2 ms) and stands in sharp contrast to [#244](../244-shortest-word-distance-ii/), where the same flag cost Rust **2.28×**. The explanation is entirely in the workload: this loop is `String`-comparison-bound with almost no arithmetic to check, while #244's merge does a subtraction, an `abs` and two comparisons per step. Kāra checks by default, so where checks are free it pays nothing, and where they aren't it has already paid — which is why its position relative to Rust swings between these two katas.
+
+**The family now brackets what the map costs Kāra**, which is the point of having built three of them on one spine:
+
+| kata | shape | Kāra vs ISA-matched C |
+|---|---|---|
+| #243 | linear scan, no map | 1.06× |
+| **#245** | **linear scan + same-word support** | **1.05×** |
+| #244 | two map lookups + merge per query | 1.31× |
+| #126 / #127 | `String` keys inside a hash-keyed BFS | ~3.6× |
+
+#245 landing on top of #243 is the control that makes the other two rows mean something: the extra comparison per hit costs nothing measurable, so the 1.31× at #244 is attributable to the map rather than to anything about how these katas are written. And the jump from 1.31× to 3.6× remains unexplained by map usage alone — two lookups per query cost a third, so whatever word-ladder is doing is a different problem.
+
+### Caveats
+
+This is the **container-x86 lane**, which [`BENCHMARKS.md`](../../../BENCHMARKS.md) treats as a corroborating second host with a noise floor around 1.15×. Read nothing below that from it: the **1.05× and 1.07× C rows are ties**, and so is the 1.17× equal-safety-Rust gap. Only the Go margin (1.21×) and the Rust-wrapping gap (1.24×) clear the floor, and both only barely. The comparison that carries real weight here is the *cross-kata* one against #243, since both were measured the same way on the same workload.
+
+The **M5 Pro host lane (`results.json`) has not been measured** — this kata is new and there is no Apple-silicon run yet, so `consolidate-bench.sh` will correctly report it as missing and the kata stays out of the consolidated feed and graphs until one is done.
+
 ## Running
 
 ```bash
