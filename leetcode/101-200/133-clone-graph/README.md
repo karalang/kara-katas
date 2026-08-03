@@ -131,13 +131,22 @@ Kāra has a lock-free answer for cross-task sharing in general — a **`par stru
 with immutable fields is freely readable across tasks**, no `Mutex`, no
 annotation at the use site (the compiler says so in its own `mut`-field
 diagnostic, and it is verified). What is closed off is the **`shared struct`
-(RC) tier specifically** — it cannot participate in parallelism on *either*
-surface. An explicit `par {}` hard-errors, as above; and auto-par, the **default
-build path**, silently declines any loop body touching a plain `shared` value
-(`concurrency.rs`'s B-2026-07-16-6 gate — same non-atomic-refcount reason, no
-diagnostic at the decline site). So the Rc-vs-Arc decision is forced at
-type-declaration time, before the author knows whether the value will ever cross
-a parallel region.
+(RC) tier specifically** — it is shut out of parallelism on *both* surfaces. An
+explicit `par {}` hard-errors, as above; and auto-par, the **default build
+path**, silently declines any loop body that *materializes* a shared-typed value
+— binding a `Vec[shared]` element, passing a handle to a function, a method
+receiver — via `concurrency.rs`'s B-2026-07-16-6 gate, for the same
+non-atomic-refcount reason, with no diagnostic at the decline site. So the
+Rc-vs-Arc decision is forced at type-declaration time, before the author knows
+whether the value will ever cross a parallel region.
+
+(Measured precisely, because the first version of this paragraph overstated it:
+a bare field read *through* a handle — `ps[j].v`, `h.p.v` — **does**
+parallelize. It lowers to a plain deref with no refcount traffic at all; the
+fanned-out worker differs from the same program over a plain `struct` by exactly
+one instruction, the extra indirection to reach the payload. Nothing races, so
+the gate is right to let it through. But no real traversal is written that way —
+this kata's body binds every node it walks — so the practical exclusion stands.)
 
 This kata sits at the awkward end of that. `Node.neighbors` must be `mut` to
 link a cyclic graph after its nodes exist, and a `mut` **compound** field on a

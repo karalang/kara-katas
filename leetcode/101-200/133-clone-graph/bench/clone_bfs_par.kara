@@ -30,11 +30,16 @@
 // The file stays in the tree as a live marker of the expressiveness gap filed
 // as kara B-2026-08-01-33. That entry has been corrected twice; its current
 // reading: `par struct` with IMMUTABLE fields DOES share across tasks lock-free
-// (verified), but the `shared struct` (RC) tier is excluded from parallelism on
+// (verified), but the `shared struct` (RC) tier is shut out of parallelism on
 // BOTH surfaces — an explicit `par {}` hard-errors as above, and auto-par, the
-// DEFAULT build path, silently declines any loop body touching a plain `shared`
-// value (concurrency.rs's B-2026-07-16-6 gate, same non-atomic-refcount
-// reason). So the Rc-vs-Arc decision is forced at type-declaration time.
+// DEFAULT build path, silently declines any loop body that MATERIALIZES a
+// shared-typed value (binding a `Vec[shared]` element, passing a handle to a
+// function, a method receiver) via concurrency.rs's B-2026-07-16-6 gate, for
+// the same non-atomic-refcount reason. A bare field read THROUGH a handle
+// (`ps[j].v`) does parallelize — it lowers to a plain deref with no refcount
+// traffic, measured — but no real traversal is written that way, and this
+// kata's body binds every node it walks. So the Rc-vs-Arc decision is forced at
+// type-declaration time.
 //
 // This kata sits at the awkward end of it: `Node.neighbors` must be `mut` to
 // link a cyclic graph after its nodes exist, and a `mut` COMPOUND field on a
