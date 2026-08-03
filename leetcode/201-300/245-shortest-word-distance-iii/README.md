@@ -19,8 +19,9 @@
 |---|---|---|---|
 | unified one-pass: last index matching **either** word ★ | O(n) time, O(1) space | [`shortest_distance_iii.kara`](shortest_distance_iii.kara) ✓ | [`shortest_distance_iii.py`](shortest_distance_iii.py) ✓ |
 | explicit two-case split: same-word loop / #243 loop | O(n) time, O(1) space | [`shortest_distance_split.kara`](shortest_distance_split.kara) ✓ | — |
+| index lists: adjacent gaps when same, two-pointer merge when not | O(n) time, O(n) space | [`shortest_distance_lists.kara`](shortest_distance_lists.kara) ✓ | — |
 
-`✓` marks agreement with the Python mirror under **interpreter** (`karac run --interp`), **JIT** (`karac run`), and **codegen** (`karac build`), under the default auto-parallelising build and `KARAC_AUTO_PAR=0` alike. Both Kāra variants are byte-identical on all four surfaces.
+`✓` marks agreement with the Python mirror under **interpreter** (`karac run --interp`), **JIT** (`karac run`), and **codegen** (`karac build`), under the default auto-parallelising build and `KARAC_AUTO_PAR=0` alike. All three Kāra variants are byte-identical on all four surfaces — and, per the randomized differential below, on 4,000 further random inputs as well.
 
 ## The mechanism
 
@@ -50,9 +51,26 @@ Both use the family's `best = n` convention: the list has `n` slots, so no two d
 
 ## What it found
 
-**No compiler bugs.** Both variants compiled clean on the first `karac check` and agreed with the oracle on all fifteen queries across all four surfaces.
+**No compiler bugs — and the negative result is backed by 4,000 random cases, not by the fifteen hand-written ones.**
 
-That is worth recording rather than skipping. This kata's Kāra surface is deliberately plain — `ref Slice[String]`, `String` equality, `min`, one `while` — and the interesting content is algorithmic, not linguistic. A kata that finds nothing still does its job when it is the third in a family: #243 and #244 between them turned up a diagnostic gap and a quantified quadratic-build gap ([`B-2026-08-03-9`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)), and the value of running the same shapes a third time is the negative result — the `or`-guarded compound condition and the `same` flag threaded through a hot loop behave identically on interpreter, JIT, and both build modes.
+The fifteen queries in each `main()` are a specification, not a test. [`differential.kara`](differential.kara) and its twin [`differential.py`](differential.py) are the actual check: a shared LCG generates 4,000 random lists of 1–9 words over a three-letter alphabet — small and repetitive on purpose, so same-word pairs, adjacent duplicates, absent words and singleton occurrences are all dense rather than rare — and every case is answered by **all three algorithms**, which must agree with each other and with Python:
+
+```
+$ python3 differential.py
+algorithms disagree on 0 of 4000 cases
+614058389
+
+$ karac run --interp differential.kara   ->  614058389
+$ karac run           differential.kara   ->  614058389
+$ karac build         differential.kara   ->  614058389   (auto-par, the default)
+$ KARAC_AUTO_PAR=0 karac build …          ->  614058389
+```
+
+Three independent algorithms × four execution surfaces × 4,000 inputs, one hash, no divergence. That is what "no bugs found" is worth here.
+
+It is worth saying plainly that the first version of this kata shipped with two variants and fifteen assertions, which is thinner than the corpus rule ("probe **every** canonical way to write the problem") actually asks for. The index-list phrasing was missing, and the four-surface claim rested on a hand-picked input set that could not have caught an edge case nobody thought of. Both are fixed here.
+
+**Why a family's third kata is still worth writing when it finds nothing.** #243 turned up a diagnostic gap and #244 a quantified quadratic-build gap ([`B-2026-08-03-9`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)). #245's Kāra surface is deliberately plain — `ref Slice[String]`, `String` equality and inequality, short-circuit `or`, `min`, `Vec[i64]` growth — so the value is the control: the compound `or`-guarded condition, the `bool` threaded through a hot loop, and the returned-`Vec` shape all behave identically on interpreter, JIT, and both build modes across a wide input space. A clean result on a broad differential is evidence; a clean result on fifteen chosen inputs is barely a claim.
 
 ## Kāra features exercised
 
@@ -119,15 +137,19 @@ The **M5 Pro host lane (`results.json`) has not been measured** — this kata is
 # Kāra — both variants, all backends, same output.
 karac run   shortest_distance_iii.kara
 karac run   shortest_distance_split.kara
+karac run   shortest_distance_lists.kara
 karac build shortest_distance_iii.kara && ./shortest_distance_iii
 
 # Python
 python3 shortest_distance_iii.py
 
 # Verify they agree
-for v in shortest_distance_iii shortest_distance_split; do
+for v in shortest_distance_iii shortest_distance_split shortest_distance_lists; do
     diff <(karac run $v.kara) <(python3 shortest_distance_iii.py) && echo "$v OK"
 done
+
+# Randomized differential: 4,000 cases, three algorithms, must match Python
+diff <(karac run differential.kara) <(python3 differential.py) && echo "differential OK"
 ```
 
 ## Notes
