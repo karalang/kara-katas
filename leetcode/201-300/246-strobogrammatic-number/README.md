@@ -147,7 +147,14 @@ Kāra is statistically indistinguishable from equal-safety C. **On this kata `ka
 | D | `while hi >= 0 { v[base+hi] }` — base + descending | 0 ✅ |
 | E | `while lo+lo < len { v[base+lo]; v[base+len-1-lo] }` — base, both ends from **one** ascending IV | 0 ✅ |
 
-Neither ingredient alone breaks it; only a base offset *combined with* a converging two-variable guard does. **E is the decisive probe** — same memory accesses as B, same base offset, same trip count, same result (`-607711579`), differing only in deriving both indices from one induction variable instead of two converging ones. E runs **28.1 ms**, B **54.2 ms**: the missing elimination alone costs **1.93×** on a work-identical program. This kata shows only 1.28× because its loop body does more per iteration, diluting the check.
+Neither ingredient alone breaks it; only a base offset *combined with* a converging two-variable guard does.
+
+**Partially fixed 2026-08-04 (kara `e94e6bd9`) — but this kata's number is unchanged, and the ledger entry stays open.** `karac` now elides both halves for this shape *when the buffer stays local to the function that walks it*: on a work-identical single-function probe the loop drops from 17 to 14 instructions with both checks gone, worth 1.20×. Two things keep #246 itself at 1.28×, both measured rather than assumed:
+
+- **The punch loop is in a callee.** `is_strobogrammatic(corpus, base, len)` has no local fact relating `base` to `corpus.len()`, so no per-function analysis can prove the bound there — it needs interprocedural facts or loop predication. (The shape fails post-inline too, which is why the intra-function fix was worth building.)
+- **The construction loop *is* the fixed shape, but the length pin refuses it** because `corpus` is passed to a function at all. Adding a single read-only `fn peek(c: ref Vec[u8])` call to the otherwise-firing probe puts both checks back. That loop runs once against the punch loop's 100 passes, so lifting it would not move this benchmark anyway.
+
+So the numbers in this section still stand as measured. **E is the decisive probe** — same memory accesses as B, same base offset, same trip count, same result (`-607711579`), differing only in deriving both indices from one induction variable instead of two converging ones. E runs **28.1 ms**, B **54.2 ms**: the missing elimination alone costs **1.93×** on a work-identical program. This kata shows only 1.28× because its loop body does more per iteration, diluting the check.
 
 This is the flat / row-major 2D traversal shape, so it recurs well beyond #246 — this kata's own *construction* loop is the same shape and also keeps its checks. The kata is **not** rewritten to dodge it: it stays the natural converging two-pointer, and probe E is diagnostic evidence only, not a suggested phrasing.
 
