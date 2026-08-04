@@ -13,7 +13,15 @@
 //
 // What this measures: raw byte indexing from both ends with a 5-way map per
 // pair, over 32M pair-checks, with no allocation anywhere in the measured loop.
-// All five lanes index bytes in place, so they do the same work.
+//
+// THE CORPUS IS ONE FLAT `Vec[u8]` of N*LEN bytes, indexed by offset — NOT
+// 20,000 separate `String`s. That matches C (`malloc(N*LEN)`), Rust
+// (`vec![0u8; N*LEN]`) and Go (`make([]byte, n*length)`) exactly. An earlier
+// revision of this lane pushed 20,000 heap `String`s while the other three
+// streamed one contiguous 640 KB buffer, so the punch loop chased scattered
+// pointers here and walked a flat array everywhere else — a cache-locality
+// difference introduced by the mirror, not a codegen property. See the README's
+// § Runtime note for what that correction did to the number.
 //
 // Sink: a rolling polynomial hash of the 2,000,000 verdicts. Loop-carried, so
 // the punch loop is not a reduction the auto-par pass can split — sequential by
@@ -46,13 +54,13 @@ fn rotate_byte(b: u8) -> u8 {
     return 0u8;
 }
 
-fn is_strobogrammatic(num: ref String) -> bool {
-    let bs = num.bytes();
+// Offset into the flat corpus, exactly as the C mirror takes `corpus + i*LEN`.
+fn is_strobogrammatic(corpus: ref Vec[u8], base: i64, len: i64) -> bool {
     let mut lo = 0i64;
-    let mut hi = bs.len() - 1i64;
+    let mut hi = len - 1i64;
     while lo <= hi {
-        let r = rotate_byte(bs[lo]);
-        if r == 0u8 or r != bs[hi] {
+        let r = rotate_byte(corpus[base + lo]);
+        if r == 0u8 or r != corpus[base + hi] {
             return false;
         }
         lo = lo + 1i64;
@@ -66,35 +74,32 @@ fn main() {
     let len = 32i64;
     let passes = 100i64;
 
-    let mut pair_a: Vec[char] = Vec.new();
-    let mut pair_b: Vec[char] = Vec.new();
-    pair_a.push('0'); pair_b.push('0');
-    pair_a.push('1'); pair_b.push('1');
-    pair_a.push('8'); pair_b.push('8');
-    pair_a.push('6'); pair_b.push('9');
-    pair_a.push('9'); pair_b.push('6');
+    let mut pair_a: Vec[u8] = Vec.new();
+    let mut pair_b: Vec[u8] = Vec.new();
+    pair_a.push(48u8); pair_b.push(48u8);
+    pair_a.push(49u8); pair_b.push(49u8);
+    pair_a.push(56u8); pair_b.push(56u8);
+    pair_a.push(54u8); pair_b.push(57u8);
+    pair_a.push(57u8); pair_b.push(54u8);
 
-    let mut all: Vec[char] = Vec.new();
-    all.push('0'); all.push('1'); all.push('2'); all.push('3'); all.push('4');
-    all.push('5'); all.push('6'); all.push('7'); all.push('8'); all.push('9');
+    let mut all: Vec[u8] = Vec.new();
+    all.push(48u8); all.push(49u8); all.push(50u8); all.push(51u8); all.push(52u8);
+    all.push(53u8); all.push(54u8); all.push(55u8); all.push(56u8); all.push(57u8);
+
+    // One flat buffer, like every other lane.
+    let mut corpus: Vec[u8] = Vec.filled(n * len, 48u8);
 
     let mut state = 1i64;
-    let mut corpus: Vec[String] = Vec.new();
     let mut k = 0i64;
     while k < n {
-        let mut chars: Vec[char] = Vec.new();
-        let mut f = 0i64;
-        while f < len {
-            chars.push('0');
-            f = f + 1i64;
-        }
+        let base = k * len;
         let mut lo = 0i64;
         let mut hi = len - 1i64;
         while lo < hi {
             state = lcg(state);
             let p = (state / 65536i64) % 5i64;
-            chars[lo] = pair_a[p];
-            chars[hi] = pair_b[p];
+            corpus[base + lo] = pair_a[p];
+            corpus[base + hi] = pair_b[p];
             lo = lo + 1i64;
             hi = hi - 1i64;
         }
@@ -103,15 +108,8 @@ fn main() {
             state = lcg(state);
             let pos = (state / 65536i64) % len;
             state = lcg(state);
-            chars[pos] = all[(state / 65536i64) % 10i64];
+            corpus[base + pos] = all[(state / 65536i64) % 10i64];
         }
-        let mut num: String = "";
-        let mut c = 0i64;
-        while c < len {
-            num.push(chars[c]);
-            c = c + 1i64;
-        }
-        corpus.push(num);
         k = k + 1i64;
     }
 
@@ -120,7 +118,7 @@ fn main() {
     while p < passes {
         let mut i = 0i64;
         while i < n {
-            if is_strobogrammatic(corpus[i]) {
+            if is_strobogrammatic(corpus, i * len, len) {
                 acc = (acc * 131i64 + 1i64) % 1000000007i64;
             } else {
                 acc = (acc * 131i64 + 0i64) % 1000000007i64;
