@@ -9,11 +9,17 @@
  * make almost every number reject on its first character and the benchmark
  * would measure early return instead of the scan.
  *
- * NOTE on parity: the Kara/Rust/Go/Python lanes materialise the string as a
- * character sequence per call (chars().collect() and friends). C indexes the
- * bytes in place, which is what C code would naturally do - so C is doing
- * strictly less work here, and its lead should be read with that in mind rather
- * than as pure codegen quality. See the README.
+ * NOTE on parity: STALE CLAIM REMOVED (2026-08-04). This comment used to say
+ * the Kara/Rust/Go/Python lanes materialise a character sequence per call while
+ * C indexes bytes in place, so C was doing strictly less work. That stopped
+ * being true when every lane was moved to one flat N*LEN byte buffer indexed by
+ * offset - all five now do the same work per call.
+ *
+ * C's remaining lead over Kara is bounds-check elimination and nothing else:
+ * Kara's punch loop is 21 instructions to C's 15, and the 6-instruction excess
+ * is exactly two per-iteration bounds checks. Adding equivalent checks to this
+ * mirror (see the README's confirmation section) makes clang emit an isomorphic
+ * loop and lands it on Kara's time. Filed as kara B-2026-08-04-8.
  */
 
 #include <stdio.h>

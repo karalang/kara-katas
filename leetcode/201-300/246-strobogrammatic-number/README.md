@@ -105,7 +105,8 @@ Container x86-64, 2026-08-04, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 9
 >
 > **The correction was worth about 8%** (53.9 → 49.7 ms), which is smaller than
 > the asymmetry looked like it should cost and does *not* account for the gap.
-> The C ratio moves from 1.40× to **1.30×**; the rest is still unexplained.
+> The C ratio moves from 1.40× to **1.30×**; the rest is bounds-check
+> elimination — confirmed below, kara `B-2026-08-04-8`.
 
 **Do not read the Go row as a Kāra win. It is a Go compiler artifact, and it was chased down rather than published.**
 
@@ -120,11 +121,35 @@ The cause is the **5-way `switch` on a byte**. LLVM turns it into a table or a b
 
 So with a lookup table Go runs at ~30 ms and **leads Kāra**, and the honest summary of this kata's Go lane is: *Go's codegen for a small value switch is ~10× worse than LLVM's here, and that single difference dominates the measurement.* The switch is kept in all five mirrors because it is the source-level algorithm they share and it is what anyone would write — but the resulting number says nothing about Kāra versus Go.
 
-**What the C and Rust rows do say.** Kāra is **1.40× behind ISA-matched C** and **2.11× behind equal-safety Rust** — and this is the first kata in the recent run where Rust is clearly ahead rather than level or behind. Overflow checks cost Rust nothing (27.0 vs 28.0 ms, inside σ), matching [#243](../243-shortest-word-distance/) and [#245](../245-shortest-word-distance-iii/) and unlike [#244](../244-shortest-word-distance-ii/)'s 2.28×: there is no arithmetic in this loop worth checking. Kāra's gap here is **not** the 5-way map, which was the obvious suspect and was tested. An isolated probe — 60M `rotate_byte` calls over a digit array, `KARAC_AUTO_PAR=0` — puts Kāra's `if`-chain and its `match` form at **0.03 s each**, against **0.08 s** for the equivalent C `switch` under `clang -O3`. The work is real (doubling the iteration count doubles the time, so nothing is folded or hoisted). So `karac` handles a small value map over `u8` at least as well as LLVM does for C, both spellings compile to the same thing, and the remaining 1.30× gap in this kata lives somewhere else — **bounds-check elimination**, which is where the evidence now points. `bytes()` is ruled out too — it returns a `Slice[u8]` view rather than allocating, and the flat-corpus lane never calls it.
+**What the C and Rust rows do say.** Kāra is **1.40× behind ISA-matched C** and **2.11× behind equal-safety Rust** — and this is the first kata in the recent run where Rust is clearly ahead rather than level or behind. Overflow checks cost Rust nothing (27.0 vs 28.0 ms, inside σ), matching [#243](../243-shortest-word-distance/) and [#245](../245-shortest-word-distance-iii/) and unlike [#244](../244-shortest-word-distance-ii/)'s 2.28×: there is no arithmetic in this loop worth checking. Kāra's gap here is **not** the 5-way map, which was the obvious suspect and was tested. An isolated probe — 60M `rotate_byte` calls over a digit array, `KARAC_AUTO_PAR=0` — puts Kāra's `if`-chain and its `match` form at **0.03 s each**, against **0.08 s** for the equivalent C `switch` under `clang -O3`. The work is real (doubling the iteration count doubles the time, so nothing is folded or hoisted). So `karac` handles a small value map over `u8` at least as well as LLVM does for C, both spellings compile to the same thing, and the remaining 1.30× gap in this kata lives somewhere else — **bounds-check elimination**, now confirmed as the whole of it (kara `B-2026-08-04-8`; evidence below). `bytes()` is ruled out too — it returns a `Slice[u8]` view rather than allocating, and the flat-corpus lane never calls it.
 
-The remaining signal: `objdump` counts **7** unsigned-compare branches (`jae`/`jb`/`ja`) in Kāra's `main` against **3** in C's, and the inner loop indexes twice per iteration (`corpus[base + lo]`, `corpus[base + hi]`) where C does raw pointer arithmetic that LLVM proves in-range. Two extra compare-and-branch per iteration across ~30M iterations is the right order of magnitude for the residual 1.30×.
+**Confirmed 2026-08-04 — it is bounds-check elimination, and it accounts for the entire gap.** Filed as kara **`B-2026-08-04-8`**. An earlier revision of this section recorded a 7-vs-3 branch count across the whole of `main` as a *hypothesis*, because that count also covers corpus construction and so does not isolate the punch loop. Isolating it settles the question three ways:
 
-**Stated as a hypothesis, not a finding.** The count is over the whole of `main`, which also contains corpus construction, so it does not isolate the punch loop — confirming it needs the loop extracted and its per-iteration instruction count compared directly. That is the next step, and it is the only remaining explanation that would be a genuine codegen result rather than a mirror defect. Recorded as a ruled-out suspect so the next person does not re-derive it.
+**1. The two punch loops are isomorphic except for the checks.** Both binaries fully inline `is_strobogrammatic` into `main`. Kāra's loop is **21 instructions**, C's is **15**, and the 6-instruction excess is exactly `2 × (lea; cmp $0x9c400; jae <panic>)` — 100% bounds checking. Every other instruction matches one-for-one, including the 5-way rotate map, which LLVM table-izes identically in both (`add $0xd0; cmp $0x9; ja; bt <mask 0x343>; jae;` + table load). That independently re-confirms the map is not the gap.
+
+**2. A control experiment pins the cost.** Adding Kāra-equivalent bounds checks to the C mirror makes `clang` emit a loop instruction-for-instruction isomorphic to Kāra's — 21 instructions, same order, differing only in register allocation and the rotate table's element width. Timing (hyperfine, 80 runs, min):
+
+| binary | min | vs C |
+|---|---|---|
+| C | 65.1 ms | 1.00× |
+| C **+ bounds checks** | 83.2 ms | **1.28×** |
+| Kāra | 83.0 ms | **1.28×** |
+
+Kāra is statistically indistinguishable from equal-safety C. **On this kata `karac`'s codegen is at `clang -O3` parity once safety is equalized**, and the whole residual gap is the missing elimination.
+
+**3. Minimal probes isolate the exact trigger.** Five variants over an identical corpus, differing only in the scan loop:
+
+| probe | scan shape | checks |
+|---|---|---|
+| A | `while lo < len { v[base+lo] }` — base + ascending | 0 ✅ |
+| B | `while lo <= hi { v[base+lo]; v[base+hi] }` — base + **converging** | **2** ❌ |
+| C | `while lo <= hi { v[lo]; v[hi] }` — converging, no base | 0 ✅ |
+| D | `while hi >= 0 { v[base+hi] }` — base + descending | 0 ✅ |
+| E | `while lo+lo < len { v[base+lo]; v[base+len-1-lo] }` — base, both ends from **one** ascending IV | 0 ✅ |
+
+Neither ingredient alone breaks it; only a base offset *combined with* a converging two-variable guard does. **E is the decisive probe** — same memory accesses as B, same base offset, same trip count, same result (`-607711579`), differing only in deriving both indices from one induction variable instead of two converging ones. E runs **28.1 ms**, B **54.2 ms**: the missing elimination alone costs **1.93×** on a work-identical program. This kata shows only 1.28× because its loop body does more per iteration, diluting the check.
+
+This is the flat / row-major 2D traversal shape, so it recurs well beyond #246 — this kata's own *construction* loop is the same shape and also keeps its checks. The kata is **not** rewritten to dodge it: it stays the natural converging two-pointer, and probe E is diagnostic evidence only, not a suggested phrasing.
 
 ### Caveats
 
