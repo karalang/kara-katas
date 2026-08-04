@@ -4,12 +4,22 @@
 // each anagram key straight to ITS LIST of words, instead of the index-map
 // indirection (`Map[key -> group index]` + a side `Vec[Vec[String]]`) that
 // [`count_signature.kara`](count_signature.kara) and [`sorted_key.kara`](sorted_key.kara)
-// use. Kāra has no in-place map-value mutation, so appending to a group is a
-// read-modify-reinsert: `get` the current `Vec[String]`, `push` the word, and
-// `insert` it back — OVERWRITING the existing key. That displaced-`Vec[String]`
-// overwrite is a distinct ownership surface from the index-map approaches (it
-// stresses per-value drop of a heap-of-heaps map value), which is exactly why
-// it's worth writing as its own variant. A first-seen-order key list keeps the
+// use. Appending to a group here is a read-CLONE-modify-reinsert: `get` the
+// current `Vec[String]`, `push` the word, and `insert` it back — OVERWRITING the
+// existing key. That displaced-`Vec[String]` overwrite is a distinct ownership
+// surface from the index-map approaches (it stresses per-value drop of a
+// heap-of-heaps map value), which is exactly why it's worth writing as its own
+// variant — it is what found the two leaks recorded below.
+//
+// THE PHRASING IS A DELIBERATE PROBE, NOT A FORCED ONE. This comment used to say
+// "Kāra has no in-place map-value mutation", which is false: `entry(k).or_insert(..)`
+// yields a `mut ref V` into the map's own slot, and `table[k].push(w)` also
+// appends in place. The clone is kept HERE because displacing an existing value
+// is the surface under test and `or_insert` never displaces anything. Do not
+// copy this loop into new code — it is O(k²) in the number of occurrences per
+// key, which cost #244 a complexity class before it was noticed
+// (kara `B-2026-08-03-9`). #244's `shortest_distance_ii.kara` shows the form to
+// reach for by default. A first-seen-order key list keeps the
 // output deterministic — identical to the other two solvers and the oracle.
 //
 // Uses the same 26-bucket count signature as `count_signature.kara`; only the

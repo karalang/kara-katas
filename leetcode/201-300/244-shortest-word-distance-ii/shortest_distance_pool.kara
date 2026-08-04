@@ -7,21 +7,29 @@
 //     slot:  Map[String, i64]     word -> which list
 //     lists: Vec[Vec[i64]]        the lists themselves
 //
-// The extra indirection buys a complexity class. `lists[s].push(i)` appends in
-// place, so construction is O(n). The direct `Map[String, Vec[i64]]` phrasing
-// cannot do that — Kāra has no in-place mutation of a map VALUE, so extending a
-// key's list is a read-CLONE-modify-reinsert and the build degrades to O(n²).
-// That gap is real and measured (kara `B-2026-08-03-9`, open): at n=128,000
-// single-key appends the direct phrasing runs ~1000× slower than the same loop
-// in CPython, which does it in O(n) with `setdefault(w, []).append(i)`.
+// `lists[s].push(i)` appends in place, so construction is O(n).
 //
-// So this variant is not a stylistic alternative — today it is the only phrasing
-// of #244 that scales, and it is the one the scaled benchmark uses. The direct
-// phrasing stays as the primary kata file because it is the natural way to write
-// this and the gap belongs in the ledger, not hidden behind a workaround.
+// THIS FILE ONCE CLAIMED that indirection was REQUIRED — that "Kāra has no
+// in-place mutation of a map VALUE", so the direct `Map[String, Vec[i64]]`
+// phrasing was forced into a read-CLONE-modify-reinsert and an O(n²) build.
+// That was wrong. Kāra has two in-place paths, both of which shipped before this
+// file was written:
 //
-// The same indirection is already the corpus idiom in #49 `count_signature.kara`
-// (`Map[key -> group index]` + `Vec[Vec[String]]`), for the same reason.
+//     index.entry(w).or_insert(Vec.new()).push(i)   // Entry API
+//     index[w].push(i)                              // index-assign, as in #332
+//
+// `shortest_distance_ii.kara` now uses the first and builds in O(n) — measured
+// flat at 0.008 s for n=128,000 where the clone phrasing took 13.89 s. So the
+// direct phrasing scales, and the ~1000×-slower-than-CPython figure this comment
+// used to quote was the cost of the clone, not of the language. See kara
+// `B-2026-08-03-9` (reframed to a discoverability gap).
+//
+// The variant is kept because it is a genuinely distinct canonical phrasing
+// worth probing — a slot map plus a side pool is how you would write this in a
+// language without an entry API, and it exercises `Vec[Vec[i64]]` element
+// mutation, which the direct phrasing does not. It is NOT a workaround, and the
+// corpus rule against routing around gaps does not apply to it, because there is
+// no gap here to route around.
 
 struct WordDistance {
     slot: Map[String, i64],

@@ -59,11 +59,19 @@ Python oracle mirrors it exactly (`dict.setdefault` + `list(values())`), so `kar
 
 `map_of_lists.kara` writes the phrasing most people reach for first — map each key straight to **its
 list of words** — while keeping determinism with a side `Vec[String]` of keys in first-seen order.
-Because Kāra has no in-place map-value mutation, appending to a group is a **read-modify-reinsert**:
-`get` the current `Vec[String]`, `push` the word, and `insert` it back, **overwriting** the key; the
-final groups are then `remove`d out of the map in first-seen order. This is a genuinely different
-ownership surface from the index-map solvers — it stresses per-value drop of a *heap-of-heaps* map
-value — and it is worth writing precisely because it exercises code the other two never touch.
+Appending to a group is a **read-clone-modify-reinsert**: `get` the current `Vec[String]`, `push` the
+word, and `insert` it back, **overwriting** the key; the final groups are then `remove`d out of the
+map in first-seen order. This is a genuinely different ownership surface from the index-map solvers —
+it stresses per-value drop of a *heap-of-heaps* map value — and it is worth writing precisely because
+it exercises code the other two never touch. It is what found both leaks below.
+
+> **The overwrite here is a deliberate probe, not a language constraint.** This section previously
+> said "Kāra has no in-place map-value mutation", which is false — `entry(k).or_insert(..)` returns a
+> `mut ref V` into the map's own slot, and `table[k].push(w)` appends in place too. The clone is kept
+> in *this* variant because displacing an existing value is exactly the surface under test, and
+> `or_insert` never displaces anything. It is O(k²) in occurrences per key, which is invisible on this
+> kata's six-word inputs but cost [#244](../../201-300/244-shortest-word-distance-ii/) a complexity
+> class before anyone checked (kara `B-2026-08-03-9`). New code should reach for `entry` by default.
 
 ## What this kata surfaced (grouping container)
 

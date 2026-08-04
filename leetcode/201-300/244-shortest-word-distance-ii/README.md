@@ -17,8 +17,8 @@ shortest("makes",  "coding")    ->  1     indices 4 and 3 — the SECOND "makes"
 
 | Approach | Build | Query | Kāra | Python |
 |---|---|---|---|---|
-| map of position lists + two-pointer merge ★ | O(n²) — see below | O(\|p₁\|+\|p₂\|) | [`shortest_distance_ii.kara`](shortest_distance_ii.kara) ✓ | [`shortest_distance_ii.py`](shortest_distance_ii.py) ✓ |
-| map of position lists + binary search | O(n²) — see below | O(min·log max) | [`shortest_distance_binary.kara`](shortest_distance_binary.kara) ✓ | — |
+| map of position lists + two-pointer merge ★ | **O(n)** | O(\|p₁\|+\|p₂\|) | [`shortest_distance_ii.kara`](shortest_distance_ii.kara) ✓ | [`shortest_distance_ii.py`](shortest_distance_ii.py) ✓ |
+| map of position lists + binary search | **O(n)** | O(min·log max) | [`shortest_distance_binary.kara`](shortest_distance_binary.kara) ✓ | — |
 | index-pool indirection + two-pointer merge | **O(n)** | O(\|p₁\|+\|p₂\|) | [`shortest_distance_pool.kara`](shortest_distance_pool.kara) ✓ | — |
 
 `✓` marks agreement with the Python mirror under **interpreter** (`karac run --interp`), **JIT** (`karac run`), and **codegen** (`karac build`), under the default auto-parallelising build and `KARAC_AUTO_PAR=0` alike. All three Kāra variants produce byte-identical output on all four surfaces.
@@ -43,9 +43,9 @@ The **binary-search** variant walks the shorter list and binary-searches the lon
 
 ## What it found
 
-**A quantified performance gap in a bread-and-butter idiom — [kara `B-2026-08-03-9`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), open, high.**
+**A self-inflicted 1736× slowdown, and the discoverability gap behind it — [kara `B-2026-08-03-9`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), reframed.**
 
-Kāra has no in-place mutation of a map **value**. So extending a word's position list is a read-**clone**-modify-reinsert — `get` yields a borrow, the map still owns the list until the reinsert lands, so the clone is not optional:
+This kata originally built its index with a read-**clone**-modify-reinsert, on the stated belief that *"Kāra has no in-place mutation of a map value"* — `get` yields a borrow, the map still owns the list until a reinsert lands, so the clone looked mandatory:
 
 ```kara
 match index.get(w) {
@@ -58,41 +58,37 @@ match index.get(w) {
 }
 ```
 
-Appending the k-th occurrence of a key therefore copies `k-1` elements, and building the index for a key seen `k` times costs **O(k²)**. Every mirror language does it in O(k): Python `setdefault(w, []).append(i)`, Rust `entry(w).or_default().push(i)`, Go `m[w] = append(m[w], i)`, C++ `m[w].push_back(i)`.
+**That belief was false.** Kāra has *two* in-place paths, and both shipped before this kata was written:
 
-Measured on the degenerate single-key case (`"the"` repeated n times), `KARAC_AUTO_PAR=0` AOT build against CPython 3 on the same machine:
+```kara
+index.entry(w).or_insert(Vec.new()).push(i);   // Entry API — what this kata uses now
+index[w].push(i);                              // index-assign — as #332 already did
+```
 
-| n | Kāra | CPython |
-|---|---|---|
-| 32,000 | 0.10 s | 0.004 s |
-| 64,000 | 0.52 s | 0.011 s |
-| 96,000 | 5.60 s | 0.009 s |
-| 128,000 | **13.37 s** | 0.013 s |
+`entry(k)` returns a view of that key's slot; `or_insert` yields a `mut ref Vec[i64]` — the map's own list when the key is present, a freshly-inserted empty one when it is not — so the `push` lands through the borrow and nothing is copied. It is the direct analogue of Python's `setdefault(w, []).append(i)` and Rust's `entry(w).or_default().push(i)`.
 
-Four times the input costs Kāra 134× the time while CPython stays flat — at n=128,000 Kāra is roughly **1000× slower than CPython** doing identical work. It is not the buffer cache: `KARAC_BUF_CACHE=0` reproduces the same curve.
+Measured on the degenerate single-key case (`"the"` repeated n times), `KARAC_AUTO_PAR=0` AOT build, same machine, before and after:
 
-The gap has an in-language escape, which is the third variant. Routing the lists through an index indirection — `Map[String, i64]` for word→slot plus a side `Vec[Vec[i64]]` — makes the append `lists[s].push(i)`, which mutates in place:
+| n | clone-reinsert (before) | `entry` (after) | speedup |
+|---|---|---|---|
+| 32,000 | 0.10 s | 0.006 s | 18× |
+| 64,000 | 0.52 s | 0.006 s | 87× |
+| 96,000 | 5.02 s | 0.008 s | 643× |
+| 128,000 | **13.89 s** | **0.008 s** | **1736×** |
 
-| n | direct `Map[K, Vec[V]]` | index-pool |
-|---|---|---|
-| 32,000 | 0.10 s | 0.00 s |
-| 64,000 | 0.49 s | 0.00 s |
-| 96,000 | 5.98 s | 0.00 s |
-| 128,000 | 14.21 s | 0.00 s |
+The before column is quadratic — appending the k-th occurrence of a key copies k−1 elements. The after column is flat and lands in CPython's range (0.004–0.013 s across the same sweep). The complexity class was never the language's; it was this file's.
 
-So it is a performance **trap**, not a wall — and it stays filed as high anyway, because the trap is silent (nothing in `karac check` warns; the code compiles clean and answers correctly, only slowly) and because the direct phrasing is what every mirror language's idiom translates to, so it is what a newcomer writes first. The indirection is a known corpus workaround (#49's `count_signature.kara` uses the same trick) rather than something the language guides anyone toward.
+**What the kata actually found is a discoverability gap.** Nothing leads an author from `get`/`insert` to `entry`, and nothing in `karac check` flags the clone-reinsert shape — it compiles clean and answers correctly, only slowly. That gap is real enough to have cost this kata a complexity class, spawned a whole extra variant written to dodge it, and been recorded as a language limitation in three separate places before anyone tested the alternative. The ledger entry is reframed from `perf`/high to `diagnostics`/medium, with a lint offering `entry().or_insert()` as the durable close.
 
-**The direct phrasing is kept as the primary kata file.** Per the corpus rule the gap is filed, not routed around: `shortest_distance_ii.kara` stays written the natural way, and `shortest_distance_pool.kara` sits beside it as the phrasing that scales today.
-
-One thing deliberately **not** claimed: the step from n=64,000 to n=96,000 is 10.6× for 1.5× the input, steeper than the quadratic the construction explains. Ruling out the buffer cache did not identify what it is. A plausible reading is the clone's working set (source + destination, 2 × 768 KB at n=96,000) outgrowing L2 so every copy streams from DRAM — but that was not confirmed, and it is recorded in the ledger entry as an open observation rather than a finding.
+The earlier note about the n=64,000→96,000 step being 10.6× for 1.5× the input — steeper than the quadratic explains — applies only to the removed clone phrasing and is left in the ledger as an open observation about that construction, not about the language.
 
 **No correctness bugs.** All three variants agreed with the oracle on the first clean compile, on all four surfaces.
 
 ## Kāra features exercised
 
-- **`Map[String, Vec[i64]]` — a heap-of-heaps map value**, built by read-clone-modify-reinsert, and the ownership surface that entails: the displaced old `Vec[i64]` is freed by the discard of `insert`'s `Option` result on every append.
+- **`Map[String, Vec[i64]]` — a heap-of-heaps map value**, built through `entry(k).or_insert(..)`, which hands back a `mut ref` into the map's own slot so each append lands in place with no copy and no displaced list to free.
 - **Nested `match` over two map lookups, merging through the borrows.** Both `get`s stay borrows and the merge reads straight through them — nothing is cloned in the query path. That is load-bearing, not tidiness: a `positions() -> Vec[i64]` helper would copy both lists on every query, making the Kāra query `O(|p₁| + |p₂|)` *allocation* where the C mirror does none, and the benchmark would then be comparing two different algorithms.
-- **`lists[s].push(i)` — in-place append into a `Vec[Vec[i64]]` element** (index-pool variant), the operation whose absence for map values is the finding above.
+- **`lists[s].push(i)` — in-place append into a `Vec[Vec[i64]]` element** (index-pool variant), the same in-place append the direct phrasing gets from `entry(..).or_insert(..)`, reached through an explicit slot table instead.
 - **Binary search over a borrowed map-held `Vec[i64]`** — `lower_bound` plus a both-sides insertion-point check, entirely through a borrow.
 - **`ref Slice[String]` — the borrow, spelled out.** A bare `Slice[T]` parameter consumes its argument, so the constructor declares `ref` (settled language design, ledger `B-2026-07-01-10`).
 - **`Array[String, N]` coercing into `ref Slice[String]`** at six call sites with no copy.
@@ -112,7 +108,7 @@ The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a 
 
 Every word is 9 bytes sharing the 5-byte prefix `"delta"`, so hashing walks the whole key and no lookup discriminates on length or first byte; every one of the 20,000 slots holds its own copy, so no lane can shortcut on operands sharing a data pointer (Go's `strings.Clone` is load-bearing for exactly that reason). The C mirror uses a **real dynamic open-addressing map** that grows on load factor, not a table pre-sized to the known vocabulary — a pre-sized table would hand C a free win the other four don't get.
 
-**The bench builds the index with the index-pool phrasing, not the direct one.** That is deliberate: the direct `Map[String, Vec[i64]]` build is quadratic in Kāra today (`B-2026-08-03-9`, above) while all four mirrors append in O(1), so benching it would compare an O(n²) build against four O(n) ones and report the difference as codegen quality. The index-pool construction is linear and idiomatic in all five languages.
+**The bench builds the index with the index-pool phrasing, not the direct one.** The original reason — that the direct build was quadratic — no longer holds: `entry(..).or_insert(..)` makes it O(n), so either phrasing would now be an honest comparison against the four mirrors. The bench is left on the index-pool spine so its published numbers stay comparable with the runs already in `bench-results.json`; re-basing it on the direct phrasing is a separate change that should re-measure all five languages together.
 
 ### Runtime — sequential lane
 

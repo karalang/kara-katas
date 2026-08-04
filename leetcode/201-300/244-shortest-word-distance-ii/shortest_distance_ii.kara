@@ -27,30 +27,17 @@ struct WordDistance {
 // One pass over the list, appending each slot to its word's position vector.
 // Positions therefore arrive in ascending order for free, which is exactly the
 // precondition the merge relies on — nothing is ever sorted here.
-// Kāra has no in-place map-value mutation, so extending a word's position list
-// is a read-modify-reinsert: `get` the current `Vec[i64]`, `push`, `insert` it
-// back over the key. `existing` is a BORROW of the map's list — the map still
-// owns it until the reinsert lands — so it is cloned before mutating. Same
-// idiom as #49's `map_of_lists.kara`, and it costs one list copy per word
-// occurrence at CONSTRUCTION time only; the query path below never copies.
+// Extending a word's position list appends IN PLACE. `entry(w)` returns a view
+// of that key's slot and `or_insert` yields a `mut ref Vec[i64]` — the map's own
+// list when the key is present, a freshly-inserted empty one when it is not — so
+// the `push` lands through the borrow and nothing is copied. Construction is
+// O(n), matching the Python mirror's `setdefault(w, []).append(i)`.
 fn new_word_distance(words: ref Slice[String]) -> WordDistance {
     let mut index: Map[String, Vec[i64]] = Map.new();
     let n = words.len();
     let mut i = 0i64;
     while i < n {
-        let w = words[i];
-        match index.get(w) {
-            Some(existing) => {
-                let mut hits: Vec[i64] = existing.clone();
-                hits.push(i);
-                let _ = index.insert(w, hits);
-            }
-            None => {
-                let mut hits: Vec[i64] = Vec.new();
-                hits.push(i);
-                let _ = index.insert(w, hits);
-            }
-        }
+        index.entry(words[i]).or_insert(Vec.new()).push(i);
         i = i + 1i64;
     }
     return WordDistance { index: index, size: n };
