@@ -1,0 +1,152 @@
+// Randomized differential for #246 — see differential.py for the case-shape
+// rationale (constructed strobogrammatic strings, half of them corrupted at one
+// position, plus a uniform draw for the forbidden-digit path).
+
+fn lcg(state: i64) -> i64 {
+    (state * 1103515245i64 + 12345i64) & 2147483647i64
+}
+
+fn rotate_digit(c: char) -> Option[char] {
+    if c == '0' { return Some('0'); }
+    if c == '1' { return Some('1'); }
+    if c == '8' { return Some('8'); }
+    if c == '6' { return Some('9'); }
+    if c == '9' { return Some('6'); }
+    return None;
+}
+
+fn two_pointer(num: ref String) -> bool {
+    let cs: Vec[char] = num.chars().collect();
+    let mut lo = 0i64;
+    let mut hi = cs.len() - 1i64;
+    while lo <= hi {
+        match rotate_digit(cs[lo]) {
+            None => { return false; }
+            Some(r) => { if r != cs[hi] { return false; } }
+        }
+        lo = lo + 1i64;
+        hi = hi - 1i64;
+    }
+    return true;
+}
+
+fn build_compare(num: ref String) -> bool {
+    let cs: Vec[char] = num.chars().collect();
+    let n = cs.len();
+    let mut mapped: Vec[char] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        match rotate_digit(cs[i]) {
+            None => { return false; }
+            Some(r) => { mapped.push(r); }
+        }
+        i = i + 1i64;
+    }
+    mapped.reverse();
+    let mut j = 0i64;
+    while j < n {
+        if mapped[j] != cs[j] { return false; }
+        j = j + 1i64;
+    }
+    return true;
+}
+
+fn main() {
+    let mut alpha: Vec[char] = Vec.new();
+    alpha.push('0'); alpha.push('1'); alpha.push('8');
+    alpha.push('6'); alpha.push('9'); alpha.push('2'); alpha.push('5');
+
+    let mut pair_a: Vec[char] = Vec.new();
+    let mut pair_b: Vec[char] = Vec.new();
+    pair_a.push('0'); pair_b.push('0');
+    pair_a.push('1'); pair_b.push('1');
+    pair_a.push('8'); pair_b.push('8');
+    pair_a.push('6'); pair_b.push('9');
+    pair_a.push('9'); pair_b.push('6');
+
+    let mut centre: Vec[char] = Vec.new();
+    centre.push('0'); centre.push('1'); centre.push('8');
+
+    let mut all: Vec[char] = Vec.new();
+    all.push('0'); all.push('1'); all.push('2'); all.push('3'); all.push('4');
+    all.push('5'); all.push('6'); all.push('7'); all.push('8'); all.push('9');
+
+    let mut acc = 0i64;
+    let mut s = 1i64;
+    let mut disagree = 0i64;
+    let mut accepts = 0i64;
+    let mut constructed = 0i64;
+    let mut corrupted = 0i64;
+
+    let mut case = 0i64;
+    while case < 6000i64 {
+        s = lcg(s);
+        let n = 1i64 + (s / 65536i64) % 8i64;
+        s = lcg(s);
+        let mode = (s / 65536i64) % 2i64;
+
+        let mut chars: Vec[char] = Vec.new();
+        let mut k = 0i64;
+        while k < n {
+            chars.push('0');
+            k = k + 1i64;
+        }
+
+        if mode == 0i64 {
+            let mut idx = 0i64;
+            while idx < n {
+                s = lcg(s);
+                chars[idx] = alpha[(s / 65536i64) % 7i64];
+                idx = idx + 1i64;
+            }
+        } else {
+            constructed = constructed + 1i64;
+            let mut lo = 0i64;
+            let mut hi = n - 1i64;
+            while lo < hi {
+                s = lcg(s);
+                let p = (s / 65536i64) % 5i64;
+                chars[lo] = pair_a[p];
+                chars[hi] = pair_b[p];
+                lo = lo + 1i64;
+                hi = hi - 1i64;
+            }
+            if lo == hi {
+                s = lcg(s);
+                chars[lo] = centre[(s / 65536i64) % 3i64];
+            }
+            s = lcg(s);
+            if (s / 65536i64) % 2i64 == 0i64 {
+                corrupted = corrupted + 1i64;
+                s = lcg(s);
+                let pos = (s / 65536i64) % n;
+                s = lcg(s);
+                chars[pos] = all[(s / 65536i64) % 10i64];
+            }
+        }
+
+        let mut num: String = "";
+        let mut c = 0i64;
+        while c < n {
+            num.push(chars[c]);
+            c = c + 1i64;
+        }
+
+        let a = two_pointer(num);
+        let b = build_compare(num);
+        if a != b {
+            disagree = disagree + 1i64;
+        }
+        if a {
+            accepts = accepts + 1i64;
+            acc = (acc * 131i64 + 1i64) % 1000000007i64;
+        } else {
+            acc = (acc * 131i64 + 0i64) % 1000000007i64;
+        }
+        case = case + 1i64;
+    }
+
+    println(f"algorithms disagree on {disagree} of 6000 cases");
+    println(f"accepted {accepts} of 6000 ({constructed} constructed, {corrupted} then corrupted)");
+    println(f"{acc}");
+}
