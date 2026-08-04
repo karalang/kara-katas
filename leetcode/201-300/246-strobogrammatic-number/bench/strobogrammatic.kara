@@ -1,0 +1,133 @@
+// Benchmark harness for LeetCode #246 — Strobogrammatic Number.
+//
+// Build-once + punch (BENCHMARKS.md): 20,000 length-32 numbers are built ONCE,
+// then 100 passes run the two-pointer check over all of them — 2,000,000 calls.
+//
+// THE CORPUS IS DELIBERATELY MOSTLY ACCEPTING, and that is the whole benchmark
+// design. A uniform digit draw would make almost every number reject on its
+// FIRST character, so the measured work would be loop entry plus an early
+// return — the scan this kata is about would barely run. So every number is
+// constructed strobogrammatic, and 1 in 8 is corrupted at one random position:
+// that rejects, but on average halfway through, so a reject still does real
+// work and the branch predictor cannot learn a fixed answer.
+//
+// What this measures: raw byte indexing from both ends with a 5-way map per
+// pair, over 32M pair-checks, with no allocation anywhere in the measured loop.
+// All five lanes index bytes in place, so they do the same work.
+//
+// Sink: a rolling polynomial hash of the 2,000,000 verdicts. Loop-carried, so
+// the punch loop is not a reduction the auto-par pass can split — sequential by
+// construction and directly comparable per-core.
+
+fn lcg(state: i64) -> i64 {
+    (state * 1103515245i64 + 12345i64) & 2147483647i64
+}
+
+// Byte-indexed, not `chars().collect()`. Kāra refuses `s[i]` outright — the
+// diagnostic says "s[i] would hide an O(n) scan — Strings are UTF-8 encoded and
+// characters are variable-width", and names both alternatives with their
+// complexity: `char_at(i)` is O(n), `bytes()[i]` is O(1). The input here is
+// ASCII digits, so `bytes()` is both correct and the honest parity choice: it
+// is exactly what the C mirror does (index the bytes in place) and what Go and
+// Rust do naturally (`num[i]`, `num.as_bytes()[i]`). Materialising a character
+// vector per call would have made the Kāra lane do strictly more work than C
+// and reported the difference as codegen quality.
+//
+// ASCII digit bytes: '0'=48 '1'=49 '6'=54 '8'=56 '9'=57. Zero means "does not
+// survive rotation" — no digit maps to byte 0, so it is a safe sentinel here
+// and avoids an Option in the hot loop (the KATA file keeps the Option[char]
+// form; this is the benchmark's shape, stated rather than smuggled).
+fn rotate_byte(b: u8) -> u8 {
+    if b == 48u8 { return 48u8; }
+    if b == 49u8 { return 49u8; }
+    if b == 56u8 { return 56u8; }
+    if b == 54u8 { return 57u8; }
+    if b == 57u8 { return 54u8; }
+    return 0u8;
+}
+
+fn is_strobogrammatic(num: ref String) -> bool {
+    let bs = num.bytes();
+    let mut lo = 0i64;
+    let mut hi = bs.len() - 1i64;
+    while lo <= hi {
+        let r = rotate_byte(bs[lo]);
+        if r == 0u8 or r != bs[hi] {
+            return false;
+        }
+        lo = lo + 1i64;
+        hi = hi - 1i64;
+    }
+    return true;
+}
+
+fn main() {
+    let n = 20000i64;
+    let len = 32i64;
+    let passes = 100i64;
+
+    let mut pair_a: Vec[char] = Vec.new();
+    let mut pair_b: Vec[char] = Vec.new();
+    pair_a.push('0'); pair_b.push('0');
+    pair_a.push('1'); pair_b.push('1');
+    pair_a.push('8'); pair_b.push('8');
+    pair_a.push('6'); pair_b.push('9');
+    pair_a.push('9'); pair_b.push('6');
+
+    let mut all: Vec[char] = Vec.new();
+    all.push('0'); all.push('1'); all.push('2'); all.push('3'); all.push('4');
+    all.push('5'); all.push('6'); all.push('7'); all.push('8'); all.push('9');
+
+    let mut state = 1i64;
+    let mut corpus: Vec[String] = Vec.new();
+    let mut k = 0i64;
+    while k < n {
+        let mut chars: Vec[char] = Vec.new();
+        let mut f = 0i64;
+        while f < len {
+            chars.push('0');
+            f = f + 1i64;
+        }
+        let mut lo = 0i64;
+        let mut hi = len - 1i64;
+        while lo < hi {
+            state = lcg(state);
+            let p = (state / 65536i64) % 5i64;
+            chars[lo] = pair_a[p];
+            chars[hi] = pair_b[p];
+            lo = lo + 1i64;
+            hi = hi - 1i64;
+        }
+        state = lcg(state);
+        if (state / 65536i64) % 8i64 == 0i64 {
+            state = lcg(state);
+            let pos = (state / 65536i64) % len;
+            state = lcg(state);
+            chars[pos] = all[(state / 65536i64) % 10i64];
+        }
+        let mut num: String = "";
+        let mut c = 0i64;
+        while c < len {
+            num.push(chars[c]);
+            c = c + 1i64;
+        }
+        corpus.push(num);
+        k = k + 1i64;
+    }
+
+    let mut acc = 0i64;
+    let mut p = 0i64;
+    while p < passes {
+        let mut i = 0i64;
+        while i < n {
+            if is_strobogrammatic(corpus[i]) {
+                acc = (acc * 131i64 + 1i64) % 1000000007i64;
+            } else {
+                acc = (acc * 131i64 + 0i64) % 1000000007i64;
+            }
+            i = i + 1i64;
+        }
+        p = p + 1i64;
+    }
+    println(f"{acc}");
+}

@@ -65,6 +65,56 @@ This is the second kata in a row to come back clean, and that is worth stating r
 - **Index-assign into `Vec[char]`** (`chars[lo] = a`) including the two-ended write `chars[lo] = a; chars[hi] = b` that constructs a strobogrammatic string.
 - **`lo <= hi` two-pointer convergence** where the inclusive bound is load-bearing for correctness, not a style choice.
 
+## Benchmarks
+
+### How to run
+
+```bash
+brew install hyperfine    # one-time, also needs rustc (rustup), clang, go
+./bench/bench.sh
+```
+
+[`bench/`](bench/) carries a scaled cross-language variant — same algorithm, same LCG, all five agreeing on the sink (`325454619`). Build-once + punch: 20,000 length-32 numbers built **once**, then 100 passes of the two-pointer check over all of them — 2,000,000 calls, ~30M pair-checks.
+
+**The corpus is deliberately mostly accepting.** A uniform digit draw would make almost every number reject on its *first* character, so the benchmark would measure loop entry and early return rather than the scan. Every number is therefore constructed strobogrammatic, with 1 in 8 corrupted at one random position — which rejects, but on average halfway through, so a reject still does real work and no branch predictor learns a fixed answer.
+
+**All five lanes index bytes in place.** Kāra refuses `s[i]` outright, with a diagnostic that names both alternatives and their cost — *"`s[i]` would hide an O(n) scan … use `s.char_at(i)` (O(n)) or `s.bytes()[i]` (O(1))"*. The input is ASCII digits, so `bytes()` is correct and is exactly what C, Go (`num[i]`) and Rust (`as_bytes()[i]`) do naturally. An earlier draft had Kāra materialising a `Vec[char]` per call while C indexed in place; that would have made the Kāra lane do strictly more work and reported the difference as codegen quality.
+
+### Runtime — sequential lane
+
+Container x86-64, 2026-08-04, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 99–101% CPU.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O` | 24.1 ± 0.7 ms | 0.45× |
+| Rust overflow-checked | 24.4 ± 2.9 ms | 0.45× |
+| Rust @ x86-64-v3, overflow-checked | 25.5 ± 1.2 ms | 0.47× |
+| C `clang -O3` @ x86-64-v3 | 38.6 ± 4.0 ms | 0.72× |
+| C `clang -O3` | 40.8 ± 8.3 ms | 0.76× |
+| **Kāra (codegen)** | **53.9 ± 1.9 ms** | 1.00× |
+| Go | 308.8 ± 7.0 ms | 5.72× |
+
+**Do not read the Go row as a Kāra win. It is a Go compiler artifact, and it was chased down rather than published.**
+
+A 5.72× lead over Go on a byte-scanning loop is not credible on its face — C, Rust and Kāra cluster within 2.2× of each other and Go sits 6–13× away, which is the signature of a mirror problem, not a language fact. Three hypotheses were tested and **rejected**: constant-modulo strength reduction (removing the `% 1000000007` changes nothing, 0.30 s either way), inlining (`go build -gcflags=-m` confirms `rotateByte` and `isStrobogrammatic` are both inlined), and bounds checks (passing a `*[32]byte` with static bounds instead of a slice changes nothing).
+
+The cause is the **5-way `switch` on a byte**. LLVM turns it into a table or a branchless sequence; Go's compiler emits a compare chain and evaluates it ~30M times:
+
+| Go `rotateByte` shape | Time |
+|---|---|
+| 5-way `switch` (as published, matching every other lane's source) | 0.31 s |
+| explicit `[256]byte` lookup table | **0.03 s** |
+
+So with a lookup table Go runs at ~30 ms and **leads Kāra**, and the honest summary of this kata's Go lane is: *Go's codegen for a small value switch is ~10× worse than LLVM's here, and that single difference dominates the measurement.* The switch is kept in all five mirrors because it is the source-level algorithm they share and it is what anyone would write — but the resulting number says nothing about Kāra versus Go.
+
+**What the C and Rust rows do say.** Kāra is **1.40× behind ISA-matched C** and **2.11× behind equal-safety Rust** — and this is the first kata in the recent run where Rust is clearly ahead rather than level or behind. Overflow checks cost Rust nothing (24.1 vs 24.4 ms, inside σ), matching [#243](../243-shortest-word-distance/) and [#245](../245-shortest-word-distance-iii/) and unlike [#244](../244-shortest-word-distance-ii/)'s 2.28×: there is no arithmetic in this loop worth checking. Kāra's gap here is against the same 5-way map that costs Go so dearly, which makes it the natural next thing to look at — whether `karac` table-izes a small `if`-chain over `u8` the way LLVM does for C.
+
+### Caveats
+
+Container-x86 lane, ~1.15× noise floor per [`BENCHMARKS.md`](../../../BENCHMARKS.md) — the two C rows are a tie with each other, as are the three Rust rows. The 1.40× C gap and 2.11× Rust gap clear the floor. The Go row is excluded from any comparative claim for the reason above.
+
+The **M5 Pro host lane (`results.json`) has not been measured**, so this kata stays out of the consolidated feed and graphs until an Apple-silicon run is done.
+
 ## Running
 
 ```bash
