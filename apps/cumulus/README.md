@@ -1,9 +1,9 @@
 # Cumulus — deep-sky sub-frame integration
 
-A browser-side deep-sky stacker written in Kāra. **Step 1 only: the integration
-engine and its differential oracle.** No registration, no calibration, no
-browser shell yet — those are later slices, and the ordering is deliberate (see
-*Why the oracle came first*).
+A browser-side deep-sky stacker written in Kāra. **So far: the integration
+engine, its differential oracle, and FITS input.** No registration, no
+calibration, no browser shell yet — those are later slices, and the ordering is
+deliberate (see *Why the oracle came first*).
 
 ```
 python3 gen_frames.py in.cstack               # synthetic 16-frame stack
@@ -111,8 +111,9 @@ padding, the `END` card, block padding, the `BZERO` round trip.
 
 ## The `.cstack` container
 
-A deliberately boring container so step 1 can be about numerics rather than
-format parsing. Little-endian throughout:
+A deliberately boring container, so the first slice could be about numerics
+rather than format parsing. It remains the output format and a convenient way to
+carry a whole stack in one file. Little-endian throughout:
 
 ```
 magic   4 bytes  "CSTK"
@@ -122,8 +123,7 @@ frames  u32
 pixels  frames * height * width * u16   (frame-major, then row-major)
 ```
 
-Real FITS is the next slice, bounded to what smart telescopes actually emit.
-Vendor RAW is explicitly out of scope.
+FITS is read directly (see above); this container is not required for input.
 
 ## Scope and what is missing
 
