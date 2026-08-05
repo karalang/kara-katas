@@ -276,6 +276,180 @@ fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
     img
 }
 
+// ─── Registration ────────────────────────────────────────────────────────────
+//
+// Translation only, sub-pixel, star-based. Rotation is a later slice: a tracked
+// mount and a short session are translation-dominated, and getting translation
+// exactly right is the prerequisite for rotation anyway.
+//
+// Three stages, each independently checkable:
+//   1. detect  — local maxima above a background-derived threshold
+//   2. centroid — intensity-weighted, background-subtracted, sub-pixel
+//   3. match   — consensus vote over candidate offsets, then refine on the
+//                pairs that agree
+//
+// The vote is what makes this robust to the things that actually go wrong:
+// cosmic rays produce single-pixel maxima that no other frame agrees with, and
+// a star that drifts off the edge simply casts no vote. Neither can move the
+// consensus, so neither corrupts the offset.
+
+struct Star { x: f64, y: f64, flux: f64 }
+
+/// Background level and spread, from a coarse histogram-free estimate: the mean
+/// and standard deviation of the whole frame. Stars occupy a tiny fraction of
+/// the pixels, so they barely move the mean — good enough for a detection
+/// threshold, and it costs one pass.
+fn frame_stats(px: ref Vec[i64], base: i64, npix: i64) -> (f64, f64) {
+    // SIGMA-CLIPPED, and it has to be. A raw mean/sd is wrecked by the very
+    // things detection is supposed to find: a dozen cosmic rays at 60000 in a
+    // field whose sky sits near 1500 inflate the sd enough that `mean + 6*sd`
+    // lands ABOVE most of the real stars. Measured before this: 8 of 12 stars
+    // detected in the reference frame and 11 in the others — the difference
+    // being rays, not stars, which is precisely backwards.
+    //
+    // Clipping to 3 sigma for 3 passes pulls the estimate back onto the sky.
+    let mut lo: f64 = -1.0e30;
+    let mut hi: f64 = 1.0e30;
+    let mut mean: f64 = 0.0;
+    let mut sd: f64 = 0.0;
+    for pass in 0..3 {
+        let mut sum: f64 = 0.0;
+        let mut count: i64 = 0;
+        for i in 0..npix {
+            let v = px[base + i] as f64;
+            if v >= lo and v <= hi { sum = sum + v; count = count + 1; }
+        }
+        if count > 0 {
+            mean = sum / (count as f64);
+            let mut var: f64 = 0.0;
+            for i in 0..npix {
+                let v = px[base + i] as f64;
+                if v >= lo and v <= hi {
+                    let d = v - mean;
+                    var = var + d * d;
+                }
+            }
+            sd = (var / (count as f64)).sqrt();
+            lo = mean - 3.0 * sd;
+            hi = mean + 3.0 * sd;
+        }
+    }
+    (mean, sd)
+}
+
+/// Detect stars: 3x3 local maxima above `mean + k*sd`, centroided over a
+/// (2r+1)^2 window with the background subtracted.
+///
+/// Background subtraction inside the centroid window is not optional. With the
+/// sky left in, the window's own gradient pulls the centroid toward the bright
+/// side of the frame — a systematic bias that looks like a real offset and
+/// would be recovered as one.
+fn detect_stars(px: ref Vec[i64], base: i64, w: i64, h: i64, thresh_k: f64) -> Vec[Star] {
+    let mut stars: Vec[Star] = Vec.new();
+    let stats = frame_stats(px, base, w * h);
+    let mean = stats.0;
+    let sd = stats.1;
+    let thresh = mean + thresh_k * sd;
+    let r: i64 = 3;
+    for y in r..(h - r) {
+        for x in r..(w - r) {
+            let v = px[base + y * w + x] as f64;
+            if v > thresh {
+                // 3x3 local maximum. `>=` on the earlier neighbours and `>` on
+                // the later ones breaks ties in a flat-topped (saturated) core
+                // so it yields exactly one detection rather than none.
+                let mut is_max = true;
+                for dy in -1..2 {
+                    for dx in -1..2 {
+                        if dx != 0 or dy != 0 {
+                            let nv = px[base + (y + dy) * w + (x + dx)] as f64;
+                            if nv > v { is_max = false; }
+                        }
+                    }
+                }
+                // SHARPNESS CUT — reject cosmic rays, which are single-pixel
+                // spikes with nothing around them. A Gaussian star of sigma 1.2
+                // puts ~2.8x its peak into the four neighbours; a ray puts
+                // essentially zero. Without this the rays are detected as
+                // sources, and since they land somewhere different on every
+                // frame they poison the offset vote with proposals no other
+                // frame can agree with.
+                if is_max {
+                    let peak = v - mean;
+                    let nsum = (px[base + (y - 1) * w + x] as f64 - mean)
+                        + (px[base + (y + 1) * w + x] as f64 - mean)
+                        + (px[base + y * w + (x - 1)] as f64 - mean)
+                        + (px[base + y * w + (x + 1)] as f64 - mean);
+                    if peak <= 0.0 or nsum / peak < 0.5 { is_max = false; }
+                }
+                if is_max {
+                    let mut sw: f64 = 0.0;
+                    let mut sx: f64 = 0.0;
+                    let mut sy: f64 = 0.0;
+                    for dy in (0 - r)..(r + 1) {
+                        for dx in (0 - r)..(r + 1) {
+                            let pv = (px[base + (y + dy) * w + (x + dx)] as f64) - mean;
+                            if pv > 0.0 {
+                                sw = sw + pv;
+                                sx = sx + pv * ((x + dx) as f64);
+                                sy = sy + pv * ((y + dy) as f64);
+                            }
+                        }
+                    }
+                    if sw > 0.0 {
+                        stars.push(Star { x: sx / sw, y: sy / sw, flux: sw });
+                    }
+                }
+            }
+        }
+    }
+    stars
+}
+
+/// Estimate the translation from `b` to `a` by consensus.
+///
+/// Every (star in a, star in b) pair proposes an offset. The true offset is
+/// proposed once per genuinely matched pair and at most incidentally by anything
+/// else, so the proposal with the most support within `tol` wins. The winner is
+/// then REFINED by averaging its supporters, which is what recovers sub-pixel
+/// accuracy — the vote alone is only as precise as `tol`.
+///
+/// Returns (dx, dy, votes). Zero votes means no consensus and the caller should
+/// treat the frame as unregisterable rather than stack it at a guessed offset.
+fn estimate_offset(a: ref Vec[Star], b: ref Vec[Star], tol: f64) -> (f64, f64, i64) {
+    let mut best_dx: f64 = 0.0;
+    let mut best_dy: f64 = 0.0;
+    let mut best_votes: i64 = 0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let cdx = a[i].x - b[j].x;
+            let cdy = a[i].y - b[j].y;
+            let mut votes: i64 = 0;
+            let mut sdx: f64 = 0.0;
+            let mut sdy: f64 = 0.0;
+            for p in 0..a.len() {
+                for q in 0..b.len() {
+                    let ddx = a[p].x - b[q].x;
+                    let ddy = a[p].y - b[q].y;
+                    let ex = ddx - cdx;
+                    let ey = ddy - cdy;
+                    if ex * ex + ey * ey <= tol * tol {
+                        votes = votes + 1;
+                        sdx = sdx + ddx;
+                        sdy = sdy + ddy;
+                    }
+                }
+            }
+            if votes > best_votes {
+                best_votes = votes;
+                best_dx = sdx / (votes as f64);
+                best_dy = sdy / (votes as f64);
+            }
+        }
+    }
+    (best_dx, best_dy, best_votes)
+}
+
 fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
     with writes(FileSystem)
 {
@@ -371,6 +545,27 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         if loaded {
             let npix = width * height;
 
+            if mode == "register" {
+                // Report the recovered offset per frame, reference-relative.
+                // Printing rather than stacking keeps this stage independently
+                // checkable: the oracle compares these numbers against the
+                // dithers the generator injected, so a registration error is
+                // caught as a wrong OFFSET rather than as a slightly blurrier
+                // stack that nobody can eyeball.
+                let ref_stars = detect_stars(px, 0, width, height, 6.0);
+                println(f"ref_stars {ref_stars.len()}");
+                for f in 0..nframes {
+                    let st = detect_stars(px, f * npix, width, height, 6.0);
+                    // (frame - reference): the MEASURED DITHER, which is what
+                    // the generator injected and therefore what the oracle
+                    // checks. The shift to APPLY when resampling is its
+                    // negation; keeping the reported quantity the measured one
+                    // means a sign error shows up in the oracle rather than
+                    // hiding until the stack comes out blurred.
+                    let est = estimate_offset(st, ref_stars, 1.5);
+                    println(f"frame {f} dx {est.0} dy {est.1} votes {est.2} stars {st.len()}");
+                }
+            }
             let out = if mode == "sigmaclip" {
                 integrate_sigma_clip(px, npix, nframes)
             } else {

@@ -77,6 +77,27 @@ python3 oracle.py "$WORK/in.cstack" "$WORK/mean.cstack" "$WORK/clip.cstack"
 echo "== differential oracle (interpreter output) =="
 python3 oracle.py "$WORK/in.cstack" "$WORK/mean_i.cstack" "$WORK/clip_i.cstack"
 
+echo "== registration: recover known dithers =="
+python3 gen_frames.py "$WORK/dith.cstack" --width 96 --height 64 --frames 16 \
+        --rays 12 --dither 3.0 --truth "$WORK/truth.txt"
+"$WORK/cumulus" "$WORK/reg.cstack" register "$WORK/dith.cstack" > "$WORK/reg.txt"
+python3 check_register.py "$WORK/truth.txt" "$WORK/reg.txt"
+
+echo "== registration parity (interpreter) =="
+"$KARAC" run --interp cumulus.kara -- "$WORK/reg_i.cstack" register "$WORK/dith.cstack" \
+        > "$WORK/reg_i.txt"
+# Compare the OFFSET lines only — the trailing status line names the output
+# path, which differs by construction between the two runs.
+grep -E '^(frame|ref_stars) ' "$WORK/reg.txt"   > "$WORK/reg.off"
+grep -E '^(frame|ref_stars) ' "$WORK/reg_i.txt" > "$WORK/reg_i.off"
+if cmp -s "$WORK/reg.off" "$WORK/reg_i.off"; then
+  echo "  offsets: byte-identical"
+else
+  echo "  offsets: DIVERGED between AOT and interpreter" >&2
+  diff "$WORK/reg.off" "$WORK/reg_i.off" | head -4 >&2
+  exit 1
+fi
+
 echo "== malformed FITS is refused, not misread =="
 # A reader that quietly mishandles BITPIX produces a plausible image, which is
 # worse than no image — so the refusals are part of the contract.
@@ -104,4 +125,4 @@ for f in bad_bitpix bad_naxis not_fits; do
   esac
 done
 
-echo "OK — AOT, interpreter, FITS and numpy all agree exactly"
+echo "OK — integration exact on both backends, FITS round-trips, dithers recovered"

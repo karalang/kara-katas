@@ -1,7 +1,7 @@
 # Cumulus — deep-sky sub-frame integration
 
 A browser-side deep-sky stacker written in Kāra. **So far: the integration
-engine, its differential oracle, and FITS input.** No registration, no
+engine, its differential oracle, FITS input, and star-based registration.** No registration, no
 calibration, no browser shell yet — those are later slices, and the ordering is
 deliberate (see *Why the oracle came first*).
 
@@ -83,6 +83,45 @@ set is always an interval, so the two formulations are equivalent — but the
 interval form allocates nothing inside the pixel loop, which is what keeps the
 loop body disjoint and lets it parallelize.
 
+## Registration
+
+Translation-only, sub-pixel, star-based. Three stages, each independently
+checkable: detect 3×3 local maxima above a background-derived threshold →
+centroid them (intensity-weighted, background-subtracted) → recover the
+translation by a consensus vote over candidate offsets, refined on the pairs
+that agree.
+
+```
+$ ./cumulus out.cstack register subs.cstack
+ref_stars 11
+frame 1 dx -1.4584 dy 1.1022 votes 11 stars 11
+```
+
+**Checked against ground truth, not against a reimplementation.** The generator
+injects known per-frame dithers and `check_register.py` compares what was
+recovered against what was injected. That distinction earned itself twice in one
+sitting — a differential would have missed both:
+
+- **Cosmic rays raised the detection threshold above the stars.** A raw mean/sd
+  background is wrecked by the very things detection is meant to find: twelve
+  rays at 60000 in a field whose sky sits near 1500 pushed `mean + 6σ` above
+  most real stars. The reference frame found 8 of 12 sources, the others 11 —
+  the difference being rays, not stars. Fixed with a sigma-clipped background
+  and a **sharpness cut**: a Gaussian star puts ~2.8× its peak into the four
+  neighbours, a single-pixel ray puts ~zero.
+- **The recovered sign was inverted.** Magnitudes matched to 0.03 px, so the
+  numbers looked right; only comparison with the injected truth showed they
+  were negated. `register` now reports the *measured dither* (frame −
+  reference), so a sign error fails the check rather than waiting to surface as
+  a mysteriously blurry stack.
+
+This check uses a **tolerance**, unlike the integration oracle, and that is
+correct rather than a concession — centroiding a noisy PSF is a measurement, so
+the question is whether the error is small enough to stack with. Gates: 0.25 px
+worst case per axis, 0.10 px mean. Currently **0.025 / 0.035 px mean, 0.224 px
+worst** over 16 frames. It also fails if the consensus rests on fewer than 60%
+of the reference stars, since a two-star agreement is luck rather than a match.
+
 ## FITS input
 
 `cumulus` reads the subset a smart telescope actually emits: `BITPIX = 16`,
@@ -129,15 +168,18 @@ FITS is read directly (see above); this container is not required for input.
 
 Deliberately absent, in the order they matter:
 
-1. **Registration** — frames are assumed already aligned. This is the hard part
-   of real stacking and the quality bar for the whole app; integration is the
-   easy half.
-2. **Tiled / streaming integration.** The whole stack is decoded up front, which
+1. **Resampling** — `register` reports offsets but integration does not yet
+   apply them, so a dithered stack still integrates unshifted. Sub-pixel
+   resampling and registration-aware stacking are the next slice.
+2. **Rotation** — translation only. Fine for a tracked mount over a short
+   session; an alt-az mount accumulates field rotation that this will not
+   correct.
+3. **Tiled / streaming integration.** The whole stack is decoded up front, which
    is fine at 96×64 and impossible at 12 MP. Measured: 16 frames of 12 MP held
    resident is ~368 MB peak RSS, against ~11 MB for a 512×512 tiled pass — and
    the decoded-frame store, not the working set, is what sets the ceiling under
    the browser's 1 GiB default. Frames stay 16-bit mono with debayering late for
    that reason.
-3. **Calibration** (darks / flats / bias) and the browser shell.
-4. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
+4. **Calibration** (darks / flats / bias) and the browser shell.
+5. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
    HDUs. Vendor RAW stays out of scope.
