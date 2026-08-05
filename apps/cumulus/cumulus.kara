@@ -136,6 +136,146 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
     out
 }
 
+/// Minimal FITS reader — the subset a smart telescope actually emits.
+///
+/// Header is 80-byte ASCII cards in 2880-byte blocks, terminated by an `END`
+/// card and padded to a block boundary. Data follows, BIG-ENDIAN, also padded.
+///
+/// Supported: `BITPIX = 16`, `NAXIS = 2`, with `BZERO` / `BSCALE`. Anything
+/// else is refused with a message naming what was found rather than being
+/// silently misread — a reader that quietly mishandles BITPIX produces a
+/// plausible image, which is worse than no image.
+///
+/// BZERO is the trap worth naming: unsigned 16-bit data rides in FITS's SIGNED
+/// 16-bit format with `BZERO = 32768`, so a reader that ignores it turns every
+/// value above 32767 into a large negative number — stars come out as holes.
+struct FitsImage { width: i64, height: i64, px: Vec[i64], ok: bool, err: String }
+
+fn card_key(data: ref Vec[u8], off: i64) -> String {
+    let mut k = "";
+    for i in 0..8 {
+        let c = data[off + i] as i64;
+        if c != 32 { k = k + char_of(c); }
+    }
+    k
+}
+
+/// The card's value field: everything after the `= ` up to a `/` comment.
+/// FITS fixed-format puts the value in columns 11..30, but free-format writers
+/// exist, so this scans rather than slicing at a fixed column.
+fn card_value(data: ref Vec[u8], off: i64) -> String {
+    let mut v = "";
+    let mut i = 8;
+    let mut seen_eq = false;
+    while i < 80 {
+        let c = data[off + i] as i64;
+        if c == 47 { i = 80; }
+        else {
+            if seen_eq {
+                if c != 32 { v = v + char_of(c); }
+            } else {
+                if c == 61 { seen_eq = true; }
+            }
+            i = i + 1;
+        }
+    }
+    v
+}
+
+fn char_of(c: i64) -> String {
+    let mut s = "";
+    let b: Vec[u8] = [c as u8];
+    match String.from_utf8(b) {
+        Ok(t) => { s = t; }
+        Err(e) => { s = ""; }
+    }
+    s
+}
+
+fn parse_int(s: String) -> i64 {
+    let mut n: i64 = 0;
+    let mut neg = false;
+    let mut first = true;
+    for ch in s.chars() {
+        let c = ch as i64;
+        if first and c == 45 { neg = true; }
+        else { if c >= 48 and c <= 57 { n = n * 10 + (c - 48); } }
+        first = false;
+    }
+    if neg { 0 - n } else { n }
+}
+
+fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
+    let data = read_all(path);
+    let mut img = FitsImage {
+        width: 0, height: 0, px: Vec.new(), ok: false, err: "",
+    };
+    if data.len() < 2880 {
+        img.err = "file shorter than one FITS block";
+    } else {
+        let mut bitpix: i64 = 0;
+        let mut naxis: i64 = 0;
+        let mut n1: i64 = 0;
+        let mut n2: i64 = 0;
+        let mut bzero: i64 = 0;
+        let mut bscale: i64 = 1;
+        let mut off: i64 = 0;
+        let mut done = false;
+        let total = data.len() as i64;
+        while off + 80 <= total and not done {
+            let key = card_key(data, off);
+            if key == "END" {
+                done = true;
+                // Header occupies whole 2880-byte blocks.
+                off = ((off / 2880) + 1) * 2880;
+            } else {
+                // Parse once: re-calling `parse_int(val)` per keyword consumed
+                // the same String repeatedly and tripped an RC fallback.
+                let n = parse_int(card_value(data, off));
+                if key == "BITPIX" { bitpix = n; }
+                if key == "NAXIS" { naxis = n; }
+                if key == "NAXIS1" { n1 = n; }
+                if key == "NAXIS2" { n2 = n; }
+                if key == "BZERO" { bzero = n; }
+                if key == "BSCALE" { bscale = n; }
+                off = off + 80;
+            }
+        }
+        if not done {
+            img.err = "no END card in header";
+        } else {
+            if bitpix != 16 {
+                img.err = "unsupported BITPIX (only 16 is implemented)";
+            } else {
+                if naxis != 2 {
+                    img.err = "unsupported NAXIS (only 2-D mono is implemented)";
+                } else {
+                    let npix = n1 * n2;
+                    if off + npix * 2 > total {
+                        img.err = "data section shorter than NAXIS1*NAXIS2";
+                    } else {
+                        let mut px: Vec[i64] = Vec.with_capacity(npix);
+                        for i in 0..npix {
+                            // BIG-endian signed 16-bit, then the BZERO/BSCALE
+                            // transform back to physical values.
+                            let hi = data[off + i * 2] as i64;
+                            let lo = data[off + i * 2 + 1] as i64;
+                            let mut raw = hi * 256 + lo;
+                            if raw > 32767 { raw = raw - 65536; }
+                            px.push(bzero + bscale * raw);
+                        }
+                        img.width = n1;
+                        img.height = n2;
+                        img.px = px;
+                        img.ok = true;
+                    }
+                }
+            }
+        }
+    }
+    img
+}
+
 fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
     with writes(FileSystem)
 {
@@ -168,29 +308,68 @@ fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
 }
 
 fn main() with reads(FileSystem) writes(FileSystem) {
+    // usage: cumulus <out.cstack> <mean|sigmaclip> <input...>
+    //
+    // `input` is either a single `.cstack` (the whole stack in one container)
+    // or a list of FITS files, one sub per file — the shape a smart telescope
+    // writes. Output first so the variable-length input list can be last.
     let argv = env.args();
     if argv.len() < 4 {
-        println("usage: cumulus <in.cstack> <out.cstack> <mean|sigmaclip>");
+        println("usage: cumulus <out.cstack> <mean|sigmaclip> <in.cstack | sub1.fits sub2.fits ...>");
     } else {
-        let inp = argv[1];
-        let outp = argv[2];
-        let mode = argv[3];
+        let outp = argv[1];
+        let mode = argv[2];
+        let inp = argv[3];
 
-        let data = read_all(inp);
-        if data.len() < 16 {
-            println("cumulus: input too short to hold a header");
+        // Two input shapes. A single `.cstack` carries the whole stack; a list
+        // of FITS paths is one sub per file, which is what a smart telescope
+        // actually writes.
+        let mut width: i64 = 0;
+        let mut height: i64 = 0;
+        let mut nframes: i64 = 0;
+        let mut px: Vec[i64] = Vec.new();
+        let mut loaded = false;
+
+        if argv.len() > 4 or inp.ends_with(".fits") {
+            let mut i = 3;
+            let mut bad = false;
+            while i < argv.len() and not bad {
+                let img = read_fits(argv[i]);
+                if not img.ok {
+                    println(f"cumulus: {argv[i]}: {img.err}");
+                    bad = true;
+                } else {
+                    if nframes == 0 {
+                        width = img.width;
+                        height = img.height;
+                    }
+                    if img.width != width or img.height != height {
+                        println("cumulus: frames differ in size");
+                        bad = true;
+                    } else {
+                        for v in img.px { px.push(v); }
+                        nframes = nframes + 1;
+                    }
+                }
+                i = i + 1;
+            }
+            loaded = not bad and nframes > 0;
         } else {
-            let width = u32_at(data, 4);
-            let height = u32_at(data, 8);
-            let nframes = u32_at(data, 12);
-            let npix = width * height;
+            let data = read_all(inp);
+            if data.len() < 16 {
+                println("cumulus: input too short to hold a header");
+            } else {
+                width = u32_at(data, 4);
+                height = u32_at(data, 8);
+                nframes = u32_at(data, 12);
+                let n = width * height * nframes;
+                for i in 0..n { px.push(u16_at(data, 16 + i * 2)); }
+                loaded = true;
+            }
+        }
 
-            // Decode the whole stack up front. Step 1 runs on small synthetic
-            // frames where this is trivially affordable; the tiled/streaming
-            // form that a 12 MP stack needs is a later slice, and deliberately
-            // not pre-built here — the point of this step is the NUMERICS.
-            let mut px: Vec[i64] = Vec.with_capacity(npix * nframes);
-            for i in 0..(npix * nframes) { px.push(u16_at(data, 16 + i * 2)); }
+        if loaded {
+            let npix = width * height;
 
             let out = if mode == "sigmaclip" {
                 integrate_sigma_clip(px, npix, nframes)

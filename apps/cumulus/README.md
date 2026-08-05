@@ -6,9 +6,11 @@ browser shell yet — those are later slices, and the ordering is deliberate (se
 *Why the oracle came first*).
 
 ```
-python3 gen_frames.py in.cstack           # synthetic 16-frame stack
+python3 gen_frames.py in.cstack               # synthetic 16-frame stack
+python3 gen_fits.py subs/                     # ...or the same scene as FITS
 karac build cumulus.kara -o cumulus
-./cumulus in.cstack out.cstack sigmaclip  # or: mean
+./cumulus out.cstack sigmaclip in.cstack      # or: mean
+./cumulus out.cstack sigmaclip subs/*.fits    # one sub per file
 python3 oracle.py in.cstack mean.cstack clip.cstack
 ```
 
@@ -81,6 +83,32 @@ set is always an interval, so the two formulations are equivalent — but the
 interval form allocates nothing inside the pixel loop, which is what keeps the
 loop body disjoint and lets it parallelize.
 
+## FITS input
+
+`cumulus` reads the subset a smart telescope actually emits: `BITPIX = 16`,
+`NAXIS = 2`, with `BZERO` / `BSCALE`, big-endian, 2880-byte blocks.
+
+**BZERO is the trap.** Unsigned 16-bit data rides in FITS's *signed* 16-bit
+format with `BZERO = 32768`, so a reader that ignores it turns every value above
+32767 into a large negative number — stars come out as holes. `verify.sh` pins
+this by generating the same scene twice, once as `.cstack` and once as FITS, and
+requiring both to integrate to a byte-identical image.
+
+Anything outside the supported subset is **refused by name** rather than
+misread, because a reader that quietly mishandles `BITPIX` produces a plausible
+image, which is worse than no image:
+
+```
+cumulus: sub.fits: unsupported BITPIX (only 16 is implemented)
+cumulus: sub.fits: unsupported NAXIS (only 2-D mono is implemented)
+cumulus: sub.fits: no END card in header
+```
+
+`gen_fits.py` writes its headers by hand rather than via astropy — the reader
+has to be checked against the spec, not against whatever a library happens to
+emit, and hand-writing keeps every byte the reader must handle visible: card
+padding, the `END` card, block padding, the `BZERO` round trip.
+
 ## The `.cstack` container
 
 A deliberately boring container so step 1 can be about numerics rather than
@@ -104,11 +132,12 @@ Deliberately absent, in the order they matter:
 1. **Registration** — frames are assumed already aligned. This is the hard part
    of real stacking and the quality bar for the whole app; integration is the
    easy half.
-2. **FITS input** — see above.
-3. **Tiled / streaming integration.** The whole stack is decoded up front, which
+2. **Tiled / streaming integration.** The whole stack is decoded up front, which
    is fine at 96×64 and impossible at 12 MP. Measured: 16 frames of 12 MP held
    resident is ~368 MB peak RSS, against ~11 MB for a 512×512 tiled pass — and
    the decoded-frame store, not the working set, is what sets the ceiling under
    the browser's 1 GiB default. Frames stay 16-bit mono with debayering late for
    that reason.
-4. **Calibration** (darks / flats / bias) and the browser shell.
+3. **Calibration** (darks / flats / bias) and the browser shell.
+4. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
+   HDUs. Vendor RAW stays out of scope.
