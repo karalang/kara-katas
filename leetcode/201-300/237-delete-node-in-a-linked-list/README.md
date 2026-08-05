@@ -62,6 +62,8 @@ Two things make it worth the entry. First, **the source is irrelevant** — an `
 The kata as written is unchanged by the fix; it was never contorted around the bug.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-07-30 snapshot; the feed was last measured 2026-07-31.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 The kata's inputs are seven tiny lists, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go and Python, all agreeing on the sink (`306510976`). Workload: build an 8,000-node index-pool list once, then 7,000 cycles; each cycle relinks the pool into a single list and then sweeps it repeatedly, deleting every other node by the O(1) rule until one node is left and summing the survivors after every sweep. The sink is a rolling 30-bit polynomial hash of those per-sweep sums — a loop-carried dependency, so no cycle can be reordered or dropped. 168M inner iterations per run.
 
