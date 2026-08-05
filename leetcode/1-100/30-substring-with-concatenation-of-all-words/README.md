@@ -45,7 +45,7 @@ Each test case prints the match **count**, then each start index on its own line
 
 The hot loop writes `need.get(s[j .. j+wl])` rather than `let piece = s[j .. j+wl]; need.get(piece)`, and that choice is what makes the kata fast.
 
-A `String` slice expression in a **map-key position** (`get` / `contains_key` / `remove` / `insert`) lowers to a *borrowed* view — a `{ptr, len, cap = 0}` struct that points straight into `s`'s buffer, with no `malloc`/`memcpy`. For the lookups (`get`), that view is hashed and compared and then discarded — it is never retained, so the borrow is always sound. For `insert`, the runtime **deep-copies** the bytes into an owned key only on a *fresh* insertion; an existing key just updates its count. So a counter/window map allocates **once per distinct word**, not once per window position — exactly what Rust's `&str` keys and C's packed-`u32` keys achieve.
+A `String` slice expression in a **map-key position** (`get` / `contains_key` / `remove` / `insert`) lowers to a *borrowed* view — a `{ptr, len, cap = 0}` struct that points straight into `s`'s buffer, with no `malloc`/`memcpy`. For the lookups (`get`), that view is hashed and compared and then discarded — it is never retained, so the borrow is always sound. For `insert`, the runtime **deep-copies** the bytes into an owned key only on a *fresh* insertion; an existing key just updates its count. So a counter/window map allocates **once per distinct word**, not once per window position — exactly what Rust's `&str` keys, Go's string slices, and C's `(ptr, len)` key views achieve.
 
 Binding the slice to a `let` first (`let piece = s[…]`) takes the **owned** path instead: `karac_string_slice` allocates a fresh `String` every time. That is correct but is the per-window-allocation cost this kata exists to avoid. (Extending the borrow to a `let`-bound slice used only as a key needs escape analysis, which is a later slice.)
 
@@ -63,7 +63,7 @@ diff <(karac run brute_force.kara) <(karac run sliding_window.kara) && echo OK
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are a 2026-06-08 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are a 2026-06-08 snapshot; the feed was last measured 2026-08-04.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 ### How to run
@@ -101,7 +101,22 @@ This kata was the *driver* for two karac changes, and the table above is the aft
 1. **Borrowed String-slice map keys.** A slice written inline as a map key is now a borrowed view into `s` (no allocation); `insert` deep-copies only on a fresh key (see [§ Why the slice is written inline](#why-the-slice-is-written-inline)). Allocation drops from once-per-window to once-per-*distinct*-word — the same thing Rust's `&str` keys and C's packed `u32` keys do.
 2. **`Map.clear()` frees its heap keys.** The sliding window clears `seen` on every dead window; `karac_map_clear` previously only zeroed the bucket status and *leaked* the owned key buffers. Fixed, RSS drops from 10.0 MiB to **1.4 MiB — at parity with Rust's 1.4 MiB** (see [peak-RSS table](#runtime-memory-peak)).
 
-Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing at **1.72× Rust on runtime and ~parity on memory**, and **1.46× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 4.6× lead is its zero-hashing packed-`u32` key — a representation no general string solution gets.
+Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing at **1.72× Rust on runtime and ~parity on memory**, and **1.46× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 4.6× lead in the snapshot above was its zero-hashing packed-`u32` key — a representation no general string solution gets.
+
+> ⚠️ **That C mirror has been replaced, and the 4.6× with it.** `3561607`
+> (31 Jul 2026) found it was a cross-language parity violation, not a fast C
+> implementation: it packed each length-4 word into a `u32` and linear-scanned a
+> ≤64-entry id array, so **C alone skipped both the hash and the key
+> comparison** that Kāra, Rust and Go all pay. It now runs an open-addressing
+> table keyed on `(ptr, len)` views into the text — no per-piece allocation,
+> matching Rust's `&str` and Go's string slices — shaped like the runtime map
+> (capacity 16, power of two, linear probing, double-and-rehash at 3/4 load,
+> FxHash under the compiler's seed). C-vs-C cost of the honest structure:
+> 46.5 → 93.9 ms (2.02×). On the 4 Aug 2026 M5 feed C's lead over Kāra is
+> **2.09×** (53.8 vs 112.2 ms), not 4.6×, and roughly half of the old figure
+> was the mirror rather than the backend. The Rust and Go comparisons in this
+> section are unaffected — Kāra sits at 1.77× behind `rustc -O` and 1.55× ahead
+> of Go on that feed, both within a hair of the ratios quoted above.
 
 That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 2.3× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's**.
 
@@ -142,4 +157,4 @@ Kāra now sits **at parity with Rust** and an order of magnitude below Go's GC a
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (and, here, what zero-allocation *and* zero-hashing keying buys), Go is the cross-runtime data point, and Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor — since `3561607` on the same hash and the same growth policy as the runtime map, so it now measures the backend rather than a cheaper data structure — Go is the cross-runtime data point, and Python is the ergonomic foil.

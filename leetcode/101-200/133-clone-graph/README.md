@@ -39,6 +39,10 @@ python3 bfs.py
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-08-01 snapshot; the feed was last measured 2026-08-04.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+
 ### How to run
 
 ```bash
@@ -86,7 +90,24 @@ Snapshot — M5 Pro (6 performance + 12 efficiency = 18 cores), 2026-07-28, hype
 
 **Kāra leads both Rust builds by 1.30×** — an allocator/hashtable-bound shape where Kāra's open-addressing `Map` with FxHash for `i64` keys and `shared struct` lowering (RC without RefCell borrow checks) beat `HashMap<_, _>` + `Rc<RefCell<_>>`. Rust's overflow-checked twin costs it nothing here (239.9 → 240.2 ms), which is the expected result on a pointer-chasing workload with almost no arithmetic to check. Kāra also leads Go by 1.26×.
 
-**Against C, Kāra is 3.55× behind** (52.1 vs 185.1 ms) — the reverse of what this file used to claim. C's manual-memory mirror allocates nodes from a flat bump array and never refcounts; Kāra pays RC traffic plus per-node heap bookkeeping on ~5.5M `Map` operations per run. That makes this kata a peer of [#71](../../1-100/71-simplify-path/) rather than an inversion of it: the hand-managed C baseline wins the allocator-bound shapes, and the interesting comparison is Kāra vs the *safe* languages, where it leads both.
+**Against C, Kāra is 3.55× behind** (52.1 vs 185.1 ms) — the reverse of what this file used to claim. C's manual-memory mirror never refcounts, while Kāra pays RC traffic plus per-node heap bookkeeping on ~5.5M `Map` operations per run. That makes this kata a peer of [#71](../../1-100/71-simplify-path/) rather than an inversion of it: the hand-managed C baseline wins the allocator-bound shapes, and the interesting comparison is Kāra vs the *safe* languages, where it leads both.
+
+> **Two corrections to the paragraph above.**
+>
+> *Mechanism.* It said C "allocates nodes from a flat bump array." It does not,
+> and did not when that was written: [`bench/clone_bfs.c`](bench/clone_bfs.c)'s
+> `make_node` takes **two `malloc`s per node** (the `Node` and its neighbour
+> array), grows neighbours with `realloc`, and frees each node individually.
+> There is no arena. C's advantage here is that it **never refcounts** — the
+> real half of the claim — not that it skips the allocator.
+>
+> *Ratio.* On the 4 Aug 2026 M5 feed the seq lane reads c 43.9 ms, kāra
+> 178.8 ms, rust 230.1 ms, rust equal-safety 230.6 ms, go 235.6 ms, so Kāra is
+> **4.07×** behind C rather than 3.55×, and still **leads both safe languages**
+> (1.29× over Rust, 1.32× over Go) — the standing conclusion is unchanged, only
+> the C multiple moved. C's `visited` map was also made heap-allocated and
+> growing in `d702247` (31 Jul 2026), which is a separate parity correction on
+> the map rather than on node allocation.
 
 ### Runtime — par lane (explicit 18-way `par {}`) — **kāra row WITHDRAWN**
 
