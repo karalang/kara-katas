@@ -28,6 +28,10 @@
 let SIGMA: f64 = 3.0;
 let MAXITERS: i64 = 5;
 
+// Registration search radius, in pixels. Offsets larger than this are not
+// found — see estimate_offset.
+let MAX_SHIFT: f64 = 128.0;
+
 fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
     let mut data: Vec[u8] = Vec.new();
     match File.open(path) {
@@ -539,45 +543,92 @@ fn detect_stars(px: ref Vec[i64], base: i64, w: i64, h: i64, thresh_k: f64) -> V
 /// Estimate the translation from `b` to `a` by consensus.
 ///
 /// Every (star in a, star in b) pair proposes an offset. The true offset is
-/// proposed once per genuinely matched pair and at most incidentally by anything
-/// else, so the proposal with the most support within `tol` wins. The winner is
-/// then REFINED by averaging its supporters, which is what recovers sub-pixel
-/// accuracy — the vote alone is only as precise as `tol`.
+/// proposed once per genuinely matched pair and only incidentally by anything
+/// else, so the proposal with the most support wins. The winner is then REFINED
+/// by averaging its supporters, which is what recovers sub-pixel accuracy — the
+/// vote alone is only as precise as the bin size.
+///
+/// O(N^2) VIA A VOTE GRID. The obvious formulation — for each candidate pair,
+/// re-scan every other pair to count agreement — is O(N^4), and that is what
+/// this was first. It is invisible on a toy frame and ruinous on a real one:
+/// 11 stars costs 14 thousand operations, 324 stars costs 11 BILLION. Measured
+/// on a 512x384 stack, registration took 146 s of a 146 s run while the entire
+/// integration took 0.38 s. Binning candidates into a grid and taking the
+/// heaviest bin gets the same answer in two linear passes over the N^2
+/// candidates.
+///
+/// SEARCH RADIUS. Only offsets within MAX_SHIFT are considered, which is what
+/// keeps the grid small (a full-frame grid would be 20 million bins at 12 MP).
+/// This is ordinary practice — registration always has a search radius — but it
+/// is a real limit: a frame displaced by more than MAX_SHIFT will not be
+/// matched, and is reported as no consensus rather than mismatched.
 ///
 /// Returns (dx, dy, votes). Zero votes means no consensus and the caller should
 /// treat the frame as unregisterable rather than stack it at a guessed offset.
 fn estimate_offset(a: ref Vec[Star], b: ref Vec[Star], tol: f64) -> (f64, f64, i64) {
-    let mut best_dx: f64 = 0.0;
-    let mut best_dy: f64 = 0.0;
-    let mut best_votes: i64 = 0;
+    let side = ((2.0 * MAX_SHIFT) / tol) as i64 + 1;
+    let mut bins: Vec[i64] = Vec.filled(side * side, 0);
+
+    // Pass 1: every candidate offset votes for its bin.
     for i in 0..a.len() {
         for j in 0..b.len() {
             let cdx = a[i].x - b[j].x;
             let cdy = a[i].y - b[j].y;
-            let mut votes: i64 = 0;
-            let mut sdx: f64 = 0.0;
-            let mut sdy: f64 = 0.0;
-            for p in 0..a.len() {
-                for q in 0..b.len() {
-                    let ddx = a[p].x - b[q].x;
-                    let ddy = a[p].y - b[q].y;
-                    let ex = ddx - cdx;
-                    let ey = ddy - cdy;
-                    if ex * ex + ey * ey <= tol * tol {
-                        votes = votes + 1;
-                        sdx = sdx + ddx;
-                        sdy = sdy + ddy;
-                    }
+            if cdx.abs() <= MAX_SHIFT and cdy.abs() <= MAX_SHIFT {
+                let bx = ((cdx + MAX_SHIFT) / tol) as i64;
+                let by = ((cdy + MAX_SHIFT) / tol) as i64;
+                if bx >= 0 and bx < side and by >= 0 and by < side {
+                    bins[by * side + bx] = bins[by * side + bx] + 1;
                 }
-            }
-            if votes > best_votes {
-                best_votes = votes;
-                best_dx = sdx / (votes as f64);
-                best_dy = sdy / (votes as f64);
             }
         }
     }
-    (best_dx, best_dy, best_votes)
+
+    // Heaviest bin. A true offset can straddle a bin boundary, so the refine
+    // pass below uses a tolerance window around the bin centre rather than the
+    // bin itself — otherwise a match split across two bins would lose half its
+    // supporters and half its precision.
+    let mut best: i64 = 0;
+    let mut best_bx: i64 = 0;
+    let mut best_by: i64 = 0;
+    for by in 0..side {
+        for bx in 0..side {
+            let c = bins[by * side + bx];
+            if c > best {
+                best = c;
+                best_bx = bx;
+                best_by = by;
+            }
+        }
+    }
+    if best == 0 {
+        return (0.0, 0.0, 0);
+    }
+
+    let cx = (best_bx as f64) * tol - MAX_SHIFT + tol / 2.0;
+    let cy = (best_by as f64) * tol - MAX_SHIFT + tol / 2.0;
+
+    // Pass 2: refine on everything within `tol` of the winning offset.
+    let mut votes: i64 = 0;
+    let mut sdx: f64 = 0.0;
+    let mut sdy: f64 = 0.0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let cdx = a[i].x - b[j].x;
+            let cdy = a[i].y - b[j].y;
+            let ex = cdx - cx;
+            let ey = cdy - cy;
+            if ex * ex + ey * ey <= tol * tol {
+                votes = votes + 1;
+                sdx = sdx + cdx;
+                sdy = sdy + cdy;
+            }
+        }
+    }
+    if votes == 0 {
+        return (0.0, 0.0, 0);
+    }
+    (sdx / (votes as f64), sdy / (votes as f64), votes)
 }
 
 /// Shift a frame by (dx, dy) with bilinear interpolation.

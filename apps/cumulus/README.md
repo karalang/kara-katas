@@ -115,6 +115,17 @@ faster** with byte-identical output — the compiler writes straight into the
 output buffer where the manual version paid a per-band allocation and a concat
 copy.
 
+Measured here on 4 cores, `KARAC_NO_AUTOPAR=1` against the default build:
+
+| frame size | sequential | auto-par | speedup |
+|---|---|---|---|
+| 1024×768 | 5.22 s | 1.80 s | **2.90×** |
+| 2048×1536 | 20.53 s | 7.43 s | **2.76×** |
+
+~70% parallel efficiency from loops nobody annotated, and the two builds produce
+**byte-identical** output — which is the check that matters, since a race would
+show up here first.
+
 Two consequences shape the clipping kernel, both about keeping the loop body
 allocation-free so it stays disjoint and parallelizable:
 
@@ -169,7 +180,9 @@ each other: same files, same stack, or the run fails.
 
 ## Registration
 
-Translation-only, sub-pixel, star-based. Three stages, each independently
+Translation-only, sub-pixel, star-based. **O(N²)** in the detected star count —
+see the complexity note below; the obvious formulation is O(N⁴) and was
+unusable on real frames. Three stages, each independently
 checkable: detect 3×3 local maxima above a background-derived threshold →
 centroid them (intensity-weighted, background-subtracted) → recover the
 translation by a consensus vote over candidate offsets, refined on the pairs
@@ -198,6 +211,29 @@ sitting — a differential would have missed both:
   were negated. `register` now reports the *measured dither* (frame −
   reference), so a sign error fails the check rather than waiting to surface as
   a mysteriously blurry stack.
+
+### The O(N⁴) trap
+
+Every (star in a, star in b) pair proposes an offset, and the proposal with the
+most support wins. The obvious way to count that support — for each candidate,
+re-scan every other pair — is **O(N⁴)**, and that is what this was first. It is
+invisible on a toy frame and ruinous on a real one:
+
+| stars | frame | registration |
+|---|---|---|
+| 11 | 96×64 | instant |
+| 324 | 512×384 | **146.29 s** |
+
+146.29 s of a 146.29 s run, while the entire integration took 0.38 s. Binning
+candidates into a vote grid and taking the heaviest bin gets the same answer in
+two linear passes over the N² candidates: **146.29 s → 0.10 s**, a 1400×
+improvement, and accuracy *improved* (worst error 0.224 px → 0.071 px) because
+refining around the bin centre beats refining around an arbitrary pair's offset.
+
+The grid is what forces a **search radius** (`MAX_SHIFT`, 128 px): a full-frame
+grid would be 20 million bins at 12 MP. Ordinary practice for registration, but
+a real limit — a frame displaced further is reported as no consensus rather than
+mismatched.
 
 This check uses a **tolerance**, unlike the integration oracle, and that is
 correct rather than a concession — centroiding a noisy PSF is a measurement, so
@@ -291,12 +327,15 @@ Deliberately absent, in the order they matter:
 1. **Rotation** — translation only. Fine for a tracked mount over a short
    session; an alt-az mount accumulates field rotation that this will not
    correct.
-2. **Tiled / streaming integration.** The whole stack is decoded up front, which
-   is fine at 96×64 and impossible at 12 MP. Measured: 16 frames of 12 MP held
-   resident is ~368 MB peak RSS, against ~11 MB for a 512×512 tiled pass — and
-   the decoded-frame store, not the working set, is what sets the ceiling under
-   the browser's 1 GiB default. Frames stay 16-bit mono with debayering late for
-   that reason.
+2. **Tiled / streaming integration**, and the memory number here was wrong until
+   it was measured. A full 11.7 Mpx × 16-frame stack runs in **31.5 s at
+   2947 MB peak RSS** — not the ~368 MB this file used to claim. That estimate
+   assumed the pixels stayed `u16`; the implementation decodes them to `i64`
+   (4×) and registration keeps a second aligned copy (2× again), so the true
+   cost is `frames × pixels × 8 × 2`, which predicts 2984 MB against 2947 MB
+   observed. It runs on a desktop and is far past a browser tab's ~1 GiB.
+   Decoding to `u16`/`i32` and integrating tile-by-tile are the two fixes, in
+   that order.
 3. **Calibration** (darks / flats / bias) and the browser shell.
 4. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
    already implements, is the upgrade once the pipeline is trusted.
