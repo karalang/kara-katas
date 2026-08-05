@@ -32,6 +32,10 @@ let MAXITERS: i64 = 5;
 // found — see estimate_offset.
 let MAX_SHIFT: f64 = 128.0;
 
+// Output tile edge, in pixels. Sets the working-set size: frames x TILE^2 x 8
+// bytes, so 16 frames at 256 is 8 MB regardless of how large the frames are.
+let TILE: i64 = 256;
+
 fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
     let mut data: Vec[u8] = Vec.new();
     match File.open(path) {
@@ -283,7 +287,7 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
 /// BZERO is the trap worth naming: unsigned 16-bit data rides in FITS's SIGNED
 /// 16-bit format with `BZERO = 32768`, so a reader that ignores it turns every
 /// value above 32767 into a large negative number — stars come out as holes.
-struct FitsImage { width: i64, height: i64, px: Vec[i64], ok: bool, err: String }
+struct FitsImage { width: i64, height: i64, px: Vec[u16], ok: bool, err: String }
 
 fn card_key(data: ref Vec[u8], off: i64) -> String {
     let mut k = "";
@@ -388,7 +392,7 @@ fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
                     if off + npix * 2 > total {
                         img.err = "data section shorter than NAXIS1*NAXIS2";
                     } else {
-                        let mut px: Vec[i64] = Vec.with_capacity(npix);
+                        let mut px: Vec[u16] = Vec.with_capacity(npix);
                         for i in 0..npix {
                             // BIG-endian signed 16-bit, then the BZERO/BSCALE
                             // transform back to physical values.
@@ -396,7 +400,9 @@ fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
                             let lo = data[off + i * 2 + 1] as i64;
                             let mut raw = hi * 256 + lo;
                             if raw > 32767 { raw = raw - 65536; }
-                            px.push(bzero + bscale * raw);
+                            let phys = bzero + bscale * raw;
+                            let cl = if phys < 0 { 0 } else { if phys > 65535 { 65535 } else { phys } };
+                            px.push(cl as u16);
                         }
                         img.width = n1;
                         img.height = n2;
@@ -433,7 +439,7 @@ struct Star { x: f64, y: f64, flux: f64 }
 /// and standard deviation of the whole frame. Stars occupy a tiny fraction of
 /// the pixels, so they barely move the mean — good enough for a detection
 /// threshold, and it costs one pass.
-fn frame_stats(px: ref Vec[i64], base: i64, npix: i64) -> (f64, f64) {
+fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
     // SIGMA-CLIPPED, and it has to be. A raw mean/sd is wrecked by the very
     // things detection is supposed to find: a dozen cosmic rays at 60000 in a
     // field whose sky sits near 1500 inflate the sd enough that `mean + 6*sd`
@@ -478,7 +484,7 @@ fn frame_stats(px: ref Vec[i64], base: i64, npix: i64) -> (f64, f64) {
 /// sky left in, the window's own gradient pulls the centroid toward the bright
 /// side of the frame — a systematic bias that looks like a real offset and
 /// would be recovered as one.
-fn detect_stars(px: ref Vec[i64], base: i64, w: i64, h: i64, thresh_k: f64) -> Vec[Star] {
+fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> Vec[Star] {
     let mut stars: Vec[Star] = Vec.new();
     let stats = frame_stats(px, base, w * h);
     let mean = stats.0;
@@ -646,7 +652,7 @@ fn estimate_offset(a: ref Vec[Star], b: ref Vec[Star], tol: f64) -> (f64, f64, i
 /// Bilinear is the deliberate first choice — separable, exactly specifiable, and
 /// cheap to mirror in the oracle. It does soften slightly; Lanczos-3 (which
 /// Prism already implements) is the upgrade once the pipeline is trusted.
-fn resample_bilinear(px: ref Vec[i64], base: i64, w: i64, h: i64, dx: f64, dy: f64) -> Vec[i64] {
+fn resample_bilinear(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
     for i in 0..(w * h) { out.push(0); }
     for y in 0..h {
@@ -670,6 +676,137 @@ fn resample_bilinear(px: ref Vec[i64], base: i64, w: i64, h: i64, dx: f64, dy: f
                 let bot = p01 + (p11 - p01) * fx;
                 let v = top + (bot - top) * fy;
                 out[y * w + x] = (v + 0.5) as i64;
+            }
+        }
+    }
+    out
+}
+
+/// Resample one TILE of a frame, rather than the whole frame.
+///
+/// Same bilinear arithmetic as `resample_bilinear`, but it writes only the
+/// output window `[x0, x0+tw) x [y0, y0+th)`. That is what removes the second
+/// full-frame buffer: instead of aligning every frame into a stack-sized copy
+/// and then integrating, the pipeline aligns a tile from each frame into a
+/// tile-sized stack and integrates that.
+///
+/// The source stays `u16` (the frames as decoded); the tile is `i64` because it
+/// carries the -1 NO-DATA sentinel, and at 256x256 that costs nothing.
+fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
+                 x0: i64, y0: i64, tw: i64, th: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(tw * th);
+    for i in 0..(tw * th) { out.push(-1); }
+    for ty in 0..th {
+        for tx in 0..tw {
+            let sxf = ((x0 + tx) as f64) + dx;
+            let syf = ((y0 + ty) as f64) + dy;
+            let fx0 = sxf.floor();
+            let fy0 = syf.floor();
+            let fx = sxf - fx0;
+            let fy = syf - fy0;
+            let xi = fx0 as i64;
+            let yi = fy0 as i64;
+            // The +1 neighbour is only READ when the fractional part is
+            // nonzero, so requiring it to exist unconditionally throws away the
+            // last row and column for no reason — and at a zero offset (the
+            // unregistered modes, which now share this path) that is pure loss:
+            // 159 edge pixels of a 96x64 frame silently became NO DATA.
+            let x1 = if fx > 0.0 { xi + 1 } else { xi };
+            let y1 = if fy > 0.0 { yi + 1 } else { yi };
+            if xi >= 0 and yi >= 0 and x1 < w and y1 < h {
+                let p00 = px[base + yi * w + xi] as f64;
+                let p10 = px[base + yi * w + x1] as f64;
+                let p01 = px[base + y1 * w + xi] as f64;
+                let p11 = px[base + y1 * w + x1] as f64;
+                let top = p00 + (p10 - p00) * fx;
+                let bot = p01 + (p11 - p01) * fx;
+                out[ty * tw + tx] = (top + (bot - top) * fy + 0.5) as i64;
+            }
+        }
+    }
+    out
+}
+
+/// Register every frame against frame 0 and return per-frame offsets.
+///
+/// Split out from the stacking loop so the offsets can be computed once and
+/// reused across every tile — recomputing star detection per tile would be
+/// absurd, and detection needs the whole frame anyway (the background estimate
+/// and the star field are global properties).
+///
+/// `keep[f]` is 0 for a frame whose consensus was too weak to trust. One
+/// misaligned frame smears every star in the result; a dropped frame costs only
+/// its share of the signal-to-noise.
+/// Returns (dx, dy, keep, votes). `votes` is the raw consensus count and is
+/// what `register` reports — the harness gates on it (a frame stacked on a
+/// two-star agreement is luck, not a match), so collapsing it to the 0/1 keep
+/// flag silently defeats that check.
+fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
+    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64])
+{
+    let npix = w * h;
+    let mut dxs: Vec[f64] = Vec.new();
+    let mut dys: Vec[f64] = Vec.new();
+    let mut keep: Vec[i64] = Vec.new();
+    let mut votes: Vec[i64] = Vec.new();
+    let ref_stars = detect_stars(px, 0, w, h, 6.0);
+    let need = (ref_stars.len() * 6) / 10;
+    for f in 0..nframes {
+        let st = detect_stars(px, f * npix, w, h, 6.0);
+        let est = estimate_offset(st, ref_stars, 1.5);
+        dxs.push(est.0);
+        dys.push(est.1);
+        votes.push(est.2);
+        if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+    }
+    (dxs, dys, keep, votes)
+}
+
+/// The stacking pipeline, TILE BY TILE.
+///
+/// Peak memory is `frames x TILE^2 x 8` for the working set instead of
+/// `frames x pixels x 8` for a full aligned copy. On an 11.7 Mpx x 16 stack
+/// that is 8 MB rather than 1.5 GB.
+///
+/// `dxs`/`dys` may be all-zero (the unregistered modes), in which case the
+/// resample is an identity sample and the pipeline degenerates to plain
+/// per-tile integration — one code path for every mode rather than two.
+fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
+               dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
+               use_clip: bool) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(w * h);
+    for i in 0..(w * h) { out.push(0); }
+
+    let ntx = (w + TILE - 1) / TILE;
+    let nty = (h + TILE - 1) / TILE;
+    for tyi in 0..nty {
+        for txi in 0..ntx {
+            let x0 = txi * TILE;
+            let y0 = tyi * TILE;
+            let tw = if w - x0 < TILE { w - x0 } else { TILE };
+            let th = if h - y0 < TILE { h - y0 } else { TILE };
+            let tpix = tw * th;
+
+            // Gather this tile from every kept frame.
+            let mut tile: Vec[i64] = Vec.with_capacity(tpix * nframes);
+            let mut kept: i64 = 0;
+            for f in 0..nframes {
+                if keep[f] != 0 {
+                    let t = resample_tile(px, f * w * h, w, h, dxs[f], dys[f], x0, y0, tw, th);
+                    for v in t { tile.push(v); }
+                    kept = kept + 1;
+                }
+            }
+
+            let ot = if use_clip {
+                integrate_sigma_clip(tile, tpix, kept)
+            } else {
+                integrate_mean(tile, tpix, kept)
+            };
+            for ty in 0..th {
+                for tx in 0..tw {
+                    out[(y0 + ty) * w + x0 + tx] = ot[ty * tw + tx];
+                }
             }
         }
     }
@@ -728,7 +865,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         let mut width: i64 = 0;
         let mut height: i64 = 0;
         let mut nframes: i64 = 0;
-        let mut px: Vec[i64] = Vec.new();
+        let mut px: Vec[u16] = Vec.new();
         let mut loaded = false;
 
         if argv.len() > 4 or inp.ends_with(".fits") {
@@ -764,7 +901,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 height = u32_at(data, 8);
                 nframes = u32_at(data, 12);
                 let n = width * height * nframes;
-                for i in 0..n { px.push(u16_at(data, 16 + i * 2)); }
+                for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
                 loaded = true;
             }
         }
@@ -772,63 +909,41 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         if loaded {
             let npix = width * height;
 
-            // One working buffer for both paths: `register` only inspects it,
-            // `stack` replaces it with the aligned frames.
-            let mut work = px;
-            if mode == "register" {
-                // Report the recovered offset per frame, reference-relative.
-                // Printing rather than stacking keeps this stage independently
-                // checkable: the oracle compares these numbers against the
-                // dithers the generator injected, so a registration error is
-                // caught as a wrong OFFSET rather than as a slightly blurrier
-                // stack that nobody can eyeball.
-                let ref_stars = detect_stars(work, 0, width, height, 6.0);
-                println(f"ref_stars {ref_stars.len()}");
-                for f in 0..nframes {
-                    let st = detect_stars(work, f * npix, width, height, 6.0);
-                    // (frame - reference): the MEASURED DITHER, which is what
-                    // the generator injected and therefore what the oracle
-                    // checks. The shift to APPLY when resampling is its
-                    // negation; keeping the reported quantity the measured one
-                    // means a sign error shows up in the oracle rather than
-                    // hiding until the stack comes out blurred.
-                    let est = estimate_offset(st, ref_stars, 1.5);
-                    println(f"frame {f} dx {est.0} dy {est.1} votes {est.2} stars {st.len()}");
-                }
-            }
-            // `stack` = the whole pipeline: register every frame against the
-            // reference, resample it onto the reference grid, then integrate.
-            // This is the mode that makes the app useful rather than merely
-            // correct on already-aligned input.
-            if mode == "stack" or mode == "stackmean" {
-                let ref_stars = detect_stars(work, 0, width, height, 6.0);
-                let mut aligned: Vec[i64] = Vec.with_capacity(npix * nframes);
-                let mut kept: i64 = 0;
-                for f in 0..nframes {
-                    let st = detect_stars(work, f * npix, width, height, 6.0);
-                    let est = estimate_offset(st, ref_stars, 1.5);
-                    // A frame whose consensus rests on too few stars is
-                    // DROPPED, not stacked at a guessed offset. One misaligned
-                    // frame smears every star in the result; a dropped frame
-                    // only costs its share of the signal-to-noise.
-                    let need = (ref_stars.len() * 6) / 10;
-                    if est.2 >= need and est.2 > 0 {
-                        let sh = resample_bilinear(work, f * npix, width, height, est.0, est.1);
-                        for v in sh { aligned.push(v); }
-                        kept = kept + 1;
-                    } else {
-                        println(f"cumulus: frame {f} dropped ({est.2} votes)");
-                    }
-                }
-                println(f"cumulus: registered {kept}/{nframes} frames");
-                work = aligned;
-                nframes = kept;
-            }
-            let out = if mode == "sigmaclip" or mode == "stack" {
-                integrate_sigma_clip(work, npix, nframes)
+            // Registration offsets, or zeros for the unregistered modes. One
+            // pipeline either way: an all-zero offset makes the resample an
+            // identity sample, so `mean`/`sigmaclip` and `stack` share a code
+            // path instead of drifting apart.
+            let mut dxs: Vec[f64] = Vec.new();
+            let mut dys: Vec[f64] = Vec.new();
+            let mut keep: Vec[i64] = Vec.new();
+            let mut votes: Vec[i64] = Vec.new();
+            if mode == "stack" or mode == "register" {
+                let off = compute_offsets(px, width, height, nframes);
+                dxs = off.0;
+                dys = off.1;
+                keep = off.2;
+                votes = off.3;
             } else {
-                integrate_mean(work, npix, nframes)
-            };
+                for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(0); }
+            }
+
+            if mode == "register" {
+                // Report offsets rather than stacking, so the stage stays
+                // independently checkable against the injected dithers.
+                let rs = detect_stars(px, 0, width, height, 6.0);
+                println(f"ref_stars {rs.len()}");
+                for f in 0..nframes {
+                    println(f"frame {f} dx {dxs[f]} dy {dys[f]} votes {votes[f]} stars {rs.len()}");
+                }
+            }
+
+            let mut nkept: i64 = 0;
+            for f in 0..nframes { if keep[f] != 0 { nkept = nkept + 1; } }
+            if mode == "stack" and nkept < nframes {
+                println(f"cumulus: registered {nkept}/{nframes} frames");
+            }
+            let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
+            let out = stack_tiled(px, width, height, nframes, dxs, dys, keep, use_clip);
             write_stack(outp.clone(), out, width, height);
             println(f"cumulus: {mode} {width}x{height} x{nframes} -> {outp}");
         }
@@ -874,37 +989,31 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
 
     // Little-endian u16 in, i64 working values out — same representation the
     // CLI decodes into, so the kernels below are bit-for-bit the same code.
-    let mut px: Vec[i64] = Vec.with_capacity(npix * nframes);
+    let mut px: Vec[u16] = Vec.with_capacity(npix * nframes);
     for i in 0..(npix * nframes) {
-        px.push((raw[i * 2] as i64) + (raw[i * 2 + 1] as i64) * 256);
+        px.push(((raw[i * 2] as i64) + (raw[i * 2 + 1] as i64) * 256) as u16);
     }
     progress(0, nframes, nframes);
 
-    let mut work = px;
+    let mut dxs: Vec[f64] = Vec.new();
+    let mut dys: Vec[f64] = Vec.new();
+    let mut keep: Vec[i64] = Vec.new();
     let mut kept = nframes;
     if mode == 2 {
-        let ref_stars = detect_stars(work, 0, w, h, 6.0);
-        let need = (ref_stars.len() * 6) / 10;
-        let mut aligned: Vec[i64] = Vec.with_capacity(npix * nframes);
+        let off = compute_offsets(px, w, h, nframes);
+        dxs = off.0;
+        dys = off.1;
+        keep = off.2;
         kept = 0;
         for f in 0..nframes {
-            let st = detect_stars(work, f * npix, w, h, 6.0);
-            let est = estimate_offset(st, ref_stars, 1.5);
-            if est.2 >= need and est.2 > 0 {
-                let sh = resample_bilinear(work, f * npix, w, h, est.0, est.1);
-                for v in sh { aligned.push(v); }
-                kept = kept + 1;
-            }
+            if keep[f] != 0 { kept = kept + 1; }
             progress(1, f + 1, nframes);
         }
-        work = aligned;
+    } else {
+        for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); }
     }
 
-    let out = if mode == 0 {
-        integrate_mean(work, npix, kept)
-    } else {
-        integrate_sigma_clip(work, npix, kept)
-    };
+    let out = stack_tiled(px, w, h, nframes, dxs, dys, keep, mode != 0);
     progress(2, 1, 1);
 
     // Hand back 16-bit little-endian; the page owns the display stretch, so the

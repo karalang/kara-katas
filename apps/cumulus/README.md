@@ -139,6 +139,41 @@ allocation-free so it stays disjoint and parallelizable:
   nothing. It is O(n²) in the frame count, which for the 16–100 subs a real
   session produces is far cheaper than losing the parallelism.
 
+## Memory: u16 storage and tiled integration
+
+The first version decoded pixels to `i64` and, during registration, built a
+second full-size aligned copy of the whole stack. That is `frames × pixels ×
+8 × 2` — and this README claimed ~368 MB for a 12 MP stack, an estimate that
+assumed the pixels stayed `u16` and was **8× wrong**. Measured: **2947 MB**.
+
+Two changes fix it:
+
+- **Frames are stored `u16`**, as they arrive. The integration helpers still use
+  `i64` because they carry the `-1` NO-DATA sentinel, but they now operate on a
+  single tile rather than the stack.
+- **Integration is tiled.** Rather than aligning every frame into a stack-sized
+  buffer and then integrating, each 256×256 output tile is gathered from every
+  frame and integrated on its own. The working set is `frames × TILE² × 8` —
+  8 MB at 16 frames, *independent of frame size*.
+
+Measured on 11.7 Mpx × 16 frames (a Seestar-class stack), full `stack` pipeline:
+
+| | before | after |
+|---|---|---|
+| peak RSS | 2947 MB | **716 MB** (4.1× less) |
+| wall time | 43.5 s | **~28 s** |
+
+Faster as well as smaller, which was not the goal but follows from touching far
+less memory — the tiled version fits its working set in cache where the old one
+streamed two 1.5 GB buffers. `mean` alone went 10.3 s → 4.3 s.
+
+Tiling also **fixed a latent bug**. The bilinear guard required the `+1`
+neighbour to exist unconditionally, so the last row and column were dropped even
+at a zero offset — 5953 border pixels of a 12 MP frame, silently NO-DATA. The
+`+1` neighbour is only *read* when the fractional part is nonzero, so the guard
+now tests the neighbour it will actually use. The oracle caught this the moment
+unregistered modes started sharing the resample path.
+
 ## The browser shell
 
 `index.html` is the app: drop FITS subs in, pick an integration mode, get a
@@ -327,15 +362,10 @@ Deliberately absent, in the order they matter:
 1. **Rotation** — translation only. Fine for a tracked mount over a short
    session; an alt-az mount accumulates field rotation that this will not
    correct.
-2. **Tiled / streaming integration**, and the memory number here was wrong until
-   it was measured. A full 11.7 Mpx × 16-frame stack runs in **31.5 s at
-   2947 MB peak RSS** — not the ~368 MB this file used to claim. That estimate
-   assumed the pixels stayed `u16`; the implementation decodes them to `i64`
-   (4×) and registration keeps a second aligned copy (2× again), so the true
-   cost is `frames × pixels × 8 × 2`, which predicts 2984 MB against 2947 MB
-   observed. It runs on a desktop and is far past a browser tab's ~1 GiB.
-   Decoding to `u16`/`i32` and integrating tile-by-tile are the two fixes, in
-   that order.
+2. **Streaming from disk.** Memory is now bounded by the decoded frames
+   themselves (`frames × pixels × 2`), which is 374 MB at 11.7 Mpx × 16 — fine
+   on a desktop, still heavy for a browser tab on a long session. Holding only a
+   window of frames resident, or memory-mapping the subs, is the next lever.
 3. **Calibration** (darks / flats / bias) and the browser shell.
 4. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
    already implements, is the upgrade once the pipeline is trusted.
