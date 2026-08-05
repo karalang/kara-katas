@@ -28,7 +28,7 @@ Two integration modes over a stack of 16-bit mono frames:
 | mode | what it computes |
 |---|---|
 | `mean` | arithmetic mean across all frames |
-| `sigmaclip` | iterative 3σ clipping (max 5 passes), then the mean of the survivors |
+| `sigmaclip` | iterative 3σ clipping about the **median**, scaled by the **MAD** (max 5 passes), then the mean of the survivors |
 
 The synthetic frames carry a sky gradient, three Gaussian stars, per-frame read
 noise, and **cosmic-ray hits in different places on each frame**. The rays are
@@ -36,6 +36,43 @@ the point: a plain mean smears them across the result, sigma clipping removes
 them. Without them the two modes agree everywhere and the oracle would happily
 pass a clip that did nothing — which is why `oracle.py` fails if clipping
 changed no pixels.
+
+### Why the median and the MAD, not the mean and the sd
+
+The first implementation clipped about the mean using the standard deviation,
+and it failed on the case that matters. At a pixel where two cosmic rays landed
+after resampling:
+
+```
+1675 1750 ... 1813  30590  34796        <- 14 sky values and 2 rays
+mean 5644, sd 10000  ->  bounds ±30000  ->  keeps all 16
+```
+
+The outliers inflate the very scale meant to exclude them, so the interval
+widens to swallow them and the pixel stacks at 5641 instead of ~1780. Two
+visible artifacts survived into the browser demo this way.
+
+The MAD does not inflate — it stays near 25 there, giving bounds of about ±111,
+and both rays go on the first pass. This is why astropy centres on the median by
+default. Rejection is robust; the **estimate is still the mean of the
+survivors**, which is what preserves the signal-to-noise that stacking buys.
+
+Two rays colliding is not an exotic case but the expected one: each frame is
+resampled by a *different* dither, so rays land on the same **output** pixel even
+when no two share an **input** pixel. At ~192 ray hits over 6144 pixels, a
+handful of collisions is arithmetic.
+
+Measured, before → after, on the same registered stack:
+
+| | mean/sd | median/MAD |
+|---|---|---|
+| isolated ray residue | 2 pixels | **0** |
+| background noise | 84.00 | 82.91 (**0.987×**) |
+| brightest star flux | 511349 | 511320 (0.9999×) |
+
+The tighter scale rejects more — 2591 pixels changed rather than 236 — and it
+costs nothing measurable: noise is fractionally *lower* and stellar flux is
+preserved to four decimal places. It is removing outliers, not signal.
 
 ## Why the oracle came first
 
@@ -78,11 +115,18 @@ faster** with byte-identical output — the compiler writes straight into the
 output buffer where the manual version paid a per-band allocation and a concat
 copy.
 
-One consequence shapes the clipping kernel: it tracks the surviving **interval**
-`[lo, hi]` rather than a per-pixel keep-mask. For a symmetric threshold the kept
-set is always an interval, so the two formulations are equivalent — but the
-interval form allocates nothing inside the pixel loop, which is what keeps the
-loop body disjoint and lets it parallelize.
+Two consequences shape the clipping kernel, both about keeping the loop body
+allocation-free so it stays disjoint and parallelizable:
+
+- It tracks the surviving **interval** `[lo, hi]` rather than a per-pixel
+  keep-mask. For a symmetric threshold the kept set is always an interval, so
+  the formulations are equivalent — but the interval form allocates nothing.
+- The median and MAD use **counting selection, not a sort**. A sort needs a
+  scratch buffer; one allocated per pixel is ruinous at 12 MP, and one reused
+  across pixels is a genuine race that would (correctly) make the compiler
+  decline to parallelize. Counting reads the strided source directly and writes
+  nothing. It is O(n²) in the frame count, which for the 16–100 subs a real
+  session produces is far cheaper than losing the parallelism.
 
 ## The browser shell
 

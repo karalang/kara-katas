@@ -84,14 +84,136 @@ fn integrate_mean(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
     out
 }
 
-/// Iterative sigma clipping, interval form.
+/// The k-th smallest surviving value at pixel `p` (0-indexed rank).
 ///
-/// Each pass computes the mean and POPULATION standard deviation (ddof = 0) of
-/// the values currently inside `[lo, hi]`, then narrows the interval to
-/// `mean ± SIGMA * sd`. It stops when a pass rejects nothing — convergence is
-/// keyed on the surviving COUNT rather than on the float bounds, because two
-/// bounds can differ in the last bit while selecting the same set, which would
-/// spin until MAXITERS for no reason.
+/// COUNTING SELECTION, not a sort, and that is the load-bearing choice. A sort
+/// needs a scratch buffer; a per-pixel allocation is ruinous at 12 MP, and one
+/// buffer reused across pixels is a genuine race that would (correctly) make the
+/// compiler decline to parallelize the loop. Counting reads the strided source
+/// directly and writes nothing, so the loop body stays disjoint and still fans
+/// out. O(n^2) in the frame count, which for the 16-100 subs a real session
+/// produces is far cheaper than losing the parallelism.
+fn kth_in_window(px: ref Vec[i64], p: i64, npix: i64, nframes: i64,
+                 lo: f64, hi: f64, k: i64) -> f64 {
+    let mut found: f64 = 0.0;
+    let mut done = false;
+    for i in 0..nframes {
+        if not done {
+            let raw = px[i * npix + p];
+            let cv = raw as f64;
+            if raw >= 0 and cv >= lo and cv <= hi {
+                let mut less: i64 = 0;
+                let mut equal: i64 = 0;
+                for j in 0..nframes {
+                    let o = px[j * npix + p];
+                    let ov = o as f64;
+                    if o >= 0 and ov >= lo and ov <= hi {
+                        if ov < cv { less = less + 1; }
+                        if ov == cv { equal = equal + 1; }
+                    }
+                }
+                // `less <= k < less + equal` identifies the rank band this value
+                // occupies, so duplicates resolve without special-casing.
+                if less <= k and k < less + equal {
+                    found = cv;
+                    done = true;
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Median of the surviving values at `p`. Even counts average the two central
+/// order statistics, matching numpy's convention so the oracle can compare
+/// exactly rather than approximately.
+fn median_in_window(px: ref Vec[i64], p: i64, npix: i64, nframes: i64,
+                    lo: f64, hi: f64, count: i64) -> f64 {
+    if count % 2 == 1 {
+        kth_in_window(px, p, npix, nframes, lo, hi, count / 2)
+    } else {
+        let a = kth_in_window(px, p, npix, nframes, lo, hi, count / 2 - 1);
+        let b = kth_in_window(px, p, npix, nframes, lo, hi, count / 2);
+        (a + b) / 2.0
+    }
+}
+
+/// The k-th smallest |value - center| among survivors — same counting scheme,
+/// applied to the deviations rather than the values.
+fn kth_abs_dev(px: ref Vec[i64], p: i64, npix: i64, nframes: i64,
+               lo: f64, hi: f64, center: f64, k: i64) -> f64 {
+    let mut found: f64 = 0.0;
+    let mut done = false;
+    for i in 0..nframes {
+        if not done {
+            let raw = px[i * npix + p];
+            let rv = raw as f64;
+            if raw >= 0 and rv >= lo and rv <= hi {
+                let cv = (rv - center).abs();
+                let mut less: i64 = 0;
+                let mut equal: i64 = 0;
+                for j in 0..nframes {
+                    let o = px[j * npix + p];
+                    let ov = o as f64;
+                    if o >= 0 and ov >= lo and ov <= hi {
+                        let dv = (ov - center).abs();
+                        if dv < cv { less = less + 1; }
+                        if dv == cv { equal = equal + 1; }
+                    }
+                }
+                if less <= k and k < less + equal {
+                    found = cv;
+                    done = true;
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Median absolute deviation about `center`.
+fn mad_in_window(px: ref Vec[i64], p: i64, npix: i64, nframes: i64,
+                 lo: f64, hi: f64, center: f64, count: i64) -> f64 {
+    if count % 2 == 1 {
+        kth_abs_dev(px, p, npix, nframes, lo, hi, center, count / 2)
+    } else {
+        let a = kth_abs_dev(px, p, npix, nframes, lo, hi, center, count / 2 - 1);
+        let b = kth_abs_dev(px, p, npix, nframes, lo, hi, center, count / 2);
+        (a + b) / 2.0
+    }
+}
+
+/// Iterative sigma clipping, interval form, with a ROBUST centre and scale.
+///
+/// Each pass takes the median and the MAD (median absolute deviation) of the
+/// values currently inside `[lo, hi]` and narrows the interval to
+/// `median ± SIGMA * 1.4826 * MAD`. The survivors are then averaged — robust
+/// rejection, ordinary mean for the estimate, which is what keeps the
+/// signal-to-noise of stacking.
+///
+/// WHY NOT MEAN AND STANDARD DEVIATION, which is what this did first: two
+/// outliers among sixteen samples defeat it. Measured on the demo stack, at a
+/// pixel where two cosmic rays landed after resampling:
+///
+///     1675 1750 ... 1813  30590  34796      <- 14 sky values and 2 rays
+///     mean 5644, sd 10000  ->  bounds +/-30000  ->  keeps all 16
+///
+/// The outliers inflate the very scale that is supposed to exclude them, the
+/// interval widens to swallow them, and the pixel stacks at 5641 instead of
+/// ~1780. The MAD does not inflate: it stays near 25, giving bounds of about
+/// +/-111, and both rays are rejected on the first pass. This is why astropy
+/// centres on the median by default.
+///
+/// Rays collide on the same OUTPUT pixel even when no two share an INPUT pixel,
+/// because each frame is resampled by a different dither — so this is not an
+/// exotic case, it is the expected one at ~192 ray hits over 6144 pixels.
+///
+/// The 1.4826 factor makes the MAD a consistent estimator of the standard
+/// deviation for normally distributed data, so `SIGMA` keeps its usual meaning.
+///
+/// Convergence is keyed on the surviving COUNT rather than the float bounds:
+/// two bounds can differ in the last bit while selecting the same set, which
+/// would otherwise spin until MAXITERS for no reason.
 fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(npix);
     for p in 0..npix { out.push(0); }
@@ -122,20 +244,20 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
                     // A pass that rejected nothing: converged.
                     it = MAXITERS;
                 } else {
-                    let mut var: f64 = 0.0;
-                    for f in 0..nframes {
-                        let raw = px[f * npix + p];
-                        let v = raw as f64;
-                        if raw >= 0 and v >= lo and v <= hi {
-                            let d = v - mean;
-                            var = var + d * d;
-                        }
-                    }
-                    let sd = (var / (count as f64)).sqrt();
                     prev_count = count;
-                    lo = mean - SIGMA * sd;
-                    hi = mean + SIGMA * sd;
-                    it = it + 1;
+                    let centre = median_in_window(px, p, npix, nframes, lo, hi, count);
+                    let mad = mad_in_window(px, p, npix, nframes, lo, hi, centre, count);
+                    let scale = 1.4826 * mad;
+                    if scale <= 0.0 {
+                        // Every survivor is identical (or all but one). There is
+                        // no spread to measure, so any interval would be
+                        // arbitrary — stop rather than reject on noise.
+                        it = MAXITERS;
+                    } else {
+                        lo = centre - SIGMA * scale;
+                        hi = centre + SIGMA * scale;
+                        it = it + 1;
+                    }
                 }
             }
         }

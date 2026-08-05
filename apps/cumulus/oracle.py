@@ -51,24 +51,42 @@ def read_stack(path: str) -> tuple[int, int, int, np.ndarray]:
 
 
 def ref_mean(stack: np.ndarray) -> np.ndarray:
-    return np.floor(stack.mean(axis=0) + 0.5).astype(np.int64)
+    # NO-DATA (-1) contributes nothing and the divisor is per-pixel coverage,
+    # matching integrate_mean. On an unregistered stack nothing is -1 and this
+    # reduces to a plain column mean.
+    valid = stack >= 0
+    count = valid.sum(axis=0)
+    total = np.where(valid, stack, 0).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        m = np.where(count > 0, total / np.maximum(count, 1), 0.0)
+    return np.floor(m + 0.5).astype(np.int64)
 
 
 def ref_sigma_clip(stack: np.ndarray) -> np.ndarray:
-    """Interval-form iterative clipping — the same formulation as the kernel.
+    """Interval-form iterative clipping with a MEDIAN centre and MAD scale.
 
-    Tracks the surviving interval rather than a per-pixel mask, and converges on
-    the surviving COUNT, exactly as cumulus.kara does. Written as an explicit
-    per-pixel loop rather than a vectorised one on purpose: the point is to
-    mirror the kernel's control flow so a divergence is attributable to the
-    kernel, not to a clever numpy rewrite that clips in a subtly different order.
+    Mirrors cumulus.kara exactly, including the convergence rule (on the
+    surviving COUNT, not the float bounds) and the zero-scale bail-out. Written
+    as an explicit per-pixel loop rather than a vectorised one on purpose: the
+    point is to mirror the kernel's control flow so a divergence is attributable
+    to the kernel, not to a clever numpy rewrite that clips in a different order.
+
+    Mean/sd clipping was the first implementation and it FAILED on two outliers
+    among sixteen samples — they inflate the very scale meant to exclude them.
+    The MAD does not inflate, which is why astropy centres on the median. The
+    kernel's doc comment carries the measured numbers.
+
+    NO-DATA (-1) is excluded before anything else: after registration the border
+    strips are covered by fewer frames, and a -1 would otherwise drag the median
+    down and the MAD up.
     """
     nframes, npix = stack.shape
     out = np.zeros(npix, dtype=np.int64)
     for p in range(npix):
         col = stack[:, p]
+        col = col[col >= 0]
         lo, hi = -1.0e30, 1.0e30
-        prev_count = nframes + 1
+        prev_count = col.size + 1
         mean = 0.0
         it = 0
         while it < MAXITERS:
@@ -79,10 +97,13 @@ def ref_sigma_clip(stack: np.ndarray) -> np.ndarray:
             mean = float(sel.sum() / count)
             if count == prev_count:
                 break
-            d = sel - mean
-            sd = float(np.sqrt(float((d * d).sum()) / count))
             prev_count = count
-            lo, hi = mean - SIGMA * sd, mean + SIGMA * sd
+            centre = float(np.median(sel))
+            mad = float(np.median(np.abs(sel - centre)))
+            scale = 1.4826 * mad
+            if scale <= 0.0:
+                break
+            lo, hi = centre - SIGMA * scale, centre + SIGMA * scale
             it += 1
         out[p] = int(np.floor(mean + 0.5))
     return out
