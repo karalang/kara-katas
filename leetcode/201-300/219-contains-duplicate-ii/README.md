@@ -35,17 +35,17 @@ Storing only the latest index (rather than all of them) is sufficient: for a fut
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`16323`). Workload: value->last-index hash map counting nearby duplicates over a 1M PRNG array, swept for k in 1..40; sum of hits.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 73.8 ms | 0.66× |
-| **Kāra (codegen)** | 111.5 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 412.5 ms | 3.70× |
-| Rust `-O` | 415.8 ms | 3.73× |
-| Go | 562.5 ms | 5.04× |
+| C `clang -O3` | 74.1 ms | 0.66× |
+| **Kāra (codegen)** | 112.2 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 414.4 ms | 3.69× |
+| Rust `-O` | 415.9 ms | 3.71× |
+| Go | 557.3 ms | 4.97× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

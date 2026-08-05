@@ -36,17 +36,17 @@ Store a `Map[number → count]`. `add` bumps the count (O(1)). `find(value)` sca
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`762965`). Workload: build a 170-add sparse multiset over [0,6K) keys (~168 distinct), then 1.2M full-scan find(target) queries; sink=count of trues. NOTE: Kara/Rust/Go/Python use a hash map; C hand-rolls a direct-address count table + distinct-key list (same membership semantics)..
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 103.1 ms | 0.13× |
-| **Kāra (codegen)** | 771.2 ms | 1.00× |
-| Rust `-O` | 1.41 s | 1.83× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 1.44 s | 1.86× |
-| Go | 2.09 s | 2.71× |
+| C `clang -O3` | 295.3 ms | 0.30× |
+| Rust `-O` | 746.9 ms | 0.75× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 761.1 ms | 0.76× |
+| **Kāra (codegen)** | 997.1 ms | 1.00× |
+| Go | 1.16 s | 1.17× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -60,3 +60,7 @@ diff <(karac run two_sum_iii.kara) <(python3 two_sum_iii.py) && echo OK
 ## Notes
 
 A 🔒 **LeetCode-Premium** problem (locked; spec reconstructed from its widely-known description). Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+
+**`B-2026-08-05-5` (open) — Kāra's row regressed 1.29× (771.2 ms → 997.1 ms) between the 2026-07-28 and 2026-08-04 measurements**, source unchanged and sink still `762965`. Two suspects have been eliminated by measurement rather than argument: `B-2026-07-31-21`'s map-capacity fix is ruled out (1.03× across an archive swap — this kata does ~170 adds and *no* removals, so there is no tombstone churn for it to act on), and codegen after 2026-07-30 is ruled out (the 2026-07-30 and 2026-08-04 compilers emit byte-identical binaries). What remains is the 2026-07-28…07-30 window, where *either* surface is still live. Isolating it needs a **matched compiler+archive pair per bisect step**: codegen and the runtime map co-evolve on a shared bucket-layout contract, so a mismatched pair silently miscompiles — during this investigation one such pair returned sink `287184` while timing "2.67× faster", which is skipped work wearing a speedup's clothes. Sink-check every candidate binary before timing it.
+
+The same window moved kata [#127](../127-word-ladder/) 1.24× in the *opposite* direction under identical conditions, so one bisect would likely explain both.

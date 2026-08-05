@@ -45,17 +45,17 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 146.4 ms | 0.63× |
-| **Kāra (codegen)** | 231.7 ms | 1.00× |
-| Rust `-O` | 727.6 ms | 3.14× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 727.8 ms | 3.14× |
-| Go | 919.6 ms | 3.97× |
+| C `clang -O3` | 187.4 ms | 0.44× |
+| **Kāra (codegen)** | 422.9 ms | 1.00× |
+| Rust `-O` | 733.7 ms | 1.73× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 736.9 ms | 1.74× |
+| Go | 930.0 ms | 2.20× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -69,3 +69,5 @@ diff <(karac run lru_cache.kara) <(python3 lru_cache.py) && echo OK
 ## Notes
 
 The first *design-a-data-structure* kata in the corpus. It implements a real O(1) LRU (hash map + sentinel doubly-linked list) via an index-based node pool, and surfaced the discarded-`Map.remove`-of-shared-value leak (`B-2026-07-19-16`).
+
+It has since surfaced a second, larger one. **`B-2026-08-05-4` (open) — Kāra's row regressed 1.76× (231.7 ms → 422.9 ms) between the 2026-07-28 and 2026-08-04 measurements**, with the kata source unchanged. Root-caused by holding the compiler fixed and swapping only the runtime archive: the cause is `B-2026-07-31-21`'s fix, which stopped the map's capacity from ratcheting on total removals and instead performs a **same-width compacting rehash** when the live count sits at or below ⅜ of capacity. An LRU is the canonical remove-heavy map — every insert past capacity evicts — so the live count parks near that threshold and the O(len) compaction re-fires on eviction after eviction, where the old code paid one doubling and then stopped rehashing. That fix bought a large RSS win (297 MB → 10 MB on a sliding window) and is not a revert candidate; the wall-time it costs a churn-dominated map is simply the half nobody had measured, because no bench in the corpus covered that shape. This kata is now that bench.

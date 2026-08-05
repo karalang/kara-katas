@@ -126,15 +126,15 @@ variations on already-hardened ground.
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`8381447680`). Workload: parse a 157KB valid chemical formula x 400 passes; stack-of-counts + range-fold multipliers + element-id->count map (C flat table, others hashmap).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 71.5 ms | 0.59× |
-| **Kāra (codegen)** | 120.3 ms | 1.00× |
-| Rust `-O` | 161.5 ms | 1.34× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 168.1 ms | 1.40× |
-| Go | 251.6 ms | 2.09× |
+| C `clang -O3` | 80.7 ms | 0.67× |
+| **Kāra (codegen)** | 121.2 ms | 1.00× |
+| Rust `-O` | 160.7 ms | 1.33× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 165.5 ms | 1.37× |
+| Go | 250.2 ms | 2.06× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
