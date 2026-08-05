@@ -71,9 +71,15 @@ fn integrate_mean(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
     for p in 0..npix { out.push(0); }
     for p in 0..npix {
         let mut sum: f64 = 0.0;
-        for f in 0..nframes { sum = sum + (px[f * npix + p] as f64); }
-        let m = sum / (nframes as f64);
-        out[p] = (m + 0.5) as i64;
+        let mut count: i64 = 0;
+        // NO DATA (-1) contributes nothing. After a dithered stack is resampled
+        // the border strips are covered by fewer frames than the centre, so the
+        // divisor is per-pixel coverage rather than the frame count.
+        for f in 0..nframes {
+            let v = px[f * npix + p];
+            if v >= 0 { sum = sum + (v as f64); count = count + 1; }
+        }
+        if count == 0 { out[p] = 0; } else { out[p] = (sum / (count as f64) + 0.5) as i64; }
     }
     out
 }
@@ -99,8 +105,9 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
             let mut sum: f64 = 0.0;
             let mut count: i64 = 0;
             for f in 0..nframes {
-                let v = px[f * npix + p] as f64;
-                if v >= lo and v <= hi {
+                let raw = px[f * npix + p];
+                let v = raw as f64;
+                if raw >= 0 and v >= lo and v <= hi {
                     sum = sum + v;
                     count = count + 1;
                 }
@@ -117,8 +124,9 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
                 } else {
                     let mut var: f64 = 0.0;
                     for f in 0..nframes {
-                        let v = px[f * npix + p] as f64;
-                        if v >= lo and v <= hi {
+                        let raw = px[f * npix + p];
+                        let v = raw as f64;
+                        if raw >= 0 and v >= lo and v <= hi {
                             let d = v - mean;
                             var = var + d * d;
                         }
@@ -450,6 +458,51 @@ fn estimate_offset(a: ref Vec[Star], b: ref Vec[Star], tol: f64) -> (f64, f64, i
     (best_dx, best_dy, best_votes)
 }
 
+/// Shift a frame by (dx, dy) with bilinear interpolation.
+///
+/// `dx`/`dy` are the frame's MEASURED DITHER, so the aligned image samples the
+/// source at `(x + dx, y + dy)` — sampling forward by the dither is what undoes
+/// it.
+///
+/// Pixels whose source falls outside the frame are marked NO DATA (-1) rather
+/// than clamped to the edge. Clamping is the tempting one-liner and it is wrong
+/// for this job: it smears the border pixel across the uncovered strip, which
+/// on a dithered stack produces a bright rim that looks like real signal.
+/// Marking them lets integration count coverage per pixel instead.
+///
+/// Bilinear is the deliberate first choice — separable, exactly specifiable, and
+/// cheap to mirror in the oracle. It does soften slightly; Lanczos-3 (which
+/// Prism already implements) is the upgrade once the pipeline is trusted.
+fn resample_bilinear(px: ref Vec[i64], base: i64, w: i64, h: i64, dx: f64, dy: f64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(w * h);
+    for i in 0..(w * h) { out.push(0); }
+    for y in 0..h {
+        for x in 0..w {
+            let sxf = (x as f64) + dx;
+            let syf = (y as f64) + dy;
+            let x0 = sxf.floor();
+            let y0 = syf.floor();
+            let fx = sxf - x0;
+            let fy = syf - y0;
+            let xi = x0 as i64;
+            let yi = y0 as i64;
+            if xi < 0 or yi < 0 or xi + 1 >= w or yi + 1 >= h {
+                out[y * w + x] = -1;
+            } else {
+                let p00 = px[base + yi * w + xi] as f64;
+                let p10 = px[base + yi * w + xi + 1] as f64;
+                let p01 = px[base + (yi + 1) * w + xi] as f64;
+                let p11 = px[base + (yi + 1) * w + xi + 1] as f64;
+                let top = p00 + (p10 - p00) * fx;
+                let bot = p01 + (p11 - p01) * fx;
+                let v = top + (bot - top) * fy;
+                out[y * w + x] = (v + 0.5) as i64;
+            }
+        }
+    }
+    out
+}
+
 fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
     with writes(FileSystem)
 {
@@ -489,7 +542,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
     // writes. Output first so the variable-length input list can be last.
     let argv = env.args();
     if argv.len() < 4 {
-        println("usage: cumulus <out.cstack> <mean|sigmaclip> <in.cstack | sub1.fits sub2.fits ...>");
+        println("usage: cumulus <out.cstack> <mean|sigmaclip|register|stack> <in.cstack | sub1.fits ...>");
     } else {
         let outp = argv[1];
         let mode = argv[2];
@@ -545,6 +598,9 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         if loaded {
             let npix = width * height;
 
+            // One working buffer for both paths: `register` only inspects it,
+            // `stack` replaces it with the aligned frames.
+            let mut work = px;
             if mode == "register" {
                 // Report the recovered offset per frame, reference-relative.
                 // Printing rather than stacking keeps this stage independently
@@ -552,10 +608,10 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 // dithers the generator injected, so a registration error is
                 // caught as a wrong OFFSET rather than as a slightly blurrier
                 // stack that nobody can eyeball.
-                let ref_stars = detect_stars(px, 0, width, height, 6.0);
+                let ref_stars = detect_stars(work, 0, width, height, 6.0);
                 println(f"ref_stars {ref_stars.len()}");
                 for f in 0..nframes {
-                    let st = detect_stars(px, f * npix, width, height, 6.0);
+                    let st = detect_stars(work, f * npix, width, height, 6.0);
                     // (frame - reference): the MEASURED DITHER, which is what
                     // the generator injected and therefore what the oracle
                     // checks. The shift to APPLY when resampling is its
@@ -566,10 +622,38 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                     println(f"frame {f} dx {est.0} dy {est.1} votes {est.2} stars {st.len()}");
                 }
             }
-            let out = if mode == "sigmaclip" {
-                integrate_sigma_clip(px, npix, nframes)
+            // `stack` = the whole pipeline: register every frame against the
+            // reference, resample it onto the reference grid, then integrate.
+            // This is the mode that makes the app useful rather than merely
+            // correct on already-aligned input.
+            if mode == "stack" or mode == "stackmean" {
+                let ref_stars = detect_stars(work, 0, width, height, 6.0);
+                let mut aligned: Vec[i64] = Vec.with_capacity(npix * nframes);
+                let mut kept: i64 = 0;
+                for f in 0..nframes {
+                    let st = detect_stars(work, f * npix, width, height, 6.0);
+                    let est = estimate_offset(st, ref_stars, 1.5);
+                    // A frame whose consensus rests on too few stars is
+                    // DROPPED, not stacked at a guessed offset. One misaligned
+                    // frame smears every star in the result; a dropped frame
+                    // only costs its share of the signal-to-noise.
+                    let need = (ref_stars.len() * 6) / 10;
+                    if est.2 >= need and est.2 > 0 {
+                        let sh = resample_bilinear(work, f * npix, width, height, est.0, est.1);
+                        for v in sh { aligned.push(v); }
+                        kept = kept + 1;
+                    } else {
+                        println(f"cumulus: frame {f} dropped ({est.2} votes)");
+                    }
+                }
+                println(f"cumulus: registered {kept}/{nframes} frames");
+                work = aligned;
+                nframes = kept;
+            }
+            let out = if mode == "sigmaclip" or mode == "stack" {
+                integrate_sigma_clip(work, npix, nframes)
             } else {
-                integrate_mean(px, npix, nframes)
+                integrate_mean(work, npix, nframes)
             };
             write_stack(outp.clone(), out, width, height);
             println(f"cumulus: {mode} {width}x{height} x{nframes} -> {outp}");

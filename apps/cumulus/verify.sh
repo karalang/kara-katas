@@ -98,6 +98,15 @@ else
   exit 1
 fi
 
+echo "== registered stack is sharper than an unregistered one =="
+# `register` proves the offsets are right; this proves they were USED, and used
+# in the RIGHT DIRECTION. A pipeline that measures a correct offset and then
+# resamples by its negation passes every other check here and produces a stack
+# worse than doing nothing — measured, 0.749x the peak brightness.
+"$WORK/cumulus" "$WORK/stack_reg.cstack"   stack     "$WORK/dith.cstack" > /dev/null
+"$WORK/cumulus" "$WORK/stack_unreg.cstack" sigmaclip "$WORK/dith.cstack" > /dev/null
+python3 check_stack.py "$WORK/stack_reg.cstack" "$WORK/stack_unreg.cstack"
+
 echo "== malformed FITS is refused, not misread =="
 # A reader that quietly mishandles BITPIX produces a plausible image, which is
 # worse than no image — so the refusals are part of the contract.
@@ -125,4 +134,4 @@ for f in bad_bitpix bad_naxis not_fits; do
   esac
 done
 
-echo "OK — integration exact on both backends, FITS round-trips, dithers recovered"
+echo "OK — integration exact, FITS round-trips, dithers recovered, stack sharpened"

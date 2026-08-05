@@ -1,7 +1,8 @@
 # Cumulus — deep-sky sub-frame integration
 
 A browser-side deep-sky stacker written in Kāra. **So far: the integration
-engine, its differential oracle, FITS input, and star-based registration.** No registration, no
+engine, its differential oracle, FITS input, star-based registration, and
+sub-pixel resampling.** No registration, no
 calibration, no browser shell yet — those are later slices, and the ordering is
 deliberate (see *Why the oracle came first*).
 
@@ -122,6 +123,42 @@ worst case per axis, 0.10 px mean. Currently **0.025 / 0.035 px mean, 0.224 px
 worst** over 16 frames. It also fails if the consensus rests on fewer than 60%
 of the reference stars, since a two-star agreement is luck rather than a match.
 
+## Resampling and the full pipeline
+
+`stack` runs the lot: register every frame against the reference, resample it
+onto the reference grid with bilinear interpolation, then integrate with sigma
+clipping.
+
+Two decisions worth naming:
+
+**Uncovered pixels are NO DATA, not clamped.** After a dithered frame is
+shifted, part of its border has no source pixel. Clamping to the edge is the
+tempting one-liner and it is wrong here — it smears the border pixel across the
+uncovered strip, producing a bright rim that looks like real signal.
+Integration counts per-pixel coverage instead, so the divisor at the edges is
+the number of frames that actually reached them.
+
+**A frame that cannot be registered is dropped, not guessed.** If the consensus
+rests on under 60% of the reference stars, the frame is discarded. One
+misaligned frame smears every star in the result; a dropped frame only costs its
+share of the signal-to-noise.
+
+### Does registration actually help?
+
+`check_stack.py` measures it rather than assuming it. Against the same dithered
+stack integrated without registration:
+
+```
+  mean peak   reg    9689.6  unreg    5470.4  gain 1.771x
+  concentration reg  0.0485  unreg  0.0334  gain 1.450x
+```
+
+This check exists because the offsets being *correct* and the offsets being
+*applied correctly* are different claims. A pipeline that measures a right
+offset and resamples by its negation passes every other check in this repo.
+Verified by doing exactly that: negating the resample scores **0.749×** peak
+brightness — worse than not registering — and the check fails.
+
 ## FITS input
 
 `cumulus` reads the subset a smart telescope actually emits: `BITPIX = 16`,
@@ -168,18 +205,17 @@ FITS is read directly (see above); this container is not required for input.
 
 Deliberately absent, in the order they matter:
 
-1. **Resampling** — `register` reports offsets but integration does not yet
-   apply them, so a dithered stack still integrates unshifted. Sub-pixel
-   resampling and registration-aware stacking are the next slice.
-2. **Rotation** — translation only. Fine for a tracked mount over a short
+1. **Rotation** — translation only. Fine for a tracked mount over a short
    session; an alt-az mount accumulates field rotation that this will not
    correct.
-3. **Tiled / streaming integration.** The whole stack is decoded up front, which
+2. **Tiled / streaming integration.** The whole stack is decoded up front, which
    is fine at 96×64 and impossible at 12 MP. Measured: 16 frames of 12 MP held
    resident is ~368 MB peak RSS, against ~11 MB for a 512×512 tiled pass — and
    the decoded-frame store, not the working set, is what sets the ceiling under
    the browser's 1 GiB default. Frames stay 16-bit mono with debayering late for
    that reason.
-4. **Calibration** (darks / flats / bias) and the browser shell.
+3. **Calibration** (darks / flats / bias) and the browser shell.
+4. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
+   already implements, is the upgrade once the pipeline is trusted.
 5. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
    HDUs. Vendor RAW stays out of scope.
