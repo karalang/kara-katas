@@ -45,17 +45,17 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-05 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 187.4 ms | 0.44× |
-| **Kāra (codegen)** | 422.9 ms | 1.00× |
-| Rust `-O` | 733.7 ms | 1.73× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 736.9 ms | 1.74× |
-| Go | 930.0 ms | 2.20× |
+| C `clang -O3` | 197.6 ms | 0.84× |
+| **Kāra (codegen)** | 236.6 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 768.6 ms | 3.25× |
+| Rust `-O` | 778.2 ms | 3.29× |
+| Go | 977.0 ms | 4.13× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 2ed967c9f1c1); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -70,4 +70,15 @@ diff <(karac run lru_cache.kara) <(python3 lru_cache.py) && echo OK
 
 The first *design-a-data-structure* kata in the corpus. It implements a real O(1) LRU (hash map + sentinel doubly-linked list) via an index-based node pool, and surfaced the discarded-`Map.remove`-of-shared-value leak (`B-2026-07-19-16`).
 
-It has since surfaced a second, larger one. **`B-2026-08-05-4` (open) — Kāra's row regressed 1.76× (231.7 ms → 422.9 ms) between the 2026-07-28 and 2026-08-04 measurements**, with the kata source unchanged. Root-caused by holding the compiler fixed and swapping only the runtime archive: the cause is `B-2026-07-31-21`'s fix, which stopped the map's capacity from ratcheting on total removals and instead performs a **same-width compacting rehash** when the live count sits at or below ⅜ of capacity. An LRU is the canonical remove-heavy map — every insert past capacity evicts — so the live count parks near that threshold and the O(len) compaction re-fires on eviction after eviction, where the old code paid one doubling and then stopped rehashing. That fix bought a large RSS win (297 MB → 10 MB on a sliding window) and is not a revert candidate; the wall-time it costs a churn-dominated map is simply the half nobody had measured, because no bench in the corpus covered that shape. This kata is now that bench.
+It has since surfaced a second, larger one — now **fixed**, and the fix left this kata faster than it has ever been.
+
+**`B-2026-08-05-4` (fixed) — Kāra's row regressed 1.76× (231.7 ms → 422.9 ms) between the 2026-07-28 and 2026-08-04 measurements**, with the kata source unchanged. Root-caused by holding the compiler fixed and swapping only the runtime archive: the cause was `B-2026-07-31-21`'s fix, which stopped the map's capacity from ratcheting on total removals and instead performed a **same-width compacting rehash** when the live count sat at or below ⅜ of capacity. An LRU is the canonical remove-heavy map — every insert past capacity evicts — so the live count parks near that threshold and the O(len) compaction re-fires on eviction after eviction, where the old code paid one doubling and then stopped rehashing. That fix bought a large RSS win (297 MB → 10 MB on a sliding window) and was never a revert candidate; the wall-time it cost a churn-dominated map was simply the half nobody had measured, because no bench in the corpus covered that shape. This kata is now that bench.
+
+It was closed in two independent parts, and the second one is why the row above beats the pre-regression baseline rather than merely restoring it:
+
+- **The compaction band widened from ⅜ to ³⁄₁₆** (`73237002`), making the compacting rehash fire ~3× less often. At the ⅜ edge a churning table re-hashes its *entire live set once per operation*, forever — `rehash_from` cannot skip the per-key hash because buckets store no hash. That alone recovered the regression.
+- **Removal stopped manufacturing the tombstones that drive the rehash** (`45398dd9`). A tombstone only needs to exist when a probe chain can continue past the bucket; when the next bucket is already `EMPTY`, none can, so the slot is released outright. Lookups then stop walking tombstone runs — a win no capacity policy can buy, and the reason this lands *below* the old baseline.
+
+The two stack rather than subsume each other: compaction re-hash work on the runtime's sliding-window churn test is 15.52% of the workload at ⅜ with tombstoning, 6.29% at ³⁄₁₆, 7.06% at ⅜ with the release, and **1.92%** with both.
+
+**What the numbers cost.** Kāra's runtime peak RSS on this workload rose 1.36 MB → 1.41 MB (+3.6%) — the ³⁄₁₆ band deliberately holds the table one doubling wider than ⅜ did. That is the trade the fix makes, and at 48 KB against a 1.79× speedup it is the right side of it. Note also that every reference language in the table above reads ~5% slower than the 2026-08-04 snapshot despite byte-identical binaries; that is machine state between sessions, not a toolchain change, so Kāra's improvement here is if anything understated.
