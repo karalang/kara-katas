@@ -1,0 +1,204 @@
+// Cumulus — deep-sky sub-frame integration.
+//
+// Step 1: the integration engine and nothing else. Reads a `.cstack` (see
+// gen_frames.py), integrates the frames per pixel by one of two modes, and
+// writes a single-frame `.cstack` back out.
+//
+//   mean        arithmetic mean across all frames
+//   sigmaclip   iterative sigma clipping, then the mean of the survivors
+//
+// EVERY KERNEL IS AN ORDINARY SEQUENTIAL `for` LOOP. There is no `TaskGroup`,
+// no `spawn`, no `par {}` anywhere in this file. The compiler proves that
+// iteration `p` writes `out` only within `[p, p+1)` and fans the loop across
+// the worker pool by itself — the same route Prism took when it deleted its
+// hand-rolled band fan-out and got 23% faster. Check it with:
+//
+//     karac query concurrency cumulus.kara
+//
+// The clipping is written WITHOUT a per-pixel keep-mask: instead of tracking
+// which frames survive, it tracks the surviving INTERVAL [lo, hi] and re-scans.
+// For a symmetric threshold the kept set is always an interval, so the two
+// formulations are equivalent — but the interval form allocates nothing inside
+// the pixel loop, which is what keeps the loop body disjoint and lets it
+// parallelize.
+
+// Sigma-clip parameters. Fixed here rather than exposed, because the oracle
+// (oracle.py) hard-codes the same values — the differential is only meaningful
+// if both sides agree on the algorithm, not merely on the answer.
+let SIGMA: f64 = 3.0;
+let MAXITERS: i64 = 5;
+
+fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
+    let mut data: Vec[u8] = Vec.new();
+    match File.open(path) {
+        Ok(f) => {
+            let mut buf: Array[u8, 4096] = [0u8; 4096];
+            let mut reading = true;
+            while reading {
+                match f.read(mut buf) {
+                    Ok(n) => {
+                        if n == 0 {
+                            reading = false;
+                        } else {
+                            for i in 0..(n as i64) { data.push(buf[i]); }
+                        }
+                    }
+                    Err(e) => { reading = false; }
+                }
+            }
+        }
+        Err(e) => { println("cumulus: cannot open input"); }
+    }
+    data
+}
+
+fn u32_at(data: ref Vec[u8], off: i64) -> i64 {
+    (data[off] as i64)
+        + (data[off + 1] as i64) * 256
+        + (data[off + 2] as i64) * 65536
+        + (data[off + 3] as i64) * 16777216
+}
+
+fn u16_at(data: ref Vec[u8], off: i64) -> i64 {
+    (data[off] as i64) + (data[off + 1] as i64) * 256
+}
+
+/// Arithmetic mean across frames. The accumulator is f64 and the inputs are
+/// u16, so every partial sum below 2^53 is EXACT — there is no accumulation
+/// error to explain away, and the oracle can assert exact equality.
+fn integrate_mean(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(npix);
+    for p in 0..npix { out.push(0); }
+    for p in 0..npix {
+        let mut sum: f64 = 0.0;
+        for f in 0..nframes { sum = sum + (px[f * npix + p] as f64); }
+        let m = sum / (nframes as f64);
+        out[p] = (m + 0.5) as i64;
+    }
+    out
+}
+
+/// Iterative sigma clipping, interval form.
+///
+/// Each pass computes the mean and POPULATION standard deviation (ddof = 0) of
+/// the values currently inside `[lo, hi]`, then narrows the interval to
+/// `mean ± SIGMA * sd`. It stops when a pass rejects nothing — convergence is
+/// keyed on the surviving COUNT rather than on the float bounds, because two
+/// bounds can differ in the last bit while selecting the same set, which would
+/// spin until MAXITERS for no reason.
+fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(npix);
+    for p in 0..npix { out.push(0); }
+    for p in 0..npix {
+        let mut lo: f64 = -1.0e30;
+        let mut hi: f64 = 1.0e30;
+        let mut prev_count: i64 = nframes + 1;
+        let mut mean: f64 = 0.0;
+        let mut it: i64 = 0;
+        while it < MAXITERS {
+            let mut sum: f64 = 0.0;
+            let mut count: i64 = 0;
+            for f in 0..nframes {
+                let v = px[f * npix + p] as f64;
+                if v >= lo and v <= hi {
+                    sum = sum + v;
+                    count = count + 1;
+                }
+            }
+            if count == 0 {
+                // Everything clipped — impossible for a symmetric interval
+                // around the mean, but the loop must not divide by zero.
+                it = MAXITERS;
+            } else {
+                mean = sum / (count as f64);
+                if count == prev_count {
+                    // A pass that rejected nothing: converged.
+                    it = MAXITERS;
+                } else {
+                    let mut var: f64 = 0.0;
+                    for f in 0..nframes {
+                        let v = px[f * npix + p] as f64;
+                        if v >= lo and v <= hi {
+                            let d = v - mean;
+                            var = var + d * d;
+                        }
+                    }
+                    let sd = (var / (count as f64)).sqrt();
+                    prev_count = count;
+                    lo = mean - SIGMA * sd;
+                    hi = mean + SIGMA * sd;
+                    it = it + 1;
+                }
+            }
+        }
+        out[p] = (mean + 0.5) as i64;
+    }
+    out
+}
+
+fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
+    with writes(FileSystem)
+{
+    let mut bytes: Vec[u8] = Vec.new();
+    bytes.push(67u8);  // 'C'
+    bytes.push(83u8);  // 'S'
+    bytes.push(84u8);  // 'T'
+    bytes.push(75u8);  // 'K'
+    let dims: Vec[i64] = [width, height, 1];
+    for d in dims {
+        bytes.push((d % 256) as u8);
+        bytes.push(((d / 256) % 256) as u8);
+        bytes.push(((d / 65536) % 256) as u8);
+        bytes.push(((d / 16777216) % 256) as u8);
+    }
+    for v in out {
+        let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
+        bytes.push((c % 256) as u8);
+        bytes.push(((c / 256) % 256) as u8);
+    }
+    match File.create(path) {
+        Ok(f) => {
+            match f.write(bytes.as_slice()) {
+                Ok(n) => { }
+                Err(e) => { println("cumulus: write failed"); }
+            }
+        }
+        Err(e) => { println("cumulus: cannot create output"); }
+    }
+}
+
+fn main() with reads(FileSystem) writes(FileSystem) {
+    let argv = env.args();
+    if argv.len() < 4 {
+        println("usage: cumulus <in.cstack> <out.cstack> <mean|sigmaclip>");
+    } else {
+        let inp = argv[1];
+        let outp = argv[2];
+        let mode = argv[3];
+
+        let data = read_all(inp);
+        if data.len() < 16 {
+            println("cumulus: input too short to hold a header");
+        } else {
+            let width = u32_at(data, 4);
+            let height = u32_at(data, 8);
+            let nframes = u32_at(data, 12);
+            let npix = width * height;
+
+            // Decode the whole stack up front. Step 1 runs on small synthetic
+            // frames where this is trivially affordable; the tiled/streaming
+            // form that a 12 MP stack needs is a later slice, and deliberately
+            // not pre-built here — the point of this step is the NUMERICS.
+            let mut px: Vec[i64] = Vec.with_capacity(npix * nframes);
+            for i in 0..(npix * nframes) { px.push(u16_at(data, 16 + i * 2)); }
+
+            let out = if mode == "sigmaclip" {
+                integrate_sigma_clip(px, npix, nframes)
+            } else {
+                integrate_mean(px, npix, nframes)
+            };
+            write_stack(outp.clone(), out, width, height);
+            println(f"cumulus: {mode} {width}x{height} x{nframes} -> {outp}");
+        }
+    }
+}
