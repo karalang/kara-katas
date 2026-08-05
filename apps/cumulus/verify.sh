@@ -134,4 +134,21 @@ for f in bad_bitpix bad_naxis not_fits; do
   esac
 done
 
+if command -v node >/dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
+  echo "== wasm kernels equal native =="
+  "$WORK/cumulus" "$WORK/w_mean.cstack"  mean  "$WORK/dith.cstack" > /dev/null
+  "$WORK/cumulus" "$WORK/w_stack.cstack" stack "$WORK/dith.cstack" > /dev/null
+  node test_node.mjs "$WORK/dith.cstack" "$WORK/w_mean.cstack" "$WORK/w_stack.cstack"
+
+  if node -e "require('playwright')" 2>/dev/null && [[ -d demo ]]; then
+    echo "== the real page in a real browser =="
+    "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null
+    node verify_browser.mjs "$WORK/demo_native.cstack"
+  else
+    echo "== browser check SKIPPED (no playwright or no demo/) =="
+  fi
+else
+  echo "== wasm checks SKIPPED (no node, or cumulus.wasm not built) =="
+fi
+
 echo "OK — integration exact, FITS round-trips, dithers recovered, stack sharpened"

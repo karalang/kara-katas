@@ -79,14 +79,27 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--rays", type=int, default=12)
     ap.add_argument("--noise", type=float, default=60.0)
+    ap.add_argument("--dither", type=float, default=0.0,
+                    help="max per-frame star shift in pixels (0 = aligned)")
+    ap.add_argument("--truth", help="write the injected per-frame offsets here")
     args = ap.parse_args()
 
     w, h, n = args.width, args.height, args.frames
-    sky = base_sky(w, h)
     rng = LCG(args.seed)
     os.makedirs(args.outdir, exist_ok=True)
+    truth = []
 
     for i in range(n):
+        # Same convention as gen_frames.py: frame 0 is the reference and never
+        # moves, so the recovered offsets are directly comparable between the
+        # two containers.
+        if i == 0 or args.dither == 0.0:
+            dx = dy = 0.0
+        else:
+            dx = (rng.uniform() * 2.0 - 1.0) * args.dither
+            dy = (rng.uniform() * 2.0 - 1.0) * args.dither
+        truth.append((dx, dy))
+        sky = base_sky(w, h, dx, dy)
         px = [0] * (w * h)
         for j in range(w * h):
             v = sky[j] + rng.gauss(args.noise)
@@ -96,7 +109,12 @@ def main() -> int:
             px[idx] = 60000 + (rng.next_u32() % 5000)
         write_fits(os.path.join(args.outdir, f"sub_{i:03d}.fits"), px, w, h)
 
-    print(f"wrote {n} FITS frames to {args.outdir}: {w}x{h}, BITPIX=16, BZERO=32768")
+    if args.truth:
+        with open(args.truth, "w") as th:
+            for dx, dy in truth:
+                th.write(f"{dx:.9f} {dy:.9f}\n")
+    print(f"wrote {n} FITS frames to {args.outdir}: {w}x{h}, BITPIX=16, BZERO=32768, "
+          f"dither +/-{args.dither}px")
     return 0
 
 

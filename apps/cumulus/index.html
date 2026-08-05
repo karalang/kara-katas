@@ -1,0 +1,325 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Cumulus — deep-sky stacker, entirely in your browser</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Stack astrophotography sub-frames in your browser — star registration, sub-pixel alignment, sigma-clipped integration. Nothing is uploaded. Kāra compiled to WebAssembly." />
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #141922; --line: #232b38;
+    --ink: #e6ebf2; --dim: #8b97a8; --accent: #6ea8fe; --ok: #56d364; --warn: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header { padding: 28px 24px 10px; max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; }
+  .sub { color: var(--dim); margin: 0 0 4px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 24px 60px; }
+  .grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+  #drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 22px 14px;
+    text-align: center; color: var(--dim); cursor: pointer; transition: .15s;
+  }
+  #drop.hot { border-color: var(--accent); color: var(--ink); background: #0f1520; }
+  label { display: block; margin: 14px 0 5px; font-size: 13px; color: var(--dim); }
+  select, button {
+    width: 100%; padding: 9px 11px; border-radius: 7px; font: inherit;
+    background: #0f1520; color: var(--ink); border: 1px solid var(--line);
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #06090f; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row > * { flex: 1; }
+  canvas {
+    width: 100%; image-rendering: pixelated; background: #05070b;
+    border: 1px solid var(--line); border-radius: 8px; display: block;
+  }
+  #bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 12px; }
+  #barfill { height: 100%; width: 0; background: var(--accent); transition: width .12s; }
+  #log { margin-top: 12px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); white-space: pre-wrap; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); }
+  footer { max-width: 1100px; margin: 0 auto; padding: 0 24px 40px; color: var(--dim); font-size: 13px; }
+  code { background: #0f1520; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+
+<header>
+  <h1>Cumulus</h1>
+  <p class="sub">Deep-sky sub-frame stacker. Star registration, sub-pixel alignment, sigma-clipped
+  integration — running entirely in your browser.</p>
+  <p class="sub"><strong>Nothing is uploaded.</strong> The pixels never leave this tab: the whole
+  pipeline is Kāra compiled to WebAssembly.</p>
+</header>
+
+<main>
+  <div class="grid">
+    <div class="panel">
+      <h2>Frames</h2>
+      <div id="drop">
+        <strong>Drop FITS subs here</strong><br />
+        or click to choose files
+        <input id="file" type="file" multiple accept=".fits,.fit" hidden />
+      </div>
+      <div class="row"><button id="demo">Load demo stack</button></div>
+
+      <label for="mode">Integration</label>
+      <select id="mode">
+        <option value="2">Register + sigma clip (recommended)</option>
+        <option value="1">Sigma clip, no registration</option>
+        <option value="0">Mean, no registration</option>
+      </select>
+
+      <label for="stretch">Display stretch</label>
+      <select id="stretch">
+        <option value="asinh">asinh (reveals faint detail)</option>
+        <option value="linear">Linear</option>
+      </select>
+
+      <div class="row"><button id="go" class="primary" disabled>Stack</button></div>
+      <div class="row"><button id="save" disabled>Save PNG</button></div>
+
+      <div id="bar"><div id="barfill"></div></div>
+      <div id="log">No frames loaded.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Result</h2>
+      <canvas id="view" width="96" height="64"></canvas>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>The <em>same</em> kernels run here and in the command-line build — one Kāra source, two
+  targets. The node harness requires the WebAssembly result to be byte-identical to the native
+  binary's, so this page is not a reimplementation of the pipeline; it is the pipeline.</p>
+  <p>Supported input: <code>BITPIX=16</code>, <code>NAXIS=2</code> FITS with
+  <code>BZERO</code>/<code>BSCALE</code> — what smart telescopes emit. All subs must share
+  dimensions.</p>
+</footer>
+
+<script type="module">
+import { instantiate } from "./cumulus.js";
+
+const $ = (id) => document.getElementById(id);
+const log = (msg, cls = "") => { $("log").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; };
+const setBar = (f) => { $("barfill").style.width = `${Math.max(0, Math.min(1, f)) * 100}%`; };
+
+let frames = [];   // Uint16Array per sub, little-endian native order
+let dims = null;   // {w, h}
+let result = null; // {w, h, px: Uint16Array}
+
+// ── FITS decode ─────────────────────────────────────────────────────────────
+//
+// Header parsing lives in JS because the wasm entry point takes decoded pixels,
+// not files. The BZERO transform is the part that matters and the part that is
+// easy to get wrong — unsigned 16-bit data rides in FITS's SIGNED 16-bit format,
+// so dropping it turns every value above 32767 negative and stars come out as
+// holes. verify_browser.mjs guards against drift by requiring this decoder and
+// the Kāra one to produce the same stack from the same files.
+function decodeFits(buf) {
+  const bytes = new Uint8Array(buf);
+  const CARD = 80, BLOCK = 2880;
+  if (bytes.length < BLOCK) throw new Error("shorter than one FITS block");
+
+  let off = 0, done = false;
+  const kv = {};
+  while (off + CARD <= bytes.length && !done) {
+    const card = new TextDecoder("latin1").decode(bytes.subarray(off, off + CARD));
+    const key = card.slice(0, 8).trim();
+    if (key === "END") { done = true; off = (Math.floor(off / BLOCK) + 1) * BLOCK; break; }
+    const eq = card.indexOf("=");
+    if (eq >= 0) {
+      let v = card.slice(eq + 1);
+      const slash = v.indexOf("/");
+      if (slash >= 0) v = v.slice(0, slash);
+      kv[key] = v.trim();
+    }
+    off += CARD;
+  }
+  if (!done) throw new Error("no END card in header");
+
+  const bitpix = parseInt(kv.BITPIX ?? "0", 10);
+  const naxis = parseInt(kv.NAXIS ?? "0", 10);
+  const w = parseInt(kv.NAXIS1 ?? "0", 10);
+  const h = parseInt(kv.NAXIS2 ?? "0", 10);
+  const bzero = parseFloat(kv.BZERO ?? "0");
+  const bscale = parseFloat(kv.BSCALE ?? "1");
+  if (bitpix !== 16) throw new Error(`unsupported BITPIX ${bitpix} (only 16 is implemented)`);
+  if (naxis !== 2) throw new Error(`unsupported NAXIS ${naxis} (only 2-D mono is implemented)`);
+  if (off + w * h * 2 > bytes.length) throw new Error("data section shorter than NAXIS1*NAXIS2");
+
+  const dv = new DataView(buf, off);
+  const px = new Uint16Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const v = bzero + bscale * dv.getInt16(i * 2, false); // FITS is big-endian
+    px[i] = v < 0 ? 0 : v > 65535 ? 65535 : Math.round(v);
+  }
+  return { w, h, px };
+}
+
+// ── Display stretch ─────────────────────────────────────────────────────────
+//
+// Linear 16-bit astro data renders as an almost black frame: the sky sits at a
+// few percent of full scale and the interesting structure is a fraction above
+// it. Clipping to percentiles and applying asinh is the standard way to show
+// faint detail without blowing out the star cores.
+function render(res, mode) {
+  const { w, h, px } = res;
+  const sorted = Uint16Array.from(px).sort();
+  const lo = sorted[Math.floor(sorted.length * 0.005)];
+  const hi = sorted[Math.floor(sorted.length * 0.999)];
+  const span = Math.max(1, hi - lo);
+
+  const cv = $("view");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d");
+  const img = ctx.createImageData(w, h);
+  const A = 12; // asinh softening — higher lifts faint signal harder
+  const norm = Math.asinh(A);
+  for (let i = 0; i < w * h; i++) {
+    let t = (px[i] - lo) / span;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    if (mode === "asinh") t = Math.asinh(A * t) / norm;
+    const v = Math.round(t * 255);
+    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ── wasm ────────────────────────────────────────────────────────────────────
+let blob = null; // concatenated frame bytes staged for read_frames
+
+const host = {
+  read_frames(dst, len, ctx) {
+    new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(blob);
+  },
+  put_result(ptr, len, w, h, ctx) {
+    const raw = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
+    result = { w: Number(w), h: Number(h), px: new Uint16Array(raw.buffer) };
+  },
+  progress(stage, done, total) {
+    const s = Number(stage), d = Number(done), t = Number(total) || 1;
+    // Registration dominates the wall clock, so it owns most of the bar.
+    if (s === 0) setBar(0.1);
+    else if (s === 1) setBar(0.1 + 0.8 * (d / t));
+    else setBar(1);
+  },
+};
+
+async function stack() {
+  if (!frames.length) return;
+  $("go").disabled = true;
+  const mode = parseInt($("mode").value, 10);
+  const { w, h } = dims;
+
+  blob = new Uint8Array(frames.length * w * h * 2);
+  frames.forEach((f, i) => blob.set(new Uint8Array(f.buffer), i * w * h * 2));
+
+  log(`Stacking ${frames.length} frames at ${w}×${h}…`);
+  setBar(0.02);
+  const t0 = performance.now();
+  try {
+    const { exports } = await instantiate(host);
+    const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(frames.length), BigInt(mode)));
+    const ms = performance.now() - t0;
+    render(result, $("stretch").value);
+    const dropped = frames.length - kept;
+    const note = mode === 2
+      ? (dropped ? `<span class="warn">${kept}/${frames.length} registered — ${dropped} dropped</span>`
+                 : `<span class="ok">all ${kept} frames registered</span>`)
+      : "no registration";
+    log(`Done in ${ms.toFixed(0)} ms · ${note}`);
+    $("save").disabled = false;
+  } catch (e) {
+    log(`Failed: ${e.message}`, "warn");
+    setBar(0);
+  }
+  $("go").disabled = false;
+}
+
+async function loadFiles(fileList) {
+  frames = []; dims = null; result = null;
+  $("save").disabled = true;
+  const files = [...fileList].sort((a, b) => a.name.localeCompare(b.name));
+  const problems = [];
+  for (const f of files) {
+    try {
+      const img = decodeFits(await f.arrayBuffer());
+      if (!dims) dims = { w: img.w, h: img.h };
+      if (img.w !== dims.w || img.h !== dims.h) throw new Error(`is ${img.w}×${img.h}, expected ${dims.w}×${dims.h}`);
+      frames.push(img.px);
+    } catch (e) {
+      problems.push(`${f.name}: ${e.message}`);
+    }
+  }
+  $("go").disabled = frames.length < 2;
+  if (!frames.length) {
+    log(problems.length ? problems.join("\n") : "No usable frames.", "warn");
+  } else {
+    const head = `${frames.length} frame${frames.length > 1 ? "s" : ""} at ${dims.w}×${dims.h}`;
+    log(problems.length ? `${head}\n<span class="warn">skipped:\n${problems.join("\n")}</span>` : head);
+  }
+}
+
+$("drop").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", (e) => loadFiles(e.target.files));
+["dragenter", "dragover"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("hot"); }));
+["dragleave", "drop"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("hot"); }));
+$("drop").addEventListener("drop", (e) => loadFiles(e.dataTransfer.files));
+$("go").addEventListener("click", stack);
+$("stretch").addEventListener("change", () => { if (result) render(result, $("stretch").value); });
+
+$("demo").addEventListener("click", async () => {
+  log("Fetching demo subs…");
+  try {
+    const names = Array.from({ length: 16 }, (_, i) => `demo/sub_${String(i).padStart(3, "0")}.fits`);
+    const bufs = await Promise.all(names.map((n) => fetch(n).then((r) => {
+      if (!r.ok) throw new Error(`${n}: ${r.status}`);
+      return r.arrayBuffer();
+    })));
+    frames = []; dims = null;
+    for (const b of bufs) {
+      const img = decodeFits(b);
+      if (!dims) dims = { w: img.w, h: img.h };
+      frames.push(img.px);
+    }
+    $("go").disabled = false;
+    log(`Demo loaded: ${frames.length} frames at ${dims.w}×${dims.h}`);
+  } catch (e) {
+    log(`Demo unavailable: ${e.message}`, "warn");
+  }
+});
+
+$("save").addEventListener("click", () => {
+  $("view").toBlob((b) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "cumulus-stack.png";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+});
+
+// Expose for the headless verifier — it drives the same path a user does.
+window.__cumulus = {
+  loadBuffers: async (bufs) => {
+    frames = []; dims = null;
+    for (const b of bufs) {
+      const img = decodeFits(b);
+      if (!dims) dims = { w: img.w, h: img.h };
+      frames.push(img.px);
+    }
+    $("go").disabled = false;
+  },
+  stack,
+  getResult: () => (result ? { w: result.w, h: result.h, px: Array.from(result.px) } : null),
+};
+</script>

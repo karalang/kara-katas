@@ -2,9 +2,9 @@
 
 A browser-side deep-sky stacker written in Kāra. **So far: the integration
 engine, its differential oracle, FITS input, star-based registration, and
-sub-pixel resampling.** No registration, no
-calibration, no browser shell yet — those are later slices, and the ordering is
-deliberate (see *Why the oracle came first*).
+sub-pixel resampling, and a browser shell.** No calibration and no rotation
+yet — those are later slices, and the ordering is deliberate (see *Why the
+oracle came first*).
 
 ```
 python3 gen_frames.py in.cstack               # synthetic 16-frame stack
@@ -83,6 +83,45 @@ One consequence shapes the clipping kernel: it tracks the surviving **interval**
 set is always an interval, so the two formulations are equivalent — but the
 interval form allocates nothing inside the pixel loop, which is what keeps the
 loop body disjoint and lets it parallelize.
+
+## The browser shell
+
+`index.html` is the app: drop FITS subs in, pick an integration mode, get a
+stacked image. Nothing is uploaded — the pixels never leave the tab.
+
+```
+KARAC=/path/to/karac ./build_web.sh          # build + verify
+python3 -m http.server                       # then open localhost:8000
+```
+
+**One Kāra source, two targets.** `main` is `#[target(native)]`, `stack_frames`
+is `#[target(wasm_browser)]`, and both call the *same* kernels. The page is not a
+port of the pipeline; it is the pipeline. `test_node.mjs` holds it to that
+claim by requiring the WebAssembly result to be **byte-identical to the native
+binary's** — the same bar the interpreter and numpy already meet:
+
+```
+  mean   byte-identical to native over 6144 pixels
+  stack  byte-identical to native over 6144 pixels
+```
+
+`verify_browser.mjs` goes further and drives the real page in headless Chromium,
+because "the kernels are right" and "the page works" are different claims. It
+feeds the demo subs through the same path the file picker uses, compares the
+page's pixels against the CLI's, and separately asserts the canvas was actually
+painted — a blank canvas would otherwise pass a pixel check that reads the data
+rather than the display.
+
+```
+  page stack byte-identical to native over 6144 pixels
+  canvas painted, luminance range 0..255
+  status line: Done in 27 ms · all 16 frames registered
+```
+
+The one thing the page reimplements is the **FITS header parse**, in JS, because
+the wasm entry point takes decoded pixels rather than files. That is a real
+duplication of the `BZERO` trap, so the browser check pins the two decoders to
+each other: same files, same stack, or the run fails.
 
 ## Registration
 

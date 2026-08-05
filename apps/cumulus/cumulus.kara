@@ -534,6 +534,7 @@ fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64)
     }
 }
 
+#[target(native)]
 fn main() with reads(FileSystem) writes(FileSystem) {
     // usage: cumulus <out.cstack> <mean|sigmaclip> <input...>
     //
@@ -659,4 +660,89 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             println(f"cumulus: {mode} {width}x{height} x{nframes} -> {outp}");
         }
     }
+}
+
+// ─── Browser entry point ─────────────────────────────────────────────────────
+//
+// The SAME kernels the CLI uses, compiled for wasm_browser. Nothing above this
+// line knows a browser exists — `stack_frames` only moves bytes across the host
+// boundary and calls the same detect/estimate/resample/integrate functions the
+// native `main` calls. That is the whole point of the dual-target build: the
+// numerics verified by verify.sh on the CLI are literally the numerics that run
+// in the page, not a port of them.
+
+effect resource Input;    // the frame bytes JS holds, pulled in via read_frames
+effect resource Display;  // the <canvas> we paint, via put_result
+
+// JS copies `len` bytes — the whole `.cstack`-style blob — into wasm memory at
+// `dst`. Synchronous, so the buffer is filled before we read it.
+host fn read_frames(dst: *const u8, len: i64) with reads(Input);
+
+// JS reads `len` bytes of 16-bit result at `ptr` and paints it.
+host fn put_result(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
+
+// Progress ticks so a long stack does not look hung. `stage`: 0 = decoding,
+// 1 = registering, 2 = integrating.
+host fn progress(stage: i64, done: i64, total: i64) with writes(Display);
+
+/// Stack `nframes` frames of `w`x`h` 16-bit pixels, already concatenated by JS.
+///
+/// `mode`: 0 = mean, 1 = sigma clip, 2 = register + sigma clip (the full
+/// pipeline). Returns the number of frames that survived registration, so the
+/// page can report "14/16 stacked" rather than silently dropping subs.
+#[target(wasm_browser)]
+pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
+    with reads(Input) writes(Display) panics
+{
+    let npix = w * h;
+    let nbytes = npix * nframes * 2;
+    let mut raw: Vec[u8] = Vec.filled(nbytes, 0);
+    read_frames(raw.as_ptr(), raw.len());
+
+    // Little-endian u16 in, i64 working values out — same representation the
+    // CLI decodes into, so the kernels below are bit-for-bit the same code.
+    let mut px: Vec[i64] = Vec.with_capacity(npix * nframes);
+    for i in 0..(npix * nframes) {
+        px.push((raw[i * 2] as i64) + (raw[i * 2 + 1] as i64) * 256);
+    }
+    progress(0, nframes, nframes);
+
+    let mut work = px;
+    let mut kept = nframes;
+    if mode == 2 {
+        let ref_stars = detect_stars(work, 0, w, h, 6.0);
+        let need = (ref_stars.len() * 6) / 10;
+        let mut aligned: Vec[i64] = Vec.with_capacity(npix * nframes);
+        kept = 0;
+        for f in 0..nframes {
+            let st = detect_stars(work, f * npix, w, h, 6.0);
+            let est = estimate_offset(st, ref_stars, 1.5);
+            if est.2 >= need and est.2 > 0 {
+                let sh = resample_bilinear(work, f * npix, w, h, est.0, est.1);
+                for v in sh { aligned.push(v); }
+                kept = kept + 1;
+            }
+            progress(1, f + 1, nframes);
+        }
+        work = aligned;
+    }
+
+    let out = if mode == 0 {
+        integrate_mean(work, npix, kept)
+    } else {
+        integrate_sigma_clip(work, npix, kept)
+    };
+    progress(2, 1, 1);
+
+    // Hand back 16-bit little-endian; the page owns the display stretch, so the
+    // full dynamic range crosses the boundary intact rather than being
+    // pre-flattened to 8-bit here.
+    let mut bytes: Vec[u8] = Vec.with_capacity(npix * 2);
+    for v in out {
+        let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
+        bytes.push((c % 256) as u8);
+        bytes.push(((c / 256) % 256) as u8);
+    }
+    put_result(bytes.as_ptr(), bytes.len(), w, h);
+    kept
 }
