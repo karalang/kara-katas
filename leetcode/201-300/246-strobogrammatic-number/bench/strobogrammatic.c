@@ -15,11 +15,22 @@
  * being true when every lane was moved to one flat N*LEN byte buffer indexed by
  * offset - all five now do the same work per call.
  *
- * C's remaining lead over Kara is bounds-check elimination and nothing else:
- * Kara's punch loop is 21 instructions to C's 15, and the 6-instruction excess
- * is exactly two per-iteration bounds checks. Adding equivalent checks to this
- * mirror (see the README's confirmation section) makes clang emit an isomorphic
- * loop and lands it on Kara's time. Filed as kara B-2026-08-04-8.
+ * NOTE on what C's remaining lead is (CORRECTED 2026-08-05). This comment used
+ * to say the lead was bounds-check elimination "and nothing else", on the
+ * strength of the 21-vs-15 instruction count and a control that added bounds
+ * checks here and reproduced the 1.28x. That inference was wrong: it showed
+ * bounds checks are SUFFICIENT to cost ~1.28x in C, not that they are what cost
+ * Kara. Once karac eliminated them (B-2026-08-05-6, c87f488) the kata moved only
+ * 3%.
+ *
+ * The real difference is that THIS MIRROR PASSES AN ALREADY-OFFSET POINTER
+ * (`corpus + i*LEN`), so it never computes `base + lo` in the loop, while Kara's
+ * helper takes `(corpus, base, len)` and checks that add for integer overflow.
+ * Rewriting this file into the base+index form costs nothing (35.15 vs 35.16 ms);
+ * adding __builtin_add_overflow to those adds lands it on Kara (43.04 vs 43.71).
+ * Filed as kara B-2026-08-05-21. The algorithm is unchanged and the lanes remain
+ * a fair pairing -- this is a language-level difference in how a row is
+ * addressed, not a mirror doing less work.
  */
 
 #include <stdio.h>
