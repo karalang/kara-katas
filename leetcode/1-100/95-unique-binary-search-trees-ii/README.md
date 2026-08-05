@@ -68,6 +68,13 @@ The two approaches are a deliberate contrast in how a language of RC values hand
 
 The DP variant was also the surface that surfaced and drove [`B-2026-07-11-29`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — a cluster of five RC-accounting gaps in `Vec[Option[shared]]` clone + consume + share + grow, now fixed in the compiler (it is clean under LeakSanitizer/valgrind across every surface).
 
+The same variant surfaced two further **high-severity double-frees**, both codegen-only (the tree-walk interpreter was correct throughout) and both now fixed:
+
+- [`B-2026-07-11-21`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — reusing an owned `Option[shared struct]` value across two by-value consuming calls whose callee *clones* the matched subtree double-freed under both JIT and AOT, silently and with no diagnostic.
+- [`B-2026-07-11-24`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — passing a `Vec[Vec[Option[shared]]]` **element** by value to that same consuming callee corrupted the heap once the outer `Vec` grew in a loop: a wrong answer at small `n`, a double-free crash at larger.
+
+Together with `B-2026-07-11-29` these make the DP variant the corpus's densest RC-ownership bug-finder — which is why it is kept alongside the ★ rather than folded into it.
+
 ## Running
 
 ```bash

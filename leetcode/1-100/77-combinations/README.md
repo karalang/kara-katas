@@ -60,6 +60,8 @@ from `(1 << k) - 1` until `x` reaches `1 << n`. Gosper emits masks in integer or
 
 **v1 note.** Counts (up to `C(20,10) = 184,756`) and values fit i64 trivially; the per-case sink is `count:hash` so it is both count- and content-sensitive. Both solvers verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT), including the default auto-parallelising build and `KARAC_AUTO_PAR=0`.
 
+The Gosper's-hack variant surfaced [`B-2026-07-11-10`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) — its `k == 0` case pushes the single empty combination, and `out.push(Vec.new())` where `out: Vec[Vec[i64]]` failed typecheck with `expected 'Vec<i64>', found 'Vec<?T0>'` instead of inferring the inner element type from `push`'s statically-known parameter type. The DFS solvers never hit it: their empty combination comes from `path.clone()` of an already-typed `path`. Low severity and ergonomics-only — a clean, actionable error rather than a run/build divergence — so the kata took the idiomatic one-line annotation (`let empty: Vec[i64] = Vec.new()`) rather than being routed around. The compiler fix landed 2026-07-11 (deep-resolving both the receiver element type and the argument through the substitutions the unification had just populated, before the assignability check), and `out.push(Vec.new())` infers correctly today; [`combinations_bitmask.kara`](combinations_bitmask.kara) still carries the explicit binding, which now reads as a naming choice rather than a workaround.
+
 ## Running
 
 ```bash

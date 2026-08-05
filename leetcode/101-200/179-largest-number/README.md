@@ -58,3 +58,9 @@ diff <(karac run largest_number.kara) <(python3 largest_number.py) && echo OK
 ## Notes
 
 Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+
+## What this kata surfaced
+
+**An auto-par cost-model gap — now fixed in `karac`.** [`B-2026-07-23-25`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): the punch loop rebuilds a small array each pass and insertion-sorts it under an integer-concatenation comparator. Sequentially that is ~0.00 s; under the **default** auto-parallelising build it took ~15 s measured across 5 of 400 passes — roughly **1000× slower** — because per-task scheduling overhead dwarfed the trivial per-iteration work.
+
+Worth distinguishing from its neighbour [#214](../../201-300/214-shortest-palindrome/): that one was a *soundness* race producing wrong answers. This one stayed deterministic and byte-correct the whole time and was purely a cost-model failure — auto-par parallelising a loop whose body is too light to amortise the spawn. Both are default-build-only, which is why the corpus benches the auto-par surface rather than trusting `KARAC_AUTO_PAR=0`.

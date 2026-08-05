@@ -61,3 +61,9 @@ diff <(karac run shortest_palindrome.kara) <(python3 shortest_palindrome.py) && 
 ## Notes
 
 Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+
+## What this kata surfaced
+
+**A high-severity auto-par soundness bug — now fixed in `karac`.** [`B-2026-07-23-20`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): the reduction loop `while w < n { sink = sink + f(..., mut scratch, ...); w += 1 }` was parallelised on `sink`, but `scratch` is a **loop-invariant `mut ref` buffer declared outside the loop** and written every iteration inside `f`. That makes the iterations dependent, so parallel workers raced on the shared buffer — the **default** `karac build` (and `karac run`) produced nondeterministic wrong output while `KARAC_AUTO_PAR=0` stayed correct.
+
+This is the shape the corpus's A/B rule exists to catch: a run/build divergence visible only on the third surface (default auto-par), invisible to anyone testing the interpreter and a sequential build alone. The safety analysis now treats an outer-scope `mut ref` argument as a loop-carried dependence rather than a private temporary.
