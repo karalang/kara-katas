@@ -57,7 +57,7 @@ a group in **input order**. That makes the Python twin a line-for-line oracle.
 
 ## What it found
 
-**A silent wrong answer under both compiled backends** — kara `B-2026-08-06-2`,
+**A silent wrong answer under both compiled backends** — kara `B-2026-08-06-5`,
 fixed in the same pass.
 
 `differential.kara` builds its random words one computed byte at a time, which is
