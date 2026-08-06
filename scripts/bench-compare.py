@@ -57,6 +57,31 @@ def load(path):
     return [doc]
 
 
+def identities(katas):
+    """{kata_id: (workload, sink)} — what each kata's numbers were MEASURED ON.
+
+    B-2026-08-05-34. The cell join below matches on (kata, lang, approach,
+    lane, mode, metric) and nothing else, so it will happily divide a 500,000
+    -iteration run by a 50,000-iteration one and report a 9x "slowdown". That
+    is not hypothetical: comparing the committed baseline against the current
+    feed, katas 1, 5 and 3629 have all changed BOTH workload and sink, and
+    their bogus ratios (16.5x, 9.5x, 8.8x) were the top three entries in a
+    corpus median that got read as a compiler regression. Dropping them alone
+    moved that median 1.175x -> 1.128x.
+
+    Sink is the stronger signal of the two — it is the program's own output, so
+    a changed sink means the two runs did not compute the same thing — but
+    workload is checked too, since a run can do more work for the same answer.
+    """
+    return {
+        k.get("kata", {}).get("id", "?"): (
+            k.get("kata", {}).get("workload"),
+            k.get("kata", {}).get("sink"),
+        )
+        for k in katas
+    }
+
+
 def cells(katas):
     """Flatten to {(kata_id, lang, approach, lane, mode, metric): value}."""
     out = {}
@@ -116,15 +141,30 @@ def main():
             return 2
 
     try:
-        base = cells(load(args.baseline))
-        cur = cells(load(args.current))
+        base_docs = load(args.baseline)
+        cur_docs = load(args.current)
+        base = cells(base_docs)
+        cur = cells(cur_docs)
+        base_ids = identities(base_docs)
+        cur_ids = identities(cur_docs)
     except (OSError, json.JSONDecodeError) as e:
         sys.stderr.write(f"bench-compare: {e}\n")
         return 2
 
+    # Katas whose workload or sink moved are NOT comparable — see identities().
+    # Excluded from the ratio arithmetic entirely rather than reported with a
+    # caveat, because the failure mode is that a caveat gets aggregated away.
+    incomparable = {}
+    for kid, cur_id in cur_ids.items():
+        base_id = base_ids.get(kid)
+        if base_id is not None and base_id != cur_id:
+            incomparable[kid] = (base_id, cur_id)
+
     regressions, improvements, info, missing = [], [], [], []
 
     for key, cur_v in sorted(cur.items()):
+        if key[0] in incomparable:
+            continue
         metric = key[-1]
         base_v = base.get(key)
         if base_v is None:
@@ -147,10 +187,25 @@ def main():
         else:
             info.append(line)
 
-    dropped = [(k, base[k]) for k in base if k not in cur]
+    dropped = [(k, base[k]) for k in base if k not in cur and k[0] not in incomparable]
 
     print(f"baseline: {args.baseline}")
     print(f"current:  {args.current}\n")
+
+    # Printed FIRST and unconditionally: an excluded kata is the one thing a
+    # reader must not miss, and burying it behind --all is how the artifact
+    # this guard exists for went unnoticed for two months.
+    if incomparable:
+        print(f"⛔ NOT COMPARABLE ({len(incomparable)}) — workload or sink "
+              f"changed since the baseline; excluded from every ratio below:\n")
+        for kid, ((bw, bs), (cw, cs)) in sorted(incomparable.items()):
+            print(f"  kata {kid}")
+            if bs != cs:
+                print(f"      sink     {bs!r} → {cs!r}")
+            if bw != cw:
+                print(f"      workload {bw!r}\n               → {cw!r}")
+        print("  Re-baseline these katas, or compare them against a baseline "
+              "taken on the same workload.\n")
 
     if regressions:
         print(f"🔴 REGRESSIONS ({len(regressions)}) — worsened past threshold:\n")
