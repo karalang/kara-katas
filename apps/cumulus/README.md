@@ -203,15 +203,114 @@ painted — a blank canvas would otherwise pass a pixel check that reads the dat
 rather than the display.
 
 ```
+  stack ran off the main thread (worker)
   page stack byte-identical to native over 6144 pixels
   canvas painted, luminance range 0..255
-  status line: Done in 27 ms · all 16 frames registered
+  status line: Done in 97 ms · all 16 frames registered
+  Worker denied -> inline fallback ran, still byte-identical to native
+  iPhone 13 390x664: no overflow, canvas 308px, stacked and painted
+  Pixel 5 393x727: no overflow, canvas 311px, stacked and painted
 ```
 
 The one thing the page reimplements is the **FITS header parse**, in JS, because
 the wasm entry point takes decoded pixels rather than files. That is a real
 duplication of the `BZERO` trap, so the browser check pins the two decoders to
 each other: same files, same stack, or the run fails.
+
+## Will it run on a phone?
+
+Yes — and the interesting part is that the answer has nothing to do with
+WebAssembly support.
+
+**Compatibility is a non-issue, and that is checkable from the module rather
+than assumed.** `cumulus.wasm` declares a single memory with `shared = false`,
+imports nothing but the three `kara_host` functions and the WASI shims
+`cumulus.js` polyfills, and uses no atomics. So there is **no
+`SharedArrayBuffer`, and therefore no COOP/COEP headers and no cross-origin
+isolation** — it serves from any static host and instantiates in any browser
+that runs wasm at all. The sequential scheduler that `--target=wasm_browser`
+links is what buys that; the threaded archive would have cost the whole setup.
+
+`verify_browser.mjs` runs the page at iPhone 13 and Pixel 5 viewports: zero
+horizontal overflow, a canvas that fits the screen, a file-picker target big
+enough to tap, and a stack that completes and paints. Emulation exercises
+layout, touch and the DOM — **not** WebKit's engine and not a device's memory
+ceiling — so it can show the page is broken on mobile and never that it is good.
+What it does cover is the failure class that is invisible at desktop width.
+
+### The ceiling is memory
+
+Worth measuring rather than guessing. `mem_probe.mjs` instantiates the module
+outside the browser and reports peak `memory.buffer.byteLength`; the wasm heap
+is the same size whatever engine hosts it, so the figure is exact without a
+device.
+
+| frame | frames in | peak wasm, before | after |
+|---|---|---|---|
+| 512×512 ×16 | 8 MB | 27.6 MB | **19.6 MB** |
+| 1024×768 ×16 | 24 MB | 63.6 MB | **39.6 MB** |
+| 2048×1536 ×16 | 96 MB | 225.6 MB | **129.6 MB** |
+
+Before, peak fit `w·h·(4n+8)` bytes to within 4% at every size. The `4n` should
+have been `2n`: `stack_frames` allocated a `Vec[u8]` for the raw blob and
+decoded it into a separate `Vec[u16]`, both alive to the end of the function.
+Half the peak was a copy of the input held in the format we had just finished
+converting away from.
+
+The fix is not to free the first buffer sooner. **wasm32 is little-endian by
+spec and the blob is already little-endian u16, so the bytes JS holds _are_ the
+pixel array** — `read_frames` now takes `*const u16` and the host copy lands
+directly in its final home. That deletes the second allocation and the
+`w·h·nframes`-iteration decode loop along with it. Peak is now `w·h·(2n+8)`;
+extrapolated to the 11.7 Mpx ×16 stack the CLI benchmark uses, ~850 MB becomes
+~470 MB.
+
+Declaring the parameter `*const u16` rather than `*const u8` is what keeps this
+*safe* code: the `u8` form needs `px.as_ptr() as *const u8`, and Kāra requires
+`unsafe` for a cast that reinterprets the pointee. The pointer value is
+identical either way, so the honest declaration is also the one that compiles
+without an escape hatch.
+
+Wall time barely moved — 40.1 s against 41.8 s at 3 Mpx. The decode loop was
+never the bottleneck (registration and integration are), so this is a memory win
+that happens to remove a loop, not the speed-up it looks like.
+
+### The freeze
+
+The second phone-hostile property had nothing to do with size. `stack_frames` is
+**one synchronous wasm call** that runs for the whole stack — tens of seconds at
+real frame sizes. On the page's own thread it blocks every repaint for its full
+duration, so the progress ticks it emits updated the DOM but never reached the
+screen, and a mobile browser eventually offers to kill the "unresponsive" page.
+The progress bar was, on a phone, decorative.
+
+It runs in a worker now (`stack_worker.mjs`), created fresh per run and
+terminated when it ends, so the entire wasm heap goes back after every stack
+instead of staying at the high-water mark between runs. The inline path survives
+as a fallback for a page opened over `file://`, where a module worker cannot
+load.
+
+Both halves are checked, because neither was self-evident:
+
+```
+  stack ran off the main thread (worker)
+  page stack byte-identical to native over 6144 pixels
+  Worker denied -> inline fallback ran, still byte-identical to native
+```
+
+The first line matters because **the fallback produces identical pixels**, so
+every other assertion in `verify_browser.mjs` passes whether or not the worker
+ran — a regression that permanently broke it would have shipped green. The last
+line matters for the mirror-image reason: the fallback is code the harness never
+otherwise reaches, which is exactly the shape of a path that rots quietly and
+then fails the one time it is needed. Denying the page a `Worker` constructor
+reproduces the failure it exists for, and holds it to the same byte-identity
+bar — degraded should mean slower, not different.
+
+One thing here is **not** verified: `index.html` sets `accept=".fits,.fit"`, and
+iOS resolves `accept` extensions through UTIs. FITS has no registered UTI, so
+the Files picker may grey out exactly the files the user is trying to choose.
+Chromium emulation does not reproduce that; it needs a real device.
 
 ## Registration
 
@@ -363,9 +462,12 @@ Deliberately absent, in the order they matter:
    session; an alt-az mount accumulates field rotation that this will not
    correct.
 2. **Streaming from disk.** Memory is now bounded by the decoded frames
-   themselves (`frames × pixels × 2`), which is 374 MB at 11.7 Mpx × 16 — fine
-   on a desktop, still heavy for a browser tab on a long session. Holding only a
-   window of frames resident, or memory-mapping the subs, is the next lever.
+   themselves (`frames × pixels × 2`) — 374 MB at 11.7 Mpx × 16, which is ~80%
+   of the browser tab's whole ~470 MB peak. Fine on a desktop; still the thing
+   that decides whether a phone survives a full-size stack. Holding only a
+   window of frames resident, or memory-mapping the subs, is the next lever, and
+   it is now the *only* remaining one — everything above the frames themselves
+   has been squeezed out.
 3. **Calibration** (darks / flats / bias) and the browser shell.
 4. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
    already implements, is the upgrade once the pipeline is trusted.

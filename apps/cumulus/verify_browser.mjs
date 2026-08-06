@@ -15,7 +15,7 @@
 //
 // Usage: node verify_browser.mjs <native_stack.cstack> [--keep]
 
-import { chromium } from "playwright";
+import { chromium, devices } from "playwright";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
@@ -108,7 +108,20 @@ try {
   await page.waitForFunction(() => window.__cumulus.getResult() !== null, { timeout: 60000 });
 
   const got = await page.evaluate(() => window.__cumulus.getResult());
+  const runPath = await page.evaluate(() => window.__cumulus.getRunPath());
   const status = await page.textContent("#log");
+
+  // The inline fallback produces IDENTICAL pixels, so every other assertion in
+  // this file passes whether or not the worker ran. Without this check, a
+  // regression that permanently broke the worker — the whole reason the page
+  // stays responsive, and the difference between usable and killed on a phone
+  // — would ship green.
+  if (runPath !== "worker") {
+    console.log(`  FAIL: stack ran via "${runPath}", expected the worker`);
+    failures++;
+  } else {
+    console.log("  stack ran off the main thread (worker)");
+  }
 
   if (errors.length) {
     console.log(`  page errors: ${errors.slice(0, 3).join(" | ")}`);
@@ -152,6 +165,99 @@ try {
   if (process.argv.includes("--shot")) {
     await page.screenshot({ path: "browser-shot.png", fullPage: true });
     console.log("  wrote browser-shot.png");
+  }
+
+  // ── the inline fallback ───────────────────────────────────────────────────
+  // The fallback exists for a page opened over file://, where a module worker
+  // cannot load. That case never occurs in this harness, so the fallback is
+  // code no test reaches — exactly the shape of a path that quietly rots and
+  // then fails the one time it is needed. Denying the page a Worker
+  // constructor reproduces the failure the fallback is FOR, and the same
+  // byte-identity bar applies: degraded should mean slower, not different.
+  const ctx2 = await browser.newContext();
+  await ctx2.addInitScript(() => {
+    window.Worker = function () { throw new Error("Worker disabled for the fallback check"); };
+  });
+  const page2 = await ctx2.newPage();
+  const errors2 = [];
+  page2.on("pageerror", (e) => errors2.push(String(e)));
+  await page2.goto(`${base}/index.html`, { waitUntil: "load" });
+  await page2.evaluate(async (names) => {
+    const bufs = await Promise.all(names.map((n) => fetch(`demo/${n}`).then((r) => r.arrayBuffer())));
+    await window.__cumulus.loadBuffers(bufs);
+  }, subs);
+  await page2.selectOption("#mode", "2");
+  await page2.evaluate(() => window.__cumulus.stack());
+  await page2.waitForFunction(() => window.__cumulus.getResult() !== null, { timeout: 60000 });
+
+  const path2 = await page2.evaluate(() => window.__cumulus.getRunPath());
+  const got2 = await page2.evaluate(() => window.__cumulus.getResult());
+  let diff2 = 0;
+  for (let i = 0; i < want.px.length; i++) if (got2.px[i] !== want.px[i]) diff2++;
+
+  if (path2 !== "inline") {
+    console.log(`  FAIL: with Worker denied the run took the "${path2}" path, expected "inline"`);
+    failures++;
+  } else if (diff2 !== 0) {
+    console.log(`  FAIL: inline fallback differs from native in ${diff2}/${want.px.length} pixels`);
+    failures++;
+  } else if (errors2.length) {
+    console.log(`  FAIL: inline fallback raised: ${errors2.slice(0, 2).join(" | ")}`);
+    failures++;
+  } else {
+    console.log("  Worker denied -> inline fallback ran, still byte-identical to native");
+  }
+  await ctx2.close();
+
+  // ── mobile viewports ──────────────────────────────────────────────────────
+  // Emulation gives real layout, touch and DOM at a phone's viewport — it does
+  // NOT give WebKit's engine or a device's memory ceiling, so this can show the
+  // page is broken on a phone and never that it is good. What it does cover is
+  // the class of failure that is invisible at desktop width: a page that
+  // scrolls sideways, a canvas wider than the screen, a tap target too small to
+  // hit. The README makes claims about these; this is what backs them.
+  for (const name of ["iPhone 13", "Pixel 5"]) {
+    const mctx = await browser.newContext({ ...devices[name] });
+    const mpage = await mctx.newPage();
+    const merrors = [];
+    mpage.on("pageerror", (e) => merrors.push(String(e)));
+    await mpage.goto(`${base}/index.html`, { waitUntil: "load" });
+    await mpage.evaluate(async (names) => {
+      const bufs = await Promise.all(names.map((n) => fetch(`demo/${n}`).then((r) => r.arrayBuffer())));
+      await window.__cumulus.loadBuffers(bufs);
+    }, subs);
+    await mpage.evaluate(() => window.__cumulus.stack());
+    await mpage.waitForFunction(() => window.__cumulus.getResult() !== null, { timeout: 60000 });
+
+    const vp = mpage.viewportSize();
+    const overflow = await mpage.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const drop = await mpage.locator("#drop").boundingBox();
+    const canvas = await mpage.locator("#view").boundingBox();
+    const lum = await mpage.evaluate(() => {
+      const cv = document.getElementById("view");
+      const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+      let min = 255, max = 0;
+      for (let i = 0; i < d.length; i += 4) { if (d[i] < min) min = d[i]; if (d[i] > max) max = d[i]; }
+      return max - min;
+    });
+
+    const bad = [];
+    if (overflow > 1) bad.push(`page scrolls sideways by ${overflow}px`);
+    // 44px is the smallest reliably tappable target on a touch screen.
+    if (!drop || drop.width < 44 || drop.height < 44) bad.push("file picker target under 44px");
+    if (canvas && canvas.width > vp.width + 1) bad.push(`canvas ${Math.round(canvas.width)}px wider than viewport`);
+    if (lum < 32) bad.push("canvas flat — nothing rendered");
+    if (merrors.length) bad.push(`errors: ${merrors.slice(0, 2).join(" | ")}`);
+
+    if (bad.length) {
+      console.log(`  FAIL ${name} (${vp.width}x${vp.height}): ${bad.join("; ")}`);
+      failures++;
+    } else {
+      console.log(`  ${name} ${vp.width}x${vp.height}: no overflow, canvas ` +
+                  `${Math.round(canvas.width)}px, stacked and painted`);
+    }
+    await mctx.close();
   }
 } finally {
   await browser.close();

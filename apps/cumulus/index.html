@@ -193,46 +193,120 @@ function render(res, mode) {
 }
 
 // ── wasm ────────────────────────────────────────────────────────────────────
-let blob = null; // concatenated frame bytes staged for read_frames
+// `stack_frames` is ONE synchronous wasm call that runs for the whole stack.
+// On the page's own thread that blocks every repaint for its full duration, so
+// the progress ticks it emits update the DOM but never reach the screen and the
+// browser offers to kill the "unresponsive" page — which is exactly the shape of
+// a phone-hostile page. It runs in a worker instead (stack_worker.mjs).
+//
+// Inline execution stays as a fallback for the one case a module worker cannot
+// serve: a page opened over file://, where the worker fails to load. A frozen
+// page beats no page, and the log says plainly which one you got.
 
-const host = {
-  read_frames(dst, len, ctx) {
-    new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(blob);
-  },
-  put_result(ptr, len, w, h, ctx) {
-    const raw = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
-    result = { w: Number(w), h: Number(h), px: new Uint16Array(raw.buffer) };
-  },
-  progress(stage, done, total) {
-    const s = Number(stage), d = Number(done), t = Number(total) || 1;
-    // Registration dominates the wall clock, so it owns most of the bar.
-    if (s === 0) setBar(0.1);
-    else if (s === 1) setBar(0.1 + 0.8 * (d / t));
-    else setBar(1);
-  },
-};
+function onProgress({ stage, done, total }) {
+  const t = total || 1;
+  // Registration dominates the wall clock, so it owns most of the bar.
+  if (stage === 0) setBar(0.1);
+  else if (stage === 1) setBar(0.1 + 0.8 * (done / t));
+  else setBar(1);
+}
+
+// Built fresh per run: the worker path TRANSFERS this buffer, which detaches it
+// here, so it could never be reused across runs anyway.
+function makeBlob(w, h) {
+  const b = new Uint8Array(frames.length * w * h * 2);
+  frames.forEach((f, i) => b.set(new Uint8Array(f.buffer), i * w * h * 2));
+  return b;
+}
+
+let workerUnavailable = false;
+// Which path the last run actually took. The fallback is deliberately silent
+// enough to keep working, which means a regression that permanently broke the
+// worker would still produce correct pixels and a green browser check — the
+// verifier asserts on this so that failure cannot pass unnoticed.
+let lastRunPath = null;
+
+function stackInWorker(payload) {
+  return new Promise((resolve, reject) => {
+    let w;
+    try {
+      w = new Worker(new URL("./stack_worker.mjs", import.meta.url), { type: "module" });
+    } catch {
+      workerUnavailable = true; reject(new Error("worker-unavailable")); return;
+    }
+    // A fresh worker per run, terminated when it ends: that hands the entire
+    // wasm heap back after every stack instead of keeping the high-water mark
+    // alive between runs. Startup is milliseconds against a run of tens of
+    // seconds, and on a memory-constrained device the trade is not close.
+    const finish = (fn, arg) => { w.terminate(); fn(arg); };
+    w.onmessage = (e) => {
+      if (e.data.t === "progress") { onProgress(e.data); return; }
+      if (e.data.t === "done") finish(resolve, e.data);
+      else finish(reject, new Error(e.data.message));
+    };
+    // A module worker that cannot LOAD fails here, asynchronously — not at
+    // construction — so this is where file:// actually shows up.
+    w.onerror = () => { workerUnavailable = true; finish(reject, new Error("worker-unavailable")); };
+    w.postMessage(payload, [payload.blob]);
+  });
+}
+
+async function stackInline({ blob, w, h, n, mode }) {
+  let out = null;
+  const host = {
+    read_frames(dst, len, ctx) {
+      new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(blob);
+    },
+    put_result(ptr, len, rw, rh, ctx) {
+      const raw = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
+      out = { w: Number(rw), h: Number(rh), px: new Uint16Array(raw.buffer) };
+    },
+    progress: (stage, done, total) =>
+      onProgress({ stage: Number(stage), done: Number(done), total: Number(total) }),
+  };
+  const { exports } = await instantiate(host);
+  const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
+  if (!out) throw new Error("stack_frames returned without calling put_result");
+  return { kept, w: out.w, h: out.h, px: out.px };
+}
 
 async function stack() {
   if (!frames.length) return;
   $("go").disabled = true;
   const mode = parseInt($("mode").value, 10);
   const { w, h } = dims;
+  const n = frames.length;
 
-  blob = new Uint8Array(frames.length * w * h * 2);
-  frames.forEach((f, i) => blob.set(new Uint8Array(f.buffer), i * w * h * 2));
-
-  log(`Stacking ${frames.length} frames at ${w}×${h}…`);
+  log(`Stacking ${n} frames at ${w}×${h}…`);
   setBar(0.02);
   const t0 = performance.now();
   try {
-    const { exports } = await instantiate(host);
-    const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(frames.length), BigInt(mode)));
+    // Guard on the flag BEFORE building the blob: once the worker is known to
+    // be unavailable, every later run would otherwise allocate a full-size copy
+    // only to throw it away on a transfer that cannot happen.
+    let out = null;
+    if (!workerUnavailable) {
+      try {
+        out = await stackInWorker({ blob: makeBlob(w, h).buffer, w, h, n, mode });
+        lastRunPath = "worker";
+      } catch (e) {
+        if (e.message !== "worker-unavailable") throw e;
+        // Fall through — the failed postMessage may already have detached the
+        // transferred buffer, so the inline path builds its own.
+      }
+    }
+    if (!out) {
+      log("Worker unavailable — stacking on this thread; the page will freeze until it finishes.", "warn");
+      out = await stackInline({ blob: makeBlob(w, h), w, h, n, mode });
+      lastRunPath = "inline";
+    }
+    result = { w: out.w, h: out.h, px: out.px };
     const ms = performance.now() - t0;
     render(result, $("stretch").value);
-    const dropped = frames.length - kept;
+    const dropped = n - out.kept;
     const note = mode === 2
-      ? (dropped ? `<span class="warn">${kept}/${frames.length} registered — ${dropped} dropped</span>`
-                 : `<span class="ok">all ${kept} frames registered</span>`)
+      ? (dropped ? `<span class="warn">${out.kept}/${n} registered — ${dropped} dropped</span>`
+                 : `<span class="ok">all ${out.kept} frames registered</span>`)
       : "no registration";
     log(`Done in ${ms.toFixed(0)} ms · ${note}`);
     $("save").disabled = false;
@@ -321,5 +395,6 @@ window.__cumulus = {
   },
   stack,
   getResult: () => (result ? { w: result.w, h: result.h, px: Array.from(result.px) } : null),
+  getRunPath: () => lastRunPath,
 };
 </script>

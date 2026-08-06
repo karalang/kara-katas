@@ -962,9 +962,18 @@ fn main() with reads(FileSystem) writes(FileSystem) {
 effect resource Input;    // the frame bytes JS holds, pulled in via read_frames
 effect resource Display;  // the <canvas> we paint, via put_result
 
-// JS copies `len` bytes — the whole `.cstack`-style blob — into wasm memory at
-// `dst`. Synchronous, so the buffer is filled before we read it.
-host fn read_frames(dst: *const u8, len: i64) with reads(Input);
+// JS copies `len` BYTES of the frame blob into wasm memory at `dst`.
+// Synchronous, so the buffer is filled before we read it.
+//
+// `dst` is typed `*const u16`, not `*const u8`, and that is load-bearing rather
+// than cosmetic: wasm32 is little-endian by spec and the blob is already
+// little-endian u16, so the bytes JS holds ARE the pixel array. Aiming the copy
+// at the u16 buffer lands it in its final home — no decode pass, and no second
+// buffer alive holding the undecoded copy. Declaring `*const u8` instead would
+// force a `*const u16 as *const u8` reinterpret at the call site, which Kāra
+// (rightly) requires `unsafe` for; the pointer value is identical either way,
+// so the honest move is to give the parameter the type it actually has.
+host fn read_frames(dst: *const u16, len: i64) with reads(Input);
 
 // JS reads `len` bytes of 16-bit result at `ptr` and paints it.
 host fn put_result(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
@@ -983,16 +992,17 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
     with reads(Input) writes(Display) panics
 {
     let npix = w * h;
-    let nbytes = npix * nframes * 2;
-    let mut raw: Vec[u8] = Vec.filled(nbytes, 0);
-    read_frames(raw.as_ptr(), raw.len());
+    let nvals = npix * nframes;
 
-    // Little-endian u16 in, i64 working values out — same representation the
-    // CLI decodes into, so the kernels below are bit-for-bit the same code.
-    let mut px: Vec[u16] = Vec.with_capacity(npix * nframes);
-    for i in 0..(npix * nframes) {
-        px.push(((raw[i * 2] as i64) + (raw[i * 2 + 1] as i64) * 256) as u16);
-    }
+    // ONE buffer, filled in place. This used to allocate a `Vec[u8]` for the
+    // raw blob and then decode it into a separate `Vec[u16]`, with both live to
+    // the end of the function — which doubled the peak heap for the whole run.
+    // On a phone that is not a micro-optimisation, it is the difference between
+    // running and having the tab killed: peak went from `w*h*(4n+8)` bytes to
+    // `w*h*(2n+8)`. It also deletes a `w*h*nframes`-iteration decode loop that
+    // was, on a little-endian target, a very expensive memcpy.
+    let mut px: Vec[u16] = Vec.filled(nvals, 0);
+    read_frames(px.as_ptr(), nvals * 2);
     progress(0, nframes, nframes);
 
     let mut dxs: Vec[f64] = Vec.new();

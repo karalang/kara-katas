@@ -33,6 +33,19 @@ python3 gen_frames.py /tmp/cw.cstack --width 96 --height 64 --frames 16 --rays 1
 echo "==> wasm equals native"
 node test_node.mjs /tmp/cw.cstack /tmp/cw_mean.cstack /tmp/cw_stack.cstack
 
+# The memory model the README quotes is what decides whether a phone survives a
+# real stack, so it gets a standing guard rather than a one-off measurement. It
+# needs a mid-size frame: at 96x64 the fixed module overhead swamps everything
+# that scales with the input, and the check would pass whatever the code did.
+if python3 -c "import numpy" 2>/dev/null; then
+  echo "==> peak wasm memory stays within the model"
+  python3 gen_large.py /tmp/cw_mem.cstack --width 1024 --height 768 --frames 16 >/dev/null
+  node mem_probe.mjs /tmp/cw_mem.cstack 2 --assert-model
+  rm -f /tmp/cw_mem.cstack
+else
+  echo "==> memory-model check skipped (needs numpy)"
+fi
+
 if node -e "require('playwright')" 2>/dev/null; then
   echo "==> the real page in a real browser"
   node verify_browser.mjs /tmp/cw_demo.cstack "$@"
