@@ -26,6 +26,7 @@ every metric here (more bytes, more ms, more RSS).
 import argparse
 import json
 import sys
+from datetime import datetime
 
 # Default relative-change thresholds. Deterministic metrics move only on a real
 # code change, so even a few percent is signal. Runtime wall-time swings with
@@ -82,6 +83,56 @@ def identities(katas):
     }
 
 
+def provenance(katas):
+    """{kata_id: (measured_at, karac_version)} — WHEN each row was measured.
+
+    B-2026-08-05-34, open item (2). Neither feed in this repo is a snapshot.
+    bench-baseline.json's 33 rows span 2026-05-31..06-06 and
+    bench-results.json's span 2026-06-15..08-05, because both are rolling
+    accumulations where each kata carries whenever it was last benched. So the
+    window a corpus figure actually measures is per-kata and is never the
+    window the reader is told about.
+
+    That is not a cosmetic complaint. The audit of this row rebuilt a "base"
+    compiler at ONE commit (218dd7d7, chosen as last-commit-at-or-before the
+    file's generated_at) and reported that the baseline's own absolutes did not
+    reproduce — #1665 off by 6x. They reproduce fine: #8/#9/#11 were measured
+    2026-06-01, whose commit is 5d5ce72f, 227 src/runtime commits earlier, and
+    at THAT commit all three land within 5% with byte-identical binary sizes.
+    The 6x was two 2026-06-07 commits (the AOT arithmetic-fault traps and the
+    lean panic-free sort) landing between the measurement and the chosen base.
+
+    So a base commit must be picked PER KATA from that kata's own measured_at.
+    This function surfaces the timestamps that make that possible.
+
+    `karac` is carried alongside because it is the better handle when present:
+    the version stamp now renders as `0.1.0-dev.<count>+g<sha>`, which names the
+    commit outright. It is absent from older rows (all 33 baseline rows and 227
+    of 246 current ones read a bare `karac 0.1.0`), which is exactly why the
+    timestamp fallback has to exist.
+    """
+    return {
+        k.get("kata", {}).get("id", "?"): (
+            (k.get("env") or {}).get("measured_at"),
+            (k.get("env") or {}).get("karac"),
+        )
+        for k in katas
+    }
+
+
+def span_days(stamps):
+    """Calendar span of a set of ISO-8601 timestamps, or None if unusable."""
+    ds = sorted(s for s in stamps if s)
+    if not ds:
+        return None
+    try:
+        lo = datetime.fromisoformat(ds[0].replace("Z", "+00:00"))
+        hi = datetime.fromisoformat(ds[-1].replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (ds[0], ds[-1], (hi - lo).total_seconds() / 86400.0)
+
+
 def cells(katas):
     """Flatten to {(kata_id, lang, approach, lane, mode, metric): value}."""
     out = {}
@@ -129,6 +180,11 @@ def main():
         "--all", action="store_true",
         help="also list unchanged/improved cells, not just regressions",
     )
+    ap.add_argument(
+        "--max-span-days", type=float, default=1.0,
+        help="a feed whose rows span more than this is a rolling accumulation, "
+             "not a snapshot; reported loudly (default: 1)",
+    )
     args = ap.parse_args()
 
     thresholds = dict(DEFAULT_THRESHOLDS)
@@ -147,6 +203,8 @@ def main():
         cur = cells(cur_docs)
         base_ids = identities(base_docs)
         cur_ids = identities(cur_docs)
+        base_prov = provenance(base_docs)
+        cur_prov = provenance(cur_docs)
     except (OSError, json.JSONDecodeError) as e:
         sys.stderr.write(f"bench-compare: {e}\n")
         return 2
@@ -174,7 +232,13 @@ def main():
             continue
         delta = (cur_v - base_v) / base_v
         thr = thresholds.get(metric, 0.10)
-        label = "/".join(key[:-1]) + f"  [{metric}]"
+        # Every ratio carries the window it was actually measured over. A ratio
+        # quoted without its dates is how this row's corpus figure survived two
+        # months: the reader assumed one window and the rows carried dozens.
+        b_at = (base_prov.get(key[0]) or (None, None))[0]
+        c_at = (cur_prov.get(key[0]) or (None, None))[0]
+        window = f"  {b_at[:10]}→{c_at[:10]}" if b_at and c_at else ""
+        label = "/".join(key[:-1]) + f"  [{metric}]{window}"
         line = (
             f"  {label}\n"
             f"      {fmt(metric, base_v)} → {fmt(metric, cur_v)}  "
@@ -192,7 +256,45 @@ def main():
     print(f"baseline: {args.baseline}")
     print(f"current:  {args.current}\n")
 
-    # Printed FIRST and unconditionally: an excluded kata is the one thing a
+    # Printed before everything else, unconditionally. The workload/sink guard
+    # below invalidates SPECIFIC rows; this invalidates the INTERPRETATION of
+    # every row at once, because a feed that is not a snapshot cannot answer
+    # "what changed between X and Y" no matter how clean each ratio is.
+    compared = [k for k in cur_ids if k in base_ids and k not in incomparable]
+    for side, prov, path in (
+        ("baseline", base_prov, args.baseline),
+        ("current ", cur_prov, args.current),
+    ):
+        sp = span_days([prov.get(k, (None, None))[0] for k in compared])
+        if sp is None:
+            print(f"⚠  {side}: no measured_at timestamps — provenance unknown, "
+                  f"a base commit cannot be picked for these rows")
+            continue
+        lo, hi, days = sp
+        flag = "  ⛔ ROLLING ACCUMULATION, NOT A SNAPSHOT" if days > args.max_span_days else ""
+        print(f"   {side}: {lo[:10]} … {hi[:10]}  ({days:.1f}d span){flag}")
+    print(f"   {len(compared)} kata(s) compared\n")
+
+    rolling = [
+        s for s, p in (("baseline", base_prov), ("current", cur_prov))
+        if (sp := span_days([p.get(k, (None, None))[0] for k in compared]))
+        and sp[2] > args.max_span_days
+    ]
+    if rolling:
+        print(f"⛔ {' and '.join(rolling)} spans more than {args.max_span_days:g} day(s). "
+              f"Each kata's numbers were taken at a DIFFERENT compiler commit, so:\n"
+              f"     • no single 'before' or 'after' commit describes this feed;\n"
+              f"     • a corpus-wide median over it is a median of different windows;\n"
+              f"     • to reproduce a row, rebuild at ITS OWN measured_at (below),\n"
+              f"       not at one commit chosen from the file's generated_at.\n"
+              f"   Per-kata baseline timestamps:")
+        for kid in sorted(compared, key=lambda k: (base_prov.get(k, ("",))[0] or "")):
+            at, ver = base_prov.get(kid, (None, None))
+            stamp = ver if ver and "+g" in ver else "no sha in version stamp"
+            print(f"     kata {kid:<6} {at}  ({stamp})")
+        print()
+
+    # Printed early and unconditionally: an excluded kata is the one thing a
     # reader must not miss, and burying it behind --all is how the artifact
     # this guard exists for went unnoticed for two months.
     if incomparable:

@@ -24,13 +24,18 @@ HERE = Path(__file__).resolve().parent
 COMPARE = HERE / "bench-compare.py"
 
 
-def feed(kata_id, workload, sink, mean_ms, binary_bytes=1000):
+def feed(kata_id, workload, sink, mean_ms, binary_bytes=1000, measured_at=None,
+         karac=None):
     """One consolidated-feed doc with a single runtime + binary cell."""
     return {
         "katas": [
             {
                 "schema_version": 1,
                 "kata": {"id": kata_id, "workload": workload, "sink": sink},
+                "env": {
+                    "measured_at": measured_at or "2026-06-01T00:00:00Z",
+                    "karac": karac or "karac 0.1.0",
+                },
                 "measurements": [
                     {
                         "lang": "kara",
@@ -105,6 +110,62 @@ def main():
     out = run(base, cur)
     check("kata 7" in out, "the changed kata is named")
     check("8/kara" in out, "a sibling kata's regression still reports")
+
+    # ── B-2026-08-05-34 open item (2): the rolling-accumulation guard ──
+    #
+    # A feed whose rows were measured days apart cannot answer "what changed
+    # between commit X and commit Y", because there is no single X. The audit
+    # of this row hit exactly that: it picked ONE base commit from the file's
+    # generated_at, found the baseline absolutes did not reproduce, and read
+    # that as the baseline being untrustworthy. The baseline was fine — the
+    # rows it was checking were measured six days earlier, at a commit 227
+    # src/runtime commits back.
+    print("\nbench-compare rolling-accumulation guard:")
+
+    # 5. Both sides measured the same day — a genuine snapshot A/B, quiet.
+    out = run(
+        feed("7", "N=100", "42", 100.0, measured_at="2026-06-01T01:00:00Z"),
+        feed("7", "N=100", "42", 100.0, measured_at="2026-06-01T05:00:00Z"),
+    )
+    check("ROLLING ACCUMULATION" not in out, "a same-day snapshot is not flagged")
+
+    # 6. A baseline spanning days IS flagged, and names the per-kata stamps —
+    #    the direction that makes the guard load-bearing.
+    base = feed("7", "N=1", "1", 100.0, measured_at="2026-05-31T00:00:00Z")
+    base["katas"].append(
+        feed("8", "N=1", "1", 10.0, measured_at="2026-06-06T00:00:00Z")["katas"][0]
+    )
+    cur = feed("7", "N=1", "1", 100.0, measured_at="2026-08-01T00:00:00Z")
+    cur["katas"].append(
+        feed("8", "N=1", "1", 10.0, measured_at="2026-08-01T00:00:00Z")["katas"][0]
+    )
+    out = run(base, cur)
+    check("ROLLING ACCUMULATION" in out, "a multi-day baseline is flagged as not a snapshot")
+    check("2026-05-31" in out and "2026-06-06" in out,
+          "per-kata baseline timestamps are printed so a base commit can be picked per kata")
+
+    # 7. Every ratio carries its own window. A ratio quoted without dates is
+    #    how the corpus figure this row is about survived two months.
+    out = run(
+        feed("7", "N=1", "1", 100.0, 1000, measured_at="2026-06-01T00:00:00Z"),
+        feed("7", "N=1", "1", 100.0, 9000, measured_at="2026-08-05T00:00:00Z"),
+    )
+    check("2026-06-01→2026-08-05" in out, "a reported ratio carries the window it spans")
+
+    # 8. A version stamp that names a commit is surfaced in preference to the
+    #    bare string, since it removes the guesswork the timestamp only reduces.
+    base = feed("7", "N=1", "1", 100.0, measured_at="2026-05-31T00:00:00Z",
+                karac="karac 0.1.0-dev.5314+g4044152df")
+    base["katas"].append(
+        feed("8", "N=1", "1", 10.0, measured_at="2026-06-06T00:00:00Z")["katas"][0]
+    )
+    cur = feed("7", "N=1", "1", 100.0, measured_at="2026-08-01T00:00:00Z")
+    cur["katas"].append(
+        feed("8", "N=1", "1", 10.0, measured_at="2026-08-01T00:00:00Z")["katas"][0]
+    )
+    out = run(base, cur)
+    check("g4044152df" in out, "a sha-carrying version stamp is surfaced")
+    check("no sha in version stamp" in out, "a bare version string is called out as unusable")
 
     print(
         f"\n{'FAILED: ' + str(len(FAILURES)) if FAILURES else 'all guard checks passed'}"
