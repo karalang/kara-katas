@@ -62,30 +62,53 @@ def run_once(pmc, binary, timeout):
 
 
 def screen(src, sink, karac, pmc, runs, timeout):
-    """-> dict for one .kara bench source, or {'error': ...}."""
+    """-> dict for one .kara bench source, or {'error': ...}.
+
+    INTERLEAVED, and this is not a detail. Timing each placement as its own
+    consecutive BLOCK lets machine drift over the block accumulate into the
+    spread and be read as placement: on the first corpus run, done that way,
+    kata:71 reported 1.1976 against a hand-measured truth of 1.0318. kara
+    B-2026-08-07-10 records the same trap producing a convincing false 2.8%
+    step on x86 that dissolved to 1.004 once interleaved. Every round therefore
+    runs every placement once, in a rotated order.
+
+    The CONTROL arm is a second, independently built binary at the first pad --
+    byte-identical content, different file. Its ratio against that pad is the
+    floor: whatever it reports is what this kata's measurement noise looks like
+    on this host right now, and a `spread` that does not clear `control` is not
+    evidence of anything.
+    """
     work = tempfile.mkdtemp(prefix="pspread-")
     try:
         stem = pathlib.Path(src).stem
-        mins = {}
         outs = {}
-        for pad in PADS:
+        arms = []  # (name, pad, path)
+        for pad in PADS + [PADS[0]]:
+            name = f"pad{pad}" if len(arms) < len(PADS) else "control"
             env = dict(os.environ, KARAC_AUTO_PAR="0", KARAC_TEXT_PAD=str(pad))
             b = subprocess.run([karac, "build", str(src)], cwd=work, env=env,
                                capture_output=True, text=True, timeout=600)
             out = pathlib.Path(work) / stem
             if b.returncode != 0 or not out.exists():
                 return {"error": f"build failed at pad={pad}: {b.stderr.strip()[:200]}"}
-            binary = str(pathlib.Path(work) / f"{stem}.{pad}")
+            binary = str(pathlib.Path(work) / f"{stem}.{name}")
             out.rename(binary)
-            cyc = []
-            for i in range(runs + 1):  # +1: first exec of a fresh binary is XProtect-scanned
+            arms.append((name, pad, binary))
+
+        cyc = {name: [] for name, _, _ in arms}
+        for name, _, binary in arms:  # warm: first exec of a fresh binary is XProtect-scanned
+            _, got = run_once(pmc, binary, timeout)
+            outs[name] = got
+        for r in range(runs):
+            for name, _, binary in arms[r % len(arms):] + arms[: r % len(arms)]:
                 c, got = run_once(pmc, binary, timeout)
-                if i:
-                    cyc.append(c)
-                outs.setdefault(pad, got)
-                if got != outs[pad]:
-                    return {"error": f"pad={pad} is not deterministic: {got!r} vs {outs[pad]!r}"}
-            mins[pad] = min(cyc)
+                if got != outs[name]:
+                    return {"error": f"{name} is not deterministic: {got!r} vs {outs[name]!r}"}
+                cyc[name].append(c)
+        mins = {name: min(v) for name, v in cyc.items()}
+        real = {pad: mins[f"pad{pad}"] for pad in PADS}
+        ctrl_hi = max(mins["control"], mins[f"pad{PADS[0]}"])
+        ctrl_lo = min(mins["control"], mins[f"pad{PADS[0]}"])
 
         # The load-bearing check is that every PLACEMENT agrees with every other:
         # the binaries differ only in where the code sits, so a disagreement is a
@@ -98,13 +121,15 @@ def screen(src, sink, karac, pmc, runs, timeout):
         if len(answers) > 1:
             return {"error": f"OUTPUT DIFFERS ACROSS PLACEMENTS (miscompile): {sorted(answers)!r}"}
         got = next(iter(answers))
-        lo, hi = min(mins.values()), max(mins.values())
+        lo, hi = min(real.values()), max(real.values())
         out = {
-            "pads": mins,
+            "pads": real,
             "min_cycles": lo,
             "max_cycles": hi,
             "spread": hi / lo,
-            "median_cycles": statistics.median(mins.values()),
+            "control": ctrl_hi / ctrl_lo,
+            "excess": (hi / lo) / (ctrl_hi / ctrl_lo),
+            "median_cycles": statistics.median(real.values()),
             "output": got,
         }
         if sink is not None and got != sink:
@@ -147,7 +172,8 @@ def main():
                 r = {"error": f"{type(e).__name__}: {e}"}
             r.update({"id": kid, "slug": slug, "source": str(src.relative_to(ROOT))})
             results.append(r)
-            tag = r.get("error") or f"spread {r['spread']:.4f}"
+            tag = r.get("error") or (f"spread {r['spread']:.4f}  ctrl {r['control']:.4f}"
+                                     f"  excess {r['excess']:.4f}")
             print(f"  kata:{kid:<5} {src.stem:<22} {tag}", flush=True)
 
     ok = [r for r in results if "spread" in r]
@@ -155,9 +181,11 @@ def main():
         ok.sort(key=lambda r: -r["spread"])
         print(f"\n{len(ok)} screened, {len(results) - len(ok)} failed")
         print(f"median spread {statistics.median(r['spread'] for r in ok):.4f}")
-        print("widest:")
-        for r in ok[:12]:
-            print(f"  {r['spread']:.4f}  kata:{r['id']} {r['slug']}")
+        print(f"median control {statistics.median(r['control'] for r in ok):.4f}")
+        print("widest by EXCESS over own control:")
+        for r in sorted(ok, key=lambda x: -x["excess"])[:14]:
+            print(f"  excess {r['excess']:.4f}  spread {r['spread']:.4f}  ctrl {r['control']:.4f}"
+                  f"  kata:{r['id']} {r['slug']}")
     if args.out:
         pathlib.Path(args.out).write_text(json.dumps(
             {"pads": PADS, "runs": args.runs, "results": results}, indent=1) + "\n")
