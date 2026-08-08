@@ -164,20 +164,28 @@ construction:** #28 `kmp_unchecked` and #57 `insert_interval_cap` are
 *Kāra-only* variants written to isolate the cost of the checks themselves —
 there is no Rust mirror to build, so there is nothing to match safety with.
 
-**A known-flaky kata — recharacterised 2026-07-28, filed as `B-2026-07-28-13`.**
-#133's hand-written `par {}` binary — an 18-arm block whose every arm *reads*
-the same shared graph — dies silently, with empty stderr, in **~0.8% of runs**
-(4 in 500 on `karac 7db7009e`). An earlier revision of this file called it
-"SIGTRAP at 1.7%" on a 60-run sample; both numbers were off, and more
-importantly the failure is not only a trap. The observed exit codes are **133
-(SIGTRAP) ×3 and 139 (SIGSEGV) ×1** — the segfault means memory unsafety, not a
-trap firing on a detected condition. Output is never wrong when the process does
-exit 0 (0 bad sinks in 500 runs), so it is crash-or-correct. A worker-count
-differential points at a data race on the shared read set rather than a
-scheduler bug: **0/200 at 1 worker, 0/200 at 2, 2/200 at 18**. Its par-lane
-numbers are provisional. Whether this is a regression is still **not**
-established — at ~0.8% a clean 60-run bench is close to a coin flip, so June's
-success is no evidence of a start date, and no bisect has been done.
+**A formerly-flaky kata — RESOLVED 2026-08-07; `B-2026-07-28-13` is closed as a
+stale-binary artifact.** #133's hand-written `par {}` binary — an 18-arm block
+whose every arm *reads* the same shared graph — used to die silently, with empty
+stderr, in **~0.8% of runs** (4 in 500 on `karac 7db7009e`; exit codes 133
+SIGTRAP ×3 and 139 SIGSEGV ×1, so memory unsafety rather than a trap firing on a
+detected condition). Output was never wrong when the process exited 0, and a
+worker-count differential pointed at a data race on the shared read set:
+**0/200 at 1 worker, 0/200 at 2, 2/200 at 18**.
+
+That diagnosis was right and the cause was not a regression. The binary being
+timed was a **stale pre-gate artifact**: the ownership gate that refuses a
+`shared struct` reachable from more than one `par` branch landed 13 Jul 2026,
+but `bench.sh` only rebuilds when the source or the installed `karac` is newer
+than the cached binary, so a build predating the gate survived and kept racing
+the non-atomic refcount. The row was withdrawn rather than re-measured.
+
+The lane is back as of 7 Aug 2026 and it is a **different program**: the graph
+is shared through a `frozen` handle, which is non-counting, so the eighteen
+readers emit no refcount traffic on it at all and there is nothing left to race.
+Screened on the same 500-run sample that produced the original figure:
+**0 non-zero exits, 0 bad sinks.** See kara `B-2026-08-01-33` and the kata's
+§ Runtime — par lane.
 
 **What the overflow tax actually is, measured (2026-07-27).** The phrase "overflow
 tax" undersells the mechanism on array kernels: checked arithmetic does not add a

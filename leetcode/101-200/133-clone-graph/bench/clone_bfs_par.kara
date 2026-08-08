@@ -11,73 +11,71 @@
 // imbalance is small enough that the longest branch still determines
 // wall-clock.
 //
-// DOES NOT COMPILE — DELIBERATELY KEPT. `karac build` refuses this file:
+// THIS FILE DID NOT COMPILE UNTIL 2026-08-07, AND THE HEADER THAT SAID SO IS
+// NOW HISTORY. A `shared struct` reachable from more than one `par {}` branch
+// was a compile error by design (design.md § Rc vs Arc): the reason is refcount
+// traffic, not mutation — `emit_rc_inc` is a plain load/add/store, so even pure
+// READS race. That gate is still there and still correct. What changed is that
+// there is now a way to hand a branch a handle that does NO counting at all, so
+// there is nothing left to race:
 //
-//     error[ownership]: shared struct `Node` cannot be accessed from multiple
-//     concurrent tasks (binding `root` reachable from two par-block branches)
+//   * `frozen T` (kara B-2026-08-01-33 mechanism 3) is a non-owning,
+//     NON-COUNTING parameter mode for a deeply-immutable `shared` value. It
+//     lowers to a borrow, so the callee emits no retain/release; an escape
+//     check (E0511) is what pays for that by refusing to let the handle
+//     outlive its owner.
+//   * `let g = freeze root;` is the freeze site. It requires the source to be
+//     UNIQUELY bound, which is why `nodes` is built inside `build_graph` below
+//     and dies with it — `let root = nodes[0]` with `nodes` still live is
+//     refused, correctly, because `nodes` really does hold every node.
+//   * A local `Vec[Node]` worklist may hold those non-counting handles
+//     (B-2026-08-07-23), which is what lets the traversal be ITERATIVE.
 //
-// and that refusal is CORRECT, per design.md § Rc vs Arc: a `shared struct`
-// reachable from more than one concurrent branch is a compile error. Rc→Arc
-// promotion covers a sole-ownership move into exactly ONE branch, not an
-// 18-way read-only fan-out. The reason is refcount traffic, not mutation —
-// `emit_rc_inc` is a plain load/add/store, so even pure READS race.
+// TWO DIFFERENCES FROM clone_bfs.kara, BOTH DELIBERATE AND NEITHER A DODGE:
 //
-// An earlier revision of this header claimed promotion made `root` "thread-safe
-// without any annotation". That was wrong, and the numbers once published from
-// it came from a stale pre-gate binary that raced (~0.8% of runs died with
-// SIGSEGV/SIGTRAP — kara B-2026-07-28-13, closed as a stale-binary artifact).
+//   1. The worklist is a `Vec` walked with a head cursor rather than a
+//      `VecDeque` popped from the front. This is what the C mirror does
+//      (`Node **queue` with `q_head`/`q_tail`, `while (q_head < q_tail)`), so
+//      it moves the Kāra lane TOWARD algorithm parity, not away from it. It is
+//      also what `frozen` supports: `pop_front` returns a VALUE rather than a
+//      place, so a non-counting handle coming back through it has nothing the
+//      escape checker can track. Measured as neutral to the sequential lane —
+//      see § Runtime — par lane in ../README.md.
+//   2. The graph is built in `build_graph`, purely so the freeze source is
+//      uniquely bound. Same graph, same generator, same shape.
 //
-// The file stays in the tree as a live marker of the expressiveness gap filed
-// as kara B-2026-08-01-33. That entry has been corrected twice; its current
-// reading: `par struct` with IMMUTABLE fields DOES share across tasks lock-free
-// (verified), but the `shared struct` (RC) tier is shut out of parallelism on
-// BOTH surfaces — an explicit `par {}` hard-errors as above, and auto-par, the
-// DEFAULT build path, silently declines any loop body that MATERIALIZES a
-// shared-typed value (binding a `Vec[shared]` element, passing a handle to a
-// function, a method receiver) via concurrency.rs's B-2026-07-16-6 gate, for
-// the same non-atomic-refcount reason. A bare field read THROUGH a handle
-// (`ps[j].v`) does parallelize — it lowers to a plain deref with no refcount
-// traffic, measured — but no real traversal is written that way, and this
-// kata's body binds every node it walks. So the Rc-vs-Arc decision is forced at
-// type-declaration time.
-//
-// This kata sits at the awkward end of it: `Node.neighbors` must be `mut` to
-// link a cyclic graph after its nodes exist, and a `mut` COMPOUND field on a
-// `par struct` requires `Mutex[T]` (`Atomic[T]` covers only scalars) — so the
-// only legal formulation holds a lock through an entirely read-only traversal
-// phase, a cost the lock-free C/rust/go mirrors do not pay. Three candidate
-// fixes are on the ledger entry (par-capture RC elision, whole-program
-// atomicity promotion, freeze point); if any lands, this file starts compiling
-// and the par lane can come back. bench.sh skips it; see the § Runtime — par
-// lane note in ../README.md.
+// Everything else — the BFS, the `visited` map of clones, the `.iter()` walk,
+// the sink — is clone_bfs.kara verbatim. Note that `visited` holds CLONES,
+// which are ordinary owned nodes this branch mutates through; it is not frozen
+// and needs nothing from the mechanism. Conflating it with the queue is what
+// made an earlier reading of this kata's blocker wrong for a day.
 
 shared struct Node {
     val: i64,
     mut neighbors: Vec[Node],
 }
 
-fn clone_graph(root: Node) -> Node {
+fn clone_graph(root: frozen Node) -> Node {
     let mut visited: Map[i64, Node] = Map.new();
-    let mut queue: VecDeque[Node] = VecDeque.new();
+    let mut queue: Vec[Node] = Vec.new();
 
     let root_clone = Node { val: root.val, neighbors: Vec.new() };
     let _ = visited.insert(root.val, root_clone);
-    queue.push_back(root);
+    queue.push(root);
 
-    loop {
-        if let Some(curr) = queue.pop_front() {
-            let curr_clone = visited.get(curr.val).unwrap();
-            for nb in curr.neighbors.iter() {
-                if let None = visited.get(nb.val) {
-                    let fresh = Node { val: nb.val, neighbors: Vec.new() };
-                    let _ = visited.insert(nb.val, fresh);
-                    queue.push_back(nb);
-                }
-                let nb_clone = visited.get(nb.val).unwrap();
-                curr_clone.neighbors.push(nb_clone);
+    let mut head: u64 = 0;
+    while head < queue.len() {
+        let curr = queue[head];
+        head = head + 1;
+        let curr_clone = visited.get(curr.val).unwrap();
+        for nb in curr.neighbors.iter() {
+            if let None = visited.get(nb.val) {
+                let fresh = Node { val: nb.val, neighbors: Vec.new() };
+                let _ = visited.insert(nb.val, fresh);
+                queue.push(nb);
             }
-        } else {
-            break;
+            let nb_clone = visited.get(nb.val).unwrap();
+            curr_clone.neighbors.push(nb_clone);
         }
     }
 
@@ -86,7 +84,7 @@ fn clone_graph(root: Node) -> Node {
     root_clone
 }
 
-fn sum_clones(root: Node, count: i64) -> i64 {
+fn sum_clones(root: frozen Node, count: i64) -> i64 {
     let mut s: i64 = 0;
     for _ in 0..count {
         let c = clone_graph(root);
@@ -95,10 +93,12 @@ fn sum_clones(root: Node, count: i64) -> i64 {
     s
 }
 
-fn main() {
-    let n: i64 = 2000;
-    let half_deg: i64 = 5;
-
+// Same 10-regular ring generator as clone_bfs.kara's `main`. It lives in its
+// own function so `nodes` — which holds a handle to every node, including the
+// root — dies here, leaving `root` the only live name for the instance. That
+// is the freeze site's uniqueness precondition, and it is a real one: with
+// `nodes` still in scope there genuinely are other live handles.
+fn build_graph(n: i64, half_deg: i64) -> Node {
     let mut nodes: Vec[Node] = Vec.new();
     for i in 0..n {
         nodes.push(Node { val: i + 1, neighbors: Vec.new() });
@@ -110,30 +110,34 @@ fn main() {
             nodes[j as u64].neighbors.push(nodes[i as u64]);
         }
     }
+    return nodes[0];
+}
 
-    let root = nodes[0];
+fn main() {
+    let root = build_graph(2000, 5);
+    let g = freeze root;
 
     // K=500 split 18-way: 28 × 14 + 27 × 4 = 500.
     let (s1, s2, s3, s4, s5, s6, s7, s8, s9,
          s10, s11, s12, s13, s14, s15, s16, s17, s18) = par {
-        let s1 = sum_clones(root, 28);
-        let s2 = sum_clones(root, 28);
-        let s3 = sum_clones(root, 28);
-        let s4 = sum_clones(root, 28);
-        let s5 = sum_clones(root, 28);
-        let s6 = sum_clones(root, 28);
-        let s7 = sum_clones(root, 28);
-        let s8 = sum_clones(root, 28);
-        let s9 = sum_clones(root, 28);
-        let s10 = sum_clones(root, 28);
-        let s11 = sum_clones(root, 28);
-        let s12 = sum_clones(root, 28);
-        let s13 = sum_clones(root, 28);
-        let s14 = sum_clones(root, 28);
-        let s15 = sum_clones(root, 27);
-        let s16 = sum_clones(root, 27);
-        let s17 = sum_clones(root, 27);
-        let s18 = sum_clones(root, 27);
+        let s1 = sum_clones(g, 28);
+        let s2 = sum_clones(g, 28);
+        let s3 = sum_clones(g, 28);
+        let s4 = sum_clones(g, 28);
+        let s5 = sum_clones(g, 28);
+        let s6 = sum_clones(g, 28);
+        let s7 = sum_clones(g, 28);
+        let s8 = sum_clones(g, 28);
+        let s9 = sum_clones(g, 28);
+        let s10 = sum_clones(g, 28);
+        let s11 = sum_clones(g, 28);
+        let s12 = sum_clones(g, 28);
+        let s13 = sum_clones(g, 28);
+        let s14 = sum_clones(g, 28);
+        let s15 = sum_clones(g, 27);
+        let s16 = sum_clones(g, 27);
+        let s17 = sum_clones(g, 27);
+        let s18 = sum_clones(g, 27);
         (s1, s2, s3, s4, s5, s6, s7, s8, s9,
          s10, s11, s12, s13, s14, s15, s16, s17, s18)
     };

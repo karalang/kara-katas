@@ -3,9 +3,11 @@
 # See ../README.md § Benchmarks for what these numbers mean.
 #
 # Seq lane: clone_bfs across kara/rust/c/go (N=2000 ring, K=500).
-# Par lane: kara clone_bfs_par (hand-written `par {}`) vs hand-tuned-parallel
-# mirrors — rust rayon, pthreads-C, goroutine-Go. clone_graph is RC/alloc-heavy
-# so it does NOT auto-par; the kara par lane is hand-written, not a seq twin.
+# Par lane: kara clone_bfs_par (hand-written `par {}` over a `frozen` graph)
+# vs hand-tuned-parallel mirrors — rust rayon, pthreads-C, goroutine-Go.
+# clone_graph is RC/alloc-heavy so it does NOT auto-par; the kara par lane is
+# hand-written, not a seq twin. Restored 2026-08-07 (kara B-2026-08-01-33);
+# see the BENCH_NOTE below and clone_bfs_par.kara's own header.
 #
 # Requires: hyperfine (`brew install hyperfine`), rustc (rustup), clang,
 # go, karac.
@@ -116,24 +118,14 @@ isa_build_rust clone_bfs.rs
 ovf_build_rust clone_bfs.rs
 build_c    clone_bfs.c
 build_kara clone_bfs.kara
-export BENCH_NOTE="kara par row WITHDRAWN (kara B-2026-08-01-33): clone_bfs_par.kara does not compile — a shared struct reachable from more than one par branch is a compile error by design, and even pure reads race on the non-atomic refcount. The kara par figure once recorded here came from a stale pre-gate binary that raced (~0.8% SIGSEGV/SIGTRAP, kara B-2026-07-28-13). It is withdrawn, not re-measured. The c/rust/go par rows are retained: they share the same read-only graph lock-free, having no refcount to race, and no legal Kara formulation matches them. See the par-lane section of ../README.md."
+export BENCH_NOTE="kara par lane RESTORED 2026-08-07 (kara B-2026-08-01-33). It was withdrawn while clone_bfs_par.kara did not compile — a shared struct reachable from more than one par branch was a compile error, because even pure reads race on the non-atomic refcount. The mechanism that answers it is 'frozen': a non-counting handle to a deeply-immutable shared value, so there is no refcount traffic left to race. The gate itself is unchanged and still correct. The kara par row published before that (from a stale pre-gate binary that raced, ~0.8% SIGSEGV/SIGTRAP, kara B-2026-07-28-13) was never re-measured and is not what this row is. clone_bfs_par.kara differs from clone_bfs.kara in TWO ways, both stated in its header: an index-cursor Vec worklist instead of VecDeque+pop_front (which is what the C mirror does, and which measures within noise of the deque form on the sequential lane — 181.4 vs 183.8 ms), and graph construction moved into a helper so the freeze source is uniquely bound."
 
-# --- kara par lane WITHDRAWN (kara B-2026-08-01-33) ------------------------
-# clone_bfs_par.kara does not compile: a `shared struct` reachable from more
-# than one `par {}` branch is a compile error by design (design.md § Rc vs Arc)
-# — even pure reads race on the non-atomic refcount. The numbers this lane once
-# published came from a stale pre-gate binary that raced (~0.8% SIGSEGV/SIGTRAP,
-# kara B-2026-07-28-13). They are withdrawn, not re-measured.
-#
-# The C/rust/go par mirrors still run: they share the same read-only graph
-# lock-free because they have no refcount. There is no legal Kāra formulation
-# that matches them, so the kara par row stays absent rather than being
-# published with a Mutex the algorithm does not need.
-#
-# Leaving the build here would fail the WHOLE kata's bench, taking the working
-# sequential lane down with it. Re-enable every line below if B-2026-08-01-33
-# ever gains an answer.
-# build_kara clone_bfs_par.kara
+# --- kara par lane, restored 2026-08-07 (kara B-2026-08-01-33) -------------
+# clone_bfs_par.kara compiles again. What changed is not the gate — a `shared
+# struct` reachable from more than one `par {}` branch is still an error — but
+# that `frozen` gives a branch a NON-COUNTING handle, so the refcount traffic
+# the gate exists to protect is not emitted at all. See the file's own header.
+build_kara clone_bfs_par.kara
 build_go_seq clone_bfs
 build_rust_rayon clone_rayon
 build_c_par      clone_bfs_par.c
@@ -146,6 +138,7 @@ for pair in \
     'seq_rust:./target/clone_bfs' \
     'seq_c:./target/clone_bfs_c' \
     'seq_go:./target/clone_bfs_go_seq' \
+    'par_kara:./target/clone_bfs_par_kara' \
     'par_rayon:./target/clone_rayon' \
     'par_c:./target/clone_bfs_par_c' \
     'par_go:./target/clone_bfs_go_par'; do
@@ -161,7 +154,7 @@ if [ -n "$mismatch" ]; then
     exit 1
 fi
 echo "sink seq (kara/rust/c/go): $expected"
-echo "sink par (rayon / pthreads-C / goroutine-Go; kara par lane withdrawn): $expected"
+echo "sink par (kara par {} / rayon / pthreads-C / goroutine-Go): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py=$(python3 clone_bfs.py)
     if [ "$py" != "$expected" ]; then
@@ -194,6 +187,8 @@ rt_end
 echo
 echo "=== runtime — par lane (clone_bfs, K=500: kara par {} vs hand-tuned) ==="
 rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach clone_bfs --lane par --mode codegen \
+    --name 'kara clone_bfs (par {})' --cmd './target/clone_bfs_par_kara'
 rt_cmd --lang rust --approach clone_bfs --lane par --mode native \
     --name 'rust clone_bfs (rayon)' --cmd './target/clone_rayon'
 rt_cmd --lang c --approach clone_bfs --lane par --mode native \
@@ -229,6 +224,7 @@ ce_end
 echo
 echo "=== binary size ==="
 size_put --lang kara --approach clone_bfs     --lane seq --mode codegen --path target/clone_bfs_kara
+size_put --lang kara --approach clone_bfs     --lane par --mode codegen --path target/clone_bfs_par_kara
 size_put --lang rust --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs
 size_put --lang rust --approach clone_bfs     --lane par --mode native  --path target/clone_rayon
 size_put --lang c    --approach clone_bfs     --lane seq --mode native  --path target/clone_bfs_c
@@ -239,6 +235,7 @@ size_put --lang go   --approach clone_bfs     --lane par --mode native  --path t
 echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach clone_bfs --lane seq --mode codegen --bytes "$(mem_peak ./target/clone_bfs_kara)"
+mem_put --lang kara --approach clone_bfs --lane par --mode codegen --bytes "$(mem_peak ./target/clone_bfs_par_kara)"
 mem_put --lang rust --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs)"
 mem_put --lang rust --approach clone_bfs --lane par --mode native  --bytes "$(mem_peak ./target/clone_rayon)"
 mem_put --lang c    --approach clone_bfs --lane seq --mode native  --bytes "$(mem_peak ./target/clone_bfs_c)"
@@ -251,8 +248,7 @@ fi
 
 echo
 echo "=== compile memory (cold) ==="
-# clone_bfs_par.kara omitted: does not compile (see the par-lane note above).
-for src in clone_bfs.kara; do
+for src in clone_bfs.kara clone_bfs_par.kara; do
     stem="$(basename "$src" .kara)"
     rm -f "target/${stem}_kara" "$stem"
     bytes=$(mem_peak karac build "$src")
