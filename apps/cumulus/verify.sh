@@ -134,6 +134,25 @@ for f in bad_bitpix bad_naxis not_fits; do
   esac
 done
 
+echo "== a colour mosaic is refused by the monochrome modes, and vice versa =="
+# A CFA frame stacked as if it were grey does not fail — it produces a plausible
+# picture with checkerboard texture and colour-biased star positions. Refusing
+# is the only way that mistake becomes visible.
+python3 gen_cfa.py "$WORK/cfa" --frames 4 --width 192 --height 128 > /dev/null
+msg="$("$WORK/cumulus" "$WORK/junk.cstack" stack "$WORK/cfa"/*.fits 2>&1 | head -1)"
+case "$msg" in
+  *"Bayer mosaic"*) echo "  mosaic into \`stack\`: refused — ${msg##*: }" ;;
+  *) echo "  expected a refusal for a mosaic in a mono mode, got: $msg" >&2; exit 1 ;;
+esac
+msg="$("$WORK/cumulus" "$WORK/junk.cstack" stackcfa "$WORK/fits"/*.fits 2>&1 | head -1)"
+case "$msg" in
+  *"needs a BAYERPAT"*) echo "  mono into \`stackcfa\`: refused — ${msg##*: }" ;;
+  *) echo "  expected a refusal for mono in a CFA mode, got: $msg" >&2; exit 1 ;;
+esac
+
+echo "== CFA: exact integration, injected colours, recovered dithers =="
+python3 check_cfa.py "$WORK/cumulus"
+
 if command -v node >/dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
   echo "== wasm kernels equal native =="
   "$WORK/cumulus" "$WORK/w_mean.cstack"  mean  "$WORK/dith.cstack" > /dev/null

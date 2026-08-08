@@ -312,6 +312,157 @@ iOS resolves `accept` extensions through UTIs. FITS has no registered UTI, so
 the Files picker may grey out exactly the files the user is trying to choose.
 Chromium emulation does not reproduce that; it needs a real device.
 
+## Colour: the CFA path
+
+This is what "supports RAW" actually means for the astronomy. Siril, and every
+other stacker, runs LibRaw over CR3/NEF/ARW and writes a **FITS sequence**
+before doing anything else; what lands is a 16-bit plane per sub with a
+`BAYERPAT` card describing the colour filter array. Cumulus reads that directly,
+which is the whole of RAW support minus the vendor-format archaeology — a
+decoder is a TIFF-variant parser plus per-vendor decompression that changes with
+firmware, and it exercises byte-fiddling the FITS reader already covers.
+
+```
+cumulus out.cstack stackcfa sub_*.fits    # register + sigma clip, in colour
+cumulus out.cstack meancfa  sub_*.fits    # no registration — the exact-oracle mode
+```
+
+### Split first, demosaic never
+
+The mosaic is separated into **four half-resolution planes**, one per position
+in the 2×2 tile, and every existing kernel then applies unchanged —
+`detect_stars`, `estimate_offset`, `resample_tile` and `stack_tiled` all run on
+each plane as if it were an ordinary monochrome image. That is the point of the
+ordering. Interpolating to full-resolution RGB first would blend neighbouring
+filters into every sample **before** alignment is known, baking an interpolation
+error into the very data the registration then measures.
+
+The cost is resolution: this is superpixel demosaic, so the output is w/2 × h/2.
+Recovering full resolution from the dithers is drizzle, and it is a later slice,
+not a different architecture.
+
+Registration runs on a half-resolution **luminance** image, never on the mosaic.
+Centroiding a star directly on a mosaic is biased: adjacent photosites sit under
+different filters, so the sampled PSF carries a checkerboard modulation and the
+measured centre is pulled toward whichever channel the star is brightest in.
+That is a colour-dependent astrometric error — red and blue stars in the same
+frame disagree about where the frame is, the consensus vote splits, and the
+result is a slightly soft stack with nothing in the output to say why.
+
+### What the CFA path found in the monochrome one
+
+The luminance combiner is the **median** of the four photosites rather than the
+mean, and the detector now drops any source within 2 px of a brighter one. Both
+came out of a measurement, not a design review, and the second is a genuine bug
+that had been sitting in the monochrome path all along.
+
+On a **zero-dither** set — every frame the same scene, so the true offset is
+exactly zero and any recovered offset is pure error — the CFA path read
+**0.078 px**. Removing the cosmic rays from the generator dropped it to 0.005.
+So the rays were the cause, but the sharpness cut that rejects them in the
+monochrome path was clearly not doing its job.
+
+The reference frame turned out to be finding **13 sources for 12 stars**:
+
+```
+ref(23.77, 22.21) flux 48418
+ref(23.63, 23.11) flux 31855      <- same star, 0.9 px away
+```
+
+A cosmic ray landing *beside* a star creates a second local maximum that the
+sharpness cut cannot reject, because the ray **inherits the star's neighbours**
+and so looks perfectly resolved. The monochrome path escapes this by luck rather
+than design: at 60000 ADU a ray swallows the star's own peak, the pair collapses
+into one detection, and the cut throws it away. Combining four photosites scales
+a ray down to roughly stellar brightness, the star keeps its maximum, and both
+survive.
+
+The damage is out of proportion to the artefact, because a spurious twin
+corrupts the **matching** rather than one star's position — the offset search
+pairs a real star in one frame against the twin in another and proposes a
+displacement wrong by their separation. Deduplication took the zero-dither error
+from 0.078 px back to the 0.005 the ray-free set already achieved, and costs the
+monochrome path nothing: its gate reads exactly what it read before,
+`mean |err| (0.0214, 0.0206)`, worst `0.0707`.
+
+**One thing measured and then deliberately NOT fixed.** A second, smaller effect
+survives: a bright star's centroid is bistable, reading 52.32 or 52.74 depending
+on which pixel wins the local maximum. The ±3 centroid window cuts a σ=2.2 star
+at 1.4σ and discards about a third of its flux, and the truncation flips sides
+when the peak pixel moves. Widening the window to ±5 and letting it re-centre
+fixed the CFA case — and **regressed the monochrome path below its gate**
+(mean |err| 0.021 → 0.050, one frame falling to 6 votes of 11) because an 11×11
+window blends neighbouring stars at this field density. So it was reverted. The
+honest fix is an adaptive window sized to the measured PSF, with deblending,
+which is its own piece of work and not something to smuggle into a colour slice.
+
+### Three oracles, because exact equality is not enough here
+
+Exact equality against a numpy reference cannot catch a channel transposition:
+the reference and the implementation share an author, so the same mistake
+written into both agrees perfectly. `check_cfa.py` adds two checks that do not
+depend on the implementation at all.
+
+```
+  RGGB: meancfa EXACT MATCH over 18432 values
+  RGGB: colour within 0.0012 of the injected scene over 3 clean stars (all 12: 0.070)
+  reference found exactly the 12 injected stars
+  offsets: mean |err| (0.0600, 0.0193) px, worst 0.1063 px
+```
+
+- **Exact equality**, for all four Bayer patterns, on `meancfa`. Registration is
+  off in that mode for a reason: with it on the recovered offsets are near zero
+  but not zero, the resample stops being an identity sample, and only a
+  tolerance comparison would be possible — which is exactly where a real defect
+  in new code hides.
+- **Colour**, against the R:G:B ratios `gen_cfa.py` injected. Those are
+  constants of the scene, not of either implementation.
+- **Star count**, which is what catches the spurious-twin class. The offset
+  tolerance alone does not: a phantom pair still lands inside it more often than
+  not.
+
+Getting the colour check right took three wrong turns, all of them mine and all
+worth recording, because each produced a confident failure that looked exactly
+like a pipeline bug:
+
+1. A single aperture at the same coordinates in all three planes. But the planes
+   do not share a coordinate system — R and B sample lattices half a superpixel
+   apart — so a fixed aperture captures different fractions of the same PSF,
+   worst on the sharpest star. That artefact alone read as a 0.18 colour error
+   with a pattern-dependent sign.
+2. A **global** median background. Each channel carries its own sky gradient,
+   several hundred ADU corner to corner, so one global level leaves a
+   position-dependent residual which, over ~170 aperture pixels, exceeded the
+   faintest star's flux in its weakest channel.
+3. A tolerance tighter than the noise. Measuring the *noiseless injected scene*
+   through the same aperture settled it: the scene reproduces the injected
+   ratios to 0.005, and the pipeline reproduces the scene to 0.0012 on bright
+   stars and 0.07 on faint ones — error scaling inversely with brightness, i.e.
+   noise, with no systematic term. The check now asserts tightly where a
+   transposition would be the only possible explanation (bright, isolated) and
+   loosely everywhere else.
+
+The check is **proven non-vacuous**: transposing R and B in `stack_cfa` fails it
+on every pattern, at 12288 of 18432 values and a colour error of 0.523 against a
+0.25 bound.
+
+### Refusing the mistake that produces a picture
+
+A mosaic stacked as monochrome does not fail. It produces a plausible grey image
+with checkerboard texture and colour-biased star positions — no error, no
+warning, just a slightly wrong answer. So the mismatch is refused in both
+directions, and both refusals are asserted in `verify.sh`:
+
+```
+  mosaic into `stack`: refused — input is a Bayer mosaic (BAYERPAT=RGGB) — use `stackcfa`
+  mono into `stackcfa`: refused — `stackcfa` needs a BAYERPAT card; this input is monochrome
+```
+
+`ROWORDER` is refused the same way when it is not `TOP-DOWN`. That card exists
+because FITS inherited bottom-up row order from its tape era while cameras write
+top-down, and reading a mosaic at the wrong anchor is a colour **transposition**,
+not a flip — every red pixel comes out green.
+
 ## Registration
 
 Translation-only, sub-pixel, star-based. **O(N²)** in the detected star count —
@@ -468,8 +619,21 @@ Deliberately absent, in the order they matter:
    window of frames resident, or memory-mapping the subs, is the next lever, and
    it is now the *only* remaining one — everything above the frames themselves
    has been squeezed out.
-3. **Calibration** (darks / flats / bias) and the browser shell.
-4. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
+3. **Calibration** — darks, flats and bias. Synthetic frames have no amp glow,
+   no hot columns, no vignetting and no dust motes, so nothing here has ever
+   needed it; real subs from a real sensor do. This is the next thing that
+   matters for actual RAW-derived data, now that the mosaic is handled.
+4. **Drizzle.** The CFA path is superpixel demosaic, so colour output is half
+   resolution. The dithers carry the information needed to recover full
+   resolution, and using it is the natural follow-on — the plane-separated
+   architecture is already the right shape for it.
+5. **Deblending, and an adaptive centroid window.** The fixed ±3 window
+   truncates bright stars asymmetrically and makes their centroids bistable by
+   ~0.4 px; widening it naively blends close pairs instead. Both want the same
+   fix, and it needs its own slice — see the CFA section for the measurement.
+6. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
    already implements, is the upgrade once the pipeline is trusted.
-5. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
-   HDUs. Vendor RAW stays out of scope.
+7. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
+   HDUs, and `ROWORDER = 'BOTTOM-UP'`. Vendor RAW decoding stays out of scope:
+   `rawpy`, `dcraw` or `siril -s` convert to FITS in a few lines, which is
+   exactly what Siril itself does internally before any astronomy happens.

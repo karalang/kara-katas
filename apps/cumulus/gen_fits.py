@@ -43,7 +43,13 @@ def card(key: str, value, comment: str = "") -> bytes:
     return body.ljust(CARD).encode("ascii")
 
 
-def write_fits(path: str, px: list[int], w: int, h: int) -> None:
+def write_fits(path: str, px: list[int], w: int, h: int, extra=None) -> None:
+    """Write one 16-bit FITS image.
+
+    `extra` is an optional list of (key, value, comment) appended before END —
+    used by gen_cfa.py for the BAYERPAT/ROWORDER pair. String values must
+    arrive already quoted, since FITS quotes them and the reader strips them.
+    """
     cards = [
         card("SIMPLE", True, "conforms to FITS standard"),
         card("BITPIX", 16, "16-bit integers"),
@@ -55,8 +61,10 @@ def write_fits(path: str, px: list[int], w: int, h: int) -> None:
         # — the single most common way to get FITS wrong.
         card("BZERO", 32768, "unsigned 16-bit offset"),
         card("BSCALE", 1),
-        b"END".ljust(CARD),
     ]
+    for key, value, comment in (extra or []):
+        cards.append(card(key, value, comment))
+    cards.append(b"END".ljust(CARD))
     header = b"".join(cards)
     header += b" " * ((-len(header)) % BLOCK)
 
