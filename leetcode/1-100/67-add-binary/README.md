@@ -100,6 +100,9 @@ exit 0. **Fixed (`b59eb070`):** `run` now aborts on value-corrupting casts,
 matching `build`/`check`. See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **5%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.3%** margin against `go build` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`126111201`). Workload: column-add carry-ripple of two 96-bit windows x 3.6M pairs over a 2M-bit buffer (build-once + punch); sink=popcount total.

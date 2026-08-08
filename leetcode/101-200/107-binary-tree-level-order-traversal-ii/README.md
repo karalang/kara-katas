@@ -68,6 +68,9 @@ diff <(karac run level_order_bottom.kara) <(karac run level_order_bottom_bfs.kar
 python3 ground_truth.py
 ```
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **13%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **3.8%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`level_order_bottom.{kara,rs,c,py}`, `go-seq/main.go`).
 

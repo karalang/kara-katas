@@ -51,6 +51,9 @@ Because a binary tree is **acyclic**, `left`/`right` are ordinary strong `Option
 - **`Option[shared TreeNode]` recursion** — `match` on each child; a null child is the base case.
 - **Strong `Option` tree children** — acyclic, so no `weak` (contrast the #141–143 linked-list cluster, where cycles forced weak links).
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **32%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **2.4%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`10924394284840801`). Workload: iterative preorder (explicit index-pool stack) over a 50k-node BST x 400 passes, pointer-chase.

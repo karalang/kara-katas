@@ -34,6 +34,9 @@ Many valid orders can exist. This solution pins a single deterministic one by se
 - **Index-pool FIFO** — `Vec[i64]` + `head` cursor, allocation-free.
 - **String assembly for output** — the order is space-joined with a `first` flag (no trailing separator).
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **35%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **1.5%** margin against `rustc -O -C overflow-checks=on` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400425564371`). Workload: build a 20k-node/80k-edge random DAG once (CSR); run Kahn topo-sort 800 times, punching one blocked course per pass; sink = sum of emitted count + order checksum.

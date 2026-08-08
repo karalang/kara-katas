@@ -31,6 +31,9 @@ Scan the grid. Each time an **unvisited land cell** is found, it must belong to 
 - **`Vec[i64]` explicit stack** — `push` / peek / `pop` (→ `Option`, discarded) driving iterative DFS; positions packed as `r*cols + c` and unpacked with `/` and `%`.
 - **`mut ref Vec[Vec[i64]]` parameter** — the grid is consumed by value in `report` (`let mut g = grid`) then passed with the `mut` marker to the mutating `num_islands`.
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **9%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.9%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`6469639`). Workload: iterative stack flood-fill island count over an 80x80 PRNG 0/1 grid x 13000 passes, grid restored from a persistently-punched master each pass (data-dependent stack growth, non-vectorizing).

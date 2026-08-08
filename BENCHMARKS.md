@@ -446,3 +446,49 @@ apply: these are single-file algorithm kernels, not applications; wall-times are
 noise-limited (shared M5 Pro), while size and memory are stable. Read the shape,
 not the last digit, and consult [`bench-results.json`](bench-results.json) for
 the underlying numbers.
+
+### Code placement (arm64)
+
+On Apple silicon a program's speed depends partly on **where its machine code
+sits** — on the hot loop's address mod 64, the instruction-fetch granularity.
+Rebuild after any change that shifts emitted code size ahead of `main`, and the
+same source, compiler and input can run measurably faster or slower. So a single
+recorded figure is one draw from a distribution, and a reader who rebuilds a
+kata locally may not land on ours.
+
+This is **not** a Kāra defect — it is a property of the machine, and C and Rust
+binaries are subject to it too. It also does **not** move the corpus-level
+figures, which are medians over hundreds of katas and average the draw out. It
+matters for a *single* kata's number, which is exactly what a reader reproduces.
+
+The corpus has been measured for it rather than assumed
+([`scripts/placement-spread.py`](scripts/placement-spread.py), full results in
+[`placement-spread.json`](placement-spread.json)). Each kata is built at four
+code placements — moving `main` by a chosen number of bytes while leaving every
+instruction identical — and timed interleaved against a **same-binary control**,
+so each kata's own measurement noise is subtracted rather than assumed away.
+Across 258 kata/approach pairs:
+
+| placement range (net of control) | pairs |
+|---|---|
+| under 1% | 144 |
+| 1–5% | 86 |
+| 5–10% | 18 |
+| over 10% | 10 |
+
+Median 0.8%, worst 47%. The wide tail is not random: it is loops with **large,
+branchy bodies** — tree and graph traversals, and one hash-probe kernel — where
+the body straddles fetch blocks and the branch predictor, which indexes on
+address, re-aliases when the code moves. Tight arithmetic loops are flat
+(kata:11 measures 0.3%).
+
+**What to do with a narrow margin.** Thirteen katas have a placement range at
+least 3× wider than the margin they quote against their nearest comparator; each
+now carries a caveat at the top of its Benchmarks section. The general rule: **a
+gap smaller than the kata's placement range is a tie, not a result.** The widest
+cases are #145 (47% range against a 0.1% margin), #210 (35% / 1.5%) and #144
+(32% / 2.4%).
+
+The mechanism, the levers that measure it (`KARAC_TEXT_PAD`), and why forcing
+code alignment is not a fix are in the compiler's bug ledger under the placement
+entries.

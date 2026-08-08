@@ -32,6 +32,9 @@ Parse each version into its list of integer revisions in a **single byte scan** 
 - **`Vec[i64]` per-version revision lists** returned by value from `revisions`.
 - **`if`-expression zero-padding** for the shorter version (`let x = if i < na { a[i] } else { 0 }`).
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **7%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.5%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`10371066`). Workload: build-once pool of 4096 PRNG version strings + 10M PRNG-paired compare_version calls (byte-scan parse into revision lists + element-wise compare, per-call alloc, non-vectorizing); sink = sum of (-1/0/1 result +1).

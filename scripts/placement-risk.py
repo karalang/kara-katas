@@ -80,9 +80,11 @@ def main():
         if m is None:
             continue
         margin, comp, ratio = m
-        excess = r["spread"] - 1.0
+        # `excess` is spread net of the kata's own control: run-to-run noise
+        # averages out of a published hyperfine mean, placement does not.
+        excess = r.get("excess", r["spread"]) - 1.0
         risk = excess / margin if margin > 1e-9 else float("inf")
-        rows.append((risk, r["id"], r["slug"], stem, r["spread"], margin, comp, ratio))
+        rows.append((risk, r["id"], r["slug"], stem, r.get("excess", r["spread"]), margin, comp, ratio))
 
     rows.sort(reverse=True)
     sp = [r[4] for r in rows]
@@ -94,7 +96,7 @@ def main():
 
     flagged = [r for r in rows if r[0] >= args.threshold]
     print(f"\nFLAGGED (placement range >= claimed margin): {len(flagged)}\n")
-    print(f"{'risk':>7} {'kata':>6} {'approach':<18} {'spread':>7} {'margin':>7} "
+    print(f"{'risk':>7} {'kata':>6} {'approach':<18} {'excess':>7} {'margin':>7} "
           f"{'vs':<9} {'ratio':>6}  slug")
     for risk, kid, slug, stem, s, margin, comp, ratio in flagged[:40]:
         rr = "inf" if risk == float("inf") else f"{risk:.1f}x"
