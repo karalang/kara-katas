@@ -1,0 +1,272 @@
+// LeetCode 251 — differential harness.
+//
+// Builds randomized 2D vectors and drains all THREE iterators over each one,
+// comparing the full emitted SEQUENCE (via a positional checksum), not merely
+// the element count — two iterators can agree on how many elements they yield
+// and still disagree on the order, and row-major order is the whole contract.
+//
+// Generator choices, both deliberate:
+//
+//   * Empty rows are COMMON (~45%), and rows are drawn independently, so runs of
+//     consecutive empties — at the front, at the back, and in the middle —
+//     occur constantly. That is the one shape this problem is about, and a
+//     uniform generator produces it only rarely.
+//
+//   * Whole all-empty inputs (`[[],[],[]]`) and the empty input (`[]`) both
+//     arise naturally at these parameters rather than being special-cased, so
+//     the "cursor runs off the end without ever yielding" path is exercised in
+//     bulk instead of once.
+//
+// (`gen` is reserved in Kara, hence `make_data`.)
+//
+// Each solver consumes its input by value, so the data is REGENERATED from the
+// same seed for each of the three rather than cloned — identical input, no
+// shared mutable state between the runs being compared.
+
+// ---- generator ------------------------------------------------------------
+
+fn make_data(seed: i64) -> Vec[Vec[i64]] {
+    let mut state = seed;
+    let mut data: Vec[Vec[i64]] = Vec.new();
+
+    state = (state * 1103515245i64 + 12345i64) % 2147483648i64;
+    let rows = (state / 65536i64) % 13i64;
+
+    let mut r = 0i64;
+    while r < rows {
+        state = (state * 1103515245i64 + 12345i64) % 2147483648i64;
+        let roll = (state / 65536i64) % 100i64;
+        let mut row: Vec[i64] = Vec.new();
+        if roll >= 45i64 {
+            state = (state * 1103515245i64 + 12345i64) % 2147483648i64;
+            let cols = (state / 65536i64) % 6i64 + 1i64;
+            let mut c = 0i64;
+            while c < cols {
+                state = (state * 1103515245i64 + 12345i64) % 2147483648i64;
+                row.push((state / 65536i64) % 1000i64);
+                c = c + 1i64;
+            }
+        }
+        data.push(row);
+        r = r + 1i64;
+    }
+    return data;
+}
+
+// ---- solver 1: lazy two-cursor -------------------------------------------
+
+struct Cursor {
+    data: Vec[Vec[i64]],
+    mut row: i64,
+    mut col: i64,
+}
+
+fn c_skip(v: mut ref Cursor) {
+    while v.row < v.data.len() and v.col >= v.data[v.row].len() {
+        v.row = v.row + 1i64;
+        v.col = 0i64;
+    }
+}
+
+fn c_has_next(v: mut ref Cursor) -> bool {
+    c_skip(v);
+    return v.row < v.data.len();
+}
+
+fn c_next(v: mut ref Cursor) -> i64 {
+    c_skip(v);
+    if v.row >= v.data.len() {
+        return -1i64;
+    }
+    let x = v.data[v.row][v.col];
+    v.col = v.col + 1i64;
+    return x;
+}
+
+fn run_cursor(data: Vec[Vec[i64]]) -> i64 {
+    let mut v = Cursor { data: data, row: 0i64, col: 0i64 };
+    let mut sum = 0i64;
+    let mut n = 0i64;
+    while c_has_next(mut v) {
+        // poll twice — idempotence is part of the contract
+        if not c_has_next(mut v) {
+            return -1i64;
+        }
+        let x = c_next(mut v);
+        sum = (sum * 31i64 + x + 1i64) % 1000000007i64;
+        n = n + 1i64;
+    }
+    if c_has_next(mut v) {
+        return -2i64;
+    }
+    return (sum * 7i64 + n) % 1000000007i64;
+}
+
+// ---- solver 2: eager flatten ---------------------------------------------
+
+struct Flat {
+    flat: Vec[i64],
+    mut pos: i64,
+}
+
+fn f_has_next(v: mut ref Flat) -> bool {
+    return v.pos < v.flat.len();
+}
+
+fn f_next(v: mut ref Flat) -> i64 {
+    if v.pos >= v.flat.len() {
+        return -1i64;
+    }
+    let x = v.flat[v.pos];
+    v.pos = v.pos + 1i64;
+    return x;
+}
+
+fn run_flat(data: Vec[Vec[i64]]) -> i64 {
+    let mut flat: Vec[i64] = Vec.new();
+    let mut r = 0i64;
+    while r < data.len() {
+        let mut c = 0i64;
+        while c < data[r].len() {
+            flat.push(data[r][c]);
+            c = c + 1i64;
+        }
+        r = r + 1i64;
+    }
+    let mut v = Flat { flat: flat, pos: 0i64 };
+    let mut sum = 0i64;
+    let mut n = 0i64;
+    while f_has_next(mut v) {
+        if not f_has_next(mut v) {
+            return -1i64;
+        }
+        let x = f_next(mut v);
+        sum = (sum * 31i64 + x + 1i64) % 1000000007i64;
+        n = n + 1i64;
+    }
+    if f_has_next(mut v) {
+        return -2i64;
+    }
+    return (sum * 7i64 + n) % 1000000007i64;
+}
+
+// ---- solver 3: prefix offsets + binary search ----------------------------
+
+struct Offset {
+    data: Vec[Vec[i64]],
+    prefix: Vec[i64],
+    mut k: i64,
+}
+
+fn o_total(v: ref Offset) -> i64 {
+    return v.prefix[v.prefix.len() - 1i64];
+}
+
+fn o_has_next(v: mut ref Offset) -> bool {
+    return v.k < o_total(v);
+}
+
+fn o_row_for(v: ref Offset, k: i64) -> i64 {
+    let mut lo = 0i64;
+    let mut hi = v.prefix.len() - 1i64;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2i64;
+        if v.prefix[mid + 1i64] > k {
+            hi = mid;
+        } else {
+            lo = mid + 1i64;
+        }
+    }
+    return lo;
+}
+
+fn o_next(v: mut ref Offset) -> i64 {
+    if v.k >= o_total(v) {
+        return -1i64;
+    }
+    let r = o_row_for(v, v.k);
+    let c = v.k - v.prefix[r];
+    v.k = v.k + 1i64;
+    return v.data[r][c];
+}
+
+fn run_offset(data: Vec[Vec[i64]]) -> i64 {
+    let mut prefix: Vec[i64] = Vec.new();
+    prefix.push(0i64);
+    let mut r = 0i64;
+    let mut running = 0i64;
+    while r < data.len() {
+        running = running + data[r].len();
+        prefix.push(running);
+        r = r + 1i64;
+    }
+    let mut v = Offset { data: data, prefix: prefix, k: 0i64 };
+    let mut sum = 0i64;
+    let mut n = 0i64;
+    while o_has_next(mut v) {
+        if not o_has_next(mut v) {
+            return -1i64;
+        }
+        let x = o_next(mut v);
+        sum = (sum * 31i64 + x + 1i64) % 1000000007i64;
+        n = n + 1i64;
+    }
+    if o_has_next(mut v) {
+        return -2i64;
+    }
+    return (sum * 7i64 + n) % 1000000007i64;
+}
+
+// ---- harness --------------------------------------------------------------
+
+fn main() {
+    let cases = 4000i64;
+    let mut seed = 251251i64;
+
+    let mut mismatches = 0i64;
+    let mut total_elems = 0i64;
+    let mut total_rows = 0i64;
+    let mut empty_rows = 0i64;
+    let mut empty_iters = 0i64;
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
+
+        let a = run_cursor(make_data(seed));
+        let b = run_flat(make_data(seed));
+        let d = run_offset(make_data(seed));
+
+        if a != b or a != d {
+            mismatches = mismatches + 1i64;
+        }
+        digest = (digest * 131i64 + a) % 1000000007i64;
+
+        // shape census, from a fourth independent regeneration
+        let shape = make_data(seed);
+        let mut r = 0i64;
+        let mut here = 0i64;
+        while r < shape.len() {
+            total_rows = total_rows + 1i64;
+            if shape[r].len() == 0i64 {
+                empty_rows = empty_rows + 1i64;
+            }
+            here = here + shape[r].len();
+            r = r + 1i64;
+        }
+        total_elems = total_elems + here;
+        if here == 0i64 {
+            empty_iters = empty_iters + 1i64;
+        }
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"rows {total_rows}");
+    println(f"empty rows {empty_rows}");
+    println(f"elements {total_elems}");
+    println(f"empty iterators {empty_iters}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}
