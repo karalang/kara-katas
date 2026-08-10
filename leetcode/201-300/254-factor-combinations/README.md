@@ -49,7 +49,7 @@ becomes a fresh `Vec[i64]` per frame here, which is the real cost of going
 iterative and the kind of thing worth seeing in a language with explicit
 ownership.
 
-## What it found: kara `B-2026-08-10-13`
+## What it found: two layered codegen gaps
 
 The three solvers generate in three different orders, so their shared `render`
 sorts the `Vec[Vec[i64]]` lexicographically before printing — comparing lengths
@@ -82,24 +82,60 @@ Every earlier `sort_by` in the corpus compares **tuple fields**
 ([#56](../../1-100/56-merge-intervals/), [#252](../252-meeting-rooms/),
 [#253](../253-meeting-rooms-ii/)), which is why nothing has hit this before.
 
-**The natural spelling is kept** rather than rewritten to dodge the gap, so three
-of the four programs are interpreter-only until it is fixed.
+**Fixed upstream in `b90027e`** — and fixing it exposed a second one underneath.
+
+### kara `B-2026-08-10-16` — `return` inside a comparator
+
+Re-checking the fix against **this kata's own comparator** rather than the 8-line
+repro that was filed showed the repro fixed and the kata still broken, now at a
+different site:
+
+```
+Module verification failed: "Function return type does not match operand
+type of return inst!  ret { i64 } %ord / i64"
+```
+
+Boundary, probed on `Vec[(i64,i64)]` so the element type is held fixed:
+
+| comparator body | build |
+|---|---|
+| single expression `\|x,y\| x.0.cmp(y.0)` | ✅ |
+| block, **implicit** tail | ✅ |
+| if-expression tail (what [#253](../253-meeting-rooms-ii/) uses) | ✅ |
+| block with explicit **`return`** | ❌ |
+
+So it is the `return` *keyword* in comparator position, independent of element
+type: the implicit-tail path unwraps the `Ordering` struct and the explicit-return
+path does not.
+
+**Not a regression from the first fix.** That commit touches no return-type
+logic, its tests are all single-expression comparators, and #254 is the only
+program in the corpus with a block-bodied comparator — so nothing else could have
+exercised this path before or after. It is a pre-existing gap the first one was
+masking: previously this kata failed *earlier*, at method dispatch, and never
+reached module verification.
+
+This kata's comparator needs an **early return from inside a while loop** —
+compare element by element, exit at the first difference — which cannot be
+written as an implicit tail without restructuring into a sentinel-and-flag shape.
+**The natural spelling is kept** rather than contorted, so three of the four
+programs are interpreter-only until `B-2026-08-10-16` is fixed.
 
 ## Verification status — partial
 
 | file | interp | JIT | build | auto-par | Python |
 |---|---|---|---|---|---|
-| `factor_combinations.kara` ★ | ✅ | ⛔ `-13` | ⛔ `-13` | ⛔ `-13` | ✅ |
-| `factor_combinations_close.kara` | ✅ | ⛔ `-13` | ⛔ `-13` | ⛔ `-13` | — |
-| `factor_combinations_iter.kara` | ✅ | ⛔ `-13` | ⛔ `-13` | ⛔ `-13` | — |
+| `factor_combinations.kara` ★ | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | ✅ |
+| `factor_combinations_close.kara` | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | — |
+| `factor_combinations_iter.kara` | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | — |
 | `differential.kara` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 All three solvers agree with each other and with Python under the interpreter.
 `differential.kara` reaches every surface — it compares by an order-independent
 digest and never sorts, so it never touches the broken construct. **The A/B
-run==build guarantee is therefore NOT established for the three solvers.** When
-`B-2026-08-10-13` is fixed, re-run the matrix; nothing else should need to
-change.
+run==build guarantee is therefore NOT established for the three solvers.**
+`B-2026-08-10-13` is already fixed; when `B-2026-08-10-16` follows, re-run the
+matrix — nothing else should need to change.
 
 ## The differential compares without sorting
 
