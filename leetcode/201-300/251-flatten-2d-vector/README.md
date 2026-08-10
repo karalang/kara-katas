@@ -72,7 +72,8 @@ then a second one after the first was fixed — kara `B-2026-08-09-18` and
 
 ## What it found
 
-**Three compiler bugs, all from negative probes or the natural spelling.**
+**Three compiler bugs, all from negative probes or the natural spelling — and a
+fourth downstream of fixing one of them.** All are now closed.
 
 **kara `B-2026-08-09-18`** — the interpreter ICE'd (`internal error: entered
 unreachable code`) on a method call whose *receiver* faulted, instead of
@@ -83,7 +84,9 @@ reported correctly. Fixed upstream in `bb46a68d`.
 landed showed three more sites with the same root cause: the short-circuit
 operator's LHS (`and` and `or`) and the enclosing `if` condition all consume the
 same poison value without checking. The minimised repro filed with `-18` was
-fixed; the kata-shaped case that found it was not. Open.
+fixed; the kata-shaped case that found it was not. Fixed in `512f59a`, and
+re-checked against the original swapped-guard probe rather than the minimised
+repro — the distinction that exposed the gap the first time.
 
 **kara `B-2026-08-09-21`** — and this one is why the kata is only partly
 verified. A nested index rooted at a **struct field** — `v.data[v.row][v.col]`,
@@ -99,25 +102,29 @@ Boundary, probed: `d[i][j]` on a named local builds; `h.data[i][j]` fails;
 *write* `h.data[i][j] = v` fails the same way. So it is specifically the double
 index rooted at a field, read and write alike.
 
-**The natural spelling is kept.** Rewriting the solvers to bind an intermediate
-row would make them build, and would also delete the finding — so per the corpus
-policy the kata stays idiomatic and this README records the blocked leg instead.
+**The natural spelling was kept.** Rewriting the solvers to bind an intermediate
+row would have made them build, and would also have deleted the finding — so per
+the corpus policy the kata stayed idiomatic and this README carried the blocked
+leg instead. Fixed in `88da44e`, both halves; the fix in turn surfaced a leak in
+the new store path (`B-2026-08-10-1`, `1b6ed41`), which a rewritten kata would
+never have reached.
 
-## Verification status — partial, and deliberately so
+## Verification status
 
 | file | interp | JIT | build | auto-par | Python |
 |---|---|---|---|---|---|
-| `flatten_2d.kara` ★ | ✅ | ⛔ `-21` | ⛔ `-21` | ⛔ `-21` | ✅ |
+| `flatten_2d.kara` ★ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `flatten_2d_eager.kara` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `flatten_2d_offset.kara` | ✅ | ⛔ `-21` | ⛔ `-21` | ⛔ `-21` | — |
-| `differential.kara` | ✅ | ⛔ `-21` | ⛔ `-21` | ⛔ `-21` | ✅ |
+| `flatten_2d_offset.kara` | ✅ | ✅ | ✅ | ✅ | — |
+| `differential.kara` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-All three solvers produce byte-identical output under the interpreter, and
-`flatten_2d_eager.kara` — the one that reaches every surface — is byte-identical
-across all four plus Python. **The A/B run-vs-build guarantee this corpus
-requires is therefore NOT yet established for three of the four programs.** When
-`B-2026-08-09-21` is fixed, re-run the matrix below; nothing else should need to
-change.
+Every program is byte-identical across all four surfaces, and the two with
+mirrors match Python as well. The corpus A/B run==build guarantee holds.
+
+This table was red on three of four rows when the kata landed, blocked by
+`B-2026-08-09-21`. That row was fixed in `88da44e` and the matrix re-run
+unchanged — no edit to any solver was needed, which is the outcome the original
+note predicted and the reason the natural spelling was worth keeping.
 
 ## Generator design
 
@@ -156,19 +163,20 @@ artifact.
 ## Running
 
 ```bash
-karac run --interp flatten_2d.kara
-karac run --interp flatten_2d_eager.kara
-karac run --interp flatten_2d_offset.kara
+karac run flatten_2d.kara
+karac run flatten_2d_eager.kara
+karac run flatten_2d_offset.kara
 
 # the three solvers agree with each other and with the Python oracle
-diff <(karac run --interp flatten_2d.kara) <(python3 flatten_2d.py) && echo OK
-diff <(karac run --interp flatten_2d.kara) <(karac run --interp flatten_2d_eager.kara) && echo OK
-diff <(karac run --interp flatten_2d.kara) <(karac run --interp flatten_2d_offset.kara) && echo OK
+diff <(karac run flatten_2d.kara) <(python3 flatten_2d.py) && echo OK
+diff <(karac run flatten_2d.kara) <(karac run flatten_2d_eager.kara) && echo OK
+diff <(karac run flatten_2d.kara) <(karac run flatten_2d_offset.kara) && echo OK
 
 # 4,000 randomized inputs, three solvers cross-checked, mirrored in Python
-diff <(karac run --interp differential.kara) <(python3 differential.py) && echo "differential OK"
+diff <(karac run differential.kara) <(python3 differential.py) && echo "differential OK"
 
-# the one program that currently reaches every surface
-karac build flatten_2d_eager.kara && ./flatten_2d_eager
-KARAC_AUTO_PAR=0 karac build flatten_2d_eager.kara && ./flatten_2d_eager
+# run == build, on every program
+for f in flatten_2d flatten_2d_eager flatten_2d_offset differential; do
+    karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
+done
 ```
