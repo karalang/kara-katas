@@ -72,6 +72,48 @@ endpoints are the only shape the three counters can differ on, and a wide draw
 produces them too rarely to test anything. Census over 1,500 cases: **763 contain
 an end coinciding with a start** — 51%, by construction rather than luck.
 
+## Benchmark
+
+`bench/` builds **150,000 heavily-overlapping intervals once and shuffles them**,
+then runs **25 rounds** of sort + min-heap room counting. Starts advance ~1 per
+meeting while durations reach 60, so roughly 30 meetings are live at any instant
+and the heap stays deep — a packed non-overlapping set would pin the heap at
+size 1 and measure only the sort. Sink `819998103`, reproduced exactly by the C,
+Rust, Go and Python mirrors, each hand-rolling the same heap rather than calling
+`BinaryHeap` / `container/heap`.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | vs Rust |
+|---|---|---|
+| Rust | 370.5 ± 16.9 | 1.00× |
+| **Kāra** | **598.6 ± 18.0** | **1.62×** |
+| C | 885.2 ± 10.7 | 2.39× |
+| Go | 1121.0 ± 18.9 | 3.03× |
+
+As in [#252](../252-meeting-rooms/), **the C and Go rows are about their sorts,
+not their languages**: C uses `qsort`, whose function-pointer comparator cannot
+be inlined, and Go's `sort.Slice` pays reflection-based swaps. Neither row should
+be read as a language comparison.
+
+### This lane found a Kāra perf gap — kara `B-2026-08-10-9`
+
+Kāra at 1.62× Rust here, and 1.89× on #252, are both sort-dominated. Isolating
+the sort — 150k pairs, 25 rounds, clone and `sort_by` only, no heap and no
+scan — gives **0.34 s against Rust's 0.16 s, a 2.1× gap**.
+
+That the isolated ratio is *larger* than either kata's is itself the evidence:
+each kata carries non-sort work that runs at parity, diluting the ratio. And it
+is not the heap — #253 *adds* a hand-rolled heap on top of #252's sort-and-scan
+and comes out relatively **better** (1.62× vs 1.89×).
+
+Filed as an observation with its single-host caveat, not as a confirmed
+regression: every number here is from one x86 shared container, and the
+Apple-silicon host is where a sort-performance question gets settled.
+
+Published numbers await that host — `bench/results.container-x86.json` is
+corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **A hand-rolled binary min-heap over `Vec[i64]`** — push/sift-up and
