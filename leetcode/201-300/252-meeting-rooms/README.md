@@ -95,6 +95,50 @@ Over 1,200 cases: **842 attendable, 358 clashing, and 716 containing a touching
 boundary** — the shape the problem turns on is present in 60% of cases rather
 than by luck.
 
+## Benchmark
+
+`bench/` builds **120,000 packed, attendable intervals once and shuffles them**,
+then runs **40 rounds** of copy + sort-by-start + full adjacent scan. Sink
+`537953186`, reproduced exactly by the C, Rust, Go and Python mirrors.
+
+Two sizing choices keep it measuring the algorithm:
+
+- **The set is attendable.** A clashing set returns at the first conflict, so
+  benching one would measure how fast a clash appears — the generator — not the
+  scan. Only the attendable case walks all *n*.
+- **It is shuffled once, and each round sorts a fresh copy of that order.**
+  Re-sorting the previous round's output would hit every implementation's
+  already-sorted fast path from round 2 onward.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) |
+|---|---|
+| Rust | 247.9 ± 11.5 |
+| Rust (checked) | 264.1 ± 31.6 |
+| **Kāra** | **469.0 ± 14.6** |
+| C | 913.2 ± 16.2 |
+| Go | 1135.6 ± 17.0 |
+
+**Do not read this as "Kāra is 2× faster than C".** The sort dominates, so this
+lane largely compares standard-library sorts, and the C row is `qsort` — whose
+comparator is a function pointer that cannot be inlined, costing an indirect
+call per comparison. Rust's `sort_by` monomorphises and inlines its closure; Go's
+`sort.Slice` pays reflection-based swaps. Swapping in a hand-written inlined sort
+would move the C row substantially. It is kept as `qsort` because that is the
+idiomatic standard-library choice, the same way [#249](../249-group-shifted-strings/)
+keeps a hand-written hash map and says so — but the row measures **`qsort`**, not
+"C".
+
+The comparison that is clean is **Kāra against Rust**, both using a generic
+sort-by-key with an inlined comparator: 469 ms against 248 ms, a real ~1.9× on a
+sort-dominated workload. That is worth a closer look on the M5 host before
+anything is concluded from it — one measurement on a shared container is not
+grounds for a perf claim.
+
+Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
+is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`Vec[(i64, i64)]` and `sort_by(|a, b| a.0.cmp(b.0))`** — sorting tuples by a
