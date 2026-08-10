@@ -312,6 +312,103 @@ iOS resolves `accept` extensions through UTIs. FITS has no registered UTI, so
 the Files picker may grey out exactly the files the user is trying to choose.
 Chromium emulation does not reproduce that; it needs a real device.
 
+## Streaming: the stack is no longer resident
+
+The single term that made a real session impossible was holding every sub in
+memory at once. `main` decoded the lot into one `Vec[u16]` of
+`frames × pixels` and kept it for the whole run — 4.8 GB for 24 Mpx × 100
+subs, more than most laptops have and more than wasm32's 4 GB address space
+permits at any setting.
+
+FITS input now streams. Peak becomes `frames × width × strip` instead of
+`frames × width × height` — **independent of frame height**, which is what
+unbounds the session:
+
+| frames in | resident | streamed |
+|---|---|---|
+| 12 MB — 512×512 ×24 | 29.5 MB | **9.9 MB** |
+| 50 MB — 512×2048 ×24 | 121.1 MB | **19.6 MB** |
+
+Quadrupling the frame height quadruples the resident figure and roughly doubles
+the streamed one — and that residual growth is the *output* (`w·h·8`), not the
+frames. The frame term is gone; the output is the next lever.
+
+### Two passes, because the stages want different things
+
+**Pass 1 (registration)** wants one frame at a time — star detection is
+per-frame. `compute_offsets` only ever looked at one frame anyway
+(`detect_stars(px, f * npix, …)`); streaming just makes that explicit. Read a
+sub, detect its stars, drop the pixels, keep the star list. Peak is one frame
+regardless of how many subs there are.
+
+**Pass 2 (integration)** wants one horizontal strip from *every* frame at once,
+because sigma clipping needs all frames' values at a pixel simultaneously. So
+the strip, not the frame, is the unit.
+
+### Strips rather than tiles, and a window that slides
+
+The integrator works in 256² tiles internally, but streaming reads **strips**,
+and the reason is the file layout. A strip is contiguous in a row-major FITS —
+one large sequential read per frame. Square tiles would need a seek per row: at
+6000×4000 with 100 subs that is ~10 million small reads instead of ~12 thousand
+large ones.
+
+That also sidesteps a hard constraint: **`File` has no `seek`**. Strips advance
+top-to-bottom and FITS rows are stored top-to-bottom, so a window that only ever
+moves forward never needs one. Consecutive strips overlap by the halo, and
+rather than re-reading those rows the window *retains* them — shift the tail to
+the front, read only the genuinely new rows. Every file is read exactly once per
+pass, front to back.
+
+A `.cstack` stays resident on purpose. It is one file holding every frame back
+to back, so a strip of frame *f* and the same strip of frame *f+1* are a whole
+frame apart in the byte stream; walking them together needs seeks. The FITS
+layout — one file per sub — is what makes a sequential strip walk possible at
+all. The CFA path stays resident too, since `stack_cfa` separates planes across
+the full frame.
+
+### The oracle, and why the obvious version of it was vacuous
+
+`verify.sh` already asserted that the FITS path and the `.cstack` path produce
+the same image. Now that FITS streams and `.cstack` does not, that check *is*
+the streaming oracle for free: byte-identical is the bar, so streaming may be
+slower but never different.
+
+Except at 96×64 it was vacuous for the part that matters. One 64-row strip
+covers the whole frame, so the window never advances — the check could not see
+the sliding logic at all. There is now a second case at 200 rows (4 strips)
+**with a dither**, so the window has to slide, retain its halo across each
+boundary, and shrink at the last strip:
+
+```
+  mean: streamed over 4 strips == resident
+  sigmaclip: streamed over 4 strips == resident
+  stack: streamed over 4 strips == resident
+```
+
+Both bugs found while building this were invisible at one strip. The frame slab
+was indexed by the window's **valid row count** instead of its allocated
+**stride**, so every frame after the first was read a few rows into its
+neighbour — a clean-looking stack of subtly wrong data. And a zero halo turned
+strip edges into NO DATA. Neither crashes; both produce a picture. Forcing the
+halo to zero is confirmed to fail the multi-strip check, so it is not vacuous
+either.
+
+### What it cost in the language
+
+Three gaps in the file API shaped this code more than the astronomy did:
+
+- **No `seek`** (`"Seek / metadata are deferred to a follow-on slice"`), which
+  forces sequential access and hence the sliding window.
+- **No `mut` sub-slice of an `Array`** — `buf[2..]` is `Slice[u8]`, not
+  `mut Slice[u8]` — so a short read cannot be topped up in place. Hence the
+  per-frame carry queue: read whole fixed chunks, keep what the caller did not
+  consume, hand it back first next time.
+- **A `File` stored in a `Vec` deadlocked under AOT** (compiler ledger
+  B-2026-08-09-17), which blocked the design outright, since sequential access
+  across many files means many concurrently-open handles. Fixed in the compiler
+  before this could be written.
+
 ## Colour: the CFA path
 
 This is what "supports RAW" actually means for the astronomy. Siril, and every

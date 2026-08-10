@@ -48,15 +48,47 @@ echo "== integrate from FITS =="
 "$WORK/cumulus" "$WORK/mean_f.cstack" mean "$WORK"/fits/sub_*.fits
 "$WORK/cumulus" "$WORK/clip_f.cstack" sigmaclip "$WORK"/fits/sub_*.fits
 
-echo "== FITS path equals .cstack path =="
+echo "== FITS path equals .cstack path (streamed equals resident) =="
 # Same scene and seed, so the two containers must integrate to the same image.
-# This is what pins the BZERO round trip: unsigned 16-bit data rides in FITS's
-# SIGNED 16-bit format, and a reader that drops BZERO turns stars into holes.
+# This pins the BZERO round trip — unsigned 16-bit data rides in FITS's SIGNED
+# 16-bit format, and a reader that drops BZERO turns stars into holes.
+#
+# It is now also the STREAMING oracle, for free: FITS input streams off disk a
+# strip at a time while a `.cstack` stays resident, so "the two containers agree"
+# and "streaming agrees with holding everything in memory" are the same
+# assertion. Byte-identical is the bar — streaming may be slower, never
+# different.
 for m in mean clip; do
   if cmp -s "$WORK/$m.cstack" "$WORK/${m}_f.cstack"; then
     echo "  $m: identical"
   else
     echo "  $m: FITS path DIVERGED from the .cstack path" >&2
+    exit 1
+  fi
+done
+
+echo "== streaming across MULTIPLE strips =="
+# The check above runs at 96x64, which is a single 64-row strip — it never
+# advances the window, so it cannot see the part of streaming most likely to be
+# wrong. This one is 200 rows (4 strips) WITH a dither, so the window has to
+# slide, retain its halo across the boundary, and shrink at the last strip.
+#
+# The two bugs found while writing it were both invisible at one strip: the
+# frame slab was indexed by the window's VALID row count instead of its
+# allocated stride (so every frame after the first was read a few rows into its
+# neighbour), and a zero halo silently turned strip edges into NO DATA. Both
+# produce a plausible image.
+python3 gen_frames.py "$WORK/tall.cstack" --width 96 --height 200 --frames 12 \
+        --rays 12 --dither 3.0 > /dev/null
+python3 gen_fits.py "$WORK/tallf" --width 96 --height 200 --frames 12 \
+        --rays 12 --dither 3.0 > /dev/null
+for m in mean sigmaclip stack; do
+  "$WORK/cumulus" "$WORK/tall_res_$m.cstack" "$m" "$WORK/tall.cstack" > /dev/null
+  "$WORK/cumulus" "$WORK/tall_str_$m.cstack" "$m" "$WORK"/tallf/sub_*.fits > /dev/null
+  if cmp -s "$WORK/tall_res_$m.cstack" "$WORK/tall_str_$m.cstack"; then
+    echo "  $m: streamed over 4 strips == resident"
+  else
+    echo "  $m: STREAMED DIVERGED from resident" >&2
     exit 1
   fi
 done

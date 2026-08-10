@@ -60,6 +60,182 @@ fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
     data
 }
 
+// ─── Streaming FITS input ────────────────────────────────────────────────────
+//
+// The whole stack no longer has to be resident. `main` used to decode every sub
+// into one `Vec[u16]` of `w*h*nframes` and hold it for the entire run, which is
+// the single term that made a real session impossible: 24 Mpx x 100 subs is
+// 4.8 GB of frames alone, more than most laptops have and more than wasm32's
+// 4 GB address space allows at any memory setting.
+//
+// Two passes, because registration and integration need different things.
+// Pass 1 wants one frame at a time (star detection is per frame). Pass 2 wants
+// one horizontal STRIP from every frame at once, because sigma clipping needs
+// all frames' values at a pixel simultaneously. So peak becomes
+// `frames x width x strip` instead of `frames x width x height` — independent
+// of frame HEIGHT, which is what unbounds the session length.
+//
+// STRIPS, NOT THE 256-SQUARE TILES the integrator uses internally, and the
+// reason is the file layout. A strip is contiguous in a row-major FITS, so it
+// is one large sequential read per frame; square tiles would need one seek per
+// row, and at 6000x4000 with 100 subs that is ~10 million small reads instead
+// of ~12 thousand large ones. It also sidesteps the fact that `File` has no
+// `seek` at all today — strips advance top-to-bottom and FITS rows are stored
+// top-to-bottom, so a sliding window over sequential reads never needs one.
+//
+// The window carries a HALO of `MAX_HALO` rows above and below the output
+// strip, because a dithered frame contributes rows shifted by its own dy and
+// the bilinear resample reads one row past that.
+
+/// Output strip height, in rows. Sets the streaming working set:
+/// `frames x width x (STRIP + 2*MAX_HALO) x 2` bytes.
+let STRIP: i64 = 64;
+
+/// Rows of slack kept above and below each strip. Dithers are a few pixels in
+/// practice; a frame needing more than this is dropped by registration long
+/// before it gets here.
+let MAX_HALO: i64 = 24;
+
+/// Header fields plus enough to decode the data section. `read_fits_header`
+/// leaves the handle positioned at the first data byte, so the same handle
+/// streams the rows afterwards.
+struct FitsMeta {
+    width: i64, height: i64, bzero: i64, bscale: i64,
+    bayer: String, ok: bool, err: String,
+}
+
+/// Pull up to `want` more bytes onto `carry` from `f`. Returns false at EOF.
+///
+/// `File.read` fills from the START of its buffer and a slice of an `Array` is
+/// `Slice[u8]` rather than `mut Slice[u8]`, so there is no way to continue
+/// filling a buffer from an offset — a short read cannot be topped up in place.
+/// The carry queue is the way around that: read whole fixed chunks, keep what
+/// the caller did not consume, and hand it back first next time.
+fn fill_carry(f: ref File, carry: mut ref Vec[u8], want: i64) -> bool
+    with reads(FileSystem)
+{
+    let mut buf: Array[u8, 4096] = [0u8; 4096];
+    let mut alive = true;
+    while (carry.len() as i64) < want and alive {
+        match f.read(mut buf) {
+            Ok(n) => {
+                if n == 0 {
+                    alive = false;
+                } else {
+                    for i in 0..(n as i64) { carry.push(buf[i]); }
+                }
+            }
+            Err(e) => { alive = false; }
+        }
+    }
+    (carry.len() as i64) >= want
+}
+
+/// Drop the first `n` bytes of `carry`, keeping the rest.
+fn drain_carry(carry: mut ref Vec[u8], n: i64) {
+    let len = carry.len() as i64;
+    let mut kept: Vec[u8] = Vec.with_capacity(len - n);
+    for i in n..len { kept.push(carry[i]); }
+    carry.clear();
+    for v in kept { carry.push(v); }
+}
+
+/// Read the FITS header through `f`, leaving the handle at the first data byte.
+///
+/// Header blocks are 2880 bytes and the END card can fall anywhere in one, so
+/// this consumes WHOLE blocks and stops after the block containing END —
+/// exactly where the data section begins. Any bytes the chunked reads pulled
+/// past that boundary stay on `carry` and are the first data bytes.
+fn read_fits_header(f: ref File, carry: mut ref Vec[u8]) -> FitsMeta
+    with reads(FileSystem)
+{
+    let mut m = FitsMeta {
+        width: 0, height: 0, bzero: 0, bscale: 1, bayer: "", ok: false, err: "",
+    };
+    let mut bitpix: i64 = 0;
+    let mut naxis: i64 = 0;
+    let mut roworder = "";
+    let mut done = false;
+    let mut nblk: i64 = 0;
+    // 64 blocks is 184 320 bytes of header — far past anything real, and it
+    // stops a non-FITS file from being read to its end one block at a time.
+    while not done and nblk < 64 {
+        if not fill_carry(f, carry, 2880) {
+            nblk = 64;
+        } else {
+            let mut off: i64 = 0;
+            while off + 80 <= 2880 and not done {
+                let key = card_key(carry, off);
+                if key == "END" {
+                    done = true;
+                } else {
+                    let n = parse_int(card_value(carry, off));
+                    if key == "BITPIX" { bitpix = n; }
+                    if key == "NAXIS" { naxis = n; }
+                    if key == "NAXIS1" { m.width = n; }
+                    if key == "NAXIS2" { m.height = n; }
+                    if key == "BZERO" { m.bzero = n; }
+                    if key == "BSCALE" { m.bscale = n; }
+                    if key == "BAYERPAT" { m.bayer = card_string(carry, off); }
+                    if key == "ROWORDER" { roworder = card_string(carry, off); }
+                    off = off + 80;
+                }
+            }
+            // Consume the whole block whether or not END was in it.
+            drain_carry(carry, 2880);
+            nblk = nblk + 1;
+        }
+    }
+    if not done {
+        m.err = "no END card in header";
+    } else {
+        if bitpix != 16 {
+            m.err = "unsupported BITPIX (only 16 is implemented)";
+        } else {
+            if naxis != 2 {
+                m.err = "unsupported NAXIS (only 2-D mono is implemented)";
+            } else {
+                if roworder != "" and roworder != "TOP-DOWN" {
+                    m.err = "unsupported ROWORDER (only TOP-DOWN is implemented)";
+                } else {
+                    m.ok = true;
+                }
+            }
+        }
+    }
+    m
+}
+
+/// Stream `nrows` rows of `w` pixels from `f` into `dst` starting at `dst_base`.
+///
+/// Same BIG-endian + BZERO/BSCALE decode the whole-file reader does, so a
+/// streamed frame is bit-identical to a resident one.
+fn read_rows(f: ref File, carry: mut ref Vec[u8], dst: mut ref Vec[u16],
+             dst_base: i64, w: i64, nrows: i64, bzero: i64, bscale: i64) -> bool
+    with reads(FileSystem)
+{
+    let mut ok = true;
+    for r in 0..nrows {
+        if ok {
+            if not fill_carry(f, carry, w * 2) {
+                ok = false;
+            } else {
+                for x in 0..w {
+                    let hi = carry[x * 2] as i64;
+                    let lo = carry[x * 2 + 1] as i64;
+                    let mut raw = hi * 256 + lo;
+                    if raw > 32767 { raw = raw - 65536; }
+                    let phys = bzero + bscale * raw;
+                    let cl = if phys < 0 { 0 } else { if phys > 65535 { 65535 } else { phys } };
+                    dst[dst_base + r * w + x] = cl as u16;
+                }
+                drain_carry(carry, w * 2);
+            }
+        }
+    }
+    ok
+}
+
 fn u32_at(data: ref Vec[u8], off: i64) -> i64 {
     (data[off] as i64)
         + (data[off + 1] as i64) * 256
@@ -276,7 +452,7 @@ fn integrate_sigma_clip(px: ref Vec[i64], npix: i64, nframes: i64) -> Vec[i64] {
 
 /// Minimal FITS reader — the subset a smart telescope actually emits.
 ///
-/// Header is 80-byte ASCII cards in 2880-byte blocks, terminated by an `END`
+/// Header is 80-byte ASCII cards in 2880-byte nblk, terminated by an `END`
 /// card and padded to a block boundary. Data follows, BIG-ENDIAN, also padded.
 ///
 /// Supported: `BITPIX = 16`, `NAXIS = 2`, with `BZERO` / `BSCALE`. Anything
@@ -384,7 +560,7 @@ fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
             let key = card_key(data, off);
             if key == "END" {
                 done = true;
-                // Header occupies whole 2880-byte blocks.
+                // Header occupies whole 2880-byte nblk.
                 off = ((off / 2880) + 1) * 2880;
             } else {
                 // Parse once: re-calling `parse_int(val)` per keyword consumed
@@ -928,8 +1104,16 @@ fn resample_bilinear(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f
 ///
 /// The source stays `u16` (the frames as decoded); the tile is `i64` because it
 /// carries the -1 NO-DATA sentinel, and at 256x256 that costs nothing.
+/// `wr0` / `wrows` describe the ROW WINDOW `px` actually holds for this frame:
+/// buffer row 0 is source row `wr0`, and `wrows` rows are present. The
+/// resident path passes `wr0 = 0, wrows = h` and every expression below reduces
+/// to what it was; the streaming path passes the current strip's window, so the
+/// same arithmetic serves both and there is no second copy of the kernel to
+/// drift. `h` is still the FRAME height — coverage is a property of the frame,
+/// not of how much of it happens to be in memory, so a pixel outside the frame
+/// is NO DATA while a pixel outside the window is a bug in the caller's halo.
 fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
-                 x0: i64, y0: i64, tw: i64, th: i64) -> Vec[i64] {
+                 x0: i64, y0: i64, tw: i64, th: i64, wr0: i64, wrows: i64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(tw * th);
     for i in 0..(tw * th) { out.push(-1); }
     for ty in 0..th {
@@ -949,11 +1133,17 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
             // 159 edge pixels of a 96x64 frame silently became NO DATA.
             let x1 = if fx > 0.0 { xi + 1 } else { xi };
             let y1 = if fy > 0.0 { yi + 1 } else { yi };
-            if xi >= 0 and yi >= 0 and x1 < w and y1 < h {
-                let p00 = px[base + yi * w + xi] as f64;
-                let p10 = px[base + yi * w + x1] as f64;
-                let p01 = px[base + y1 * w + xi] as f64;
-                let p11 = px[base + y1 * w + x1] as f64;
+            // Frame bounds decide NO DATA; window bounds only guard the
+            // indexing. They coincide exactly on the resident path.
+            let in_frame = xi >= 0 and yi >= 0 and x1 < w and y1 < h;
+            let in_window = yi >= wr0 and y1 < wr0 + wrows;
+            if in_frame and in_window {
+                let r0 = yi - wr0;
+                let r1 = y1 - wr0;
+                let p00 = px[base + r0 * w + xi] as f64;
+                let p10 = px[base + r0 * w + x1] as f64;
+                let p01 = px[base + r1 * w + xi] as f64;
+                let p11 = px[base + r1 * w + x1] as f64;
                 let top = p00 + (p10 - p00) * fx;
                 let bot = p01 + (p11 - p01) * fx;
                 out[ty * tw + tx] = (top + (bot - top) * fy + 0.5) as i64;
@@ -977,6 +1167,76 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
 /// what `register` reports — the harness gates on it (a frame stacked on a
 /// two-star agreement is luck, not a match), so collapsing it to the 0/1 keep
 /// flag silently defeats that check.
+/// Just the header of `path` — opens, parses, closes. Used to learn a sub's
+/// geometry before deciding whether the run can stream.
+fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
+    let mut m = FitsMeta {
+        width: 0, height: 0, bzero: 0, bscale: 1, bayer: "", ok: false,
+        err: "cannot open input",
+    };
+    let mut carry: Vec[u8] = Vec.new();
+    match File.open(path) {
+        Ok(f) => { m = read_fits_header(f, mut carry); }
+        Err(e) => { }
+    }
+    m
+}
+
+/// Pass 1 of the streaming path: recover offsets with ONE frame resident.
+///
+/// `compute_offsets` indexes into a whole resident stack, but it only ever looks
+/// at one frame at a time — `detect_stars(px, f * npix, ...)`. Streaming just
+/// makes that explicit: read a sub, detect its stars, drop the pixels, keep the
+/// star list (a few dozen structs). Peak here is one frame regardless of how
+/// many subs the session has.
+fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
+                             bzero: i64, bscale: i64)
+    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], i64)
+    with reads(FileSystem) writes(FileSystem)
+{
+    let npix = w * h;
+    let mut dxs: Vec[f64] = Vec.new();
+    let mut dys: Vec[f64] = Vec.new();
+    let mut keep: Vec[i64] = Vec.new();
+    let mut votes: Vec[i64] = Vec.new();
+    let mut ref_stars: Vec[Star] = Vec.new();
+    let mut nref: i64 = 0;
+
+    for f in 0..nframes {
+        let mut frame: Vec[u16] = Vec.filled(npix, 0);
+        let mut carry: Vec[u8] = Vec.new();
+        let mut got = false;
+        match File.open(paths[f]) {
+            Ok(fh) => {
+                let m = read_fits_header(fh, mut carry);
+                if m.ok {
+                    got = read_rows(fh, mut carry, mut frame, 0, w, h, bzero, bscale);
+                }
+            }
+            Err(e) => { }
+        }
+        if not got {
+            println(f"cumulus: could not stream frame {f}");
+            dxs.push(0.0); dys.push(0.0); keep.push(0); votes.push(0);
+        } else {
+            let st = detect_stars(frame, 0, w, h, 6.0);
+            if f == 0 {
+                for s in st { ref_stars.push(s); }
+                nref = ref_stars.len();
+                dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(nref);
+            } else {
+                let est = estimate_offset(st, ref_stars, 1.5);
+                dxs.push(est.0);
+                dys.push(est.1);
+                votes.push(est.2);
+                let need = (nref * 6) / 10;
+                if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+            }
+        }
+    }
+    (dxs, dys, keep, votes, nref)
+}
+
 fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
     -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64])
 {
@@ -1007,20 +1267,35 @@ fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
 /// `dxs`/`dys` may be all-zero (the unregistered modes), in which case the
 /// resample is an identity sample and the pipeline degenerates to plain
 /// per-tile integration — one code path for every mode rather than two.
-fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
-               dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
-               use_clip: bool) -> Vec[i64] {
-    let mut out: Vec[i64] = Vec.with_capacity(w * h);
-    for i in 0..(w * h) { out.push(0); }
-
+/// Integrate output rows `[sy0, sy0 + sh)` from a row window of every frame.
+///
+/// `px` holds `nframes` slabs of `wrows` rows each, frame-major, where buffer
+/// row 0 of every slab is source row `wr0`. The resident caller passes the whole
+/// frame as the window; the streaming caller passes one strip's worth. Writes
+/// straight into `out`, so the streaming path never materialises more than the
+/// output it has finished.
+/// `wcap` is the SLAB STRIDE — rows reserved per frame in `px` — and `wrows` is
+/// how many of them currently hold data. They are not the same number and must
+/// not be conflated: the streaming buffer is allocated once at the largest
+/// window a strip can need (`STRIP + 2*halo`) while the rows actually present
+/// shrink at the last strip and at the top and bottom edges, where the halo is
+/// clipped against the frame. Indexing frame `f` at `f * w * wrows` instead of
+/// `f * w * wcap` silently reads every frame after the first from a few rows
+/// into its neighbour — which looks exactly like a correct stack of subtly
+/// wrong data.
+fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
+                    dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
+                    use_clip: bool, sy0: i64, sh: i64, wr0: i64, wrows: i64,
+                    wcap: i64, out: mut ref Vec[i64]) {
     let ntx = (w + TILE - 1) / TILE;
-    let nty = (h + TILE - 1) / TILE;
+    let nty = (sh + TILE - 1) / TILE;
     for tyi in 0..nty {
         for txi in 0..ntx {
             let x0 = txi * TILE;
-            let y0 = tyi * TILE;
+            let y0 = sy0 + tyi * TILE;
             let tw = if w - x0 < TILE { w - x0 } else { TILE };
-            let th = if h - y0 < TILE { h - y0 } else { TILE };
+            let rem = sy0 + sh - y0;
+            let th = if rem < TILE { rem } else { TILE };
             let tpix = tw * th;
 
             // Gather this tile from every kept frame.
@@ -1028,7 +1303,8 @@ fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
             let mut kept: i64 = 0;
             for f in 0..nframes {
                 if keep[f] != 0 {
-                    let t = resample_tile(px, f * w * h, w, h, dxs[f], dys[f], x0, y0, tw, th);
+                    let t = resample_tile(px, f * w * wcap, w, h, dxs[f], dys[f],
+                                          x0, y0, tw, th, wr0, wrows);
                     for v in t { tile.push(v); }
                     kept = kept + 1;
                 }
@@ -1046,6 +1322,119 @@ fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
             }
         }
     }
+}
+
+/// Stack a list of FITS subs without ever holding the whole set.
+///
+/// PASS 1 reads each sub in turn, detects its stars, and drops the pixels — one
+/// frame resident. PASS 2 reopens them all and walks the output in strips,
+/// sliding a row window forward through every file at once.
+///
+/// The window slide is what makes this work without `File.seek`. Consecutive
+/// strips overlap by the halo, so rather than re-reading those rows the window
+/// RETAINS them: shift the tail to the front, then read only the genuinely new
+/// rows. Every file is therefore read exactly once per pass, front to back.
+fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
+                   bzero: i64, bscale: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
+                   keep: ref Vec[i64], use_clip: bool) -> Vec[i64]
+    with reads(FileSystem) writes(FileSystem)
+{
+    let mut out: Vec[i64] = Vec.with_capacity(w * h);
+    for i in 0..(w * h) { out.push(0); }
+
+    // Halo sized from the offsets actually recovered, not from MAX_SHIFT: a
+    // dither of a few pixels should not cost a 128-row window.
+    let mut halo: i64 = 1;
+    for f in 0..nframes {
+        if keep[f] != 0 {
+            let a = dys[f].abs() as i64;
+            if a + 1 > halo { halo = a + 1; }
+        }
+    }
+    if halo > MAX_HALO { halo = MAX_HALO; }
+
+    let cap = STRIP + 2 * halo;
+    let mut win: Vec[u16] = Vec.filled(nframes * w * cap, 0);
+    let mut carries: Vec[Vec[u8]] = Vec.new();
+    let mut handles: Vec[File] = Vec.new();
+    let mut opened = true;
+    for f in 0..nframes {
+        let mut carry: Vec[u8] = Vec.new();
+        match File.open(paths[f]) {
+            Ok(fh) => {
+                let m = read_fits_header(fh, mut carry);
+                if not m.ok { opened = false; }
+                handles.push(fh);
+            }
+            Err(e) => { opened = false; }
+        }
+        carries.push(carry);
+    }
+
+    if opened and handles.len() as i64 == nframes {
+        // `win_r0` is the source row held in buffer row 0; `win_rows` how many
+        // rows are present. Because reads are sequential, `win_r0 + win_rows`
+        // is also each file's cursor — the two cannot drift apart.
+        let mut win_r0: i64 = 0;
+        let mut win_rows: i64 = 0;
+        let nstrips = (h + STRIP - 1) / STRIP;
+        for s in 0..nstrips {
+            let sy0 = s * STRIP;
+            let rem = h - sy0;
+            let sh = if rem < STRIP { rem } else { STRIP };
+            let want_r0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
+            let mut want_r1 = sy0 + sh + halo;
+            if want_r1 > h { want_r1 = h; }
+
+            // Retain the overlap rather than re-reading it — there is no seek
+            // to go back with, and this is the whole reason a strip walk can be
+            // built on sequential reads at all.
+            let drop = want_r0 - win_r0;
+            if drop > 0 and win_rows > 0 {
+                let stay = win_rows - drop;
+                if stay > 0 {
+                    for f in 0..nframes {
+                        let base = f * w * cap;
+                        for r in 0..stay {
+                            for x in 0..w {
+                                win[base + r * w + x] = win[base + (r + drop) * w + x];
+                            }
+                        }
+                    }
+                    win_rows = stay;
+                } else {
+                    win_rows = 0;
+                }
+                win_r0 = want_r0;
+            }
+
+            let need = want_r1 - (win_r0 + win_rows);
+            if need > 0 {
+                for f in 0..nframes {
+                    let base = f * w * cap + win_rows * w;
+                    let got = read_rows(handles[f], mut carries[f], mut win, base,
+                                        w, need, bzero, bscale);
+                    if not got { println("cumulus: short read while streaming"); }
+                }
+                win_rows = win_rows + need;
+            }
+
+            integrate_window(win, w, h, nframes, dxs, dys, keep, use_clip,
+                             sy0, sh, win_r0, win_rows, cap, mut out);
+        }
+    } else {
+        println("cumulus: could not reopen the subs for streaming");
+    }
+    out
+}
+
+/// The resident whole-stack path: one window covering every row.
+fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
+               dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
+               use_clip: bool) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.with_capacity(w * h);
+    for i in 0..(w * h) { out.push(0); }
+    integrate_window(px, w, h, nframes, dxs, dys, keep, use_clip, 0, h, 0, h, h, mut out);
     out
 }
 
@@ -1110,7 +1499,50 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         let mut loaded = false;
         let mut bayer = "";
 
+        // Set when the run streams the subs off disk instead of loading them.
+        let mut streaming = false;
+        let mut paths: Vec[String] = Vec.new();
+        let mut bzero: i64 = 0;
+        let mut bscale: i64 = 1;
+
         if argv.len() > 4 or inp.ends_with(".fits") {
+            // Headers first, pixels never — enough to learn the geometry, spot
+            // a mismatched sequence, and decide whether this run can stream.
+            let mut i = 3;
+            let mut hdr_ok = true;
+            while i < argv.len() and hdr_ok {
+                let m = read_fits_meta(argv[i]);
+                if not m.ok {
+                    hdr_ok = false;
+                } else {
+                    if paths.len() == 0 {
+                        width = m.width;
+                        height = m.height;
+                        bayer = m.bayer.clone();
+                        bzero = m.bzero;
+                        bscale = m.bscale;
+                    }
+                    if m.width != width or m.height != height or m.bayer != bayer {
+                        hdr_ok = false;
+                    } else {
+                        paths.push(argv[i].clone());
+                    }
+                }
+                i = i + 1;
+            }
+            // A colour mosaic still loads whole: `stack_cfa` separates the
+            // planes across the FULL frame, so a row window would have to be
+            // threaded through the plane extraction as well. Monochrome — the
+            // shape a real session is mostly made of, and the one that gets
+            // large — streams.
+            if hdr_ok and bayer == "" and paths.len() as i64 > 0 {
+                streaming = true;
+                nframes = paths.len();
+                loaded = true;
+            }
+        }
+
+        if not streaming and (argv.len() > 4 or inp.ends_with(".fits")) {
             let mut i = 3;
             let mut bad = false;
             while i < argv.len() and not bad {
@@ -1143,16 +1575,23 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             }
             loaded = not bad and nframes > 0;
         } else {
-            let data = read_all(inp);
-            if data.len() < 16 {
-                println("cumulus: input too short to hold a header");
-            } else {
-                width = u32_at(data, 4);
-                height = u32_at(data, 8);
-                nframes = u32_at(data, 12);
-                let n = width * height * nframes;
-                for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
-                loaded = true;
+            // A `.cstack` stays resident: it is one file holding every frame
+            // back to back, so a strip of frame f and the same strip of frame
+            // f+1 are a whole frame apart in the byte stream. Walking them
+            // together needs seeks, and `File` has none — the FITS layout, one
+            // file per sub, is what makes a sequential strip walk possible.
+            if not streaming {
+                let data = read_all(inp);
+                if data.len() < 16 {
+                    println("cumulus: input too short to hold a header");
+                } else {
+                    width = u32_at(data, 4);
+                    height = u32_at(data, 8);
+                    nframes = u32_at(data, 12);
+                    let n = width * height * nframes;
+                    for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
+                    loaded = true;
+                }
             }
         }
 
@@ -1228,12 +1667,25 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let mut dys: Vec[f64] = Vec.new();
             let mut keep: Vec[i64] = Vec.new();
             let mut votes: Vec[i64] = Vec.new();
+            let mut nref: i64 = 0;
             if mode == "stack" or mode == "register" {
-                let off = compute_offsets(px, width, height, nframes);
-                dxs = off.0;
-                dys = off.1;
-                keep = off.2;
-                votes = off.3;
+                if streaming {
+                    let off = compute_offsets_streaming(paths, width, height, nframes,
+                                                        bzero, bscale);
+                    dxs = off.0;
+                    dys = off.1;
+                    keep = off.2;
+                    votes = off.3;
+                    nref = off.4;
+                } else {
+                    let off = compute_offsets(px, width, height, nframes);
+                    dxs = off.0;
+                    dys = off.1;
+                    keep = off.2;
+                    votes = off.3;
+                    let rs = detect_stars(px, 0, width, height, 6.0);
+                    nref = rs.len();
+                }
             } else {
                 for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(0); }
             }
@@ -1241,10 +1693,9 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             if mode == "register" {
                 // Report offsets rather than stacking, so the stage stays
                 // independently checkable against the injected dithers.
-                let rs = detect_stars(px, 0, width, height, 6.0);
-                println(f"ref_stars {rs.len()}");
+                println(f"ref_stars {nref}");
                 for f in 0..nframes {
-                    println(f"frame {f} dx {dxs[f]} dy {dys[f]} votes {votes[f]} stars {rs.len()}");
+                    println(f"frame {f} dx {dxs[f]} dy {dys[f]} votes {votes[f]} stars {nref}");
                 }
             }
 
@@ -1254,9 +1705,15 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 println(f"cumulus: registered {nkept}/{nframes} frames");
             }
             let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
-            let out = stack_tiled(px, width, height, nframes, dxs, dys, keep, use_clip);
+            let out = if streaming {
+                stack_streaming(paths, width, height, nframes, bzero, bscale,
+                                dxs, dys, keep, use_clip)
+            } else {
+                stack_tiled(px, width, height, nframes, dxs, dys, keep, use_clip)
+            };
             write_stack(outp.clone(), out, width, height, 1);
-            println(f"cumulus: {mode} {width}x{height} x{nframes} -> {outp}");
+            let how = if streaming { "streamed" } else { "resident" };
+            println(f"cumulus: {mode} {width}x{height} x{nframes} ({how}) -> {outp}");
         }
     }
 }
