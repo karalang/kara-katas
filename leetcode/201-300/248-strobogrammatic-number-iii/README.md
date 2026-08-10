@@ -90,14 +90,34 @@ force on the 15 fixed cases before any of that.
 - `String` `push_str` accumulation, f-string interpolation of an `i64`
 - integer `/` and `%` for the closed-form counts
 
-## No benchmark
+## Benchmark
 
-Deliberate, matching #247. The runtime here is dominated by allocating and
-concatenating short strings, so a bench would mostly measure the allocator
-rather than anything specific to this problem — and [#246](../246-strobogrammatic-number/)
-already carries the family's benchmark, on the two-pointer scan that is the
-actual hot shape. `strobogrammatic_count.kara` exists to make the algorithmic
-point about interior lengths, not to be timed against the other lanes.
+`bench/` times the **closed-form counting** variant — 1,000 LCG-drawn
+`[low, high]` pairs of up to 8 digits. Sink `2183700`, reproduced exactly by the
+C, Rust, Go and Python mirrors.
+
+The counting variant, not the generate-and-filter twin, and not by accident:
+[#247](../247-strobogrammatic-number-ii/)'s lane now measures recursive string
+generation, so benching the twin here would re-measure it. This file exists to
+make the interior-lengths point, and the bench is sized so that point is what
+gets measured.
+
+**The 8-digit cap was measured, not guessed**, and the first attempt was wrong.
+Sized at 60,000 queries up to 15 digits it ran past two minutes, because the
+closed form skips only INTERIOR lengths — both boundary lengths are still
+enumerated, so per-query cost is set by the longer bound: ~13 ms at 15 digits
+(4·5⁶·3 = 187,500 strings) against ~0.4 ms at 8 (4·5³ = 500). Sizing to 15
+digits would have measured boundary enumeration — #247's job — and left ~35
+queries, too few for a stable mean. At 8 digits the closed-form path dominates,
+which is the thing worth timing.
+
+This section previously read "no benchmark", arguing the runtime would be
+allocator-dominated. That is true of the generate-and-filter twin and is
+precisely what the sizing above avoids; [#246](../246-strobogrammatic-number/)
+still carries the family's two-pointer-scan lane.
+
+Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
+is corroboration only (BENCHMARKS.md § Hosts).
 
 ## Running
 

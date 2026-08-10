@@ -69,4 +69,10 @@ python3 strobogrammatic_ii.py --verify     # generator vs brute force, n<=5
 
 Verified byte-identical under `karac run --interp`, `karac run`, and `karac build` — including the default auto-parallelising build and `KARAC_AUTO_PAR=0`.
 
-**No benchmark.** This kata's runtime is dominated by allocating and concatenating its own output — at n=14 that is 5×10⁴ strings — so a cross-language timing would measure each language's string allocator, not the algorithm, and the corpus already has better-targeted allocator measurements. Recognition ([#246](../246-strobogrammatic-number/)) carries the benchmark for this pair; generation carries the correctness argument.
+**Benchmark: `bench/`.** Generates every strobogrammatic number of length 16 (312,500 strings), re-verifies each by the two-pointer rotation check, 12 rounds. Sink `404314354`, reproduced exactly by the C, Rust, Go and Python mirrors.
+
+This lane previously read "no benchmark", on the grounds that the runtime is dominated by allocating and concatenating output and so would measure each language's string allocator rather than the algorithm. **That objection is correct and the lane is kept anyway**, because string building *is* what this algorithm does — the middle-outward recursion has no other cost — and measuring it on identical work across five languages is a legitimate comparison, not a confound. What the section must not do is imply the number says something about the strobogrammatic construction specifically; it says something about string throughput under that construction.
+
+Which turned out to be the point. On the x86 corroboration host Kāra runs **793 ms against `rustc -O`'s 681 and equal-safety Rust's 716** — 1.17× and 1.11×. That independently reproduces the residual the compiler README already tracks ("a few string-building loops, ~1.2×"), on a workload chosen for a different reason. A lane that surfaces a known gap earns its place; recognition ([#246](../246-strobogrammatic-number/)) still carries the two-pointer-scan measurement for the pair.
+
+Published numbers await the Apple-silicon host — `bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
