@@ -118,24 +118,34 @@ reached module verification.
 This kata's comparator needs an **early return from inside a while loop** —
 compare element by element, exit at the first difference — which cannot be
 written as an implicit tail without restructuring into a sentinel-and-flag shape.
-**The natural spelling is kept** rather than contorted, so three of the four
-programs are interpreter-only until `B-2026-08-10-16` is fixed.
+**The natural spelling was kept** rather than contorted. Fixed in `568e6ff` —
+which exposed a third gap directly underneath, `B-2026-08-10-17`: a `return`
+nested inside an `if` or loop was typechecked against `()` rather than the
+closure's return type. Fixed in `819af61`, and that terminated the chain. All
+three solvers now build.
 
-## Verification status — partial
+Worth noting how the third was framed: it is neither nesting-dependent nor
+`sort_by`-specific — a plain `Fn(i64)->i64` argument reproduces it with no
+comparator involved. What decides it is which closure arm typed the body.
+
+## Verification status
 
 | file | interp | JIT | build | auto-par | Python |
 |---|---|---|---|---|---|
-| `factor_combinations.kara` ★ | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | ✅ |
-| `factor_combinations_close.kara` | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | — |
-| `factor_combinations_iter.kara` | ✅ | ⛔ `-16` | ⛔ `-16` | ⛔ `-16` | — |
+| `factor_combinations.kara` ★ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `factor_combinations_close.kara` | ✅ | ✅ | ✅ | ✅ | — |
+| `factor_combinations_iter.kara` | ✅ | ✅ | ✅ | ✅ | — |
 | `differential.kara` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-All three solvers agree with each other and with Python under the interpreter.
-`differential.kara` reaches every surface — it compares by an order-independent
-digest and never sorts, so it never touches the broken construct. **The A/B
-run==build guarantee is therefore NOT established for the three solvers.**
-`B-2026-08-10-13` is already fixed; when `B-2026-08-10-16` follows, re-run the
-matrix — nothing else should need to change.
+Every program is byte-identical across all four surfaces, and the two with
+mirrors match Python. The corpus A/B run==build guarantee holds.
+
+Three of these rows were blocked when the kata landed, through **three layered
+gaps** — `-13` (element type), then `-16` (explicit `return`) underneath it,
+then `-17` (nested `return` typechecked against `()`) underneath that. Each was
+invisible until the one above it was fixed. The matrix was re-run unchanged after
+the last landed: **no solver needed editing**, which is the outcome that
+justifies having kept the natural spelling through all three.
 
 ## The differential compares without sorting
 
