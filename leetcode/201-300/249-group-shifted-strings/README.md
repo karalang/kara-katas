@@ -109,13 +109,56 @@ part of the kata's bug-finding surface, not scaffolding around it.
 - **`not` as the boolean negation** (`!` is not Kāra's operator; `karac fix`
   rewrote it automatically).
 
-## No benchmark
+## Benchmark
 
-Grouping 200 strings of length ≤ 50 is not a workload — the whole input fits in
-L1 and the answer is dominated by map overhead rather than by the algorithm.
-`differential.kara` is the load-bearing artifact here; a bench lane would measure
-`Map[String, _]` insertion, which [#49](../../1-100/49-group-anagrams/) already
-covers with a corpus sized for it.
+`bench/` builds **120,000 shift-derived words once**, then runs the canonical-form
+grouping over that fixed corpus **5 times**. Sink `142278916`, reproduced exactly
+by the C, Rust, Go and Python mirrors.
+
+This section previously said a lane here would only re-measure
+[#49](../../1-100/49-group-anagrams/)'s `Map[String, _]` insertion. It measures
+something #49 does not: this kata appends **in place** via
+`entry(k).or_insert(Vec.new()).push(w)`, while #49's `map_of_lists.kara`
+deliberately keeps the read-clone-reinsert form as an ownership probe and warns
+it is O(k²) per key (kara `B-2026-08-03-9`). Same problem shape, different
+ownership path — which is the thing worth timing.
+
+Drawing words as **shifts of a small seed set** is load-bearing, exactly as in
+the differential: uniform random letters make almost every word its own group,
+so the map degenerates to 120k singleton insertions and the append path barely
+runs.
+
+**`karac check` shaped this kernel.** The obvious spelling keeps a side
+`Vec[String]` of first-seen keys, which consumes `key` a second time and earns an
+`rc-fallback` diagnostic — in a benchmark that would have measured refcount
+traffic instead of map insertion. The kernel instead borrows `key` twice and
+consumes it once, carrying the order-sensitive part of the sink in a running key
+checksum. The ownership checker is benchmark hygiene here, not just a
+correctness tool.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) |
+|---|---|
+| Go | 190.3 ± 12.4 |
+| C | 337.4 ± 17.6 |
+| Rust (checked) | 470.0 ± 13.8 |
+| Rust | 479.1 ± 25.3 |
+| **Kāra** | **580.6 ± 30.2** |
+
+**Go wins this one outright**, and the reason is the hash rather than the
+grouping: Go's map is tuned for string keys, while Rust's default `HashMap` uses
+SipHash for DoS resistance. That is a deliberate Rust trade-off, not a defect,
+and it means the Rust baseline here is not the "fast implementation" it usually
+is. Kāra at 1.21× Rust is consistent with the string-building residual #247's
+lane shows.
+
+Read the C row with care: unlike every other language here it has no standard
+string map, so `group_shifted.c` carries a hand-written FNV-1a open-addressing
+one. That row measures **that map**, not "C".
+
+Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
+is corroboration only (BENCHMARKS.md § Hosts).
 
 ## Running
 
