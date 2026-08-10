@@ -345,7 +345,7 @@ regardless of how many subs there are.
 because sigma clipping needs all frames' values at a pixel simultaneously. So
 the strip, not the frame, is the unit.
 
-### Strips rather than tiles, and a window that slides
+### Strips rather than tiles
 
 The integrator works in 256² tiles internally, but streaming reads **strips**,
 and the reason is the file layout. A strip is contiguous in a row-major FITS —
@@ -353,19 +353,26 @@ one large sequential read per frame. Square tiles would need a seek per row: at
 6000×4000 with 100 subs that is ~10 million small reads instead of ~12 thousand
 large ones.
 
-That also sidesteps a hard constraint: **`File` has no `seek`**. Strips advance
-top-to-bottom and FITS rows are stored top-to-bottom, so a window that only ever
-moves forward never needs one. Consecutive strips overlap by the halo, and
-rather than re-reading those rows the window *retains* them — shift the tail to
-the front, read only the genuinely new rows. Every file is read exactly once per
-pass, front to back.
+Each strip seeks to the rows it needs, reads them, and integrates. The halo rows
+shared with the neighbouring strip are simply read twice, which costs
+`2·halo/STRIP` of extra I/O and buys a great deal of simplicity.
 
-A `.cstack` stays resident on purpose. It is one file holding every frame back
-to back, so a strip of frame *f* and the same strip of frame *f+1* are a whole
-frame apart in the byte stream; walking them together needs seeks. The FITS
-layout — one file per sub — is what makes a sequential strip walk possible at
-all. The CFA path stays resident too, since `stack_cfa` separates planes across
-the full frame.
+That simplicity is recent. `File` had no `seek` when this was written (compiler
+ledger B-2026-08-10-3), so reads could only go forward and the strip walk had to
+be a **sliding window**: retain the overlap from the previous strip, shift the
+tail of every frame's slab to the front, then read only the genuinely new rows.
+It worked, and it was where both of the bugs below came from. `File.seek` landed
+and the retention became pointless — the shift loop, the cursor bookkeeping, and
+the invariant tying each buffer position to its file's read offset all went with
+it.
+
+A `.cstack` stays resident, and now that is a *choice* rather than a limit. With
+seek it could stream — one file holding every frame back to back is exactly what
+seek is for. It does not, because it is the **control**: the oracle below is
+"the streamed path agrees with the resident path", and if both paths stream
+there is nothing left to check against. One deliberately resident reader is
+worth more than a second streaming one. The CFA path stays resident too, since
+`stack_cfa` separates planes across the full frame.
 
 ### The oracle, and why the obvious version of it was vacuous
 
@@ -394,20 +401,28 @@ strip edges into NO DATA. Neither crashes; both produce a picture. Forcing the
 halo to zero is confirmed to fail the multi-strip check, so it is not vacuous
 either.
 
-### What it cost in the language
+### What it cost in the language, and what that cost bought
 
-Three gaps in the file API shaped this code more than the astronomy did:
+Three gaps in the file API shaped this code more than the astronomy did. All
+three are now fixed, and the sequence is the point:
 
-- **No `seek`** (`"Seek / metadata are deferred to a follow-on slice"`), which
-  forces sequential access and hence the sliding window.
-- **No `mut` sub-slice of an `Array`** — `buf[2..]` is `Slice[u8]`, not
-  `mut Slice[u8]` — so a short read cannot be topped up in place. Hence the
-  per-frame carry queue: read whole fixed chunks, keep what the caller did not
-  consume, hand it back first next time.
-- **A `File` stored in a `Vec` deadlocked under AOT** (compiler ledger
-  B-2026-08-09-17), which blocked the design outright, since sequential access
-  across many files means many concurrently-open handles. Fixed in the compiler
-  before this could be written.
+- **No `seek`** — forced the sliding window. Fixed (B-2026-08-10-3); the runtime
+  entry point had existed all along and only the Kāra surface was missing.
+- **No `mut` sub-slice** — `buf[2..]` is `Slice[u8]`, not `mut Slice[u8]`, so a
+  short read could not be topped up in place. That forced a per-frame carry
+  queue: read whole fixed chunks, hand back what the caller wanted, keep the
+  remainder. About forty lines and a copy per refill. `split_at_mut` turned out
+  to be fully specified in design.md and implemented nowhere — the read-only
+  `split_at` had shipped and the mutable half had not (B-2026-08-10-4). It is
+  now six lines of `read_exact`.
+- **A `File` stored in a `Vec` deadlocked under AOT** (B-2026-08-09-17), which
+  blocked the design outright: sequential access across many files means many
+  concurrently-open handles.
+
+That last one is the interesting one. It was only reachable *because* of the
+first: no seek forced the many-handles design, which walked straight into a real
+codegen bug that had nothing to do with files being numerous. A missing
+primitive pushed the code onto a path where a separate defect was waiting.
 
 ## Colour: the CFA path
 

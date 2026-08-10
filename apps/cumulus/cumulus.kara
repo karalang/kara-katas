@@ -97,93 +97,78 @@ let STRIP: i64 = 64;
 let MAX_HALO: i64 = 24;
 
 /// Header fields plus enough to decode the data section. `read_fits_header`
-/// leaves the handle positioned at the first data byte, so the same handle
-/// streams the rows afterwards.
+/// reports `data_off`, the byte offset of the first pixel, so any later read
+/// can seek straight to the rows it wants.
 struct FitsMeta {
-    width: i64, height: i64, bzero: i64, bscale: i64,
+    width: i64, height: i64, bzero: i64, bscale: i64, data_off: i64,
     bayer: String, ok: bool, err: String,
 }
 
-/// Pull up to `want` more bytes onto `carry` from `f`. Returns false at EOF.
+/// Fill `buf` completely, topping up from an offset after a short read.
 ///
-/// `File.read` fills from the START of its buffer and a slice of an `Array` is
-/// `Slice[u8]` rather than `mut Slice[u8]`, so there is no way to continue
-/// filling a buffer from an offset — a short read cannot be topped up in place.
-/// The carry queue is the way around that: read whole fixed chunks, keep what
-/// the caller did not consume, and hand it back first next time.
-fn fill_carry(f: ref File, carry: mut ref Vec[u8], want: i64) -> bool
-    with reads(FileSystem)
-{
-    let mut buf: Array[u8, 4096] = [0u8; 4096];
+/// `File.read` fills from the START of its buffer and may return fewer bytes
+/// than asked for, so reading exactly N bytes needs a way to name "the unfilled
+/// tail" as a mutable view. `split_at_mut` is that way. Until it existed
+/// (compiler ledger B-2026-08-10-4) this file carried a per-frame byte queue —
+/// read whole fixed chunks, hand back what the caller wanted, keep the
+/// remainder for next time — about forty lines and a copy per refill, all of it
+/// standing in for these six.
+fn read_exact(f: ref File, buf: mut Slice[u8]) -> bool with reads(FileSystem) {
+    let total = buf.len();
+    let mut filled: i64 = 0;
     let mut alive = true;
-    while (carry.len() as i64) < want and alive {
-        match f.read(mut buf) {
-            Ok(n) => {
-                if n == 0 {
-                    alive = false;
-                } else {
-                    for i in 0..(n as i64) { carry.push(buf[i]); }
-                }
-            }
+    while filled < total and alive {
+        let halves = buf.split_at_mut(filled);
+        match f.read(halves.1) {
+            Ok(n) => { if n == 0 { alive = false; } else { filled = filled + (n as i64); } }
             Err(e) => { alive = false; }
         }
     }
-    (carry.len() as i64) >= want
+    filled == total
 }
 
-/// Drop the first `n` bytes of `carry`, keeping the rest.
-fn drain_carry(carry: mut ref Vec[u8], n: i64) {
-    let len = carry.len() as i64;
-    let mut kept: Vec[u8] = Vec.with_capacity(len - n);
-    for i in n..len { kept.push(carry[i]); }
-    carry.clear();
-    for v in kept { carry.push(v); }
-}
-
-/// Read the FITS header through `f`, leaving the handle at the first data byte.
+/// Read the FITS header through `f`.
 ///
 /// Header blocks are 2880 bytes and the END card can fall anywhere in one, so
-/// this consumes WHOLE blocks and stops after the block containing END —
-/// exactly where the data section begins. Any bytes the chunked reads pulled
-/// past that boundary stay on `carry` and are the first data bytes.
-fn read_fits_header(f: ref File, carry: mut ref Vec[u8]) -> FitsMeta
-    with reads(FileSystem)
-{
+/// this consumes WHOLE blocks and records the offset just past the block
+/// containing END — where the data section begins.
+fn read_fits_header(f: ref File) -> FitsMeta with reads(FileSystem) {
     let mut m = FitsMeta {
-        width: 0, height: 0, bzero: 0, bscale: 1, bayer: "", ok: false, err: "",
+        width: 0, height: 0, bzero: 0, bscale: 1, data_off: 0,
+        bayer: "", ok: false, err: "",
     };
     let mut bitpix: i64 = 0;
     let mut naxis: i64 = 0;
     let mut roworder = "";
     let mut done = false;
     let mut nblk: i64 = 0;
+    let mut block: Vec[u8] = Vec.filled(2880, 0);
     // 64 blocks is 184 320 bytes of header — far past anything real, and it
-    // stops a non-FITS file from being read to its end one block at a time.
+    // stops a non-FITS file being read to its end one block at a time.
     while not done and nblk < 64 {
-        if not fill_carry(f, carry, 2880) {
+        if not read_exact(f, mut block) {
             nblk = 64;
         } else {
             let mut off: i64 = 0;
             while off + 80 <= 2880 and not done {
-                let key = card_key(carry, off);
+                let key = card_key(block, off);
                 if key == "END" {
                     done = true;
                 } else {
-                    let n = parse_int(card_value(carry, off));
+                    let n = parse_int(card_value(block, off));
                     if key == "BITPIX" { bitpix = n; }
                     if key == "NAXIS" { naxis = n; }
                     if key == "NAXIS1" { m.width = n; }
                     if key == "NAXIS2" { m.height = n; }
                     if key == "BZERO" { m.bzero = n; }
                     if key == "BSCALE" { m.bscale = n; }
-                    if key == "BAYERPAT" { m.bayer = card_string(carry, off); }
-                    if key == "ROWORDER" { roworder = card_string(carry, off); }
+                    if key == "BAYERPAT" { m.bayer = card_string(block, off); }
+                    if key == "ROWORDER" { roworder = card_string(block, off); }
                     off = off + 80;
                 }
             }
-            // Consume the whole block whether or not END was in it.
-            drain_carry(carry, 2880);
             nblk = nblk + 1;
+            m.data_off = nblk * 2880;
         }
     }
     if not done {
@@ -206,30 +191,37 @@ fn read_fits_header(f: ref File, carry: mut ref Vec[u8]) -> FitsMeta
     m
 }
 
-/// Stream `nrows` rows of `w` pixels from `f` into `dst` starting at `dst_base`.
+/// Read `nrows` rows starting at source row `row0` into `dst` at `dst_base`.
 ///
-/// Same BIG-endian + BZERO/BSCALE decode the whole-file reader does, so a
+/// SEEKS to the row rather than arriving there by having read everything
+/// before it. That is what lets each strip ask for exactly the rows it needs,
+/// in any order, and it is why the window below is a plain per-strip read
+/// rather than a sliding buffer that had to retain its own overlap.
+///
+/// Same BIG-endian + BZERO/BSCALE decode as the whole-file reader, so a
 /// streamed frame is bit-identical to a resident one.
-fn read_rows(f: ref File, carry: mut ref Vec[u8], dst: mut ref Vec[u16],
-             dst_base: i64, w: i64, nrows: i64, bzero: i64, bscale: i64) -> bool
+fn read_rows_at(f: ref File, data_off: i64, row0: i64, nrows: i64, w: i64,
+                bzero: i64, bscale: i64, dst: mut ref Vec[u16], dst_base: i64) -> bool
     with reads(FileSystem)
 {
-    let mut ok = true;
-    for r in 0..nrows {
-        if ok {
-            if not fill_carry(f, carry, w * 2) {
-                ok = false;
-            } else {
-                for x in 0..w {
-                    let hi = carry[x * 2] as i64;
-                    let lo = carry[x * 2 + 1] as i64;
-                    let mut raw = hi * 256 + lo;
-                    if raw > 32767 { raw = raw - 65536; }
-                    let phys = bzero + bscale * raw;
-                    let cl = if phys < 0 { 0 } else { if phys > 65535 { 65535 } else { phys } };
-                    dst[dst_base + r * w + x] = cl as u16;
-                }
-                drain_carry(carry, w * 2);
+    let mut ok = false;
+    match f.seek(SeekFrom.Start, data_off + row0 * w * 2) {
+        Ok(p) => { ok = true; }
+        Err(e) => { }
+    }
+    if ok {
+        let mut raw: Vec[u8] = Vec.filled(nrows * w * 2, 0);
+        if not read_exact(f, mut raw) {
+            ok = false;
+        } else {
+            for i in 0..(nrows * w) {
+                let hi = raw[i * 2] as i64;
+                let lo = raw[i * 2 + 1] as i64;
+                let mut v = hi * 256 + lo;
+                if v > 32767 { v = v - 65536; }
+                let phys = bzero + bscale * v;
+                let cl = if phys < 0 { 0 } else { if phys > 65535 { 65535 } else { phys } };
+                dst[dst_base + i] = cl as u16;
             }
         }
     }
@@ -1171,12 +1163,11 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
 /// geometry before deciding whether the run can stream.
 fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
     let mut m = FitsMeta {
-        width: 0, height: 0, bzero: 0, bscale: 1, bayer: "", ok: false,
-        err: "cannot open input",
+        width: 0, height: 0, bzero: 0, bscale: 1, data_off: 0, bayer: "",
+        ok: false, err: "cannot open input",
     };
-    let mut carry: Vec[u8] = Vec.new();
     match File.open(path) {
-        Ok(f) => { m = read_fits_header(f, mut carry); }
+        Ok(f) => { m = read_fits_header(f); }
         Err(e) => { }
     }
     m
@@ -1204,13 +1195,12 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
 
     for f in 0..nframes {
         let mut frame: Vec[u16] = Vec.filled(npix, 0);
-        let mut carry: Vec[u8] = Vec.new();
         let mut got = false;
         match File.open(paths[f]) {
             Ok(fh) => {
-                let m = read_fits_header(fh, mut carry);
+                let m = read_fits_header(fh);
                 if m.ok {
-                    got = read_rows(fh, mut carry, mut frame, 0, w, h, bzero, bscale);
+                    got = read_rows_at(fh, m.data_off, 0, h, w, bzero, bscale, mut frame, 0);
                 }
             }
             Err(e) => { }
@@ -1355,72 +1345,51 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
 
     let cap = STRIP + 2 * halo;
     let mut win: Vec[u16] = Vec.filled(nframes * w * cap, 0);
-    let mut carries: Vec[Vec[u8]] = Vec.new();
+    let mut metas: Vec[i64] = Vec.new();
     let mut handles: Vec[File] = Vec.new();
     let mut opened = true;
     for f in 0..nframes {
-        let mut carry: Vec[u8] = Vec.new();
         match File.open(paths[f]) {
             Ok(fh) => {
-                let m = read_fits_header(fh, mut carry);
+                let m = read_fits_header(fh);
                 if not m.ok { opened = false; }
+                metas.push(m.data_off);
                 handles.push(fh);
             }
             Err(e) => { opened = false; }
         }
-        carries.push(carry);
     }
 
     if opened and handles.len() as i64 == nframes {
-        // `win_r0` is the source row held in buffer row 0; `win_rows` how many
-        // rows are present. Because reads are sequential, `win_r0 + win_rows`
-        // is also each file's cursor — the two cannot drift apart.
-        let mut win_r0: i64 = 0;
-        let mut win_rows: i64 = 0;
         let nstrips = (h + STRIP - 1) / STRIP;
         for s in 0..nstrips {
             let sy0 = s * STRIP;
             let rem = h - sy0;
             let sh = if rem < STRIP { rem } else { STRIP };
-            let want_r0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
-            let mut want_r1 = sy0 + sh + halo;
-            if want_r1 > h { want_r1 = h; }
+            let wr0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
+            let mut wr1 = sy0 + sh + halo;
+            if wr1 > h { wr1 = h; }
+            let wrows = wr1 - wr0;
 
-            // Retain the overlap rather than re-reading it — there is no seek
-            // to go back with, and this is the whole reason a strip walk can be
-            // built on sequential reads at all.
-            let drop = want_r0 - win_r0;
-            if drop > 0 and win_rows > 0 {
-                let stay = win_rows - drop;
-                if stay > 0 {
-                    for f in 0..nframes {
-                        let base = f * w * cap;
-                        for r in 0..stay {
-                            for x in 0..w {
-                                win[base + r * w + x] = win[base + (r + drop) * w + x];
-                            }
-                        }
-                    }
-                    win_rows = stay;
-                } else {
-                    win_rows = 0;
-                }
-                win_r0 = want_r0;
-            }
-
-            let need = want_r1 - (win_r0 + win_rows);
-            if need > 0 {
-                for f in 0..nframes {
-                    let base = f * w * cap + win_rows * w;
-                    let got = read_rows(handles[f], mut carries[f], mut win, base,
-                                        w, need, bzero, bscale);
+            // Each strip SEEKS to the rows it needs. Before `File.seek` existed
+            // (compiler ledger B-2026-08-10-3) reads could only go forward, so
+            // this was a window that had to slide: retain the overlap from the
+            // previous strip, shift the tail of every frame's slab to the
+            // front, then read only the genuinely new rows. Seeking makes the
+            // retention pointless — the halo rows are simply read again, which
+            // costs `2*halo/STRIP` of extra I/O and removes the shift loop, the
+            // cursor bookkeeping, and the invariant tying the buffer position
+            // to each file's read offset.
+            for f in 0..nframes {
+                if keep[f] != 0 {
+                    let got = read_rows_at(handles[f], metas[f], wr0, wrows, w,
+                                           bzero, bscale, mut win, f * w * cap);
                     if not got { println("cumulus: short read while streaming"); }
                 }
-                win_rows = win_rows + need;
             }
 
             integrate_window(win, w, h, nframes, dxs, dys, keep, use_clip,
-                             sy0, sh, win_r0, win_rows, cap, mut out);
+                             sy0, sh, wr0, wrows, cap, mut out);
         }
     } else {
         println("cumulus: could not reopen the subs for streaming");
