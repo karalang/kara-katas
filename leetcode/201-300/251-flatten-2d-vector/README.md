@@ -154,11 +154,26 @@ bulk rather than once.
 - **`gen` is a reserved word**; the generator is `make_data`. The parse
   diagnostic named the reason directly.
 
-## No benchmark
+## Benchmark
 
-The whole input is bounded at 200×500 and every approach is one pass; the
-measurement would be startup-dominated. `differential.kara` is the load-bearing
-artifact.
+`bench/` builds **one ragged 2D input** (20,000 rows, ~45% of them empty), then
+drains it from scratch **1,500 times** through the ★ lazy `(row, col)` iterator
+— build-once + punch, ~58M `next()` calls.
+
+The empty rows are what make it a benchmark rather than a memory scan: the
+cursor advances unpredictably relative to the element stream, so `skip_empty`
+is data-dependent and cannot be hoisted or vectorized away. The sink is a
+**positional** checksum, so the yield ORDER is load-bearing — an implementation
+that produced the right multiset in the wrong order would fail, which a plain
+sum would not catch.
+
+Sink `955071957`, reproduced exactly by the C, Rust, Go and Python mirrors.
+
+**Published numbers await the Apple-silicon host**; `bench/results.container-x86.json`
+is corroboration only (BENCHMARKS.md § Hosts). For what it is worth, that host
+separates the languages cleanly — C ahead, Kāra level with `rustc -O` to within
+0.3 ms and slightly ahead of the equal-safety build, Go trailing — but the M5
+run is the one that counts.
 
 ## Running
 

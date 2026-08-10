@@ -143,14 +143,31 @@ and this is the former.
   three solvers and built by the same level-order walk as
   [#199](../../101-200/199-binary-tree-right-side-view/).
 
-## No benchmark
+## Benchmark
 
-The LeetCode bound is 1,000 nodes and every approach is a single O(n) pass over
-a pool that fits in L2 — the measurement would be dominated by process startup,
-not by the traversal. The load-bearing artifact here is `differential.kara`.
-Tree-traversal throughput at benchmark scale is already covered by
-[#222](../222-count-complete-tree-nodes/) and
-[#230](../230-kth-smallest-element-in-a-bst/).
+`bench/` builds **one 2M-node level-order tree** from a 3-symbol alphabet, then
+runs **40 full counting passes** over it — build-once + punch. The small alphabet
+matters here for the same reason it does in the differential: it keeps uni-value
+subtrees common, so the combining path is hot rather than the leaf case.
+
+The pass cannot be reduced to a vectorized reduction — each node's verdict is
+read back out of the memo by its parent, so the loop is carried through
+`uni[]`.
+
+**The kernel is the reverse index scan, not the ★ recursion.** A recursion here
+would measure four languages' differing stack conventions rather than the
+counting work, and the scan is expressible identically in all five mirrors. That
+is a deliberate departure from "bench the ★ approach" and the reason is recorded
+in the kernel header too.
+
+Sink `42226040`, reproduced exactly by the C, Rust and Go mirrors.
+
+**Published numbers await the Apple-silicon host.** The x86 container run in
+`bench/results.container-x86.json` is corroboration that the lane works and the
+mirrors agree (BENCHMARKS.md § Hosts), not a source of claims — and on that host
+all five landed within a few percent of each other with Rust's own σ at 13% of
+its mean, which is contention, not signal. Nothing here should be quoted until
+`bench/results.json` exists.
 
 ## Running
 
