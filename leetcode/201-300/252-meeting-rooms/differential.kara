@@ -1,0 +1,236 @@
+// LeetCode 252 — differential harness.
+//
+// Builds randomized interval sets and runs all THREE deciders over each: the ★
+// sort-and-compare-adjacent, the sweep-line counter, and the O(n²) pairwise
+// definition. Any disagreement is a bug in one of them — or in the compiler.
+//
+// The generator is built around one observation: a naive uniform draw is almost
+// useless here. Scatter intervals over a wide range and nearly every set
+// contains an obvious clash, so every decider returns false immediately and the
+// "attendable" path — the one that must scan to the end — is barely tested.
+//
+// So cases are drawn in three deliberate families:
+//
+//   * PACKED (about half) — intervals laid end to end from a cursor, with gaps
+//     that are usually zero. These are attendable, and the zero gaps produce
+//     TOUCHING boundaries in bulk, which is exactly the `<` versus `<=`
+//     distinction the whole problem turns on.
+//   * PERTURBED — a packed set with ONE interval nudged backwards by one unit,
+//     making it overlap its neighbour by the smallest possible margin. A decider
+//     that gets the boundary wrong flips precisely here and nowhere else.
+//   * SCATTERED — the uniform draw, kept as the easy case so the early-return
+//     path is covered too.
+//
+// Cases are also emitted in shuffled input order, since two of the three
+// deciders sort and the third does not; feeding pre-sorted input would hide any
+// ordering assumption.
+//
+// Sink = counts of each verdict plus a positional checksum, so WHICH cases came
+// out true matters, not just how many.
+
+fn make_case(seed: i64) -> Vec[(i64, i64)] {
+    let mut state = seed;
+    let mut out: Vec[(i64, i64)] = Vec.new();
+
+    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    let n = (state / 65536i64) % 9i64;
+    if n == 0i64 {
+        return out;
+    }
+    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    let family = (state / 65536i64) % 4i64;
+
+    if family <= 1i64 {
+        // PACKED: end-to-end, gaps usually zero -> attendable, lots of touching.
+        let mut cursor = 0i64;
+        let mut i = 0i64;
+        while i < n {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let dur = (state / 65536i64) % 5i64 + 1i64;
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let gap = (state / 65536i64) % 3i64 / 2i64; // 0 two thirds of the time
+            out.push((cursor, cursor + dur));
+            cursor = cursor + dur + gap;
+            i = i + 1i64;
+        }
+    } else if family == 2i64 {
+        // PERTURBED: packed, then one interval pulled back by exactly one.
+        let mut cursor = 0i64;
+        let mut i = 0i64;
+        while i < n {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let dur = (state / 65536i64) % 5i64 + 1i64;
+            out.push((cursor, cursor + dur));
+            cursor = cursor + dur;
+            i = i + 1i64;
+        }
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let victim = (state / 65536i64) % n;
+        if victim > 0i64 {
+            let v = out[victim];
+            out[victim] = (v.0 - 1i64, v.1);
+        }
+    } else {
+        // SCATTERED: the easy uniform case.
+        let mut i = 0i64;
+        while i < n {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let s = (state / 65536i64) % 40i64;
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            let d = (state / 65536i64) % 8i64 + 1i64;
+            out.push((s, s + d));
+            i = i + 1i64;
+        }
+    }
+
+    // Shuffle, so no decider can rely on receiving sorted input.
+    let mut k = out.len() - 1i64;
+    while k > 0i64 {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let swap = (state / 65536i64) % (k + 1i64);
+        let tmp = out[k];
+        out[k] = out[swap];
+        out[swap] = tmp;
+        k = k - 1i64;
+    }
+    return out;
+}
+
+// ---- decider 1: sort + adjacent ------------------------------------------
+
+fn decide_sorted(intervals: ref Vec[(i64, i64)]) -> bool {
+    let mut s: Vec[(i64, i64)] = Vec.new();
+    let mut i = 0i64;
+    while i < intervals.len() {
+        s.push(intervals[i]);
+        i = i + 1i64;
+    }
+    s.sort_by(|a, b| a.0.cmp(b.0));
+    let n = s.len();
+    let mut k = 1i64;
+    while k < n {
+        if s[k].0 < s[k - 1i64].1 {
+            return false;
+        }
+        k = k + 1i64;
+    }
+    return true;
+}
+
+// ---- decider 2: sweep line -----------------------------------------------
+
+fn decide_sweep(intervals: ref Vec[(i64, i64)]) -> bool {
+    let n = intervals.len();
+    if n <= 1i64 {
+        return true;
+    }
+    let mut starts: Vec[i64] = Vec.new();
+    let mut ends: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        starts.push(intervals[i].0);
+        ends.push(intervals[i].1);
+        i = i + 1i64;
+    }
+    starts.sort();
+    ends.sort();
+    let mut j = 0i64;
+    let mut active = 0i64;
+    let mut k = 0i64;
+    while k < n {
+        while j < n and ends[j] <= starts[k] {
+            active = active - 1i64;
+            j = j + 1i64;
+        }
+        active = active + 1i64;
+        if active > 1i64 {
+            return false;
+        }
+        k = k + 1i64;
+    }
+    return true;
+}
+
+// ---- decider 3: pairwise definition --------------------------------------
+
+fn decide_pairwise(intervals: ref Vec[(i64, i64)]) -> bool {
+    let n = intervals.len();
+    let mut i = 0i64;
+    while i < n {
+        let mut j = i + 1i64;
+        while j < n {
+            let a = intervals[i];
+            let b = intervals[j];
+            let later_start = if a.0 > b.0 { a.0 } else { b.0 };
+            let earlier_end = if a.1 < b.1 { a.1 } else { b.1 };
+            if later_start < earlier_end {
+                return false;
+            }
+            j = j + 1i64;
+        }
+        i = i + 1i64;
+    }
+    return true;
+}
+
+fn main() {
+    let cases = 1200i64;
+    let mut seed = 252252i64;
+
+    let mut yes = 0i64;
+    let mut no = 0i64;
+    let mut mismatches = 0i64;
+    let mut touching = 0i64;
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+        let iv = make_case(seed);
+
+        let a = decide_sorted(iv);
+        let b = decide_sweep(iv);
+        let d = decide_pairwise(iv);
+
+        if a != b or a != d {
+            mismatches = mismatches + 1i64;
+        }
+        if a {
+            yes = yes + 1i64;
+            digest = (digest * 131i64 + 1i64) % 1000000007i64;
+        } else {
+            no = no + 1i64;
+            digest = (digest * 131i64) % 1000000007i64;
+        }
+
+        // Census: how many cases actually contain a TOUCHING boundary, the
+        // shape the whole problem turns on. If this is small the generator is
+        // not testing what it claims to.
+        let mut sorted_iv: Vec[(i64, i64)] = Vec.new();
+        let mut t = 0i64;
+        while t < iv.len() {
+            sorted_iv.push(iv[t]);
+            t = t + 1i64;
+        }
+        sorted_iv.sort_by(|a, b| a.0.cmp(b.0));
+        let mut u = 1i64;
+        let mut has_touch = false;
+        while u < sorted_iv.len() {
+            if sorted_iv[u].0 == sorted_iv[u - 1i64].1 {
+                has_touch = true;
+            }
+            u = u + 1i64;
+        }
+        if has_touch {
+            touching = touching + 1i64;
+        }
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"attendable {yes}");
+    println(f"clashing {no}");
+    println(f"with touching boundary {touching}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}
