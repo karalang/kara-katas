@@ -1,0 +1,246 @@
+// LeetCode 253 — differential harness.
+//
+// Runs all THREE room-counters over randomized inputs: the min-heap, the
+// chronological sweep, and the event list. Any disagreement is a bug in one of
+// them — or in the compiler.
+//
+// The generator is built around the one shape these three can differ on: a
+// meeting ENDING at the same instant another STARTS. The heap and the sweep both
+// encode that rule as a `<=`; the event list encodes it as a sort tie-break, and
+// a wrong tie-break survives the obvious touching test while failing elsewhere
+// (see min_meeting_rooms_events.kara). A generator that rarely produces
+// coincident endpoints would clear all three regardless.
+//
+// So times are drawn from a DELIBERATELY SMALL pool. With coordinates confined
+// to 0..23 and up to 10 meetings, shared endpoints are the norm rather than the
+// exception, and the census below reports how often — if that number is low the
+// generator is not testing what it claims.
+//
+// Cases are shuffled, since all three sort but only one is handed pairs.
+//
+// Sink = the room counts themselves, folded positionally.
+
+fn make_case(seed: i64) -> Vec[(i64, i64)] {
+    let mut state = seed;
+    let mut out: Vec[(i64, i64)] = Vec.new();
+
+    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    let n = (state / 65536i64) % 11i64;
+    let mut i = 0i64;
+    while i < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let s = (state / 65536i64) % 24i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let d = (state / 65536i64) % 6i64 + 1i64; // LeetCode: start < end
+        out.push((s, s + d));
+        i = i + 1i64;
+    }
+
+    let mut k = out.len() - 1i64;
+    while k > 0i64 {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let swap = (state / 65536i64) % (k + 1i64);
+        let tmp = out[k];
+        out[k] = out[swap];
+        out[swap] = tmp;
+        k = k - 1i64;
+    }
+    return out;
+}
+
+// ---- counter 1: min-heap of end times ------------------------------------
+
+fn heap_push(heap: mut ref Vec[i64], v: i64) {
+    heap.push(v);
+    let mut i = heap.len() - 1i64;
+    while i > 0i64 {
+        let parent = (i - 1i64) / 2i64;
+        if heap[i] < heap[parent] {
+            let tmp = heap[i];
+            heap[i] = heap[parent];
+            heap[parent] = tmp;
+            i = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+fn heap_pop(heap: mut ref Vec[i64]) {
+    let n = heap.len();
+    if n == 0i64 {
+        return;
+    }
+    let last = match heap.pop() {
+        Some(v) => v,
+        None => 0i64,
+    };
+    if n == 1i64 {
+        return;
+    }
+    heap[0i64] = last;
+    let m = heap.len();
+    let mut i = 0i64;
+    while true {
+        let l = 2i64 * i + 1i64;
+        let r = 2i64 * i + 2i64;
+        let mut smallest = i;
+        if l < m and heap[l] < heap[smallest] {
+            smallest = l;
+        }
+        if r < m and heap[r] < heap[smallest] {
+            smallest = r;
+        }
+        if smallest == i {
+            break;
+        }
+        let tmp = heap[i];
+        heap[i] = heap[smallest];
+        heap[smallest] = tmp;
+        i = smallest;
+    }
+}
+
+fn count_heap(intervals: ref Vec[(i64, i64)]) -> i64 {
+    let mut s: Vec[(i64, i64)] = Vec.new();
+    let mut c = 0i64;
+    while c < intervals.len() {
+        s.push(intervals[c]);
+        c = c + 1i64;
+    }
+    s.sort_by(|a, b| a.0.cmp(b.0));
+
+    let mut heap: Vec[i64] = Vec.new();
+    let mut rooms = 0i64;
+    let mut i = 0i64;
+    while i < s.len() {
+        while heap.len() > 0i64 and heap[0i64] <= s[i].0 {
+            heap_pop(mut heap);
+        }
+        heap_push(mut heap, s[i].1);
+        if heap.len() > rooms {
+            rooms = heap.len();
+        }
+        i = i + 1i64;
+    }
+    return rooms;
+}
+
+// ---- counter 2: chronological sweep --------------------------------------
+
+fn count_sweep(intervals: ref Vec[(i64, i64)]) -> i64 {
+    let n = intervals.len();
+    if n == 0i64 {
+        return 0i64;
+    }
+    let mut starts: Vec[i64] = Vec.new();
+    let mut ends: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        starts.push(intervals[i].0);
+        ends.push(intervals[i].1);
+        i = i + 1i64;
+    }
+    starts.sort();
+    ends.sort();
+    let mut j = 0i64;
+    let mut active = 0i64;
+    let mut best = 0i64;
+    let mut k = 0i64;
+    while k < n {
+        while j < n and ends[j] <= starts[k] {
+            active = active - 1i64;
+            j = j + 1i64;
+        }
+        active = active + 1i64;
+        if active > best {
+            best = active;
+        }
+        k = k + 1i64;
+    }
+    return best;
+}
+
+// ---- counter 3: event list -----------------------------------------------
+
+fn count_events(intervals: ref Vec[(i64, i64)]) -> i64 {
+    let n = intervals.len();
+    if n == 0i64 {
+        return 0i64;
+    }
+    let mut events: Vec[(i64, i64)] = Vec.new();
+    let mut i = 0i64;
+    while i < n {
+        events.push((intervals[i].0, 1i64));
+        events.push((intervals[i].1, -1i64));
+        i = i + 1i64;
+    }
+    events.sort_by(|a, b| if a.0 != b.0 { a.0.cmp(b.0) } else { a.1.cmp(b.1) });
+    let mut active = 0i64;
+    let mut best = 0i64;
+    let mut k = 0i64;
+    while k < events.len() {
+        active = active + events[k].1;
+        if active > best {
+            best = active;
+        }
+        k = k + 1i64;
+    }
+    return best;
+}
+
+fn main() {
+    let cases = 1500i64;
+    let mut seed = 253253i64;
+
+    let mut mismatches = 0i64;
+    let mut total_rooms = 0i64;
+    let mut max_rooms = 0i64;
+    let mut coincident = 0i64;
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+        let iv = make_case(seed);
+
+        let a = count_heap(iv);
+        let b = count_sweep(iv);
+        let d = count_events(iv);
+
+        if a != b or a != d {
+            mismatches = mismatches + 1i64;
+        }
+        total_rooms = total_rooms + a;
+        if a > max_rooms {
+            max_rooms = a;
+        }
+        digest = (digest * 131i64 + a) % 1000000007i64;
+
+        // Census: does this case contain an END coinciding with a START? That
+        // is the only shape the three counters can differ on.
+        let mut has_coincident = false;
+        let mut x = 0i64;
+        while x < iv.len() {
+            let mut y = 0i64;
+            while y < iv.len() {
+                if x != y and iv[x].1 == iv[y].0 {
+                    has_coincident = true;
+                }
+                y = y + 1i64;
+            }
+            x = x + 1i64;
+        }
+        if has_coincident {
+            coincident = coincident + 1i64;
+        }
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"total rooms {total_rooms}");
+    println(f"max rooms {max_rooms}");
+    println(f"with coincident endpoints {coincident}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}
