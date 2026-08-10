@@ -163,6 +163,53 @@ range. Over `2..10,000` — **8,770 factorable, 129,813 combinations, worst case
 the worklist's non-decreasing rule (child frames restarting from 2 instead of
 `i`) makes it report **965 mismatches** over `2..2,000`; restored, `0`.
 
+## Benchmark
+
+`bench/` sweeps **n = 2 … 150,000**, fully factorising each by the ★
+sqrt-bounded backtracking — **4,005,306 combinations**. An exhaustive sweep
+rather than build-once + punch, because there is nothing to build once here: the
+input is the range and the work is the recursion.
+
+This is a **recursion-and-allocation** workload, which is what distinguishes it
+from the sort-dominated lanes next door: every combination found allocates its
+own `Vec[i64]`, and highly composite n produce hundreds. The sink is the same
+order-independent summed hash the differential uses, so a mirror enumerating in
+a different order still has to agree on the multiset. Sink `855631428`,
+reproduced by the C, Rust and Go mirrors.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | vs Rust |
+|---|---|---|
+| C | 462.5 ± 24.2 | 0.66× |
+| **Kāra** | **671.5 ± 24.9** | **0.96×** |
+| Rust | 697.4 ± 33.6 | 1.00× |
+| Go | 707.5 ± 33.6 | 1.01× |
+| Rust (checked) | 797.0 ± 77.9 | 1.14× |
+
+Kāra and Rust are **at parity** here — 671.5 against 697.4 with overlapping
+error bars, so the apparent 4% lead is not a lead. Against equal-safety Rust
+(`overflow-checks=on`, the comparison Kāra's default trapping actually matches)
+Kāra is ahead, though that row's σ is 9.8% and deserves the same caution.
+
+**This lane is evidence for where kara `B-2026-08-10-9` lives.** That row records
+Kāra's `sort_by` running ~2× Rust's, isolated from two sort-dominated katas
+([#252](../252-meeting-rooms/), [#253](../253-meeting-rooms-ii/)). Here — deep
+recursion, millions of small allocations, no sort at all — Kāra is level. Two
+lanes behind on sorting and one at parity without it is consistent with the gap
+being the sort specifically rather than general codegen, which is what that row
+claims but could not show on its own.
+
+**The C mirror needed a parity fix worth naming.** Its first version hashed each
+combination inline off the path without ever materialising it, while Kāra, Rust
+and Go allocate a fresh array per combination. The sinks matched exactly, so it
+passed every check — but per-combination allocation is precisely what this
+workload measures, so that row would have been artificially fast. It now
+materialises like the others.
+
+Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
+is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`Vec[Vec[i64]]` built by backtracking** with push/pop path management.
