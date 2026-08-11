@@ -1,10 +1,11 @@
 # Cumulus — deep-sky sub-frame integration
 
 A browser-side deep-sky stacker written in Kāra. **So far: the integration
-engine, its differential oracle, FITS input, star-based registration, and
-sub-pixel resampling, and a browser shell.** No calibration and no rotation
-yet — those are later slices, and the ordering is deliberate (see *Why the
-oracle came first*).
+engine and its differential oracle, FITS input, star-based registration,
+sub-pixel resampling, a browser shell, colour via the Bayer mosaic a converted
+RAW becomes, and streaming so peak memory stops scaling with frame height.** No
+calibration and no rotation yet — those are later slices, and the ordering is
+deliberate (see *Why the oracle came first*).
 
 ```
 python3 gen_frames.py in.cstack               # synthetic 16-frame stack
@@ -724,13 +725,19 @@ Deliberately absent, in the order they matter:
 1. **Rotation** — translation only. Fine for a tracked mount over a short
    session; an alt-az mount accumulates field rotation that this will not
    correct.
-2. **Streaming from disk.** Memory is now bounded by the decoded frames
-   themselves (`frames × pixels × 2`) — 374 MB at 11.7 Mpx × 16, which is ~80%
-   of the browser tab's whole ~470 MB peak. Fine on a desktop; still the thing
-   that decides whether a phone survives a full-size stack. Holding only a
-   window of frames resident, or memory-mapping the subs, is the next lever, and
-   it is now the *only* remaining one — everything above the frames themselves
-   has been squeezed out.
+2. **Streaming in the BROWSER.** The native FITS path streams (see *Streaming*
+   above), so peak there no longer scales with frame height. The page does not:
+   `makeBlob` concatenates every decoded sub into one buffer and hands the whole
+   thing to wasm, so a tab still pays `frames × pixels × 2` — 374 MB at
+   11.7 Mpx × 16, and ~80% of the tab's total. That is what decides whether a
+   phone survives a full-size stack, and it is now the only place the old
+   memory story still applies.
+
+   The mechanism exists: `File.slice(start, end).arrayBuffer()` reads a byte
+   range without loading the file, so the page can pull row ranges on demand
+   exactly as the CLI now does. It needs the wasm entry point to take a strip at
+   a time rather than the whole stack, which is a real interface change to
+   `stack_frames` rather than a tweak.
 3. **Calibration** — darks, flats and bias. Synthetic frames have no amp glow,
    no hot columns, no vignetting and no dust motes, so nothing here has ever
    needed it; real subs from a real sensor do. This is the next thing that
