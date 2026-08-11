@@ -1159,6 +1159,121 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
 /// what `register` reports — the harness gates on it (a frame stacked on a
 /// two-star agreement is luck, not a match), so collapsing it to the 0/1 keep
 /// flag silently defeats that check.
+// ─── Calibration ─────────────────────────────────────────────────────────────
+//
+// Three defects a real sensor puts into every sub, and none of them is noise —
+// they are FIXED patterns, identical frame to frame, so stacking does not touch
+// them. More integration time makes them cleaner, not smaller.
+//
+//   bias   the readout offset, present even in a zero-length exposure
+//   dark   thermal signal accumulated over the exposure, plus the bias
+//   flat   the multiplicative response: vignetting, dust motes, filter grime
+//
+// The correction is the one every stacker applies:
+//
+//     calibrated = (light - master_dark) / normalised_flat
+//
+// Subtractive first, then multiplicative, because the flat measures the optical
+// path's response to LIGHT and the dark signal never travelled that path — divide
+// before subtracting and the dark current gets scaled by the vignetting profile
+// it was never subject to.
+//
+// A master dark taken at the light's exposure already contains the bias, so
+// `--bias` is not needed to calibrate lights. It is needed for the FLAT, whose
+// exposure differs: the flat carries its own bias, which must come off before
+// the frame can be treated as a pure multiplicative ratio. Passing `--bias`
+// without `--flat` is therefore accepted and does nothing, which is the honest
+// behaviour rather than an error.
+
+/// A resident calibration master: one `w * h` frame, or empty when absent.
+///
+/// Masters stay RESIDENT while the lights stream. There are at most two of
+/// them and each is one frame, so this costs `2 * w * h * 2` bytes —
+/// independent of how many subs the session has, which is the term that
+/// actually matters.
+struct Master { px: Vec[u16], present: bool, scale: f64 }
+
+/// Load a single-frame `.cstack` as a master and check it matches the lights.
+fn load_master(path: String, w: i64, h: i64, label: String) -> Master
+    with reads(FileSystem) writes(FileSystem)
+{
+    let mut m = Master { px: Vec.new(), present: false, scale: 1.0 };
+    if path != "" {
+        let data = read_all(path);
+        if data.len() < 16 {
+            println(f"cumulus: {label} master is too short to hold a header");
+        } else {
+            let mw = u32_at(data, 4);
+            let mh = u32_at(data, 8);
+            let mn = u32_at(data, 12);
+            if mw != w or mh != h {
+                println(f"cumulus: {label} master is {mw}x{mh}, lights are {w}x{h}");
+            } else {
+                if mn != 1 {
+                    println(f"cumulus: {label} master has {mn} planes, expected 1");
+                } else {
+                    let n = w * h;
+                    let mut px: Vec[u16] = Vec.with_capacity(n);
+                    for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
+                    m.px = px;
+                    m.present = true;
+                }
+            }
+        }
+    }
+    m
+}
+
+/// Bias-correct a flat and compute its normalisation scale.
+///
+/// The scale is the flat's own MEAN, so dividing by `flat / mean` preserves the
+/// image's overall level instead of dragging it toward 1. Without it a
+/// calibrated frame comes out ~1/mean of its true brightness — a correct-looking
+/// image at hopelessly wrong values, which the oracle would catch and a human
+/// eye would not.
+fn prepare_flat(flat: mut ref Master, bias: ref Master, npix: i64) {
+    if flat.present {
+        if bias.present {
+            for i in 0..npix {
+                let v = (flat.px[i] as i64) - (bias.px[i] as i64);
+                flat.px[i] = if v < 0 { 0 } else { v } as u16;
+            }
+        }
+        let mut sum: f64 = 0.0;
+        for i in 0..npix { sum = sum + (flat.px[i] as f64); }
+        let mean = sum / (npix as f64);
+        flat.scale = if mean > 0.0 { mean } else { 1.0 };
+    }
+}
+
+/// Apply the masters to `nrows` rows of `px` starting at buffer row `base`,
+/// whose first row is source row `row0`.
+///
+/// Row-addressed rather than whole-frame so the streaming path can calibrate a
+/// strip as it arrives, without ever holding a light frame entire.
+fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64,
+                  dark: ref Master, flat: ref Master) {
+    if dark.present or flat.present {
+        for r in 0..nrows {
+            for x in 0..w {
+                let src = (row0 + r) * w + x;
+                let mut v = px[base + r * w + x] as f64;
+                if dark.present { v = v - (dark.px[src] as f64); }
+                if flat.present {
+                    let f = flat.px[src] as f64;
+                    // A dead flat pixel carries no response information, so the
+                    // light there is unrecoverable. Leaving the value alone is
+                    // wrong in the other direction, but dividing by ~0 turns a
+                    // dust mote into a blown highlight that looks like signal.
+                    if f > 0.0 { v = v * flat.scale / f; }
+                }
+                let c = if v < 0.0 { 0.0 } else { if v > 65535.0 { 65535.0 } else { v } };
+                px[base + r * w + x] = (c + 0.5) as u16;
+            }
+        }
+    }
+}
+
 /// Just the header of `path` — opens, parses, closes. Used to learn a sub's
 /// geometry before deciding whether the run can stream.
 fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
@@ -1181,7 +1296,8 @@ fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
 /// star list (a few dozen structs). Peak here is one frame regardless of how
 /// many subs the session has.
 fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
-                             bzero: i64, bscale: i64)
+                             bzero: i64, bscale: i64,
+                             dark: ref Master, flat: ref Master)
     -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], i64)
     with reads(FileSystem) writes(FileSystem)
 {
@@ -1201,6 +1317,12 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
                 let m = read_fits_header(fh);
                 if m.ok {
                     got = read_rows_at(fh, m.data_off, 0, h, w, bzero, bscale, mut frame, 0);
+                    // Registration must run on CALIBRATED pixels: vignetting is
+                    // a brightness gradient across the frame, so an uncorrected
+                    // flat biases the background estimate and therefore the
+                    // detection threshold, which changes which faint stars are
+                    // found near the corners.
+                    if got { calibrate_rows(mut frame, 0, w, 0, h, dark, flat); }
                 }
             }
             Err(e) => { }
@@ -1326,7 +1448,8 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
 /// rows. Every file is therefore read exactly once per pass, front to back.
 fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                    bzero: i64, bscale: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
-                   keep: ref Vec[i64], use_clip: bool) -> Vec[i64]
+                   keep: ref Vec[i64], use_clip: bool,
+                   dark: ref Master, flat: ref Master) -> Vec[i64]
     with reads(FileSystem) writes(FileSystem)
 {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
@@ -1385,6 +1508,7 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                     let got = read_rows_at(handles[f], metas[f], wr0, wrows, w,
                                            bzero, bscale, mut win, f * w * cap);
                     if not got { println("cumulus: short read while streaming"); }
+                    calibrate_rows(mut win, f * w * cap, w, wr0, wrows, dark, flat);
                 }
             }
 
@@ -1452,11 +1576,38 @@ fn main() with reads(FileSystem) writes(FileSystem) {
     // writes. Output first so the variable-length input list can be last.
     let argv = env.args();
     if argv.len() < 4 {
-        println("usage: cumulus <out.cstack> <mean|sigmaclip|register|stack|stackcfa> <in.cstack | sub1.fits ...>");
+        println("usage: cumulus <out.cstack> <mean|sigmaclip|register|stack|stackcfa|meancfa>");
+        println("               [--bias b.cstack] [--dark d.cstack] [--flat f.cstack]");
+        println("               <in.cstack | sub1.fits ...>");
     } else {
         let outp = argv[1];
         let mode = argv[2];
-        let inp = argv[3];
+
+        // Calibration masters, if any. A master is just an ordinary Cumulus
+        // OUTPUT — build it by integrating the calibration subs with the modes
+        // that already exist:
+        //
+        //     cumulus master_dark.cstack sigmaclip darks/*.fits
+        //     cumulus master_flat.cstack sigmaclip flats/*.fits
+        //
+        // which is how Siril works too: calibration frames are stacked into
+        // masters first, then applied. Nothing new is needed to make them, and
+        // the masters inherit the clipping that rejects rays in a dark exactly
+        // as it does in a light.
+        let mut darkp = "";
+        let mut flatp = "";
+        let mut biasp = "";
+        let mut first_in: i64 = 3;
+        let mut ai = 3;
+        while ai + 1 < argv.len() and argv[ai].starts_with("--") {
+            let k = argv[ai];
+            if k == "--dark" { darkp = argv[ai + 1].clone(); }
+            if k == "--flat" { flatp = argv[ai + 1].clone(); }
+            if k == "--bias" { biasp = argv[ai + 1].clone(); }
+            ai = ai + 2;
+            first_in = ai;
+        }
+        let inp = argv[first_in];
 
         // Two input shapes. A single `.cstack` carries the whole stack; a list
         // of FITS paths is one sub per file, which is what a smart telescope
@@ -1477,7 +1628,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         if argv.len() > 4 or inp.ends_with(".fits") {
             // Headers first, pixels never — enough to learn the geometry, spot
             // a mismatched sequence, and decide whether this run can stream.
-            let mut i = 3;
+            let mut i = first_in;
             let mut hdr_ok = true;
             while i < argv.len() and hdr_ok {
                 let m = read_fits_meta(argv[i]);
@@ -1512,7 +1663,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         }
 
         if not streaming and (argv.len() > 4 or inp.ends_with(".fits")) {
-            let mut i = 3;
+            let mut i = first_in;
             let mut bad = false;
             while i < argv.len() and not bad {
                 let img = read_fits(argv[i]);
@@ -1628,6 +1779,26 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         if loaded {
             let npix = width * height;
 
+            // Masters load once, after geometry is known so the dimension check
+            // has something to check against.
+            let mut dark = load_master(darkp.clone(), width, height, "dark");
+            let mut flat = load_master(flatp.clone(), width, height, "flat");
+            let bias = load_master(biasp.clone(), width, height, "bias");
+            prepare_flat(mut flat, bias, npix);
+            if dark.present or flat.present {
+                let d = if dark.present { " dark" } else { "" };
+                let fl = if flat.present { " flat" } else { "" };
+                println(f"cumulus: calibrating with{d}{fl}");
+            }
+
+            // The resident path calibrates every frame up front; the streaming
+            // path does it a strip at a time as the rows arrive.
+            if not streaming {
+                for f in 0..nframes {
+                    calibrate_rows(mut px, f * npix, width, 0, height, dark, flat);
+                }
+            }
+
             // Registration offsets, or zeros for the unregistered modes. One
             // pipeline either way: an all-zero offset makes the resample an
             // identity sample, so `mean`/`sigmaclip` and `stack` share a code
@@ -1640,7 +1811,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             if mode == "stack" or mode == "register" {
                 if streaming {
                     let off = compute_offsets_streaming(paths, width, height, nframes,
-                                                        bzero, bscale);
+                                                        bzero, bscale, dark, flat);
                     dxs = off.0;
                     dys = off.1;
                     keep = off.2;
@@ -1676,7 +1847,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
             let out = if streaming {
                 stack_streaming(paths, width, height, nframes, bzero, bscale,
-                                dxs, dys, keep, use_clip)
+                                dxs, dys, keep, use_clip, dark, flat)
             } else {
                 stack_tiled(px, width, height, nframes, dxs, dys, keep, use_clip)
             };

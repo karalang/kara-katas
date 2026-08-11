@@ -313,6 +313,76 @@ iOS resolves `accept` extensions through UTIs. FITS has no registered UTI, so
 the Files picker may grey out exactly the files the user is trying to choose.
 Chromium emulation does not reproduce that; it needs a real device.
 
+## Calibration: darks, flats and bias
+
+Three defects a real sensor puts into every sub, and none of them is noise —
+they are **fixed patterns**, identical frame to frame, so stacking does not touch
+them. More integration time makes them cleaner, not smaller.
+
+| | what it is | how it enters |
+|---|---|---|
+| bias | readout offset, present in a zero-length exposure | additive |
+| dark | thermal signal over the exposure, plus the bias | additive |
+| flat | vignetting, dust motes, filter grime | multiplicative |
+
+```
+cumulus master_dark.cstack sigmaclip darks/*.fits     # masters are ordinary output
+cumulus master_flat.cstack sigmaclip flats/*.fits
+cumulus master_bias.cstack sigmaclip bias/*.fits
+cumulus out.cstack stack --dark master_dark.cstack \
+                         --flat master_flat.cstack \
+                         --bias master_bias.cstack lights/*.fits
+```
+
+A master is just a Cumulus **output** — built by the integration modes that
+already exist, exactly as Siril does it. Nothing new was needed to make them,
+and they inherit the clipping that rejects cosmic rays from a dark as readily as
+from a light.
+
+The correction is `calibrated = (light - master_dark) / normalised_flat`.
+Subtractive first, then multiplicative, because the flat measures the optical
+path's response to **light** and the dark signal never travelled that path —
+divide before subtracting and the dark current gets scaled by a vignetting
+profile it was never subject to. `--bias` is not needed for the lights (a dark
+taken at the light's exposure already contains it) but is needed for the
+**flat**, whose exposure differs.
+
+Masters stay resident while the lights stream: at most two frames, so
+`2 × w × h × 2` bytes, independent of how many subs the session has.
+
+Measured against a clean-scene truth the generator knows:
+
+| | uncalibrated | calibrated |
+|---|---|---|
+| mean abs error vs truth | 0.2000 | **0.0051** (39.4× closer) |
+| hot pixels surviving | 24 of 24 | **0** |
+| corner/centre response | 0.908 | **0.778** (truth: 0.770) |
+
+### It looked like an astronomy bug and it was a compiler bug
+
+The first honest run made calibration **1.4× worse than doing nothing**, with
+hot pixels rising from 8 to 24. Two rounds went into the synthetic generator's
+physics before the compiler became a suspect, and one of those rounds found a
+real error of mine: the generator vignetted the dark current, which the optics
+never touch. The corrected model is `scene × vignette + thermal + bias` — the
+lens attenuates the scene only; thermal signal and readout offset are added
+afterwards, in the silicon.
+
+That fixed the vignetting but not the hot pixels, and then the arithmetic
+stopped fitting any correct calibrator. A master dark reading 45517 subtracted
+from a light reading 46761 must give 1244. The result was 65535 — which follows
+only if the subtrahend is **−20019**, i.e. 45517 − 65536.
+
+A `Vec[u16]` element read through a **struct field** was sign-extending on a
+widening cast, AOT only; the interpreter was correct throughout. Compiler ledger
+**B-2026-08-11-32**, fixed. Calibration had been right all along.
+
+The lesson worth keeping is not "check the compiler sooner" — the generator
+really was wrong too, and doubting your own new code first is correct. It is
+that a wrong answer wears the costume of whatever domain it appears in, and the
+way out was arithmetic that no correct calibrator could produce, not intuition
+about which layer was at fault.
+
 ## Streaming: the stack is no longer resident
 
 The single term that made a real session impossible was holding every sub in

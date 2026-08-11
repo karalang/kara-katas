@@ -182,6 +182,14 @@ case "$msg" in
   *) echo "  expected a refusal for mono in a CFA mode, got: $msg" >&2; exit 1 ;;
 esac
 
+echo "== calibration: darks, flats and bias against a clean-scene truth =="
+# The only slice whose correctness cannot be checked by comparing two
+# implementations — both would apply the same formula to the same masters. What
+# makes it checkable is that gen_cal.py knows the CLEAN scene the defects were
+# added to, so there is a ground truth neither implementation authored.
+python3 gen_cal.py "$WORK/cal" --frames 12 > /dev/null
+python3 check_cal.py "$WORK/cumulus" "$WORK/cal"
+
 echo "== CFA: exact integration, injected colours, recovered dithers =="
 python3 check_cfa.py "$WORK/cumulus"
 
