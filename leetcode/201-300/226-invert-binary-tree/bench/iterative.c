@@ -3,7 +3,7 @@
  *
  * Algorithmic mirror of bench/iterative.{kara,rs,py}. N=2000 nodes, LCG
  * seed 12345, K=10 invert cycles, BFS-position-weighted sink.
- * Stdout sink: 2666665501.
+ * Stdout sink: 2494362254.
  *
  * See ../README.md § Benchmarks for what the numbers mean.
  */
@@ -66,7 +66,7 @@ static TreeNode *build_tree(int64_t n) {
         TreeNode *cur = nodes[0];
         for (;;) {
             state = (state * 1103515245 + 12345) & 2147483647;
-            int64_t bit = state & 1;
+            int64_t bit = (state / 65536) % 2;
             if (bit == 0) {
                 if (cur->left == NULL) {
                     cur->left = nodes[i];

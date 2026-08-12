@@ -30,7 +30,17 @@ The two approaches also exercise different Kāra surface area — recursive uses
 
 ## Bug ledger
 
-**Surfaced [`B-2026-06-15-1`](../../../../kara/docs/bug-ledger.md)** (memory-safety, fixed `0f78fc4f`). `build_tree` builds a `Vec[TreeNode]` of shared structs and links them via `cur.left = Some(nodes[i])` — but a bare-`shared` Vec element read into an enum-ctor payload (`Some(nodes[i])`) wasn't rc-incremented, so the node was freed when the `Vec` dropped while still referenced as a tree child. Output was non-deterministic garbage / a crash (C / Rust / Go all correct), which is exactly how this kata caught it. The fix rc-incs the aliased element; the seq/iterative sinks are now the deterministic `2666665501`.
+**Surfaced [`B-2026-06-15-1`](../../../../kara/docs/bug-ledger.md)** (memory-safety, fixed `0f78fc4f`). `build_tree` builds a `Vec[TreeNode]` of shared structs and links them via `cur.left = Some(nodes[i])` — but a bare-`shared` Vec element read into an enum-ctor payload (`Some(nodes[i])`) wasn't rc-incremented, so the node was freed when the `Vec` dropped while still referenced as a tree child. Output was non-deterministic garbage / a crash (C / Rust / Go all correct), which is exactly how this kata caught it. The fix rc-incs the aliased element; the seq/iterative sinks became the deterministic `2666665501` (superseded — see below).
+
+## Benchmark workload — corrected 2026-08-12
+
+`bench/`'s tree generator branched on the low bit of a power-of-two-modulus LCG. With an odd multiplier and odd increment that bit is **guaranteed** to alternate with period 2 — a property of the recurrence, not of the seed — so the "random walk" descended left, right, left, right forever and built a **zig-zag path of depth 1000 and BFS width 2**, not the balanced tree `results.json` claimed. The kata was measuring a 1000-deep linked-list walk, and its recursive variant was recursing 1000 frames deep.
+
+Fixed by branching on bit 16, the convention katas #26/#27/#238 already use (#238's comment calls out this exact hazard). The tree is now **depth 14, max width 602**, and the sink moved `2666665501` → **`2494362254`**.
+
+All five languages carried the same defect and were corrected together, so the cross-language comparison was never unfair — but the kata was not exercising what it documented. Verified byte-identical across C, Rust, Go, Python and Kāra on all three Kāra surfaces (`karac run`, `karac run --interp`, `karac build` default auto-par, and `KARAC_AUTO_PAR=0`).
+
+**The committed bench numbers predate this change and are not comparable.** A canonical-host re-measure is required; until then the changed workload+sink makes `scripts/bench-compare.py` exclude #226 from every ratio by design.
 
 ## Running
 

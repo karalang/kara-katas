@@ -96,7 +96,7 @@ build_kara iterative.kara
 build_go_seq recursive
 build_go_seq iterative
 
-expected="2666665501"
+expected="2494362254"
 mismatch=""
 for pair in \
     'rec_kara:./target/recursive_kara' \

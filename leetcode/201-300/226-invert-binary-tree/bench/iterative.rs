@@ -58,7 +58,7 @@ fn build_tree(n: i64) -> Tree {
         let mut cur: Rc<RefCell<TreeNode>> = nodes[0].clone();
         loop {
             state = (state * 1103515245 + 12345) & 2147483647;
-            let bit = state & 1;
+            let bit = (state / 65536) % 2;
             let next = if bit == 0 {
                 let child = cur.borrow().left.clone();
                 match child {

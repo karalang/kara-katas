@@ -1,5 +1,5 @@
 // LeetCode 226 — iterative BFS invert, Go single-threaded mirror.
-// Algorithmic peer of bench/iterative.{kara,rs,c,py}. Stdout sink: 2666665501.
+// Algorithmic peer of bench/iterative.{kara,rs,c,py}. Stdout sink: 2494362254.
 package main
 
 import "fmt"
@@ -44,7 +44,7 @@ func buildTree(n int64) *TreeNode {
 		cur := nodes[0]
 		for {
 			state = (state*1103515245 + 12345) & 2147483647
-			bit := state & 1
+			bit := (state / 65536) % 2
 			if bit == 0 {
 				if cur.left == nil {
 					cur.left = nodes[i]

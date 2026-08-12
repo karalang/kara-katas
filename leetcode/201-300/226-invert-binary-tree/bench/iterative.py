@@ -40,7 +40,7 @@ def build_tree(n: int) -> TreeNode | None:
         cur = nodes[0]
         while True:
             state = (state * 1103515245 + 12345) & 2147483647
-            bit = state & 1
+            bit = (state // 65536) % 2
             if bit == 0:
                 if cur.left is None:
                     cur.left = nodes[i]
