@@ -12,8 +12,8 @@ So this writes four sets, and the defects are FIXED patterns rather than noise â
 identical in every frame, which is exactly why stacking cannot remove them and
 more integration time makes them cleaner rather than smaller:
 
-  lights/  scene, then dark signal added, then vignetting applied
-  darks/   the dark signal alone (bias + thermal), same exposure as the lights
+  lights/  the scene through the optics, with dark signal and bias added after
+  darks/   the dark signal alone (thermal + bias), same exposure as the lights
   flats/   the vignetting profile alone (plus its own, shorter-exposure bias)
   bias/    the readout offset alone
 
