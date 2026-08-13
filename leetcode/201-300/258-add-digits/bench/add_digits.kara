@@ -1,0 +1,51 @@
+// Benchmark workload for LeetCode #258 — Add Digits.
+//
+// A pure sweep: 10,000,000 LCG-drawn values through the ★ `% 10` digital-root
+// simulation. There is nothing to build once here — the input is generated on
+// the fly and the work is the arithmetic.
+//
+// Values are drawn across the FULL i64 magnitude range rather than uniformly
+// small, because the pass count depends on magnitude: a 19-digit value needs
+// three passes (19 digits -> at most 171 -> at most 18 -> one digit) where a
+// 3-digit value needs one or two. Drawing only small values would measure a
+// single pass and hide the loop's actual shape.
+//
+// The inner loop is loop-carried through `n` and the outer loop's trip count is
+// data-dependent on the digit sum, so nothing vectorises and the branch does not
+// predict away. No allocation at all — this is a pure integer-division lane,
+// which distinguishes it from the allocation-heavy (#254), push/pop (#255) and
+// string-building (#257) lanes.
+//
+// `/` and `%` on i64 are the whole cost: division is the expensive instruction
+// here, and every digit costs one of each.
+
+fn add_digits(num: i64) -> i64 {
+    let mut n = num;
+    while n >= 10i64 {
+        let mut sum = 0i64;
+        while n > 0i64 {
+            sum = sum + n % 10i64;
+            n = n / 10i64;
+        }
+        n = sum;
+    }
+    return n;
+}
+
+fn main() {
+    let iters = 10000000i64;
+    let mut state = 258258i64;
+    let mut sink = 0i64;
+
+    let mut i = 0i64;
+    while i < iters {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        // Spread across magnitudes: shift the 31-bit LCG output up by a
+        // data-dependent amount so 1..19-digit values all occur.
+        let shift = (state / 65536i64) % 33i64;
+        let v = (state / 8i64) * (1i64 << shift) % 9223372036854775807i64;
+        sink = (sink + add_digits(v)) % 1000000007i64;
+        i = i + 1i64;
+    }
+    println(sink);
+}
