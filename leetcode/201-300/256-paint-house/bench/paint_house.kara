@@ -1,0 +1,86 @@
+// Benchmark workload for LeetCode #256 — Paint House.
+//
+// Build-once + punch. One cost table of 4,000,000 houses is generated once, then
+// the rolling three-scalar DP sweeps it 30 times.
+//
+// The costs are drawn so the adjacency constraint actually BINDS. A uniform draw
+// makes the cheapest colour differ between neighbours most of the time, so the
+// optimum degenerates towards "take each house's minimum" and the two `min2`
+// calls become predictable. Here one colour is cheap at long RUNS of consecutive
+// houses (the run length itself varies), so the optimum must repeatedly leave
+// the locally-cheapest colour — the comparisons stay data-dependent and neither
+// min branch predicts away.
+//
+// The recurrence is loop-carried through three scalars: each house reads the
+// previous house's three totals, so nothing vectorises and nothing reorders.
+// That makes this a pure dependent-arithmetic lane — no allocation in the punch
+// loop at all, which distinguishes it from the allocation-heavy (#254) and
+// push/pop (#255) lanes next door.
+//
+// i64 throughout: 4M houses at ~10^2 per house stays far inside range, and Kara
+// traps on overflow rather than wrapping, so a mis-sized workload would abort
+// rather than silently wrap.
+
+fn min2(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+fn main() {
+    let n = 4000000i64;
+    let rounds = 30i64;
+
+    // ---- build once ------------------------------------------------------
+    let mut cost: Vec[(i64, i64, i64)] = Vec.new();
+    let mut state = 256256i64;
+    let mut cheap = 0i64;   // which colour is cheap in the current run
+    let mut run_left = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        if run_left == 0i64 {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            run_left = (state / 65536i64) % 9i64 + 2i64;
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            cheap = (state / 65536i64) % 3i64;
+        }
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let lo = (state / 65536i64) % 10i64 + 1i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let m1 = (state / 65536i64) % 40i64 + 40i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let m2 = (state / 65536i64) % 40i64 + 40i64;
+        if cheap == 0i64 {
+            cost.push((lo, m1, m2));
+        } else if cheap == 1i64 {
+            cost.push((m1, lo, m2));
+        } else {
+            cost.push((m1, m2, lo));
+        }
+        run_left = run_left - 1i64;
+        i = i + 1i64;
+    }
+
+    // ---- punch -----------------------------------------------------------
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let mut a = cost[0i64].0;
+        let mut b = cost[0i64].1;
+        let mut c = cost[0i64].2;
+        let mut k = 1i64;
+        while k < n {
+            let n_a = cost[k].0 + min2(b, c);
+            let n_b = cost[k].1 + min2(a, c);
+            let n_c = cost[k].2 + min2(a, b);
+            a = n_a;
+            b = n_b;
+            c = n_c;
+            k = k + 1i64;
+        }
+        sink = (sink * 31i64 + min2(a, min2(b, c))) % 1000000007i64;
+        r = r + 1i64;
+    }
+    println(sink);
+}
