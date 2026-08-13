@@ -68,6 +68,51 @@ closed form with `num % 9` makes it report **33,333 mismatches** — precisely t
 count of inputs whose answer is 9, confirming the bug hits exactly that residue
 class and nothing else — plus 56 in the high range.
 
+## Benchmark
+
+`bench/` sweeps **10,000,000 LCG-drawn values** through the ★ `% 10` simulation.
+Nothing is built once — the input is generated on the fly and the work is the
+arithmetic. Sink `50005138`, reproduced by all four mirrors.
+
+Values are drawn across the **full i64 magnitude range** rather than uniformly
+small, because the pass count depends on magnitude: a 19-digit value needs three
+passes where a 3-digit value needs one or two. Drawing only small values would
+measure a single pass and hide the loop's shape.
+
+This is a **pure integer-division lane** — no allocation whatsoever — which
+complements the allocation-heavy ([#254](../254-factor-combinations/)), push/pop
+([#255](../255-verify-preorder-sequence-in-bst/)) and string-building
+([#257](../257-binary-tree-paths/)) lanes.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C | 458.0 ± 8.0 | 1.7% |
+| Rust (checked) | 463.9 ± 6.8 | 1.5% |
+| **Kāra** | **464.5 ± 8.2** | 1.8% |
+| Rust | 465.7 ± 4.4 | 0.9% |
+| Go | 597.7 ± 13.6 | 2.3% |
+
+**C, Rust and Kāra are a three-way tie** — 458 to 466 ms, a 1.7% spread against
+σ of 0.9–1.8%. This is the tightest lane in the corpus by some margin, and even
+here the ordering among the three is not resolvable. Kāra sits level with plain
+Rust *and* with the equal-safety build.
+
+**Go is 28% behind and I could not establish why.** The obvious hypothesis —
+that Go emits real division where LLVM strength-reduces `/ 10` and `% 10` into a
+multiply-and-shift — is **refuted**: disassembly shows zero `DIVQ` in Go's
+`addDigits`, same as C and Kāra. Something else accounts for it, and this lane
+does not identify what.
+
+**Kāra's binary is 15.3 KiB — smaller than C's 15.6 KiB.** First time in this
+corpus. The program allocates nothing and touches no runtime surface, so the lean
+archive links essentially nothing; against Rust's 3.86 MB and Go's 2.16 MB the
+gap is three orders of magnitude larger than the runtime difference.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **Sign-preserving `%`** on a potentially negative intermediate, and an explicit
