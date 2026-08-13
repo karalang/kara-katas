@@ -1,0 +1,170 @@
+// LeetCode 259 — differential harness.
+//
+// Runs all THREE counters over randomized arrays: the sorted two-pointer scan,
+// the O(n³) brute force, and the sort-plus-binary-search form.
+//
+// The brute force is the reference. The other two both rest on counting a whole
+// RUN of triples in one step, and the likeliest bug in either is an off-by-one
+// in that run length — `+ 1` instead of `+ (hi - lo)` in the two-pointer form,
+// or a lower bound instead of an upper bound in the search. Both mistakes yield
+// smaller, entirely plausible counts. Only something that enumerates every
+// triple can adjudicate, which is what the O(n³) file is for.
+//
+// The generator is built so the target lands INSIDE the interesting range. Draw
+// a target uniformly and it is almost always far above or far below every
+// triple sum, so the answer saturates at 0 or at C(n,3) and the run-length
+// arithmetic never gets exercised. Instead each case computes the actual min and
+// max triple sums for its array and draws the target from within that band, so
+// the counts land strictly between the extremes.
+//
+// Ties are deliberately common — small value ranges and short arrays — because
+// the comparison is STRICT (`< target`), so sums landing exactly ON the target
+// are where a `<=`-versus-`<` slip or a lower/upper bound mix-up shows.
+
+fn count_two_pointer(nums: ref Vec[i64], target: i64) -> i64 {
+    let mut s: Vec[i64] = Vec.new();
+    let mut t = 0i64;
+    while t < nums.len() {
+        s.push(nums[t]);
+        t = t + 1i64;
+    }
+    s.sort();
+    let n = s.len();
+    let mut count = 0i64;
+    let mut i = 0i64;
+    while i + 2i64 < n {
+        let mut lo = i + 1i64;
+        let mut hi = n - 1i64;
+        while lo < hi {
+            if s[i] + s[lo] + s[hi] < target {
+                count = count + (hi - lo);
+                lo = lo + 1i64;
+            } else {
+                hi = hi - 1i64;
+            }
+        }
+        i = i + 1i64;
+    }
+    return count;
+}
+
+fn count_brute(nums: ref Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut count = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        let mut j = i + 1i64;
+        while j < n {
+            let mut k = j + 1i64;
+            while k < n {
+                if nums[i] + nums[j] + nums[k] < target {
+                    count = count + 1i64;
+                }
+                k = k + 1i64;
+            }
+            j = j + 1i64;
+        }
+        i = i + 1i64;
+    }
+    return count;
+}
+
+fn count_bsearch(nums: ref Vec[i64], target: i64) -> i64 {
+    let mut s: Vec[i64] = Vec.new();
+    let mut t = 0i64;
+    while t < nums.len() {
+        s.push(nums[t]);
+        t = t + 1i64;
+    }
+    s.sort();
+    let n = s.len();
+    let mut count = 0i64;
+    let mut i = 0i64;
+    while i < n {
+        let mut j = i + 1i64;
+        while j < n {
+            let need = target - s[i] - s[j];
+            let mut lo = j + 1i64;
+            let mut hi = n;
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2i64;
+                if s[mid] < need {
+                    lo = mid + 1i64;
+                } else {
+                    hi = mid;
+                }
+            }
+            count = count + (lo - j - 1i64);
+            j = j + 1i64;
+        }
+        i = i + 1i64;
+    }
+    return count;
+}
+
+fn main() {
+    let cases = 4000i64;
+    let mut seed = 259259i64;
+
+    let mut mismatches = 0i64;
+    let mut total_triples = 0i64;
+    let mut saturated_lo = 0i64;   // answer 0
+    let mut saturated_hi = 0i64;   // answer == C(n,3)
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+        let n = (seed / 65536i64) % 13i64;
+
+        let mut nums: Vec[i64] = Vec.new();
+        let mut i = 0i64;
+        while i < n {
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            nums.push((seed / 65536i64) % 21i64 - 10i64); // small range -> many ties
+            i = i + 1i64;
+        }
+
+        // Target drawn from inside the actual band of triple sums, so the count
+        // does not saturate. Falls back to a fixed target for n < 3.
+        let mut target = 1i64;
+        if n >= 3i64 {
+            let mut sorted: Vec[i64] = Vec.new();
+            let mut t = 0i64;
+            while t < n {
+                sorted.push(nums[t]);
+                t = t + 1i64;
+            }
+            sorted.sort();
+            let min_sum = sorted[0i64] + sorted[1i64] + sorted[2i64];
+            let max_sum = sorted[n - 1i64] + sorted[n - 2i64] + sorted[n - 3i64];
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let span = max_sum - min_sum + 2i64;
+            target = min_sum + (seed / 65536i64) % span;
+        }
+
+        let a = count_two_pointer(nums, target);
+        let b = count_brute(nums, target);
+        let d = count_bsearch(nums, target);
+
+        if a != b or a != d {
+            mismatches = mismatches + 1i64;
+        }
+        total_triples = total_triples + b;
+        if b == 0i64 {
+            saturated_lo = saturated_lo + 1i64;
+        }
+        if n >= 3i64 and b == n * (n - 1i64) * (n - 2i64) / 6i64 {
+            saturated_hi = saturated_hi + 1i64;
+        }
+        digest = (digest * 131i64 + b) % 1000000007i64;
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"triples counted {total_triples}");
+    println(f"answer==0 {saturated_lo}");
+    println(f"answer==C(n,3) {saturated_hi}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}
