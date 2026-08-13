@@ -148,47 +148,58 @@ row, which keeps the lane about DP arithmetic rather than allocation —
 
 | lang | mean (ms) | σ |
 |---|---|---|
-| Rust | 260.8 ± 6.8 | 2.6% |
-| Rust (checked, equal-safety) | 288.3 ± 12.8 | 4.4% |
-| C | 305.7 ± 10.9 | 3.6% |
-| C (`-march=x86-64-v3`) | 308.5 ± 10.7 | 3.5% |
-| Rust (checked + `target-cpu=v3`) | 317.9 ± 21.3 | 6.7% |
-| **Kāra** | **457.1 ± 11.2** | 2.4% |
-| Go | 505.9 ± 15.3 | 3.0% |
+| **Kāra** | **271.3 ± 14.6** | 5.4% |
+| Rust | 293.1 ± 10.6 | 3.6% |
+| Rust (checked + `target-cpu=v3`) | 378.2 ± 7.8 | 2.1% |
+| C (`-march=x86-64-v3`) | 419.3 ± 13.0 | 3.1% |
+| Rust (checked, equal-safety) | 430.0 ± 24.7 | 5.7% |
+| C | 434.3 ± 21.1 | 4.9% |
+| Go | 588.6 ± 24.0 | 4.1% |
 
-**Kāra loses this lane, and by the widest margin in this corpus so far** — 1.58×
-behind the equal-safety Rust build and 1.49× behind C. That is not noise (σ
-2.4–4.4%) and it is not checked arithmetic, since the build it trails checks too.
+**Kāra is fastest here, ahead of even unchecked `rustc -O`** — 1.08× against
+plain Rust, 1.59× against the equal-safety build, 1.60× against C. The ordering
+was reproduced in an independent 20-run measurement (Kāra 278.5, Rust 293.7, C
+421.2, checked Rust 428.6). σ of 4.9–5.7% leaves C and the checked Rust builds
+unresolvable against each other, but the top and bottom of the table are not in
+doubt.
 
-The cause is in the emitted code. Counting conditional moves inside `main`:
-`rustc -O` 133, `rustc -O -C overflow-checks=on` 127, `clang -O3` 129, **Kāra
-17**. `rustc` fully unrolls the `k = 32` reduction into 32 straight-line blocks —
-every `j` becomes a literal and each element is six branchless instructions.
-Kāra unrolls by 4 and keeps a data-dependent `jl` per element. The trip count is
-known to LLVM in both cases; only the unroll factor differs, and the
-if-conversion appears to follow it.
+That is a reversal, and it is worth saying why rather than presenting it as the
+natural order of things.
 
-Two controls, because instruction counts alone would not settle it:
+### This lane found a compiler bug, and then lost it
 
-| control | finding |
-|---|---|
-| all costs set to `1` (branch made predictable) | Kāra 457.1 → 263.2 ms, C 305.7 → 201.5, checked Rust 288.3 → 300.7 (unchanged, as branchless predicts). Kāra's deficit vs C narrows 1.49× → 1.31×, so **mispredictions are about a third of it** and the rest is instruction count. |
-| Kāra source rewritten to match Rust's `else if` over a bound local | **byte-identical kernel** — same 403 lines, same 17 `cmov`, 452.9 ms vs 451.5. Not a spelling artifact. |
+The **first** run of this lane put Kāra *last*: 457.1 ms against the equal-safety
+Rust build's 288.3 and C's 305.7 — 1.58× and 1.49× behind, at σ 2.4–4.4%. Not
+noise, and not checked arithmetic, since the build it trailed checks too.
 
-The buffer swap was also ruled out: a no-swap variant using one `2k` buffer
-indexed by parity runs 445.8 ms against 477.5, a 7% difference with the same
-sink, so `prev = cur` is a move and not a copy.
+The cause was in the emitted code. Conditional moves in `main` ran `rustc` 133,
+`clang` 129, **Kāra 17**: `rustc` fully unrolled the `k = 32` reduction into
+branchless straight-line blocks while Kāra unrolled by 4 and kept a
+data-dependent branch per element. Four controls localised it — making the branch
+predictable closed about a third of the gap, rewriting the Kāra source to match
+Rust's `else if` produced a byte-identical kernel, and both the row-buffer swap
+and bounds checks were ruled out.
 
-Filed as **`B-2026-08-13-10`** (class `perf`, medium) in the sibling `kara` repo.
-Per the corpus rule the kata is unchanged — nothing here is worked around, and
-the natural spelling stays in the file. Full disassembly and method in
-[`bench/probe/README.md`](bench/probe/README.md).
+Filed as **`B-2026-08-13-10`**, and **fixed the same day** by `3ea8310`:
+`karac`'s full-unroll predicate read the loop bound off the source guard and
+accepted only a literal, so `let k = 32i64; … while j < k` never qualified
+however obviously constant. On this host the fix takes the kernel from 17 `cmov`
+to **191**, sink unchanged.
 
-Go is 505.9 ms, behind Kāra, but this lane does not investigate why and does not
-guess.
+The filed hypothesis — that the lever was the unroll threshold or loop metadata
+`karac` attaches — was **wrong**; `karac` attached no metadata at all, and the 4×
+was LLVM's own default. The disclosure and the correction are in
+[`bench/probe/README.md`](bench/probe/README.md), along with the reason the two
+tables above are **not** a same-host A/B: the container was restarted between
+them, and this lane's byte-identical C binary moved 305.7 → 434.3 ms across that
+boundary while an unchanged reference mirror from
+[#261](../261-graph-valid-tree/) moved only 8%. Each table is internally sound —
+one interleaved run, one host — but they must not be subtracted from each other.
 
-Kāra's binary is 332.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.87 MB;
-peak RSS is 3.1 MiB against C's 2.4 MiB.
+Go is 588.6 ms, last; this lane does not investigate why and does not guess.
+
+Kāra's binary is 336.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.87 MB;
+peak RSS is 3.2 MiB against C's 2.4 MiB.
 
 Published numbers await the Apple-silicon host —
 `bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
