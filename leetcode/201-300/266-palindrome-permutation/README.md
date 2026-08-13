@@ -140,6 +140,92 @@ the way this kata's own generator picks small alphabets to force ties and
 Applying that discipline to the harness and not to the bug report is how a
 scope table ends up asserting the opposite of the truth.
 
+## Benchmark
+
+`bench/` builds **one 200,000-element array of lowercase letter values once** and
+punches the ★ histogram parity test through it **4,000 times** over a window
+whose start rotates each round. Sink `777290116`, reproduced by all four compiled
+mirrors and by Python.
+
+The inner loop is `counts[b] = counts[b] + 1` — a **scattered read-modify-write
+into a small table at a data-dependent index**. That is a distinct hazard from
+anything else in the corpus: the addresses are unpredictable but the table is
+2 KB and never leaves L1, so nothing misses. What costs is store-to-load
+forwarding when consecutive bytes hit the *same* counter, and the loop cannot
+vectorise because two lanes may target one slot. It is deliberately not
+[#261](../261-graph-valid-tree/)'s hazard — that lane chases pointers through
+800 KB with a serial dependency; here the increments are independent and only
+same-index collisions serialise.
+
+The alphabet is 26, not 256, because that is what makes collisions frequent —
+roughly one byte in 26 hits the counter its predecessor just wrote. A 256-wide
+draw would make them ten times rarer and measure a different loop.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C (`-march=x86-64-v3`) | 447.3 ± 13.7 | 3.1% |
+| C | 448.4 ± 14.7 | 3.3% |
+| **Kāra** | **473.4 ± 11.7** | 2.5% |
+| Rust | 533.6 ± 6.5 | 1.2% |
+| Go | 547.8 ± 17.5 | 3.2% |
+| Rust (checked + `target-cpu=v3`) | 549.6 ± 12.0 | 2.2% |
+| Rust (checked, equal-safety) | 553.9 ± 24.7 | 4.5% |
+
+The disassembly makes the top of the table legible:
+
+| binary | inner loop | checks per element |
+|---|---|---|
+| C | 4 instructions | none |
+| Kāra | 9 instructions | 2 bounds + 1 overflow |
+| Rust | 7 instructions | 1 bounds |
+
+**Kāra is 5.6% behind C while carrying three safety checks per element that C
+does not**, and **12.7% ahead of unchecked `rustc -O`**, which carries one. It
+also runs more instructions per element than Rust and is faster anyway, so
+instruction count does not order this lane.
+
+**Why Rust trails is not established.** Rust emits `incq (%rbx,%rcx,8)`, a single
+read-modify-write, where Kāra emits a separate load, increment and store — a
+split RMW can schedule better under repeated same-index collisions, but this lane
+did not test that and it stays a hypothesis. What can be ruled out is checking
+cost: `rustc -O -C overflow-checks=on` is only 4% behind plain `rustc -O`, so the
+19% against C is not the checks.
+
+### The first run had a 23% result that was not real
+
+Before publishing, `c` came out at 447.8 ms against `c (-march=x86-64-v3)` at
+551.2 — the *higher* ISA baseline 23% slower, on a loop with nothing to
+vectorise.
+
+It was not an ISA effect. The two kernels are the same instruction stream, one
+displacement apart: `incq (%rsp,%rdx,8)` against `incq 0x40(%rsp,%rdx,8)`.
+Requiring 32-byte alignment for AVX2 spills moved the stack frame, and with it
+the counter table's position relative to the input array — enough, on a loop
+whose entire cost is store-to-load forwarding on a 2 KB table.
+
+The cause was a **parity defect in this kata's own C mirror**: it was the only
+one of the four holding counters in a stack array, where Kāra, Rust and Go all
+heap-allocate. Making C `malloc` its table took the two builds from 17% apart to
+**0.4%**, both landing on the faster figure, same sink:
+
+| C build | stack array | heap |
+|---|---:|---:|
+| `clang -O3` | 459.8 ms | 449.2 ms |
+| `clang -O3 -march=x86-64-v3` | 537.5 ms | 451.1 ms |
+
+The cross-language-parity rule earned its keep here: the mirror written
+differently from the other three was the one producing the false result, and the
+difference was a `long counts[256]` that looked entirely innocuous. Full
+disassembly in [`bench/probe/README.md`](bench/probe/README.md).
+
+Kāra's binary is 332.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.86 MB;
+peak RSS is 3.8 MiB against C's 3.0 MiB.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`String.bytes()`** in a `for`, and Kāra's asymmetric width rules on the
@@ -176,4 +262,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in palindrome_permutation palindrome_permutation_toggle palindrome_permutation_bits differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
