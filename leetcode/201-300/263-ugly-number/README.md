@@ -146,6 +146,78 @@ different shape entirely — an off-by-one in the overflow guard drops candidate
 where `u[i] * k == n` exactly, so it answers *false* for ugly numbers that are
 precisely `k` times an earlier one.
 
+## Benchmark
+
+`bench/` sweeps **10,000,000 wide LCG-drawn `i64` values** through the
+gcd-peeling test, with every 512th value replaced by a constructed ugly number.
+Sink `19532` / `258327156`, reproduced by all four mirrors and by Python.
+
+A **pure-arithmetic lane**: nothing is built once, nothing is allocated in the
+punch loop, and the working set is a handful of registers — the opposite end of
+the corpus from [#261](../261-graph-valid-tree/)'s random dependent load.
+
+### Why the gcd form and not the ★ trial division
+
+The ★ solver divides by the literals 2, 3 and 5, which every backend here
+strength-reduces to a multiply-high and a shift; **no division instruction is
+emitted at all**. That is already the subject of [#258](../258-add-digits/), and
+re-measuring it would add nothing.
+
+Euclid cannot be strength-reduced. `x % y` has a **variable** divisor, so it
+lowers to a real hardware divide and the loop is a serial dependency chain of
+them. That makes this the corpus's **variable-divisor division** lane.
+
+Two further choices follow from that. Operands are drawn across the full
+positive `i64` range rather than the `i32` range the constraints allow, because
+64-bit division cost depends on operand magnitude and a lane that only divided
+small numbers would measure the easy case. And ugly numbers are so rare among
+random draws (~11,000 below 2⁶³) that a purely random sweep would only ever
+measure the first-rejection path — hence the every-512th substitution, which
+peels all the way down. The sink folds **every** verdict rather than only the
+trues, so the random path is checked too; a trues-only sink would have been
+determined entirely by the substituted values.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| **Kāra** | **463.2 ± 3.3** | 0.7% |
+| C | 474.7 ± 5.4 | 1.1% |
+| Rust (checked + `target-cpu=v3`) | 474.8 ± 6.4 | 1.3% |
+| Rust (checked, equal-safety) | 475.3 ± 7.8 | 1.6% |
+| Rust | 475.5 ± 5.8 | 1.2% |
+| C (`-march=x86-64-v3`) | 477.1 ± 4.6 | 1.0% |
+| Go | 549.2 ± 8.4 | 1.5% |
+
+**Kāra, C and Rust are level.** The six non-Go rows span 463–477 ms, a 3% band.
+Kāra prints the lowest mean, and a separate head-to-head against C put it at
+1.02 ± 0.03 — error bars that cross 1.00. That is a tie, not a win, and the
+disassembly agrees: Kāra and C emit the *same seven divide instructions* in the
+same shape, so there is no mechanism for a real lead here.
+
+Neither twin axis separates: `-march=x86-64-v3` moves C by 0.5% and the
+overflow-checked Rust builds are indistinguishable from plain `rustc -O`. On a
+loop this division-bound there is nothing for either to work on.
+
+**Go is 19% behind, and this time the cause is identified.** LLVM emits a 32-bit
+narrowing fast path — before each 64-bit `div`, check whether both operands fit
+in 32 bits and take the much cheaper `div r32` if so. That check pays constantly
+here, since `gcd(m, 30)` collapses to operands below 30 after one step. Go emits
+a single signed `idiv r64` and takes it every time.
+
+Confirmed rather than inferred: adding the narrowing to the Go source by hand
+takes it from 557.7 ms to 501.3 ms against C's 476.6 ms — **56 ms of the 81 ms
+gap, about 70%**. The remaining 5% is not identified and is not guessed at.
+Method, disassembly and the caveat that this does **not** retroactively explain
+#258 (which emits no divide at all) are in
+[`bench/probe/README.md`](bench/probe/README.md).
+
+Kāra's binary is 332.9 KiB against C's 15.6 KiB, Go's 2.16 MB and Rust's 3.86 MB;
+peak RSS is 2.2 MiB against C's 1.5 MiB.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`i64.MAX`** as a value, and `v <= limit / f` as the overflow-safe way to ask
@@ -184,4 +256,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in ugly_number ugly_number_gcd ugly_number_enum differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
