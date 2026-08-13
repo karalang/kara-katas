@@ -155,6 +155,28 @@ here suggests a general codegen gap, which is consistent with that row's scope.
 Published numbers await the Apple-silicon host —
 `bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
 
+## What it found: kara `B-2026-08-11-35`
+
+Not a compiler bug — a **tooling** one, and it destroyed source.
+
+The in-place variant takes `mut Slice[i64]`, and its reporting helper forwards
+that into an f-string: `println(f"{label} -> {verify_preorder(mut preorder)}")`.
+The typechecker correctly reported *"already a mut-ref; drop the `mut` marker"* —
+a four-character deletion. `karac fix`, which CLAUDE.md designates as the primary
+fix path for machine-applicable diagnostics, printed `applied 1 fix(es)`, exited
+0, and turned this file from ~80 lines into 31 with line 1 mangled.
+
+The replacement span for a fix inside an **f-string interpolation** was applied
+at the wrong file offset — landing near the top of the file and truncating
+mid-token. No backup, no dry-run, success reported.
+
+Minimised to five lines and filed; **fixed upstream in `35d7fec`**, and verified
+here against the original repro. The obvious first guess — multi-byte UTF-8
+offsets, since this file is full of em-dashes — was **wrong**: ASCII-only files,
+files with em-dashes near the site, and files with 30 em-dash comment lines
+before it all fixed correctly. The f-string hole was the single distinguishing
+factor.
+
 ## Kāra features exercised
 
 - **`mut Slice[i64]` as a consumed scratch buffer**, with the mutation announced

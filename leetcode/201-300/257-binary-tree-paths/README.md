@@ -58,6 +58,30 @@ which removed the RC and the duplication together. The compiler's own
 `is_str_like` exists to allow exactly this, and its comment cites kata #722,
 where the same call was rejected under `build` while `run` only warned.
 
+### That second one turned out to be a compiler issue — kara `B-2026-08-13-1`
+
+Investigating the diagnostic rather than silencing it (the help text offers
+`#[allow(rc_fallback)]` first) showed the ownership checker is **inconsistent
+across the three methods the compiler documents together as read-only**:
+
+| call, on an owned argument | ownership |
+|---|---|
+| `a.push_str(s)` twice | **MOVED** |
+| `s.starts_with(t)` twice | **MOVED** |
+| `s.contains(t)` twice | clean |
+| receiver reuse, `s.contains(lit)` twice | clean |
+| argument via a `ref String` parameter | clean |
+
+`is_str_like`'s own comment names all three as methods where *"the callee only
+copies/scans the bytes, so there is no ownership reason to demand a move"* — the
+typechecker was widened to accept a borrow, but the ownership checker still
+classifies the owned-argument case as a consume for two of the three.
+
+It is **not** a correctness bug: the value really is still readable afterwards,
+and the same program prints identically under `run` and `build`. The cost is a
+spurious move report, an unnecessary RC in harder shapes, and — as here — a
+helper function existing purely to turn two owned reads into two borrows.
+
 ## Order is part of the answer
 
 The iterative file must push the **right** child before the left, because the
