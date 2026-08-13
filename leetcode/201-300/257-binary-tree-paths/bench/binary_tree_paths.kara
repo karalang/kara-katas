@@ -1,0 +1,116 @@
+// Benchmark workload for LeetCode #257 — Binary Tree Paths.
+//
+// Build-once + punch. One RANDOM BUSHY tree of 150,000 nodes is built once, then
+// every root-to-leaf path is enumerated 5 times with the ★ string-extending
+// DFS.
+//
+// The tree is bushy on purpose. A spine is the pathological shape for this
+// algorithm — see probe/ for that measurement, where the string walk holds
+// O(depth²) bytes live and needs 355 MB at n=12,000 — but it is not the
+// representative one, and a cross-language lane should measure the case people
+// actually hit. A random tree has depth ~2·log₂(n) ≈ 37 here, so prefixes stay
+// short and the work is dominated by path enumeration rather than by a
+// pathological memory profile.
+//
+// The ★ form is benched rather than the join form because the two differ in an
+// INTRA-language algorithmic property, not a cross-language one; mirroring both
+// in four languages would measure the same algorithmic fact four more times.
+// probe/ carries that comparison instead.
+//
+// Sink is a positional digest over the rendered paths, so path ORDER is part of
+// what the mirrors must agree on.
+
+struct Node {
+    val: i64,
+    mut left: i64,
+    mut right: i64,
+}
+
+// Random bushy tree: each new node attaches to a uniformly chosen existing node
+// that still has a free slot, giving depth ~2·log2(n).
+fn build_bushy(n: i64) -> Vec[Node] {
+    let mut nodes: Vec[Node] = Vec.new();
+    let mut open: Vec[i64] = Vec.new(); // indices with at least one free child slot
+    let mut state = 257257i64;
+    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    nodes.push(Node { val: (state / 65536i64) % 100i64 - 50i64, left: -1i64, right: -1i64 });
+    open.push(0i64);
+
+    let mut made = 1i64;
+    while made < n {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let pick = (state / 65536i64) % open.len();
+        let parent = open[pick];
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        nodes.push(Node { val: (state / 65536i64) % 100i64 - 50i64, left: -1i64, right: -1i64 });
+        let child = nodes.len() - 1i64;
+        if nodes[parent].left == -1i64 {
+            nodes[parent].left = child;
+        } else {
+            nodes[parent].right = child;
+            // parent is full: swap-remove it from the open list
+            let last = open[open.len() - 1i64];
+            open[pick] = last;
+            let _ = open.pop();
+        }
+        open.push(child);
+        made = made + 1i64;
+    }
+    return nodes;
+}
+
+fn walk(nodes: ref Vec[Node], node: i64, prefix: ref String, out: mut ref Vec[String]) {
+    let left = nodes[node].left;
+    let right = nodes[node].right;
+    if left == -1i64 and right == -1i64 {
+        let mut done: String = "";
+        done.push_str(prefix);
+        out.push(done);
+        return;
+    }
+    if left != -1i64 {
+        let mut next: String = "";
+        next.push_str(prefix);
+        next.push_str("->");
+        next.push_str(f"{nodes[left].val}");
+        walk(nodes, left, next, out);
+    }
+    if right != -1i64 {
+        let mut next: String = "";
+        next.push_str(prefix);
+        next.push_str("->");
+        next.push_str(f"{nodes[right].val}");
+        walk(nodes, right, next, out);
+    }
+}
+
+fn main() {
+    let n = 150000i64;
+    let rounds = 5i64;
+    let nodes = build_bushy(n);
+
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let mut out: Vec[String] = Vec.new();
+        let mut root_s: String = "";
+        root_s.push_str(f"{nodes[0i64].val}");
+        walk(nodes, 0i64, root_s, mut out);
+
+        let mut h = 1i64;
+        let mut i = 0i64;
+        while i < out.len() {
+            let b = out[i].bytes();
+            let mut k = 0i64;
+            while k < b.len() {
+                h = (h * 1000003i64 + (b[k] as i64)) % 1000000007i64;
+                k = k + 1i64;
+            }
+            h = (h * 31i64 + 7i64) % 1000000007i64;
+            i = i + 1i64;
+        }
+        sink = (sink * 131i64 + h) % 1000000007i64;
+        r = r + 1i64;
+    }
+    println(sink);
+}

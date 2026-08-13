@@ -24,12 +24,35 @@ Every root-to-leaf path, rendered as `"1->2->5"`.
 **A node with exactly one child is not a leaf.** That is the only rule here that
 is easy to get wrong, and `[1,2]` yields one path rather than two because of it.
 
-**The ★ file's cost is where the interest is.** It copies its accumulated prefix
-at every node, so it moves O(n · depth) bytes to produce an answer that is only
-O(leaves · depth). On a balanced tree those are within a constant of each other.
-On a path-shaped tree — depth n, a single leaf — the ★ file does O(n²) byte
-copying to produce one string, and `..._join.kara` does O(n). Same algorithm,
-copying moved to where the output actually is; `bench/` measures the gap.
+**The ★ file's cost is where the interest is** — and the dominant term is
+memory, not copying. It builds a fresh prefix at every node, and each recursion
+frame keeps its own alive for the duration of the call below it. On a spine that
+means **O(depth²) bytes live simultaneously**; the join file holds one
+`Vec[i64]`, so O(depth). Measured on a pure spine at n = 12,000:
+
+| | time | peak RSS |
+|---|---|---|
+| `binary_tree_paths.kara` ★ | 0.29 s | **355 MB** |
+| `binary_tree_paths_join.kara` | 0.00 s | **4.7 MB** |
+
+At n = 24,000 the ★ form needs ~1.4 GB and takes **67 s**, against the ~1.2 s an
+n² extrapolation predicts — past a point it is thrashing, not computing.
+
+**An earlier version of this README got that claim wrong**, and the measurement
+is what caught it. It said the join form is O(leaves · depth) and therefore O(n)
+"on a path-shaped tree" — true only for a tree with ONE leaf. The first probe
+generator branched 4% of the time, yielding ~0.04n leaves, so `leaves · depth`
+is quadratic and **both** walks measured n²:
+
+```
+n=3000   string 0.02s   join 0.01s
+n=6000   string 0.08s   join 0.07s
+n=12000  string 0.31s   join 0.27s
+```
+
+Four percent branching was enough to erase the entire distinction. The
+measurement now lives in [`bench/probe/`](bench/probe/) on a pure spine, where
+the two separate by ~75× on memory.
 
 The join file pays for that with state: its `Vec[i64]` is shared across the whole
 walk, so the `pop` on the way back up is **mandatory**. The ★ file needs no undo
