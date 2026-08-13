@@ -147,6 +147,62 @@ of depth near n with one or two leaves.
 
 Over 4,000 cases: **18,146 nodes, 5,200 paths, longest rendered path 57 chars.**
 
+## Benchmark
+
+`bench/` builds one **random bushy tree of 150,000 nodes once**, then enumerates
+every root-to-leaf path **5 times** with the ★ string-extending DFS. Depth is
+~2·log₂(n) ≈ 34, so prefixes stay short and the work is path enumeration rather
+than the pathological memory profile a spine produces (that lives in
+[`bench/probe/`](bench/probe/)). Sink `512590929`, reproduced by all four
+mirrors.
+
+The ★ form is benched rather than the join form because those two differ in an
+**intra-language algorithmic** property; mirroring both in four languages would
+measure the same algorithmic fact four more times.
+
+### The mirrors had to be equalised first
+
+The first run read as a language result — C 315.7 ms against Rust 468.8 — on a
+workload that is mostly string building. It was not. Two hypotheses, both
+measured:
+
+| hypothesis | test | result |
+|---|---|---|
+| Rust's `format!` machinery | swap to `write!` | 463 → 455 ms, **inside noise** |
+| allocation strategy | Rust `String::with_capacity` | 473 → **372 ms** |
+
+C computes the exact length and `malloc`s once; Go's `a + b + c` allocates the
+total in a single concatenation. Kāra and Rust started from empty and grew. That
+one asymmetry accounted for roughly **70% of the apparent C-versus-Rust gap** —
+the mirrors were not doing equal work, which is the cross-language parity rule
+this corpus rests on.
+
+`String.with_capacity` already exists in Kāra, so this was a mirror not using an
+available facility, not a missing feature — worth checking, since the other
+answer would have been a ledger row rather than a fix. All four now pre-size.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | vs Rust |
+|---|---|---|
+| C | 303.9 ± 23.8 | 0.79× |
+| Go | 343.6 ± 12.7 | 0.89× |
+| **Kāra** | **370.6 ± 13.3** | **0.96×** |
+| Rust (checked) | 379.7 ± 12.5 | 0.98× |
+| Rust | 386.9 ± 27.0 | 1.00× |
+
+**Kāra and Rust are at parity** — 370.6 against 386.9 with σ of 3.6% and 7.0%,
+so the intervals overlap and the nominal 4% lead is not a lead. Against C the
+1.22× gap does sit outside both error bars and is probably real.
+
+Equalising moved every row, and moved Kāra most: 482.7 → 370.6 ms, a 23%
+improvement against Rust's 17%. The C gap narrowed from 1.53× to 1.22×. That is
+the measure of how much the first run was reporting allocator strategy rather
+than the algorithm.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`ref String` parameters** threaded through a recursion, and the contrast with
