@@ -106,6 +106,55 @@ destroys its input; sharing one buffer would have the second and third deciders
 reading scratch data and agreeing with each other for the wrong reason — a
 differential that validates nothing.
 
+## Benchmark
+
+`bench/` builds a random BST over **200,000 distinct keys once**, traverses it to
+a **valid** preorder, then runs **250 rounds** of full ancestor-stack
+verification. Sink `200000 302714266`, reproduced by all four mirrors.
+
+Two choices keep it measuring the verifier:
+
+- **The sequence must be valid.** A rejecting input returns at the first
+  violation, so benching one would time how quickly a counterexample appears —
+  a property of the generator, not the algorithm.
+- **Keys are inserted shuffled**, giving a random BST of depth ~2·log₂(n).
+  Sorted insertion would give a right spine whose preorder is strictly increasing
+  and which pops on *every* element — degenerate, exercising the pop loop and
+  nothing else.
+
+The kernel is the ★ stack form rather than the in-place variant, which destroys
+its input and would need a fresh copy per round — measuring the copy alongside
+the algorithm.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | vs Rust |
+|---|---|---|
+| **Kāra** | **437.9 ± 25.3** | **0.87×** |
+| C | 446.8 ± 24.5 | 0.89× |
+| Rust | 500.5 ± 42.4 | 1.00× |
+| Go | 531.6 ± 112.3 | 1.06× |
+| Rust (checked) | 534.2 ± 23.2 | 1.07× |
+
+**Kāra and C are tied**, not ranked — 437.9 against 446.8 with error bars that
+overlap almost entirely. The ordering between them is noise and should not be
+read as a result. Against Rust the gap (63 ms) does exceed both standard
+deviations, so a modest lead there is probably real, but on one shared host it is
+worth no more than that.
+
+**Go's row is unusable**: σ = 112.3 ms, 21% of its own mean, an order of
+magnitude noisier than everything else in the table. It is reported for
+completeness and should not be compared against.
+
+Worth noting against the sort story elsewhere in this corpus: this is a
+`Vec`-push/pop-dominated workload — the ancestor stack does one push and at most
+one pop per element — and Kāra is at or ahead of both systems languages on it.
+kara `B-2026-08-11-28` records the sort residual as an accepted cost; nothing
+here suggests a general codegen gap, which is consistent with that row's scope.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`mut Slice[i64]` as a consumed scratch buffer**, with the mutation announced
