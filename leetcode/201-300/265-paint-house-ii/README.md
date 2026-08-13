@@ -126,6 +126,73 @@ thousand, which reads as a flake rather than a defect, and a smaller harness
 would miss it outright. This is the whole argument for choosing the value range
 deliberately instead of reaching for `rand()`.
 
+## Benchmark
+
+`bench/` builds **one 4,000 × 32 cost matrix once** — flat row-major, 1.0 MB,
+deliberately cache-resident — and punches the ★ O(n·k) DP through it **1,300
+times**, rotating the starting row each round so nothing is loop-invariant. Sink
+`991930357`, reproduced by all four compiled mirrors and by Python.
+
+Per house the DP does two passes over `k` values: a **reduction** tracking
+`(min, its index, second-min)`, and a **map** writing the next row. The reduction
+is the interesting half — its three-way update is a carried dependency with a
+data-dependent branch — while the map beside it is vector-friendly. Rows are
+strictly sequential. Costs are drawn from a narrow `1..40` band so tied row
+minima are common and the `t == idx1` branch is genuinely exercised.
+
+The two row buffers are allocated once and swapped rather than reallocated per
+row, which keeps the lane about DP arithmetic rather than allocation —
+[#254](../254-factor-combinations/) already measures that.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| Rust | 260.8 ± 6.8 | 2.6% |
+| Rust (checked, equal-safety) | 288.3 ± 12.8 | 4.4% |
+| C | 305.7 ± 10.9 | 3.6% |
+| C (`-march=x86-64-v3`) | 308.5 ± 10.7 | 3.5% |
+| Rust (checked + `target-cpu=v3`) | 317.9 ± 21.3 | 6.7% |
+| **Kāra** | **457.1 ± 11.2** | 2.4% |
+| Go | 505.9 ± 15.3 | 3.0% |
+
+**Kāra loses this lane, and by the widest margin in this corpus so far** — 1.58×
+behind the equal-safety Rust build and 1.49× behind C. That is not noise (σ
+2.4–4.4%) and it is not checked arithmetic, since the build it trails checks too.
+
+The cause is in the emitted code. Counting conditional moves inside `main`:
+`rustc -O` 133, `rustc -O -C overflow-checks=on` 127, `clang -O3` 129, **Kāra
+17**. `rustc` fully unrolls the `k = 32` reduction into 32 straight-line blocks —
+every `j` becomes a literal and each element is six branchless instructions.
+Kāra unrolls by 4 and keeps a data-dependent `jl` per element. The trip count is
+known to LLVM in both cases; only the unroll factor differs, and the
+if-conversion appears to follow it.
+
+Two controls, because instruction counts alone would not settle it:
+
+| control | finding |
+|---|---|
+| all costs set to `1` (branch made predictable) | Kāra 457.1 → 263.2 ms, C 305.7 → 201.5, checked Rust 288.3 → 300.7 (unchanged, as branchless predicts). Kāra's deficit vs C narrows 1.49× → 1.31×, so **mispredictions are about a third of it** and the rest is instruction count. |
+| Kāra source rewritten to match Rust's `else if` over a bound local | **byte-identical kernel** — same 403 lines, same 17 `cmov`, 452.9 ms vs 451.5. Not a spelling artifact. |
+
+The buffer swap was also ruled out: a no-swap variant using one `2k` buffer
+indexed by parity runs 445.8 ms against 477.5, a 7% difference with the same
+sink, so `prev = cur` is a move and not a copy.
+
+Filed as **`B-2026-08-13-10`** (class `perf`, medium) in the sibling `kara` repo.
+Per the corpus rule the kata is unchanged — nothing here is worked around, and
+the natural spelling stays in the file. Full disassembly and method in
+[`bench/probe/README.md`](bench/probe/README.md).
+
+Go is 505.9 ms, behind Kāra, but this lane does not investigate why and does not
+guess.
+
+Kāra's binary is 332.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.87 MB;
+peak RSS is 3.1 MiB against C's 2.4 MiB.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`Vec[Vec[i64]]` rows rebuilt per house**, with the previous row rebound
@@ -163,4 +230,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in paint_house_ii paint_house_ii_quad paint_house_ii_prefix differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```

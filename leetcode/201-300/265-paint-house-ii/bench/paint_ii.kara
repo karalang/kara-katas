@@ -1,0 +1,115 @@
+// Benchmark workload for LeetCode #265 — Paint House II.
+//
+// Build-once + punch. One 4,000 x 32 cost matrix is generated once (a flat
+// row-major Vec, 1.0 MB, deliberately cache-resident) and the ★ O(n·k) DP is
+// punched through it 1,300 times.
+//
+// Each round rotates the row it starts from, wrapping, so no round repeats the
+// last and nothing is loop-invariant. The work per round is identical; only
+// which cost row lands at which DP step differs.
+//
+// WHAT THIS LANE MEASURES. Per house the DP does two passes over k values: a
+// REDUCTION that tracks (min, its index, second-min), and a MAP that writes the
+// next row. The reduction is the interesting half — its three-way update is a
+// carried dependency with a data-dependent branch, so it does not vectorise,
+// while the map beside it does. A single row therefore contains both a serial
+// scan and a vector-friendly one, and rows are strictly sequential because each
+// depends on the last.
+//
+// The two row buffers are allocated once and swapped, rather than a fresh Vec
+// per row. That is the natural way to write the loop and it keeps the lane about
+// the DP arithmetic instead of about allocation — which #254 already measures.
+//
+// The sink folds the per-round answer AND the final row, so a mirror that gets
+// the reduction subtly wrong (the second-minimum tie rule, say) cannot match by
+// landing on the same total from a different row.
+
+fn main() {
+    let n = 4000i64;
+    let k = 32i64;
+    let rounds = 1300i64;
+    let inf = 1000000000000i64;
+
+    // ---- build once ------------------------------------------------------
+    // Flat row-major: cost[i * k + c]. Values in 1..40, a narrow band, so tied
+    // row minima are common and the `t == idx1` branch is genuinely exercised.
+    let mut cost: Vec[i64] = Vec.new();
+    let mut state = 265265i64;
+    let mut z = 0i64;
+    while z < n * k {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        cost.push((state / 65536i64) % 40i64 + 1i64);
+        z = z + 1i64;
+    }
+
+    // Two row buffers, allocated once and swapped.
+    let mut prev: Vec[i64] = Vec.new();
+    let mut cur: Vec[i64] = Vec.new();
+    let mut q = 0i64;
+    while q < k {
+        prev.push(0i64);
+        cur.push(0i64);
+        q = q + 1i64;
+    }
+
+    // ---- punch -----------------------------------------------------------
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let start = (r * 7919i64) % n;
+
+        let mut c = 0i64;
+        while c < k {
+            prev[c] = cost[start * k + c];
+            c = c + 1i64;
+        }
+
+        let mut i = 1i64;
+        while i < n {
+            // reduction: min, where it is, and the runner-up WITH multiplicity
+            let mut min1 = inf;
+            let mut idx1 = -1i64;
+            let mut min2 = inf;
+            let mut j = 0i64;
+            while j < k {
+                if prev[j] < min1 {
+                    min2 = min1;
+                    min1 = prev[j];
+                    idx1 = j;
+                } else {
+                    if prev[j] < min2 { min2 = prev[j]; }
+                }
+                j = j + 1i64;
+            }
+
+            // map: fill the next row
+            let row = ((start + i) % n) * k;
+            let mut t = 0i64;
+            while t < k {
+                let mut best = min1;
+                if t == idx1 { best = min2; }
+                cur[t] = cost[row + t] + best;
+                t = t + 1i64;
+            }
+
+            // swap the buffers
+            let tmp = prev;
+            prev = cur;
+            cur = tmp;
+            i = i + 1i64;
+        }
+
+        let mut answer = inf;
+        let mut fold = 0i64;
+        let mut p = 0i64;
+        while p < k {
+            if prev[p] < answer { answer = prev[p]; }
+            fold = (fold * 31i64 + prev[p]) % 1000000007i64;
+            p = p + 1i64;
+        }
+        sink = (sink * 131i64 + answer + fold) % 1000000007i64;
+        r = r + 1i64;
+    }
+
+    println(sink);
+}
