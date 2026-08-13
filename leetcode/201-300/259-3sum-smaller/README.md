@@ -69,6 +69,75 @@ Over 4,000 cases: **112,190 triples counted**, with 1,182 answering 0 (most of
 them the `n < 3` cases, which cannot produce a triple) and 249 saturating at
 `C(n,3)`.
 
+## Benchmark
+
+`bench/` builds **one 4,000-element array once**, then punches the ★ sorted
+two-pointer count through it **26 times** — 208M inner iterations against 26
+sorts. Sink `540236372`, reproduced by all four mirrors.
+
+The target is chosen **at the median of the achievable triple sums**, not below
+or above the band. That is load-bearing: with a target under every sum the inner
+loop only ever decrements `hi`, and with one over every sum it only ever
+advances `lo` — either extreme is a monotone sweep with a perfectly predicted
+branch. A mid-band target makes the choice data-dependent at every step. The
+trip count is identical either way (`hi - lo`, since every iteration moves one
+pointer by one), so the target changes *predictability* and nothing else.
+
+That turns out to be the whole story of this lane.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ | inner loop |
+|---|---|---|---|
+| Rust (checked, equal-safety) | 447.7 ± 5.9 | 1.3% | branchy |
+| Rust (checked + `target-cpu=v3`) | 453.5 ± 11.3 | 2.5% | branchy |
+| **Kāra** | **459.7 ± 11.2** | 2.4% | branchy |
+| Go | 497.2 ± 11.8 | 2.4% | branchy |
+| C (`-march=x86-64-v3`) | 703.0 ± 6.8 | 1.0% | **branchless** |
+| C | 709.8 ± 5.8 | 0.8% | **branchless** |
+| Rust | 739.7 ± 3.4 | 0.5% | **branchless** |
+
+**Overflow-checked Rust appears to beat unchecked Rust by 65%.** It does not.
+`rustc -O` and `clang -O3` both **if-convert** the two-pointer body into
+`setge`/`setl`/`cmovge`, which turns the loop into a serial dependency chain —
+the next load's address waits on the `cmov`, so every iteration pays full
+load-to-use latency with nothing else in flight. `-C overflow-checks=on` emits
+`jo` edges that LLVM will not fold into a select, so that build stays branchy and
+the predictor runs several iterations ahead.
+
+Re-running every build with `target = max_sum + 1` — identical trip count,
+identical instructions, perfectly predicted branch — settles it:
+
+| build | mid-band | `max_sum + 1` |
+|---|---:|---:|
+| Kāra | 460.7 ms | **208.9 ms** |
+| Rust (checked) | 448.6 ms | **233.7 ms** |
+| Rust | 740.0 ms | 746.8 ms |
+| C | 729.3 ms | 722.2 ms |
+
+The branchy builds more than halve. The branchless builds do not move — which is
+what "immune to branch prediction" predicts, and is what confirms the mechanism
+instead of merely fitting it. Full disassembly and method in
+[`bench/probe/README.md`](bench/probe/README.md).
+
+**So the plain `rust` and `c` rows measure an if-conversion pessimisation, not
+the cost of unchecked arithmetic**, and should not be read as "C is 1.5× slower
+than Kāra at counting triples." The honest comparator is the equal-safety twin,
+and it lands **within 3% of Kāra**.
+
+Worth stating plainly because the direction is the reverse of the usual framing:
+Kāra's **default overflow checking** — normally the thing that costs it against
+`rustc -O` — is what keeps this loop branchy, and therefore what makes it fast
+here.
+
+**It is not `qsort`.** The function-pointer comparator that explained C's
+position in [#252](../252-meeting-rooms/) and [#253](../253-meeting-rooms-ii/)
+does not explain it here: with the counting loop disabled, the 26 `qsort` calls
+cost **10.4 ms of 729** — 1.4% of the lane.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`Vec.from_slice` + `sort()`** — the comparator-free sort on `Vec[i64]`.
@@ -103,4 +172,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in three_sum_smaller three_sum_smaller_brute three_sum_smaller_bsearch differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
