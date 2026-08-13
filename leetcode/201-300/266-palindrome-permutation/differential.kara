@@ -1,0 +1,241 @@
+// LeetCode 266 — differential harness.
+//
+// Runs all THREE deciders — byte histogram, toggled set, XOR bitmask — and, for
+// short inputs, checks them against a reference that shares none of their
+// reasoning.
+//
+// WHY A BRUTE-FORCE REFERENCE IS NEEDED HERE. All three deciders rest on the
+// SAME theorem: permutable iff at most one character has an odd count. If that
+// "at most" is misread as "exactly" — the natural slip, since a palindrome does
+// have a middle character — then every one of the three can be written wrong in
+// the same way and they will agree with each other perfectly. Three
+// implementations of one idea cannot adjudicate the idea.
+//
+// So for lengths up to 7 the harness enumerates EVERY permutation (via
+// next-permutation over the sorted bytes, which visits each distinct
+// arrangement of a multiset exactly once) and asks whether any of them reads
+// the same forwards and backwards. That reference knows nothing about counts,
+// parity or middles; it is the problem statement executed literally.
+//
+// GENERATOR DESIGN. Uniformly random strings are almost never permutable once
+// the alphabet grows, so the accept path would go untested. Three of the eight
+// families therefore CONSTRUCT permutable strings — pairs plus an optional lone
+// middle, then shuffled — and one perturbs such a string by a single character
+// to produce the hardest negatives, which share every structural property with
+// a true case except the answer. Alphabets are kept small (1..4 for the
+// brute-forced families) so that ties, and thus even counts, are common.
+//
+// Lengths above 7 are cross-checked between the three deciders only; the
+// factorial reference cannot follow them there, and that limit is stated rather
+// than papered over.
+
+fn is_pal(a: ref Vec[i64]) -> bool {
+    let n = a.len();
+    let mut i = 0i64;
+    let mut j = n - 1i64;
+    while i < j {
+        if a[i] != a[j] { return false; }
+        i = i + 1i64;
+        j = j - 1i64;
+    }
+    return true;
+}
+
+// Standard next-permutation. Returns false once the sequence is descending,
+// i.e. after the last arrangement.
+fn next_perm(a: mut ref Vec[i64]) -> bool {
+    let n = a.len();
+    if n < 2i64 { return false; }
+    let mut i = n - 2i64;
+    // `and` short-circuits, which is what keeps a[i] from being read at i = -1.
+    while i >= 0i64 and a[i] >= a[i + 1i64] {
+        i = i - 1i64;
+    }
+    if i < 0i64 { return false; }
+    let mut j = n - 1i64;
+    while a[j] <= a[i] {
+        j = j - 1i64;
+    }
+    let t = a[i]; a[i] = a[j]; a[j] = t;
+    let mut lo = i + 1i64;
+    let mut hi = n - 1i64;
+    while lo < hi {
+        let u = a[lo]; a[lo] = a[hi]; a[hi] = u;
+        lo = lo + 1i64;
+        hi = hi - 1i64;
+    }
+    return true;
+}
+
+// The reference: is ANY arrangement a palindrome? Knows nothing about parity.
+fn brute(chars: ref Vec[i64]) -> bool {
+    let mut a: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < chars.len() {
+        a.push(chars[i]);
+        i = i + 1i64;
+    }
+    a.sort();
+    if is_pal(a) { return true; }
+    while next_perm(mut a) {
+        if is_pal(a) { return true; }
+    }
+    return false;
+}
+
+fn by_counts(chars: ref Vec[i64]) -> bool {
+    let mut counts: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < 256i64 { counts.push(0i64); i = i + 1i64; }
+    let mut p = 0i64;
+    while p < chars.len() {
+        counts[chars[p]] = counts[chars[p]] + 1i64;
+        p = p + 1i64;
+    }
+    let mut odd = 0i64;
+    let mut c = 0i64;
+    while c < 256i64 {
+        if counts[c] % 2i64 == 1i64 { odd = odd + 1i64; }
+        c = c + 1i64;
+    }
+    return odd <= 1i64;
+}
+
+fn by_toggle(chars: ref Vec[i64]) -> bool {
+    let mut odd: Set[i64] = Set.new();
+    let mut p = 0i64;
+    while p < chars.len() {
+        let ch = chars[p];
+        if odd.contains(ch) { odd.remove(ch); } else { odd.insert(ch); }
+        p = p + 1i64;
+    }
+    return odd.len() <= 1i64;
+}
+
+fn by_bits(chars: ref Vec[i64]) -> bool {
+    let mut mask = 0i64;
+    let mut p = 0i64;
+    while p < chars.len() {
+        mask = mask ^ (1i64 << (chars[p] - 97i64));
+        p = p + 1i64;
+    }
+    return mask & (mask - 1i64) == 0i64;
+}
+
+fn main() {
+    let cases = 4000i64;
+    let mut seed = 266266i64;
+
+    let mut mismatches = 0i64;
+    let mut brute_checked = 0i64;
+    let mut brute_disagreements = 0i64;
+    let mut trues = 0i64;
+    let mut even_len_true = 0i64;   // the `odd == 1` bug's blind spot
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+        let family = (seed / 65536i64) % 8i64;
+
+        let mut chars: Vec[i64] = Vec.new();
+
+        if family <= 3i64 {
+            // Random, short, small alphabet — brute-forceable.
+            let alpha = family + 1i64;                 // 1..4 distinct letters
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let n = (seed / 65536i64) % 8i64;          // 0..7
+            let mut i = 0i64;
+            while i < n {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                chars.push(97i64 + (seed / 65536i64) % alpha);
+                i = i + 1i64;
+            }
+        }
+        if family == 4i64 or family == 5i64 {
+            // ★ Constructed permutable: pairs, plus an optional lone middle.
+            let mut pairs = 3i64;
+            let mut alpha = 4i64;
+            if family == 5i64 { pairs = 20i64; alpha = 8i64; }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let np = (seed / 65536i64) % (pairs + 1i64);
+            let mut i = 0i64;
+            while i < np {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                let ch = 97i64 + (seed / 65536i64) % alpha;
+                chars.push(ch);
+                chars.push(ch);
+                i = i + 1i64;
+            }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            if (seed / 65536i64) % 2i64 == 1i64 {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                chars.push(97i64 + (seed / 65536i64) % alpha);
+            }
+        }
+        if family == 6i64 {
+            // Long and uniformly random — almost always false.
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let n = (seed / 65536i64) % 41i64;
+            let mut i = 0i64;
+            while i < n {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                chars.push(97i64 + (seed / 65536i64) % 8i64);
+                i = i + 1i64;
+            }
+        }
+        if family == 7i64 {
+            // ★ Near-miss: build a permutable string, then change ONE character.
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let np = (seed / 65536i64) % 4i64 + 1i64;
+            let mut i = 0i64;
+            while i < np {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                let ch = 97i64 + (seed / 65536i64) % 4i64;
+                chars.push(ch);
+                chars.push(ch);
+                i = i + 1i64;
+            }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let at = (seed / 65536i64) % chars.len();
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            chars[at] = 97i64 + (seed / 65536i64) % 4i64;
+        }
+
+        // Shuffle, so no decider can lean on the constructed layout.
+        let m = chars.len();
+        let mut sh = m - 1i64;
+        while sh > 0i64 {
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let j = (seed / 65536i64) % (sh + 1i64);
+            let t = chars[sh]; chars[sh] = chars[j]; chars[j] = t;
+            sh = sh - 1i64;
+        }
+
+        let a = by_counts(chars);
+        let b = by_toggle(chars);
+        let d = by_bits(chars);
+        if a != b or a != d { mismatches = mismatches + 1i64; }
+
+        // The independent reference, where factorial cost allows.
+        if m <= 7i64 {
+            brute_checked = brute_checked + 1i64;
+            if brute(chars) != a { brute_disagreements = brute_disagreements + 1i64; }
+        }
+
+        if a { trues = trues + 1i64; }
+        if a and m % 2i64 == 0i64 { even_len_true = even_len_true + 1i64; }
+        let mut bit = 0i64;
+        if a { bit = 1i64; }
+        digest = (digest * 131i64 + bit * 7i64 + m) % 1000000007i64;
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"permutable {trues}");
+    println(f"even length AND permutable {even_len_true}");
+    println(f"brute-force verified {brute_checked}");
+    println(f"brute-force disagreements {brute_disagreements}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}

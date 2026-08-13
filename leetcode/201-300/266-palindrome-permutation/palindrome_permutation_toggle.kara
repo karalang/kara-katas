@@ -1,0 +1,62 @@
+// LeetCode 266 — Palindrome Permutation, by toggling a set.
+//
+// The counting form builds a full histogram and then asks how many entries are
+// odd. But nothing about the COUNTS is needed — only their parity. So track
+// parity directly: keep the set of characters seen an odd number of times so
+// far, and toggle membership on each character.
+//
+//     seen already -> remove it   (that character's count just became even)
+//     not seen     -> insert it   (just became odd)
+//
+// At the end the set IS the odd-count characters, and the answer is `len <= 1`.
+// One pass, no second sweep over the alphabet, and no dependence on the
+// alphabet's size — the counting form walks 256 slots whether the string is
+// empty or not.
+//
+// The failure mode this shape invites is forgetting the removal. An
+// insert-only set is the set of DISTINCT characters, which answers a different
+// question entirely and says false for every string with two or more distinct
+// characters — including "aabb".
+
+fn can_permute_palindrome(s: ref String) -> bool {
+    let mut odd: Set[i64] = Set.new();
+    for b in s.bytes() {
+        // `b as i64` is not decoration. `bytes()` yields u8 and the set holds
+        // i64, and Kāra requires the widths to match explicitly — the same rule
+        // that forces `b as i64` in the bitmask file. Set.contains currently
+        // accepts the unconverted u8 and then MISCOMPILES it (B-2026-08-13-15);
+        // the cast is what the language asks for, not a way around the bug.
+        let ch = b as i64;
+        if odd.contains(ch) {
+            odd.remove(ch);
+        } else {
+            odd.insert(ch);
+        }
+    }
+    return odd.len() <= 1i64;
+}
+
+fn report(s: ref String) {
+    if can_permute_palindrome(s) {
+        println(f"\"{s}\" -> true");
+    } else {
+        println(f"\"{s}\" -> false");
+    }
+}
+
+fn main() {
+    report("code");
+    report("aab");
+    report("carerac");
+    report("");
+    report("a");
+    report("aa");
+    report("ab");
+    report("aabb");
+    report("aabbcc");
+    report("aaabbb");
+    report("aaabbbb");
+    report("zzzzzzzz");
+    report("abcabcabc");
+    report("abcabcabcd");
+}
