@@ -7,7 +7,7 @@ typedef struct { long a, b, c; } Cost;
 static inline long min2(long x, long y) { return x < y ? x : y; }
 
 int main(void) {
-    long n = 4000000, rounds = 30;
+    long n = 150000, rounds = 800;
     Cost *cost = malloc(n * sizeof(Cost));
     long state = 256256, cheap = 0, run_left = 0;
     for (long i = 0; i < n; i++) {

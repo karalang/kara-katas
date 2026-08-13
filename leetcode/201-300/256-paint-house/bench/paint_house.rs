@@ -5,8 +5,8 @@
 fn min2(a: i64, b: i64) -> i64 { if a < b { a } else { b } }
 
 fn main() {
-    let n: i64 = 4000000;
-    let rounds: i64 = 30;
+    let n: i64 = 150000;
+    let rounds: i64 = 800;
 
     let mut cost: Vec<(i64, i64, i64)> = Vec::with_capacity(n as usize);
     let mut state: i64 = 256256;

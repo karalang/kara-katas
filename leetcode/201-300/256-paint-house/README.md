@@ -86,6 +86,55 @@ every one.
 in-place update into `solve_rolling` makes it report **4,572 mismatches of
 6,000**; restored, `0`.
 
+## Benchmark
+
+`bench/` builds one **150,000-house cost table once**, then sweeps it **800
+times** with the rolling three-scalar DP. Sink `913249956`, reproduced by all
+four mirrors.
+
+Two design points:
+
+- **Costs are drawn so the constraint binds.** One colour is cheap over *runs* of
+  consecutive houses (run length itself varies), so the optimum must repeatedly
+  leave the locally-cheapest colour and neither `min2` predicts away. A uniform
+  draw would let the answer degenerate towards "take each house's minimum".
+- **The table is sized to stay cache-resident** (150k × 24 B = 3.6 MB; measured
+  RSS 6.4 MiB). An earlier version used 4M houses, whose 93 MiB working set made
+  the lane memory-bandwidth-bound — the wrong thing for a kata whose subject is a
+  loop-carried recurrence. Rounds were raised to hold total work constant.
+
+This is a pure **dependent-arithmetic** lane: no allocation in the punch loop at
+all, each house reading the previous house's three totals. That complements
+[#254](../254-factor-combinations/) (allocation-heavy) and
+[#255](../255-verify-preorder-sequence-in-bst/) (`Vec` push/pop).
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| Rust | 200.0 | 12.6% |
+| C | 201.8 | 8.9% |
+| Go | 208.2 | 10.7% |
+| Kāra | 214.6 | 10.9% |
+| Rust (checked) | 220.1 | 9.6% |
+
+**This is a four-way tie and should not be read as a ranking.** The full spread
+is 7.3% while every σ is 9–13%, so the intervals overlap almost entirely. Kāra
+appearing below C and Rust here is not a result, and neither is it edging
+equal-safety Rust.
+
+Stated plainly because this lane resisted measurement harder than any other in
+the corpus. This host's run-to-run σ for the *same binary* swings between 10% and
+26%; that was confirmed by re-measuring one binary and watching σ move 25.8% →
+13.7% with nothing changed. Three candidate causes were tested and refuted —
+container load (still noisy at load 0.59), working-set size (the resize above did
+not reduce σ), and auto-par thread startup (`KARAC_AUTO_PAR=0` measured the
+same). The resize was kept on its own merits, not as a variance fix.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts),
+and on this lane that caveat is doing more work than usual.
+
 ## Kāra features exercised
 
 - **`Slice[(i64, i64, i64)]`** — a 3-tuple element type, saying "exactly three

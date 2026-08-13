@@ -2,8 +2,8 @@
 
 
 def main():
-    n = 4000000
-    rounds = 30
+    n = 150000
+    rounds = 800
 
     cost = []
     state = 256256

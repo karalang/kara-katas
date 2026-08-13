@@ -14,8 +14,8 @@ func min2(x, y int64) int64 {
 }
 
 func main() {
-	var n int64 = 4000000
-	var rounds int64 = 30
+	var n int64 = 150000
+	var rounds int64 = 800
 
 	cost := make([]Cost, n)
 	var state int64 = 256256

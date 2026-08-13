@@ -1,7 +1,19 @@
 // Benchmark workload for LeetCode #256 — Paint House.
 //
-// Build-once + punch. One cost table of 4,000,000 houses is generated once, then
-// the rolling three-scalar DP sweeps it 30 times.
+// Build-once + punch. One cost table of 150,000 houses is generated once, then
+// the rolling three-scalar DP sweeps it 800 times.
+//
+// The table is sized to stay CACHE-RESIDENT (150k x 24 B = 3.6 MB). An earlier
+// version used 4M houses, whose 93 MiB working set made the lane
+// memory-bandwidth-bound rather than a measure of the recurrence — the wrong
+// thing for a kata whose subject is dependent arithmetic. Rounds were raised to
+// keep total work comparable.
+//
+// Honest note on why that resize happened: it was made because 93 MiB measures
+// the memory system, not because it fixed measurement variance. It did not —
+// this host's run-to-run sigma for the same binary swings between 10% and 26%
+// regardless of working-set size, which is why the numbers below are
+// corroboration only.
 //
 // The costs are drawn so the adjacency constraint actually BINDS. A uniform draw
 // makes the cheapest colour differ between neighbours most of the time, so the
@@ -29,8 +41,8 @@ fn min2(a: i64, b: i64) -> i64 {
 }
 
 fn main() {
-    let n = 4000000i64;
-    let rounds = 30i64;
+    let n = 150000i64;
+    let rounds = 800i64;
 
     // ---- build once ------------------------------------------------------
     let mut cost: Vec[(i64, i64, i64)] = Vec.new();

@@ -122,7 +122,7 @@ echo
 
 bench_begin id=256 slug=paint-house group=201-300 \
     title="Paint House" \
-    workload="build one 4M-house cost table once, then 30 rolling-DP passes; sink = accumulated minimum-cost checksum" sink="$expected"
+    workload="build one 150k-house cache-resident cost table once, then 800 rolling-DP passes; sink = accumulated minimum-cost checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
