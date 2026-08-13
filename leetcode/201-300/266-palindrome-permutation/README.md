@@ -87,7 +87,7 @@ over.
 
 ## The bug this kata found
 
-The toggle solver's natural first spelling was
+The toggle solver's natural spelling is
 
 ```kara
 for b in s.bytes() {
@@ -95,31 +95,56 @@ for b in s.bytes() {
 }
 ```
 
-which **miscompiles**. `bytes()` yields `u8`, the set holds `i64`, and under both
-compiled backends `Set.contains` returns false for an element that is present —
-so the remove branch is dead and the set silently becomes the *distinct*
-characters rather than the *odd-parity* ones. `"aab"` and `"aabb"` answer false.
-The interpreter is correct, so it is a run-vs-build divergence.
+and it **miscompiled**. `bytes()` yields `u8`, the set holds `i64`, and under
+both compiled backends `Set.contains` returned false for an element that was
+present — so the remove branch was dead and the set silently became the
+*distinct* characters rather than the *odd-parity* ones. `"aab"` and `"aabb"`
+answered false. The interpreter was correct, so it was a run-vs-build divergence
+with a silent wrong answer.
 
-Note how well it hides: `"aa"`, `"zzzzzzzz"`, `"code"` and `"aaabbb"` all give
-the **right** answer under the wrong set. A small example set passes entirely.
+Note how well it hid: `"aa"`, `"zzzzzzzz"`, `"code"` and `"aaabbb"` all give the
+**right** answer under the wrong set. A small example set passes entirely; the
+kata's four-surface A/B matrix is what caught it.
 
-Filed as **`B-2026-08-13-15`** (class `miscompile`, high) in the sibling `kara`
-repo, with the scope probed rather than assumed — `Set[i64].insert(u8)`,
-`Set[i64].remove(u8)`, `Vec[i64].contains(u8)` and `Map[i64,i64].contains_key(u8)`
-are all correct in the same program; it is `Set.contains` specifically.
+Filed as **`B-2026-08-13-15`** (class `miscompile`, high) and **fixed the same
+day** by `675494c`. The code above is what the file now contains — no cast, no
+workaround — and it is byte-identical across all four surfaces.
 
-**The kata now writes `let ch = b as i64;`, and that is not a workaround.** The
-bitmask solver in this same kata was *forced* by the typechecker to write
-`b as i64` — Kāra refuses `b - 97i64` for a `u8` with "cannot mix integer types
-`u8` and `i64` in arithmetic — cast explicitly with `as`". The cast is what the
-language's own rule asks for at both call sites. That the `Set` call site
-silently accepted the unconverted value *is* the bug being filed.
+### Two things this kata got wrong, kept here because they are the lesson
+
+**The design call was not open.** The filed row offered two fixes — reject the
+width mismatch at typecheck, or coerce in codegen — and framed accepting a `u8`
+at a container argument as *inconsistent* with Kāra refusing `b - 97i64`. It is
+not inconsistent; the two rules are deliberately different. Kāra's
+`check_int_widening_coercion` rejects only **narrowing**, and its own diagnostic
+says so out loud: *"widening coercions such as i32 → i64 remain implicit."* So a
+`u8` argument to a `Set[i64]` method was always legal, and the bug was simply
+that codegen did not implement what the typechecker had promised. Rejecting it
+would have deleted a documented feature.
+
+That is why the file above carries no cast, and why the bitmask solver's
+`b as i64` is a different situation entirely: that one is *arithmetic*, where
+mixed widths are refused outright.
+
+**The scope table was wrong, and wrong for an avoidable reason.** This kata
+reported `Set[i64].insert(u8)`, `remove(u8)`, `Vec[i64].contains(u8)` and
+`Map[i64,i64].contains_key(u8)` as *correct*. They were not. Every one of those
+probes used the byte `97`, and **97 is the one value at which the bug cannot
+appear** — sign- and zero-extension agree below 128, and the undefined high bytes
+happened to be zero. Re-probed with the high bit set (`200u8`, `60000u16`,
+`4000000000u32`), 14 of 15 shapes were wrong.
+
+A probe value has to be chosen to *expose* the boundary it is testing, exactly
+the way this kata's own generator picks small alphabets to force ties and
+[#265](../265-paint-house-ii/)'s picks a narrow cost range for the same reason.
+Applying that discipline to the harness and not to the bug report is how a
+scope table ends up asserting the opposite of the truth.
 
 ## Kāra features exercised
 
-- **`String.bytes()`** in a `for`, and the `u8`-vs-`i64` width rule that governs
-  what may be done with the result.
+- **`String.bytes()`** in a `for`, and Kāra's asymmetric width rules on the
+  result: implicit **widening** at a container argument (`Set[i64].contains(u8)`
+  needs no cast) but no mixing at all in **arithmetic** (`b - 97i64` is refused).
 - **`Set[i64]`** with `insert` / `remove` / `contains` / `len`.
 - **XOR and shift on `i64`** (`mask ^ (1 << (b as i64 - 97))`), plus the
   clear-lowest-bit test `mask & (mask - 1) == 0`.
