@@ -124,6 +124,90 @@ graphs with `n − 1` edges that are not trees, which is what a count-only decid
 must get wrong and nothing else. The generator and the harness agree on their
 own arithmetic.
 
+## Benchmark
+
+`bench/` builds **one random tree on 100,000 nodes once** — parent attachment,
+then a Fisher–Yates shuffle of the edge list — and punches the ★ union-find
+validator through it **240 times**. Sink `785843880`, reproduced by all four
+compiled mirrors and by Python.
+
+Two properties of the workload are deliberate:
+
+- **The graph is a genuine tree**, so all `n − 1` edges are processed. There is
+  no cycle to trigger the early `return false`, and the lane measures the full
+  merge rather than a lucky exit on edge three.
+- **The edges are shuffled.** Parent attachment emits them in topological order,
+  and fed that way every union hangs a singleton off a growing root: one hop per
+  find, nothing for path compression to compress, and the measurement collapses
+  into a linear scan. Shuffled, the forest grows from the middle out and the
+  finds walk real chains.
+
+This is the corpus's **random dependent load** lane — the inner cost is chasing
+`parent[parent[parent[…]]]` in an order no prefetcher can predict, which is a
+different bottleneck from the sort-dominated ([#252](../252-meeting-rooms/),
+[#253](../253-meeting-rooms-ii/)), allocation
+([#254](../254-factor-combinations/)), string-building
+([#257](../257-binary-tree-paths/)), integer-division
+([#258](../258-add-digits/)) and branch-prediction ([#259](../259-3sum-smaller/))
+lanes.
+
+### n was set by measurement, not by taste
+
+The first sizing, `n = 400,000`, produced a table that could not be ranked: σ of
+8–21% across the lanes, and `c` at 554 ms against the same code at `-march=v3` at
+437 ms, a 27% "ISA effect" on a pointer-chasing loop with nothing to vectorize.
+
+Re-running **a single unchanged binary** by itself settled it — the spread is not
+between languages, it is within one binary:
+
+| n | working set | mean | σ | σ/mean | sys time |
+|---|---|---:|---:|---:|---:|
+| 30,000 | ~1 MB | 438.3 ms | 5.6 | **1.3%** | 0.4 ms |
+| 100,000 | ~3 MB | 430.0 ms | 8.6 | **2.0%** | 1.6 ms |
+| 400,000 | ~13 MB | 486.9 ms | 111.0 | **22.8%** | 31.0 ms |
+
+Same total work at all three sizes — only the footprint changes. At 400,000 the
+same binary scattered over 368–1126 ms, a 3× spread, with system time up 75×.
+The container cannot hold a 13 MB randomly-accessed working set steady; it holds
+3 MB fine.
+
+So the lane runs at **n = 100,000** — the largest size that is measurable here,
+and still large enough that `parent[]` alone is 800 KB and the chase is a real
+L2-miss chain rather than an L1-resident one. Sizing down was not tuning for a
+nicer number: at 400,000 there is no number, only noise.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C | 425.5 ± 17.0 | 4.0% |
+| Rust | 429.5 ± 12.1 | 2.8% |
+| C (`-march=x86-64-v3`) | 440.3 ± 20.2 | 4.6% |
+| **Kāra** | **444.4 ± 11.7** | 2.6% |
+| Rust (checked + `target-cpu=v3`) | 446.6 ± 18.3 | 4.1% |
+| Rust (checked, equal-safety) | 455.1 ± 15.6 | 3.4% |
+| Go | 512.0 ± 18.1 | 3.5% |
+
+**C, Rust and Kāra are a six-way tie.** 425 to 455 ms is a 7% spread against σ of
+2.6–4.6%; the ordering among those six is not resolvable, and neither the ISA
+twins nor the safety twins separate from their siblings. Kāra sits between plain
+Rust (429.5) and equal-safety Rust (455.1) — which is where a checked-arithmetic
+implementation should sit, and the 6% gap between those two Rust builds is the
+only intra-language effect this lane can see at all.
+
+**Go is 20% behind and is the one separable row.** Its σ is no worse than the
+others, so this is a real gap rather than a noise artifact — but this lane does
+not identify its cause and I am not going to guess one.
+
+Kāra's binary is 332.9 KiB against C's 15.7 KiB, Go's 2.16 MB and Rust's 3.86 MB;
+peak RSS is 5.3 MiB against C's 4.5 MiB, within the array footprint the algorithm
+requires.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+The σ-versus-n table above is a property of *this* container and should be
+re-measured, not assumed, on any other host.
+
 ## Kāra features exercised
 
 - **`Vec[Vec[i64]]` adjacency lists** and **`Vec[Vec[bool]]`** as an adjacency
@@ -160,4 +244,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in graph_valid_tree graph_valid_tree_bfs graph_valid_tree_peel differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
