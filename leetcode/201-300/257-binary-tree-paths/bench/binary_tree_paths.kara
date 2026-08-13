@@ -17,6 +17,18 @@
 // in four languages would measure the same algorithmic fact four more times.
 // probe/ carries that comparison instead.
 //
+// Every mirror PRE-SIZES each child prefix. That is not incidental: C computes
+// the exact length and mallocs once, and Go's `a + b + c` concatenation
+// allocates the total in one go, so a Kara/Rust mirror that started from an
+// empty String and grew would be doing strictly more allocator work than its
+// siblings. Measured, before this was equalised: Rust grow-as-you-go 473 ms,
+// Rust with_capacity 372 ms, C exact-malloc 332 ms -- allocation strategy
+// accounted for about 70% of what looked like a C-versus-Rust language gap.
+//
+// The kata's own solver keeps the natural `let mut next: String = ""` form; this
+// is a benchmark kernel, and equal allocator terms are what make the lane about
+// path enumeration rather than about who reserves.
+//
 // Sink is a positional digest over the rendered paths, so path ORDER is part of
 // what the mirrors must agree on.
 
@@ -69,14 +81,14 @@ fn walk(nodes: ref Vec[Node], node: i64, prefix: ref String, out: mut ref Vec[St
         return;
     }
     if left != -1i64 {
-        let mut next: String = "";
+        let mut next: String = String.with_capacity(prefix.len() + 8i64);
         next.push_str(prefix);
         next.push_str("->");
         next.push_str(f"{nodes[left].val}");
         walk(nodes, left, next, out);
     }
     if right != -1i64 {
-        let mut next: String = "";
+        let mut next: String = String.with_capacity(prefix.len() + 8i64);
         next.push_str(prefix);
         next.push_str("->");
         next.push_str(f"{nodes[right].val}");

@@ -11,14 +11,14 @@ fn walk(nodes: &Vec<Node>, node: usize, prefix: &str, out: &mut Vec<String>) {
         return;
     }
     if left != -1 {
-        let mut next = String::new();
+        let mut next = String::with_capacity(prefix.len() + 8);
         next.push_str(prefix);
         next.push_str("->");
         next.push_str(&format!("{}", nodes[left as usize].val));
         walk(nodes, left as usize, &next, out);
     }
     if right != -1 {
-        let mut next = String::new();
+        let mut next = String::with_capacity(prefix.len() + 8);
         next.push_str(prefix);
         next.push_str("->");
         next.push_str(&format!("{}", nodes[right as usize].val));
