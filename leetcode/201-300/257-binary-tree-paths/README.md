@@ -58,7 +58,7 @@ which removed the RC and the duplication together. The compiler's own
 `is_str_like` exists to allow exactly this, and its comment cites kata #722,
 where the same call was rejected under `build` while `run` only warned.
 
-### That second one turned out to be a compiler issue — kara `B-2026-08-13-1`
+### That second one turned out to be a compiler issue — kara `B-2026-08-13-1` (fixed)
 
 Investigating the diagnostic rather than silencing it (the help text offers
 `#[allow(rc_fallback)]` first) showed the ownership checker is **inconsistent
@@ -78,9 +78,26 @@ typechecker was widened to accept a borrow, but the ownership checker still
 classifies the owned-argument case as a consume for two of the three.
 
 It is **not** a correctness bug: the value really is still readable afterwards,
-and the same program prints identically under `run` and `build`. The cost is a
+and the same program prints identically under `run` and `build`. The cost was a
 spurious move report, an unnecessary RC in harder shapes, and — as here — a
-helper function existing purely to turn two owned reads into two borrows.
+helper function introduced purely to turn two owned reads into two borrows.
+
+**Fixed in `1299fd3`.** The cause was a single table: `collect_method_param_modes`
+seeds builtin methods that have no syntactic signature, and `String.contains` was
+the only String method ever added to it. That is the entire asymmetry above —
+`contains` was on the list and the other two were not.
+
+The fix went **wider than this kata measured**. The row named three methods,
+taken from `is_str_like`'s doc comment; probing the neighbouring surface found
+the same false positive on four more — `ends_with`, `find`, `split` and
+`replace` — all fixed alongside. A doc comment's examples were treated here as
+the population, which they were not.
+
+`extend(prefix: ref String, v: i64)` is **kept**, but on style grounds now rather
+than necessity: the inline spelling that used to warn re-checks clean against the
+fixed compiler, and both produce identical output. It survives because factoring
+two near-identical four-line constructions into a named function is better code,
+not because the compiler requires it.
 
 ## Order is part of the answer
 
@@ -126,8 +143,10 @@ Every program is byte-identical under `karac run --interp`, `karac run` (JIT),
 `karac build` (auto-par default) and `KARAC_AUTO_PAR=0 karac build`; the two with
 mirrors match Python. All four are **rc-fallback clean**.
 
-No compiler bugs found. Both diagnostics encountered were the ownership checker
-working correctly on code that deserved restructuring.
+One compiler issue found: `B-2026-08-13-1` above, fixed in `1299fd3`. The ★
+file's diagnostic was the checker working correctly on code that deserved
+restructuring; the iterative file's was not, and only investigating it rather
+than reaching for `#[allow(rc_fallback)]` told the two apart.
 
 ## Running
 
