@@ -152,13 +152,24 @@ builds within 1%. **Kāra is 1.06× behind plain Rust and within noise of the
 equal-safety build** — and the three Rust variants being indistinguishable is
 itself informative, since a float compare has no overflow check to pay for.
 
-**C is last, 1.21× behind Kāra, and that is only partly explained.** The
-disassembly shows clang if-converting the child selection into `cmova`, which
-puts the comparison inside the *address* dependency chain, while Kāra emits a
-branch the processor can speculate past — the cmov-versus-branch effect
-[#259](../259-3sum-smaller/) measured, inverted. That is an observation from the
-disassembly, **not a confirmed cause**; the controlled probe that would settle it
-is the one the generator fault below invalidated.
+**C is last, 1.21× behind Kāra, and the cause is confirmed: the `cmov`.** clang
+if-converts the child selection, putting the comparison inside the *address*
+dependency chain, where Kāra emits a branch the processor can speculate past.
+Forcing LLVM to convert that `cmov` back to a branch — changing only the codegen,
+not the workload or the source — takes C from **566.7 to 434.5 ms**, from last
+place to level with Rust, on the same sink:
+
+| build | mean | `cmov` in `main` |
+|---|---:|---:|
+| `clang -O3` (the lane) | 566.7 ms | 1 |
+| `clang -O3 -mllvm -x86-cmov-converter-force-all` | **434.5 ms** | 0 |
+
+So the whole C deficit is one if-conversion decision. This is
+[#259](../259-3sum-smaller/)'s finding in a second setting — there plain
+`rustc -O` if-converted a two-pointer loop and paid 65%; here `clang -O3`
+if-converts a BST child selection and pays 23%. Both are serial dependency
+chains where `cmov` forces a wait on the comparison and a branch does not.
+`rustc` chose the branch here, which is why Rust was already fast.
 
 ### The lane measured nothing for two builds running
 

@@ -73,29 +73,62 @@ size of the work that had been missing — and the table changed shape completel
 | `fabs`, 32K window | 850.0 ms | 385.9 ms | **2.20×** |
 | **`fabs`, full range (published)** | **568.2 ms** | **470.5 ms** | **1.21×** |
 
-## What survives
+## What survives — and the cause, now confirmed
 
 The published table is internally consistent — σ 1.8–2.9%, both C builds within
 1% of each other, all three Rust builds within 1% — so it ranks.
 
-C is last, 1.21× behind Kāra, which is unusual and only partly explained. The
-disassembly shows clang if-converting the child selection into `cmova`:
+C is last, 1.21× behind Kāra, and **the cause is the `cmov`**. The disassembly
+shows clang if-converting the child selection:
 
 ```asm
 ucomisd %xmm4,%xmm2
 mov     %r14,%rdx
-cmova   %r15,%rdx        ; choose left/right branchlessly
+cmova   %r15,%rdx            ; choose left/right branchlessly
 mov     (%rdx,%rax,8),%rax   ; ...then load through it
 ```
 
-which puts the comparison inside the **address** dependency chain, while Kāra
-emits a branch (`vucomisd` / `jbe`) the processor can speculate past — the same
-cmov-versus-branch effect [#259](../../259-3sum-smaller/) measured, inverted.
-**This is an observation from the disassembly, not a confirmed cause.** The
-controlled probe that would settle it — forcing the descent direction predictable
-— is exactly the probe that fault 2 invalidated, and after the generator fix a
-"predictable direction" workload is a degenerate shallow tree rather than a
-control. So it stays a hypothesis, and the README says so.
+which puts the comparison inside the **address** dependency chain. Kāra emits a
+branch (`vucomisd` / `jbe`) the processor can speculate past.
+
+### The control
+
+The first draft of this file recorded that as a hypothesis, on the grounds that
+the obvious probe — forcing the descent direction predictable — changes the tree
+shape as well as the predictability, so it confounds the two.
+
+That was the wrong probe. The right control changes **only the codegen** and
+leaves the workload, the algorithm and the source untouched: LLVM has a pass that
+converts `cmov` back to a branch, and it can be forced on.
+
+```bash
+clang -O3 -mllvm -x86-cmov-converter-force-all=true bst_close.c -o c_forcebr -lm
+```
+
+`cmov` in `main` goes 1 → 0. Sink unchanged at `687179070`.
+
+| build | mean | `cmov` in `main` |
+|---|---:|---:|
+| `clang -O3` (the lane) | 566.7 ms ± 24.5 | 1 |
+| `clang -O3`, cmov→branch forced | **434.5 ms ± 17.6** | 0 |
+| Kāra | 466.0 ms ± 12.1 | — |
+| Rust | 438.3 ms ± 8.8 | — |
+
+**Forcing the branch is worth 23% and moves C from last to first**, level with
+Rust — which was already fast because `rustc` chose a branch here. So the entire
+C deficit, and a little more, is that one if-conversion decision.
+
+This is [#259](../../259-3sum-smaller/)'s finding in a second setting. There,
+plain `rustc -O` if-converted a converging two-pointer loop and paid **65%**;
+here `clang -O3` if-converts a BST child selection and pays **23%**. Both are
+serial dependency chains where a `cmov` forces the machine to wait for the
+comparison, and a branch lets it run ahead. The pass that would have caught it
+(`X86CmovConversion`) is on by default and did not fire.
+
+The lane still publishes `clang -O3` as measured — that is the corpus's
+methodology, and tuning flags for the one build they embarrass is how a
+benchmark suite stops being comparable. But the number now has a cause attached
+rather than a guess.
 
 ## Reproducing
 
