@@ -1,0 +1,122 @@
+// Benchmark workload for LeetCode #271 — Encode and Decode Strings.
+//
+// Build-once + punch. One corpus of 50,000 short strings is generated once as a
+// flat byte array plus offset/length arrays, and the ★ length-prefixed codec is
+// punched over it 250 times — encode the whole corpus, decode it back, fold a
+// checksum of what came out.
+//
+// WHAT THIS LANE MEASURES: SERIALISATION. Per item the encoder writes a decimal
+// length, a separator, and a bulk byte copy; the decoder parses the decimal back
+// and copies the payload out. That is a header-parse plus a memcpy, 50,000 times
+// a round, which is a different shape from the corpus's string-BUILDING lane
+// (#257) and its byte-SCANNING lane (#266): here the bytes are copied in bulk
+// and only the headers are examined.
+//
+// TWO PARITY DECISIONS, both taken up front rather than after a phantom result.
+//
+// The decimal length is FORMATTED AND PARSED BY HAND in every mirror, not with
+// each language's integer-to-string. `f"{n}"`, `format!`, `strconv.Itoa` and
+// `snprintf` are four different amounts of machinery — allocating, growing,
+// locale-aware — and picking each language's own would measure four standard
+// libraries. Writing digits into the output buffer is also what any real
+// serialiser does.
+//
+// Everything is a HOISTED FLAT BUFFER: the corpus, the encoded stream and the
+// decoded output are allocated once and reused, so no mirror allocates in the
+// punch loop. #267 measured what happens otherwise — a per-item string turned
+// four mirrors into four allocation strategies and produced a 3x phantom.
+//
+// String lengths are drawn 0..24 so that headers are one or two digits and the
+// occasional empty string appears, which is the case the codec exists to handle.
+
+fn main() {
+    let count = 50000i64;
+    let rounds = 250i64;
+
+    // ---- build once: a flat corpus --------------------------------------
+    let mut src: Vec[u8] = Vec.new();
+    let mut off: Vec[i64] = Vec.new();
+    let mut len: Vec[i64] = Vec.new();
+    let mut state = 271271i64;
+    let mut i = 0i64;
+    while i < count {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let n = (state / 65536i64) % 25i64;
+        off.push(src.len());
+        len.push(n);
+        let mut p = 0i64;
+        while p < n {
+            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+            src.push(97u8 + ((state / 65536i64) % 26i64) as u8);
+            p = p + 1i64;
+        }
+        i = i + 1i64;
+    }
+
+    // ---- hoisted working buffers ----------------------------------------
+    // Encoded stream: every item costs at most 2 digits + '#' + payload.
+    let mut enc: Vec[u8] = Vec.new();
+    let mut cap = src.len() + count * 3i64;
+    let mut z = 0i64;
+    while z < cap { enc.push(0u8); z = z + 1i64; }
+    let mut dout: Vec[u8] = Vec.new();
+    z = 0i64;
+    while z < src.len() { dout.push(0u8); z = z + 1i64; }
+
+    // ---- punch -----------------------------------------------------------
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        // encode
+        let mut w = 0i64;
+        let mut k = 0i64;
+        while k < count {
+            let n = len[k];
+            // hand-rolled decimal, most significant digit first
+            if n >= 10i64 {
+                enc[w] = 48u8 + (n / 10i64) as u8;
+                w = w + 1i64;
+            }
+            enc[w] = 48u8 + (n % 10i64) as u8;
+            w = w + 1i64;
+            enc[w] = 35u8;                       // '#'
+            w = w + 1i64;
+            let base = off[k];
+            let mut p = 0i64;
+            while p < n {
+                enc[w + p] = src[base + p];
+                p = p + 1i64;
+            }
+            w = w + n;
+            k = k + 1i64;
+        }
+        let encoded_len = w;
+
+        // decode
+        let mut rp = 0i64;
+        let mut dp = 0i64;
+        let mut items = 0i64;
+        let mut check = 0i64;
+        while rp < encoded_len {
+            let mut n = 0i64;
+            while enc[rp] != 35u8 {
+                n = n * 10i64 + (enc[rp] as i64 - 48i64);
+                rp = rp + 1i64;
+            }
+            rp = rp + 1i64;
+            let mut p = 0i64;
+            while p < n {
+                dout[dp + p] = enc[rp + p];
+                p = p + 1i64;
+            }
+            check = (check * 31i64 + n) % 1000000007i64;
+            rp = rp + n;
+            dp = dp + n;
+            items = items + 1i64;
+        }
+        sink = (sink * 131i64 + check + items) % 1000000007i64;
+        r = r + 1i64;
+    }
+
+    println(sink);
+}

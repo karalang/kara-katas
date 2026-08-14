@@ -112,7 +112,117 @@ Every program is byte-identical under `karac run --interp`, `karac run` (JIT),
 `karac build` (auto-par default) and `KARAC_AUTO_PAR=0 karac build`; the ★ solver
 and the differential match their Python mirrors.
 
-No compiler bugs found.
+The four solvers found no compiler bug. **The bench kernel found one, and it was
+a bad one** — [`B-2026-08-14-16`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md),
+a silent out-of-bounds heap write, now fixed.
+
+Building the bench corpus is a nested loop whose inner statement is
+`src.push(97u8 + ((i + p) % 26i64) as u8)` — a byte computed into a `Vec[u8]`,
+which is about as ordinary as Kāra gets. The interpreter printed the right
+answer; the JIT and both AOT modes aborted in glibc with `realloc(): invalid
+next size`.
+
+The auto-par analyzer recognizes a `while` loop whose body is a single push as a
+*tabulate* and rewrites it — one hoisted `realloc` plus a raw `base[idx] = v`
+store, instead of a grow-check and a store per push. That rewrite is a second
+element-store site, and it never narrowed the value to the element width the way
+the push it replaces always has. So a computed byte, which compiles at the
+default i64, was stored **eight bytes wide over a one-byte slot**:
+
+```
+mov  %rsi,-0xc(%rax,%r14,1)     ; 64-bit store ...
+mov  %r9,-0xb(%rax,%r14,1)      ; ... at consecutive ONE-BYTE offsets
+mov  %r9,-0xa(%rax,%r14,1)
+```
+
+The bisect is a one-token pair. `src.push(97u8 + (…) as u8)` corrupts;
+`src.push((…) as u8)` does not — because a bare `as` already yields an `i8`, so
+the missing coercion is a no-op there. Any `u8` binary operator triggers it
+(`+`, `-`, `*`, `|`), which rules out the overflow check; `Vec[i64]` is immune,
+which makes it sub-word-specific.
+
+**The scary part is why it took 271 katas to surface.** Little-endian, each
+over-wide store writes its byte and zeros the next seven, which the following
+iteration overwrites — so every value *inside* the buffer reads back correct and
+only the final element's spill escapes. Whether that is fatal is up to the
+allocator: `u8` aborted at twenty elements, while `u16`, `u32`, `i16` and `i32`
+printed correct sums at 40, 128, 512, 2048 and 8192 elements while emitting the
+identical wide store (`mov %rdx,(%rax,%rcx,2)` — 64-bit at a 2-byte stride).
+A green run of a `Vec[u16]` program was never evidence of anything.
+
+Per the corpus rule the kernel was not rewritten around the bug. It stayed as
+written, the compiler was fixed, and the bench lane below was run afterwards.
+
+## Benchmark
+
+`bench/` builds one **50,000-string flat corpus** once — a byte array plus
+offset and length arrays, string lengths drawn 0..24 — then punches the ★
+length-prefixed codec over it **250 times**: encode the whole corpus, decode it
+back, fold a checksum. Sink `446190680`, reproduced by all four compiled mirrors
+and by Python.
+
+**This is the corpus's serialisation lane.** Per item the encoder writes a
+decimal length, a separator and a bulk byte copy; the decoder parses the decimal
+back and copies the payload out — a header parse plus a memcpy, 50,000 times a
+round. That is a different shape from the string-*building* lane
+([#257](../257-binary-tree-paths/)) and the byte-*scanning* lane
+([#266](../266-palindrome-permutation/)): here the bytes move in bulk and only
+the headers are examined.
+
+Two parity decisions were taken up front rather than after a phantom result. The
+decimal length is **formatted and parsed by hand in every mirror** — `f"{n}"`,
+`format!`, `strconv.Itoa` and `snprintf` are four different amounts of
+machinery, and picking each language's own would measure four standard
+libraries. And every buffer — corpus, encoded stream, decoded output — is
+**hoisted out of the punch loop**, so no mirror allocates while timed;
+[#267](../267-palindrome-permutation-ii/) measured what happens otherwise.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C (`-march=x86-64-v3`) | 252.7 ± 2.7 | 1.1% |
+| C | 259.1 ± 9.2 | 3.6% |
+| Rust | 723.2 ± 12.3 | 1.7% |
+| **Kāra** | **729.7 ± 11.7** | 1.6% |
+| Rust (checked + `target-cpu=v3`) | 786.8 ± 15.4 | 2.0% |
+| Rust (checked, equal-safety) | 791.7 ± 25.9 | 3.3% |
+| Go | 1072.4 ± 12.1 | 1.1% |
+
+σ is 1.1–3.6% and the two C builds are within 2.5% of each other, so there is no
+ISA phantom to chase. **Against the equal-safety column — the apples-to-apples
+one, since Kāra checks integer overflow by default and plain `rustc -O` wraps —
+Kāra is 1.08× ahead**, and it is within noise of plain `rust -O`. Go is last at
+1.47× behind Kāra.
+
+### C is 2.8× ahead, and it is one idiom
+
+That gap is far too large for the same algorithm, so it was probed before it was
+published. The inner payload copy is `enc[w + p] = src[base + p]` in all five
+mirrors — and `clang -O3` is the only compiler that turns it into a call to
+glibc's `memcpy`. Its `main` contains exactly one `memcpy` call and zero vector
+registers; `rustc -O`'s `main` contains neither.
+
+Disabling that promotion changes only the codegen, not the workload or the
+source, and the sink is unchanged at `446190680`:
+
+| build | mean | `memcpy` calls in `main` |
+|---|---:|---:|
+| `clang -O3` (the lane) | 255.8 ± 7.2 ms | 1 |
+| `clang -O3 -mllvm -disable-loop-idiom-all` | 339.0 ± 3.1 ms | 0 |
+| `clang -O3 -fno-builtin` | **525.3 ± 12.6 ms** | 0 |
+
+So roughly **2× of C's 2.8× advantage is one loop-idiom recognition**, and
+against a C that copies bytes the way the other four do, Kāra is 1.38× behind
+rather than 2.8×. The remaining gap is the bounds check: C indexes unchecked,
+while Kāra, Rust and Go all check, and a byte-at-a-time copy is where that is
+most expensive.
+
+The honest reading is that this lane measures *idiom recognition on a byte
+copy*, not raw arithmetic throughput — which is a real thing to know about a
+serialiser, and a concrete thing for Kāra's backend to go get. It is left in the
+table at its true 255.8 ms, with the mechanism named, rather than tuned away.
+Full write-up and reproduction commands in [`bench/probe/`](bench/probe/).
 
 ## Running
 
@@ -129,4 +239,7 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in encode_decode encode_decode_fixed encode_decode_escape differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+bash bench/bench.sh
 ```
