@@ -1,0 +1,127 @@
+// Benchmark workload for LeetCode #270 — Closest BST Value.
+//
+// Build-once + punch. One 30,000-node BST and 100,000 f64 targets are generated
+// once, and the ★ O(h) descent is punched over every target 22 times — 2.2M
+// descents, each averaging 10 nodes — a search stops at the first null child on its side, which is shallower than a random leaf.
+//
+// WHAT THIS LANE MEASURES: FLOAT WORK IN A POINTER CHASE. Every node visited
+// costs an i64→f64 conversion, a subtract, an absolute value, two f64 compares,
+// and a data-dependent branch choosing the next child. The corpus has an
+// integer-division lane (#258), a variable-divisor division lane (#263) and a
+// pointer-chase lane (#261), but nothing whose inner step is floating point —
+// this is that lane.
+//
+// SIZED TO STAY CACHE-RESIDENT, on the #261 lesson. Three 30,000-element index
+// arrays plus 100,000 targets is about 1.5 MB, so the chase misses L1 and lives
+// in L2. At 400,000 nodes #261 became unrankable — its sigma went to 22.8% —
+// because a randomly-accessed working set that large is at the mercy of whatever
+// else the container is doing. This lane deliberately stays an order of
+// magnitude below that.
+//
+// The tree is built by random insertion, so its depth is ~2·log₂(n) ≈ 30 rather
+// than the ~15 of a perfectly balanced tree; that is the honest shape for a BST
+// nobody rebalanced, and it makes the descent long enough to measure.
+//
+// EVERY MIRROR USES ITS OWN NATIVE ABSOLUTE VALUE — kāra's `.abs()`, C's
+// `fabs`, Rust's `.abs()`, Go's `math.Abs`. The first version of this lane
+// hand-wrote `if x < 0.0 { 0.0 - x }` in all five on the theory that a shared
+// spelling was the parity-safe choice. It was the opposite: every one of these
+// languages HAS an absolute value, so hand-writing it is the unnatural spelling
+// everywhere, and clang in particular compiled the hand-written form into a
+// five-instruction branchless select (cmpltsd/andpd/andnpd/orpd) sitting inside
+// the pointer-chase dependency chain, where `fabs` is a single `andpd`. That
+// cost C 23% by itself. Parity means the same ALGORITHM, not the same
+// keystrokes — and the idiomatic call is what every mirror would really write.
+//
+// Targets are drawn across the value range and beyond both ends, so descents
+// terminate at varying depths rather than all running to a leaf.
+
+fn main() {
+    let n = 30000i64;
+    let queries = 100000i64;
+    let rounds = 22i64;
+
+    // ---- build once: a BST by random insertion --------------------------
+    let mut val: Vec[i64] = Vec.new();
+    let mut left: Vec[i64] = Vec.new();
+    let mut right: Vec[i64] = Vec.new();
+    let mut state = 270270i64;
+
+    let mut i = 0i64;
+    while i < n {
+        // Two draws combined: `state / 65536` is the LCG's top 15 bits and
+        // maxes at 32,767, so a single draw cannot span a million. The first
+        // version of this lane used one, which silently confined every value —
+        // and every target — to a 32K window, made the tree mostly duplicates
+        // and sent every descent down the left spine.
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let hi = state / 65536i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let v = (hi * 32768i64 + state / 65536i64) % 1000000i64;
+        if val.len() == 0i64 {
+            val.push(v); left.push(-1i64); right.push(-1i64);
+        } else {
+            let mut cur = 0i64;
+            while true {
+                if v < val[cur] {
+                    if left[cur] < 0i64 {
+                        val.push(v); left.push(-1i64); right.push(-1i64);
+                        left[cur] = val.len() - 1i64;
+                        break;
+                    }
+                    cur = left[cur];
+                } else {
+                    if right[cur] < 0i64 {
+                        val.push(v); left.push(-1i64); right.push(-1i64);
+                        right[cur] = val.len() - 1i64;
+                        break;
+                    }
+                    cur = right[cur];
+                }
+            }
+        }
+        i = i + 1i64;
+    }
+
+    // ---- build once: the targets ----------------------------------------
+    let mut targets: Vec[f64] = Vec.new();
+    let mut q = 0i64;
+    while q < queries {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let th = state / 65536i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        // spread over the value range and a little past both ends
+        let whole = (th * 32768i64 + state / 65536i64) % 1100000i64 - 50000i64;
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let frac = ((state / 65536i64) % 1000i64) as f64 / 1000.0;
+        targets.push(whole as f64 + frac);
+        q = q + 1i64;
+    }
+
+    // ---- punch -----------------------------------------------------------
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let mut t = 0i64;
+        while t < queries {
+            let target = targets[t];
+            let mut best = val[0i64];
+            let mut best_diff = (val[0i64] as f64 - target).abs();
+            let mut cur = 0i64;
+            while cur >= 0i64 {
+                let v = val[cur];
+                let d = (v as f64 - target).abs();
+                if d < best_diff or (d == best_diff and v < best) {
+                    best = v;
+                    best_diff = d;
+                }
+                if (v as f64) < target { cur = right[cur]; } else { cur = left[cur]; }
+            }
+            sink = (sink * 31i64 + best) % 1000000007i64;
+            t = t + 1i64;
+        }
+        r = r + 1i64;
+    }
+
+    println(sink);
+}

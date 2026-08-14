@@ -116,6 +116,88 @@ does not occur.**
 | tie-break dropped (either one or both distance-trackers) | **376** |
 | floor/ceiling defaults a missing side instead of tracking it | **387** |
 
+## Benchmark
+
+`bench/` builds one **30,000-node BST and 100,000 f64 targets** once, then punches
+the ★ O(h) descent over every target **22 times** — 2.2M descents. Sink
+`687179070`, reproduced by all four compiled mirrors and by Python.
+
+**This is the corpus's float lane.** Every node visited costs an i64→f64
+conversion, a subtract, an absolute value, two f64 compares and a data-dependent
+branch choosing the next child. There is an integer-division lane
+([#258](../258-add-digits/)), a variable-divisor division lane
+([#263](../263-ugly-number/)) and a pointer-chase lane
+([#261](../261-graph-valid-tree/)), but nothing whose inner step is floating
+point — this is that.
+
+Sized to stay cache-resident on #261's lesson: three 30,000-element arrays plus
+100,000 targets is about 1.5 MB, an order of magnitude below the 13 MB that made
+#261 unrankable. The tree is built by random insertion, so its depth is the
+~2·log₂(n) of a BST nobody rebalanced rather than the ~15 of a perfect one.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| Rust | 443.4 ± 10.7 | 2.4% |
+| Rust (checked + `target-cpu=v3`) | 447.1 ± 10.6 | 2.4% |
+| Rust (checked, equal-safety) | 448.2 ± 12.1 | 2.7% |
+| Go | 454.7 ± 8.2 | 1.8% |
+| **Kāra** | **470.5 ± 13.6** | 2.9% |
+| C (`-march=x86-64-v3`) | 564.8 ± 13.5 | 2.4% |
+| C | 568.2 ± 15.9 | 2.8% |
+
+This one ranks: σ 1.8–2.9%, both C builds within 1% of each other, all three Rust
+builds within 1%. **Kāra is 1.06× behind plain Rust and within noise of the
+equal-safety build** — and the three Rust variants being indistinguishable is
+itself informative, since a float compare has no overflow check to pay for.
+
+**C is last, 1.21× behind Kāra, and that is only partly explained.** The
+disassembly shows clang if-converting the child selection into `cmova`, which
+puts the comparison inside the *address* dependency chain, while Kāra emits a
+branch the processor can speculate past — the cmov-versus-branch effect
+[#259](../259-3sum-smaller/) measured, inverted. That is an observation from the
+disassembly, **not a confirmed cause**; the controlled probe that would settle it
+is the one the generator fault below invalidated.
+
+### The lane measured nothing for two builds running
+
+Two earlier versions produced numbers that had nothing to do with the languages.
+
+**First, hand-written `abs`.** All five mirrors defined
+`if x < 0.0 { 0.0 - x }`, on the theory that a shared spelling was parity-safe.
+Backwards: every one of these languages *has* an absolute value — Kāra included
+(`f64.abs()`) — so hand-writing it is the unnatural spelling everywhere, and
+clang compiled it into a six-op branchless select inside the dependency chain
+where `fabs` is one `andpd`. Worth **23%** to C by itself.
+
+**Second, and worse, the generator confined every value to a 32K window.**
+`state / 65536` on a 31-bit LCG is the top 15 bits and maxes at 32,767, so the
+intended `% 1000000` never fired. Tree values spanned 0–32,767 instead of
+0–999,999, and targets came out in **[−50999, −17233]** — *below every value in
+the tree*. Every descent ran the left spine and returned the minimum.
+
+The tell was a probe that could not fail: two attempts at a "predictable
+direction" variant produced a sink byte-identical to the original, from two
+independent toolchains. The original was already doing what the probe meant to
+induce.
+
+| | C | Kāra | ratio |
+|---|---:|---:|---:|
+| hand-written `abs`, 32K window | 1090.2 ms | 465.6 ms | 2.34× |
+| `fabs`, 32K window | 850.0 ms | 385.9 ms | 2.20× |
+| **fixed (published)** | **568.2 ms** | **470.5 ms** | **1.21×** |
+
+A "C is 2.3× slower than Kāra" headline was available at every stage and would
+have been wrong at every stage. Method in
+[`bench/probe/README.md`](bench/probe/README.md).
+
+Kāra's binary is 332.9 KiB against C's 15.7 KiB, Go's 2.22 MB and Rust's 3.87 MB;
+peak RSS is 4.0 MiB against C's 2.9 MiB.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`f64` arithmetic and comparison** on every surface — the interpreter, the
@@ -154,4 +236,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in closest_bst_value closest_bst_value_scan closest_bst_value_bounds differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
