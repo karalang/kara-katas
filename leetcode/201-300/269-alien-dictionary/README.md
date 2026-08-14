@@ -102,6 +102,73 @@ live in the topological half were already caught either way:
 | DFS collapses on-path and finished into one bit | 301 verdict + 301 invalid orders |
 | duplicate edges inflate the in-degree | 107 |
 
+## Benchmark
+
+`bench/` builds a **flat corpus of 20,000 small word lists once**, then punches
+the ★ Kahn ordering over all of them **60 times** — 1,200,000 solver calls, each
+on a handful of short words. Sink `208478711`, reproduced by all four compiled
+mirrors and by Python.
+
+**What it measures is many small fixed-cost passes**, rather than one big one.
+Every call clears a 676-slot adjacency array and a 26-slot in-degree vector,
+scans a few adjacent word pairs for their first differing byte, and runs a
+selection loop that is O(26) per emitted letter. The input is tiny and the
+per-call overhead is not — the opposite balance from
+[#261](../261-graph-valid-tree/) (one huge structure) or
+[#266](../266-palindrome-permutation/) (one long stream), and the shape a lot of
+real code actually has.
+
+The corpus is drawn so roughly half the lists are solvable — words generated over
+a small alphabet and sorted under a hidden permutation, then some lists have an
+adjacent pair swapped. An all-unsolvable corpus would exit early on most calls
+and never reach the selection loop.
+
+**Everything is flat and hoisted in every mirror** — three parallel index arrays
+plus one byte array, no array of strings, no array of arrays, and the working
+structures allocated once and cleared per call. That is a parity decision made
+after [#267](../267-palindrome-permutation-ii/), where a per-leaf string became
+four different allocation strategies and a 3× phantom result.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C (`-march=x86-64-v3`) | 343.6 ± 9.8 | 2.9% |
+| C | 345.4 ± 11.8 | 3.4% |
+| Rust | 358.3 ± 8.7 | 2.4% |
+| Rust (checked + `target-cpu=v3`) | 379.6 ± 10.6 | 2.8% |
+| Rust (checked, equal-safety) | 386.3 ± 11.8 | 3.1% |
+| **Kāra** | **441.9 ± 10.2** | 2.3% |
+| Go | 885.4 ± 25.9 | 2.9% |
+
+**This lane ranks, and the previous two did not.** The twins track their bases
+(`c_v3` within 0.5% of `c`; the checked Rust builds slower than plain `rustc -O`,
+as they should be), σ is 2.3–3.4%, and nothing in the table is impossible — no
+`-march` flag beating its own baseline, no checked build beating an unchecked
+one. That is what a trustworthy row set looks like, and it is worth stating
+explicitly given how the last two lanes went.
+
+Kāra is **1.28× behind C** and **1.14× behind the equal-safety Rust build** —
+its ordinary position in this corpus.
+
+**Go is 2.56× behind C, the largest Go gap here, and half of it is identified.**
+Every mirror clears the 676-slot adjacency array with an indexed loop, because
+that is what the Kāra kernel does. Go's compiler lowers a *range*-clear to
+`memclr` but does not recognise the indexed form; swapping only that loop takes
+Go from 880.9 to **604.3 ms** against C's 340.0 — closing **277 ms of the 541 ms
+gap, about 51%** — on the same sink. The remaining 264 ms is **not identified**.
+
+The range-clear variant stays a probe rather than replacing the mirror: all five
+run the same algorithm, and rewriting one of them to suit its own optimiser while
+the others keep the plain form is exactly the parity break that produced #267's
+phantom. Method in [`bench/probe/README.md`](bench/probe/README.md).
+
+Kāra's binary is 340.9 KiB against C's 19.7 KiB, Go's 2.17 MB and Rust's 3.87 MB;
+peak RSS is 6.5 MiB against C's 4.8 MiB and Go's 8.8 MiB.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **`Vec[Vec[bool]]` as an adjacency matrix** over a fixed 26-letter space, and
@@ -139,4 +206,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in alien_dictionary alien_dictionary_dfs alien_dictionary_brute differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
