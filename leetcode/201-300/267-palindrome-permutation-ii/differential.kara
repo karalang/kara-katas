@@ -1,0 +1,340 @@
+// LeetCode 267 — differential harness.
+//
+// Runs the three generators — half-backtracking (★), half + next-permutation,
+// and whole-string brute force — and checks all three against a FOURTH oracle
+// that generates nothing at all.
+//
+// THE CLOSED FORM IS THE POINT. The number of distinct palindromic permutations
+// is the number of distinct arrangements of the half multiset:
+//
+//     (n/2)! / prod_c (count_c / 2)!
+//
+// That is a formula, not an enumeration: it shares no code, no loop and no
+// deduplication argument with any of the three generators. All three could
+// double-count in the same way — the classic failure here — and agree with each
+// other perfectly while the multinomial disagrees with all of them. It also
+// covers the long inputs where the O(n!) brute force cannot follow, so the
+// count stays checked after the reference drops out.
+//
+// The two half-based forms fail in different places: the backtracking one can
+// duplicate (iterate positions rather than distinct characters and "aabb"
+// yields "abba" twice), while the iterative one cannot duplicate but can
+// mis-mirror (an off-by-one in the reversed tail, or forgetting the middle is
+// not part of the half). The brute force asserts nothing at all and is the
+// reference for content, as opposed to the multinomial which is the reference
+// for count.
+//
+// GENERATOR DESIGN. Random strings over a wide alphabet are essentially never
+// permutable, so the answer would be the empty list almost always. Half the
+// families therefore CONSTRUCT permutable inputs — pairs plus an optional lone
+// middle — and one deliberately breaks a constructed input to make the empty
+// case arrive for a structural reason rather than by luck.
+
+fn is_pal(a: ref Vec[i64]) -> bool {
+    let n = a.len();
+    let mut i = 0i64;
+    let mut j = n - 1i64;
+    while i < j {
+        if a[i] != a[j] { return false; }
+        i = i + 1i64;
+        j = j - 1i64;
+    }
+    return true;
+}
+
+fn next_perm(a: mut ref Vec[i64]) -> bool {
+    let n = a.len();
+    if n < 2i64 { return false; }
+    let mut i = n - 2i64;
+    while i >= 0i64 and a[i] >= a[i + 1i64] { i = i - 1i64; }
+    if i < 0i64 { return false; }
+    let mut j = n - 1i64;
+    while a[j] <= a[i] { j = j - 1i64; }
+    let t = a[i]; a[i] = a[j]; a[j] = t;
+    let mut lo = i + 1i64;
+    let mut hi = n - 1i64;
+    while lo < hi {
+        let u = a[lo]; a[lo] = a[hi]; a[hi] = u;
+        lo = lo + 1i64;
+        hi = hi - 1i64;
+    }
+    return true;
+}
+
+fn render(a: ref Vec[i64]) -> String {
+    let mut s = "";
+    let mut i = 0i64;
+    while i < a.len() {
+        s = s + f"{a[i] as u8 as char}";
+        i = i + 1i64;
+    }
+    return s;
+}
+
+fn counts_of(chars: ref Vec[i64]) -> Vec[i64] {
+    let mut counts: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < 128i64 { counts.push(0i64); i = i + 1i64; }
+    let mut p = 0i64;
+    while p < chars.len() {
+        counts[chars[p]] = counts[chars[p]] + 1i64;
+        p = p + 1i64;
+    }
+    return counts;
+}
+
+fn build(counts: mut ref Vec[i64], half: mut ref Vec[i64], half_len: i64,
+         middle: i64, out: mut ref Vec[String]) {
+    if half.len() == half_len {
+        let mut s = "";
+        let mut i = 0i64;
+        while i < half.len() { s = s + f"{half[i] as u8 as char}"; i = i + 1i64; }
+        if middle >= 0i64 { s = s + f"{middle as u8 as char}"; }
+        let mut j = half.len() - 1i64;
+        while j >= 0i64 { s = s + f"{half[j] as u8 as char}"; j = j - 1i64; }
+        out.push(s);
+        return;
+    }
+    let mut c = 0i64;
+    while c < 128i64 {
+        if counts[c] > 0i64 {
+            counts[c] = counts[c] - 1i64;
+            half.push(c);
+            build(counts, half, half_len, middle, out);
+            half.pop();
+            counts[c] = counts[c] + 1i64;
+        }
+        c = c + 1i64;
+    }
+}
+
+fn gen_backtrack(chars: ref Vec[i64]) -> Vec[String] {
+    let mut counts = counts_of(chars);
+    let mut odd = 0i64;
+    let mut middle = -1i64;
+    let mut half_len = 0i64;
+    let mut c = 0i64;
+    while c < 128i64 {
+        if counts[c] % 2i64 == 1i64 { odd = odd + 1i64; middle = c; }
+        counts[c] = counts[c] / 2i64;
+        half_len = half_len + counts[c];
+        c = c + 1i64;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if odd > 1i64 { return out; }
+    let mut half: Vec[i64] = Vec.new();
+    build(mut counts, mut half, half_len, middle, mut out);
+    return out;
+}
+
+fn gen_iter(chars: ref Vec[i64]) -> Vec[String] {
+    let counts = counts_of(chars);
+    let mut odd = 0i64;
+    let mut middle = -1i64;
+    let mut half: Vec[i64] = Vec.new();
+    let mut c = 0i64;
+    while c < 128i64 {
+        if counts[c] % 2i64 == 1i64 { odd = odd + 1i64; middle = c; }
+        let take = counts[c] / 2i64;
+        let mut k = 0i64;
+        while k < take { half.push(c); k = k + 1i64; }
+        c = c + 1i64;
+    }
+    let mut out: Vec[String] = Vec.new();
+    if odd > 1i64 { return out; }
+    while true {
+        let mut s = "";
+        let mut p = 0i64;
+        while p < half.len() { s = s + f"{half[p] as u8 as char}"; p = p + 1i64; }
+        if middle >= 0i64 { s = s + f"{middle as u8 as char}"; }
+        let mut q = half.len() - 1i64;
+        while q >= 0i64 { s = s + f"{half[q] as u8 as char}"; q = q - 1i64; }
+        out.push(s);
+        if not next_perm(mut half) { break; }
+    }
+    return out;
+}
+
+fn gen_brute(chars: ref Vec[i64]) -> Vec[String] {
+    let mut a: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < chars.len() { a.push(chars[i]); i = i + 1i64; }
+    a.sort();
+    let mut out: Vec[String] = Vec.new();
+    if a.len() == 0i64 { out.push(""); return out; }
+    if is_pal(a) { out.push(render(a)); }
+    while next_perm(mut a) {
+        if is_pal(a) { out.push(render(a)); }
+    }
+    return out;
+}
+
+// The fourth oracle: (half_len)! / prod (count_c/2)!, computed without
+// generating anything. -1 means "no palindrome exists".
+fn multinomial(chars: ref Vec[i64]) -> i64 {
+    let counts = counts_of(chars);
+    let mut odd = 0i64;
+    let mut half_len = 0i64;
+    let mut c = 0i64;
+    while c < 128i64 {
+        if counts[c] % 2i64 == 1i64 { odd = odd + 1i64; }
+        half_len = half_len + counts[c] / 2i64;
+        c = c + 1i64;
+    }
+    if odd > 1i64 { return -1i64; }
+    let mut num = 1i64;
+    let mut k = 2i64;
+    while k <= half_len { num = num * k; k = k + 1i64; }
+    let mut d = 0i64;
+    while d < 128i64 {
+        let h = counts[d] / 2i64;
+        let mut f = 1i64;
+        let mut m = 2i64;
+        while m <= h { f = f * m; m = m + 1i64; }
+        num = num / f;
+        d = d + 1i64;
+    }
+    return num;
+}
+
+fn same(a: ref Vec[String], b: ref Vec[String]) -> bool {
+    if a.len() != b.len() { return false; }
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != b[i] { return false; }
+        i = i + 1i64;
+    }
+    return true;
+}
+
+fn main() {
+    let cases = 2500i64;
+    let mut seed = 267267i64;
+
+    let mut mismatches = 0i64;
+    let mut brute_checked = 0i64;
+    let mut brute_disagree = 0i64;
+    let mut count_disagree = 0i64;
+    let mut nonempty = 0i64;
+    let mut total_results = 0i64;
+    let mut digest = 0i64;
+
+    let mut c = 0i64;
+    while c < cases {
+        seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+        let family = (seed / 65536i64) % 6i64;
+
+        let mut chars: Vec[i64] = Vec.new();
+
+        if family <= 1i64 {
+            // Uniform random, short — mostly not permutable.
+            let alpha = family + 2i64;
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let n = (seed / 65536i64) % 9i64;
+            let mut i = 0i64;
+            while i < n {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                chars.push(97i64 + (seed / 65536i64) % alpha);
+                i = i + 1i64;
+            }
+        }
+        if family == 2i64 or family == 3i64 {
+            // ★ Constructed permutable: pairs plus an optional lone middle.
+            let mut pairs = 3i64;
+            let mut alpha = 3i64;
+            if family == 3i64 { pairs = 5i64; alpha = 4i64; }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let np = (seed / 65536i64) % (pairs + 1i64);
+            let mut i = 0i64;
+            while i < np {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                let ch = 97i64 + (seed / 65536i64) % alpha;
+                chars.push(ch);
+                chars.push(ch);
+                i = i + 1i64;
+            }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            if (seed / 65536i64) % 2i64 == 1i64 {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                chars.push(97i64 + (seed / 65536i64) % alpha);
+            }
+        }
+        if family == 4i64 {
+            // Constructed, then one character changed: usually two odd counts,
+            // so the empty answer arrives structurally rather than by luck.
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let np = (seed / 65536i64) % 3i64 + 1i64;
+            let mut i = 0i64;
+            while i < np {
+                seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+                let ch = 97i64 + (seed / 65536i64) % 3i64;
+                chars.push(ch);
+                chars.push(ch);
+                i = i + 1i64;
+            }
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let at = (seed / 65536i64) % chars.len();
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            chars[at] = 97i64 + (seed / 65536i64) % 3i64;
+        }
+        if family == 5i64 {
+            // A single repeated character: exactly one palindrome, always.
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let n = (seed / 65536i64) % 9i64;
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let ch = 97i64 + (seed / 65536i64) % 3i64;
+            let mut i = 0i64;
+            while i < n { chars.push(ch); i = i + 1i64; }
+        }
+
+        // Shuffle, so nothing leans on the constructed order.
+        let m = chars.len();
+        let mut sh = m - 1i64;
+        while sh > 0i64 {
+            seed = (seed * 1103515245i64 + 12345i64) & 2147483647i64;
+            let j = (seed / 65536i64) % (sh + 1i64);
+            let t = chars[sh]; chars[sh] = chars[j]; chars[j] = t;
+            sh = sh - 1i64;
+        }
+
+        let a = gen_backtrack(chars);
+        let b = gen_iter(chars);
+        if not same(a, b) { mismatches = mismatches + 1i64; }
+
+        // Reference for CONTENT, where factorial cost allows.
+        if m <= 8i64 {
+            brute_checked = brute_checked + 1i64;
+            let d = gen_brute(chars);
+            if not same(a, d) { brute_disagree = brute_disagree + 1i64; }
+        }
+
+        // Reference for COUNT, at every size.
+        let want = multinomial(chars);
+        let got = a.len();
+        if want < 0i64 {
+            if got != 0i64 { count_disagree = count_disagree + 1i64; }
+        } else {
+            if got != want { count_disagree = count_disagree + 1i64; }
+        }
+
+        if got > 0i64 { nonempty = nonempty + 1i64; }
+        total_results = total_results + got;
+        let mut h = 0i64;
+        let mut k = 0i64;
+        while k < a.len() {
+            for ch in a[k].bytes() { h = (h * 31i64 + ch as i64) % 1000000007i64; }
+            k = k + 1i64;
+        }
+        digest = (digest * 131i64 + h + got) % 1000000007i64;
+        c = c + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"non-empty answers {nonempty}");
+    println(f"palindromes generated {total_results}");
+    println(f"brute-force verified {brute_checked}");
+    println(f"brute-force disagreements {brute_disagree}");
+    println(f"multinomial disagreements {count_disagree}");
+    println(f"digest {digest}");
+    println(f"mismatches {mismatches}");
+}
