@@ -1253,11 +1253,21 @@ fn prepare_flat(flat: mut ref Master, bias: ref Master, npix: i64) {
 /// strip as it arrives, without ever holding a light frame entire.
 fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64,
                   dark: ref Master, flat: ref Master) {
-    // EARLY RETURN rather than wrapping the loop in an `if`: a disjoint-write
-    // loop nested inside an `if` (or a bare block) is invisible to the
-    // auto-parallelisation analysis — not declined with a reason, absent from
-    // the concurrency report entirely — so it silently lowers sequentially.
-    // Hoisting it to the top level of the body is what lets the fan-out fire.
+    // An early return rather than an `if` wrapper. This was once load-bearing:
+    // a disjoint-write loop nested inside an `if` was invisible to the
+    // auto-parallelisation analysis and silently lowered sequentially, so
+    // hoisting it to the top level of the body was what let the fan-out fire
+    // (compiler ledger B-2026-08-14-24). That is fixed — the nested form now
+    // fans out too, measured at 2.2x its own sequential build — so this is a
+    // style choice today, kept because a guard clause reads better than a
+    // wrapped body.
+    //
+    // The concurrency REPORT has not caught up: it still says
+    // `fanned_out: false, cost_gate: "unknown"` for the nested form, because
+    // its loop lookup cannot descend into an `if` arm (B-2026-08-14-33). Do not
+    // restructure Kāra on the strength of that field alone — time the two
+    // builds, one with `KARAC_AUTO_PAR=0`. Trusting the report is exactly how
+    // this hoist got written after the bug it cites was already fixed.
     if not dark.present and not flat.present { return; }
     for r in 0..nrows {
         for x in 0..w {
