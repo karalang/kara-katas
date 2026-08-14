@@ -1,0 +1,157 @@
+# 270. Closest Binary Search Tree Value
+
+Given a BST and a floating-point `target`, return the node value closest to it.
+**If two values are equally close, return the smaller one.**
+
+```
+[4,2,5,1,3]  target 3.714286  ->  4
+[4,2,5,1,3]  target 2.5       ->  2     tied with 3 — the smaller wins
+[4,2,5,1,3]  target 3.4       ->  3     the descent's last node, luckily
+[4,2,5,1,3]  target 3.6       ->  4     the answer is an ANCESTOR
+```
+
+**Constraints:** `1 ≤ n ≤ 10⁴`; `0 ≤ Node.val ≤ 10⁹`; `-10⁹ ≤ target ≤ 10⁹`.
+
+## Approaches
+
+| file | mechanism | cost |
+|---|---|---|
+| `closest_bst_value.kara` ★ | descend toward the target, tracking the best seen | O(h) |
+| `closest_bst_value_scan.kara` | visit every node, no search-tree property used | O(n) |
+| `closest_bst_value_bounds.kara` | find the floor and the ceiling, then decide between two | O(h) |
+| `differential.kara` | 4,000 randomized trees, three solvers cross-checked | — |
+
+The tree is parallel arrays — `val`, `left`, `right`, `-1` for a missing child —
+so every mirror is identical and the algorithm is the descent, not the
+representation.
+
+## The descent cannot just run to a leaf
+
+The closest value is very often an **ancestor** of where the search ends.
+Descending toward `target` narrows the interval containing it, and the best
+candidate is whichever bound was tightest on the way down — so the answer has to
+be tracked at every step, not read off the final node. A solver that returns the
+last node visited is right on the easy cases and wrong whenever the target falls
+in a gap. Injected, that mistake costs **1,289 mismatches** out of 4,000.
+
+## The tie rule is where a correct-looking comparison goes wrong
+
+With `target = 2.5` and values 2 and 3 the distances are exactly equal, and the
+answer is 2. Written the obvious way:
+
+```kara
+if d < best_diff { best = v; best_diff = d; }     // strict — keeps the first seen
+```
+
+the winner depends on **visit order**, which differs between a descent and a full
+scan. So the comparison has to break the tie on *value*:
+
+```kara
+if d < best_diff or (d == best_diff and v < best) { … }
+```
+
+Exact `==` on `f64` is not a smell here: a tie arises when the target sits at the
+midpoint of two integers, and both distances are then the same representable
+value, computed by the same subtraction.
+
+## Why the third solver is the one that matters
+
+Drop the tie-break from the ★ descent alone and the harness reports 376
+mismatches. Drop it from the descent **and** the full scan — the two solvers that
+both work by tracking a running best — and the count is unchanged at 376. But
+where the detection comes from changes completely:
+
+| tie-break dropped from | descent vs scan | descent vs bounds |
+|---|---|---|
+| the descent only | (differs) | 376 |
+| **descent and scan both** | **0** | **376** |
+
+**The two same-shaped solvers agree perfectly while both being wrong.** Only the
+floor/ceiling form catches it, because it decides the tie *structurally* — floor
+≤ target ≤ ceiling, so the floor is the smaller value and `<=` selects it without
+comparing values at all. It cannot inherit a value-comparison bug because it
+contains no value comparison.
+
+That is the whole argument for a third mechanism rather than a third
+implementation.
+
+## Generator design
+
+**Random float targets never tie.** Two values are equidistant only when the
+target sits exactly at their midpoint, which a uniform draw hits with probability
+zero — so a naive harness exercises the tie rule zero times and the strict-`<`
+comparison passes forever.
+
+So the midpoints are **constructed**: one family targets exactly between two
+adjacent tree values (always a tie, and always between the two closest values),
+and another offsets that midpoint by a hair each way so the boundary is probed
+from both sides rather than only landed on. Two more families sit exactly on a
+value and outside the range entirely, the latter exercising the floor/ceiling
+form's open side.
+
+Over 4,000 cases: **30,334 nodes built**, **747 targets that genuinely tie two
+values** (19%), and **1,254 outside the value range**.
+
+### What constructing the midpoints buys
+
+The tie bug was also run against a control generator drawing **every** target
+uniformly — same seeds, same trees, only the target family changed:
+
+| generator | ties produced | mismatches for the tie bug |
+|---|---|---|
+| constructed midpoints | **747** | **376** |
+| uniform targets only | **5** | **1** |
+
+Five ties in four thousand cases, and the bug shows up once — indistinguishable
+from a flake. This is the same lesson as [#265](../265-paint-house-ii/)'s narrow
+cost range and [#266](../266-palindrome-permutation/)'s small alphabet, arriving
+through floating point: **the separating condition has to be manufactured, or it
+does not occur.**
+
+**Four failure modes measured:**
+
+| injected bug | mismatches / 4,000 |
+|---|---|
+| descent returns the last node visited | **1,289** |
+| tie-break dropped (either one or both distance-trackers) | **376** |
+| floor/ceiling defaults a missing side instead of tracking it | **387** |
+
+## Kāra features exercised
+
+- **`f64` arithmetic and comparison** on every surface — the interpreter, the
+  JIT and both AOT builds agree byte for byte, which is not free: the
+  interpreter's int-to-float handling was being fixed earlier the same day.
+- **No implicit int/float promotion** — `sorted[at] as f64` is required, and the
+  diagnostic says so. Note the asymmetry with integer *widening*, which **is**
+  implicit at a declared destination: two different rules, both deliberate.
+- **Cast precedence** — `((seed / 65536i64) % 4800i64) as f64` needs its parens;
+  `as` binds tighter than `%`.
+- **Parallel-array trees** with `-1` sentinels, and an explicit `Vec` stack for
+  the iterative full traversal.
+
+## Verification
+
+Every program is byte-identical under `karac run --interp`, `karac run` (JIT),
+`karac build` (auto-par default) and `KARAC_AUTO_PAR=0 karac build`; the ★ solver
+and the differential match their Python mirrors.
+
+No compiler bugs found.
+
+## Running
+
+```bash
+karac run closest_bst_value.kara
+karac run closest_bst_value_scan.kara
+karac run closest_bst_value_bounds.kara
+
+diff <(karac run closest_bst_value.kara) <(python3 closest_bst_value.py) && echo OK
+diff <(karac run closest_bst_value.kara) <(karac run closest_bst_value_scan.kara) && echo OK
+diff <(karac run closest_bst_value.kara) <(karac run closest_bst_value_bounds.kara) && echo OK
+
+# 4,000 randomized trees, three mechanisms cross-checked
+diff <(karac run differential.kara) <(python3 differential.py) && echo "differential OK"
+
+for f in closest_bst_value closest_bst_value_scan closest_bst_value_bounds differential; do
+    karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
+done
+```
