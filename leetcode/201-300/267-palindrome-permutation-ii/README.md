@@ -102,6 +102,84 @@ Over 2,500 cases: **1,949 non-empty answers** (78%), **5,998 palindromes
 generated**, **2,390 verified against the brute force** with zero disagreements,
 and zero multinomial disagreements at every size.
 
+## Benchmark
+
+`bench/` fixes one multiset of **8 character pairs** and punches the ★
+half-backtracking generator through it **44 times**. Each round adds one extra
+copy of a *different* character, making that character the lone middle: the
+search tree is identical round to round (half length 8, all distinct, so
+8! = 40,320 arrangements) while the bytes produced differ, so no round repeats
+the last. Sink `120871863`, reproduced by all four compiled mirrors and Python.
+
+**What it measures is the recursive search** — 40,320 leaves reached through a
+tree whose every node scans 128 counter slots to find the few that are non-zero,
+with a decrement/push descending and a pop/restore returning. A sparse scan
+inside a recursion is a shape the corpus does not otherwise have. The 128-slot
+scan is kept rather than compacted into a list of live characters, because it is
+what the ★ file does and what makes the deduplication free.
+
+**Every mirror writes its 17 bytes into one hoisted buffer**, not a fresh string.
+That is a parity decision, not an optimisation, and the first version of this
+lane got it wrong — see below.
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C (`-march=x86-64-v3`) | 308.8 ± 14.6 | 4.7% |
+| Rust (checked, equal-safety) | 327.3 ± 9.5 | 2.9% |
+| Rust (checked + `target-cpu=v3`) | 331.4 ± 12.9 | 3.9% |
+| Go | 397.7 ± 9.4 | 2.4% |
+| C | 405.6 ± 16.5 | 4.1% |
+| Rust | 406.7 ± 15.5 | 3.8% |
+| **Kāra** | **445.5 ± 10.5** | 2.4% |
+
+**This lane cannot rank the languages, and the table should not be read as
+doing so.** Two rows in it are impossible: `-march=x86-64-v3` beats plain
+`clang -O3` by 31%, and *overflow-checked* Rust beats plain `rustc -O` by 24%.
+Checks cannot make a program faster.
+
+Both are **code alignment**. The two C builds emit the same hash-loop instruction
+sequence; forcing alignment collapses the gap:
+
+| build | default | `-falign-loops=32 -falign-functions=32` |
+|---|---:|---:|
+| `clang -O3` | 397.4 ms | **319.1 ms** |
+| `clang -O3 -march=x86-64-v3` | 306.6 ms | **312.0 ms** |
+
+Aligned, they land 2% apart instead of 30%, same sink. The baseline's 397 ms was
+a misaligned hot loop, not an ISA deficit.
+
+The obvious response — add the alignment flags everywhere — is refused on
+purpose. `clang -O3` and `rustc -O` are the corpus's methodology; tuning them for
+the one lane where they embarrass a build makes it incomparable with the other
+250 and invites picking flags that flatter whoever is losing. So the table stands
+as measured and claims only what it supports: **the intra-language twin spread
+(31%, 24%) exceeds the inter-language spread, so the ordering is not resolvable
+here.** What it does support is the range — every mirror between 309 and 446 ms,
+a 1.44× band, with Kāra inside it rather than an outlier.
+
+### The first version was wrong by 3×, for a parity reason
+
+Before the hoisted buffer, each leaf built a string, and Kāra came out at
+**476.5 ms against C's 156.0** — 3.05×, which would have read as a language
+result. It was four different allocation strategies: C used a stack array and
+allocated nothing, Rust and Go appended in place, and Kāra's `s = s + f"{…}"`
+allocated a *new string per character* — 17 per leaf, since `+` is an immutable
+concatenation. Giving every mirror one reusable buffer took Kāra from 476.5 to
+227 ms on the identical sink.
+
+That is the same defect as [#266](../266-palindrome-permutation/)'s stack-array
+counters: the mirror written differently from the other three is the one
+producing the false number. Full method for both artifacts in
+[`bench/probe/README.md`](bench/probe/README.md).
+
+Kāra's binary is 332.9 KiB against C's 15.8 KiB, Go's 2.17 MB and Rust's 3.86 MB;
+peak RSS is 2.2 MiB, level with Rust's.
+
+Published numbers await the Apple-silicon host —
+`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+
 ## Kāra features exercised
 
 - **Recursion with `mut ref` parameters** threaded through — and the call-site
@@ -141,4 +219,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in palindrome_permutation_ii palindrome_permutation_ii_iter palindrome_permutation_ii_brute differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+```
+
+```bash
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
