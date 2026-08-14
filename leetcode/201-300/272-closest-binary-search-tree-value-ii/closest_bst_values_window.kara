@@ -1,0 +1,107 @@
+// LeetCode 272 — the sorted-array window.
+//
+// Flatten the tree in-order into a sorted array, binary-search the target's
+// insertion point, then grow a window outward k times. O(n) to flatten, O(log n)
+// to place the window, O(k) to grow it — dominated by the flatten, so O(n) all
+// told, against the ★ two-stack merge's O(h + k).
+//
+// WHY IT IS WORTH KEEPING despite being asymptotically worse: it decides
+// membership by INDEX ARITHMETIC on a sorted array, not by walking two tree
+// iterators. The answer is the contiguous range `(lo, hi)` — every one of the k
+// closest values is adjacent in sorted order, which is the fact the ★ merge
+// exploits implicitly and this solver states outright. Two different reasons to
+// believe the same output.
+//
+// THE TIE RULE, again decided by structure rather than by comparing values:
+// `lo` is always below `hi`, so on equal distance taking `lo` takes the smaller
+// value. Same `<=` as the merge, for the same reason.
+//
+// THE EDGES ARE THE BUG SURFACE HERE. `lo` runs off the front and `hi` off the
+// back, and the guard has to come BEFORE the distance comparison — a distance
+// read from an out-of-range index is not a smaller answer, it is a crash or a
+// neighbour's value. When k exceeds the node count the window simply stops at
+// both ends, which is why the loop breaks on `lo < 0 and hi >= n` rather than
+// counting to k.
+
+fn inorder(val: ref Vec[i64], left: ref Vec[i64], right: ref Vec[i64],
+           root: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut stack: Vec[i64] = Vec.new();
+    let mut cur = root;
+    while cur >= 0i64 or stack.len() > 0i64 {
+        while cur >= 0i64 {
+            stack.push(cur);
+            cur = left[cur];
+        }
+        let node = stack[stack.len() - 1i64];
+        stack.pop();
+        out.push(val[node]);
+        cur = right[node];
+    }
+    return out;
+}
+
+fn closest_k(val: ref Vec[i64], left: ref Vec[i64], right: ref Vec[i64],
+             root: i64, target: f64, k: i64) -> Vec[i64] {
+    let sorted = inorder(val, left, right, root);
+    let n = sorted.len();
+
+    // First index whose value is >= target. `hi` starts there and `lo` just
+    // below it, so the window is the empty gap the target falls into.
+    let mut a = 0i64;
+    let mut b = n;
+    while a < b {
+        let mid = a + (b - a) / 2i64;
+        if (sorted[mid] as f64) < target { a = mid + 1i64; } else { b = mid; }
+    }
+    let mut hi = a;
+    let mut lo = a - 1i64;
+
+    let mut taken = 0i64;
+    while taken < k {
+        if lo < 0i64 and hi >= n {
+            taken = k;                          // fewer than k values exist
+        } else {
+            let mut take_lo = hi >= n;
+            if lo >= 0i64 and hi < n {
+                let dl = (sorted[lo] as f64 - target).abs();
+                let dh = (sorted[hi] as f64 - target).abs();
+                take_lo = dl <= dh;             // tie -> `lo`, the smaller value
+            }
+            if take_lo { lo = lo - 1i64; } else { hi = hi + 1i64; }
+            taken = taken + 1i64;
+        }
+    }
+
+    let mut out: Vec[i64] = Vec.new();
+    let mut i = lo + 1i64;
+    while i < hi {
+        out.push(sorted[i]);
+        i = i + 1i64;
+    }
+    return out;
+}
+
+fn show(xs: ref Vec[i64]) -> String {
+    let mut s = "[";
+    let mut i = 0i64;
+    while i < xs.len() {
+        if i > 0i64 { s = s + ","; }
+        s = s + f"{xs[i]}";
+        i = i + 1i64;
+    }
+    return s + "]";
+}
+
+fn main() {
+    let val: Vec[i64] = [4i64, 2i64, 5i64, 1i64, 3i64];
+    let left: Vec[i64] = [1i64, 3i64, -1i64, -1i64, -1i64];
+    let right: Vec[i64] = [2i64, 4i64, -1i64, -1i64, -1i64];
+
+    println(show(closest_k(val, left, right, 0i64, 3.714286, 2i64)));
+    println(show(closest_k(val, left, right, 0i64, 3.714286, 4i64)));
+    println(show(closest_k(val, left, right, 0i64, 2.5, 1i64)));
+    println(show(closest_k(val, left, right, 0i64, 2.5, 3i64)));
+    println(show(closest_k(val, left, right, 0i64, -10.0, 3i64)));
+    println(show(closest_k(val, left, right, 0i64, 3.5, 9i64)));
+}
