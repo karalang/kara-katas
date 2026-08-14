@@ -1,0 +1,143 @@
+// Benchmark workload for LeetCode #273 — Integer to English Words.
+//
+// Build-once + punch. 200,000 integers spanning 0 .. 2^31 - 1 are drawn once,
+// then the ★ three-digit chunker spells every one of them 5 times — 1,000,000
+// spellings — folding a checksum over the bytes each produces.
+//
+// WHAT THIS LANE MEASURES: OWNED-STRING CONSTRUCTION. Per spelling the work is
+// three or four `a + b` concatenations of short strings, each of which must
+// allocate a fresh buffer and copy both operands, plus the small-string traffic
+// inside `group_name`. That is a different shape from the corpus's other two
+// string lanes: #271 copies bytes in BULK through hoisted buffers and measures
+// memcpy, and #266 SCANS bytes without producing any. This one produces, and
+// nothing can be hoisted — the output of each step is the input of the next.
+//
+// THE ALGORITHM PREPENDS, and that is deliberately preserved in all five
+// mirrors. `out = piece + " " + out` cannot reuse the left buffer in any
+// language, so every mirror allocates and copies at every step. An append-based
+// rewrite would let Rust, Go and Kāra amortize into one growing buffer while C
+// still copied, which would measure four different growth strategies rather than
+// one algorithm — the #267 phantom in a new costume. Prepending is what the
+// ★ solver does, so prepending is what all five do, C included, explicitly.
+//
+// NOTHING ELSE ALLOCATES. The integers are drawn once into a flat array and the
+// lexicon is static in every language. The only heap traffic in the punch loop
+// is the string construction this lane exists to measure.
+//
+// THE DRAW SPANS THE WHOLE RANGE, printed next to the sink rather than assumed —
+// #270's generator confined every value to a 32K window and nobody noticed until
+// the numbers stopped making sense.
+
+fn small_name(n: i64) -> String {
+    if n == 1i64 { return "One"; }
+    if n == 2i64 { return "Two"; }
+    if n == 3i64 { return "Three"; }
+    if n == 4i64 { return "Four"; }
+    if n == 5i64 { return "Five"; }
+    if n == 6i64 { return "Six"; }
+    if n == 7i64 { return "Seven"; }
+    if n == 8i64 { return "Eight"; }
+    if n == 9i64 { return "Nine"; }
+    if n == 10i64 { return "Ten"; }
+    if n == 11i64 { return "Eleven"; }
+    if n == 12i64 { return "Twelve"; }
+    if n == 13i64 { return "Thirteen"; }
+    if n == 14i64 { return "Fourteen"; }
+    if n == 15i64 { return "Fifteen"; }
+    if n == 16i64 { return "Sixteen"; }
+    if n == 17i64 { return "Seventeen"; }
+    if n == 18i64 { return "Eighteen"; }
+    if n == 19i64 { return "Nineteen"; }
+    return "";
+}
+
+fn tens_name(t: i64) -> String {
+    if t == 2i64 { return "Twenty"; }
+    if t == 3i64 { return "Thirty"; }
+    if t == 4i64 { return "Forty"; }
+    if t == 5i64 { return "Fifty"; }
+    if t == 6i64 { return "Sixty"; }
+    if t == 7i64 { return "Seventy"; }
+    if t == 8i64 { return "Eighty"; }
+    if t == 9i64 { return "Ninety"; }
+    return "";
+}
+
+fn scale_name(s: i64) -> String {
+    if s == 1i64 { return "Thousand"; }
+    if s == 2i64 { return "Million"; }
+    if s == 3i64 { return "Billion"; }
+    return "";
+}
+
+fn group_name(n: i64) -> String {
+    if n == 0i64 { return ""; }
+    if n < 20i64 { return small_name(n); }
+    if n < 100i64 {
+        let t = tens_name(n / 10i64);
+        let r = n % 10i64;
+        if r == 0i64 { return t; }
+        return t + " " + small_name(r);
+    }
+    let h = small_name(n / 100i64) + " Hundred";
+    let r = group_name(n % 100i64);
+    if r == "" { return h; }
+    return h + " " + r;
+}
+
+fn number_to_words(n: i64) -> String {
+    if n == 0i64 { return "Zero"; }
+    let mut out = "";
+    let mut rem = n;
+    let mut scale = 0i64;
+    while rem > 0i64 {
+        let part = rem % 1000i64;
+        if part > 0i64 {
+            let mut piece = group_name(part);
+            if scale > 0i64 { piece = piece + " " + scale_name(scale); }
+            if out == "" { out = piece; } else { out = piece + " " + out; }
+        }
+        rem = rem / 1000i64;
+        scale = scale + 1i64;
+    }
+    return out;
+}
+
+fn main() {
+    let count = 200000i64;
+    let rounds = 5i64;
+
+    let mut nums: Vec[i64] = Vec.new();
+    let mut lo = 2147483647i64;
+    let mut hi = 0i64;
+    let mut state = 273273i64;
+    let mut i = 0i64;
+    while i < count {
+        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
+        let v = state;
+        if v < lo { lo = v; }
+        if v > hi { hi = v; }
+        nums.push(v);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let mut q = 0i64;
+        while q < count {
+            let w = number_to_words(nums[q]);
+            let b = w.bytes();
+            let mut p = 0i64;
+            while p < b.len() {
+                sink = (sink * 131i64 + b[p] as i64) % 1000000007i64;
+                p = p + 1i64;
+            }
+            q = q + 1i64;
+        }
+        r = r + 1i64;
+    }
+
+    println(sink);
+    println(f"count {count} range {lo}..{hi}");
+}
