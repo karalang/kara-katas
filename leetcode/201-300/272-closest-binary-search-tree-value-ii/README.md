@@ -27,6 +27,7 @@ everything, because the harness generates that case on purpose.
 | `closest_bst_values_window.kara` | flatten in-order, binary-search, grow a window | O(n) |
 | `closest_bst_values_rank.kara` | order every value by an explicit (distance, value) key | O(n²) |
 | `differential.kara` | 4,000 randomized trees, three solvers cross-checked | — |
+| `bench/k_closest.kara` | the ★ merge as a benchmark kernel, five languages | — |
 
 The tree is parallel arrays — `val`, `left`, `right`, `-1` for a missing child —
 so every mirror is identical and the algorithm is the traversal, not the
@@ -170,6 +171,84 @@ digest 836880122
 mismatches 0
 ```
 
+## Benchmark
+
+`bench/` builds one **30,000-node BST and 100,000 f64 targets** once, then
+answers the `k=8` closest query for every target **10 times** — 1,000,000
+queries. Sink `634219761`, reproduced by all four compiled mirrors and by Python.
+
+**This is the corpus's stack-walk lane.** Per query the work is one root-to-leaf
+descent that partitions the path into two iterator stacks, then k merge steps,
+each popping a stack and pushing a subtree spine back onto it.
+[#270](../270-closest-binary-search-tree-value/) already benches a plain BST
+descent whose inner step is float arithmetic and a child choice; this one keeps
+that and adds the part #270 does not have — an explicit stack whose depth varies
+per step, written and read inside the loop the branches depend on.
+
+Three parity decisions taken up front. **The stacks are hoisted** as flat arrays
+with integer tops in every mirror, so nothing allocates once the punch loop
+starts ([#267](../267-palindrome-permutation-ii/) measured what happens
+otherwise). **Absolute value is each language's own** — `.abs()`, `fabs`,
+`f64::abs`, `math.Abs`; #270 measured that hand-writing it in all five, on the
+theory that a shared spelling was parity-safe, cost C 23% by itself. And
+**targets span the value range**, which the program prints next to the sink
+rather than leaving to be assumed — #270's other fault was a generator that put
+every target below every node and turned 2.2M descents into 2.2M left-spine
+walks:
+
+```
+634219761
+nodes 30000 values 8..999982 targets 0..999994
+```
+
+### What the x86 corroboration run shows
+
+| lang | mean (ms) | σ |
+|---|---|---|
+| C (`-march=x86-64-v3`) | 431.9 ± 10.4 | 2.4% |
+| C | 447.5 ± 10.3 | 2.3% |
+| Go | 465.4 ± 7.2 | 1.5% |
+| Rust (checked, equal-safety) | 486.2 ± 8.5 | 1.8% |
+| Rust (checked + `target-cpu=v3`) | 488.7 ± 11.9 | 2.4% |
+| Rust | 498.4 ± 13.0 | 2.6% |
+| **Kāra** | **504.3 ± 14.2** | 2.8% |
+
+**The whole field spans 1.17×**, which is the tightest lane in the corpus so far.
+Kāra is 1.04× behind the equal-safety Rust — the apples-to-apples column, since
+Kāra checks integer overflow by default and plain `rustc -O` wraps — and 1.17×
+behind C.
+
+All three Rust builds land inside 2.5% of one another, and the ordering among
+them flips between runs: `rust_ovf` came out *ahead* of plain `rust` here, which
+is not a real inversion but a reminder that a 2% gap at σ 2% is not a ranking.
+The honest statement is that overflow checking costs nothing measurable on this
+workload, which makes sense — the arithmetic is a pointer chase, and the one
+modular fold per query is a small fraction of it.
+
+### The tight field was probed, and the obvious explanation failed
+
+A ~703 KiB tree walked by ~15 dependent random loads per query looks
+latency-bound, and if it were, codegen differences would wash out — so shrinking
+the tree until it fits L1 should pull the languages apart. Moving only
+`node_count` across a 150× range:
+
+| tree | working set | Kāra / C |
+|---|---|---:|
+| 2,000 nodes | ~46 KiB | 1.21× |
+| 30,000 nodes | ~703 KiB | 1.12× |
+| 300,000 nodes | ~7 MiB | 1.23× |
+
+Roughly flat, not monotone — **the hypothesis is wrong.** The compression is not
+a cache effect; the languages are simply close on this workload, and the
+remaining 1.1–1.2× is the ordinary bounds-check gap (C indexes unchecked; Kāra,
+Rust and Go all check, on every tree load and every stack push and pop).
+
+What the sweep *does* confirm is [#261](../261-graph-valid-tree/)'s lesson about
+measurement stability: Kāra's σ goes 1.3% → 1.1% → **7.2%** across those three
+sizes, and at 7 MiB the run-to-run variance exceeds the entire gap between the
+languages. That is why the lane is sized where it is. Full write-up in
+[`bench/probe/`](bench/probe/).
+
 ## Kāra features exercised
 
 - **`mut ref Vec[i64]` parameters** — the two stack iterators are advanced in
@@ -188,6 +267,10 @@ Every program is byte-identical under `karac run --interp`, `karac run` (JIT),
 `karac build` (auto-par default) and `KARAC_AUTO_PAR=0 karac build`; the ★ solver
 and the differential match their Python mirrors.
 
+The bench kernel is checked under the JIT and both AOT modes at full size, and
+across all four surfaces plus Python at a reduced size (2,000 targets, 1 round) —
+the tree-walk interpreter is not asked to run 1,000,000 queries.
+
 No compiler bugs found.
 
 ## Running
@@ -205,4 +288,7 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 for f in closest_bst_values closest_bst_values_window closest_bst_values_rank differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
+
+# cross-language benchmark (needs hyperfine, rustc, clang, go)
+bash bench/bench.sh
 ```
