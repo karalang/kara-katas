@@ -1253,23 +1253,27 @@ fn prepare_flat(flat: mut ref Master, bias: ref Master, npix: i64) {
 /// strip as it arrives, without ever holding a light frame entire.
 fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64,
                   dark: ref Master, flat: ref Master) {
-    if dark.present or flat.present {
-        for r in 0..nrows {
-            for x in 0..w {
-                let src = (row0 + r) * w + x;
-                let mut v = px[base + r * w + x] as f64;
-                if dark.present { v = v - (dark.px[src] as f64); }
-                if flat.present {
-                    let f = flat.px[src] as f64;
-                    // A dead flat pixel carries no response information, so the
-                    // light there is unrecoverable. Leaving the value alone is
-                    // wrong in the other direction, but dividing by ~0 turns a
-                    // dust mote into a blown highlight that looks like signal.
-                    if f > 0.0 { v = v * flat.scale / f; }
-                }
-                let c = if v < 0.0 { 0.0 } else { if v > 65535.0 { 65535.0 } else { v } };
-                px[base + r * w + x] = (c + 0.5) as u16;
+    // EARLY RETURN rather than wrapping the loop in an `if`: a disjoint-write
+    // loop nested inside an `if` (or a bare block) is invisible to the
+    // auto-parallelisation analysis — not declined with a reason, absent from
+    // the concurrency report entirely — so it silently lowers sequentially.
+    // Hoisting it to the top level of the body is what lets the fan-out fire.
+    if not dark.present and not flat.present { return; }
+    for r in 0..nrows {
+        for x in 0..w {
+            let src = (row0 + r) * w + x;
+            let mut v = px[base + r * w + x] as f64;
+            if dark.present { v = v - (dark.px[src] as f64); }
+            if flat.present {
+                let f = flat.px[src] as f64;
+                // A dead flat pixel carries no response information, so the
+                // light there is unrecoverable. Leaving the value alone is
+                // wrong in the other direction, but dividing by ~0 turns a
+                // dust mote into a blown highlight that looks like signal.
+                if f > 0.0 { v = v * flat.scale / f; }
             }
+            let c = if v < 0.0 { 0.0 } else { if v > 65535.0 { 65535.0 } else { v } };
+            px[base + r * w + x] = (c + 0.5) as u16;
         }
     }
 }
