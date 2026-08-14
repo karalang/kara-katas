@@ -35,11 +35,24 @@ const want = { mean: readStack(meanPath), stack: readStack(stackPath) };
 let result = null;
 const progressCalls = [];
 
+// Rows served straight out of the `.cstack`, which is already frame-major
+// little-endian u16 — so this host is a pure address calculation with no decode,
+// and any divergence from native is the wasm build's, not the harness's.
+//
+// Serving ROWS rather than the whole stack is also the only way this file can
+// still stand in for the page: the browser's read_rows is answered from a Blob
+// by FileReaderSync, which node has no equivalent of, so what the two hosts
+// share is the request pattern, not the mechanism.
+const rowsRead = [];
 const host = {
-  read_frames(dst, len, ctx) {
-    const n = Number(len);
-    if (n !== src.px.length) throw new Error(`read_frames wants ${n}, have ${src.px.length}`);
-    new Uint8Array(ctx.memory.buffer, dst, n).set(src.px);
+  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+    const f = Number(frame), r0 = Number(row0), nr = Number(nrows);
+    if (f < 0 || f >= src.n) throw new Error(`read_rows: frame ${f} out of range`);
+    if (r0 < 0 || r0 + nr > src.h) throw new Error(`read_rows: rows ${r0}..${r0 + nr} out of range`);
+    const off = (f * src.w * src.h + r0 * src.w) * 2, len = nr * src.w * 2;
+    rowsRead.push(nr);
+    new Uint8Array(ctx.memory.buffer, dst + Number(dstOff) * 2, len)
+      .set(src.px.subarray(off, off + len));
   },
   put_result(ptr, len, w, h, ctx) {
     // Copy out immediately — the pointer is only valid until wasm reclaims it.
@@ -63,6 +76,7 @@ let failures = 0;
 for (const m of MODES) {
   result = null;
   progressCalls.length = 0;
+  rowsRead.length = 0;
   const { exports } = await instantiate(host);
   const kept = Number(
     exports.stack_frames(BigInt(src.w), BigInt(src.h), BigInt(src.n), BigInt(m.mode)),
@@ -110,6 +124,39 @@ for (const m of MODES) {
     if (!stages.has(st)) {
       console.log(`  ${m.name.padEnd(6)} FAIL: no progress tick for stage ${st}`);
       failures++;
+    }
+  }
+
+  // The point of the whole slice is that the module asks for STRIPS, not for
+  // whole frames — the page can only hold handles instead of pixels because
+  // that is true. Byte-identity alone would still pass if a future change went
+  // back to pulling every row of every frame in one call, so the request shape
+  // is asserted directly: pass 2 must never ask for more than a strip plus its
+  // halo, and the only full-height reads allowed are pass 1's, one per frame.
+  const maxStrip = 64 + 2 * 24; // STRIP + 2*MAX_HALO, from cumulus.kara
+  const biggest = Math.max(...rowsRead);
+  if (src.h <= maxStrip) {
+    // A frame no taller than one strip is read whole no matter what the module
+    // does, so this stack cannot tell streaming from not-streaming. Say so
+    // rather than print a pass: verify.sh runs a second, taller stack for the
+    // assertion below to mean anything.
+    console.log(`  ${m.name.padEnd(6)} ${rowsRead.length} row-range reads ` +
+                `(${src.h} rows fits one strip — streaming shape not exercised)`);
+  } else {
+    // Pass 1 reads each frame whole to find its stars; pass 2 must never ask
+    // for more than a strip plus its halo. Byte-identity alone would still pass
+    // if a future change went back to pulling everything in one call, so the
+    // request shape is asserted directly.
+    const whole = rowsRead.filter((r) => r === src.h).length;
+    const allowedWhole = m.mode === 2 ? src.n : 0;
+    const tooBig = rowsRead.filter((r) => r !== src.h && r > maxStrip).length;
+    if (tooBig > 0 || whole > allowedWhole) {
+      console.log(`  ${m.name.padEnd(6)} FAIL: ${whole} whole-frame and ${tooBig} oversized reads ` +
+                  `(at most ${allowedWhole} whole-frame, none over ${maxStrip} rows)`);
+      failures++;
+    } else {
+      console.log(`  ${m.name.padEnd(6)} streamed: ${rowsRead.length} row-range reads, ` +
+                  `largest ${biggest} of ${src.h} rows`);
     }
   }
 }

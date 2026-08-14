@@ -9,19 +9,48 @@
 // A worker fixes both halves: the main thread stays free to repaint, so the bar
 // actually animates, and the long call is no longer a main-thread stall.
 //
+// Streaming gave the worker a SECOND, independent reason to exist. `read_rows`
+// is synchronous — it has to be, since it is called from inside a wasm frame —
+// and a Blob is normally readable only asynchronously. `FileReaderSync` is the
+// one API that reads a Blob synchronously, and it exists ONLY in workers. So the
+// page can hold file handles instead of decoded pixels precisely because the
+// stack runs here; on the main thread the same design is impossible, which is
+// why the inline fallback has to pre-read the files.
+//
 // Nothing about the numerics lives here. The worker owns the host FFI and the
-// message plumbing only — the same three host fns the CLI-equivalent path uses,
-// with `progress` forwarded as a message instead of touching the DOM directly
-// (a worker has no DOM).
+// message plumbing only — with `progress` forwarded as a message instead of
+// touching the DOM directly (a worker has no DOM), and the FITS decoding
+// delegated to fits.mjs, which the page shares.
 
 import { instantiate } from "./cumulus.js";
+import { decodeRows } from "./fits.mjs";
 
-let blob = null;   // the concatenated LE-u16 frame bytes, staged for read_frames
+const frs = new FileReaderSync();
+
+let subs = [];     // [{ blob, w, h, bzero, bscale, dataOff }] — handles, not pixels
 let result = null; // set by put_result before stack_frames returns
 
 const host = {
-  read_frames(dst, len, ctx) {
-    new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(blob);
+  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+    const s = subs[Number(frame)];
+    const r0 = Number(row0), nr = Number(nrows), count = nr * s.w;
+    const start = s.dataOff + r0 * s.w * 2;
+    // Read exactly the rows asked for, straight off the Blob. This is the whole
+    // streaming design in one line: nothing before or after this range is ever
+    // resident, in this worker or in the page.
+    const buf = frs.readAsArrayBuffer(s.blob.slice(start, start + count * 2));
+    if (buf.byteLength !== count * 2) {
+      throw new Error(
+        `frame ${Number(frame)}: rows ${r0}..${r0 + nr} read ${buf.byteLength} bytes, wanted ${count * 2}`,
+      );
+    }
+    // `ctx.memory.buffer` is re-read on every call: a wasm heap growth detaches
+    // the old ArrayBuffer, so a cached view would silently be writing to nothing.
+    decodeRows(
+      new Uint8Array(buf),
+      new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, count),
+      s.bzero, s.bscale,
+    );
   },
   put_result(ptr, len, w, h, ctx) {
     // Copy out immediately — the pointer is only valid until wasm reclaims it.
@@ -34,21 +63,24 @@ const host = {
 };
 
 self.onmessage = async (e) => {
-  const { blob: buf, w, h, n, mode } = e.data;
-  blob = new Uint8Array(buf);
+  const { subs: incoming, w, h, n, mode } = e.data;
+  // Blobs cross a postMessage by reference, not by copy — the bytes stay
+  // wherever the browser is keeping them (usually on disk, for a picked File).
+  subs = incoming;
   result = null;
   try {
     const { exports } = await instantiate(host);
     const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
-    // Drop the staged input before shipping the result back: on a large stack
-    // this copy is the single biggest allocation in the worker, and holding it
-    // through the postMessage would keep the peak high for no reason.
-    blob = null;
+    subs = [];
     if (!result) throw new Error("stack_frames returned without calling put_result");
     postMessage({ t: "done", kept, w: result.w, h: result.h, px: result.px }, [result.px.buffer]);
     result = null;
   } catch (err) {
-    blob = null;
+    // A `read_rows` that could not serve its range throws, and the exception
+    // unwinds out of wasm to here. The run is abandoned rather than completed
+    // with stale rows; the page terminates this worker either way, so the
+    // abandoned wasm heap costs nothing.
+    subs = [];
     postMessage({ t: "error", message: String((err && err.message) || err) });
   }
 };

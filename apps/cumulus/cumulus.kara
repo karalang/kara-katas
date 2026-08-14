@@ -1871,63 +1871,101 @@ fn main() with reads(FileSystem) writes(FileSystem) {
 // numerics verified by verify.sh on the CLI are literally the numerics that run
 // in the page, not a port of them.
 
-effect resource Input;    // the frame bytes JS holds, pulled in via read_frames
+effect resource Input;    // the sub-frames JS holds, pulled in via read_rows
 effect resource Display;  // the <canvas> we paint, via put_result
 
-// JS copies `len` BYTES of the frame blob into wasm memory at `dst`.
-// Synchronous, so the buffer is filled before we read it.
+// JS decodes rows `[row0, row0 + nrows)` of frame `frame` and writes them into
+// wasm memory at `dst`, offset by `dst_off` u16 ELEMENTS. Synchronous, so the
+// rows are there when the call returns.
+//
+// This replaced a `read_frames(dst, len)` that pulled the WHOLE stack across in
+// one call, and the replacement is the entire point of the browser streaming
+// slice: with one call for everything, the page had to hold every decoded sub
+// to answer it, and wasm had to hold a second copy to receive it. A row range
+// is answerable from a `Blob` — a handle to bytes the browser keeps wherever it
+// likes, usually on disk — so the page holds file handles and headers, and wasm
+// holds one strip.
+//
+// It is synchronous, and a `Blob` is normally only readable asynchronously,
+// which is why the run happens in a worker: `FileReaderSync` exists only in
+// workers, and it is the one API that can answer this call. The inline fallback
+// (a page opened over `file://`, where a module worker cannot load) has no such
+// API and pre-reads the files instead — slower and heavier, which is what a
+// fallback is for.
 //
 // `dst` is typed `*const u16`, not `*const u8`, and that is load-bearing rather
-// than cosmetic: wasm32 is little-endian by spec and the blob is already
-// little-endian u16, so the bytes JS holds ARE the pixel array. Aiming the copy
-// at the u16 buffer lands it in its final home — no decode pass, and no second
-// buffer alive holding the undecoded copy. Declaring `*const u8` instead would
+// than cosmetic: wasm32 is little-endian by spec, so JS writing native-order
+// u16 lands the pixels in their final home. Declaring `*const u8` instead would
 // force a `*const u16 as *const u8` reinterpret at the call site, which Kāra
 // (rightly) requires `unsafe` for; the pointer value is identical either way,
 // so the honest move is to give the parameter the type it actually has.
-host fn read_frames(dst: *const u16, len: i64) with reads(Input);
+//
+// There is no success return, and that is deliberate. The failure this can
+// suffer is the file changing underneath us mid-run — a genuinely exceptional
+// condition, not a degraded frame — so the host contract is "fill the request
+// or THROW". A JS exception raised inside a host fn unwinds straight out
+// through `stack_frames` to the caller, which is exactly the right shape: the
+// run aborts with a message instead of painting a plausible picture made
+// partly of stale rows. It leaks whatever the aborted run had allocated, which
+// costs nothing here because the page terminates the worker after every stack.
+host fn read_rows(frame: i64, row0: i64, nrows: i64,
+                  dst: *const u16, dst_off: i64) with reads(Input);
 
 // JS reads `len` bytes of 16-bit result at `ptr` and paints it.
 host fn put_result(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
 
-// Progress ticks so a long stack does not look hung. `stage`: 0 = decoding,
-// 1 = registering, 2 = integrating.
+// Progress ticks so a long stack does not look hung. `stage`: 0 = starting,
+// 1 = registering (pass 1, per frame), 2 = integrating (pass 2, per strip).
 host fn progress(stage: i64, done: i64, total: i64) with writes(Display);
 
-/// Stack `nframes` frames of `w`x`h` 16-bit pixels, already concatenated by JS.
+/// Stack `nframes` sub-frames of `w`x`h` 16-bit pixels, pulled from JS a row
+/// range at a time.
 ///
 /// `mode`: 0 = mean, 1 = sigma clip, 2 = register + sigma clip (the full
 /// pipeline). Returns the number of frames that survived registration, so the
 /// page can report "14/16 stacked" rather than silently dropping subs.
+///
+/// This is the same two-pass shape as the native `compute_offsets_streaming` +
+/// `stack_streaming`, with `read_rows` where those call `read_rows_at`. Peak
+/// memory therefore has the same form: one frame in pass 1, one strip window in
+/// pass 2, and nothing that scales with `nframes * h`. The kernels themselves —
+/// `detect_stars`, `estimate_offset`, `integrate_window` — are shared outright
+/// with the CLI, which is what lets `test_node.mjs` demand byte-identity.
 #[target(wasm_browser)]
 pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
     with reads(Input) writes(Display) panics
 {
     let npix = w * h;
-    let nvals = npix * nframes;
-
-    // ONE buffer, filled in place. This used to allocate a `Vec[u8]` for the
-    // raw blob and then decode it into a separate `Vec[u16]`, with both live to
-    // the end of the function — which doubled the peak heap for the whole run.
-    // On a phone that is not a micro-optimisation, it is the difference between
-    // running and having the tab killed: peak went from `w*h*(4n+8)` bytes to
-    // `w*h*(2n+8)`. It also deletes a `w*h*nframes`-iteration decode loop that
-    // was, on a little-endian target, a very expensive memcpy.
-    let mut px: Vec[u16] = Vec.filled(nvals, 0);
-    read_frames(px.as_ptr(), nvals * 2);
-    progress(0, nframes, nframes);
+    progress(0, 0, nframes);
 
     let mut dxs: Vec[f64] = Vec.new();
     let mut dys: Vec[f64] = Vec.new();
     let mut keep: Vec[i64] = Vec.new();
     let mut kept = nframes;
+
     if mode == 2 {
-        let off = compute_offsets(px, w, h, nframes);
-        dxs = off.0;
-        dys = off.1;
-        keep = off.2;
+        // PASS 1 — registration, one frame resident. The buffer is allocated
+        // once and overwritten per frame rather than reallocated, and it is
+        // scoped to this block so it is gone before pass 2 allocates its
+        // window: the two peaks never overlap.
+        let mut frame: Vec[u16] = Vec.filled(npix, 0);
+        let mut ref_stars: Vec[Star] = Vec.new();
+        let mut nref: i64 = 0;
         kept = 0;
         for f in 0..nframes {
+            read_rows(f, 0, h, frame.as_ptr(), 0);
+            let st = detect_stars(frame, 0, w, h, 6.0);
+            if f == 0 {
+                for s in st { ref_stars.push(s); }
+                nref = ref_stars.len();
+                dxs.push(0.0); dys.push(0.0); keep.push(1);
+            } else {
+                let est = estimate_offset(st, ref_stars, 1.5);
+                dxs.push(est.0);
+                dys.push(est.1);
+                let need = (nref * 6) / 10;
+                if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+            }
             if keep[f] != 0 { kept = kept + 1; }
             progress(1, f + 1, nframes);
         }
@@ -1935,8 +1973,42 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
         for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); }
     }
 
-    let out = stack_tiled(px, w, h, nframes, dxs, dys, keep, mode != 0);
-    progress(2, 1, 1);
+    // PASS 2 — integrate in strips, sized exactly as the native streamer sizes
+    // them so the two produce the same pixels rather than merely similar ones.
+    let mut out: Vec[i64] = Vec.with_capacity(npix);
+    for i in 0..npix { out.push(0); }
+
+    let mut halo: i64 = 1;
+    for f in 0..nframes {
+        if keep[f] != 0 {
+            let a = dys[f].abs() as i64;
+            if a + 1 > halo { halo = a + 1; }
+        }
+    }
+    if halo > MAX_HALO { halo = MAX_HALO; }
+
+    let cap = STRIP + 2 * halo;
+    let mut win: Vec[u16] = Vec.filled(nframes * w * cap, 0);
+    let nstrips = (h + STRIP - 1) / STRIP;
+    for s in 0..nstrips {
+        let sy0 = s * STRIP;
+        let rem = h - sy0;
+        let sh = if rem < STRIP { rem } else { STRIP };
+        let wr0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
+        let mut wr1 = sy0 + sh + halo;
+        if wr1 > h { wr1 = h; }
+        let wrows = wr1 - wr0;
+
+        for f in 0..nframes {
+            if keep[f] != 0 {
+                read_rows(f, wr0, wrows, win.as_ptr(), f * w * cap);
+            }
+        }
+
+        integrate_window(win, w, h, nframes, dxs, dys, keep, mode != 0,
+                         sy0, sh, wr0, wrows, cap, mut out);
+        progress(2, s + 1, nstrips);
+    }
 
     // Hand back 16-bit little-endian; the page owns the display stretch, so the
     // full dynamic range crosses the boundary intact rather than being

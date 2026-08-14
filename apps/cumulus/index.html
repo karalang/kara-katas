@@ -105,63 +105,23 @@
 
 <script type="module">
 import { instantiate } from "./cumulus.js";
+import { decodeRows, readHeader } from "./fits.mjs";
 
 const $ = (id) => document.getElementById(id);
 const log = (msg, cls = "") => { $("log").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; };
 const setBar = (f) => { $("barfill").style.width = `${Math.max(0, Math.min(1, f)) * 100}%`; };
 
-let frames = [];   // Uint16Array per sub, little-endian native order
+// One entry per sub: a HANDLE plus its header. No pixels.
+//
+// This page used to hold a decoded `Uint16Array` for every sub and then build a
+// second, concatenated copy of all of them to hand to wasm — so a session cost
+// twice its own size in JS heap before wasm allocated its own copy. Now the
+// only thing kept is the `File`, whose bytes the browser stores wherever it
+// likes (for a picked file, on disk), and the ~6 numbers parsed out of its
+// header. Loading a hundred 24-megapixel subs costs the same as loading two.
+let subs = [];     // [{ blob, name, w, h, bzero, bscale, dataOff }]
 let dims = null;   // {w, h}
 let result = null; // {w, h, px: Uint16Array}
-
-// ── FITS decode ─────────────────────────────────────────────────────────────
-//
-// Header parsing lives in JS because the wasm entry point takes decoded pixels,
-// not files. The BZERO transform is the part that matters and the part that is
-// easy to get wrong — unsigned 16-bit data rides in FITS's SIGNED 16-bit format,
-// so dropping it turns every value above 32767 negative and stars come out as
-// holes. verify_browser.mjs guards against drift by requiring this decoder and
-// the Kāra one to produce the same stack from the same files.
-function decodeFits(buf) {
-  const bytes = new Uint8Array(buf);
-  const CARD = 80, BLOCK = 2880;
-  if (bytes.length < BLOCK) throw new Error("shorter than one FITS block");
-
-  let off = 0, done = false;
-  const kv = {};
-  while (off + CARD <= bytes.length && !done) {
-    const card = new TextDecoder("latin1").decode(bytes.subarray(off, off + CARD));
-    const key = card.slice(0, 8).trim();
-    if (key === "END") { done = true; off = (Math.floor(off / BLOCK) + 1) * BLOCK; break; }
-    const eq = card.indexOf("=");
-    if (eq >= 0) {
-      let v = card.slice(eq + 1);
-      const slash = v.indexOf("/");
-      if (slash >= 0) v = v.slice(0, slash);
-      kv[key] = v.trim();
-    }
-    off += CARD;
-  }
-  if (!done) throw new Error("no END card in header");
-
-  const bitpix = parseInt(kv.BITPIX ?? "0", 10);
-  const naxis = parseInt(kv.NAXIS ?? "0", 10);
-  const w = parseInt(kv.NAXIS1 ?? "0", 10);
-  const h = parseInt(kv.NAXIS2 ?? "0", 10);
-  const bzero = parseFloat(kv.BZERO ?? "0");
-  const bscale = parseFloat(kv.BSCALE ?? "1");
-  if (bitpix !== 16) throw new Error(`unsupported BITPIX ${bitpix} (only 16 is implemented)`);
-  if (naxis !== 2) throw new Error(`unsupported NAXIS ${naxis} (only 2-D mono is implemented)`);
-  if (off + w * h * 2 > bytes.length) throw new Error("data section shorter than NAXIS1*NAXIS2");
-
-  const dv = new DataView(buf, off);
-  const px = new Uint16Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const v = bzero + bscale * dv.getInt16(i * 2, false); // FITS is big-endian
-    px[i] = v < 0 ? 0 : v > 65535 ? 65535 : Math.round(v);
-  }
-  return { w, h, px };
-}
 
 // ── Display stretch ─────────────────────────────────────────────────────────
 //
@@ -203,20 +163,28 @@ function render(res, mode) {
 // serve: a page opened over file://, where the worker fails to load. A frozen
 // page beats no page, and the log says plainly which one you got.
 
+// Two passes now report separately: stage 1 ticks once per frame while
+// registration reads the subs, stage 2 once per strip while integration reads
+// them again. An unregistered mode never emits stage 1, so stage 2 has to be
+// able to own the whole bar — otherwise those modes would sit at half and jump.
+let sawRegister = false;
 function onProgress({ stage, done, total }) {
   const t = total || 1;
-  // Registration dominates the wall clock, so it owns most of the bar.
-  if (stage === 0) setBar(0.1);
-  else if (stage === 1) setBar(0.1 + 0.8 * (done / t));
-  else setBar(1);
+  if (stage === 0) { sawRegister = false; setBar(0.03); return; }
+  if (stage === 1) { sawRegister = true; setBar(0.03 + 0.47 * (done / t)); return; }
+  const base = sawRegister ? 0.5 : 0.03;
+  setBar(base + (1 - base) * (done / t));
 }
 
-// Built fresh per run: the worker path TRANSFERS this buffer, which detaches it
-// here, so it could never be reused across runs anyway.
-function makeBlob(w, h) {
-  const b = new Uint8Array(frames.length * w * h * 2);
-  frames.forEach((f, i) => b.set(new Uint8Array(f.buffer), i * w * h * 2));
-  return b;
+// What the stack needs to know about each sub: the handle and its header. The
+// blobs cross a postMessage by reference, so this is a few hundred bytes
+// whatever the session weighs.
+function payload(mode) {
+  return {
+    subs: subs.map(({ blob, w, h, bzero, bscale, dataOff }) =>
+      ({ blob, w, h, bzero, bscale, dataOff })),
+    w: dims.w, h: dims.h, n: subs.length, mode,
+  };
 }
 
 let workerUnavailable = false;
@@ -226,7 +194,7 @@ let workerUnavailable = false;
 // verifier asserts on this so that failure cannot pass unnoticed.
 let lastRunPath = null;
 
-function stackInWorker(payload) {
+function stackInWorker(msg) {
   return new Promise((resolve, reject) => {
     let w;
     try {
@@ -247,19 +215,41 @@ function stackInWorker(payload) {
     // A module worker that cannot LOAD fails here, asynchronously — not at
     // construction — so this is where file:// actually shows up.
     w.onerror = () => { workerUnavailable = true; finish(reject, new Error("worker-unavailable")); };
-    w.postMessage(payload, [payload.blob]);
+    w.postMessage(msg);
   });
 }
 
-async function stackInline({ blob, w, h, n, mode }) {
+async function stackInline({ subs, w, h, n, mode }) {
+  // `FileReaderSync` is worker-only, and `read_rows` is synchronous, so on this
+  // thread there is no way to answer it from a Blob: the bytes have to be
+  // resident before wasm starts. The fallback therefore pre-reads every sub and
+  // gives up the streaming property entirely — which is the honest trade for a
+  // path that exists so a page opened over file:// still works at all. It is
+  // still lighter than the pre-streaming page was, because these are the raw
+  // FITS bytes, decoded a row range at a time, rather than a decoded copy plus a
+  // concatenated second copy.
+  const raw = [];
+  for (const s of subs) {
+    raw.push(new Uint8Array(await s.blob.slice(s.dataOff, s.dataOff + s.w * s.h * 2).arrayBuffer()));
+  }
+
   let out = null;
   const host = {
-    read_frames(dst, len, ctx) {
-      new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(blob);
+    read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+      const i = Number(frame), s = subs[i], src = raw[i];
+      const r0 = Number(row0), count = Number(nrows) * s.w, off = r0 * s.w * 2;
+      if (off + count * 2 > src.length) {
+        throw new Error(`frame ${i}: rows ${r0}..${r0 + Number(nrows)} run past the data section`);
+      }
+      decodeRows(
+        src.subarray(off, off + count * 2),
+        new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, count),
+        s.bzero, s.bscale,
+      );
     },
     put_result(ptr, len, rw, rh, ctx) {
-      const raw = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
-      out = { w: Number(rw), h: Number(rh), px: new Uint16Array(raw.buffer) };
+      const raw2 = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
+      out = { w: Number(rw), h: Number(rh), px: new Uint16Array(raw2.buffer) };
     },
     progress: (stage, done, total) =>
       onProgress({ stage: Number(stage), done: Number(done), total: Number(total) }),
@@ -271,33 +261,30 @@ async function stackInline({ blob, w, h, n, mode }) {
 }
 
 async function stack() {
-  if (!frames.length) return;
+  if (!subs.length) return;
   $("go").disabled = true;
   const mode = parseInt($("mode").value, 10);
   const { w, h } = dims;
-  const n = frames.length;
+  const n = subs.length;
 
   log(`Stacking ${n} frames at ${w}×${h}…`);
   setBar(0.02);
   const t0 = performance.now();
   try {
-    // Guard on the flag BEFORE building the blob: once the worker is known to
-    // be unavailable, every later run would otherwise allocate a full-size copy
-    // only to throw it away on a transfer that cannot happen.
     let out = null;
     if (!workerUnavailable) {
       try {
-        out = await stackInWorker({ blob: makeBlob(w, h).buffer, w, h, n, mode });
+        out = await stackInWorker(payload(mode));
         lastRunPath = "worker";
       } catch (e) {
         if (e.message !== "worker-unavailable") throw e;
-        // Fall through — the failed postMessage may already have detached the
-        // transferred buffer, so the inline path builds its own.
+        // Fall through to the inline path below.
       }
     }
     if (!out) {
-      log("Worker unavailable — stacking on this thread; the page will freeze until it finishes.", "warn");
-      out = await stackInline({ blob: makeBlob(w, h), w, h, n, mode });
+      log("Worker unavailable — stacking on this thread. The page will freeze until it " +
+          "finishes, and every frame has to be held in memory.", "warn");
+      out = await stackInline(payload(mode));
       lastRunPath = "inline";
     }
     result = { w: out.w, h: out.h, px: out.px };
@@ -317,26 +304,33 @@ async function stack() {
   $("go").disabled = false;
 }
 
+// Headers only. Loading is now O(1) in the size of the session: each sub costs
+// one 11 KB read of its front, and the pixels are never touched until the stack
+// runs — and then only a strip at a time.
 async function loadFiles(fileList) {
-  frames = []; dims = null; result = null;
+  subs = []; dims = null; result = null;
   $("save").disabled = true;
   const files = [...fileList].sort((a, b) => a.name.localeCompare(b.name));
   const problems = [];
   for (const f of files) {
     try {
-      const img = decodeFits(await f.arrayBuffer());
-      if (!dims) dims = { w: img.w, h: img.h };
-      if (img.w !== dims.w || img.h !== dims.h) throw new Error(`is ${img.w}×${img.h}, expected ${dims.w}×${dims.h}`);
-      frames.push(img.px);
+      const m = await readHeader(f);
+      if (m.bayer) {
+        throw new Error(`is a Bayer mosaic (BAYERPAT ${m.bayer}); this page stacks monochrome only`);
+      }
+      if (f.size < m.dataOff + m.w * m.h * 2) throw new Error("data section shorter than NAXIS1*NAXIS2");
+      if (!dims) dims = { w: m.w, h: m.h };
+      if (m.w !== dims.w || m.h !== dims.h) throw new Error(`is ${m.w}×${m.h}, expected ${dims.w}×${dims.h}`);
+      subs.push({ blob: f, name: f.name, ...m });
     } catch (e) {
       problems.push(`${f.name}: ${e.message}`);
     }
   }
-  $("go").disabled = frames.length < 2;
-  if (!frames.length) {
+  $("go").disabled = subs.length < 2;
+  if (!subs.length) {
     log(problems.length ? problems.join("\n") : "No usable frames.", "warn");
   } else {
-    const head = `${frames.length} frame${frames.length > 1 ? "s" : ""} at ${dims.w}×${dims.h}`;
+    const head = `${subs.length} frame${subs.length > 1 ? "s" : ""} at ${dims.w}×${dims.h}`;
     log(problems.length ? `${head}\n<span class="warn">skipped:\n${problems.join("\n")}</span>` : head);
   }
 }
@@ -354,19 +348,15 @@ $("stretch").addEventListener("change", () => { if (result) render(result, $("st
 $("demo").addEventListener("click", async () => {
   log("Fetching demo subs…");
   try {
-    const names = Array.from({ length: 16 }, (_, i) => `demo/sub_${String(i).padStart(3, "0")}.fits`);
-    const bufs = await Promise.all(names.map((n) => fetch(n).then((r) => {
+    const names = Array.from({ length: 16 }, (_, i) => `sub_${String(i).padStart(3, "0")}.fits`);
+    // `.blob()`, not `.arrayBuffer()`: the demo goes down the same path a picked
+    // file does, holding handles rather than bytes.
+    const blobs = await Promise.all(names.map((n) => fetch(`demo/${n}`).then((r) => {
       if (!r.ok) throw new Error(`${n}: ${r.status}`);
-      return r.arrayBuffer();
+      return r.blob();
     })));
-    frames = []; dims = null;
-    for (const b of bufs) {
-      const img = decodeFits(b);
-      if (!dims) dims = { w: img.w, h: img.h };
-      frames.push(img.px);
-    }
-    $("go").disabled = false;
-    log(`Demo loaded: ${frames.length} frames at ${dims.w}×${dims.h}`);
+    await loadFiles(blobs.map((b, i) => new File([b], names[i])));
+    if (subs.length) log(`Demo loaded: ${subs.length} frames at ${dims.w}×${dims.h}`);
   } catch (e) {
     log(`Demo unavailable: ${e.message}`, "warn");
   }
@@ -383,18 +373,25 @@ $("save").addEventListener("click", () => {
 });
 
 // Expose for the headless verifier — it drives the same path a user does.
+// `loadBuffers` wraps the bytes in `File`s and goes through `loadFiles`, so the
+// verifier exercises the real header parser and the real handle plumbing rather
+// than a shortcut around them.
 window.__cumulus = {
-  loadBuffers: async (bufs) => {
-    frames = []; dims = null;
-    for (const b of bufs) {
-      const img = decodeFits(b);
-      if (!dims) dims = { w: img.w, h: img.h };
-      frames.push(img.px);
-    }
-    $("go").disabled = false;
-  },
+  loadBuffers: (bufs) =>
+    loadFiles(bufs.map((b, i) => new File([b], `sub_${String(i).padStart(3, "0")}.fits`))),
   stack,
   getResult: () => (result ? { w: result.w, h: result.h, px: Array.from(result.px) } : null),
   getRunPath: () => lastRunPath,
+  // What the page is actually HOLDING per sub, by kind. The whole streaming
+  // claim is that this is handles and numbers and never pixels, and that is a
+  // property no pixel comparison can see: a page that quietly went back to
+  // decoding every sub up front would still stack correctly and still paint the
+  // right image. Reporting the shape lets the verifier assert on it.
+  getHeld: () => subs.map((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [
+    k,
+    v instanceof Blob ? `blob:${v.size}`
+      : (v && v.byteLength !== undefined) ? `bytes:${v.byteLength}` : typeof v,
+  ]))),
+  loadProblems: () => $("log").textContent,
 };
 </script>

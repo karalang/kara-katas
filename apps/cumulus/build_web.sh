@@ -33,6 +33,16 @@ python3 gen_frames.py /tmp/cw.cstack --width 96 --height 64 --frames 16 --rays 1
 echo "==> wasm equals native"
 node test_node.mjs /tmp/cw.cstack /tmp/cw_mean.cstack /tmp/cw_stack.cstack
 
+echo "==> wasm streams across multiple strips"
+# 96x64 is a single strip, so the run above reads every frame whole and proves
+# nothing about the request pattern. 200 rows makes pass 2 walk 4 strips, and
+# test_node.mjs then asserts the read SHAPE as well as the pixels.
+python3 gen_frames.py /tmp/cw_tall.cstack --width 96 --height 200 --frames 12 \
+        --rays 12 --dither 3.0 > /dev/null
+/tmp/cumulus_ref /tmp/cw_tall_mean.cstack  mean  /tmp/cw_tall.cstack > /dev/null
+/tmp/cumulus_ref /tmp/cw_tall_stack.cstack stack /tmp/cw_tall.cstack > /dev/null
+node test_node.mjs /tmp/cw_tall.cstack /tmp/cw_tall_mean.cstack /tmp/cw_tall_stack.cstack
+
 # The memory model the README quotes is what decides whether a phone survives a
 # real stack, so it gets a standing guard rather than a one-off measurement. It
 # needs a mid-size frame: at 96x64 the fixed module overhead swamps everything

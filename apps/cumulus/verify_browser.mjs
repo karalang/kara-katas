@@ -123,6 +123,26 @@ try {
     console.log("  stack ran off the main thread (worker)");
   }
 
+  // The page must hold HANDLES, not pixels. Nothing else in this file can see
+  // that: a page that decoded every sub up front would produce identical
+  // pixels, paint an identical canvas, and pass every other assertion here —
+  // while being the exact thing streaming exists to stop, and the thing that
+  // gets a tab killed on a phone. So the shape of what is retained is checked
+  // directly.
+  const held = await page.evaluate(() => window.__cumulus.getHeld());
+  const pixelly = held.flatMap((s, i) =>
+    Object.entries(s).filter(([, v]) => String(v).startsWith("bytes:")).map(([k, v]) => `sub ${i}.${k}=${v}`));
+  if (!held.length) {
+    console.log("  FAIL: page reports nothing loaded");
+    failures++;
+  } else if (pixelly.length) {
+    console.log(`  FAIL: page is holding decoded pixels, not handles: ${pixelly.slice(0, 3).join(", ")}`);
+    failures++;
+  } else {
+    const blobs = held.filter((s) => Object.values(s).some((v) => String(v).startsWith("blob:"))).length;
+    console.log(`  page holds ${blobs}/${held.length} subs as blob handles, no decoded pixels`);
+  }
+
   if (errors.length) {
     console.log(`  page errors: ${errors.slice(0, 3).join(" | ")}`);
     failures++;
@@ -165,6 +185,32 @@ try {
   if (process.argv.includes("--shot")) {
     await page.screenshot({ path: "browser-shot.png", fullPage: true });
     console.log("  wrote browser-shot.png");
+  }
+
+  // A colour mosaic stacked as if it were grey does not fail — it produces a
+  // plausible picture with checkerboard texture and colour-biased star
+  // positions. The CLI refuses that combination (verify.sh checks it); until
+  // this slice the page silently accepted it, because its JS reader never
+  // looked at BAYERPAT. Synthesise the smallest file that reproduces it rather
+  // than shipping a mosaic into demo/.
+  const refusal = await page.evaluate(async () => {
+    const CARD = 80, BLOCK = 2880;
+    const card = (k, v) => (`${k.padEnd(8)}= ${String(v).padStart(20)}`).padEnd(CARD);
+    const hdr = [card("SIMPLE", "T"), card("BITPIX", 16), card("NAXIS", 2),
+                 card("NAXIS1", 4), card("NAXIS2", 4), card("BAYERPAT", "'RGGB    '"),
+                 "END".padEnd(CARD)].join("");
+    const bytes = new Uint8Array(BLOCK * 2);
+    for (let i = 0; i < hdr.length; i++) bytes[i] = hdr.charCodeAt(i);
+    for (let i = hdr.length; i < BLOCK; i++) bytes[i] = 32;
+    await window.__cumulus.loadBuffers([bytes.buffer, bytes.buffer.slice(0)]);
+    return { held: window.__cumulus.getHeld().length, log: window.__cumulus.loadProblems() };
+  });
+  if (refusal.held !== 0 || !/Bayer mosaic/.test(refusal.log)) {
+    console.log(`  FAIL: page accepted a Bayer mosaic (${refusal.held} loaded): ` +
+                `${refusal.log.replace(/\s+/g, " ").slice(0, 120)}`);
+    failures++;
+  } else {
+    console.log("  Bayer mosaic refused by the page, as the CLI refuses it");
   }
 
   // ── the inline fallback ───────────────────────────────────────────────────

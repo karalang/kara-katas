@@ -3,8 +3,9 @@
 A browser-side deep-sky stacker written in Kāra. **So far: the integration
 engine and its differential oracle, FITS input, star-based registration,
 sub-pixel resampling, a browser shell, colour via the Bayer mosaic a converted
-RAW becomes, and streaming so peak memory stops scaling with frame height.** No
-calibration and no rotation yet — those are later slices, and the ordering is
+RAW becomes, calibration with darks/flats/bias, and streaming — on the CLI *and*
+in the page — so peak memory stops scaling with the size of the session.** No
+rotation and no drizzle yet; those are later slices, and the ordering is
 deliberate (see *Why the oracle came first*).
 
 ```
@@ -205,18 +206,21 @@ rather than the display.
 
 ```
   stack ran off the main thread (worker)
+  page holds 16/16 subs as blob handles, no decoded pixels
   page stack byte-identical to native over 6144 pixels
   canvas painted, luminance range 0..255
-  status line: Done in 97 ms · all 16 frames registered
+  status line: Done in 131 ms · all 16 frames registered
+  Bayer mosaic refused by the page, as the CLI refuses it
   Worker denied -> inline fallback ran, still byte-identical to native
   iPhone 13 390x664: no overflow, canvas 308px, stacked and painted
   Pixel 5 393x727: no overflow, canvas 311px, stacked and painted
 ```
 
-The one thing the page reimplements is the **FITS header parse**, in JS, because
-the wasm entry point takes decoded pixels rather than files. That is a real
-duplication of the `BZERO` trap, so the browser check pins the two decoders to
-each other: same files, same stack, or the run fails.
+The one thing the page reimplements is the **FITS reader**, in JS
+(`fits.mjs`) — header parse plus row decode, because the wasm entry point takes
+pixels rather than files. That is a real duplication of the `BZERO` trap, so the
+browser check pins the two decoders to each other: same files, same stack, or
+the run fails.
 
 ## Will it run on a phone?
 
@@ -246,35 +250,67 @@ outside the browser and reports peak `memory.buffer.byteLength`; the wasm heap
 is the same size whatever engine hosts it, so the figure is exact without a
 device.
 
-| frame | frames in | peak wasm, before | after |
-|---|---|---|---|
-| 512×512 ×16 | 8 MB | 27.6 MB | **19.6 MB** |
-| 1024×768 ×16 | 24 MB | 63.6 MB | **39.6 MB** |
-| 2048×1536 ×16 | 96 MB | 225.6 MB | **129.6 MB** |
+Two slices moved this number. The first halved a duplicated copy of the input;
+the second removed the input from the peak altogether.
 
-Before, peak fit `w·h·(4n+8)` bytes to within 4% at every size. The `4n` should
-have been `2n`: `stack_frames` allocated a `Vec[u8]` for the raw blob and
-decoded it into a separate `Vec[u16]`, both alive to the end of the function.
-Half the peak was a copy of the input held in the format we had just finished
-converting away from.
+| frame | frames in | one blob, decoded twice | one blob | **streamed** |
+|---|---|---|---|---|
+| 512×512 ×16 | 8 MB | 27.6 MB | 19.6 MB | **6.6 MB** |
+| 1024×768 ×16 | 24 MB | 63.6 MB | 39.6 MB | **12.8 MB** |
+| 1024×768 ×64 | 96 MB | — | ~107 MB | **25.3 MB** |
+| 2048×1536 ×16 | 96 MB | 225.6 MB | 129.6 MB | **37.1 MB** |
+| 2048×1536 ×32 | 192 MB | — | ~226 MB | **39.8 MB** |
 
-The fix is not to free the first buffer sooner. **wasm32 is little-endian by
-spec and the blob is already little-endian u16, so the bytes JS holds _are_ the
-pixel array** — `read_frames` now takes `*const u16` and the host copy lands
-directly in its final home. That deletes the second allocation and the
-`w·h·nframes`-iteration decode loop along with it. Peak is now `w·h·(2n+8)`;
-extrapolated to the 11.7 Mpx ×16 stack the CLI benchmark uses, ~850 MB becomes
-~470 MB.
+(The two `—` rows were never measured under the first version; their `one blob`
+figures are that model — `w·h·(2n+8)`, which fit its measurements to within 4% —
+evaluated at those shapes, and are marked `~` for that reason.)
 
-Declaring the parameter `*const u16` rather than `*const u8` is what keeps this
-*safe* code: the `u8` form needs `px.as_ptr() as *const u8`, and Kāra requires
-`unsafe` for a cast that reinterprets the pointee. The pointer value is
-identical either way, so the honest declaration is also the one that compiles
-without an escape hatch.
+**Round one: stop holding the input twice.** Peak used to fit `w·h·(4n+8)` bytes.
+The `4n` should have been `2n`: `stack_frames` allocated a `Vec[u8]` for the raw
+blob and decoded it into a separate `Vec[u16]`, both alive to the end of the
+function. Half the peak was a copy of the input held in the format we had just
+finished converting away from.
+
+The fix was not to free the first buffer sooner. **wasm32 is little-endian by
+spec and the blob was already little-endian u16, so the bytes JS held _were_ the
+pixel array** — the host fn took `*const u16` and the copy landed directly in its
+final home, deleting the second allocation and the `w·h·nframes`-iteration decode
+loop with it. Declaring the parameter `*const u16` rather than `*const u8` is
+also what keeps this *safe* code: the `u8` form needs
+`px.as_ptr() as *const u8`, and Kāra requires `unsafe` for a cast that
+reinterprets the pointee.
 
 Wall time barely moved — 40.1 s against 41.8 s at 3 Mpx. The decode loop was
-never the bottleneck (registration and integration are), so this is a memory win
-that happens to remove a loop, not the speed-up it looks like.
+never the bottleneck (registration and integration are), so that was a memory win
+that happened to remove a loop, not the speed-up it looked like.
+
+**Round two: stop holding the input at all.** `w·h·2n` is still linear in the
+whole session, so the ceiling was only pushed back, not removed — 226 MB for a
+modest 3 Mpx ×32, on the device with the least memory. The page now streams
+(see *Streaming*), and the term is gone:
+
+```
+peak ≈ w·h·10  +  n·w·112·2  +  n·256·64·8
+       ↑ output   ↑ strip win   ↑ per-tile gather
+```
+
+Nothing multiplies `n` by frame *area* any more. Both remaining `n` terms are
+independent of frame **height** — a strip is a strip whether the frame is 768
+rows or 4000 — so the bound per sub is `w·224 + 128 KiB`, and what it costs to
+add one more sub stops growing the moment the frame is taller than a strip.
+
+Measured, that is **169 KiB per extra sub** at 2048×1536 (37.1 MB at ×16,
+39.8 MB at ×32) — below the bound, because the real halo is a few rows rather
+than the worst-case 24. The same step used to cost 96 MB. That is the difference
+between a session bounded by the device and one bounded by how long you are
+willing to wait.
+
+`mem_probe.mjs --assert-model` enforces the bound in `build_web.sh`, and the
+first version of it was quietly wrong: it omitted the per-tile term, which the
+window term's worst-case halo happened to compensate for. It read as a
+comfortable 33% margin at ×16 and turned into 0.8% at ×64 — a check about to
+start failing a correct program. A model that holds because two errors point
+opposite ways is not a model.
 
 ### The freeze
 
@@ -290,6 +326,11 @@ terminated when it ends, so the entire wasm heap goes back after every stack
 instead of staying at the high-water mark between runs. The inline path survives
 as a fallback for a page opened over `file://`, where a module worker cannot
 load.
+
+The worker later turned out to be load-bearing for a second, unrelated reason:
+`FileReaderSync` — the only synchronous way to read a `Blob`, and therefore the
+only way to serve a synchronous `read_rows` — exists **only** in workers. See
+*Streaming → And in the browser*.
 
 Both halves are checked, because neither was self-evident:
 
@@ -494,6 +535,86 @@ That last one is the interesting one. It was only reachable *because* of the
 first: no seek forced the many-handles design, which walked straight into a real
 codegen bug that had nothing to do with files being numerous. A missing
 primitive pushed the code onto a path where a separate defect was waiting.
+
+### And in the browser, where only a worker can do it
+
+The page had the same problem in the place it hurts most. The old host boundary
+was `read_frames(dst, len)` — one call for the entire stack — so `index.html`
+had to hold a decoded `Uint16Array` per sub *and* build a second, concatenated
+copy of all of them to hand across. Counting the wasm side, a session existed
+three times over on the device least able to afford it.
+
+The interface change is the slice:
+
+```kara
+host fn read_rows(frame: i64, row0: i64, nrows: i64,
+                  dst: *const u16, dst_off: i64) with reads(Input);
+```
+
+and `stack_frames` became the same two-pass strip walk the CLI runs, with
+`read_rows` where the CLI calls `read_rows_at`. The page now keeps a `File`
+handle and the six numbers parsed out of its header — geometry, `BZERO`,
+`BSCALE`, the data offset — and never touches a pixel. Loading a hundred
+24-megapixel subs costs what loading two costs.
+
+**A `host fn` is synchronous and a `Blob` is not, and that is the whole
+problem.** `read_rows` is called from inside a wasm frame, so it cannot await
+`file.slice(a, b).arrayBuffer()`; there is no suspension point to await at. The
+one API that reads a Blob synchronously is **`FileReaderSync`**, and it exists
+**only in workers** — which was checked with a throwaway Playwright probe before
+any of this was built, because the entire design rests on it:
+
+```
+{"ok":true,"bytes":[4,5,6,7,8,9,10,11]}   // frs.readAsArrayBuffer(blob.slice(4, 12))
+```
+
+So the worker — which existed for an unrelated reason, to stop the page freezing
+— turns out to be the only place this design can run at all. The inline fallback
+cannot: no `FileReaderSync` on the main thread, so it pre-reads every sub before
+starting and gives streaming up. That is the honest trade for a path whose job is
+to make a page opened over `file://` work at all, and it is still lighter than
+the old page, because what it holds is raw FITS bytes decoded a row range at a
+time rather than a decoded copy plus a concatenated one.
+
+**What the harness had to learn to check.** None of this is visible to a pixel
+comparison. A page that quietly went back to decoding every sub up front would
+produce identical pixels, paint an identical canvas, and pass every assertion
+that already existed — while being the exact thing this slice removes. Two new
+ones close that gap:
+
+- `test_node.mjs` records the **shape** of every `read_rows` call. Pass 2 must
+  never ask for more than a strip plus its halo, and only pass 1 may read a
+  frame whole. At 96×64 — one strip — it declines to claim anything, because a
+  frame that short is read whole no matter what the module does; `verify.sh`
+  runs a second stack at 200 rows for the assertion to bite.
+- `verify_browser.mjs` asks the page what it is **holding**, per sub, by kind,
+  and fails if anything is a typed array rather than a handle.
+
+Both were confirmed by breaking them: re-adding a decoded `Uint16Array` to each
+sub trips the second (`sub 0.px=bytes:12288`), and shrinking the strip bound
+trips the first.
+
+One thing fell out of rewriting the JS reader as a header parser. It now reads
+`BAYERPAT`, so the page **refuses a colour mosaic** — which the CLI has always
+done and the page silently did not, stacking it as if it were grey and producing
+a plausible picture with checkerboard texture and colour-biased star positions.
+`verify_browser.mjs` synthesises a four-pixel mosaic and requires the refusal.
+
+One term is not gone, and should not be claimed away: **pass 1 still reads each
+frame whole**, because star detection needs global background statistics before
+it can scan. That is `w·h·2` bytes transient in wasm and the same again in the
+worker's JS while `FileReaderSync` hands the buffer over — 96 MB together for a
+24 Mpx sub, once per frame, freed before the next. It is bounded by one frame
+rather than by the session, which is why it is not in the memory model, but it is
+the largest single allocation the page makes and the next thing to attack if a
+device ever chokes on it. Splitting `detect_stars` into a statistics pass and a
+scan pass would remove it, at the cost of reading each sub twice in pass 1.
+
+Worth recording for contrast with the native half above: this one **cost the
+language nothing**. No missing primitive, no ledger entry, no workaround — the
+Kāra side compiled and produced byte-identical output on the first build. Every
+obstacle in this slice was a browser-platform fact (`FileReaderSync` being
+worker-only) rather than a compiler gap. Three slices ago that was not the case.
 
 ## Colour: the CFA path
 
@@ -795,34 +916,22 @@ Deliberately absent, in the order they matter:
 1. **Rotation** — translation only. Fine for a tracked mount over a short
    session; an alt-az mount accumulates field rotation that this will not
    correct.
-2. **Streaming in the BROWSER.** The native FITS path streams (see *Streaming*
-   above), so peak there no longer scales with frame height. The page does not:
-   `makeBlob` concatenates every decoded sub into one buffer and hands the whole
-   thing to wasm, so a tab still pays `frames × pixels × 2` — 374 MB at
-   11.7 Mpx × 16, and ~80% of the tab's total. That is what decides whether a
-   phone survives a full-size stack, and it is now the only place the old
-   memory story still applies.
-
-   The mechanism exists: `File.slice(start, end).arrayBuffer()` reads a byte
-   range without loading the file, so the page can pull row ranges on demand
-   exactly as the CLI now does. It needs the wasm entry point to take a strip at
-   a time rather than the whole stack, which is a real interface change to
-   `stack_frames` rather than a tweak.
-3. **Calibration** — darks, flats and bias. Synthetic frames have no amp glow,
-   no hot columns, no vignetting and no dust motes, so nothing here has ever
-   needed it; real subs from a real sensor do. This is the next thing that
-   matters for actual RAW-derived data, now that the mosaic is handled.
-4. **Drizzle.** The CFA path is superpixel demosaic, so colour output is half
+2. **Calibration in the BROWSER.** The CLI takes `--dark`, `--flat` and
+   `--bias`; the page has no UI for them and passes none, so a browser stack is
+   uncalibrated. The kernels are already shared and target-agnostic
+   (`calibrate_rows` is called from the row loop either way), so this is a file
+   picker and three more `read_rows`-shaped host calls, not new numerics.
+3. **Drizzle.** The CFA path is superpixel demosaic, so colour output is half
    resolution. The dithers carry the information needed to recover full
    resolution, and using it is the natural follow-on — the plane-separated
    architecture is already the right shape for it.
-5. **Deblending, and an adaptive centroid window.** The fixed ±3 window
+4. **Deblending, and an adaptive centroid window.** The fixed ±3 window
    truncates bright stars asymmetrically and makes their centroids bistable by
    ~0.4 px; widening it naively blends close pairs instead. Both want the same
    fix, and it needs its own slice — see the CFA section for the measurement.
-6. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
+5. **Better interpolation** — bilinear softens slightly; Lanczos-3, which Prism
    already implements, is the upgrade once the pipeline is trusted.
-7. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
+6. **Wider FITS** — float and 8-bit `BITPIX`, 3-D colour cubes, compressed
    HDUs, and `ROWORDER = 'BOTTOM-UP'`. Vendor RAW decoding stays out of scope:
    `rawpy`, `dcraw` or `siril -s` convert to FITS in a few lines, which is
    exactly what Siril itself does internally before any astronomy happens.

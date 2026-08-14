@@ -199,6 +199,17 @@ if command -v node >/dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
   "$WORK/cumulus" "$WORK/w_stack.cstack" stack "$WORK/dith.cstack" > /dev/null
   node test_node.mjs "$WORK/dith.cstack" "$WORK/w_mean.cstack" "$WORK/w_stack.cstack"
 
+  echo "== wasm streams across MULTIPLE strips =="
+  # The check above runs at 96x64 — one strip — so the module reads each frame
+  # whole and the streaming request pattern is not exercised at all. This one is
+  # 200 rows, so pass 2 has to walk 4 strips, and test_node.mjs asserts on the
+  # SHAPE of the reads as well as the pixels: no read larger than a strip plus
+  # its halo, and no whole-frame read outside pass 1's star detection.
+  # Byte-identity alone would not notice a regression back to pulling the whole
+  # stack in one call, which is the property the page depends on.
+  "$WORK/cumulus" "$WORK/w_tall_mean.cstack" mean "$WORK/tall.cstack" > /dev/null
+  node test_node.mjs "$WORK/tall.cstack" "$WORK/w_tall_mean.cstack" "$WORK/tall_res_stack.cstack"
+
   if node -e "require('playwright')" 2>/dev/null && [[ -d demo ]]; then
     echo "== the real page in a real browser =="
     "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null

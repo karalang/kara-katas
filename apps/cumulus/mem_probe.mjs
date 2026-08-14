@@ -9,9 +9,11 @@
 //
 // Usage: node mem_probe.mjs <in.cstack> [mode]
 //
-// Reports peak wasm memory and peak node RSS. RSS is the looser bound (it also
-// carries the host-side copy of the frames), so a phone must fit the wasm figure
-// and a phone loading files through the page must fit something closer to RSS.
+// Reports peak wasm memory and peak node RSS. RSS is the looser bound here
+// because this harness holds the whole `.cstack` resident to serve row ranges
+// out of it; the page does NOT — it answers the same calls from Blobs the
+// browser keeps on disk — so on a phone the wasm figure is the one that
+// decides, and RSS overstates the real page by the size of the session.
 
 import { readFileSync } from "node:fs";
 import { instantiate } from "./cumulus.js";
@@ -25,19 +27,56 @@ if (!inPath) {
 }
 const mode = Number(modeArg ?? 2);
 
-// With `--assert-model`, fail if peak exceeds `w*h*(2n+8) + SLACK`: one u16 copy
-// of the frames plus the i64 output, and nothing else that scales with the
-// input. SLACK covers the module, the shadow stack and allocator rounding —
-// costs that do not grow with the frames.
+// With `--assert-model`, fail if peak exceeds
+// `w*h*10 + n*w*WIN*2 + n*TILE*STRIP*8 + SLACK`.
 //
-// The bound is set from both sides at the 1024x768 x16 size `build_web.sh` runs
-// it at, and both sides were MEASURED, not estimated: this code peaks at
-// 39.6 MB, and the predecessor that kept a second full copy of the frames
-// (`w*h*(4n+8)`) peaks at 63.6 MB — rebuilt from git and run against this check
-// to confirm it does fail. The resulting 48.0 MB bound leaves 17% headroom above
-// the real figure while rejecting the duplicate by 33%. Tighter would flake on
-// allocator noise; looser would let the regression back through.
-const SLACK = 18 * 1048576;
+// Read the model term by term, because its SHAPE is the claim being made:
+//
+//   w*h*8          the i64 accumulator the stack integrates into — one per
+//                  output pixel, and the largest single allocation
+//   w*h*2          the 16-bit result handed to the page, live at the same time
+//   n*w*WIN*2      the strip window: `WIN = STRIP + 2*MAX_HALO` rows of every
+//                  frame at once
+//   n*TILE*STRIP*8 the per-tile gather inside `integrate_window` — every kept
+//                  frame's resampled copy of one tile, as i64. Tiles are 256
+//                  wide but a strip caps them at STRIP rows, so this is 128 KiB
+//                  per frame however large the frames are.
+//
+// What is ABSENT is the point: there is no `n*w*h` term at all. Both `n` terms
+// are independent of frame HEIGHT — a strip is a strip whether the frame is 768
+// rows or 4000 — so the per-sub bound is `w*224 + 128 KiB`: 357 KiB at 1024
+// wide, 587 KiB at 2048, ~1.5 MB at 6000. Adding subs is linear in frame WIDTH
+// rather than area, which is what turns "the device decides how many subs" into
+// "your patience decides". Pass 1's one resident frame (`w*h*2`) is not in the
+// bound because it is freed before pass 2 allocates; the model asserts that the
+// two peaks do not overlap, and the measurements below confirm it.
+//
+// The tile term was MISSING from the first version of this model, and the miss
+// was nearly invisible: at 1024x768 x16 the bound came out 33% above the real
+// peak anyway, because the window term assumes the worst-case halo and the real
+// one is a few rows. It only showed up at x64, where the bound landed 0.8%
+// above the measurement — a check about to start failing for a correct program.
+// A model that happens to hold because two errors point opposite ways is not a
+// model; every term here is one the code actually allocates.
+//
+// SLACK came down from 18 MB to 4 MB with this slice, which is a real tightening
+// rather than bookkeeping: fixed overhead measures well under 1 MB, so 18 MB
+// used to be a bigger allowance than most of the peaks it guarded. Measured
+// peak against the bound, all mode 2:
+//
+//     512x512  x16    6.6 / 10.3 MB
+//    1024x768  x16   12.8 / 17.0 MB
+//    1024x768  x64   25.3 / 33.5 MB
+//   2048x1536  x16   37.1 / 43.0 MB
+//   2048x1536  x32   39.8 / 52.0 MB
+//
+// — 14-36% below the bound, tightest on the widest frame, and that margin is
+// genuine rather than luck: at 2048x1536 x16 the measurement is 1.9 MB under
+// the model even BEFORE slack, because the real halo is a few rows rather than
+// the worst-case 24 the window term assumes. The resident predecessor's 39.6 MB
+// at 1024x768 x16 is rejected by more than 2x.
+const STRIP = 64, MAX_HALO = 24, TILE = 256, WIN = STRIP + 2 * MAX_HALO;
+const SLACK = 4 * 1048576;
 
 const buf = readFileSync(inPath);
 if (buf.subarray(0, 4).toString("latin1") !== "CSTK") throw new Error("bad magic");
@@ -53,9 +92,12 @@ const sample = () => {
 };
 
 const host = {
-  read_frames(dst, len, ctx) {
+  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
     memRef = ctx.memory;
-    new Uint8Array(ctx.memory.buffer, dst, Number(len)).set(px);
+    const f = Number(frame), r0 = Number(row0), nr = Number(nrows);
+    const off = (f * w * h + r0 * w) * 2, len = nr * w * 2;
+    new Uint8Array(ctx.memory.buffer, dst + Number(dstOff) * 2, len)
+      .set(px.subarray(off, off + len));
     sample();
   },
   put_result(ptr, len, rw, rh, ctx) {
@@ -84,12 +126,14 @@ console.log(
 );
 
 if (assertModel) {
-  const bound = w * h * (2 * n + 8) + SLACK;
+  const model = `w*h*10 + n*w*${WIN}*2 + n*${TILE}*${STRIP}*8`;
+  const bound = w * h * 10 + n * w * WIN * 2 + n * TILE * STRIP * 8 + SLACK;
   if (peakWasm > bound) {
-    console.log(`  FAIL: peak ${MB(peakWasm)} MB exceeds the w*h*(2n+8) model ` +
-                `+ slack (${MB(bound)} MB) — something now scales with the input twice`);
+    console.log(`  FAIL: peak ${MB(peakWasm)} MB exceeds the ${model} model ` +
+                `+ slack (${MB(bound)} MB) — something now scales with frames x area`);
     process.exit(1);
   }
-  console.log(`  peak within the w*h*(2n+8) memory model (${MB(peakWasm)} of ${MB(bound)} MB)`);
+  console.log(`  peak within the streaming memory model, ${model} ` +
+              `(${MB(peakWasm)} of ${MB(bound)} MB)`);
 }
 if (!result) process.exit(1);
