@@ -243,6 +243,29 @@ layout, touch and the DOM — **not** WebKit's engine and not a device's memory
 ceiling — so it can show the page is broken on mobile and never that it is good.
 What it does cover is the failure class that is invisible at desktop width.
 
+### What resolution, not how many subs
+
+Any real camera frame is far taller than `112·n` for a plausible sub count, so
+it sits in the regime where peak is `w·h·12` and the sub count does not enter
+(see the model below). The phone question is therefore a question about **sensor
+size alone** — a 30-sub session costs what a 2-sub session costs:
+
+| source | peak wasm |
+|---|---|
+| 3 Mpx (this demo's frames) | 37 MB |
+| 24 MP full-frame | 276 MB |
+| 45 MP | 521 MB |
+| 60 MP | 690 MB |
+| 24 MP **after CFA split** (3000×2000 planes) | 70 MB |
+
+Desktop tabs carry the 24 MP figure; a mobile tab is killed well below the
+60 MP one. So full-resolution **mono** is a desktop shape, and the memory-viable
+mobile shape is the half-resolution plane the colour path already produces —
+with the caveat that the CFA path is CLI-only today and loads the stack whole
+rather than streaming, so the browser cannot reach it yet. Wiring it up is two
+slices (expose it at the wasm entry, thread the row window through plane
+extraction), not a new architecture.
+
 ### The ceiling is memory
 
 Worth measuring rather than guessing. `mem_probe.mjs` instantiates the module
@@ -290,27 +313,56 @@ modest 3 Mpx ×32, on the device with the least memory. The page now streams
 (see *Streaming*), and the term is gone:
 
 ```
-peak ≈ w·h·10  +  n·w·112·2  +  n·256·64·8
-       ↑ output   ↑ strip win   ↑ per-tile gather
+peak ≈ w·h·10  +  max( w·h·2 ,  n·w·112·2 + n·256·64·8 )
+       ↑ output    ↑ pass-1 frame  ↑ strip window + per-tile gather
 ```
 
-Nothing multiplies `n` by frame *area* any more. Both remaining `n` terms are
-independent of frame **height** — a strip is a strip whether the frame is 768
-rows or 4000 — so the bound per sub is `w·224 + 128 KiB`, and what it costs to
-add one more sub stops growing the moment the frame is taller than a strip.
+The `max` is the whole subtlety, and it is a property of wasm rather than of
+this program: **linear memory is a high-water mark and never returns pages.**
+Pass 1's frame is freed before pass 2 allocates, but freeing does not shrink
+`memory.buffer.byteLength` — it leaves a hole. Pass 2's strip window either fits
+in that hole, costing nothing, or does not, and extends memory by its own size.
+The two never add, and which one is visible flips at roughly `h = 112·n`:
 
-Measured, that is **169 KiB per extra sub** at 2048×1536 (37.1 MB at ×16,
-39.8 MB at ×32) — below the bound, because the real halo is a few rows rather
-than the worst-case 24. The same step used to cost 96 MB. That is the difference
-between a session bounded by the device and one bounded by how long you are
-willing to wait.
+| regime | condition | behaviour |
+|---|---|---|
+| tall frame, few subs | `h > 112·n` | peak is `w·h·12` and **`n` does not appear** |
+| short frame, many subs | `h < 112·n` | peak grows with `n` |
 
-`mem_probe.mjs --assert-model` enforces the bound in `build_web.sh`, and the
-first version of it was quietly wrong: it omitted the per-tile term, which the
-window term's worst-case halo happened to compensate for. It read as a
-comfortable 33% margin at ×16 and turned into 0.8% at ×64 — a check about to
-start failing a correct program. A model that holds because two errors point
-opposite ways is not a model.
+Measured at 6000×4000, peak is byte-identical — 275.7 MB — at ×2, ×4, ×8 and
+×16: on a real camera frame, **adding subs is free**. At 1024×768 the same sweep
+gives 10.1 MB at ×2 and ×4, 12.8 at ×16, 16.9 at ×32 — the strip window is
+larger than the hole there, so it shows.
+
+Thirteen measurements, 0.79 → 60.22 Mpx and n from 2 to 64, every one within
+1.9 MB of the model:
+
+| frame | ×2 | ×16 | ×32 | ×64 |
+|---|---|---|---|---|
+| 1024×768 | 10.1 MB | 12.8 MB | 16.9 MB | 25.3 MB |
+| 2048×1536 | 37.1 MB | 37.1 MB | — | — |
+| 6000×4000 (24 MP) | 275.7 MB | 275.7 MB | — | — |
+| 8256×5504 (45 MP) | 521.1 MB | — | — | — |
+| 9504×6336 (60 MP) | 690.2 MB | — | — | — |
+
+**The model this section used to print was wrong, and wrong in both directions
+at once.** It read `w·h·10 + n·w·112·2 + n·256·64·8`: it always charged the strip
+window even when the hole absorbed it, and never charged pass 1's frame at all,
+on the stated grounds that the frame is "freed before pass 2 allocates". Those
+two errors are close in size at n=16 — and every measurement ever taken here was
+at n≥16, so they cancelled. Drop to n=2 and the old bound fails at 2048×1536, the
+size this section called good; raise the area to 24 MP and it fails the other
+way, at n=16.
+
+The correction is not that the old model broke at scale. It was never right; one
+untested axis hid it. The paragraph it replaced already knew the failure mode by
+name, which is worth more than the model it was attached to:
+
+> A model that holds because two errors point opposite ways is not a model.
+
+`mem_probe.mjs --assert-model` enforces the corrected bound in `build_web.sh`,
+with a lower bound of `w·h·8` — the accumulator alone — so a run that measures
+nothing cannot pass.
 
 ### The freeze
 
