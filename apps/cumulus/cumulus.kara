@@ -1262,12 +1262,15 @@ fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64
     // style choice today, kept because a guard clause reads better than a
     // wrapped body.
     //
-    // The concurrency REPORT has not caught up: it still says
-    // `fanned_out: false, cost_gate: "unknown"` for the nested form, because
-    // its loop lookup cannot descend into an `if` arm (B-2026-08-14-33). Do not
-    // restructure Kāra on the strength of that field alone — time the two
-    // builds, one with `KARAC_AUTO_PAR=0`. Trusting the report is exactly how
-    // this hoist got written after the bug it cites was already fixed.
+    // The concurrency REPORT has caught up too (B-2026-08-14-33): it used to
+    // say `fanned_out: false, cost_gate: "unknown"` for the nested form,
+    // because its loop lookup could not descend into an `if` arm, and that
+    // stale field is what this hoist was written on — after the bug it cites
+    // had already been fixed. The report now agrees with the lowering at any
+    // nesting depth. The habit is still worth keeping: when a performance
+    // claim matters, time the two builds, one with `KARAC_AUTO_PAR=0` at BUILD
+    // time (the variable is read at compile time; toggling it on an existing
+    // binary changes nothing and measures zero difference convincingly).
     if not dark.present and not flat.present { return; }
     for r in 0..nrows {
         for x in 0..w {
