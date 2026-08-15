@@ -92,26 +92,43 @@ Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 
 | **Kāra (codegen)** | **15.4 ± 1.4 ms** | 1.00× |
 | Go | 150.4 ± 3.0 ms | 9.79× |
 
-> **The C parity this kata reached in August was an x86 result, and it does not
-> hold on Apple silicon.** On arm64 Kāra is **1.57× behind C** — confirmed on
-> minima across three independent 60-run rebuilds (1.60× / 1.56× / 1.57×,
-> Kāra min ≈ 14.2 ms, C min ≈ 9.0 ms), so it is neither run-to-run noise nor
-> the 64-byte code-placement distribution.
+> **The C parity this kata reached in August was an x86 result. On arm64 Kāra
+> is 1.57× behind `clang -O3` — and the whole of that is LOOP UNROLLING, not
+> codegen quality.** Filed and pinned as kara `B-2026-08-15-31`; see § *Notes*.
 >
-> **It is not a regression of `B-2026-08-05-21` either — that fix is firing
-> here.** The arm64 punch loop carries **zero** overflow traps (`b.vs`/`b.vc`
-> both absent from `main`) and effectively no bounds checks (one `b.hs`, one
-> `b.hi`), which is exactly what the elision was supposed to produce. Kāra's
-> whole `main` is **213** instructions against C's **432** — Kāra is emitting
-> *less* code and running slower, which rules out the "extra per-iteration
-> check" mechanism that explained the x86 gap and points instead at what
-> `clang` does with the extra instructions (unrolling / scheduling the scan).
-> That mechanism is not yet pinned, and no claim is made about it here.
+> Retired-instruction counts (`kara/scripts/pmc.c`) settle it:
 >
-> The consequence for the sections below: **everything from § *What the gap
-> actually is* onward is an x86-64 investigation**, correct on that host and
-> still the explanation for that host's numbers. It does not describe the
-> Apple-silicon gap, which is a separate and open question.
+> | build | instructions | cycles |
+> |---|---|---|
+> | `clang -O3` | 370.7 M | 42.0 M |
+> | `clang -O3 -fno-unroll-loops` | 500.6 M | 63.7 M |
+> | `clang -O2` | 500.5 M | 74.4 M |
+> | **Kāra (`karac build`)** | **527.4 M** | **66.2 M** |
+>
+> **Against an equal-treatment C build Kāra is 1.05× on instructions, 1.06× on
+> wall time (14.14 vs 13.28 ms min), and 11% AHEAD of `clang -O2` on cycles.**
+> `clang -O2` does not unroll this loop either, and emits Kāra's exact
+> 15-instruction shape.
+>
+> **Per pair the two are instruction-for-instruction identical.** Both lower
+> `rotate_byte` to the same range-check + bitmask + table-load —
+> `ldrb; sub #0x30; cmp #9; b.hi; lsr; tbz; and; ldr; ldrsb; cmp; b.ne`, 11
+> instructions. Kāra then adds 5 of loop bookkeeping that clang's unroll
+> amortizes to zero. 16/11 = 1.45×, against the measured 1.42× dynamic ratio.
+> There is no third mechanism to look for.
+>
+> `B-2026-08-05-21` is not implicated and is firing correctly here: the punch
+> loop carries zero overflow traps (`b.vs`/`b.vc` absent) and one bounds check.
+> `KARAC_OPT_LEVEL=3` changes nothing (527.4 M at both O2 and O3) — this is not
+> a pipeline-string difference. Note `clang -O2` also declines the unroll
+> unhinted and takes it with `#pragma clang loop unroll(full)` (372.3 M, i.e.
+> `-O3`), so both compilers' cost models decline this loop and both take it when
+> hinted.
+>
+> **What the reader should take from the table above** is the comparison the
+> benchmark actually makes: `karac build` (a `default<O2>` pipeline) against
+> `clang -O3`. Where a hot loop is unrollable, that difference shows up as a
+> language gap and is not one.
 
 ### The x86 corroboration run
 
@@ -274,7 +291,9 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 
 ## Notes
 
-**The Apple-silicon C gap is filed as kara `B-2026-08-15-31`.** The parity this kata reached on x86-64 does not hold on arm64 — Kāra is 1.57× behind `clang -O3` there, with the `B-2026-08-05-21` overflow-trap elision confirmed present and no residual check to blame. The mechanism is not pinned; the ledger row carries the disassembly counts and what was ruled out.
+**The Apple-silicon C gap is kara `B-2026-08-15-31`, and it is pinned: loop unrolling.** The parity this kata reached on x86-64 does not hold on arm64 — Kāra is 1.57× behind `clang -O3` — but against `clang -O3 -fno-unroll-loops` it is **1.06×**, and it is 11% ahead of `clang -O2` on cycles. The per-pair instruction sequences are identical; clang amortizes away 5 bookkeeping instructions per pair that Kāra pays. `B-2026-08-05-21` is not implicated — its elision is firing.
+
+karac's full-unroll hint machinery (kata:37, `B-2026-06-17-7`) is live and fires in this build, but declines this loop on three deliberate gates: the converging `lo <= hi` bound is not a literal, the body calls `rotate_byte`, and the body has an early `return`. Each was calibrated on a measured regression elsewhere in the corpus, so relaxing them is a separate slice with its own sweep — the ledger row scopes it and names the katas to re-measure.
 
 Verified byte-identical under `karac run --interp` (tree-walk), `karac run` (JIT), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — with both Kāra variants agreeing with the Python mirror on the spec cases and the differential.
 
