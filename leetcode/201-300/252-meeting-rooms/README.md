@@ -110,7 +110,41 @@ Two sizing choices keep it measuring the algorithm:
   Re-sorting the previous round's output would hit every implementation's
   already-sorted fast path from round 2 onward.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O` | 58.8 ± 1.4 ms | 0.27× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 59.1 ± 1.4 ms | 0.27× |
+| **Kāra (codegen)** | **217.3 ± 3.8 ms** | 1.00× |
+| C `clang -O3` (`qsort`) | 265.0 ± 5.8 ms | 1.22× |
+| Go (`sort.Slice`) | 467.0 ± 10.0 ms | 2.15× |
+
+> **The sort gap is confirmed, and it is worse here than on the container.**
+> This kata deferred the question to Apple silicon, and the answer is
+> **3.70× behind Rust** — against 1.89× on x86. The measurement is not
+> marginal: σ is 2.4% on the Kāra row and 2.4% on Rust's, and the two are
+> 158 ms apart. Tracked as kara **`B-2026-08-10-9`**; see § *Notes*.
+>
+> Equal-safety makes no difference to it — `rustc -O` is 58.8 ms and the
+> overflow-checked build 59.1 ms, a 0.5% difference — so this is not a
+> safety-tax result. It is `Vec.sort_by` against `slice::sort_by`, and the
+> ordering is unambiguous on both hosts.
+
+**The comparison that is clean is Kāra against Rust**, both using a generic
+sort-by-key with an inlined comparator. The C and Go rows are about their sorts,
+not their languages, for the reasons below, and Kāra passing C on the M5
+(1.22× ahead, having been 0.51× behind on the container) is a statement about
+`qsort`'s indirect call under a fast core — not a Kāra win.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts).
 
 | lang | mean (ms) |
 |---|---|
@@ -130,14 +164,9 @@ idiomatic standard-library choice, the same way [#249](../249-group-shifted-stri
 keeps a hand-written hash map and says so — but the row measures **`qsort`**, not
 "C".
 
-The comparison that is clean is **Kāra against Rust**, both using a generic
-sort-by-key with an inlined comparator: 469 ms against 248 ms, a real ~1.9× on a
-sort-dominated workload. That is worth a closer look on the M5 host before
-anything is concluded from it — one measurement on a shared container is not
-grounds for a perf claim.
-
-Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
-is corroboration only (BENCHMARKS.md § Hosts).
+On that host Kāra against Rust was 469 ms to 248 ms, ~1.9×. The M5 run above
+settles what that measurement could only flag: the gap is real and **widens** to
+3.70× on Apple silicon.
 
 ## Kāra features exercised
 

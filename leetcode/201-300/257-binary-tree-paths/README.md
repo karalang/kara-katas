@@ -181,7 +181,36 @@ this corpus rests on.
 available facility, not a missing feature — worth checking, since the other
 answer would have been a ledger row rather than a fix. All four now pre-size.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Go | 127.2 ± 4.7 ms | 0.76× |
+| C `clang -O3` | 137.4 ± 1.1 ms | 0.82× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 149.5 ± 2.1 ms | 0.89× |
+| Rust `-O` | 150.6 ± 3.1 ms | 0.89× |
+| **Kāra (codegen)** | **168.4 ± 7.0 ms** | 1.00× |
+
+**Kāra's parity with Rust does not survive this host.** On the container the two
+were level (370.6 vs 386.9, overlapping error bars); here Kāra is **1.13× behind
+equal-safety Rust** and the gap clears both σ. Against C it is 1.23×, essentially
+the container's 1.22× — so C did not move relative to Kāra, Rust did.
+
+That pattern points at allocation. This kata builds a fresh `String` per
+root-to-leaf path and a fresh `Vec` per level, and the M5's cheaper allocator
+rewards the lanes that allocate most aggressively — Go moves from third to first
+(343.6 → 127.2 ms is a 2.70× improvement against Kāra's 2.20×). Kāra keeps its
+distance from C, whose `malloc` shape it most resembles, and loses ground to the
+two lanes with the more specialised allocators.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts).
 
 | lang | mean (ms) | vs Rust |
 |---|---|---|
@@ -195,13 +224,10 @@ answer would have been a ledger row rather than a fix. All four now pre-size.
 so the intervals overlap and the nominal 4% lead is not a lead. Against C the
 1.22× gap does sit outside both error bars and is probably real.
 
-Equalising moved every row, and moved Kāra most: 482.7 → 370.6 ms, a 23%
-improvement against Rust's 17%. The C gap narrowed from 1.53× to 1.22×. That is
-the measure of how much the first run was reporting allocator strategy rather
-than the algorithm.
-
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+Equalising moved every row on that host, and moved Kāra most: 482.7 → 370.6 ms,
+a 23% improvement against Rust's 17%. The C gap narrowed from 1.53× to 1.22×.
+That is the measure of how much the first run was reporting allocator strategy
+rather than the algorithm.
 
 ## Kāra features exercised
 

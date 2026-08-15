@@ -108,7 +108,41 @@ all, each house reading the previous house's three totals. That complements
 [#254](../254-factor-combinations/) (allocation-heavy) and
 [#255](../255-verify-preorder-sequence-in-bst/) (`Vec` push/pop).
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 94.7 ± 1.6 ms | 0.91× |
+| Rust `-O` | 96.3 ± 1.4 ms | 0.92× |
+| Go | 98.1 ± 4.2 ms | 0.94× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 102.7 ± 1.8 ms | 0.99× |
+| **Kāra (codegen)** | **104.2 ± 3.4 ms** | 1.00× |
+
+**This lane is finally measurable, and the answer is a tie against equal-safety
+Rust** — 104.2 against 102.7 ms, 1.5%, well inside σ. The container could not
+resolve it at all: every σ there was 9–13% against a 7.3% total spread, so the
+ordering was noise by construction. Here σ is 1.5–4.3% against a 1.10× spread,
+which is tight enough to say something.
+
+What it says is modest and worth stating exactly. Kāra is **last of five**, 1.10×
+behind C and 1.08× behind wrapping Rust — but the entire deficit is the safety
+contract, because against the build that makes the same guarantee it is level.
+A three-way DP over a fixed table is arithmetic-dense with a loop-carried
+dependency, so overflow checks have nowhere to hide, and they cost Rust 6.6%
+(96.3 → 102.7 ms) and Kāra a statistically identical amount.
+
+The container-era caveat about this lane resisting measurement is retained below
+because it explains why no ranking was published from that host; it does not
+apply to the run above.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts), and on that lane the caveat did more work than usual.
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -118,22 +152,13 @@ all, each house reading the previous house's three totals. That complements
 | Kāra | 214.6 | 10.9% |
 | Rust (checked) | 220.1 | 9.6% |
 
-**This is a four-way tie and should not be read as a ranking.** The full spread
-is 7.3% while every σ is 9–13%, so the intervals overlap almost entirely. Kāra
-appearing below C and Rust here is not a result, and neither is it edging
-equal-safety Rust.
-
-Stated plainly because this lane resisted measurement harder than any other in
-the corpus. This host's run-to-run σ for the *same binary* swings between 10% and
-26%; that was confirmed by re-measuring one binary and watching σ move 25.8% →
-13.7% with nothing changed. Three candidate causes were tested and refuted —
-container load (still noisy at load 0.59), working-set size (the resize above did
-not reduce σ), and auto-par thread startup (`KARAC_AUTO_PAR=0` measured the
-same). The resize was kept on its own merits, not as a variance fix.
-
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts),
-and on this lane that caveat is doing more work than usual.
+**That table is a four-way tie and was never a ranking.** That host's run-to-run
+σ for the *same binary* swings between 10% and 26%; confirmed by re-measuring one
+binary and watching σ move 25.8% → 13.7% with nothing changed. Three candidate
+causes were tested and refuted — container load (still noisy at load 0.59),
+working-set size (the resize above did not reduce σ), and auto-par thread startup
+(`KARAC_AUTO_PAR=0` measured the same). The resize was kept on its own merits,
+not as a variance fix.
 
 ## Kāra features exercised
 

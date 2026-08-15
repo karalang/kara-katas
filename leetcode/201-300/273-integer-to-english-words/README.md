@@ -140,7 +140,59 @@ conflates compiler quality with whether the comparator opted into parallelism,
 and would let a parallel win mask a per-core regression. Each lane is compared
 against its own kind.
 
-#### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
+#### Sequential lane — Apple M5 Pro, per-core, `KARAC_AUTO_PAR=0`
+
+2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs. The canonical
+host — `bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Go ‡ | 504.7 ± 8.7 ms | 0.66× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 747.1 ± 31.7 ms | 0.98× |
+| Rust `-O` | 751.5 ± 34.7 ms | 0.99× |
+| **Kāra (codegen)** | **762.7 ± 13.7 ms** | 1.00× |
+| C `clang -O3` | 951.7 ± 27.1 ms | 1.25× |
+
+‡ Go runs at **107.6% CPU** (514 ms user against 504.7 wall) — its concurrent
+collector, on a lane where every other row is at 99.7%. Its wall-clock lead is
+not entirely a per-core result.
+
+**Kāra is ahead of C by 1.25× and level with both Rust builds** (within 2%, on σ
+of 1.8–4.6%). The container had Kāra and C tied at 1.002×; on this host Kāra
+pulls clear of C while staying pinned to Rust. That is the M5's cheaper allocator
+rewarding the owned-string implementations — Kāra, Rust and Go all manage their
+own string buffers, while the C mirror's explicit `malloc`/`realloc` join does
+not benefit as much.
+
+The finding the lane was built for survives and strengthens: **on a workload that
+is nothing but string allocation, Kāra is not behind the systems languages.**
+
+#### Parallel lane — Apple M5 Pro, 14 cores (6P+12E)
+
+| Impl | Mean ± σ | user (ms) | CPU% | vs Kāra |
+|---|---|---|---|---|
+| Rust (rayon `par_iter`) | 137.7 ± 13.5 ms | 2349 | 1714% | 0.80× |
+| Go (goroutines) | 157.9 ± 2.1 ms | 736 | 616% | 0.92× |
+| **Kāra (`#[par_order_free]`)** | **172.2 ± 8.6 ms** | 2850 | 1661% | 1.00× |
+| C (pthreads — metal floor) | 215.6 ± 15.4 ms | 3651 | 1698% | 1.25× |
+
+**Kāra beats the C pthreads floor by 1.25× and trails rayon by the same factor.**
+Its seq→par ratio is 762.7 → 172.2 ms, **4.43× on 14 cores** — much lower
+efficiency than the container's 3.61× on 4, and the user-time column says why:
+2850 ms of CPU against the sequential lane's 757 ms is **3.8× the total work** for
+a 4.4× wall-clock gain. The auto-par lowering is paying real overhead at this
+grain, where on 4 cores it paid ~4%.
+
+**Go's row is the one to look at.** It reaches 157.9 ms on **736 ms of CPU** —
+under a quarter of Kāra's and a fifth of C's — so on a throughput-per-core basis
+it wins this lane outright. Rayon's 41.5% σ problem from the container does not
+reproduce here (13.5 ms on 137.7, 9.8%).
+
+> **Cross-lane caveat.** Parallel rows use 14 cores against the sequential lane's
+> 1 and are **not comparable** to them. CPU% makes it unambiguous (seq ~99.7%,
+> par 616–1714%).
+
+#### The x86 corroboration run — sequential lane
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -152,11 +204,12 @@ against its own kind.
 | Rust | 955.4 ± 12.5 | 1.3% |
 | Go | 1068.9 ± 20.4 | 1.9% |
 
-**Kāra is second, 1.002× behind C** — inside noise — and ahead of both Rust
-builds and Go. On a lane that is nothing but string allocation, that is a good
-result, and a narrow one, which is why it was probed rather than celebrated.
+On that host **Kāra is second, 1.002× behind C** — inside noise — and ahead of
+both Rust builds and Go. On a lane that is nothing but string allocation, that is
+a good result, and a narrow one, which is why it was probed rather than
+celebrated.
 
-#### Parallel lane — 4 cores
+#### The x86 corroboration run — parallel lane, 4 cores
 
 | lang | mean (ms) | σ | user (ms) |
 |---|---|---|---|

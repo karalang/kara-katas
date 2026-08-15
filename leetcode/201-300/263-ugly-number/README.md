@@ -177,7 +177,36 @@ peels all the way down. The sink folds **every** verdict rather than only the
 trues, so the random path is checked too; a trues-only sink would have been
 determined entirely by the substituted values.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 232.4 ± 4.0 ms | 0.99× |
+| Rust `-O` | 232.7 ± 1.3 ms | 0.99× |
+| **Kāra (codegen)** | **235.2 ± 2.8 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 236.4 ± 4.1 ms | 1.00× |
+| Go | 257.1 ± 4.8 ms | 1.09× |
+
+**Kāra, C and Rust are level, and this host says so more precisely than the
+container did.** The four non-Go rows span 232.4–236.4 ms — a **1.7% band** on σ
+of 0.6–1.7%. Kāra sits third by 2.8 ms, which is not a ranking; the container had
+it first by 11.5 ms, which was not one either. Both hosts agree on the finding:
+on a division-bound loop Kāra emits what C emits and runs at C speed. The
+disassembly backs it — the same seven divide instructions in the same shape, so
+there is no mechanism for a real lead in either direction.
+
+Overflow checking is free here (232.7 vs 236.4 ms, 1.6%), as it was on the
+container: a `gcd` reduction has almost no arithmetic that can overflow.
+
+**Go is 9% behind**, down from 19% on the container — consistent with the
+identified cause below, since the 32-bit narrowing fast path that Go lacks is
+worth less on a core with a faster 64-bit divider.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -215,8 +244,8 @@ Method, disassembly and the caveat that this does **not** retroactively explain
 Kāra's binary is 332.9 KiB against C's 15.6 KiB, Go's 2.16 MB and Rust's 3.86 MB;
 peak RSS is 2.2 MiB against C's 1.5 MiB.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

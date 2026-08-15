@@ -162,12 +162,39 @@ in the kernel header too.
 
 Sink `42226040`, reproduced exactly by the C, Rust and Go mirrors.
 
-**Published numbers await the Apple-silicon host.** The x86 container run in
-`bench/results.container-x86.json` is corroboration that the lane works and the
-mirrors agree (BENCHMARKS.md § Hosts), not a source of claims — and on that host
-all five landed within a few percent of each other with Rust's own σ at 13% of
-its mean, which is contention, not signal. Nothing here should be quoted until
-`bench/results.json` exists.
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O` | 113.1 ± 1.8 ms | 0.88× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 121.6 ± 2.5 ms | 0.94× |
+| C `clang -O3` | 124.1 ± 2.6 ms | 0.96× |
+| Go | 124.6 ± 1.5 ms | 0.97× |
+| **Kāra (codegen)** | **129.1 ± 2.0 ms** | 1.00× |
+
+**The M5 does what the container could not: it separates the languages.** On the
+container all five landed within a few percent with Rust's σ at 13% of its mean —
+contention, not signal — so nothing was quotable. Here σ is 1.2–2.2% across every
+row and the spread is 1.14×, which is small but now larger than the noise.
+
+**Kāra is last, by 1.04× against C and 1.06× against equal-safety Rust.** Both
+gaps are real but slight, and the honest summary is that a reverse index scan
+with a loop-carried memo read runs at roughly the same speed in all five
+languages. The one row that stands apart is wrapping `rustc -O` at 0.88×, and
+the gap between it and its own checked build (113.1 → 121.6 ms, 1.08×) is larger
+than the gap between checked Rust and Kāra — so Kāra's position here is
+essentially "equal-safety Rust plus 6%", not a codegen deficit worth chasing.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration that the
+lane works and the mirrors agree (BENCHMARKS.md § Hosts), not a source of claims.
+There the order was `rust_ovf < kara < c < rust < go`, with Kāra *second*; that
+ordering was inside the run's own noise and should not be read as a change.
 
 ## Running
 

@@ -134,7 +134,42 @@ corpus's own limit — the same kata's σ went 1.3% → 2.0% → **22.8%** at wo
 sets of 1 MB, 3 MB and 13 MB. A larger array would be a purer memory-latency lane
 and an unrankable one.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 241.4 ± 6.7 ms | 0.83× |
+| Go | 274.6 ± 6.6 ms | 0.95× |
+| **Kāra (codegen)** | **289.5 ± 13.6 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 298.9 ± 10.6 ms | 1.03× |
+| Rust `-O` | 328.5 ± 9.2 ms | 1.13× |
+
+**Kāra is third, 1.20× behind C and 1.03× ahead of equal-safety Rust.** The C gap
+widens from the container's 1.03× — a binary search over a 2 MiB array is a
+latency-bound pointer-arithmetic chase, and the M5's memory subsystem rewards
+C's tighter loop more than it rewards Kāra's.
+
+> **Rust's 1.63× deficit does NOT reproduce on arm64 — it collapses to 1.13×.**
+> The section below explains that deficit as a single `cmov` if-conversion
+> decision, and shows that forcing the branch back recovers it entirely. That
+> analysis is correct **for x86-64 only**. On this host `rustc -O` is 328.5 ms
+> against Kāra's 289.5 — still last, but by 13% rather than 63%.
+>
+> **Do not read the two Rust rows' 10% split as a codegen result.** `rustc -O`
+> at 328.5 ms and the overflow-checked build at 298.9 ms would say the checked
+> build is *faster*, which is backwards. Disassembly says they are the same
+> program: both carry **2 `csel`-family and 4 conditional branches** in the
+> search loop — identical shape. A 10% difference between two identically-shaped
+> binaries on arm64 is the 64-byte code-placement distribution
+> ([`BENCHMARKS.md` § Code placement](../../../BENCHMARKS.md)), and a single
+> build pair cannot resolve it. Only the Kāra-vs-Rust ordering, which is much
+> larger than that band, is claimed here.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -148,7 +183,9 @@ and an unrankable one.
 
 **Kāra is second, 1.03× behind C** and inside noise of the two C builds and Go.
 
-### Rust is 1.63× behind, and it is one `cmov`
+### Rust is 1.63× behind on x86-64, and it is one `cmov`
+
+*(x86-only — on the M5 this deficit is 1.13×; see the note above.)*
 
 Every other lane in this corpus has Rust within noise of C, so that gap was
 probed before it was published. `rustc -O` if-converts the search loop:
@@ -170,6 +207,14 @@ selection, 23%), and now #275 at 58%. Binary search is the textbook case *for*
 branchless code — the branch is maximally unpredictable, which is precisely the
 argument for `cmov`. It loses anyway, because unpredictable-but-speculatable
 still beats serialized. Full write-up in [`bench/probe/`](bench/probe/).
+
+**All three instances are x86-64 results, and the family does not survive the
+port.** [#259](../259-3sum-smaller/) re-ran its own probe on the M5 and found
+every build — including the supposedly branchless `c` and `rust` — responding
+strongly to a predictable branch, which is the opposite of what if-conversion
+predicts; and this kata's 58% collapses to 13%. The arm64 backends are evidently
+not making the same if-conversion choices, so the mechanism should be quoted as
+an x86 finding rather than a general one until someone re-derives it here.
 
 ## Kāra features exercised
 

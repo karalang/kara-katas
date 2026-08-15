@@ -144,7 +144,40 @@ The two row buffers are allocated once and swapped rather than reallocated per
 row, which keeps the lane about DP arithmetic rather than allocation —
 [#254](../254-factor-combinations/) already measures that.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O` | 119.9 ± 1.1 ms | 0.90× |
+| C `clang -O3` | 121.5 ± 2.8 ms | 0.91× |
+| **Kāra (codegen)** | **133.6 ± 1.0 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 139.7 ± 1.6 ms | 1.05× |
+| Go | 186.5 ± 5.7 ms | 1.40× |
+
+> **The container's headline does not survive this host, and the reversal is the
+> finding.** There Kāra was **fastest** — 1.08× ahead of plain `rustc -O`, 1.59×
+> ahead of equal-safety Rust and 1.60× ahead of C. Here it is **third**: 1.10×
+> behind C and 1.11× behind plain Rust, keeping only a 1.05× lead over the
+> equal-safety build. σ is 0.7–3.1%, so neither ordering is noise; they are
+> genuinely different results on the two hosts.
+>
+> The x86 lead came from a specific mechanism — recorded below — where `rustc`
+> and `clang` fully unrolled the `k = 32` reduction into ~130 conditional moves
+> while Kāra emitted 17 and won on the branchy form. That is precisely the kind
+> of result that does not transfer: it depends on how a particular backend
+> unrolls for a particular ISA. On arm64 the unroll evidently pays, and Kāra's
+> lead goes with it.
+>
+> The claim that **does** survive both hosts is the narrow one: Kāra is ahead of
+> equal-safety Rust (1.59× on the container, 1.05× here). Everything about
+> beating C or unchecked Rust is x86-only and should not be quoted from this
+> kata.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -201,8 +234,8 @@ Go is 588.6 ms, last; this lane does not investigate why and does not guess.
 Kāra's binary is 336.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.87 MB;
 peak RSS is 3.2 MiB against C's 2.4 MiB.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

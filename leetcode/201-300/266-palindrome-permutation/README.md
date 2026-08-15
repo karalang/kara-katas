@@ -161,7 +161,34 @@ The alphabet is 26, not 256, because that is what makes collisions frequent —
 roughly one byte in 26 hits the counter its predecessor just wrote. A 256-wide
 draw would make them ten times rarer and measure a different loop.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 230.7 ± 0.7 ms | 0.90× |
+| Rust `-O` | 235.5 ± 1.3 ms | 0.92× |
+| Go | 249.4 ± 1.7 ms | 0.97× |
+| **Kāra (codegen)** | **256.7 ± 8.6 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 258.8 ± 5.4 ms | 1.01× |
+
+**Kāra's tie with equal-safety Rust holds; its lead over unchecked Rust does
+not.** Here Kāra is 256.7 ms against the checked build's 258.8 — 0.8%, a tie on
+σ of 2–3% — which is the comparison the safety contract makes fair, and it
+reproduces the container's ordering of those two. What does not reproduce is the
+**12.7% lead over plain `rustc -O`** the container showed: on the M5 plain Rust
+is 8.9% *ahead* of Kāra.
+
+The C gap widens slightly, 5.6% → 11.1%, and the instruction-count observation
+below still explains the shape: Kāra runs 9 inner-loop instructions carrying
+three safety checks per element against C's 4 carrying none. Running 2.25× the
+instructions for 1.11× the time remains the useful summary, and it is a better
+result than the raw ratio suggests.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -223,8 +250,8 @@ disassembly in [`bench/probe/README.md`](bench/probe/README.md).
 Kāra's binary is 332.9 KiB against C's 15.8 KiB, Go's 2.16 MB and Rust's 3.86 MB;
 peak RSS is 3.8 MiB against C's 3.0 MiB.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

@@ -116,8 +116,48 @@ allocator-dominated. That is true of the generate-and-filter twin and is
 precisely what the sizing above avoids; [#246](../246-strobogrammatic-number/)
 still carries the family's two-pointer-scan lane.
 
-Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
-is corroboration only (BENCHMARKS.md § Hosts).
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host — `bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 61.0 ± 2.2 ms | 0.27× |
+| Go ‡ | 81.9 ± 1.6 ms | 0.36× |
+| Rust `-O` | 171.0 ± 3.9 ms | 0.76× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 171.2 ± 4.4 ms | 0.76× |
+| **Kāra (codegen)** | **224.8 ± 4.3 ms** | 1.00× |
+
+‡ Go runs at **117% CPU** (85 ms user against 81.9 ms wall) — its concurrent
+collector. Every other lane is at 99%. The Go row is not a strictly sequential
+measurement and should not be ranked against the others without that attached.
+
+**This is the widest Kāra deficit in the 244–275 block, and it grew on the
+M5: 1.80× behind C on the container, 3.68× here.** That direction is the
+opposite of its neighbours — [#244](../244-shortest-word-distance-ii/) and
+[#251](../251-flatten-2d-vector/) both *compress* on this host — and the reason
+is what the kata is made of. The closed form still enumerates both boundary
+lengths, so the hot path is building and discarding short strings: a
+per-allocation workload, and per-allocation katas are exactly the class that
+inverts when the allocator gets cheap relative to compute (BENCHMARKS.md §
+Hosts). C at `malloc` and Go at a bump allocator both take most of the benefit;
+Kāra takes least.
+
+Overflow checking costs Rust nothing here (171.0 vs 171.2 ms, inside σ) — the
+closed form is combinatorial multiplication over small counts, so there is
+almost no arithmetic worth checking. Kāra's deficit is therefore not a
+safety-tax result; equal-safety Rust is 0.76× and wrapping Rust is 0.76×, the
+same number.
+
+### The x86 corroboration run
+
+Container x86-64, committed as
+[`bench/results.container-x86.json`](bench/results.container-x86.json) —
+corroboration only (BENCHMARKS.md § Hosts). There the order is
+`c < rust < go < rust_ovf < kara` with Kāra at 274.6 ms against C's 152.4 ms.
+The M5 keeps Kāra last but moves Go from third to second, which is the
+allocator shift above showing up as a reordering.
 
 ## Running
 

@@ -82,7 +82,34 @@ size 1 and measure only the sort. Sink `819998103`, reproduced exactly by the C,
 Rust, Go and Python mirrors, each hand-rolling the same heap rather than calling
 `BinaryHeap` / `container/heap`.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 119.7 ± 0.6 ms | 0.49× |
+| Rust `-O` | 121.3 ± 1.1 ms | 0.50× |
+| **Kāra (codegen)** | **244.7 ± 0.9 ms** | 1.00× |
+| C `clang -O3` (`qsort`) | 264.9 ± 1.3 ms | 1.08× |
+| Go (`sort.Slice`) | 455.2 ± 5.7 ms | 1.86× |
+
+**This is the cleanest measurement in the block** — σ is 0.4% on the Kāra row and
+0.5% on Rust's. **Kāra is 2.04× behind equal-safety Rust**, against 1.62× on the
+container. Together with [#252](../252-meeting-rooms/)'s 3.70×, the M5 confirms
+the gap this kata deferred rather than dissolving it.
+
+The relationship the container found survives, and it is the useful part: #253
+*adds* a hand-rolled heap on top of #252's sort-and-scan and comes out relatively
+**better** (2.04× vs 3.70×). Extra non-sort work at parity dilutes the ratio,
+which is what you would expect if the sort — and only the sort — is the deficit.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts).
 
 | lang | mean (ms) | vs Rust |
 |---|---|---|
@@ -107,12 +134,12 @@ each kata carries non-sort work that runs at parity, diluting the ratio. And it
 is not the heap — #253 *adds* a hand-rolled heap on top of #252's sort-and-scan
 and comes out relatively **better** (1.62× vs 1.89×).
 
-Filed as an observation with its single-host caveat, not as a confirmed
-regression: every number here is from one x86 shared container, and the
-Apple-silicon host is where a sort-performance question gets settled.
-
-Published numbers await that host — `bench/results.container-x86.json` is
-corroboration only (BENCHMARKS.md § Hosts).
+**Settled on the Apple-silicon host, 2026-08-15 — the observation is now a
+confirmed result.** It was filed with a single-host caveat because every number
+came from one x86 shared container. The M5 lane above removes that caveat: the
+gap reproduces on a second, very different host and is **larger** there (this
+kata 1.62× → 2.04×, #252 1.89× → 3.70×), on measurements with σ under 1%.
+`B-2026-08-10-9` should be read as confirmed rather than provisional.
 
 ## Kāra features exercised
 

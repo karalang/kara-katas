@@ -207,8 +207,46 @@ passed every check — but per-combination allocation is precisely what this
 workload measures, so that row would have been artificially fast. It now
 materialises like the others.
 
-Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
-is corroboration only (BENCHMARKS.md § Hosts).
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Go | 127.0 ± 0.7 ms | 0.40× |
+| C `clang -O3` | 193.8 ± 4.6 ms | 0.61× |
+| **Kāra (codegen)** | **317.0 ± 8.5 ms** | 1.00× |
+| Rust `-O` | 330.0 ± 6.9 ms | 1.04× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 334.4 ± 10.2 ms | 1.05× |
+
+**Kāra and Rust remain at parity, and that is the load-bearing result** — 317.0
+against 330.0 ms, with equal-safety Rust at 334.4. It held on the container and
+it holds here, which is what makes this lane evidence rather than a data point.
+
+**The Go row inverts, and the inversion is the textbook signal.** Go went from
+fourth on the container (707.5 ms, 1.01×) to **first** here by a wide margin
+(127.0 ms, 0.40×). This kata allocates a fresh `Vec[i64]` per combination across
+4,005,306 combinations — a pure per-allocation workload — and per-allocation
+katas are exactly the class that inverts when the allocator gets cheap relative
+to compute (BENCHMARKS.md § Hosts). Go's bump allocator and concurrent collector
+take the whole benefit; C's `malloc` takes most of the rest. Kāra's position
+relative to *Rust* is unchanged because both pay a similar per-allocation cost.
+
+**This lane is evidence for where kara `B-2026-08-10-9` lives, and the M5
+strengthens it.** That row records Kāra's `sort_by` running ~2× Rust's, isolated
+from two sort-dominated katas ([#252](../252-meeting-rooms/),
+[#253](../253-meeting-rooms-ii/)) — both of which got *worse* on this host
+(1.89× → 3.70× and 1.62× → 2.04×). Here, with deep recursion and millions of
+small allocations but no sort at all, Kāra is level with Rust on both hosts. Two
+lanes diverging on sorting while this one stays pinned is a stronger separation
+than the container alone could show.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts). Order there: `c < kara < rust < go < rust_ovf`.
 
 ## Kāra features exercised
 

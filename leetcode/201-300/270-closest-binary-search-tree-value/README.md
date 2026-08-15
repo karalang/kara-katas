@@ -136,10 +136,59 @@ Sized to stay cache-resident on #261's lesson: three 30,000-element arrays plus
 #261 unrankable. The tree is built by random insertion, so its depth is the
 ~2·log₂(n) of a BST nobody rebalanced rather than the ~15 of a perfect one.
 
+### Runtime — Apple M5 Pro
+
+2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs. This is the
+canonical host — `bench/results.json`. Sink `280341251`, agreed by all eight
+compiled lanes.
+
+#### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 225.8 ± 2.3 ms | 0.94× |
+| Go | 227.6 ± 1.4 ms | 0.94× |
+| Rust `-O` | 233.5 ± 2.9 ms | 0.97× |
+| **Kāra (codegen)** | **241.0 ± 2.0 ms** | 1.00× |
+| C `clang -O3` | 286.6 ± 3.5 ms | 1.19× |
+
+#### Parallel lane — 14 cores (6P+12E), cross-lane
+
+| Impl | Mean ± σ | user (ms) | CPU% | vs Kāra |
+|---|---|---|---|---|
+| Go (goroutines) | 22.1 ± 1.1 ms | 270 | 1231% | 0.82× |
+| Rust (rayon `par_iter`) | 22.1 ± 0.4 ms | 314 | 1440% | 0.82× |
+| **Kāra (`#[par_order_free]`)** | **27.1 ± 0.3 ms** | **290** | 1088% | 1.00× |
+| C (pthreads — metal floor) | 27.6 ± 0.9 ms | 387 | 1409% | 1.02× |
+
+**Both host's headline claims survive, and one gets sharper.** C is last in the
+sequential lane on this host too — **1.19× behind Kāra**, against 1.11× on the
+container — which is the `cmov` finding documented below reproducing on arm64.
+That is worth noting given that the same if-conversion story *fails* to reproduce
+in [#259](../259-3sum-smaller/) and [#275](../275-h-index-ii/); here it holds.
+
+**Kāra edges the C pthreads floor while using a quarter less CPU.** 27.1 ms
+against 27.6 ms is a tie on wall-clock, but Kāra gets there on **290 ms of user
+time against C's 387 ms** — the lowest CPU draw of the four parallel lanes
+(1088% vs 1409–1440%). The buyer-facing version: the same throughput as
+hand-written pthreads, from source with no threads in it, leaving a quarter of
+the machine free for something else.
+
+**Kāra does not lead this lane on the M5, where it did on the container.** Go and
+rayon are 1.22× ahead. The seq→par ratio is 241.0 → 27.1 ms, **8.89× on 14
+cores** — a better scaling factor than the container's 3.51× on 4, but the
+hand-tuned schedulers extract more of it here. Reported as measured; the honest
+summary is "level with the C floor, behind rayon and goroutines, cheapest in CPU."
+
+> **Cross-lane caveat.** The parallel rows are **not comparable** to the
+> sequential ones — they use 14 cores against 1. CPU% makes the distinction
+> unambiguous (seq ~99%, par 1088–1440%). Never quote an auto-par wall time
+> against a single-threaded comparator.
+
 ### What the x86 corroboration run shows
 
 Re-measured 2026-08-15 when the parallel lane was added; the sink changed with
-it (see below), so these supersede the earlier figures rather than confirming
+it (see below), so these supersede the earlier x86 figures rather than confirming
 them.
 
 #### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
@@ -240,8 +289,8 @@ have been wrong at every stage. Method in
 Kāra's binary is 332.9 KiB against C's 15.7 KiB, Go's 2.22 MB and Rust's 3.87 MB;
 peak RSS is 4.0 MiB against C's 2.9 MiB.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

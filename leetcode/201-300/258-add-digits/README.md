@@ -84,7 +84,38 @@ complements the allocation-heavy ([#254](../254-factor-combinations/)), push/pop
 ([#255](../255-verify-preorder-sequence-in-bst/)) and string-building
 ([#257](../257-binary-tree-paths/)) lanes.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | σ% | vs Kāra |
+|---|---|---|---|
+| **Kāra (codegen)** | **209.1 ± 0.9 ms** | 0.4% | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 209.2 ± 0.6 ms | 0.3% | 1.00× |
+| Rust `-O` | 211.0 ± 0.9 ms | 0.4% | 1.01× |
+| C `clang -O3` | 213.4 ± 0.3 ms | 0.1% | 1.02× |
+| Go | 235.8 ± 1.9 ms | 0.8% | 1.13× |
+
+**Kāra, both Rust builds and C land inside a 2.1% band, and this is the tightest
+lane in the corpus on either host** — σ of 0.1–0.4%. Kāra is nominally first and
+0.1 ms ahead of equal-safety Rust, which is not a claim; what the lane does
+establish is that a pure-arithmetic loop with no allocation and no memory traffic
+runs at C speed in Kāra, and that its default overflow checking costs nothing
+detectable here (equal-safety Rust and wrapping Rust are 0.9 ms apart).
+
+**Go is 13% behind and I could not establish why.** The obvious hypothesis — that
+Go emits real division where LLVM strength-reduces `/ 10` and `% 10` into a
+multiply-and-shift — is **refuted**: disassembly shows zero `DIVQ` in Go's
+`addDigits`, same as C and Kāra. Something else accounts for it, and this lane
+does not identify what. The margin was 28% on the container and 13% here, so
+whatever it is, it is partly a property of that host.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts). It found the same three-way tie in a different order.
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -93,11 +124,6 @@ complements the allocation-heavy ([#254](../254-factor-combinations/)), push/pop
 | **Kāra** | **464.5 ± 8.2** | 1.8% |
 | Rust | 465.7 ± 4.4 | 0.9% |
 | Go | 597.7 ± 13.6 | 2.3% |
-
-**C, Rust and Kāra are a three-way tie** — 458 to 466 ms, a 1.7% spread against
-σ of 0.9–1.8%. This is the tightest lane in the corpus by some margin, and even
-here the ordering among the three is not resolvable. Kāra sits level with plain
-Rust *and* with the equal-safety build.
 
 **Go is 28% behind and I could not establish why.** The obvious hypothesis —
 that Go emits real division where LLVM strength-reduces `/ 10` and `% 10` into a
@@ -109,9 +135,6 @@ does not identify what.
 corpus. The program allocates nothing and touches no runtime surface, so the lean
 archive links essentially nothing; against Rust's 3.86 MB and Go's 2.16 MB the
 gap is three orders of magnitude larger than the runtime difference.
-
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

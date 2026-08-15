@@ -169,11 +169,41 @@ sum would not catch.
 
 Sink `955071957`, reproduced exactly by the C, Rust, Go and Python mirrors.
 
-**Published numbers await the Apple-silicon host**; `bench/results.container-x86.json`
-is corroboration only (BENCHMARKS.md § Hosts). For what it is worth, that host
-separates the languages cleanly — C ahead, Kāra level with `rustc -O` to within
-0.3 ms and slightly ahead of the equal-safety build, Go trailing — but the M5
-run is the one that counts.
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 174.3 ± 3.1 ms | 0.93× |
+| Rust `-O` | 174.9 ± 2.1 ms | 0.93× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 187.1 ± 2.9 ms | 1.00× |
+| **Kāra (codegen)** | **187.3 ± 3.8 ms** | 1.00× |
+| Go | 215.2 ± 2.4 ms | 1.15× |
+
+**Kāra and equal-safety Rust are a dead tie — 187.3 against 187.1 ms, 0.2 ms
+apart on σ of 3 ms.** That is the result this kata was built to produce: a
+data-dependent `skip_empty` cursor that cannot be hoisted or vectorized, driven
+58M times, is a pure test of how well each compiler handles an unpredictable
+branch over a ragged structure, and Kāra lands exactly on the safety-matched
+baseline. C and wrapping Rust share the lead at 0.93×, so the whole cost of
+Kāra's guarantees on this shape is that 1.07×.
+
+**The field compresses from the container**: Kāra was 1.17× behind C there and is
+**1.08×** here. The reordering (Kāra moves from second to fourth) is not a
+regression — it is the two rows above it, C and wrapping Rust, separating from
+the checked builds on a host with enough out-of-order width to hide the
+difference. Both hosts agree on the two claims that matter: C leads, and Kāra
+tracks equal-safety Rust.
+
+### The x86 corroboration run
+
+Container x86-64, `bench/results.container-x86.json` — corroboration only
+(BENCHMARKS.md § Hosts). That host separates the languages cleanly: C ahead,
+Kāra level with `rustc -O` to within 0.3 ms and slightly ahead of the
+equal-safety build, Go trailing.
 
 ## Running
 

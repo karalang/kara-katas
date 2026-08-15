@@ -112,7 +112,27 @@ Every word is 9 bytes sharing the 5-byte prefix `"delta"`, so hashing walks the 
 
 ### Runtime — sequential lane
 
-Container x86-64, 2026-08-03, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–101% CPU. `karac` commits to a **v3** deploy baseline, so `c_v3` and `rust_v3` are the ISA-matched comparators — and `rust_v3` is *also* overflow-checked, which makes it the equal-safety twin.
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host — `bench/results.json`, the file `consolidate-bench.sh` feeds into the corpus charts.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 60.9 ± 1.3 ms | 0.83× |
+| Rust `-O` (wrapping) | 63.3 ± 0.7 ms | 0.86× |
+| **Kāra (codegen)** | **73.6 ± 0.6 ms** | 1.00× |
+| Go | 88.4 ± 2.0 ms | 1.20× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 119.8 ± 1.1 ms | 1.63× |
+
+**Kāra is 1.21× behind C and 1.63× ahead of equal-safety Rust.**
+
+Two things worth separating.
+
+**The map costs Kāra something, and the size of it is the finding.** This kata was written to isolate exactly that. [#243](../243-shortest-word-distance/) runs the same `String` type through a map-free linear scan and lands within **1.06×** of C; [#126](../../101-200/126-word-ladder-ii/) and [#127](../../101-200/127-word-ladder/) put the same type inside a hash-keyed BFS and land **3.68×** and **2.61×** behind. The prediction was that #244 would fall between them, and it does — **1.21×**. That is informative in a way a single number isn't: two hash lookups per query over a 256-key map cost about a fifth, so whatever makes word-ladder 2.6–3.7× is *not* simply "the map, in proportion to how much you use it." Something else is going on in those two, and this measurement does not explain it.
+
+**Overflow checks are expensive here — and that is Rust's cost, not Kāra's.** `rustc -O` wrapping is 63.3 ms; the identical code with `-C overflow-checks=on` is 119.8 ms, an **1.89×** penalty. In #243 the same flag cost Rust nothing (115.5 → 115.2 ms), because that loop does no arithmetic worth checking. This one does: a subtraction, an `abs`, and two comparisons per merge step across 200,000 × ~156 steps, plus the sink's multiply-add. Kāra checks integer overflow **by default** and still lands at 73.6 ms — **1.16×** over wrapping Rust, against the 1.89× Rust pays for the same guarantee. The honest reading is narrow: Kāra's checked arithmetic is materially cheaper than Rust's opt-in overflow checking on an arithmetic-dense loop. It is *not* that Kāra beats Rust here — the wrapping row plainly says otherwise.
+
+### The x86 corroboration run
+
+Container x86-64, 2026-08-03, committed as [`bench/results.container-x86.json`](bench/results.container-x86.json). There `karac` commits to a **v3** deploy baseline, so `c_v3` and `rust_v3` are the ISA-matched comparators — and `rust_v3` is *also* overflow-checked, which makes it that host's equal-safety twin. Those two lanes are deliberate no-ops on arm64 and so are absent above.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
@@ -124,19 +144,13 @@ Container x86-64, 2026-08-03, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 
 | Rust overflow-checked @ x86-64-v3 (equal-safety, ISA-matched) | 235.8 ± 7.5 ms | 1.54× |
 | Rust `-O -C overflow-checks=on` | 256.6 ± 14.6 ms | 1.68× |
 
-**Kāra is 1.31× behind ISA-matched C and 1.54× ahead of equal-safety Rust.**
-
-Two things worth separating.
-
-**The map costs Kāra something, and the size of it is the finding.** This kata was written to isolate exactly that. [#243](../243-shortest-word-distance/) runs the same `String` type through a map-free linear scan and lands within **1.06×** of C; [#126](../../101-200/126-word-ladder-ii/) and [#127](../../101-200/127-word-ladder/) put the same type inside a hash-keyed BFS and land **3.6×** behind. The prediction was that #244 would fall between them, and it does — **1.31×**. That is informative in a way a single number isn't: two hash lookups per query over a 256-key map cost about a third, so whatever makes word-ladder 3.6× is *not* simply "the map, in proportion to how much you use it." Something else is going on in those two, and this measurement does not explain it.
-
-**Overflow checks are expensive here — and that is Rust's cost, not Kāra's.** `rustc -O` wrapping is 112.5 ms; the identical code with `-C overflow-checks=on` is 256.6 ms, a **2.28×** penalty. In #243 the same flag cost Rust nothing (115.5 → 115.2 ms), because that loop does no arithmetic worth checking. This one does: a subtraction, an `abs`, and two comparisons per merge step across 200,000 × ~156 steps, plus the sink's multiply-add. Kāra checks integer overflow **by default** and still lands at 153.1 ms. The honest reading is narrow: Kāra's checked arithmetic is materially cheaper than Rust's opt-in overflow checking on an arithmetic-dense loop. It is *not* that Kāra beats Rust here — the wrapping row plainly says otherwise.
+**The two hosts agree on the ordering and disagree on the size of the gap.** `c < rust < kāra < go < rust_ovf` is identical on both, which is what [`BENCHMARKS.md`](../../../BENCHMARKS.md) predicts for a per-access kata — the index is built once and the punch loop only reads it, so there is no per-repetition allocation for the M5's cheaper allocator to speed up. What moves is the *field width*: Kāra closes from 1.39× behind C to **1.21×**, and Rust's overflow-check penalty falls from 2.28× to 1.89×. Both are the M5's wider out-of-order core absorbing the extra checked-arithmetic and bounds-check work that the container's narrower one exposed.
 
 ### Caveats
 
-This is the **container-x86 lane**, which [`BENCHMARKS.md`](../../../BENCHMARKS.md) treats as a corroborating second host with a noise floor around 1.15×. Read nothing below that from it: both headline ratios (1.31×, 1.54×) clear it comfortably, but the Go margin (1.16×) does not and should be read as a **tie**. Note also the σ spread — Kāra's 14.6 ms and C-v3's 15.1 ms are wide enough that the two C rows are not distinguishable from each other.
+The M5 σ spread is tight — every lane is under 2.3% — so all five rows are separable there, including the Go margin. The container lane is the looser of the two: [`BENCHMARKS.md`](../../../BENCHMARKS.md) treats it as a corroborating second host with a noise floor around 1.15×, and on that lane the Go margin (1.16×) does not clear it and should be read as a **tie**, while Kāra's 14.6 ms σ and C-v3's 15.1 ms make the two C rows indistinguishable from each other.
 
-The **M5 Pro host lane (`results.json`) has not been measured.** This kata is new and there is no Apple-silicon run yet, so `consolidate-bench.sh` will correctly report it as missing, and this kata does not yet appear in the consolidated feed or the graphs. That is pending work, not an omission.
+On Apple silicon a program's speed also depends on where its hot loop sits modulo 64 bytes, so a local rebuild may not land on our figure — see [`BENCHMARKS.md` § Code placement](../../../BENCHMARKS.md).
 
 ## Running
 

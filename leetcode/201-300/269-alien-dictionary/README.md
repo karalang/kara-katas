@@ -129,7 +129,34 @@ structures allocated once and cleared per call. That is a parity decision made
 after [#267](../267-palindrome-permutation-ii/), where a per-leaf string became
 four different allocation strategies and a 3× phantom result.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 138.2 ± 3.1 ms | 0.69× |
+| Rust `-O` | 141.4 ± 4.5 ms | 0.70× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 148.4 ± 5.0 ms | 0.74× |
+| **Kāra (codegen)** | **201.4 ± 2.8 ms** | 1.00× |
+| Go | 458.6 ± 9.7 ms | 2.28× |
+
+**The ordering is byte-identical to the container**, which is the strongest form
+of corroboration this corpus offers: `c < rust < rust_ovf < kara < go` on both
+hosts, with the twins tracking their bases and nothing impossible in the table.
+
+**Kāra is 1.46× behind C and 1.36× behind equal-safety Rust** — both slightly
+wider than the container's 1.28× and 1.14×. This is a `Map`/adjacency-heavy
+workload, and it sits with [#249](../249-group-shifted-strings/) (1.61×) and
+[#244](../244-shortest-word-distance-ii/) (1.21×) as the block's map lanes;
+Kāra's deficit tracks how much map work each does.
+
+**Go is 3.32× behind C here, the largest Go gap in the block**, up from 2.56× on
+the container. Half of it is identified below and the mechanism is unchanged.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -166,8 +193,8 @@ phantom. Method in [`bench/probe/README.md`](bench/probe/README.md).
 Kāra's binary is 340.9 KiB against C's 19.7 KiB, Go's 2.17 MB and Rust's 3.87 MB;
 peak RSS is 6.5 MiB against C's 4.8 MiB and Go's 8.8 MiB.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts).
 
 ## Kāra features exercised
 

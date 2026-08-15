@@ -82,7 +82,40 @@ brew install hyperfine    # one-time, also needs rustc (rustup), clang, go
 
 ### Runtime — sequential lane
 
-Container x86-64, **re-measured 2026-08-05** on `karac` 72f9fd7d, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 99–101% CPU.
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 96–100% CPU. This is the canonical host — `bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 9.5 ± 0.2 ms | 0.62× |
+| Rust `-O` | 9.8 ± 0.2 ms | 0.64× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 9.8 ± 0.2 ms | 0.64× |
+| **Kāra (codegen)** | **15.4 ± 1.4 ms** | 1.00× |
+| Go | 150.4 ± 3.0 ms | 9.79× |
+
+> **The C parity this kata reached in August was an x86 result, and it does not
+> hold on Apple silicon.** On arm64 Kāra is **1.57× behind C** — confirmed on
+> minima across three independent 60-run rebuilds (1.60× / 1.56× / 1.57×,
+> Kāra min ≈ 14.2 ms, C min ≈ 9.0 ms), so it is neither run-to-run noise nor
+> the 64-byte code-placement distribution.
+>
+> **It is not a regression of `B-2026-08-05-21` either — that fix is firing
+> here.** The arm64 punch loop carries **zero** overflow traps (`b.vs`/`b.vc`
+> both absent from `main`) and effectively no bounds checks (one `b.hs`, one
+> `b.hi`), which is exactly what the elision was supposed to produce. Kāra's
+> whole `main` is **213** instructions against C's **432** — Kāra is emitting
+> *less* code and running slower, which rules out the "extra per-iteration
+> check" mechanism that explained the x86 gap and points instead at what
+> `clang` does with the extra instructions (unrolling / scheduling the scan).
+> That mechanism is not yet pinned, and no claim is made about it here.
+>
+> The consequence for the sections below: **everything from § *What the gap
+> actually is* onward is an x86-64 investigation**, correct on that host and
+> still the explanation for that host's numbers. It does not describe the
+> Apple-silicon gap, which is a separate and open question.
+
+### The x86 corroboration run
+
+Container x86-64, **re-measured 2026-08-05** on `karac` 72f9fd7d, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 99–101% CPU. Committed as [`bench/results.container-x86.json`](bench/results.container-x86.json). The `@ x86-64-v3` rows are the ISA-matched comparators and are deliberate no-ops on arm64, so they are absent from the M5 table.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
@@ -94,7 +127,9 @@ Container x86-64, **re-measured 2026-08-05** on `karac` 72f9fd7d, hyperfine 30 r
 | **Kāra (codegen)** | **41.1 ± 7.5 ms** | 1.00× |
 | Go | 307.9 ± 6.3 ms | 7.50× |
 
-> **Kāra is now at parity with C on this kata.** On minima — the stable statistic
+**The Rust gap is the one result both hosts agree on** — ~1.6× on the container, 1.61× on the M5 — and it remains the open question this kata was built to expose. The C row is where they part company, and the quoted block below is the container's story.
+
+> **Kāra is now at parity with C on this kata** *(x86-64 only — see the M5 note above)*. On minima — the stable statistic
 > here, since this run's σ is large — Kāra is **36.55 ms** to C's **35.74 ms**,
 > **1.02×**, well inside the lane's ~1.15× noise floor. It was 1.23× a few hours
 > earlier. Both remaining checks in the punch loop are gone: the bounds check
@@ -206,7 +241,9 @@ Container-x86 lane, ~1.15× noise floor per [`BENCHMARKS.md`](../../../BENCHMARK
 
 The **3%** attributed to bounds-check elimination does **not** clear that floor on its own; it is reported as a bounded effect, not a win. It is stated with confidence only because it comes from an A/B on one binary via `KARAC_BCE_INTERPROC=0` with the elision confirmed in the disassembly — the disassembly is the evidence, the 3% is just its price. The 1.23× overflow-check result *does* clear the floor and is corroborated by an independent control (the C mirror rebuilt in Kāra's shape) rather than by timing alone.
 
-The **M5 Pro host lane (`results.json`) has not been measured**, so this kata stays out of the consolidated feed and graphs until an Apple-silicon run is done.
+**The M5 lane is now measured and is the published one.** Its σ is far tighter than the container's (0.2 ms on the C and Rust rows, 1.4 ms on Kāra's), so the 1.61× Rust gap and the 1.57× C gap both clear it comfortably. Kāra's 9% relative σ is the widest row in the table and reflects a 15 ms workload on a host where 64-byte code placement is worth a few percent — the three-rebuild minima above are the statistic to trust for the C ratio, not this table's mean.
+
+The Go row is excluded from any comparative claim for the reason above; note it *widens* on the M5 (7.50× → 9.79×) purely because Kāra and C got faster while Go's compare-chain did not.
 
 ## Running
 

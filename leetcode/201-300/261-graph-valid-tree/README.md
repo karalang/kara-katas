@@ -176,7 +176,32 @@ and still large enough that `parent[]` alone is 800 KB and the chase is a real
 L2-miss chain rather than an L1-resident one. Sizing down was not tuning for a
 nicer number: at 400,000 there is no number, only noise.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 197.9 ± 2.6 ms | 0.88× |
+| Rust `-O` | 201.1 ± 3.2 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 211.7 ± 5.9 ms | 0.94× |
+| **Kāra (codegen)** | **224.7 ± 4.4 ms** | 1.00× |
+| Go | 248.6 ± 2.1 ms | 1.11× |
+
+**Kāra keeps its place between the two Rust builds' logic but not their times.**
+On the container the six non-Go rows were a tie (7% spread, σ 2.6–4.6%); here σ
+is 1.1–2.9% and the lane separates. Kāra is **1.14× behind C** and **1.06× behind
+equal-safety Rust** — both gaps now clear the noise, where on the container
+neither did. The 6% gap between the two Rust builds survives to this host almost
+exactly (5.3% here), so the safety cost is stable and Kāra's remaining 6% over
+the checked build is codegen, not contract.
+
+**Go is 11% behind and remains the one clearly separable row**, down from 20% on
+the container. This lane still does not identify its cause.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|
@@ -203,10 +228,9 @@ Kāra's binary is 332.9 KiB against C's 15.7 KiB, Go's 2.16 MB and Rust's 3.86 M
 peak RSS is 5.3 MiB against C's 4.5 MiB, within the array footprint the algorithm
 requires.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
-The σ-versus-n table above is a property of *this* container and should be
-re-measured, not assumed, on any other host.
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts). The σ-versus-n table above is a property of *this*
+container and should be re-measured, not assumed, on any other host.
 
 ## Kāra features exercised
 

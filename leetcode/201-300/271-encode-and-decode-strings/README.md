@@ -153,6 +153,9 @@ A green run of a `Vec[u16]` program was never evidence of anything.
 Per the corpus rule the kernel was not rewritten around the bug. It stayed as
 written, the compiler was fixed, and the bench lane below was run afterwards.
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **6%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.1%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmark
 
 `bench/` builds one **50,000-string flat corpus** once — a byte array plus
@@ -177,7 +180,35 @@ libraries. And every buffer — corpus, encoded stream, decoded output — is
 **hoisted out of the punch loop**, so no mirror allocates while timed;
 [#267](../267-palindrome-permutation-ii/) measured what happens otherwise.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 124.2 ± 4.9 ms | 0.53× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 233.2 ± 8.0 ms | 0.99× |
+| Rust `-O` | 234.8 ± 9.0 ms | 1.00× |
+| **Kāra (codegen)** | **235.0 ± 8.8 ms** | 1.00× |
+| Go | 237.9 ± 7.0 ms | 1.01× |
+
+**Kāra, both Rust builds and Go finish in a 2% band — a genuine four-way tie —
+and C is 1.89× ahead of all of them.** That is the shape of a `memcpy`-bound
+lane: the codec is bulk copying with a length prefix, so the four managed-string
+implementations converge on the same `memcpy` throughput plus their own bookkeeping,
+while C's flat buffer skips the bookkeeping entirely.
+
+**The gap to C compresses sharply from the container's 2.82× to 1.89×**, the
+largest compression in the block. Kāra's overhead over C is per-`String`
+allocation and length tracking, and that is exactly the cost the M5's cheaper
+allocator discounts.
+
+Overflow checks are free here (233.2 vs 234.8 ms), as expected for a lane that
+does almost no arithmetic.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ |
 |---|---|---|

@@ -54,6 +54,42 @@ This is the third clean kata in a row, which is the honest headline. The shapes 
 - **`String` building by `push_str`** of a borrowed `Vec[String]` element, plus `push(char)` for the separator in `join_all`.
 - **`num.bytes()[i]` byte indexing** in the validity re-check, carried over from #246, where Kāra refuses `s[i]` outright.
 
+## Reading the benchmark table
+
+Two caveats attach to the generated table below. It is regenerated from
+`bench/results.json` by `scripts/inject-bench-readme.py`, so notes belong here,
+outside its span, rather than inside it.
+
+**The Go row is not a sequential measurement.** Go runs this kata at **126% CPU**
+— 370 ms of user time against 315 ms of wall — because its garbage collector is
+concurrent. Every other lane sits at 99%. Go's wall-clock row therefore buys its
+position with a second core and is not comparable within the sequential lane; on
+user-CPU it is the slowest of the four compiled lanes, not the third fastest.
+
+**Kāra is last here, and the gap is real.** 337.6 ms against C's 255.7 ms is
+**1.32×**, essentially unchanged from the container's 1.35× — this is a
+per-allocation kata (312,500 strings built per round) and it does not compress on
+the M5 the way the per-access katas next door do. The x86 corroboration run is in
+[`bench/results.container-x86.json`](bench/results.container-x86.json); it ranks
+the five languages `c < rust < rust_ovf < kara < go`, which differs from the M5
+order only by Go's GC-assisted move past Kāra.
+
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`404314354`). Workload: generate every strobogrammatic number of length 16 (312,500 strings) and re-verify each by the two-pointer rotation check, 12 rounds; sink = checksum over every generated string.
+
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-15 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 255.7 ms | 0.76× |
+| Rust `-O` | 309.0 ms | 0.92× |
+| Go | 315.4 ms | 0.93× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 321.7 ms | 0.95× |
+| **Kāra (codegen)** | 337.6 ms | 1.00× |
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 28878bc2f2ae); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
 ## Running
 
 ```bash
@@ -75,4 +111,4 @@ This lane previously read "no benchmark", on the grounds that the runtime is dom
 
 Which turned out to be the point. On the x86 corroboration host Kāra runs **793 ms against `rustc -O`'s 681 and equal-safety Rust's 716** — 1.17× and 1.11×. That independently reproduces the residual the compiler README already tracks ("a few string-building loops, ~1.2×"), on a workload chosen for a different reason. A lane that surfaces a known gap earns its place; recognition ([#246](../246-strobogrammatic-number/)) still carries the two-pointer-scan measurement for the pair.
 
-Published numbers await the Apple-silicon host — `bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+**The M5 lane reproduces it a third time**: 337.6 ms against `rustc -O`'s 309.0 and equal-safety Rust's 321.7 — **1.09× and 1.05×**, narrower than x86's 1.17×/1.11× but the same sign on a different ISA and allocator. Two hosts agreeing on a ~1.1× string-building residual is worth more than either measurement alone. `bench/results.container-x86.json` holds the x86 run; it is corroboration only (BENCHMARKS.md § Hosts).

@@ -85,7 +85,56 @@ pointer by one), so the target changes *predictability* and nothing else.
 
 That turns out to be the whole story of this lane.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+`bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| **Kāra (codegen)** | **185.7 ± 3.8 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 217.3 ± 11.7 ms | 1.17× |
+| Go | 220.1 ± 1.0 ms | 1.19× |
+| Rust `-O` | 392.6 ± 1.5 ms | 2.11× |
+| C `clang -O3` | 395.2 ± 3.2 ms | 2.13× |
+
+**Kāra is first, ahead of equal-safety Rust by 1.17× and of C by 2.13×.** That is
+the largest Kāra lead over C anywhere in the 244–275 block, which is reason to
+distrust it rather than to headline it — so it was probed rather than published
+on its own.
+
+### The arm64 probe REFUTES the x86 explanation
+
+The x86 section below attributes the slow `c` and `rust` rows to **if-conversion**:
+those builds fold the two-pointer body into a branchless select, serialise the
+address chain, and are therefore *immune* to branch predictability. The
+discriminating test is to re-run with `target = max_sum + 1` — identical trip
+count and instructions, but a branch that is never taken and so perfectly
+predicted. On x86 the branchy builds more than halve and the branchless ones do
+not move at all. **On the M5 every build moves:**
+
+| build | mid-band | `max_sum + 1` | speedup |
+|---|---:|---:|---:|
+| Kāra | 185.7 ms | **96.8 ms** | 1.92× |
+| Rust (checked) | 217.3 ms | 143.2 ms | 1.52× |
+| Rust `-O` | 392.6 ms | 144.2 ms | **2.72×** |
+| C `clang -O3` | 395.2 ms | 129.9 ms | **3.04×** |
+
+All four probe binaries agree on the sink (`729393862`), so they are doing
+identical work. C responding *most* strongly (3.04×) is the opposite of what
+"branchless and therefore immune" predicts. **The arm64 backends are not
+emitting the branchless form, so whatever costs C and Rust 2.1× here, it is not
+the x86 if-conversion pessimisation** — and this kata does not identify what it
+is. That question is open.
+
+**What the probe does establish is that Kāra's lead is not a
+branch-prediction artifact.** With the branch perfectly predicted for every lane,
+Kāra is still fastest — 96.8 ms against C's 129.9 ms, a 1.34× lead. The
+mid-band 2.13× is that structural lead amplified by C degrading more under
+misprediction, not created by it.
+
+### The x86 corroboration run
 
 | lang | mean (ms) | σ | inner loop |
 |---|---|---|---|
@@ -135,8 +184,11 @@ position in [#252](../252-meeting-rooms/) and [#253](../253-meeting-rooms-ii/)
 does not explain it here: with the counting loop disabled, the 26 `qsort` calls
 cost **10.4 ms of 729** — 1.4% of the lane.
 
-Published numbers await the Apple-silicon host —
-`bench/results.container-x86.json` is corroboration only (BENCHMARKS.md § Hosts).
+`bench/results.container-x86.json` holds this run; it is corroboration only
+(BENCHMARKS.md § Hosts). Everything in this section — the `branchy` /
+`branchless` column, the if-conversion mechanism, and the probe that confirms it
+— is an **x86-64 result**. The arm64 probe above shows the mechanism does not
+carry over, so do not read this section as an explanation of the M5 numbers.
 
 ## Kāra features exercised
 

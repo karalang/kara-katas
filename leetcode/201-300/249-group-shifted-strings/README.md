@@ -136,7 +136,48 @@ consumes it once, carrying the order-sensitive part of the sink in a running key
 checksum. The ownership checker is benchmark hygiene here, not just a
 correctness tool.
 
-### What the x86 corroboration run shows
+### Runtime — sequential lane
+
+Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
+30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host — `bench/results.json`.
+
+| Impl | Mean ± σ | vs Kāra |
+|---|---|---|
+| Go ‡ | 77.0 ± 0.8 ms | 0.26× |
+| C `clang -O3` | 182.8 ± 3.1 ms | 0.62× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 198.2 ± 4.3 ms | 0.67× |
+| Rust `-O` | 203.7 ± 5.2 ms | 0.69× |
+| **Kāra (codegen)** | **293.8 ± 5.5 ms** | 1.00× |
+
+‡ **Go's lead is partly a second core.** It runs at **126% CPU** — 92 ms of user
+time against 77.0 ms of wall — because its collector is concurrent, while every
+other lane sits at 99%. On user-CPU Go's margin over C narrows from 2.37× to
+1.99×. The wall-clock row is still a genuine win, but it is not a per-core one,
+and the sequential lane is a per-core comparison.
+
+**The ordering is byte-identical to the container** — `go < c < rust_ovf < rust
+< kara` on both hosts — and the field compresses slightly, Kāra going from 1.72×
+behind C to **1.61×**. A map-insertion kata holding its shape across two very
+different memory subsystems is the expected result for a workload whose cost is
+per-*access* rather than per-allocation: the corpus is built once and the five
+grouping passes only read it.
+
+**Go wins this one outright**, and the reason is the hash rather than the
+grouping: Go's map is tuned for string keys, while Rust's default `HashMap` uses
+SipHash for DoS resistance. That is a deliberate Rust trade-off, not a defect,
+and it means the Rust baseline here is not the "fast implementation" it usually
+is. Kāra at 1.44× equal-safety Rust is consistent with the string-building
+residual #247's lane shows.
+
+Read the C row with care: unlike every other language here it has no standard
+string map, so `group_shifted.c` carries a hand-written FNV-1a open-addressing
+one. That row measures **that map**, not "C".
+
+### The x86 corroboration run
+
+Container x86-64, committed as
+[`bench/results.container-x86.json`](bench/results.container-x86.json) —
+corroboration only (BENCHMARKS.md § Hosts).
 
 | lang | mean (ms) |
 |---|---|
@@ -145,20 +186,6 @@ correctness tool.
 | Rust (checked) | 470.0 ± 13.8 |
 | Rust | 479.1 ± 25.3 |
 | **Kāra** | **580.6 ± 30.2** |
-
-**Go wins this one outright**, and the reason is the hash rather than the
-grouping: Go's map is tuned for string keys, while Rust's default `HashMap` uses
-SipHash for DoS resistance. That is a deliberate Rust trade-off, not a defect,
-and it means the Rust baseline here is not the "fast implementation" it usually
-is. Kāra at 1.21× Rust is consistent with the string-building residual #247's
-lane shows.
-
-Read the C row with care: unlike every other language here it has no standard
-string map, so `group_shifted.c` carries a hand-written FNV-1a open-addressing
-one. That row measures **that map**, not "C".
-
-Published numbers await the Apple-silicon host — `bench/results.container-x86.json`
-is corroboration only (BENCHMARKS.md § Hosts).
 
 ## Running
 
