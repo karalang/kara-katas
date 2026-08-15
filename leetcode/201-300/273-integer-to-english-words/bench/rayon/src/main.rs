@@ -1,6 +1,6 @@
 // Benchmark workload for LeetCode #273 — Integer to English Words.
 //
-// Algorithm-for-algorithm mirror of spell.kara. See that file's header for what
+// PARALLEL LANE (rayon). Algorithm-for-algorithm mirror of spell.kara. See that file's header for what
 // this lane measures and for the parity decisions — in particular that the
 // algorithm PREPENDS, which is preserved here rather than rewritten into an
 // append that would let this mirror amortize into one growing buffer.
@@ -57,6 +57,8 @@ fn number_to_words(n: i64) -> String {
     out
 }
 
+use rayon::prelude::*;
+
 fn main() {
     let count: i64 = 200000;
     let rounds: i64 = 5;
@@ -73,15 +75,19 @@ fn main() {
     }
 
     let total = count * rounds;
-    let mut sink: i64 = 0;
-    for t in 0..total {
-        let w = number_to_words(nums[(t % count) as usize]);
-        let mut h: i64 = 0;
-        for b in w.as_bytes() {
-            h = (h * 131 + *b as i64) % 1000000007;
-        }
-        sink = (sink + h) % 1000000007;
-    }
+    // Per-item hash, summed — order-invariant across items, which is what lets
+    // this be a parallel reduction at all.
+    let sink: i64 = (0..total)
+        .into_par_iter()
+        .map(|t| {
+            let w = number_to_words(nums[(t % count) as usize]);
+            let mut h: i64 = 0;
+            for b in w.as_bytes() {
+                h = (h * 131 + *b as i64) % 1000000007;
+            }
+            h
+        })
+        .reduce(|| 0i64, |a, b| (a + b) % 1000000007);
 
     println!("{sink}");
     println!("spellings {total} range {lo}..{hi}");

@@ -21,7 +21,7 @@ Convert a non-negative integer to its English words spelling.
 | `int_to_words_places.kara` | walk the decimal digits, decide each from its position | O(digits) |
 | `int_to_words_table.kara` | precompute all 1,000 groups bottom-up, then look up | O(1) after O(1000) |
 | `differential.kara` | 50,032 probes, three solvers plus a shape oracle | — |
-| `bench/spell.kara` | the ★ chunker as a benchmark kernel, five languages | — |
+| `bench/spell.kara` | the ★ chunker as a benchmark kernel — seq and par lanes | — |
 
 ## English numerals are periodic with period 1000
 
@@ -106,9 +106,17 @@ discipline as #270's constructed midpoints.
 ## Benchmark
 
 `bench/` draws **200,000 integers** spanning the whole range once, then spells
-every one of them with the ★ chunker **5 times** — 1,000,000 spellings — folding
-a checksum over the bytes each produces. Sink `396935809`, reproduced by all four
-compiled mirrors and by Python.
+every one of them with the ★ chunker **5 times** — 1,000,000 spellings. Sink
+`989861056`, reproduced by **eight** builds: Kāra seq and auto-par, C seq and
+pthreads, Rust seq and rayon, Go seq and goroutines, plus Python.
+
+**The sink is order-invariant, and it had to become so for the parallel lane to
+exist.** A running `sink = sink * 131 + byte` over the concatenation of every
+spelling depends on the order they arrive in, so it cannot be checked against a
+result assembled by workers. Each spelling is now hashed on its own —
+order-dependent *within* an item, which is what keeps it a strong checksum — and
+the item hashes are summed, which is order-invariant across items. The count is
+printed beside it, because a sum alone cannot tell 1,000,000 items from 999,999.
 
 **This is the corpus's owned-string-construction lane.** Per spelling the work is
 three or four `a + b` concatenations of short strings, each allocating and
@@ -125,21 +133,52 @@ costume. C has no owned string type, so one is built explicitly: a malloc'd
 buffer that its holder frees, with `join` extending the left operand by `realloc`
 exactly as an owned-string `+` does.
 
-### What the x86 corroboration run shows
+### Two lanes, compared within themselves
+
+**Cross-lane rows are not drawn.** "Auto-par Kāra vs single-threaded Rust"
+conflates compiler quality with whether the comparator opted into parallelism,
+and would let a parallel win mask a per-core regression. Each lane is compared
+against its own kind.
+
+#### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
 
 | lang | mean (ms) | σ |
 |---|---|---|
-| C | 1015.7 ± 12.4 | 1.2% |
-| C (`-march=x86-64-v3`) | 1025.9 ± 22.2 | 2.2% |
-| **Kāra** | **1048.4 ± 16.3** | 1.6% |
-| Rust (checked, equal-safety) | 1073.7 ± 25.8 | 2.4% |
-| Rust (checked + `target-cpu=v3`) | 1082.5 ± 40.0 | 3.7% |
-| Rust | 1084.4 ± 14.4 | 1.3% |
-| Go | 1266.4 ± 51.5 | 4.1% |
+| C | 903.4 ± 11.4 | 1.3% |
+| **Kāra** | **905.2 ± 8.8** | 1.0% |
+| C (`-march=x86-64-v3`) | 910.6 ± 16.4 | 1.8% |
+| Rust (checked + `target-cpu=v3`) | 920.5 ± 22.3 | 2.4% |
+| Rust (checked, equal-safety) | 939.6 ± 8.5 | 0.9% |
+| Rust | 955.4 ± 12.5 | 1.3% |
+| Go | 1068.9 ± 20.4 | 1.9% |
 
-**Kāra is second of five**, 1.03× behind C and *ahead* of both Rust builds and Go.
-On a lane that is nothing but string allocation, that is a good result — and a
-narrow one, which is why it was probed rather than celebrated.
+**Kāra is second, 1.002× behind C** — inside noise — and ahead of both Rust
+builds and Go. On a lane that is nothing but string allocation, that is a good
+result, and a narrow one, which is why it was probed rather than celebrated.
+
+#### Parallel lane — 4 cores
+
+| lang | mean (ms) | σ | user (ms) |
+|---|---|---|---|
+| C (pthreads — metal floor) | 247.3 ± 7.4 | 3.0% | 953 |
+| **Kāra (`#[par_order_free]`)** | **251.0 ± 7.1** | 2.8% | 935 |
+| Rust (rayon `par_iter`) | 368.0 ± 152.8 | **41.5%** | 1167 |
+| Go (goroutines) | 486.6 ± 17.6 | 3.6% | 1280 |
+
+**Kāra is 1.5% behind hand-written pthreads** — inside noise of the metal floor —
+and its own seq→par ratio is **905.2 → 251.0 ms, a 3.61× speedup on 4 cores**,
+about 90% efficiency. The user-time column is what makes that claim checkable:
+935 ms of CPU against the sequential lane's 899 ms means the auto-par lowering
+adds ~4% of total work, not that it found a shortcut.
+
+**Rayon's σ is 41.5%, and that is reproducible** (a second 30-run measurement
+gave 403.1 ± 125.9 ms), so its mean should not be ranked precisely against the
+others. The user-time column says why: 1167 ms against C's 953 is ~22% more total
+CPU. Spelling one integer is roughly a microsecond, and at that grain rayon's
+dynamic work-stealing costs more than it recovers, in both mean and variance.
+The three lanes that partition statically — Kāra's collect lowering, C's
+contiguous slices, Go's — do not pay it. This is a scheduling-strategy
+difference, not a language one; rayon is built for coarser items than this.
 
 ### The probe: Kāra's `+` never reuses the left buffer
 
@@ -170,7 +209,33 @@ the interpreter is correct ([`B-2026-08-14-21`](https://github.com/karalang/kara
 
 The fast path already exists — `push_str` matches Rust. One change closes all
 three: lower `s += x`, and `s = s + x` where the target is the left operand, to
-that in-place append. Full write-up in [`bench/probe/`](bench/probe/).
+that in-place append. Full write-up in [`bench/probe/`](bench/probe/). All three
+were fixed the same day (`e6605e9`, `69abc03`, `645bc75`), and fixing them
+surfaced a fourth — `s.push_str(s)`, a self-append on a heap string that must
+grow, was a use-after-free (`B-2026-08-15-2`). Routing every spelling onto one
+fast path inherits whatever that path got wrong.
+
+### Why this kata has the corpus's first parallel string lane
+
+Every one of the 37 existing par lanes is numeric or byte-scanning, and none is
+newer than [#204](../../101-200/204-count-primes/). This is the first where each
+parallel branch **allocates, grows and publishes a `String` per iteration**.
+
+That is deliberate. `B-2026-08-14-28`'s fix note records that the par-branch
+join's publish-time suppression scan carries one arm per cleanup kind —
+`RcDec`, `RcDecOption`, `FreeInlineOptionPayload`, `FreeInlineOptionMapPayload`,
+`FreeInlineResultPayload`, then a transfer loop for Map / File / Enum / Struct /
+UserDrop / Soa / Column / DataFrame / Tensor — and that *"every one of those arms
+exists because this exact failure was found once before at a different shape."*
+That is a list discovered one entry at a time by whatever happened to wander in.
+Both of the highest-severity bugs found in the corpus on 2026-08-14
+(`B-2026-08-14-27`, `-28`) were par-branch join defects found by **sequential**
+katas that happened to contain three independent `let`s.
+
+A par branch that produces a heap value is therefore the highest-yield place to
+point a lane. This one found nothing — the auto-par String collect is correct on
+all eight builds — which is worth recording as a negative result rather than
+leaving the surface untested.
 
 ## Kāra features exercised
 
@@ -188,9 +253,11 @@ that in-place append. Full write-up in [`bench/probe/`](bench/probe/).
 
 Every program is byte-identical under `karac run --interp`, `karac run` (JIT),
 `karac build` (auto-par default) and `KARAC_AUTO_PAR=0 karac build`; the ★ solver
-and the differential match their Python mirrors. The bench kernel is checked
-under the JIT and both AOT modes at full size, and across all four surfaces plus
-Python at reduced size.
+and the differential match their Python mirrors. Both bench kernels — `spell.kara`
+(auto-par) and `spell_seq.kara` — agree with each other, with the six non-Kāra
+builds and with Python; they are checked across all four surfaces at reduced
+size, the full 1,000,000-spelling size being out of reach for the tree-walk
+interpreter.
 
 The solvers found no compiler bug. **The bench probe found three**, all in the
 same `String` append lowering: `B-2026-08-14-21` (silent wrong answer through a

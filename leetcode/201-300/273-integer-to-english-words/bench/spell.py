@@ -58,14 +58,16 @@ def main():
         hi = max(hi, state)
         nums.append(state)
 
+    total = COUNT * ROUNDS
     sink = 0
-    for _ in range(ROUNDS):
-        for q in range(COUNT):
-            for b in number_to_words(nums[q]).encode():
-                sink = (sink * 131 + b) % 1000000007
+    for t in range(total):
+        h = 0
+        for b in number_to_words(nums[t % COUNT]).encode():
+            h = (h * 131 + b) % 1000000007
+        sink = (sink + h) % 1000000007
 
     print(sink)
-    print(f"count {COUNT} range {lo}..{hi}")
+    print(f"spellings {total} range {lo}..{hi}")
 
 
 main()

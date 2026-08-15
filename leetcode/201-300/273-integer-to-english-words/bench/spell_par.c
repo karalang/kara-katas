@@ -1,4 +1,4 @@
-/* Benchmark workload for LeetCode #273 — Integer to English Words.
+/* Benchmark workload for LeetCode #273 — Integer to English Words. PARALLEL LANE.
  *
  * Algorithm-for-algorithm mirror of spell.kara. See that file's header for what
  * this lane measures and for the parity decisions.
@@ -81,6 +81,36 @@ static char *number_to_words(int64_t n) {
     return out;
 }
 
+/* ---- parallel lane: pthreads, one contiguous slice per worker ----------
+ *
+ * The metal floor for the par lane. Each worker owns a disjoint index range and
+ * accumulates a private partial sum; the parent adds the partials once at the
+ * end. No lock, no atomic, no false sharing — the partials live in the thread
+ * argument structs, not in a shared array of counters. */
+#include <pthread.h>
+#include <unistd.h>
+
+typedef struct {
+    const int64_t *nums;
+    int64_t count, from, to, partial;
+} Work;
+
+static void *worker(void *arg) {
+    Work *w = (Work *)arg;
+    int64_t acc = 0;
+    for (int64_t t = w->from; t < w->to; t++) {
+        char *s = number_to_words(w->nums[t % w->count]);
+        int64_t h = 0;
+        for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+            h = (h * 131 + (int64_t)*p) % 1000000007;
+        }
+        free(s);
+        acc = (acc + h) % 1000000007;
+    }
+    w->partial = acc;
+    return NULL;
+}
+
 int main(void) {
     const int64_t count = 200000;
     const int64_t rounds = 5;
@@ -96,20 +126,30 @@ int main(void) {
     }
 
     const int64_t total = count * rounds;
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpu < 1) ncpu = 1;
+    int nthreads = (int)ncpu;
+
+    pthread_t *tids = malloc((size_t)nthreads * sizeof(pthread_t));
+    Work *work = malloc((size_t)nthreads * sizeof(Work));
+    int64_t chunk = (total + nthreads - 1) / nthreads;
+    for (int i = 0; i < nthreads; i++) {
+        int64_t from = chunk * i;
+        int64_t to = from + chunk;
+        if (to > total) to = total;
+        if (from > total) from = total;
+        work[i] = (Work){nums, count, from, to, 0};
+        pthread_create(&tids[i], NULL, worker, &work[i]);
+    }
     int64_t sink = 0;
-    for (int64_t t = 0; t < total; t++) {
-        char *w = number_to_words(nums[t % count]);
-        int64_t h = 0;
-        for (const unsigned char *p = (const unsigned char *)w; *p; p++) {
-            h = (h * 131 + (int64_t)*p) % 1000000007;
-        }
-        free(w);
-        sink = (sink + h) % 1000000007;
+    for (int i = 0; i < nthreads; i++) {
+        pthread_join(tids[i], NULL);
+        sink = (sink + work[i].partial) % 1000000007;
     }
 
     printf("%lld\n", (long long)sink);
     printf("spellings %lld range %lld..%lld\n",
            (long long)total, (long long)lo, (long long)hi);
-    free(nums);
+    free(nums); free(tids); free(work);
     return 0;
 }

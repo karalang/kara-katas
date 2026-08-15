@@ -72,3 +72,29 @@ karac build app.kara && hyperfine -w 2 -r 10 ./app
 # the leak
 /usr/bin/time -v ./pluseq 2>&1 | grep "Maximum resident"
 ```
+
+---
+
+## Postscript: the parallel lane
+
+All three findings above were fixed the same day (`e6605e9`, `69abc03`,
+`645bc75`), and fixing them surfaced a fourth: `s.push_str(s)` — a self-append on
+a heap string that must grow — was a use-after-free (`B-2026-08-15-2`). Routing
+every spelling onto one fast path inherits whatever that path got wrong.
+
+A **parallel lane** was then added to this bench, and it is the corpus's first
+where each parallel branch allocates, grows and publishes a `String` per
+iteration; all 37 existing par lanes are numeric or byte-scanning, and none is
+newer than #204.
+
+The reason to point one here is in `B-2026-08-14-28`'s fix note: the par-branch
+join's publish-time suppression scan carries one arm per cleanup kind, and
+*"every one of those arms exists because this exact failure was found once before
+at a different shape."* Both of that day's highest-severity bugs were par-branch
+join defects, and both were found by **sequential** katas that happened to
+contain three independent `let`s — by accident, not by design.
+
+**It found nothing.** The auto-par String collect agrees with all seven other
+builds, and Kāra lands 1.5% behind hand-written pthreads with a 3.61× seq→par
+speedup on 4 cores. Recorded as a negative result, because an untested surface
+and a tested-clean one are not the same thing.

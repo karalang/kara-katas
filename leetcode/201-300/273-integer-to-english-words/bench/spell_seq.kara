@@ -1,12 +1,9 @@
 // Benchmark workload for LeetCode #273 — Integer to English Words.
 //
-// PARALLEL LANE. Build-once + punch: 200,000 integers spanning the whole range
+// SEQUENTIAL LANE. Build-once + punch: 200,000 integers spanning the whole range
 // are drawn once, then the ★ three-digit chunker spells every one of them 5
-// times — 1,000,000 spellings. The outer punch loop carries `#[par_order_free]`,
-// which opts it into the auto-par collect lowering: workers each accumulate a
-// private partial and the combine extends them into the parent at the end.
-//
-// `spell_seq.kara` is the same program without the attribute. Both print the
+// times — 1,000,000 spellings. The punch loop is a plain `for`; `spell.kara`
+// is the same program with `#[par_order_free]` on it. Both print the
 // same sink, and the seq/par pair is the only Kāra-to-Kāra comparison the bench
 // makes — cross-lane rows (auto-par Kāra against single-threaded Rust) are not
 // meaningful and are not drawn.
@@ -21,7 +18,7 @@
 // count is printed beside it, because a sum alone cannot tell 1,000,000 items
 // from 999,999.
 //
-// WHAT THIS LANE MEASURES: PARALLEL OWNED-STRING CONSTRUCTION. Every existing
+// WHAT THIS LANE MEASURES: OWNED-STRING CONSTRUCTION. Every existing
 // par lane in this corpus is numeric or byte-scanning; this is the first where
 // each branch ALLOCATES, grows and publishes a `String` per iteration. That is
 // deliberate — B-2026-08-14-28's fix note records that the par-branch join's
@@ -129,7 +126,6 @@ fn main() {
 
     let total = count * rounds;
     let mut parts: Vec[i64] = Vec.new();
-    #[par_order_free]
     for t in 0i64..total {
         let w = number_to_words(nums[t % count]);
         let b = w.bytes();
