@@ -1,9 +1,41 @@
 // Benchmark workload for LeetCode #270 — Closest BST Value (C mirror).
 // Mirrors bst_close.kara algorithm-for-algorithm, including the hand-written
 // native absolute value (see that file for why hand-writing it was wrong).
+#include <pthread.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+/* One contiguous slice of the query stream per worker, each with a private
+ * partial. The tree and target arrays are read-only, so nothing is shared to
+ * race on; the partials live in the thread-argument structs rather than in a
+ * shared array, so there is no false sharing either. */
+typedef struct {
+    const long *val, *left, *right;
+    const double *targets;
+    long queries, from, to, partial;
+} Work;
+
+static void *worker(void *arg) {
+    Work *w = (Work *)arg;
+    long acc = 0;
+    for (long t = w->from; t < w->to; t++) {
+        double target = w->targets[t % w->queries];
+        long best = w->val[0];
+        double best_diff = fabs((double)w->val[0] - target);
+        long cur = 0;
+        while (cur >= 0) {
+            long v = w->val[cur];
+            double d = fabs((double)v - target);
+            if (d < best_diff || (d == best_diff && v < best)) { best = v; best_diff = d; }
+            cur = ((double)v < target) ? w->right[cur] : w->left[cur];
+        }
+        acc = (acc + (t * 1000003L + best) % 1000000007L) % 1000000007L;
+    }
+    w->partial = acc;
+    return NULL;
+}
 
 int main(void) {
     long n = 30000, queries = 100000, rounds = 22;
@@ -54,19 +86,23 @@ int main(void) {
     }
 
     const long total = (long)queries * rounds;
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpu < 1) ncpu = 1;
+    int nthreads = (int)ncpu;
+    pthread_t *tids = malloc((size_t)nthreads * sizeof(pthread_t));
+    Work *work = malloc((size_t)nthreads * sizeof(Work));
+    long chunk = (total + nthreads - 1) / nthreads;
+    for (int i = 0; i < nthreads; i++) {
+        long from = chunk * i, to = from + chunk;
+        if (to > total) to = total;
+        if (from > total) from = total;
+        work[i] = (Work){val, left, right, targets, queries, from, to, 0};
+        pthread_create(&tids[i], NULL, worker, &work[i]);
+    }
     long sink = 0;
-    for (long t = 0; t < total; t++) {
-        double target = targets[t % queries];
-        long best = val[0];
-        double best_diff = fabs((double)val[0] - target);
-        long cur = 0;
-        while (cur >= 0) {
-            long v = val[cur];
-            double d = fabs((double)v - target);
-            if (d < best_diff || (d == best_diff && v < best)) { best = v; best_diff = d; }
-            cur = ((double)v < target) ? right[cur] : left[cur];
-        }
-        sink = (sink + (t * 1000003L + best) % 1000000007L) % 1000000007L;
+    for (int i = 0; i < nthreads; i++) {
+        pthread_join(tids[i], NULL);
+        sink = (sink + work[i].partial) % 1000000007L;
     }
     printf("%ld\n", sink);
     printf("queries %ld nodes %ld\n", total, cnt);

@@ -119,8 +119,9 @@ does not occur.**
 ## Benchmark
 
 `bench/` builds one **30,000-node BST and 100,000 f64 targets** once, then punches
-the ★ O(h) descent over every target **22 times** — 2.2M descents. Sink
-`687179070`, reproduced by all four compiled mirrors and by Python.
+the ★ O(h) descent over every target **22 times** — 2.2M descents. Sink `280341251`, reproduced by
+**eight** builds: Kāra seq and auto-par, C seq and pthreads, Rust seq and rayon,
+Go seq and goroutines, plus Python.
 
 **This is the corpus's float lane.** Every node visited costs an i64→f64
 conversion, a subtract, an absolute value, two f64 compares and a data-dependent
@@ -137,15 +138,48 @@ Sized to stay cache-resident on #261's lesson: three 30,000-element arrays plus
 
 ### What the x86 corroboration run shows
 
+Re-measured 2026-08-15 when the parallel lane was added; the sink changed with
+it (see below), so these supersede the earlier figures rather than confirming
+them.
+
+#### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
+
 | lang | mean (ms) | σ |
 |---|---|---|
-| Rust | 443.4 ± 10.7 | 2.4% |
-| Rust (checked + `target-cpu=v3`) | 447.1 ± 10.6 | 2.4% |
-| Rust (checked, equal-safety) | 448.2 ± 12.1 | 2.7% |
-| Go | 454.7 ± 8.2 | 1.8% |
-| **Kāra** | **470.5 ± 13.6** | 2.9% |
-| C (`-march=x86-64-v3`) | 564.8 ± 13.5 | 2.4% |
-| C | 568.2 ± 15.9 | 2.8% |
+| Go | 491.4 ± 7.6 | 1.5% |
+| Rust (checked + `target-cpu=v3`) | 496.7 ± 11.7 | 2.4% |
+| Rust (checked, equal-safety) | 498.9 ± 16.0 | 3.2% |
+| Rust | 518.6 ± 12.1 | 2.3% |
+| **Kāra** | **535.9 ± 9.1** | 1.7% |
+| C (`-march=x86-64-v3`) | 576.9 ± 14.4 | 2.5% |
+| C | 594.1 ± 13.0 | 2.2% |
+
+#### Parallel lane — 4 cores
+
+| lang | mean (ms) | σ | user (ms) |
+|---|---|---|---|
+| **Kāra (`#[par_order_free]`)** | **152.6 ± 4.0** | 2.7% | 522 |
+| Rust (rayon `par_iter`) | 155.7 ± 5.6 | 3.6% | 572 |
+| Go (goroutines) | 155.9 ± 8.9 | 5.7% | 565 |
+| C (pthreads — metal floor) | 183.9 ± 8.7 | 4.8% | 678 |
+
+**Kāra is first in the parallel lane**, with a seq→par ratio of 535.9 → 152.6 ms —
+**3.51× on 4 cores**. Its user time, 522 ms against the sequential lane's 522, says
+the auto-par lowering adds no measurable total work here; rayon's 572 and Go's 565
+are their schedulers' overhead, and C's 678 is the same `cmov` deficit the
+sequential lane shows, multiplied across four threads.
+
+**C is last in both lanes, and that is the same finding in two places.** The
+sequential ordering is unchanged from the earlier measurement and its cause is
+established below: `clang -O3` if-converts the child selection into a `cmov`
+inside the address chain. A parallel lane that reproduced a *different* ordering
+would have been the thing to distrust.
+
+The sink is now `280341251` rather than the earlier `687179070`: it had to become
+order-invariant for the parallel lane to exist. Each query contributes
+`(t * 1000003 + best)` and those are summed — order-of-execution-invariant, while
+the `t` factor keeps it sensitive to which query produced which answer, as a plain
+sum of `best` would not be across 2.2M queries where answers repeat.
 
 This one ranks: σ 1.8–2.9%, both C builds within 1% of each other, all three Rust
 builds within 1%. **Kāra is 1.06× behind plain Rust and within noise of the

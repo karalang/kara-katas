@@ -1,4 +1,6 @@
-// Benchmark workload for LeetCode #270 — Closest BST Value (Rust mirror).
+use rayon::prelude::*;
+
+// PARALLEL LANE (rayon). Benchmark workload for LeetCode #270 — Closest BST Value (Rust mirror).
 // Mirrors bst_close.kara algorithm-for-algorithm, including the hand-written
 // native absolute value (see that file for why hand-writing it was wrong).
 
@@ -53,20 +55,25 @@ fn main() {
     }
 
     let total = queries * rounds;
-    let mut sink: i64 = 0;
-    for t in 0..total {
-        let target = targets[(t % queries) as usize];
-        let mut best = val[0];
-        let mut best_diff = ((val[0] as f64) - target).abs();
-        let mut cur: i64 = 0;
-        while cur >= 0 {
-            let v = val[cur as usize];
-            let d = ((v as f64) - target).abs();
-            if d < best_diff || (d == best_diff && v < best) { best = v; best_diff = d; }
-            cur = if (v as f64) < target { right[cur as usize] } else { left[cur as usize] };
-        }
-        sink = (sink + (t * 1000003 + best) % 1000000007) % 1000000007;
-    }
+    // Per-query, position-weighted contributions summed — order-invariant, so
+    // this is a reduction rather than a fold, which is what makes it parallel.
+    let sink: i64 = (0..total)
+        .into_par_iter()
+        .map(|t| {
+            let target = targets[(t % queries) as usize];
+            let mut best = val[0];
+            let mut best_diff = ((val[0] as f64) - target).abs();
+            let mut cur: i64 = 0;
+            while cur >= 0 {
+                let v = val[cur as usize];
+                let d = ((v as f64) - target).abs();
+                if d < best_diff || (d == best_diff && v < best) { best = v; best_diff = d; }
+                cur = if (v as f64) < target { right[cur as usize] } else { left[cur as usize] };
+            }
+            (t * 1000003 + best) % 1000000007
+        })
+        .reduce(|| 0i64, |a, b| (a + b) % 1000000007);
+
     println!("{sink}");
     println!("queries {} nodes {}", total, val.len());
 }

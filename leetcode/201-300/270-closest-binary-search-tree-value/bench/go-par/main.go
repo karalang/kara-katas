@@ -1,4 +1,4 @@
-// Benchmark workload for LeetCode #270 — Closest BST Value (Go mirror).
+// PARALLEL LANE (goroutines + WaitGroup). Benchmark workload for LeetCode #270 — Closest BST Value (Go mirror).
 // Mirrors bst_close.kara algorithm-for-algorithm, including the hand-written
 // native absolute value (see that file for why hand-writing it was wrong).
 package main
@@ -6,6 +6,8 @@ package main
 import (
 	"fmt"
 	"math"
+	"runtime"
+	"sync"
 )
 
 func main() {
@@ -65,26 +67,54 @@ func main() {
 	}
 
 	total := queries * rounds
-	var sink int64 = 0
-	for t := int64(0); t < total; t++ {
-		target := targets[t%queries]
-		best := val[0]
-		bestDiff := math.Abs(float64(val[0]) - target)
-		var cur int64 = 0
-		for cur >= 0 {
-			v := val[cur]
-			d := math.Abs(float64(v) - target)
-			if d < bestDiff || (d == bestDiff && v < best) {
-				best = v
-				bestDiff = d
+	// One contiguous slice of the query stream per worker with a private
+	// partial; the tree and targets are read-only so nothing is shared to race
+	// on, and the partials are goroutine-local rather than a shared array, so
+	// there is no false sharing.
+	workers := runtime.NumCPU()
+	partials := make([]int64, workers)
+	chunk := (total + int64(workers) - 1) / int64(workers)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			from := chunk * int64(w)
+			to := from + chunk
+			if to > total {
+				to = total
 			}
-			if float64(v) < target {
-				cur = right[cur]
-			} else {
-				cur = left[cur]
+			if from > total {
+				from = total
 			}
-		}
-		sink = (sink + (t*1000003+best)%1000000007) % 1000000007
+			var acc int64
+			for t := from; t < to; t++ {
+				target := targets[t%queries]
+				best := val[0]
+				bestDiff := math.Abs(float64(val[0]) - target)
+				var cur int64 = 0
+				for cur >= 0 {
+					v := val[cur]
+					d := math.Abs(float64(v) - target)
+					if d < bestDiff || (d == bestDiff && v < best) {
+						best = v
+						bestDiff = d
+					}
+					if float64(v) < target {
+						cur = right[cur]
+					} else {
+						cur = left[cur]
+					}
+				}
+				acc = (acc + (t*1000003+best)%1000000007) % 1000000007
+			}
+			partials[w] = acc
+		}(w)
+	}
+	wg.Wait()
+	var sink int64
+	for _, p := range partials {
+		sink = (sink + p) % 1000000007
 	}
 	fmt.Println(sink)
 	fmt.Printf("queries %d nodes %d\n", total, len(val))

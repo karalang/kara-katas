@@ -56,23 +56,24 @@ def main():
         frac = ((state // 65536) % 1000) / 1000.0
         targets.append(whole + frac)
 
+    total = QUERIES * ROUNDS
     sink = 0
-    for _ in range(ROUNDS):
-        for t in range(QUERIES):
-            target = targets[t]
-            best = val[0]
-            best_diff = abs(val[0] - target)
-            cur = 0
-            while cur >= 0:
-                v = val[cur]
-                d = abs(v - target)
-                if d < best_diff or (d == best_diff and v < best):
-                    best = v
-                    best_diff = d
-                cur = right[cur] if v < target else left[cur]
-            sink = (sink * 31 + best) % 1000000007
+    for t in range(total):
+        target = targets[t % QUERIES]
+        best = val[0]
+        best_diff = abs(val[0] - target)
+        cur = 0
+        while cur >= 0:
+            v = val[cur]
+            d = abs(v - target)
+            if d < best_diff or (d == best_diff and v < best):
+                best = v
+                best_diff = d
+            cur = right[cur] if v < target else left[cur]
+        sink = (sink + (t * 1000003 + best) % 1000000007) % 1000000007
 
     print(sink)
+    print(f"queries {total} nodes {len(val)}")
 
 
 main()

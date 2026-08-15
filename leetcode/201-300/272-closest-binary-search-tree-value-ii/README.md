@@ -271,7 +271,44 @@ The bench kernel is checked under the JIT and both AOT modes at full size, and
 across all four surfaces plus Python at a reduced size (2,000 targets, 1 round) —
 the tree-walk interpreter is not asked to run 1,000,000 queries.
 
-No compiler bugs found.
+The solvers found no compiler bug. **Trying to add a parallel bench lane found
+one** — [`B-2026-08-15-19`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
+
+### Why this kata has no parallel lane
+
+Its punch loop is embarrassingly parallel: 100,000 independent queries against a
+read-only tree, folded into an order-invariant sink. [#270](../270-closest-binary-search-tree-value/)
+and [#273](../273-integer-to-english-words/) have the same shape and both now
+carry one.
+
+Here `#[par_order_free]` is **silently ignored**. No fan-out, no diagnostic, and
+`karac query concurrency` does not even list the loop among the declined ones —
+it is absent from `loop_reductions` entirely. Timing confirms it: 568.9 ms with
+the attribute against 569.3 ms without.
+
+Bisecting from a body that does fan out toward one that does not:
+
+| body | fans out |
+|---|---|
+| trivial | yes |
+| + the read-only descent | yes |
+| + two `Array[i64, 256]` locals written by the descent | yes |
+| + the double-indexed distance reads `val[pred[pt - 1]]` and `.abs()` | yes |
+| **+ the k-step merge loop** | **no** |
+
+and from the failing shape, three simplifications that do *not* restore it:
+dropping the nested spine-push `while`s, simplifying the compound `while a and
+(b or c)` guard, and swapping the `Array` locals for `Vec`s. So it is none of
+those individually — what the failing shape adds is a loop whose bound depends on
+state an earlier loop in the same body mutated.
+
+The classification gap may be reasonable; **the silence is not**. A loop the user
+has explicitly annotated is the one case where the compiler knows parallelism was
+expected, and the machinery to say "considered, declined, because X" already
+exists on the disjoint-write path. Filed as a diagnostics defect rather than a
+missing feature for that reason.
+
+The lane will be built when the attribute either fans out or explains itself.
 
 ## Running
 

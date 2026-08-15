@@ -21,6 +21,7 @@ require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
 require go        "brew install go  or your distro's golang package"
+require cargo     "rustup (https://rustup.rs) — needed for the rayon parallel variant"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 if [ "${BENCH_JSON:-1}" = "1" ]; then
@@ -61,7 +62,9 @@ build_c() {
     fi
 }
 
-build_kara() {
+# The SEQ lane forces auto-par off; the PAR lane must not, or the
+# `#[par_order_free]` attribute has nothing to opt into.
+build_kara_seq() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
@@ -72,31 +75,62 @@ build_kara() {
     fi
 }
 
-build_go_seq() {
-    local out="target/${STEM}_go_seq"
-    local src="go-seq/main.go"
+build_kara_par() {
+    local src="$1"
+    local stem="$(basename "$src" .kara)"
+    local out="target/${stem}_kara"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling go-seq ..." >&2
-        ( cd go-seq && go build -o "../$out" . )
+        echo "compiling $src (auto-par, #[par_order_free]) ..." >&2
+        karac build "$src" >/dev/null
+        mv "$stem" "$out"
+    fi
+}
+
+build_go() {
+    local dir="$1"
+    local out="target/$(basename "$dir" | tr '-' '_')"
+    if [ ! -x "$out" ] || [ "$dir/main.go" -nt "$out" ]; then
+        echo "compiling $dir ..." >&2
+        ( cd "$dir" && go build -o "../$out" . )
     fi
 }
 
 build_rust "${STEM}.rs"
 build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
-build_kara "${STEM}.kara"
-build_go_seq
+build_kara_par "${STEM}.kara"
+build_kara_seq "${STEM}_seq.kara"
+build_go go-seq
+build_go go-par
 # Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
 isa_build_c    "${STEM}.c"
 isa_build_rust "${STEM}.rs"
 
+# Rayon lives in its own Cargo project because rayon is a third-party crate and
+# there is no single-file rustc path for it. `cargo build --release` is
+# incremental, so repeat runs are near-instant.
+echo "building rayon variant (cargo) ..." >&2
+( cd rayon && cargo build --release --quiet )
+cp -f rayon/target/release/bst_close_rayon "target/${STEM}_rayon"
+
+# C pthreads mirror — the par lane's metal floor. Needs -lpthread, so it cannot
+# go through build_c.
+if [ ! -x "target/${STEM}_c_par" ] || [ "${STEM}_par.c" -nt "target/${STEM}_c_par" ]; then
+    echo "compiling ${STEM}_par.c (pthreads) ..." >&2
+    clang -O3 "${STEM}_par.c" -o "target/${STEM}_c_par" -lm -lpthread
+fi
+
 expected=$(./target/${STEM}_kara)
 mismatch=""
 for pair in \
+    "kara_seq:./target/${STEM}_seq_kara" \
     "rust:./target/${STEM}" \
+    "rayon:./target/${STEM}_rayon" \
+    "c_par:./target/${STEM}_c_par" \
+    "go_par:./target/go_par" \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
-    "go:./target/${STEM}_go_seq" \
+    "go:./target/go_seq" \
     $(isa_sinks "${STEM}"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
@@ -109,7 +143,7 @@ if [ -n "$mismatch" ]; then
     echo "sink mismatch (expected=$expected):$mismatch" >&2
     exit 1
 fi
-echo "sink (kara/rust/c/go): $expected"
+echo "sink (all eight lanes agree): $expected"
 if [ "${KARA_BENCH_INCLUDE_PY:-0}" = "1" ]; then
     py_out=$(python3 "${STEM}.py")
     if [ "$py_out" != "$expected" ]; then
@@ -126,8 +160,23 @@ bench_begin id=270 slug=closest-binary-search-tree-value group=201-300 \
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
+# PAR lane — auto-par Kara against the code a programmer writes when they DO
+# reach for rayon / goroutines / pthreads. Cross-lane rows (auto-par Kara vs
+# single-threaded Rust) are not drawn: they conflate compiler quality with
+# whether the comparator opted into parallelism, and would let a parallel win
+# mask a per-core regression.
+rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
+    --name "kara ${STEM} (codegen, #[par_order_free])" --cmd "./target/${STEM}_kara"
+rt_cmd --lang rust --approach "$STEM" --lane par --mode native \
+    --name "rust ${STEM} (rayon par_iter)" --cmd "./target/${STEM}_rayon"
+rt_cmd --lang go --approach "$STEM" --lane par --mode native \
+    --name "go   ${STEM} (goroutines)" --cmd "./target/go_par"
+rt_cmd --lang c --approach "$STEM" --lane par --mode native \
+    --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
+
+# SEQ lane — the single-threaded per-core comparison.
 rt_cmd --lang kara --approach "$STEM" --lane seq --mode codegen \
-    --name "kara ${STEM} (codegen)" --cmd "./target/${STEM}_kara"
+    --name "kara ${STEM} (codegen, single-threaded)" --cmd "./target/${STEM}_seq_kara"
 rt_cmd --lang rust --approach "$STEM" --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
 rt_cmd --lang rust_ovf --approach "$STEM" --lane seq --mode native \
@@ -135,7 +184,7 @@ rt_cmd --lang rust_ovf --approach "$STEM" --lane seq --mode native \
 rt_cmd --lang c --approach "$STEM" --lane seq --mode native \
     --name "c    ${STEM}" --cmd "./target/${STEM}_c"
 rt_cmd --lang go --approach "$STEM" --lane seq --mode native \
-    --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
+    --name "go   ${STEM}" --cmd "./target/go_seq"
 isa_rt_cmds "$STEM" seq
 rt_end
 
@@ -163,17 +212,25 @@ ce_end
 
 echo
 echo "=== binary size ==="
-size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_seq_kara"
+size_put --lang rust --approach "$STEM" --lane par --mode native  --path "target/${STEM}_rayon"
+size_put --lang c    --approach "$STEM" --lane par --mode native  --path "target/${STEM}_c_par"
+size_put --lang go   --approach "$STEM" --lane par --mode native  --path "target/go_par"
 size_put --lang rust --approach "$STEM" --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_c"
-size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_go_seq"
+size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/go_seq"
 
 echo
 echo "=== runtime memory (peak) ==="
-mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang kara --approach "$STEM" --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_seq_kara)"
+mem_put --lang rust --approach "$STEM" --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_rayon)"
+mem_put --lang c    --approach "$STEM" --lane par --mode native  --bytes "$(mem_peak ./target/${STEM}_c_par)"
+mem_put --lang go   --approach "$STEM" --lane par --mode native  --bytes "$(mem_peak ./target/go_par)"
 mem_put --lang rust --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
 mem_put --lang c    --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
-mem_put --lang go   --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"
+mem_put --lang go   --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/go_seq)"
 mem_put --lang python --approach "$STEM" --lane seq --mode interp --bytes "$(mem_peak python3 ${STEM}.py)"
 
 echo
