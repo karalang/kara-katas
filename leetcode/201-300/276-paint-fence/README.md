@@ -24,6 +24,7 @@ bits.
 | `paint_fence_recurrence.kara` | the same recurrence with a variable eliminated | O(n), O(1) space |
 | `paint_fence_brute.kara` | enumerate every painting, reject three-in-a-row | O(k·kⁿ) |
 | `differential.kara` | 474 `(n, k)` pairs, 75 checked against the definition | — |
+| `bench/paint_enum.kara` | the enumerator at n=13, k=4, split 16 ways | benchmark lane |
 
 ## One bit of history is enough
 
@@ -126,7 +127,7 @@ arbitrary-precision — so it computes the same bound the same way, against the
 same explicit limit. The envelope is arithmetic the harness performs, not a
 property of the host's integer type, which is what lets the two agree exactly.
 
-## A compiler bug this kata found
+## Two compiler bugs this kata found
 
 `B-2026-08-15-20` — **the interpreter blames an integer overflow on a
 sub-expression that cannot overflow.** In `let c = (a + b) * m` with `a + b == 3`,
@@ -135,6 +136,14 @@ on the same line. The message text is right everywhere and all four surfaces exi
 1 — but `karac run` and `karac build` give two different answers to *where*, and
 the interpreter's is provably not the culprit. Filed low: no wrong answer, and
 the fault is detected. It still costs the first thing anyone does with a panic.
+
+`B-2026-08-15-23` — **the collect-tabulate lowering reports `fanned_out: true,
+"dispatched across the worker pool"` and runs entirely on one thread.** Every
+`#[par_order_free]` loop whose body pushes *unconditionally* — the natural
+parallel-map idiom — is sequential. Wrapping the identical push in a tautological
+`if` restores a 3.5× speedup, and both surfaces report the fan-out identically
+either way. Found by this kata's par lane measuring 1.02× against its own
+sequential twin. Filed **high**: see § Benchmarks for what it costs.
 
 ## Kāra features exercised
 
@@ -168,3 +177,64 @@ for f in paint_fence paint_fence_recurrence paint_fence_brute differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Benchmarks
+
+The **DP is not the workload.** It is O(n) and `n` cannot exceed 89 before the
+answer leaves `i64` — ninety iterations of four arithmetic ops. Benching it would
+have meant inventing a modular variant, which is a different problem wearing this
+kata's name.
+
+The **enumerator** is a real one: `n = 13, k = 4` is 67 million paintings and
+~800 million comparisons, branch-heavy and entirely data-dependent. And the sink
+is the answer, so the bench verifies itself — the printed total must equal
+`num_ways(13, 4) = 36884484`, which every lane produces. A lane that optimized
+away half the search would say so immediately.
+
+4-core x86 container, hyperfine, 10 runs. Full caveats in
+[BENCHMARKS.md](../../../BENCHMARKS.md).
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 362.3 ms ± 8.6 | 1.00× |
+| `clang -O3 -march=x86-64-v3` | 371.8 ms ± 17.9 | 1.03× |
+| `rustc -O` | 397.0 ms ± 9.6 | 1.10× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **421.6 ms ± 15.4** | **1.16×** |
+| **`karac build`** | **459.7 ms ± 11.6** | **1.27×** |
+| `go build` | 1045 ms ± 13 | 2.89× |
+
+Against the equal-safety comparator — Rust with overflow checks on, matching
+Kāra's default-checked arithmetic — Kāra is **1.09×**. Against Go, 2.3× faster.
+
+### The parallel lane, and what it is currently worth
+
+The enumeration splits on the first two posts into 16 wholly independent
+branches. The lane is recognized: `parallel_reduction { op: collect }`, and
+`karac query concurrency` reports `fanned_out: true`.
+
+It does not fan out.
+
+| | time | cpu |
+|---|---:|---:|
+| `paint_enum_seq.kara` (no attribute) | 470.0 ms ± 6.0 | 100% |
+| `paint_enum.kara` (`#[par_order_free]`) | 459.5 ms ± 7.2 | 100% |
+| | **1.02× ± 0.02** | |
+
+The cause is `B-2026-08-15-23`: the collect-*tabulate* lowering — selected for a
+body that pushes exactly once, unconditionally — never dispatches, while
+reporting that it did. `bench/probe/paint_enum_guarded.kara` measures the gap by
+wrapping the identical push in an always-true guard:
+
+| | time | cpu |
+|---|---:|---:|
+| par as written (unconditional push) | 457.9 ms ± 6.7 | 100% |
+| par + tautological `if pre >= 0i64` | 130.4 ms ± 4.7 | **391%** |
+| | **3.51× ± 0.14** | |
+
+Same logic, same sink, one always-true guard between them. **The guarded build
+beats sequential `clang -O3` by 2.8×** — that is what the bug is holding back.
+
+The shipped lane stays in its natural unconditional form and publishes 1.02×.
+Adopting the guard would manufacture a good row by routing around a compiler gap,
+which is the one thing a kata must not do; the probe exists to size the gap, not
+to hide it.
