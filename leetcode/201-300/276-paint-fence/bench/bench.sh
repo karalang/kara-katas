@@ -86,6 +86,27 @@ build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
+
+# --- SEQ twin + PAR mirrors -------------------------------------------------
+# The cross-language SEQ table must compare single-threaded against
+# single-threaded, so the kara SEQ row is <stem>_seq.kara built with auto-par
+# OFF. The kara PAR row is <stem>.kara (the `#[par_order_free]` lane) and is
+# compared only against mirrors that ALSO opted into parallelism — pthreads C
+# and goroutine Go. A cross-lane row would conflate compiler quality with
+# whether the comparator reached for threads at all.
+if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ]; then
+    echo "compiling ${STEM}_seq.kara (seq, KARAC_AUTO_PAR=0) ..." >&2
+    KARAC_AUTO_PAR=0 karac build "${STEM}_seq.kara" -o "target/${STEM}_seq_kara" >/dev/null
+fi
+if [ ! -x "target/${STEM}_c_par" ] || [ "${STEM}_par.c" -nt "target/${STEM}_c_par" ]; then
+    echo "compiling ${STEM}_par.c (pthreads) ..." >&2
+    clang -O3 "${STEM}_par.c" -o "target/${STEM}_c_par" -lpthread
+fi
+if [ ! -x "target/go_par" ] || [ "go-par/main.go" -nt "target/go_par" ]; then
+    echo "compiling go-par ..." >&2
+    ( cd go-par && go build -o ../target/go_par . )
+fi
+
 # Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
 isa_build_c    "${STEM}.c"
 isa_build_rust "${STEM}.rs"
@@ -97,6 +118,9 @@ for pair in \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
     "go:./target/${STEM}_go_seq" \
+    "kara_seq:./target/${STEM}_seq_kara" \
+    "c_par:./target/${STEM}_c_par" \
+    "go_par:./target/go_par" \
     $(isa_sinks "${STEM}"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
@@ -126,8 +150,20 @@ bench_begin id=276 slug=paint-fence group=201-300 \
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
+# PAR lane — auto-par kara against code a programmer writes when they DO reach
+# for threads. Kept apart from the SEQ rows on purpose: a parallel kara number
+# beside a sequential C number measures the comparator's choice, not the
+# compiler.
+rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
+    --name "kara ${STEM} (codegen, #[par_order_free])" --cmd "./target/${STEM}_kara"
+rt_cmd --lang c --approach "$STEM" --lane par --mode native \
+    --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
+rt_cmd --lang go --approach "$STEM" --lane par --mode native \
+    --name "go   ${STEM} (goroutines)" --cmd "./target/go_par"
+
+# SEQ lane — the single-threaded per-core comparison.
 rt_cmd --lang kara --approach "$STEM" --lane seq --mode codegen \
-    --name "kara ${STEM} (codegen)" --cmd "./target/${STEM}_kara"
+    --name "kara ${STEM} (codegen, single-threaded)" --cmd "./target/${STEM}_seq_kara"
 rt_cmd --lang rust --approach "$STEM" --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
 rt_cmd --lang rust_ovf --approach "$STEM" --lane seq --mode native \
@@ -163,14 +199,16 @@ ce_end
 
 echo
 echo "=== binary size ==="
-size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_seq_kara"
+size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_kara"
 size_put --lang rust --approach "$STEM" --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_c"
 size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_go_seq"
 
 echo
 echo "=== runtime memory (peak) ==="
-mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_seq_kara)"
+mem_put --lang kara --approach "$STEM" --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
 mem_put --lang rust --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
 mem_put --lang c    --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
 mem_put --lang go   --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"

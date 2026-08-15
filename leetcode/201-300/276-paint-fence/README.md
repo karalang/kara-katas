@@ -137,13 +137,22 @@ on the same line. The message text is right everywhere and all four surfaces exi
 the interpreter's is provably not the culprit. Filed low: no wrong answer, and
 the fault is detected. It still costs the first thing anyone does with a panic.
 
-`B-2026-08-15-23` — **the collect-tabulate lowering reports `fanned_out: true,
-"dispatched across the worker pool"` and runs entirely on one thread.** Every
-`#[par_order_free]` loop whose body pushes *unconditionally* — the natural
-parallel-map idiom — is sequential. Wrapping the identical push in a tautological
-`if` restores a 3.5× speedup, and both surfaces report the fan-out identically
-either way. Found by this kata's par lane measuring 1.02× against its own
-sequential twin. Filed **high**: see § Benchmarks for what it costs.
+`B-2026-08-15-23` — **fixed** — *a `#[par_order_free]` collect-tabulate loop
+dispatched four workers and gave all the work to one.* Found by this kata's par
+lane measuring 1.02× against its own sequential twin, at 100% CPU, while
+`karac query concurrency` reported `fanned_out: true`.
+
+The report was telling the truth: the fan-out did happen. The order-free dynamic
+chunker sized chunks `.max(MIN_DYNAMIC_CHUNK.min(iter_total))`, which for any
+range under 1024 is `iter_total` itself — one chunk, one worker running the whole
+loop, three exiting immediately. This kata's loop has **16** iterations.
+
+My filed diagnosis ("the tabulate lowering does not dispatch", "`fanned_out` is
+computed from classification") was wrong on both counts, and refuted by
+instrumenting the dispatch. The six-shape table that found it was right; the
+causal reading of it was not. `order_free` is set only by the tabulate lowering,
+so the conditional-vs-unconditional split I measured was a *marker* for "took the
+dynamic path", never the cause.
 
 ## Kāra features exercised
 
@@ -187,54 +196,62 @@ kata's name.
 
 The **enumerator** is a real one: `n = 13, k = 4` is 67 million paintings and
 ~800 million comparisons, branch-heavy and entirely data-dependent. And the sink
-is the answer, so the bench verifies itself — the printed total must equal
-`num_ways(13, 4) = 36884484`, which every lane produces. A lane that optimized
-away half the search would say so immediately.
+is the answer, so the bench verifies itself — every lane must print
+`num_ways(13, 4) = 36884484`. A lane that optimized away half the search would
+say so immediately.
 
-4-core x86 container, hyperfine, 10 runs. Full caveats in
+4-core x86 container, hyperfine. Full caveats in
 [BENCHMARKS.md](../../../BENCHMARKS.md).
+
+### SEQ lane — single-threaded against single-threaded
 
 | lane | time | vs C |
 |---|---:|---:|
-| `clang -O3` | 362.3 ms ± 8.6 | 1.00× |
-| `clang -O3 -march=x86-64-v3` | 371.8 ms ± 17.9 | 1.03× |
-| `rustc -O` | 397.0 ms ± 9.6 | 1.10× |
-| **`rustc -O -C overflow-checks=on`** (equal safety) | **421.6 ms ± 15.4** | **1.16×** |
-| **`karac build`** | **459.7 ms ± 11.6** | **1.27×** |
-| `go build` | 1045 ms ± 13 | 2.89× |
+| `clang -O3 -march=x86-64-v3` | 360.7 ms ± 6.4 | 0.97× |
+| `clang -O3` | 373.2 ms ± 13.0 | 1.00× |
+| `rustc -O` | 391.2 ms ± 9.0 | 1.05× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **409.0 ms ± 11.6** | **1.10×** |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **474.8 ms ± 14.0** | **1.27×** |
+| `go build` | 1043 ms ± 9 | 2.79× |
 
 Against the equal-safety comparator — Rust with overflow checks on, matching
-Kāra's default-checked arithmetic — Kāra is **1.09×**. Against Go, 2.3× faster.
+Kāra's default-checked arithmetic — Kāra is **1.16×**. Against Go, 2.2× faster.
 
-### The parallel lane, and what it is currently worth
+### PAR lane — against mirrors that also reached for threads
 
 The enumeration splits on the first two posts into 16 wholly independent
-branches. The lane is recognized: `parallel_reduction { op: collect }`, and
-`karac query concurrency` reports `fanned_out: true`.
+branches. Kāra opts in with one attribute; the mirrors are hand-threaded.
 
-It does not fan out.
-
-| | time | cpu |
+| lane | time | vs pthreads |
 |---|---:|---:|
-| `paint_enum_seq.kara` (no attribute) | 470.0 ms ± 6.0 | 100% |
-| `paint_enum.kara` (`#[par_order_free]`) | 459.5 ms ± 7.2 | 100% |
-| | **1.02× ± 0.02** | |
+| `clang -O3` + pthreads (metal floor) | 115.7 ms ± 6.3 | 1.00× |
+| **`karac build`, `#[par_order_free]`** | **124.8 ms ± 8.0** | **1.08×** |
+| Go, goroutines + `WaitGroup` | 277.6 ms ± 6.7 | 2.40× |
 
-The cause is `B-2026-08-15-23`: the collect-*tabulate* lowering — selected for a
-body that pushes exactly once, unconditionally — never dispatches, while
-reporting that it did. `bench/probe/paint_enum_guarded.kara` measures the gap by
-wrapping the identical push in an always-true guard:
+**Within 8% of hand-written pthreads C, from a one-line attribute** — and 3.8×
+its own sequential twin on 4 cores. The Kāra source is the sequential program
+plus `#[par_order_free]`; the C mirror needs an explicit thread pool, a per-thread
+argument struct, and a join loop.
 
-| | time | cpu |
-|---|---:|---:|
-| par as written (unconditional push) | 457.9 ms ± 6.7 | 100% |
-| par + tautological `if pre >= 0i64` | 130.4 ms ± 4.7 | **391%** |
-| | **3.51× ± 0.14** | |
+These two tables are kept apart deliberately. A parallel Kāra number beside a
+sequential C number would measure whether the comparator's author reached for
+threads, not the compiler — see [#270](../270-closest-binary-search-tree-value/)'s
+lane note.
 
-Same logic, same sink, one always-true guard between them. **The guarded build
-beats sequential `clang -O3` by 2.8×** — that is what the bug is holding back.
+### What this lane cost before it worked
 
-The shipped lane stays in its natural unconditional form and publishes 1.02×.
-Adopting the guard would manufacture a good row by routing around a compiler gap,
-which is the one thing a kata must not do; the probe exists to size the gap, not
-to hide it.
+The par lane originally measured **1.02×** — no speedup at all — which is how
+`B-2026-08-15-23` was found. The fix (a one-line cap on the chunker's floor,
+`c04bc65`) took it from 1.02× to 3.8× against the sequential twin with no source
+change to the kata.
+
+`bench/probe/paint_enum_guarded.kara` is what sized the gap at the time: the
+identical push wrapped in an always-true guard, which fell out of the tabulate
+shape and onto the working static-split path. It is kept as a **regression
+witness** — it should now measure at or slightly *behind* the natural shape
+(137.9 ms vs 121.1 ms when re-measured after the fix), and if it ever pulls
+materially ahead again, the chunker floor has regressed.
+
+The shipped lane was published at 1.02× for as long as that was the true number.
+Adopting the guard to manufacture a good row would have routed around the
+compiler gap instead of reporting it — and the row is what got it fixed.
