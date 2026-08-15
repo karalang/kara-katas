@@ -122,7 +122,17 @@ def _check_in(src, rel, cwd, timeout):
         kind = "build_error" if all("build_error" in b or "error" in b for b in bad) else "divergence"
         if any("output differs" in b for b in bad):
             kind = "divergence"
-        return (kind, rel, "\n      ".join(bad))
+        # Name the surfaces that PASSED as well as the ones that did not. Listing
+        # only failures means a clean surface is reported by its ABSENCE, and an
+        # absence is easy to read as "not tested" — or, worse, to fill in from
+        # memory. Both B-2026-08-14-27 and -28 were filed claiming
+        # `KARAC_AUTO_PAR=0` failed when this sweep had shown it clean, and both
+        # turned out to be auto-parallelisation bugs that the claim actively
+        # pointed away from. One line of output closes that gap.
+        clean = sorted(s for s, (st, out) in results.items()
+                       if st == "ok" and out == oracle)
+        note = "matches the interpreter on: " + (", ".join(clean) if clean else "(none)")
+        return (kind, rel, "\n      ".join(bad + [note]))
     return ("ok", rel, "")
 
 
