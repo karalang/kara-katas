@@ -128,7 +128,16 @@ Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
 > This kata deferred the question to Apple silicon, and the answer is
 > **3.70× behind Rust** — against 1.89× on x86. The measurement is not
 > marginal: σ is 2.4% on the Kāra row and 2.4% on Rust's, and the two are
-> 158 ms apart. Tracked as kara **`B-2026-08-10-9`**; see § *Notes*.
+> 158 ms apart.
+>
+> **Read which row this is carefully.** kara `B-2026-08-10-9` — the
+> fixed-32-run merge sort — is **fixed** (`50a50e8`), and that fix is in the
+> compiler measured here. What remains is its shuffled-uniform residual,
+> `B-2026-08-11-28`, which was measured at ~1.6× on x86 and closed **`wontfix`**.
+> This kata shuffles its input once and sorts a fresh copy per round, so it lands
+> squarely on that residual — and 3.70× is more than double the number the
+> wontfix was decided against. Filed as kara **`B-2026-08-15-30`** to re-decide
+> that disposition on this host rather than inherit it.
 >
 > Equal-safety makes no difference to it — `rustc -O` is 58.8 ms and the
 > overflow-checked build 59.1 ms, a 0.5% difference — so this is not a

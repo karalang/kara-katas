@@ -274,6 +274,8 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 
 ## Notes
 
+**The Apple-silicon C gap is filed as kara `B-2026-08-15-31`.** The parity this kata reached on x86-64 does not hold on arm64 — Kāra is 1.57× behind `clang -O3` there, with the `B-2026-08-05-21` overflow-trap elision confirmed present and no residual check to blame. The mechanism is not pinned; the ledger row carries the disassembly counts and what was ruled out.
+
 Verified byte-identical under `karac run --interp` (tree-walk), `karac run` (JIT), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — with both Kāra variants agreeing with the Python mirror on the spec cases and the differential.
 
 **Why the test set looks the way it does.** Every entry earns its place against a specific wrong implementation: `"6"` and `"9"` alone catch "is this digit rotatable" (both rotate, neither is strobogrammatic); `"6996"` vs `"6009"` catch a missing reversal; `"689"` and `"69896"` catch a `lo < hi` loop that skips the odd centre; `"10501"` catches a forbidden digit hidden between legal pairs; `"18"` catches assuming self-mapping digits pair with each other. That is 26 cases chosen as counterexamples rather than as coverage — the breadth comes from the differential.

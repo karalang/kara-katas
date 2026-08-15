@@ -123,7 +123,11 @@ not their languages**: C uses `qsort`, whose function-pointer comparator cannot
 be inlined, and Go's `sort.Slice` pays reflection-based swaps. Neither row should
 be read as a language comparison.
 
-### This lane found a Kāra perf gap — kara `B-2026-08-10-9`
+### This lane found a Kāra perf gap — kara `B-2026-08-10-9`, then its residual
+
+**The x86 numbers in this subsection are pre-fix.** They are what the lane
+originally reported and what `B-2026-08-10-9` was filed from; the fix landed in
+`50a50e8` and the M5 lane above supersedes them.
 
 Kāra at 1.62× Rust here, and 1.89× on #252, are both sort-dominated. Isolating
 the sort — 150k pairs, 25 rounds, clone and `sort_by` only, no heap and no
@@ -134,12 +138,19 @@ each kata carries non-sort work that runs at parity, diluting the ratio. And it
 is not the heap — #253 *adds* a hand-rolled heap on top of #252's sort-and-scan
 and comes out relatively **better** (1.62× vs 1.89×).
 
-**Settled on the Apple-silicon host, 2026-08-15 — the observation is now a
-confirmed result.** It was filed with a single-host caveat because every number
-came from one x86 shared container. The M5 lane above removes that caveat: the
-gap reproduces on a second, very different host and is **larger** there (this
-kata 1.62× → 2.04×, #252 1.89× → 3.70×), on measurements with σ under 1%.
-`B-2026-08-10-9` should be read as confirmed rather than provisional.
+**Settled on the Apple-silicon host, 2026-08-15 — but not as the row below
+predicted.** `B-2026-08-10-9` was **fixed** in `50a50e8` (a natural-run merge
+sort), and that fix is present in the compiler the M5 lane above was measured
+with. Its shuffled-uniform residual was split out as `B-2026-08-11-28`, measured
+at ~1.6× Rust on x86, and closed **`wontfix`** — no action left.
+
+This kata and [#252](../252-meeting-rooms/) both shuffle their input, so both
+land on that residual rather than on the ordered-input case the fix addressed.
+On the M5 it is **2.04×** here and **3.70×** on #252, on σ under 1% — materially
+wider than the ~1.6× the `wontfix` was argued from, and wider than either kata's
+own pre-fix x86 number. Filed as kara **`B-2026-08-15-30`**: the disposition was
+reached entirely on a shared x86 container and deserves re-deciding on the
+canonical host.
 
 ## Kāra features exercised
 

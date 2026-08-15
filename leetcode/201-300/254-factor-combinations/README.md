@@ -234,14 +234,16 @@ to compute (BENCHMARKS.md § Hosts). Go's bump allocator and concurrent collecto
 take the whole benefit; C's `malloc` takes most of the rest. Kāra's position
 relative to *Rust* is unchanged because both pay a similar per-allocation cost.
 
-**This lane is evidence for where kara `B-2026-08-10-9` lives, and the M5
-strengthens it.** That row records Kāra's `sort_by` running ~2× Rust's, isolated
-from two sort-dominated katas ([#252](../252-meeting-rooms/),
-[#253](../253-meeting-rooms-ii/)) — both of which got *worse* on this host
-(1.89× → 3.70× and 1.62× → 2.04×). Here, with deep recursion and millions of
-small allocations but no sort at all, Kāra is level with Rust on both hosts. Two
-lanes diverging on sorting while this one stays pinned is a stronger separation
-than the container alone could show.
+**This lane is the control that isolates the sort residual, and the M5
+strengthens it.** kara `B-2026-08-10-9` is fixed (`50a50e8`); its shuffled-input
+residual `B-2026-08-11-28` is not, and on this host that residual reads **3.70×**
+on [#252](../252-meeting-rooms/) and **2.04×** on
+[#253](../253-meeting-rooms-ii/) — both wider than their pre-fix x86 numbers
+(1.89× and 1.62×), which is why it is re-opened for disposition as
+`B-2026-08-15-30`. Here, with deep recursion and millions of small allocations
+but **no sort at all**, Kāra is level with Rust on both hosts (0.96× on the M5).
+Two sort-dominated lanes diverging while this one stays pinned is a stronger
+separation than the container alone could show.
 
 ### The x86 corroboration run
 
