@@ -112,43 +112,40 @@ Two sizing choices keep it measuring the algorithm:
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+The canonical M5 table is generated from `bench/results.json` — see
+[§ Benchmarks](#benchmarks) below. What it says has changed, and the change is
+now the most interesting thing about this kata:
 
-| Impl | Mean ± σ | vs Kāra |
-|---|---|---|
-| Rust `-O` | 58.8 ± 1.4 ms | 0.27× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 59.1 ± 1.4 ms | 0.27× |
-| **Kāra (codegen)** | **217.3 ± 3.8 ms** | 1.00× |
-| C `clang -O3` (`qsort`) | 265.0 ± 5.8 ms | 1.22× |
-| Go (`sort.Slice`) | 467.0 ± 10.0 ms | 2.15× |
+> **The question this kata deferred to Apple silicon is answered, and the
+> answer moved.** It was filed at **3.70× behind Rust** on the M5 (against
+> ~1.9× on x86) and raised kara `B-2026-08-15-30` to re-decide a `wontfix` that
+> had been reached entirely on the container. Three compiler changes later it is
+> **1.57×**:
+>
+> - **`B-2026-08-15-30`** — shuffled input never reached the stable quicksort
+>   that already existed in the emitter, because both of its gates keyed on
+>   cardinality. Routing it there was worth 0.64× on the isolated sort.
+> - **`B-2026-08-16-3`** — the partition's 64-element leaves were handed back to
+>   the merge sort, which cost an allocation, run detection and ~log2(64/RUN)
+>   passes per leaf. A stable insertion sort there was worth 0.88×.
+> - **`B-2026-08-16-9`** — the pivot's three runtime remainders became one
+>   multiply-shift each; worth 0.99×.
+>
+> Kāra on this kata went **217.3 ms → 91.7 ms** while every comparator held
+> still (Rust 58.8 → 58.7, C 265.0 → 255.6, Go 467.0 → 464.2 ms). That is what
+> makes it a compiler result rather than a machine one. The remaining 1.57× is
+> kara `B-2026-08-16-9`, still open — and by measurement it is no longer a
+> tuning gap: the routing, the partition kernel, the leaf span and the pivot
+> quality have each been measured and ruled out.
 
-> **The sort gap is confirmed, and it is worse here than on the container.**
-> This kata deferred the question to Apple silicon, and the answer is
-> **3.70× behind Rust** — against 1.89× on x86. The measurement is not
-> marginal: σ is 2.4% on the Kāra row and 2.4% on Rust's, and the two are
-> 158 ms apart.
->
-> **Read which row this is carefully.** kara `B-2026-08-10-9` — the
-> fixed-32-run merge sort — is **fixed** (`50a50e8`), and that fix is in the
-> compiler measured here. What remains is its shuffled-uniform residual,
-> `B-2026-08-11-28`, which was measured at ~1.6× on x86 and closed **`wontfix`**.
-> This kata shuffles its input once and sorts a fresh copy per round, so it lands
-> squarely on that residual — and 3.70× is more than double the number the
-> wontfix was decided against. Filed as kara **`B-2026-08-15-30`** to re-decide
-> that disposition on this host rather than inherit it.
->
-> Equal-safety makes no difference to it — `rustc -O` is 58.8 ms and the
-> overflow-checked build 59.1 ms, a 0.5% difference — so this is not a
-> safety-tax result. It is `Vec.sort_by` against `slice::sort_by`, and the
-> ordering is unambiguous on both hosts.
+Equal-safety makes no difference to any of this — `rustc -O` and the
+overflow-checked build sit within 0.7% of each other — so it was never a
+safety-tax result. It is `Vec.sort_by` against `slice::sort_by`.
 
 **The comparison that is clean is Kāra against Rust**, both using a generic
 sort-by-key with an inlined comparator. The C and Go rows are about their sorts,
-not their languages, for the reasons below, and Kāra passing C on the M5
-(1.22× ahead, having been 0.51× behind on the container) is a statement about
-`qsort`'s indirect call under a fast core — not a Kāra win.
+not their languages, for the reasons below — Kāra is now 2.79× ahead of the C
+row, and that is a statement about `qsort`'s indirect call, not a Kāra win.
 
 ### The x86 corroboration run
 
@@ -173,9 +170,11 @@ idiomatic standard-library choice, the same way [#249](../249-group-shifted-stri
 keeps a hand-written hash map and says so — but the row measures **`qsort`**, not
 "C".
 
-On that host Kāra against Rust was 469 ms to 248 ms, ~1.9×. The M5 run above
-settles what that measurement could only flag: the gap is real and **widens** to
-3.70× on Apple silicon.
+On that host Kāra against Rust was 469 ms to 248 ms, ~1.9×. The M5 run first
+widened that to 3.70×, which is what made it worth chasing; the three fixes
+above then closed it to 1.57×. The x86 numbers here are the pre-fix state of a
+host that was never re-measured, and are kept as the historical corroboration
+that flagged the gap — not as a current claim.
 
 ## Kāra features exercised
 
@@ -197,6 +196,22 @@ No compiler bugs found. Worth stating precisely: the differential's 8.9%
 disagreement was **checked against the compiler first** — the interpreter and the
 AOT build reported the identical mismatch count and digest, which ruled out a
 codegen fault before the algorithm was examined.
+
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`537953186`). Workload: build 120k packed attendable intervals once and shuffle them, then 20 rounds of copy + sort-by-start + adjacent-overlap scan; sink = accumulated verdict-and-span checksum.
+
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-16 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 58.3 ms | 0.64× |
+| Rust `-O` | 58.7 ms | 0.64× |
+| **Kāra (codegen)** | 91.7 ms | 1.00× |
+| C `clang -O3` | 255.6 ms | 2.79× |
+| Go | 464.2 ms | 5.06× |
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac baed7120378d); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

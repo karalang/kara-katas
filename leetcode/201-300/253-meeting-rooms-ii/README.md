@@ -84,27 +84,25 @@ Rust, Go and Python mirrors, each hand-rolling the same heap rather than calling
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+The canonical M5 table is generated from `bench/results.json` — see
+[§ Benchmarks](#benchmarks) below.
 
-| Impl | Mean ± σ | vs Kāra |
-|---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 119.7 ± 0.6 ms | 0.49× |
-| Rust `-O` | 121.3 ± 1.1 ms | 0.50× |
-| **Kāra (codegen)** | **244.7 ± 0.9 ms** | 1.00× |
-| C `clang -O3` (`qsort`) | 264.9 ± 1.3 ms | 1.08× |
-| Go (`sort.Slice`) | 455.2 ± 5.7 ms | 1.86× |
+> **The gap this kata deferred to Apple silicon has been closed most of the
+> way.** It was filed at **2.04× behind equal-safety Rust** (against 1.62× on
+> the container) and, with [#252](../252-meeting-rooms/)'s 3.70×, raised kara
+> `B-2026-08-15-30`. Three compiler changes later it is **1.20×**:
+> `B-2026-08-15-30` routed shuffled input to the stable quicksort it was never
+> reaching, `B-2026-08-16-3` replaced the partition's leaf merge with a stable
+> insertion sort, and `B-2026-08-16-9` swapped the pivot's runtime remainders
+> for multiply-shifts. Kāra here went **244.7 ms → 145.4 ms** while Rust, C and
+> Go all held still.
 
-**This is the cleanest measurement in the block** — σ is 0.4% on the Kāra row and
-0.5% on Rust's. **Kāra is 2.04× behind equal-safety Rust**, against 1.62× on the
-container. Together with [#252](../252-meeting-rooms/)'s 3.70×, the M5 confirms
-the gap this kata deferred rather than dissolving it.
-
-The relationship the container found survives, and it is the useful part: #253
-*adds* a hand-rolled heap on top of #252's sort-and-scan and comes out relatively
-**better** (2.04× vs 3.70×). Extra non-sort work at parity dilutes the ratio,
-which is what you would expect if the sort — and only the sort — is the deficit.
+The relationship the container found survives, and it is still the useful part:
+#253 *adds* a hand-rolled heap on top of #252's sort-and-scan and comes out
+relatively **better** — 1.20× against #252's 1.57×, as it was 2.04× against
+3.70× before. Extra non-sort work at parity dilutes the ratio, which is exactly
+what you expect if the sort, and only the sort, is the deficit. That it held
+through a 1.7× improvement in the sort is the strongest form of that evidence.
 
 ### The x86 corroboration run
 
@@ -123,34 +121,29 @@ not their languages**: C uses `qsort`, whose function-pointer comparator cannot
 be inlined, and Go's `sort.Slice` pays reflection-based swaps. Neither row should
 be read as a language comparison.
 
-### This lane found a Kāra perf gap — kara `B-2026-08-10-9`, then its residual
+### This lane found a Kāra perf gap — and it is now mostly closed
 
-**The x86 numbers in this subsection are pre-fix.** They are what the lane
-originally reported and what `B-2026-08-10-9` was filed from; the fix landed in
-`50a50e8` and the M5 lane above supersedes them.
+**The x86 numbers in this section are pre-fix** — what the lane originally
+reported, and what `B-2026-08-10-9` was filed from. They were never re-measured
+on that host, so read them as the history that flagged the gap, not as a current
+claim.
 
-Kāra at 1.62× Rust here, and 1.89× on #252, are both sort-dominated. Isolating
-the sort — 150k pairs, 25 rounds, clone and `sort_by` only, no heap and no
-scan — gives **0.34 s against Rust's 0.16 s, a 2.1× gap**.
+The chain, because four ledger rows are easy to conflate:
 
-That the isolated ratio is *larger* than either kata's is itself the evidence:
-each kata carries non-sort work that runs at parity, diluting the ratio. And it
-is not the heap — #253 *adds* a hand-rolled heap on top of #252's sort-and-scan
-and comes out relatively **better** (1.62× vs 1.89×).
-
-**Settled on the Apple-silicon host, 2026-08-15 — but not as the row below
-predicted.** `B-2026-08-10-9` was **fixed** in `50a50e8` (a natural-run merge
-sort), and that fix is present in the compiler the M5 lane above was measured
-with. Its shuffled-uniform residual was split out as `B-2026-08-11-28`, measured
-at ~1.6× Rust on x86, and closed **`wontfix`** — no action left.
+| row | what it was | outcome |
+|---|---|---|
+| `B-2026-08-10-9` | fixed-32-run merge sort, non-adaptive | **fixed** (`50a50e8`) |
+| `B-2026-08-11-28` | its shuffled-uniform residual, ~1.6× on x86 | closed **`wontfix`** |
+| `B-2026-08-15-30` | that residual on the M5 — 2.04× here, 3.70× on #252 | **fixed** (`93ea7a86`) |
+| `B-2026-08-16-3` | the 1.80× left after routing | **fixed** (`012645a5`) |
+| `B-2026-08-16-9` | the 1.61× left after the leaf | **open** |
 
 This kata and [#252](../252-meeting-rooms/) both shuffle their input, so both
-land on that residual rather than on the ordered-input case the fix addressed.
-On the M5 it is **2.04×** here and **3.70×** on #252, on σ under 1% — materially
-wider than the ~1.6× the `wontfix` was argued from, and wider than either kata's
-own pre-fix x86 number. Filed as kara **`B-2026-08-15-30`**: the disposition was
-reached entirely on a shared x86 container and deserves re-deciding on the
-canonical host.
+land on the shuffled-uniform residual rather than the ordered-input case
+`B-2026-08-10-9` addressed. That is why they were the katas that reopened a
+`wontfix`: the disposition had been reached entirely on a shared x86 container,
+and on the canonical host the gap was materially wider than the number it was
+argued from. Re-deciding it on this host was worth 1.7× on the sort.
 
 ## Kāra features exercised
 
@@ -174,6 +167,22 @@ mirrors match Python.
 No compiler bugs found. The heap, the conditional comparator and the two sort
 surfaces are all constructs earlier katas have already driven bugs out of, so
 this is a clean run over known ground rather than new.
+
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`819998103`). Workload: build 150k overlapping intervals once and shuffle, then 25 rounds of sort + min-heap room counting; sink = accumulated peak-room checksum.
+
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-16 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Rust `-O -C overflow-checks=on` (equal-safety) | 121.7 ms | 0.84× |
+| Rust `-O` | 123.0 ms | 0.85× |
+| **Kāra (codegen)** | 145.4 ms | 1.00× |
+| C `clang -O3` | 270.7 ms | 1.86× |
+| Go | 460.4 ms | 3.17× |
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac baed7120378d); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
