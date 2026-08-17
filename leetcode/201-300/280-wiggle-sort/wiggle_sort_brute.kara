@@ -1,0 +1,103 @@
+// LeetCode 280 — the definition, asked directly.
+//
+// Enumerate permutations of the input in lexicographic order and return the
+// first that wiggles. O(n!·n) — hopeless past eight elements, which is why the
+// differential draws its arrays short.
+//
+// IT IS THE ONLY SOLVER THAT NEVER CONSTRUCTS AN ARRANGEMENT. It TESTS
+// arrangements against the property, so it cannot inherit a misreading of the
+// property from the way it builds one. Both other solvers reorder by a rule —
+// the greedy's local swap, the sorted version's pairing — and a rule that is
+// subtly wrong about which index must be the peak produces a consistent,
+// confident, wrong answer in both.
+//
+// AND IT RETURNS THE LEXICOGRAPHICALLY SMALLEST valid arrangement, which buys
+// the harness a check that survives non-uniqueness: whatever the other two
+// produce must be a valid arrangement that is lex-GREATER THAN OR EQUAL to this
+// one. That is sharper than "both are valid" — it is a bound every correct
+// solver must respect, and a solver that emitted some other multiset entirely
+// would violate it immediately.
+
+fn wiggles(v: ref Vec[i64]) -> bool {
+    let mut i = 1i64;
+    while i < v.len() {
+        if i % 2i64 == 1i64 {
+            if v[i] < v[i - 1i64] { return false; }
+        } else {
+            if v[i] > v[i - 1i64] { return false; }
+        }
+        i = i + 1i64;
+    }
+    return true;
+}
+
+fn wiggle_sort(nums: mut ref Vec[i64]) {
+    // sort first so the permutation walk starts at the lex-smallest ordering
+    let mut a = 1i64;
+    while a < nums.len() {
+        let mut b = a;
+        while b > 0i64 and nums[b - 1i64] > nums[b] {
+            let t = nums[b - 1i64];
+            nums[b - 1i64] = nums[b];
+            nums[b] = t;
+            b = b - 1i64;
+        }
+        a = a + 1i64;
+    }
+    let mut more = true;
+    while more {
+        if wiggles(nums) { return; }
+        // next permutation, in place
+        let mut p = nums.len() - 2i64;
+        while p >= 0i64 and nums[p] >= nums[p + 1i64] { p = p - 1i64; }
+        if p < 0i64 {
+            more = false;
+        } else {
+            let mut s = nums.len() - 1i64;
+            while nums[s] <= nums[p] { s = s - 1i64; }
+            let t = nums[p];
+            nums[p] = nums[s];
+            nums[s] = t;
+            let mut lo = p + 1i64;
+            let mut hi = nums.len() - 1i64;
+            while lo < hi {
+                let t2 = nums[lo];
+                nums[lo] = nums[hi];
+                nums[hi] = t2;
+                lo = lo + 1i64;
+                hi = hi - 1i64;
+            }
+        }
+    }
+}
+
+fn show(v: ref Vec[i64]) -> String {
+    let mut s: String = "[";
+    let mut i = 0i64;
+    while i < v.len() {
+        if i > 0i64 { s = s + ", "; }
+        s = s + f"{v[i]}";
+        i = i + 1i64;
+    }
+    return s + "]";
+}
+
+fn main() {
+    let cases: Vec[Vec[i64]] = [
+        [3i64, 5i64, 2i64, 1i64, 6i64, 4i64],
+        [1i64, 2i64, 3i64],
+        [6i64, 6i64, 5i64, 6i64, 3i64, 8i64],
+        [1i64],
+        [2i64, 1i64],
+        [1i64, 1i64, 1i64, 1i64],
+        [5i64, 4i64, 3i64, 2i64, 1i64],
+    ];
+    let mut c = 0i64;
+    while c < cases.len() {
+        let mut v = cases[c];
+        let before = show(v);
+        wiggle_sort(mut v);
+        println(f"{before} -> {show(v)}");
+        c = c + 1i64;
+    }
+}
