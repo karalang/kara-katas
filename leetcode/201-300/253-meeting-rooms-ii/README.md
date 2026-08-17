@@ -87,22 +87,26 @@ Rust, Go and Python mirrors, each hand-rolling the same heap rather than calling
 The canonical M5 table is generated from `bench/results.json` — see
 [§ Benchmarks](#benchmarks) below.
 
-> **The gap this kata deferred to Apple silicon has been closed most of the
-> way.** It was filed at **2.04× behind equal-safety Rust** (against 1.62× on
-> the container) and, with [#252](../252-meeting-rooms/)'s 3.70×, raised kara
-> `B-2026-08-15-30`. Three compiler changes later it is **1.20×**:
+> **The gap this kata deferred to Apple silicon is essentially closed.** It was
+> filed at **2.04× behind equal-safety Rust** (against 1.62× on the container)
+> and, with [#252](../252-meeting-rooms/)'s 3.70×, raised kara
+> `B-2026-08-15-30`. Five compiler changes later it is **1.10×**:
 > `B-2026-08-15-30` routed shuffled input to the stable quicksort it was never
 > reaching, `B-2026-08-16-3` replaced the partition's leaf merge with a stable
-> insertion sort, and `B-2026-08-16-9` swapped the pivot's runtime remainders
-> for multiply-shifts. Kāra here went **244.7 ms → 145.4 ms** while Rust, C and
-> Go all held still.
+> insertion sort, and `B-2026-08-16-9` contributed three — multiply-shift pivot
+> reduction, a `vectorize.enable` hint on a counting pass LLVM's cost model was
+> *declining* rather than refusing, and unswitching the scatter so its
+> comparison stays in flags instead of being materialised into registers, 15
+> instructions per element down to 9. Kāra here went **244.7 ms → 134.2 ms**
+> while Rust, C and Go all held still.
 
 The relationship the container found survives, and it is still the useful part:
 #253 *adds* a hand-rolled heap on top of #252's sort-and-scan and comes out
-relatively **better** — 1.20× against #252's 1.57×, as it was 2.04× against
+relatively **better** — 1.10× against #252's 1.29×, as it was 2.04× against
 3.70× before. Extra non-sort work at parity dilutes the ratio, which is exactly
-what you expect if the sort, and only the sort, is the deficit. That it held
-through a 1.7× improvement in the sort is the strongest form of that evidence.
+what you expect if the sort, and only the sort, is the deficit. That the
+relationship held through a 2.9× improvement in the sort is the strongest form
+of that evidence.
 
 ### The x86 corroboration run
 
@@ -172,17 +176,17 @@ this is a clean run over known ground rather than new.
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`819998103`). Workload: build 150k overlapping intervals once and shuffle, then 25 rounds of sort + min-heap room counting; sink = accumulated peak-room checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-16 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 121.7 ms | 0.84× |
-| Rust `-O` | 123.0 ms | 0.85× |
-| **Kāra (codegen)** | 145.4 ms | 1.00× |
-| C `clang -O3` | 270.7 ms | 1.86× |
-| Go | 460.4 ms | 3.17× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 122.4 ms | 0.91× |
+| Rust `-O` | 123.8 ms | 0.92× |
+| **Kāra (codegen)** | 134.2 ms | 1.00× |
+| C `clang -O3` | 271.1 ms | 2.02× |
+| Go | 461.6 ms | 3.44× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac baed7120378d); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 3f9a40969c68); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
