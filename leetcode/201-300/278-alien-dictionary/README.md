@@ -19,6 +19,7 @@ Recover the order of its letters. Return `""` if the input is inconsistent.
 | `alien_order_dfs.kara` | DFS reverse postorder, three colours | same |
 | `alien_order_brute.kara` | permutations, first that satisfies the words | O(k!·length) |
 | `differential.kara` | 1200 cases, two oracles | — |
+| `bench/alien.kara` | one 250k-word dictionary, recovered 48 times | benchmark lane |
 
 ## Two things happen before any sorting
 
@@ -109,7 +110,7 @@ its celebrity. And the two ways to be unsatisfiable are counted separately
 because different bugs miss them: 263 cycles against 161 prefix violations, so a
 harness that stopped producing either would be visible.
 
-## Two compiler bugs this kata found
+## Three compiler bugs this kata found
 
 `B-2026-08-17-10` — **indexing an iterator typechecks, then every backend
 improvises differently.** Found by asking the first question anyone asks about
@@ -183,3 +184,66 @@ for f in alien_order alien_order_dfs alien_order_brute differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Benchmarks
+
+**The topological sort is not the workload.** It runs over 26 letters — O(26²)
+however many words you feed it. All the time is in phase 1, walking adjacent word
+pairs to find each first difference, which is O(total input length). So the
+workload is a big *dictionary*, not a big alphabet.
+
+Two generator decisions carry it. The words are **already in planted-alphabet
+order**, because an unsorted list returns `""` after a handful of comparisons and
+measures nothing. And consecutive words **share long prefixes** — they're the
+base-6 numerals of 0..250000 — because words drawn independently at random differ
+at position 0 almost every time, so the scan exits immediately and the bench
+measures loop overhead instead of the comparison it exists to time.
+
+**Build once, punch 48 times.** Constructing the dictionary is string work, not
+the algorithm. Leaving it inside the loop was measurably wrong: hoisting it cut
+the runtime from 0.69 s to 0.04 s, so the first version of this bench was **94%
+dictionary construction** and only 6% the thing it claimed to measure.
+
+250,000 words over a 6-letter alphabet, recovered 48 times. Every lane prints
+`128003665`. 4-core x86 container, hyperfine.
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 185.5 ms ± 6.8 | 1.00× |
+| `go build` | 191.4 ms ± 8.3 | 1.03× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **258.9 ms ± 14.8** | **1.40×** |
+| `rustc -O` | 277.2 ms ± 10.6 | 1.49× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **321.8 ms ± 30.6** | **1.73×** |
+
+**1.24× against the equal-safety comparator** — Kāra is level with Rust here, and
+both trail C and Go, which is unusual for this corpus and worth its own look
+someday.
+
+### The parallel lane does not fan out
+
+| | time | cpu |
+|---|---:|---:|
+| `alien_seq.kara` | 321.8 ms ± 30.6 | ~100% |
+| `alien.kara` (`#[par_order_free]`) | 330.2 ms ± 12.6 | **101%** |
+
+48 branches of ~6 ms each, and `karac query concurrency` reports
+`lowering: parallel_fanout, fanned_out: true, "dispatched across the worker
+pool"`. It costs 3% and buys nothing.
+
+This is `B-2026-08-17-14`, and it is the **second** instance of that exact
+signature — [#276](../276-paint-fence/) had it before `c04bc65`. It is *not* that
+bug: the chunker fix is present and verified in the same binaries, since #276's
+16-iteration lane measures 384% CPU in the same session.
+
+Five isolations reproducing the body's individual features all parallelize
+correctly — pure arithmetic (387%), a captured `Vec[i64]` (355%), a captured
+`Vec[String]` (361%), per-call allocation (300%), a String-returning callee
+(364%). So it is not the branch count, the captured collection, the heap element
+type, allocation, or the return type. The most obvious untested difference is
+that the real callee contains **nested loops that are themselves classified as
+collect reductions** (`sequential_tabulate` on `adj`, `done`, `out`, `digits`) —
+none of the isolations had one inside a parallel branch.
+
+The lane ships at 1.03× *slower* with a pointer to the row, rather than being
+dropped. That's the call #276 made while its bug was open, and it's what got that
+one fixed.
