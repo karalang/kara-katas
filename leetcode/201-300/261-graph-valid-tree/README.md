@@ -128,7 +128,7 @@ own arithmetic.
 
 `bench/` builds **one random tree on 100,000 nodes once** — parent attachment,
 then a Fisher–Yates shuffle of the edge list — and punches the ★ union-find
-validator through it **240 times**. Sink `785843880`, reproduced by all four
+validator through it **240 times**. Sink `535933033`, reproduced by all four
 compiled mirrors and by Python.
 
 Two properties of the workload are deliberate:
@@ -250,6 +250,22 @@ and the differential match their Python mirrors.
 
 No compiler bugs found — adjacency lists, `mut ref` parameters and index-pool
 queues are all well-trodden ground in this corpus.
+
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`535933033`). Workload: build one 400,000-node random tree once with shuffled edges, then 30 rounds of union-find validation; sink = accumulated component/root state.
+
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| C `clang -O3` | 222.1 ms | 0.93× |
+| Rust `-O` | 226.0 ms | 0.94× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 231.3 ms | 0.97× |
+| **Kāra (codegen)** | 239.5 ms | 1.00× |
+| Go | 271.5 ms | 1.13× |
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 5c9268b1294e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

@@ -153,7 +153,7 @@ Over 4,000 cases: **18,146 nodes, 5,200 paths, longest rendered path 57 chars.**
 every root-to-leaf path **5 times** with the ★ string-extending DFS. Depth is
 ~2·log₂(n) ≈ 34, so prefixes stay short and the work is path enumeration rather
 than the pathological memory profile a spine produces (that lives in
-[`bench/probe/`](bench/probe/)). Sink `512590929`, reproduced by all four
+[`bench/probe/`](bench/probe/)). Sink `489173119`, reproduced by all four
 mirrors.
 
 The ★ form is benched rather than the join form because those two differ in an
@@ -252,6 +252,22 @@ One compiler issue found: `B-2026-08-13-1` above, fixed in `1299fd3`. The ★
 file's diagnostic was the checker working correctly on code that deserved
 restructuring; the iterative file's was not, and only investigating it rather
 than reaching for `#[allow(rc_fallback)]` told the two apart.
+
+## Benchmarks
+
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`489173119`). Workload: build one 150k-node random bushy tree once, then 5 rounds of full root-to-leaf path enumeration via the string-extending DFS; sink = positional digest over all rendered paths.
+
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+
+| Impl | Mean | vs Kāra |
+|---|---|---|
+| Go | 118.0 ms | 0.78× |
+| C `clang -O3` | 127.3 ms | 0.85× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 137.4 ms | 0.91× |
+| Rust `-O` | 138.2 ms | 0.92× |
+| **Kāra (codegen)** | 150.3 ms | 1.00× |
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 5c9268b1294e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
