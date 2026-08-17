@@ -40,7 +40,9 @@ fn lcg(seed: i64, n: i64, cap: i64) -> Vec<i64> {
     let mut x = seed;
     for _ in 0..n {
         x = (x * 1103515245 + 12345) % 2147483648;
-        out.push((x / 65536) % cap);
+        let wd0 = x / 65536;
+        x = (x * 1103515245 + 12345) % 2147483648;
+        out.push((wd0 * 32768 + x / 65536) % cap);
     }
     out
 }

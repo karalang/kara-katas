@@ -25,13 +25,17 @@ fn main() {
     let mut state: i64 = 261261;
     for i in 1..n {
         state = (state * 1103515245 + 12345) & 2147483647;
-        eu.push((state / 65536) % i);
+        let wd1 = state / 65536;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        eu.push((wd1 * 32768 + state / 65536) % i);
         ev.push(i);
     }
     let mut sh = m - 1;
     while sh > 0 {
         state = (state * 1103515245 + 12345) & 2147483647;
-        let j = (state / 65536) % (sh + 1);
+        let wd0 = state / 65536;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let j = (wd0 * 32768 + state / 65536) % (sh + 1);
         eu.swap(sh as usize, j as usize);
         ev.swap(sh as usize, j as usize);
         sh -= 1;

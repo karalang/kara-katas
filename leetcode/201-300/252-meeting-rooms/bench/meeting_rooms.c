@@ -25,7 +25,9 @@ int main(void) {
     }
     for (long k = n - 1; k > 0; k--) {
         state = (state * 1103515245L + 12345L) & 2147483647L;
-        long swap = (state / 65536L) % (k + 1);
+        long wd0 = state / 65536L;
+        state = (state * 1103515245L + 12345L) & 2147483647L;
+        long swap = (wd0 * 32768L + state / 65536L) % (k + 1);
         Iv t = base[k]; base[k] = base[swap]; base[swap] = t;
     }
 

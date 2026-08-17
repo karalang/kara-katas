@@ -39,7 +39,9 @@ func lcg(seed int64, n int64, cap int64) []int64 {
 	x := seed
 	for k := int64(0); k < n; k++ {
 		x = (x*1103515245 + 12345) % 2147483648
-		out = append(out, (x/65536)%cap)
+		wd0 := x / 65536
+		x = (x*1103515245 + 12345) % 2147483648
+		out = append(out, (wd0*32768+x/65536)%cap)
 	}
 	return out
 }

@@ -43,7 +43,9 @@ static void lcg(long long seed, long long n, long long cap, long long *dst) {
     long long x = seed;
     for (long long k = 0; k < n; k++) {
         x = (x * 1103515245 + 12345) % 2147483648LL;
-        dst[k] = (x / 65536) % cap;
+        long long wd0 = x / 65536;
+        x = (x * 1103515245 + 12345) % 2147483648LL;
+        dst[k] = (wd0 * 32768 + x / 65536) % cap;
     }
 }
 

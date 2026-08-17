@@ -21,7 +21,9 @@ fn main() {
     let mut k = base.len() as i64 - 1;
     while k > 0 {
         state = (state * 1103515245 + 12345) & 2147483647;
-        let swap = (state / 65536) % (k + 1);
+        let wd0 = state / 65536;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let swap = (wd0 * 32768 + state / 65536) % (k + 1);
         base.swap(k as usize, swap as usize);
         k -= 1;
     }

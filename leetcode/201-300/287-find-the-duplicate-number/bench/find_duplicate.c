@@ -36,7 +36,9 @@ int main(void) {
         long long x = p + 12345;
         for (long long k = N - 1; k > 0; k--) {
             x = (x * 1103515245LL + 12345LL) % 2147483648LL;
-            long long j = (x / 65536LL) % (k + 1);
+            long long wd0 = x / 65536LL;
+            x = (x * 1103515245LL + 12345LL) % 2147483648LL;
+            long long j = (wd0 * 32768LL + x / 65536LL) % (k + 1);
             long long tmp = order[k];
             order[k] = order[j];
             order[j] = tmp;

@@ -28,12 +28,16 @@ func main() {
 	var state int64 = 261261
 	for i := int64(1); i < n; i++ {
 		state = (state*1103515245 + 12345) & 2147483647
-		eu[i-1] = (state / 65536) % i
+		wd1 := state / 65536
+		state = (state*1103515245 + 12345) & 2147483647
+		eu[i-1] = (wd1 * 32768 + state / 65536) % i
 		ev[i-1] = i
 	}
 	for sh := m - 1; sh > 0; sh-- {
 		state = (state*1103515245 + 12345) & 2147483647
-		j := (state / 65536) % (sh + 1)
+		wd0 := state / 65536
+		state = (state*1103515245 + 12345) & 2147483647
+		j := (wd0 * 32768 + state / 65536) % (sh + 1)
 		eu[sh], eu[j] = eu[j], eu[sh]
 		ev[sh], ev[j] = ev[j], ev[sh]
 	}

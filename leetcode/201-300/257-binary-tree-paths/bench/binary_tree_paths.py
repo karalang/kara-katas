@@ -16,7 +16,9 @@ def main():
 
     while len(val) < n:
         state = (state * 1103515245 + 12345) & 2147483647
-        pick = (state // 65536) % len(open_)
+        wd0 = state // 65536
+        state = (state * 1103515245 + 12345) & 2147483647
+        pick = (wd0 * 32768 + state // 65536) % len(open_)
         parent = open_[pick]
         state = (state * 1103515245 + 12345) & 2147483647
         val.append((state // 65536) % 100 - 50); left.append(-1); right.append(-1)

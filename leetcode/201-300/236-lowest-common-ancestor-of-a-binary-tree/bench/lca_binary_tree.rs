@@ -45,9 +45,13 @@ fn main() {
     let mut y: i64 = 2024;
     for _ in 0..iters {
         y = (y * 1103515245 + 12345) % 2147483648;
-        let p = (y / 65536) % n;
+        let wd1 = y / 65536;
         y = (y * 1103515245 + 12345) % 2147483648;
-        let q = (y / 65536) % n;
+        let p = (wd1 * 32768 + y / 65536) % n;
+        y = (y * 1103515245 + 12345) % 2147483648;
+        let wd0 = y / 65536;
+        y = (y * 1103515245 + 12345) % 2147483648;
+        let q = (wd0 * 32768 + y / 65536) % n;
         let ans = lca(&nodes, 0, p, q);
         let v = if ans == -1 { -1 } else { nodes[ans as usize].val };
         sink = (sink + v) % 1000000007;

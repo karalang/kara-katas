@@ -47,9 +47,13 @@ int main(void) {
     long long y = 2024;
     for (long long it = 0; it < ITERS; it++) {
         y = (y * 1103515245 + 12345) % 2147483648LL;
-        long long p = (y / 65536) % N;
+        long long wd1 = y / 65536;
         y = (y * 1103515245 + 12345) % 2147483648LL;
-        long long q = (y / 65536) % N;
+        long long p = (wd1 * 32768 + y / 65536) % N;
+        y = (y * 1103515245 + 12345) % 2147483648LL;
+        long long wd0 = y / 65536;
+        y = (y * 1103515245 + 12345) % 2147483648LL;
+        long long q = (wd0 * 32768 + y / 65536) % N;
         long long ans = lca(nodes, 0, p, q);
         long long v = ans == -1 ? -1 : nodes[ans].val;
         sink = (sink + v) % 1000000007LL;

@@ -36,7 +36,9 @@ fn main() {
         let mut k = n - 1;
         while k > 0 {
             x = (x * 1103515245 + 12345) % 2147483648;
-            let j = (x / 65536) % (k + 1);
+            let wd0 = x / 65536;
+            x = (x * 1103515245 + 12345) % 2147483648;
+            let j = (wd0 * 32768 + x / 65536) % (k + 1);
             let tmp = order[k as usize];
             order[k as usize] = order[j as usize];
             order[j as usize] = tmp;

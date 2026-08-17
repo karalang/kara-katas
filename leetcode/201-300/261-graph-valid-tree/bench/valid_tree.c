@@ -23,12 +23,16 @@ int main(void) {
     long state = 261261;
     for (long i = 1; i < n; i++) {
         state = (state * 1103515245L + 12345L) & 2147483647L;
-        eu[i - 1] = (state / 65536L) % i;
+        long wd1 = state / 65536L;
+        state = (state * 1103515245L + 12345L) & 2147483647L;
+        eu[i - 1] = (wd1 * 32768L + state / 65536L) % i;
         ev[i - 1] = i;
     }
     for (long sh = m - 1; sh > 0; sh--) {
         state = (state * 1103515245L + 12345L) & 2147483647L;
-        long j = (state / 65536L) % (sh + 1);
+        long wd0 = state / 65536L;
+        state = (state * 1103515245L + 12345L) & 2147483647L;
+        long j = (wd0 * 32768L + state / 65536L) % (sh + 1);
         long tu = eu[sh]; eu[sh] = eu[j]; eu[j] = tu;
         long tv = ev[sh]; ev[sh] = ev[j]; ev[j] = tv;
     }

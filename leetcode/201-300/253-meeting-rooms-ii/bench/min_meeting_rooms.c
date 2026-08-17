@@ -46,7 +46,9 @@ int main(void) {
     }
     for (long k = n - 1; k > 0; k--) {
         state = (state * 1103515245L + 12345L) & 2147483647L;
-        long sw = (state / 65536L) % (k + 1);
+        long wd0 = state / 65536L;
+        state = (state * 1103515245L + 12345L) & 2147483647L;
+        long sw = (wd0 * 32768L + state / 65536L) % (k + 1);
         Iv t = base[k]; base[k] = base[sw]; base[sw] = t;
     }
 

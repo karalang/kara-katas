@@ -51,7 +51,9 @@ def main():
         base.append((s, s + dur))
     for k in range(n - 1, 0, -1):
         state = (state * 1103515245 + 12345) & 2147483647
-        sw = (state // 65536) % (k + 1)
+        wd0 = state // 65536
+        state = (state * 1103515245 + 12345) & 2147483647
+        sw = (wd0 * 32768 + state // 65536) % (k + 1)
         base[k], base[sw] = base[sw], base[k]
 
     sink = 0

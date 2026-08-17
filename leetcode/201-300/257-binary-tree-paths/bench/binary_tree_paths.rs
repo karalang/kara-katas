@@ -40,7 +40,9 @@ fn main() {
     let mut made: i64 = 1;
     while made < n {
         state = (state * 1103515245 + 12345) & 2147483647;
-        let pick = ((state / 65536) % open.len() as i64) as usize;
+        let wd0 = state / 65536;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let pick = ((wd0 * 32768 + state / 65536) % open.len() as i64) as usize;
         let parent = open[pick] as usize;
         state = (state * 1103515245 + 12345) & 2147483647;
         nodes.push(Node { val: (state / 65536) % 100 - 50, left: -1, right: -1 });

@@ -54,7 +54,9 @@ int main(void) {
 
     while (ncount < n) {
         state = (state * 1103515245L + 12345L) & 2147483647L;
-        long pick = (state / 65536L) % ocnt;
+        long wd0 = state / 65536L;
+        state = (state * 1103515245L + 12345L) & 2147483647L;
+        long pick = (wd0 * 32768L + state / 65536L) % ocnt;
         long parent = open[pick];
         state = (state * 1103515245L + 12345L) & 2147483647L;
         nodes[ncount].val = (state / 65536L) % 100L - 50L;

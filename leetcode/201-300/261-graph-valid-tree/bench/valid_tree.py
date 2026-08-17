@@ -25,11 +25,15 @@ def main():
     state = 261261
     for i in range(1, n):
         state = (state * 1103515245 + 12345) & 2147483647
-        eu[i - 1] = (state // 65536) % i
+        wd1 = state // 65536
+        state = (state * 1103515245 + 12345) & 2147483647
+        eu[i - 1] = (wd1 * 32768 + state // 65536) % i
         ev[i - 1] = i
     for sh in range(m - 1, 0, -1):
         state = (state * 1103515245 + 12345) & 2147483647
-        j = (state // 65536) % (sh + 1)
+        wd0 = state // 65536
+        state = (state * 1103515245 + 12345) & 2147483647
+        j = (wd0 * 32768 + state // 65536) % (sh + 1)
         eu[sh], eu[j] = eu[j], eu[sh]
         ev[sh], ev[j] = ev[j], ev[sh]
 

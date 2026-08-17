@@ -40,7 +40,9 @@ func main() {
 
 	for int64(len(nodes)) < n {
 		state = (state*1103515245 + 12345) & 2147483647
-		pick := (state / 65536) % int64(len(open))
+		wd0 := state / 65536
+		state = (state*1103515245 + 12345) & 2147483647
+		pick := (wd0 * 32768 + state / 65536) % int64(len(open))
 		parent := open[pick]
 		state = (state*1103515245 + 12345) & 2147483647
 		nodes = append(nodes, Node{(state / 65536) % 100 % 100 - 50, -1, -1})

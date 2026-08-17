@@ -39,7 +39,9 @@ def lcg(seed, n, cap):
     x = seed
     for _ in range(n):
         x = (x * 1103515245 + 12345) % 2147483648
-        out.append((x // 65536) % cap)
+        wd0 = x // 65536
+        x = (x * 1103515245 + 12345) % 2147483648
+        out.append((wd0 * 32768 + x // 65536) % cap)
     return out
 
 
