@@ -1,45 +1,55 @@
 // LeetCode 279 — Perfect Squares.
 //
-// Return the least number of perfect-square numbers (1, 4, 9, 16, …) that sum to
-// `n`. Bottom-up DP: `dp[i]` = fewest squares summing to `i`, with
+// Given `n`, return the least number of perfect squares that sum to it.
+// `12 = 4 + 4 + 4` is 3; `13 = 4 + 9` is 2.
 //
-//   dp[0] = 0,   dp[i] = 1 + min over all squares j² ≤ i of dp[i − j²].
+// THE ★ MECHANISM: BOTTOM-UP DP. `least[i]` is the answer for `i`, built by
+// trying every square that fits:
 //
-// Every amount `i` is reached by adding one square `j²` to a smaller amount
-// `i − j²`, so scanning all such squares and taking the minimum builds the answer
-// in O(n·√n) time, O(n) space.
+//     least[0] = 0
+//     least[i] = 1 + min over j*j <= i of least[i - j*j]
+//
+// O(n√n) time, O(n) space. The recurrence is the definition read backwards: any
+// optimal decomposition of `i` ends in SOME square `j*j`, and what remains must
+// itself be optimally decomposed — otherwise you could improve it and contradict
+// optimality. That exchange argument is the whole proof, and it is why a greedy
+// "take the largest square that fits" is wrong: for 12 greedy takes 9, leaving
+// 3 = 1+1+1, for a total of 4 against the true 3.
+//
+// GREEDY FAILING AT 12 IS WORTH KNOWING because it is the first counterexample
+// and it is small. A solver tested only on 13 (where greedy is right) passes.
+//
+// THE ANSWER IS ALWAYS 1, 2, 3, OR 4 — Lagrange's four-square theorem — which
+// the DP never discovers and never needs. `perfect_squares_theory.kara` computes
+// it from that fact alone in O(√n) with no table and no search, and the
+// differential leans on the two agreeing: a DP bug and a number-theory bug have
+// no way to coincide.
 
-fn num_squares(n: i64) -> i64 {
-    let mut dp: Vec[i64] = Vec.new();
-    dp.push(0i64);                              // dp[0] = 0
-
+fn least_squares(n: i64) -> i64 {
+    let mut least: Vec[i64] = Vec.new();
+    least.push(0i64);
     let mut i = 1i64;
     while i <= n {
-        let mut best = i;                       // worst case: i ones
+        let mut best = i;                 // worst case: i copies of 1
         let mut j = 1i64;
         while j * j <= i {
-            let cand = dp[i - j * j] + 1i64;
-            if cand < best {
-                best = cand;
-            }
+            let cand = least[i - j * j] + 1i64;
+            if cand < best { best = cand; }
             j = j + 1i64;
         }
-        dp.push(best);
+        least.push(best);
         i = i + 1i64;
     }
-    return dp[n];
-}
-
-fn report(n: i64) {
-    println(f"{num_squares(n)}");
+    return least[n];
 }
 
 fn main() {
-    report(12i64);                                  // 3   (4 + 4 + 4)
-    report(13i64);                                  // 2   (4 + 9)
-    report(1i64);                                   // 1
-    report(2i64);                                   // 2   (1 + 1)
-    report(4i64);                                   // 1
-    report(43i64);                                  // 3   (9 + 9 + 25)
-    report(100i64);                                 // 1
+    let cases: Vec[i64] = [1i64, 2i64, 3i64, 4i64, 12i64, 13i64, 43i64, 48i64,
+                           99i64, 100i64, 9999i64];
+    let mut i = 0i64;
+    while i < cases.len() {
+        let n = cases[i];
+        println(f"n={n} -> {least_squares(n)}");
+        i = i + 1i64;
+    }
 }
