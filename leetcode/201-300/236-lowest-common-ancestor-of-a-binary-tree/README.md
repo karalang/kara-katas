@@ -75,7 +75,7 @@ M5 feed kāra is 1.17× *behind* the overflow-checked Rust. The reversal is not
 the workload: holding the compiler fixed and varying only the generator width
 leaves kāra's time unchanged to three digits, and the C, Rust and Go lanes were
 flat across the same re-measurement. It is a kāra-only regression between
-2026-07-27 and 2026-08-17, tracked as `B-2026-08-17-36` and not yet bisected.
+2026-07-27 and 2026-08-17, tracked as `B-2026-08-17-40` and not yet bisected.
 The container analysis below is kept because it explains the *shape* of the
 lane, which has not changed.
 
