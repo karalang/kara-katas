@@ -139,7 +139,7 @@ rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach "$STEM" --lane seq --mode codegen \
     --name "kara ${STEM} (codegen, single-threaded)" --cmd "./target/${STEM}_seq_kara"
 rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
-    --name "kara ${STEM} (codegen, #[par_order_free] — does not fan out)" --cmd "./target/${STEM}_kara"
+    --name "kara ${STEM} (codegen, #[par_order_free])" --cmd "./target/${STEM}_kara"
 rt_cmd --lang rust --approach "$STEM" --lane seq --mode native \
     --name "rust ${STEM}" --cmd "./target/${STEM}"
 rt_cmd --lang rust_ovf --approach "$STEM" --lane seq --mode native \

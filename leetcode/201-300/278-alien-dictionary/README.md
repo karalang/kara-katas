@@ -219,6 +219,101 @@ dictionary construction** and only 6% the thing it claimed to measure.
 both trail C and Go, which is unusual for this corpus and worth its own look
 someday.
 
+### The parallel lane
+
+| | time | cpu |
+|---|---:|---:|
+| `alien_seq.kara` | 293.6 ms ± 15.5 | 99% |
+| **`alien.kara`** (`#[par_order_free]`) | **165.6 ms ± 6.2** | **202%** |
+| | **1.77× ± 0.11** | |
+
+It shipped at **1.03× slower** and 101% CPU, which is how `B-2026-08-17-14` was
+found — the second kata in this corpus to publish a broken par lane rather than
+drop it.
+
+**The cause was nested dispatch, and it was neither of the two things I
+proposed.** An auto-parallelized loop *inside* `solve` called `karac_par_run`
+once per invocation: 48 nested dispatches into a pool the outer collect had
+already saturated, each blocking its worker in `dispatch_and_wait`. All four
+chunks then ran sequentially on one pool thread. `karac_par_reduce` has had a
+fork-depth cap since slice 3b; `karac_par_run` had none, and that asymmetry was
+the whole bug.
+
+My bisection table has a mechanical reading in hindsight: each simplification of
+`solve` changed *which* loops auto-par recognized, so the 101 / 166 / 248 / 345
+gradient tracks how much of each variant's runtime sat inside a nested-dispatching
+region. Graded because the convoy is proportional — not, as I guessed, because of
+payload contention.
+
+**And the race I worried about doesn't exist.** I suspected non-atomic refcount
+traffic on the shared `Vec[String]` and flagged that it would make this a
+soundness bug rather than a perf one. Plain `Vec` elements carry no refcount at
+all — RC is the `shared struct` tier — so a read-only `words[p]` is a load, not a
+retain. The premise was wrong, which is why it was filed as a question rather
+than as a soundness row.
+
+**Residual, still open:** 2.04× on 4 cores is not 4×. The scan is
+memory-bandwidth-shaped — 250k string headers per branch — and whether any of the
+gap is Kāra-specific is a smaller, separate question than the one this row
+answered.
+## Kāra features exercised
+
+- **`String.bytes()`** with explicit `as i64` casts — the compiler rejects mixing
+  `u8` and `i64`, which is the right call and the diagnostic says exactly what to
+  write.
+- **`String.substring`** for index→letter, and `+` string building.
+- **A flat `Vec[bool]` of 676** as the adjacency matrix, indexed `u * 26 + v`.
+- **An explicit stack DFS** with a parallel index stack, avoiding recursion.
+- **Next-permutation in place** — swap, then reverse the suffix.
+
+## Running
+
+```bash
+karac run alien_order.kara
+karac run alien_order_dfs.kara       # a valid order, not the lex-smallest one
+karac run alien_order_brute.kara
+
+diff <(karac run differential.kara) <(python3 differential.py) && echo "differential OK"
+
+for f in alien_order alien_order_dfs alien_order_brute differential; do
+    karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
+done
+```
+
+## Benchmarks
+
+**The topological sort is not the workload.** It runs over 26 letters — O(26²)
+however many words you feed it. All the time is in phase 1, walking adjacent word
+pairs to find each first difference, which is O(total input length). So the
+workload is a big *dictionary*, not a big alphabet.
+
+Two generator decisions carry it. The words are **already in planted-alphabet
+order**, because an unsorted list returns `""` after a handful of comparisons and
+measures nothing. And consecutive words **share long prefixes** — they're the
+base-6 numerals of 0..250000 — because words drawn independently at random differ
+at position 0 almost every time, so the scan exits immediately and the bench
+measures loop overhead instead of the comparison it exists to time.
+
+**Build once, punch 48 times.** Constructing the dictionary is string work, not
+the algorithm. Leaving it inside the loop was measurably wrong: hoisting it cut
+the runtime from 0.69 s to 0.04 s, so the first version of this bench was **94%
+dictionary construction** and only 6% the thing it claimed to measure.
+
+250,000 words over a 6-letter alphabet, recovered 48 times. Every lane prints
+`128003665`. 4-core x86 container, hyperfine.
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 185.5 ms ± 6.8 | 1.00× |
+| `go build` | 191.4 ms ± 8.3 | 1.03× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **258.9 ms ± 14.8** | **1.40×** |
+| `rustc -O` | 277.2 ms ± 10.6 | 1.49× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **321.8 ms ± 30.6** | **1.73×** |
+
+**1.24× against the equal-safety comparator** — Kāra is level with Rust here, and
+both trail C and Go, which is unusual for this corpus and worth its own look
+someday.
+
 ### The parallel lane does not fan out
 
 | | time | cpu |
