@@ -113,9 +113,10 @@ Those 520 are visible only to the definition.
 
 ## A compiler bug this kata found
 
-`B-2026-08-16-1` — **auto-par forks two independent `let`s and then codegen
-cannot see their bindings.** Two locals initialized from calls returning a heap
-collection, gathered into a collection literal, fail the *default* build:
+`B-2026-08-16-1` — **fixed** — *auto-par forked two independent `let`s and then
+codegen could not see their bindings.* Two locals initialized from calls
+returning a collection, gathered into a collection literal, failed the *default*
+build:
 
 ```
 let a: Vec[i64] = mk(1i64);
@@ -123,29 +124,37 @@ let b: Vec[i64] = mk(2i64);
 let c: Vec[Vec[i64]] = [a, b];     // error: codegen failed: Undefined variable 'a'
 ```
 
-The grouping is correct — the calls really are independent, and
-`--concurrency-report` says so. The bindings just aren't visible to the
-continuation that consumes them. It needs all three of: two or more bindings from
-*calls* (one is never forked), the calls returning a *heap collection* (scalars
-compile fine), and consumption as *elements of a collection literal* (`push`,
-tuples and `.len()` arithmetic all work).
+`refs_in_expr` — the walker deciding which names are read *outside* an auto-par
+group, and so which bindings need a return slot across the join — had an arm for
+`ArrayLiteral` but none for `PrefixCollectionLiteral`, behind a `_ => {}`
+wildcard that swallowed it. A bare `[a, b]` checked against a `Vec` annotation
+normalizes to the prefix form before codegen, so `a` and `b` never entered the
+outside-reads set, zero return slots were computed, and the bindings stayed
+branch-local.
 
-**Three of this kata's four programs currently fail two of their four surfaces**
-because of it — they build their case tables exactly that way. Filed **high**:
-it is on the default path for an ordinary construct, and both workarounds require
-already knowing the bug exists.
+**My bounding experiments were right about the symptom and wrong about the
+mechanism.** I reported it as needing all three of fork + heap element +
+collection literal, offering scalars and tuples as controls that isolated
+"heap". They were not controls: those programs form **no parallel group at all**,
+so they never reach the walker. Heap-ness was never a condition — it is only what
+earns the `allocates(Heap)` effect that makes two calls worth forking. There was
+one real condition, consumption by a collection literal, and the honest control
+was the `a.len() + b.len()` case, which forks identically and worked because
+method-call chains were already covered.
 
-| | `--interp` | JIT | `build` | `AUTO_PAR=0 build` |
-|---|---|---|---|---|
-| `find_celebrity.kara` | ✅ | ❌ | ❌ | ✅ |
-| `find_celebrity_stack.kara` | ✅ | ❌ | ❌ | ✅ |
-| `find_celebrity_brute.kara` | ✅ | ❌ | ❌ | ✅ |
-| `differential.kara` | ✅ | ✅ | ✅ | ✅ |
+The lesson is cheap to state and was available at the time: a control has to
+differ in exactly one dimension. I had `--concurrency-report` open on the
+*failing* program and never ran it on the passing ones, which would have shown
+immediately that half my controls weren't forking.
 
-The solvers are **left in their natural form**. Rewriting the case table as five
-`push` calls would hide the bug, which is the one thing a kata must not do. The
-differential builds its matrices from a bitmask rather than a literal table, so
-it never hits the shape and the kata's actual verification is unaffected.
+The fix also turned up a **second copy of the walker** in
+`ownership/par_capture_classify.rs` with the same gap — a `shared` binding
+captured only inside a collection literal in a `par {}` block was invisible to
+the classifier and got no `rc_inc`, a latent miscompile — plus nine further arms
+it had drifted without. Both walkers are now exhaustive over an identical
+55-variant set.
+
+All four programs pass all four surfaces.
 
 ## Kāra features exercised
 
@@ -166,8 +175,7 @@ karac run --interp find_celebrity_brute.kara
 # 4765 cases, 4165 of them every relation on n <= 4
 diff <(karac run differential.kara) <(python3 differential.py) && echo "differential OK"
 
-# the solvers need auto-par off until B-2026-08-16-1 is fixed
-for f in find_celebrity find_celebrity_stack find_celebrity_brute; do
-    KARAC_AUTO_PAR=0 karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
+for f in find_celebrity find_celebrity_stack find_celebrity_brute differential; do
+    karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
