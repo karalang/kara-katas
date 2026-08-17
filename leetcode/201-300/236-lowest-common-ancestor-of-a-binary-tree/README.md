@@ -70,14 +70,24 @@ in per-query cost.
 | rust | 507.7 ms ± 88.7 | 1.35× slower |
 
 **Kāra beat both Rust configurations** on recursive tree traversal *in this
-container snapshot*. **That is no longer the standing result** — on the current
-M5 feed kāra is 1.17× *behind* the overflow-checked Rust. The reversal is not
-the workload: holding the compiler fixed and varying only the generator width
-leaves kāra's time unchanged to three digits, and the C, Rust and Go lanes were
-flat across the same re-measurement. It is a kāra-only regression between
-2026-07-27 and 2026-08-17, tracked as `B-2026-08-17-40` and not yet bisected.
-The container analysis below is kept because it explains the *shape* of the
-lane, which has not changed.
+container snapshot*, and is 1.17× *behind* the overflow-checked Rust on the
+current M5 feed. **Read that swing as the placement caveat above, not as a
+result in either direction** — it was chased down and it is layout, measured
+rather than assumed (`B-2026-08-17-40`):
+
+- the kāra lane moved 127.9 → 146.4 ms between two compilers whose
+  **instruction counts differ by 0.002%**, at an identical 34,296-byte binary;
+- the recursive LCA is the **same 46-instruction stream** in both, moved 152
+  bytes because a `println` helper is now emitted ahead of it;
+- five of six sibling katas are flat within 1% under the same compiler pair, so
+  there is no across-the-board slowdown;
+- the measured swing is **15.5%**, against the 16% placement spread this kata's
+  own caveat already predicts.
+
+So neither number is "the" result: this lane is placement-dominated, and the
+kāra-vs-Rust comparison here is a tie whose sign is decided by which 64-byte
+offset the recursion happens to land on. The analysis below is kept because it
+explains the *shape* of the lane, which has not changed.
 
 Because the σ on that first run was large (14–17%), the lanes were re-measured
 with 50 runs and warmup 8:
@@ -91,8 +101,8 @@ with 50 runs and warmup 8:
 
 On medians, *on that container*: kāra is **1.33× faster than `rustc -O`**,
 **1.16× faster than the overflow-checked Rust**, and 1.18× behind `clang -O3`.
-On the current M5 feed both Rust figures are ahead of kāra instead — see the
-regression note above.
+On the current M5 feed both Rust figures are ahead of kāra instead — which is
+the placement swing described above, not a change in the code kāra generates.
 
 ### An anomaly that reproduced: `rust_ovf` faster than `rust`
 
