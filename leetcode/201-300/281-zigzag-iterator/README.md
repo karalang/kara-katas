@@ -16,6 +16,7 @@ among many.
 | `zigzag_iterator_queue.kara` | queue of lists that still have elements | `cursor[]`, queue |
 | `zigzag_iterator_eager.kara` | the definition, materialized by rounds | **none** |
 | `differential.kara` | 1500 list-sets, 13273 elements | — |
+| `bench/zigzag.kara` | 64 unequal lists, drained 2200 times | benchmark lane |
 
 ## "Next" is not `turn + 1`
 
@@ -134,3 +135,50 @@ for f in zigzag_iterator zigzag_iterator_queue zigzag_iterator_eager differentia
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Benchmarks
+
+**k matters more than n here**, which is what makes this worth benching. Both
+iterators are O(1) amortized per element, but the cursor version's skip scan
+walks past exhausted lists — bounded by k, and only cheap while few lists are
+dead. As lists drop out at different rounds that scan lengthens, so the
+interesting axis is *many lists of unequal length*, not one long list.
+
+64 lists with lengths spread over three orders of magnitude, drained end to end,
+2200 rounds. Every lane prints `864303988`.
+
+| lane | time | vs equal-safety Rust |
+|---|---:|---:|
+| `rustc -O` | 646.8 ms ± 19.6 | 0.89× |
+| **`karac build`** | **729.3 ms ± 25.6** | **1.00×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **730.0 ms ± 25.2** | **1.00×** |
+| `go build` | 767.5 ms ± 21.9 | 1.05× |
+| `clang -O3 -march=x86-64-v3` | 811.4 ms ± 15.4 | 1.11× |
+| `clang -O3` | 837.3 ms ± 39.3 | 1.15× |
+
+Kāra and equal-safety Rust are **within 0.7 ms of each other** — the closest
+match in this corpus, and comfortably inside one σ, so the honest claim is a tie
+rather than a win either way.
+
+C being the *slowest* lane is unusual and worth flagging rather than quietly
+publishing: each list is a separate `malloc`, so `lists[t][cursor[t]]` chases a
+pointer into scattered allocations, while Rust's and Kāra's `Vec<Vec<…>>` land
+their headers contiguously. That's a data-layout difference between the mirrors,
+not a codegen result — the algorithm is identical in all four.
+
+### No parallel lane
+
+A drain is inherently sequential: which list is read next depends on which
+cursors the previous step advanced. The rounds could be fanned out, but they all
+re-drain the *same* lists and would measure the harness rather than the
+iterator. [#276](../276-paint-fence/) and [#277](../277-find-the-celebrity/) fan
+out because they have genuinely independent instances.
+
+### A note on the kernel's shape
+
+The bench does **not** use the kata's `Zigzag` struct. A struct field is *owned*,
+so a `Zigzag` holding the lists would take them by value and every round would
+copy 64 lists before iterating — the bench would measure copying. The kernel
+keeps the same three pieces of state as locals over a borrowed
+`ref Vec[Vec[i64]]`: same algorithm, ownership arranged for repetition rather
+than for the API the problem describes.
