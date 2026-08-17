@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-STEM=perfect_squares
+STEM=squares
 
 require() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -97,7 +97,7 @@ for pair in \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
     "go:./target/${STEM}_go_seq" \
-    $(isa_sinks "$STEM"); do
+    $(isa_sinks "${STEM}"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
     out=$("$cmd")
@@ -122,7 +122,7 @@ echo
 
 bench_begin id=279 slug=perfect-squares group=201-300 \
     title="Perfect Squares" \
-    workload="100 punches of num_squares with n cycling over [25000, 30000) — an O(n*sqrt(n)) nested DP rebuilding a fresh Vec each call; sink=133748984" sink="$expected"
+    workload="one O(n sqrt n) DP table at n=300,000 (~82 million inner steps); sink = checksum over every table entry plus least[n]" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

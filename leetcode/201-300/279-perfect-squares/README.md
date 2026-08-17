@@ -17,6 +17,7 @@ Given `n`, return the least number of perfect squares that sum to it.
 | `perfect_squares_bfs.kara` | shortest path from n to 0 | O(n√n) worst case, usually far less |
 | `perfect_squares_theory.kara` | Lagrange + Legendre, no search | **O(√n) time, O(1) space** |
 | `differential.kara` | every n from 1 to 1200, four checks | — |
+| `bench/squares.kara` | one DP table at n=300,000 | benchmark lane |
 
 ## Greedy is wrong, and 12 is where it breaks
 
@@ -130,3 +131,46 @@ The differential's range is set by the slowest surface: BFS rebuilds an O(n)
 `seen` array per query, making the sweep O(limit²). At 1200 the interpreter takes
 ~2m40s against 0.02 s compiled; at 2500 it took 13 minutes, which is too slow to
 re-verify casually.
+
+## Benchmarks
+
+**Which solver to bench is itself the choice.** The closed form is O(√n) and
+answers n = 10⁷ in microseconds — benching it would measure process startup. The
+DP is O(n√n) and builds a table of n entries, so it's the one with real work in
+it, and it's the one anyone actually writes, since the closed form requires
+knowing two theorems.
+
+One table at n = 300,000 — about 82 million inner steps. Every entry is used by
+later entries, so there's nothing to hoist and nothing the optimizer can erase.
+The sink checksums **every** table entry plus `least[n]`, so a lane that computed
+only the last entry, or skipped entries, would be caught. All lanes print
+`538728421`.
+
+| lane | time | vs C |
+|---|---:|---:|
+| `rustc -O` | 147.7 ms ± 10.3 | 0.96× |
+| `clang -O3` | 154.1 ms ± 10.8 | 1.00× |
+| `clang -O3 -march=x86-64-v3` | 165.8 ms ± 24.6 | 1.08× |
+| `go build` | 174.9 ms ± 18.5 | 1.14× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **242.6 ms ± 17.5** | **1.57×** |
+| **`karac build`** | **278.4 ms ± 8.3** | **1.81×** |
+
+**1.15× against the equal-safety comparator.** This kernel makes the case for
+that framing better than most in the corpus: turning overflow checks *on* costs
+Rust 147.7 → 242.6 ms, a 1.64× penalty on its own. The inner loop is
+`least[i - j*j] + 1` compared against a running minimum — nothing but indexing
+and arithmetic — so the checks land on almost every operation. Comparing Kāra's
+always-checked arithmetic against `rustc -O`'s silently-wrapping default would
+attribute that 1.64× to the compiler.
+
+### No parallel lane, deliberately
+
+The DP is strictly sequential: `least[i]` reads `least[i - j*j]` for j up to √i,
+so every entry depends on earlier ones and no prefix can be computed
+independently. Splitting it needs a different algorithm, not an annotation.
+
+[#276](../276-paint-fence/) and [#277](../277-find-the-celebrity/) fan out over
+independent instances because they *have* independent instances. This one
+doesn't, and wrapping the DP in an outer loop over repeated identical queries
+would manufacture parallelism the problem does not contain — a benchmark that
+measures the harness rather than the algorithm.

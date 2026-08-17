@@ -1,33 +1,25 @@
-// Benchmark harness for LeetCode #279 — Perfect Squares.
-// Mirrors perfect_squares.kara algorithm-for-algorithm.
-
+// LeetCode 279 bench mirror — Go. Same DP, same checksum.
 package main
 
 import "fmt"
 
-func numSquares(n int64) int64 {
-	dp := make([]int64, 0)
-	dp = append(dp, 0)
-	for i := int64(1); i <= n; i++ {
+const N = 300000
+
+func main() {
+	least := make([]int64, N+1)
+	for i := int64(1); i <= N; i++ {
 		best := i
 		for j := int64(1); j*j <= i; j++ {
-			cand := dp[i-j*j] + 1
+			cand := least[i-j*j] + 1
 			if cand < best {
 				best = cand
 			}
 		}
-		dp = append(dp, best)
+		least[i] = best
 	}
-	return dp[n]
-}
-
-func main() {
-	const iters int64 = 100
-
-	var sink int64 = 0
-	for it := int64(0); it < iters; it++ {
-		n := 25000 + (it*37)%5001
-		sink = (sink*31 + numSquares(n)) % 1000000007
+	var sum int64
+	for k := 0; k <= N; k++ {
+		sum = (sum*31 + least[k]) % 1000000007
 	}
-	fmt.Println(sink)
+	fmt.Println((sum*10 + least[N]) % 1000000007)
 }
