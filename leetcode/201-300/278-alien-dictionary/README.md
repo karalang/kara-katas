@@ -109,7 +109,7 @@ its celebrity. And the two ways to be unsatisfiable are counted separately
 because different bugs miss them: 263 cycles against 161 prefix violations, so a
 harness that stopped producing either would be visible.
 
-## A compiler bug this kata found
+## Two compiler bugs this kata found
 
 `B-2026-08-17-10` — **indexing an iterator typechecks, then every backend
 improvises differently.** Found by asking the first question anyone asks about
@@ -131,6 +131,34 @@ nothing silently miscompiles, but it's a crash on a natural first attempt.
 
 This kata uses `.bytes()`, which is the corpus idiom and correct everywhere. That
 isn't routing around the gap — the gap is that the *wrong* form isn't diagnosed.
+
+`B-2026-08-17-11` — **E0200's suggested repair is the unsafe one.** `bytes()`
+yields `u8`, so every letter index here is `b[i] - 97` and the compiler correctly
+refuses to mix widths:
+
+```
+cannot mix integer types 'u8' and 'i64' in arithmetic — they must match;
+cast explicitly with `as` (e.g. the operand as 'u8')
+```
+
+The only concrete type it names is `u8` — the *narrowing* direction. On `"Ab"`,
+whose first byte is 65:
+
+| repair | result |
+|---|---|
+| widen — `(b[0] as i64) - 97i64` | `-32`, correct |
+| narrow — `b[0] - (97i64 as u8)` | **runtime error: integer overflow** |
+
+Both compile. One converts a caught compile-time error into a trap that fires
+only when the subtraction goes negative — which for `bytes()` work means any
+letter below the one you're subtracting. This kata would have shipped a trap on
+uppercase input had I followed the message instead of reasoning about direction.
+
+It's also not machine-applicable: E0200 carries no `replacement` field, so
+`karac fix` declines it while diagnostics like `!` → `not` carry
+`replacement: {offset, length, text}` and apply cleanly. The order of fixes
+matters — adding a `replacement` *first*, without changing the example, would
+make `karac fix` auto-apply the trapping repair everywhere it sees one.
 
 ## Kāra features exercised
 
