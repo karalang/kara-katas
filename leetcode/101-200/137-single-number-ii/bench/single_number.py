@@ -47,7 +47,9 @@ def main():
         x = j + 1
         for _ in range(k):
             x = (x * 1103515245 + 12345) % 2147483648
-            vals.append((x // 65536) % 100000)
+            hi = x // 65536
+            x = (x * 1103515245 + 12345) % 2147483648
+            vals.append((hi * 32768 + x // 65536) % 100000)
         arr = []
         for _ in range(3):
             arr.extend(vals)

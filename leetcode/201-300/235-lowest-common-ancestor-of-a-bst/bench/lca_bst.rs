@@ -32,7 +32,9 @@ fn main() {
     let mut x: i64 = 7;
     for _ in 0..n {
         x = (x * 1103515245 + 12345) % 2147483648;
-        vals.push((x / 65536) % 1000000);
+        let hi = x / 65536;
+        x = (x * 1103515245 + 12345) % 2147483648;
+        vals.push((hi * 32768 + x / 65536) % 1000000);
     }
 
     let mut nodes: Vec<Node> = Vec::new();
@@ -84,9 +86,13 @@ fn main() {
     let mut y: i64 = 99;
     for _ in 0..iters {
         y = (y * 1103515245 + 12345) % 2147483648;
-        let pi = ((y / 65536) % n) as usize;
+        let phi = y / 65536;
         y = (y * 1103515245 + 12345) % 2147483648;
-        let qi = ((y / 65536) % n) as usize;
+        let pi = ((phi * 32768 + y / 65536) % n) as usize;
+        y = (y * 1103515245 + 12345) % 2147483648;
+        let qhi = y / 65536;
+        y = (y * 1103515245 + 12345) % 2147483648;
+        let qi = ((qhi * 32768 + y / 65536) % n) as usize;
         let a = lca(&nodes, root, vals[pi], vals[qi]);
         sink = (sink + a) % 1000000007;
     }

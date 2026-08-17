@@ -72,7 +72,9 @@ def main():
     mismatch = 0
     for _ in range(3000):
         state = lcg(state)
-        lo_v = (state // 65536) % 100000
+        lo_hi = state // 65536
+        state = lcg(state)
+        lo_v = (lo_hi * 32768 + state // 65536) % 100000
         state = lcg(state)
         width = (state // 65536) % 501
         hi_v = lo_v + width

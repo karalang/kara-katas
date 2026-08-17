@@ -60,7 +60,9 @@ fn main() {
         let mut t = 0i64;
         while t < k {
             x = (x * 1103515245 + 12345) % 2147483648;
-            vals.push((x / 65536) % 100000);
+            let hi = x / 65536;
+            x = (x * 1103515245 + 12345) % 2147483648;
+            vals.push((hi * 32768 + x / 65536) % 100000);
             t += 1;
         }
         let mut arr: Vec<i64> = Vec::new();

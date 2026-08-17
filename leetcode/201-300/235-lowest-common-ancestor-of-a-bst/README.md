@@ -29,6 +29,15 @@ Expected output (both): `6 2 4 2 8 2 5 4` (one per line).
 
 ## Benchmarks
 <!-- bench-staleness -->
+> **Workload data widened 2026-08-17 (B-2026-08-16-14):** the one-draw 31-bit-LCG
+> key confined build values AND query indices to [0, 32768) — the `% 1e6` never
+> fired, the tree had 32,696 distinct keys (not the documented million-wide
+> draw), measured depth 48 (not the claimed ~35), and queries only ever touched
+> the first 16% of the node pool. All five mirrors now use the two-draw form
+> (~181k distinct keys, measured depth 43, queries span the full pool);
+> sink moved to `198558594`. The container-x86 lane below is re-measured
+> post-widening; `results.json` (M5) and the runtime table below predate it and
+> need an owner re-bench — their recorded sink no longer matches the sources.
 > **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 

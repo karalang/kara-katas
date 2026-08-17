@@ -73,7 +73,7 @@ while the generator still has to get lengths, boundaries and the leading-zero
 rule right.
 
 ```
-cases=3000 mismatch=0 hash=568337804
+cases=3000 mismatch=0 hash=933790874
 ```
 
 Kāra and Python agree on that hash, and all three programs are byte-identical
@@ -164,7 +164,7 @@ allocator shift above showing up as a reordering.
 ```bash
 karac run strobogrammatic_iii.kara
 karac run strobogrammatic_count.kara      # must print the same 15 lines
-karac run differential.kara               # cases=3000 mismatch=0 hash=568337804
+karac run differential.kara               # cases=3000 mismatch=0 hash=933790874
 python3 strobogrammatic_iii.py --verify   # oracle vs brute force
 ```
 

@@ -122,7 +122,7 @@ echo
 
 bench_begin id=235 slug=lowest-common-ancestor-of-a-bst group=201-300 \
     title="Lowest Common Ancestor of a BST" \
-    workload="build one 200000-node BST from LCG values (randomly shaped, depth ~35; a sorted input would degenerate it into a 200000-deep chain), then 8000000 root-to-split LCA walks. Query pairs are drawn from the inserted values so both endpoints are always present. The query count is high because a single walk is only O(h) and the tree build is a fixed setup cost that would otherwise dominate. Sink accumulates the LCA values mod 1e9+7. NOTE: all four lanes use an index-pool tree (array of structs with i64 child indices, -1 = null) rather than pointer-linked nodes, so pointer-chasing behaviour matches; the bench builds iteratively where the kata inserts recursively, which is a setup-only difference." sink="$expected"
+    workload="build one 200000-node BST from two-draw LCG values mod 1e6 (~181k distinct keys, measured max depth 43; a sorted input would degenerate it into a 200000-deep chain), then 8000000 root-to-split LCA walks over two-draw query indices spanning the full pool. Query pairs are drawn from the inserted values so both endpoints are always present. The query count is high because a single walk is only O(h) and the tree build is a fixed setup cost that would otherwise dominate. Sink accumulates the LCA values mod 1e9+7. NOTE: all four lanes use an index-pool tree (array of structs with i64 child indices, -1 = null) rather than pointer-linked nodes, so pointer-chasing behaviour matches; the bench builds iteratively where the kata inserts recursively, which is a setup-only difference." sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

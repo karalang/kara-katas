@@ -41,7 +41,9 @@ int main(void) {
         long long x = p + 1;
         for (long long t = 0; t < K; t++) {
             x = (x * 1103515245LL + 12345LL) % 2147483648LL;
-            vals[t] = (x / 65536LL) % 100000LL;
+            long long hi = x / 65536LL;
+            x = (x * 1103515245LL + 12345LL) % 2147483648LL;
+            vals[t] = (hi * 32768LL + x / 65536LL) % 100000LL;
         }
         long long e = 0;
         for (int pass = 0; pass < 2; pass++) {

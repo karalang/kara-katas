@@ -23,6 +23,14 @@ Expected output (both): `3 5` / `-1 0` / `0 1` / `4 12` / `5 8` (one pair per li
 
 ## Benchmarks
 <!-- bench-staleness -->
+> **Workload data widened 2026-08-17 (B-2026-08-16-14):** the one-draw
+> 31-bit-LCG key confined values to [0, 32768) — the `% 100000` never fired, so
+> the XOR-partition's pivot-bit distribution came from 15-bit keys, not the
+> documented range. All five mirrors now use the two-draw form (values genuinely
+> mod 100000). The sink is unchanged (the answer depends only on the two
+> loners), so cross-language agreement never broke; the container-x86 lane is
+> re-measured post-widening, and `results.json` (M5) plus the runtime table
+> below predate it and need an owner re-bench.
 > **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 

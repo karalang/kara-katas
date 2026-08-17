@@ -38,7 +38,9 @@ int main(void) {
     long long x = 7;
     for (long long i = 0; i < N; i++) {
         x = (x * 1103515245 + 12345) % 2147483648LL;
-        vals[i] = (x / 65536) % 1000000;
+        long long hi = x / 65536;
+        x = (x * 1103515245 + 12345) % 2147483648LL;
+        vals[i] = (hi * 32768 + x / 65536) % 1000000;
     }
 
     long long nn = 0;
@@ -85,9 +87,13 @@ int main(void) {
     long long y = 99;
     for (long long it = 0; it < ITERS; it++) {
         y = (y * 1103515245 + 12345) % 2147483648LL;
-        long long pi = (y / 65536) % N;
+        long long phi = y / 65536;
         y = (y * 1103515245 + 12345) % 2147483648LL;
-        long long qi = (y / 65536) % N;
+        long long pi = (phi * 32768 + y / 65536) % N;
+        y = (y * 1103515245 + 12345) % 2147483648LL;
+        long long qhi = y / 65536;
+        y = (y * 1103515245 + 12345) % 2147483648LL;
+        long long qi = (qhi * 32768 + y / 65536) % N;
         long long a = lca(nodes, root, vals[pi], vals[qi]);
         sink = (sink + a) % 1000000007LL;
     }

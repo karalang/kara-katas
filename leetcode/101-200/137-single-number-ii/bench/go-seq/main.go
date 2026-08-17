@@ -55,7 +55,9 @@ func main() {
 		x := j + 1
 		for t := int64(0); t < k; t++ {
 			x = (x*1103515245 + 12345) % 2147483648
-			vals = append(vals, (x/65536)%100000)
+			hi := x / 65536
+			x = (x*1103515245 + 12345) % 2147483648
+			vals = append(vals, (hi*32768+x/65536)%100000)
 		}
 		arr := make([]int64, 0, 3*k+1)
 		for pass := 0; pass < 3; pass++ {
