@@ -180,13 +180,13 @@ Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 run
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 122.1 ms | 0.91× |
-| Rust `-O` | 122.5 ms | 0.91× |
-| **Kāra (codegen)** | 134.1 ms | 1.00× |
-| C `clang -O3` | 278.1 ms | 2.07× |
-| Go | 464.5 ms | 3.46× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 122.7 ms | 0.91× |
+| Rust `-O` | 124.1 ms | 0.92× |
+| **Kāra (codegen)** | 135.1 ms | 1.00× |
+| C `clang -O3` | 281.6 ms | 2.08× |
+| Go | 468.4 ms | 3.47× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 5c9268b1294e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 73f2585912e2); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
