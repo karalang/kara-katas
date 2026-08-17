@@ -22,6 +22,7 @@ knows = [[0,1,0],      -> -1     person 1 knows 2, so nobody qualifies
 | `find_celebrity_stack.kara` | the same elimination on a stack | ≤ 3(n−1) |
 | `find_celebrity_brute.kara` | ask the definition of everyone | O(n²) |
 | `differential.kara` | every relation on n ≤ 4, plus planted larger ones | — |
+| `bench/celebrity.kara` | 64 instances at n=2.5M, formula-based `knows` | benchmark lane |
 
 ## One question eliminates one person
 
@@ -179,3 +180,60 @@ for f in find_celebrity find_celebrity_stack find_celebrity_brute differential; 
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Benchmarks
+
+**The matrix is the wrong workload.** Representing `knows` as `Vec[Vec[bool]]`
+makes the bench measure O(n²) construction and O(n²) memory while the algorithm
+being timed is O(n) — at n = 2.5M the matrix alone is terabytes. So `knows` is a
+**function**, which is what the problem actually hands you: an API, not a table.
+A planted celebrity plus a cheap hash for every other pair gives O(1) per call,
+O(1) memory, and timed work that is exactly the ~3n questions the algorithm asks.
+
+64 independent instances at n = 2,500,000. Sink is the order-invariant sum of
+`(instance·1000003 + found)`; every lane prints `31970738`.
+
+4-core x86 container, hyperfine. Full caveats in
+[BENCHMARKS.md](../../../BENCHMARKS.md).
+
+### SEQ lane — single-threaded against single-threaded
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3 -march=x86-64-v3` | 116.5 ms ± 15.9 | 0.82× |
+| `clang -O3` | 142.0 ms ± 9.6 | 1.00× |
+| `rustc -O` | 188.5 ms ± 14.7 | 1.33× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **203.4 ms ± 10.8** | **1.43×** |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **493.8 ms ± 21.9** | **3.48×** |
+| `go build` | 293.7 ms ± 14.8 | 2.07× |
+
+### PAR lane — against mirrors that also reached for threads
+
+| lane | time | vs pthreads |
+|---|---:|---:|
+| `clang -O3` + pthreads (metal floor) | 65.9 ms ± 11.0 | 1.00× |
+| Go, goroutines + `WaitGroup` | 78.3 ms ± 2.5 | 1.19× |
+| **`karac build`, `#[par_order_free]`** | **107.4 ms ± 14.0** | **1.63×** |
+
+The elimination *within* one instance is inherently sequential — each answer
+picks the next candidate — so the fan-out is over instances. That is the honest
+place to parallelize this problem, and Kāra's own seq→par ratio is **4.6×** on
+4 cores.
+
+### An unexplained sequential gap
+
+**Kāra is 2.4× off equal-safety Rust here, against 1.16× on
+[#276](../276-paint-fence/).** That is a real difference between two katas and it
+is not yet explained. Two hypotheses were tested and neither reproduced:
+
+- **Constant-divisor `%` not strength-reduced.** The kernel is modulo-heavy, but
+  an isolated `(acc * k + i) % 2147483647` loop measures Kāra 0.23 s against C
+  0.24 s — no gap at all.
+- **Small-function call overhead.** `knows` is tiny and called ~3n times, but an
+  isolated early-return call loop measures Kāra *faster* than both C and Rust.
+
+Both isolations are weaker refutations than they look: LLVM folds each
+microbenchmark aggressively (the second collapses to a constant), so they may
+simply have stopped measuring the thing. Recorded here so the next person starts
+somewhere else — the gap is robust across runs with tight σ, so it is the
+measurement that is trustworthy, not the explanation.
