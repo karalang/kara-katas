@@ -1,0 +1,74 @@
+// LeetCode 280 bench kernel — the O(n) greedy over one large array, many times.
+//
+// WHAT TO MEASURE IS CONSTRAINED HERE. The greedy is a single pass of compare-
+// and-maybe-swap, so it is memory-bound and trivially cheap per element; the
+// only way to get a meaningful number is a big array and enough repeats that
+// setup does not dominate.
+//
+// BUILD ONCE, PUNCH MANY TIMES. The source array is generated once; each round
+// copies it and wiggles the copy. The copy is deliberately inside the timed
+// region — an in-place reorder has to be given fresh input every round or the
+// second round measures a no-op, since a wiggled array already wiggles and the
+// greedy would swap nothing. That is a real trap for this problem specifically:
+// omitting the refresh makes the bench report a number roughly 3x too good.
+//
+// THE SINK IS ORDER-SENSITIVE — a positional hash over the whole result, so a
+// lane that skipped swaps, or wiggled a stale array, produces a different value.
+// A plain sum would not: the greedy only PERMUTES, so any sum over the elements
+// is invariant under every possible bug in it.
+//
+// PARALLEL LANE: NONE. The rounds are dependent by construction (each refreshes
+// from the same source and the sink folds them in order), and the pass itself is
+// a sequential scan where position i's swap decision depends on the value left
+// at i-1 by the previous step. Katas 276 and 277 fan out over independent
+// instances; this one has none to offer, and manufacturing them would measure
+// the harness rather than the algorithm.
+
+fn wiggle_sort(nums: mut ref Vec[i64]) {
+    let mut i = 1i64;
+    while i < nums.len() {
+        if i % 2i64 == 1i64 {
+            if nums[i] < nums[i - 1i64] {
+                let t = nums[i];
+                nums[i] = nums[i - 1i64];
+                nums[i - 1i64] = t;
+            }
+        } else {
+            if nums[i] > nums[i - 1i64] {
+                let t = nums[i];
+                nums[i] = nums[i - 1i64];
+                nums[i - 1i64] = t;
+            }
+        }
+        i = i + 1i64;
+    }
+}
+
+fn main() {
+    let n = 2000000i64;
+    let rounds = 30i64;
+
+    let mut src: Vec[i64] = Vec.new();
+    let mut seed = 20260818i64;
+    let mut i = 0i64;
+    while i < n {
+        seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
+        src.push(seed % 1000003i64);
+        i = i + 1i64;
+    }
+
+    let mut sink = 0i64;
+    let mut r = 0i64;
+    while r < rounds {
+        let mut work: Vec[i64] = Vec.new();
+        let mut k = 0i64;
+        while k < n { work.push(src[k]); k = k + 1i64; }
+        wiggle_sort(mut work);
+        let mut h = 0i64;
+        let mut j = 0i64;
+        while j < n { h = (h * 31i64 + work[j]) % 1000000007i64; j = j + 1i64; }
+        sink = (sink + h) % 1000000007i64;
+        r = r + 1i64;
+    }
+    println(sink);
+}

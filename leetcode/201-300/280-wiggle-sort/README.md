@@ -19,6 +19,7 @@ non-strict, so even an all-equal array already wiggles.
 | `wiggle_sort_sorted.kara` | sort, then swap adjacent pairs | O(n log n) |
 | `wiggle_sort_brute.kara` | permutations, first that wiggles | O(n!·n) |
 | `differential.kara` | 1680 arrays, validated not compared | — |
+| `bench/wiggle.kara` | 30 rounds over a 2M-element array | benchmark lane |
 
 ## Why a local fix can't break the constraint behind it
 
@@ -133,3 +134,49 @@ for f in wiggle_sort wiggle_sort_sorted wiggle_sort_brute differential; do
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Benchmarks
+
+30 rounds of the greedy over a 2,000,000-element array. Every lane prints
+`565527165`. 4-core x86 container, hyperfine.
+
+| lane | time | vs C |
+|---|---:|---:|
+| **`karac build`** | **719.2 ms ± 18.1** | **0.93×** |
+| `clang -O3 -march=x86-64-v3` | 748.8 ms ± 29.7 | 0.97× |
+| `rustc -O` | 769.8 ms ± 27.8 | 1.00× |
+| `clang -O3` | 771.8 ms ± 20.8 | 1.00× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **788.6 ms ± 32.2** | **1.02×** |
+| `go build` | 822.7 ms ± 37.9 | 1.07× |
+
+Kāra is the fastest lane — **and that claim deserves less weight than it looks
+like it should carry.** The margin over C is ~7% at roughly 2σ, and the workload
+is memory-bandwidth-bound: each round copies 16 MB, scans it once with a
+compare-and-maybe-swap, then scans it again to hash. Every lane is waiting on
+memory, so the spread between them compresses toward the hardware limit and this
+measures copy-and-stream throughput far more than codegen quality. The honest
+reading is *"all five lanes are within 15% of the memory bus"*, not *"Kāra beats
+C at compiling a loop"*.
+
+Note also that the equal-safety penalty nearly vanishes here — Rust pays 2.4% for
+overflow checks against 64% on [#279](../279-perfect-squares/) — for the same
+reason: when you're stalled on memory, the checks are free.
+
+### Two bench-design traps this problem sets
+
+**The refresh has to be inside the timed region.** An in-place reorder needs
+fresh input every round, because a wiggled array already wiggles and the greedy
+would swap nothing. Omitting the refresh makes the bench report a number roughly
+3× too good while measuring a no-op.
+
+**The sink has to be positional.** The greedy only *permutes*, so any sum over
+the elements is invariant under every possible bug in it. The sink is a
+positional hash for that reason — a plain sum would validate nothing at all.
+
+### No parallel lane
+
+The rounds are dependent by construction, and the pass itself is a sequential
+scan where position `i`'s swap decision depends on the value left at `i-1` by the
+previous step. [#276](../276-paint-fence/) and
+[#277](../277-find-the-celebrity/) fan out over independent instances; this
+problem offers none, and manufacturing them would measure the harness.
