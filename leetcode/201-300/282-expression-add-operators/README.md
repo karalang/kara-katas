@@ -115,7 +115,7 @@ injection landed on the unchecked side.
 
 ## A compiler question this kata raised
 
-`B-2026-08-18-30` — **the ownership checker and both backends disagree about
+`B-2026-08-18-32` — **the ownership checker and both backends disagree about
 whether `String + ` consumes its left operand.** The search builds
 `expr + "+" + piece` three times from the same `expr` in consecutive branches —
 the natural shape, and what the C, Rust and Go mirrors do too.
