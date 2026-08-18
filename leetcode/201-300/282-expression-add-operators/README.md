@@ -155,42 +155,61 @@ seven digits so the enumerating solver stays practical under `--interp`; the
 
 The search *is* the workload, and it is allocation-heavy in a way the algorithm
 can't avoid: every branch builds a new expression string, so a nine-digit input
-walks tens of thousands of partial strings. 220 inputs; the sink is the solution
-count plus a hash of their lengths, so a lane that pruned wrongly changes it
-immediately. All lanes print `39924 409665063`.
+walks tens of thousands of partial strings. 220 inputs; the sink is each input's
+solution count and length-hash folded as `i·1000003 + found·31 + hash`, summed.
+All lanes print `60478588`.
+
+### SEQ lane — single-threaded against single-threaded
 
 | lane | time | vs C |
 |---|---:|---:|
-| `clang -O3` | 378.9 ms ± 14.4 | 1.00× |
-| `go build` | 744.1 ms ± 50.0 | 1.96× |
-| **`karac build`** | **962.4 ms ± 30.2** | **2.54×** |
-| **`rustc -O -C overflow-checks=on`** (equal safety) | **1396 ms ± 25** | **3.68×** |
-| `rustc -O` | 1446 ms ± 40 | 3.82× |
+| `clang -O3` | 385.0 ms ± 16.1 | 1.00× |
+| `go build` | 758.5 ms ± 39.8 | 1.97× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **1176 ms ± 42** | **3.05×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **1384 ms ± 41** | **3.59×** |
+| `rustc -O` | 1402 ms ± 43 | 3.64× |
 
-**0.69× against the equal-safety comparator** — Kāra is faster than Rust here,
-which is unusual for this corpus and worth being precise about rather than
-claiming as a codegen win: Rust's mirror uses `format!` per branch, which does
-more work than a plain concatenation. That's a fair reading of "the same
-algorithm" — it is how a Rust programmer would write it — but the gap is a string
-API difference as much as a compiler one.
+**0.85× against the equal-safety comparator** — Kāra ahead of Rust, stated
+precisely rather than claimed as a codegen win: Rust's mirror uses `format!` per
+branch, which does more work than a plain concatenation. Fair as "the same
+algorithm" — it's how a Rust programmer writes it — but the gap is a string-API
+difference as much as a compiler one.
+
+### PAR lane — against mirrors that also reached for threads
+
+| lane | time | vs pthreads |
+|---|---:|---:|
+| `clang -O3` + pthreads (metal floor) | 98.8 ms ± 7.3 | 1.00× |
+| Go, one goroutine per input | 270.8 ms ± 14.2 | 2.74× |
+| **`karac build`, `#[par_order_free]`** | **303.9 ms ± 13.2** | **3.08×** |
+
+**3.9× over its own sequential twin** on 4 cores, and level with hand-written
+goroutines. The 220 searches are over *different* inputs and share nothing, so
+this is parallelism the problem contains rather than manufactured.
+
+### The sink had to be redesigned for that lane to exist
+
+The first version of this bench folded every solution into one running
+`hash·31 + len` across all inputs, in DFS order — a fold that depends on which
+search finished first. **I then cited that sink as the reason there could be no
+par lane**, which was backwards: the sink was mine to choose. Each input now
+computes its own local `(count, hash)` and contributes an `i`-weighted term to a
+sum, which is the same change [#270](../270-closest-binary-search-tree-value/)
+made and for the same reason. The `i` factor still catches two inputs swapping
+results, which a plain sum of counts would not.
+
+This is why [#279](../279-perfect-squares/), [#280](../280-wiggle-sort/) and
+[#281](../281-zigzag-iterator/) genuinely have no par lane and this one does: in
+those the sequential dependency is *in the algorithm* — `least[i]` reads earlier
+entries, a wiggle scan depends on what the previous step left, a drain depends on
+which cursors advanced. Here nothing was dependent except my own accumulator.
 
 ### The C mirror was wrong the first time
 
-C initially measured **211 ms**, 4.6× faster than everything else, because I'd
-written the natural C thing: a `char buf[64]` on the stack, reused per branch.
-Kāra, Rust and Go all allocate a fresh string per branch, so the stack-buffer
-lane wasn't running the same algorithm — it was measuring a different memory
-strategy and calling it a compiler comparison.
-
-Switching C to `malloc`/`free` per branch, matching the others, moved it to
-**378.9 ms**. That 168 ms gap is the price of parity, and publishing the faster
-number would have been exactly the dishonesty
-[BENCHMARKS.md](../../../BENCHMARKS.md) warns about.
-
-### No parallel lane
-
-The searches over different inputs *are* independent and would fan out, but the
-accept path mutates one shared counter, so making it order-free would mean
-restructuring the sink — changing what is measured.
-[#276](../276-paint-fence/) and [#277](../277-find-the-celebrity/) are where the
-fan-out story lives.
+C initially measured **211 ms** on the sequential lane, 4.6× faster than
+everything else, because I'd written the natural C thing: a `char buf[64]` on the
+stack, reused per branch. Kāra, Rust and Go all allocate a fresh string per
+branch, so the stack-buffer lane wasn't running the same algorithm — it measured
+a memory strategy and called it a compiler comparison. Switching to
+`malloc`/`free` per branch moved it to **385 ms**, and that 174 ms gap is the
+price of parity.

@@ -1,7 +1,11 @@
-// LeetCode 282 bench mirror — Go. Same search, same per-branch allocation.
+// LeetCode 282 par-lane mirror — Go. One goroutine per input, over the same
+// 220 independent searches.
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 const Inputs = 220
 const NDig = 9
@@ -56,9 +60,19 @@ func solveOne(i int64) int64 {
 	return (i*1000003 + found*31 + hash) % 1000000007
 }
 func main() {
-	var sink int64
+	parts := make([]int64, Inputs)
+	var wg sync.WaitGroup
 	for i := int64(0); i < Inputs; i++ {
-		sink = (sink + solveOne(i)) % 1000000007
+		wg.Add(1)
+		go func(i int64) {
+			defer wg.Done()
+			parts[i] = solveOne(i)
+		}(i)
+	}
+	wg.Wait()
+	var sink int64
+	for _, v := range parts {
+		sink = (sink + v) % 1000000007
 	}
 	fmt.Println(sink)
 }

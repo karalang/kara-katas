@@ -1,4 +1,7 @@
-/* LeetCode 282 bench mirror — C. Same backtracking search, same per-branch
+/* LeetCode 282 par-lane mirror — C + pthreads. The metal floor for the Kara
+ * `#[par_order_free]` lane: the same 220 independent searches, hand-threaded.
+ *
+ * Otherwise identical to exprops.c: same backtracking search, same per-branch
  * heap allocation, same order-invariant per-input sink.
  *
  * EACH BRANCH HEAP-ALLOCATES ITS EXPRESSION, deliberately. A stack buffer is the
@@ -9,7 +12,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <pthread.h>
 #define INPUTS 220
+#define NTHREADS 4
 #define NDIG 9
 
 static void make_input(int64_t idx, char *num) {
@@ -70,9 +75,27 @@ int64_t solve_one(int64_t i) {
     return (i * 1000003LL + found * 31LL + hash) % 1000000007LL;
 }
 
+struct arg { int64_t lo, hi, out; };
+static void *worker(void *v) {
+    struct arg *a = (struct arg *)v;
+    int64_t s = 0;
+    for (int64_t i = a->lo; i < a->hi; i++) s = (s + solve_one(i)) % 1000000007LL;
+    a->out = s;
+    return NULL;
+}
 int main(void) {
+    pthread_t th[NTHREADS];
+    struct arg args[NTHREADS];
+    int64_t per = (INPUTS + NTHREADS - 1) / NTHREADS;
+    for (int t = 0; t < NTHREADS; t++) {
+        args[t].lo = t * per;
+        args[t].hi = (t + 1) * per < INPUTS ? (t + 1) * per : INPUTS;
+        if (args[t].lo > INPUTS) args[t].lo = INPUTS;
+        args[t].out = 0;
+        pthread_create(&th[t], NULL, worker, &args[t]);
+    }
     int64_t sink = 0;
-    for (int64_t i = 0; i < INPUTS; i++) sink = (sink + solve_one(i)) % 1000000007LL;
+    for (int t = 0; t < NTHREADS; t++) { pthread_join(th[t], NULL); sink = (sink + args[t].out) % 1000000007LL; }
     printf("%lld\n", (long long)sink);
     return 0;
 }
