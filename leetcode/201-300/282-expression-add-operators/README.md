@@ -18,6 +18,7 @@ every such expression.
 | `add_operators.kara` ★ | backtracking, carrying the last operand | O(4ⁿ) |
 | `add_operators_enumerate.kara` | all 4ⁿ⁻¹ patterns, evaluated properly | O(4ⁿ·n) |
 | `differential.kara` | 1092 cases, four checks | — |
+| `bench/exprops.kara` | 220 nine-digit inputs searched exhaustively | benchmark lane |
 
 ## The difficulty is precedence, not search
 
@@ -149,3 +150,47 @@ it in different orders — DFS against mask order. The demo inputs are capped at
 seven digits so the enumerating solver stays practical under `--interp`; the
 10-digit LeetCode case `"3456237490"` with target 9191 returns `[]`, and
 `"2147483647"` with target 2147483647 returns itself.
+
+## Benchmarks
+
+The search *is* the workload, and it is allocation-heavy in a way the algorithm
+can't avoid: every branch builds a new expression string, so a nine-digit input
+walks tens of thousands of partial strings. 220 inputs; the sink is the solution
+count plus a hash of their lengths, so a lane that pruned wrongly changes it
+immediately. All lanes print `39924 409665063`.
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 378.9 ms ± 14.4 | 1.00× |
+| `go build` | 744.1 ms ± 50.0 | 1.96× |
+| **`karac build`** | **962.4 ms ± 30.2** | **2.54×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **1396 ms ± 25** | **3.68×** |
+| `rustc -O` | 1446 ms ± 40 | 3.82× |
+
+**0.69× against the equal-safety comparator** — Kāra is faster than Rust here,
+which is unusual for this corpus and worth being precise about rather than
+claiming as a codegen win: Rust's mirror uses `format!` per branch, which does
+more work than a plain concatenation. That's a fair reading of "the same
+algorithm" — it is how a Rust programmer would write it — but the gap is a string
+API difference as much as a compiler one.
+
+### The C mirror was wrong the first time
+
+C initially measured **211 ms**, 4.6× faster than everything else, because I'd
+written the natural C thing: a `char buf[64]` on the stack, reused per branch.
+Kāra, Rust and Go all allocate a fresh string per branch, so the stack-buffer
+lane wasn't running the same algorithm — it was measuring a different memory
+strategy and calling it a compiler comparison.
+
+Switching C to `malloc`/`free` per branch, matching the others, moved it to
+**378.9 ms**. That 168 ms gap is the price of parity, and publishing the faster
+number would have been exactly the dishonesty
+[BENCHMARKS.md](../../../BENCHMARKS.md) warns about.
+
+### No parallel lane
+
+The searches over different inputs *are* independent and would fan out, but the
+accept path mutates one shared counter, so making it order-free would mean
+restructuring the sink — changing what is measured.
+[#276](../276-paint-fence/) and [#277](../277-find-the-celebrity/) are where the
+fan-out story lives.

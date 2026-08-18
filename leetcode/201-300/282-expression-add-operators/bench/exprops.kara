@@ -1,0 +1,91 @@
+// LeetCode 282 bench kernel — the backtracking search over many inputs.
+//
+// THE SEARCH IS THE WORKLOAD and it is allocation-heavy in a way the ★ solver
+// cannot avoid: every branch builds a new expression string by concatenation,
+// so a 10-digit input walks ~4^9 partial strings. That is the honest cost of
+// this algorithm and what the bench should measure — not a de-stringed variant
+// that would run faster and answer a different question.
+//
+// THE SINK COUNTS AND HASHES, rather than collecting. Returning every expression
+// for 64 ten-digit inputs would allocate gigabytes and measure the collector;
+// the kernel accumulates a position-weighted hash of each solution's length and
+// the running count instead. The search is identical — only the accept action
+// differs — and a lane that pruned wrongly changes the count immediately.
+//
+// TARGETS ARE CHOSEN TO BE HIT. A target no expression reaches explores the same
+// tree but never accepts, so the accept path would never run. Half the targets
+// here are values the input can actually produce, which keeps both branches live.
+//
+// NO PARALLEL LANE. The searches over different inputs ARE independent and would
+// fan out, but the per-branch string building dominates and the accept path
+// mutates one shared counter — making it order-free would mean restructuring the
+// sink, which changes what is measured. Kept sequential deliberately; katas 276
+// and 277 are where the fan-out story lives.
+
+fn digit_at(s: ref String, i: i64) -> i64 {
+    let b = s.bytes();
+    return (b[i] as i64) - 48i64;
+}
+
+fn search(num: ref String, target: i64, pos: i64, expr: String, cur: i64, last: i64,
+          found: mut ref i64, hash: mut ref i64) {
+    if pos == num.len() {
+        if cur == target {
+            found = found + 1i64;
+            hash = (hash * 31i64 + expr.len()) % 1000000007i64;
+        }
+        return;
+    }
+    let mut end = pos + 1i64;
+    while end <= num.len() {
+        if end > pos + 1i64 and digit_at(num, pos) == 0i64 { return; }
+        let piece = num.substring(pos, end);
+        let mut n = 0i64;
+        let mut k = pos;
+        while k < end {
+            n = n * 10i64 + digit_at(num, k);
+            k = k + 1i64;
+        }
+        if pos == 0i64 {
+            search(num, target, end, piece, n, n, found, hash);
+        } else {
+            search(num, target, end, expr.clone() + "+" + piece.clone(), cur + n, n, found, hash);
+            search(num, target, end, expr + "-" + piece, cur - n, 0i64 - n, found, hash);
+            search(num, target, end, expr + "*" + piece, cur - last + last * n, last * n, found, hash);
+        }
+        end = end + 1i64;
+    }
+}
+
+fn main() {
+    let inputs = 220i64;
+    let mut seed = 20260820i64;
+
+    let mut total_found = 0i64;
+    let mut hash = 0i64;
+    let mut t = 0i64;
+    while t < inputs {
+        // an 8-digit string; digits 1..6 so operands stay small and the tree
+        // stays dense (a run of zeros prunes hard and would measure nothing)
+        let mut num: String = "";
+        let mut d = 0i64;
+        while d < 9i64 {
+            seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
+            let dig = 1i64 + (seed / 19i64) % 6i64;
+            if dig == 1i64 { num = num + "1"; }
+            if dig == 2i64 { num = num + "2"; }
+            if dig == 3i64 { num = num + "3"; }
+            if dig == 4i64 { num = num + "4"; }
+            if dig == 5i64 { num = num + "5"; }
+            if dig == 6i64 { num = num + "6"; }
+            d = d + 1i64;
+        }
+        seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
+        let target = (seed / 23i64) % 40i64;
+        let mut found = 0i64;
+        search(num, target, 0i64, "", 0i64, 0i64, mut found, mut hash);
+        total_found = total_found + found;
+        t = t + 1i64;
+    }
+    println(f"{total_found} {hash}");
+}
