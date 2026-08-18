@@ -113,6 +113,36 @@ about *what*. Making the per-expression checks symmetric took that row from `0`
 to `102`. Worth recording because the asymmetry was invisible until an
 injection landed on the unchecked side.
 
+## A compiler question this kata raised
+
+`B-2026-08-18-30` — **the ownership checker and both backends disagree about
+whether `String + ` consumes its left operand.** The search builds
+`expr + "+" + piece` three times from the same `expr` in consecutive branches —
+the natural shape, and what the C, Rust and Go mirrors do too.
+
+```kara
+let e: String = "ab";
+let x = e + "x";
+let y = e + "y";        // warning[ownership]: value 'e' moved here, used again here
+println(f"{x} {y} {e}"); // -> abx aby ab   on all four surfaces
+```
+
+**This is not a false positive**, which is what it looks like at first.
+design.md gives `+` the signature `fn add(self, other: ref String)` — bare `self`
+is the *owned* receiver mode — so by the spec the checker is right and the
+backends are out of step, since they treat the left operand as borrowed.
+
+Either resolution is coherent: enforce the move and make it an error, or change
+the signature to `ref self` and stop warning. The second matches what the
+backends already do and what every mirror language does, but it's a language
+decision. Filed **low** — it's a warning, the program is correct everywhere, and
+the only cost is that the suggested `.clone()` is a real deep copy on a hot path
+for a problem that doesn't exist at runtime.
+
+Not at issue: the O(n²) cost of repeated `+`. That's documented and intended
+(*"prefer `push_str` in loops"*), and it's why the differential had to be sized
+down for `--interp`.
+
 ## Kāra features exercised
 
 - **Recursive backtracking** with a `mut ref Vec[String]` accumulator threaded
