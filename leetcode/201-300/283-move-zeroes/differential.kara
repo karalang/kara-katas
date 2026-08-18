@@ -1,0 +1,215 @@
+// LeetCode 283 — differential harness.
+//
+// THE ANSWER IS UNIQUE here, unlike katas 278, 280 and 282, so equality is the
+// right oracle and the harness is simpler for it: three solvers, one expected
+// array. What it adds instead is the FOLLOW-UP'S question — the problem asks to
+// minimize operations — so the write count is measured per solver, the way kata
+// 277 measured its API-call budget.
+//
+// THREE INVARIANTS ARE CHECKED ON EVERY RESULT, not just equality between
+// solvers, because equality only says they agree:
+//
+//   1. THE MULTISET IS PRESERVED. A reorder must not invent or drop elements.
+//   2. THE NON-ZEROS KEEP THEIR RELATIVE ORDER. This is the half of the problem
+//      statement that a "sort by is-zero" solution gets wrong: sorting produces
+//      all zeros at the end and scrambles everything else, and it would pass a
+//      zeros-at-the-end check perfectly.
+//   3. EVERY ZERO IS AT THE END — no zero before a non-zero.
+//
+// Checks 1 and 2 are the ones that would be forgotten. Kata 280 made the same
+// point for wiggle sort: when the answer is a REARRANGEMENT of the input,
+// something has to verify that a rearrangement is what happened.
+//
+// EXHAUSTIVE OVER EVERY ARRAY OF LENGTH 0..6 FROM A TINY ALPHABET, most of it
+// zeros. The range was picked by measurement, as in kata 282: at length 6 every
+// injection in the README's table is still caught with each invariant firing
+// alone, while the `--interp` leg goes 58s -> 4m35s -> ~20min for lengths 6, 7
+// and 8. Set by the slowest surface.
+// Values
+// are drawn from {0,0,1,2} so roughly half of every array is zero — the density
+// that makes the two in-place solvers' write counts diverge. Draw from a wide
+// range and zeros become rare, every solver looks the same, and the follow-up's
+// question stops having an answer.
+
+fn cursor(a: mut ref Vec[i64], stores: mut ref i64) {
+    let mut write = 0i64;
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != 0i64 {
+            a[write] = a[i];
+            stores = stores + 1i64;
+            write = write + 1i64;
+        }
+        i = i + 1i64;
+    }
+    while write < a.len() {
+        a[write] = 0i64;
+        stores = stores + 1i64;
+        write = write + 1i64;
+    }
+}
+
+fn swap_cursor(a: mut ref Vec[i64], stores: mut ref i64) {
+    let mut write = 0i64;
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != 0i64 {
+            if i != write {
+                let t = a[write];
+                a[write] = a[i];
+                a[i] = t;
+                stores = stores + 2i64;
+            }
+            write = write + 1i64;
+        }
+        i = i + 1i64;
+    }
+}
+
+fn by_definition(a: mut ref Vec[i64], stores: mut ref i64) {
+    let mut out: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != 0i64 { out.push(a[i]); }
+        i = i + 1i64;
+    }
+    while out.len() < a.len() { out.push(0i64); }
+    let mut j = 0i64;
+    while j < a.len() {
+        a[j] = out[j];
+        stores = stores + 1i64;
+        j = j + 1i64;
+    }
+}
+
+
+fn same_multiset(a: ref Vec[i64], b: ref Vec[i64]) -> bool {
+    if a.len() != b.len() { return false; }
+    let mut x: Vec[i64] = Vec.new();
+    let mut y: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < a.len() { x.push(a[i]); y.push(b[i]); i = i + 1i64; }
+    let mut p = 1i64;
+    while p < x.len() {
+        let mut q = p;
+        while q > 0i64 and x[q - 1i64] > x[q] { let t = x[q - 1i64]; x[q - 1i64] = x[q]; x[q] = t; q = q - 1i64; }
+        p = p + 1i64;
+    }
+    let mut r = 1i64;
+    while r < y.len() {
+        let mut q = r;
+        while q > 0i64 and y[q - 1i64] > y[q] { let t = y[q - 1i64]; y[q - 1i64] = y[q]; y[q] = t; q = q - 1i64; }
+        r = r + 1i64;
+    }
+    let mut k = 0i64;
+    while k < x.len() { if x[k] != y[k] { return false; } k = k + 1i64; }
+    return true;
+}
+
+// the non-zeros of `res`, read left to right, must be the non-zeros of `src`
+fn nonzero_order_kept(src: ref Vec[i64], res: ref Vec[i64]) -> bool {
+    let mut a: Vec[i64] = Vec.new();
+    let mut b: Vec[i64] = Vec.new();
+    let mut i = 0i64;
+    while i < src.len() { if src[i] != 0i64 { a.push(src[i]); } i = i + 1i64; }
+    let mut j = 0i64;
+    while j < res.len() { if res[j] != 0i64 { b.push(res[j]); } j = j + 1i64; }
+    if a.len() != b.len() { return false; }
+    let mut k = 0i64;
+    while k < a.len() { if a[k] != b[k] { return false; } k = k + 1i64; }
+    return true;
+}
+
+fn zeros_all_at_end(res: ref Vec[i64]) -> bool {
+    let mut seen_zero = false;
+    let mut i = 0i64;
+    while i < res.len() {
+        if res[i] == 0i64 { seen_zero = true; }
+        else { if seen_zero { return false; } }
+        i = i + 1i64;
+    }
+    return true;
+}
+
+fn equal(a: ref Vec[i64], b: ref Vec[i64]) -> bool {
+    if a.len() != b.len() { return false; }
+    let mut i = 0i64;
+    while i < a.len() { if a[i] != b[i] { return false; } i = i + 1i64; }
+    return true;
+}
+
+fn main() {
+    let mut cases = 0i64;
+    let mut cursor_vs_stable = 0i64;
+    let mut swap_vs_stable = 0i64;
+    let mut multiset_broken = 0i64;
+    let mut order_broken = 0i64;
+    let mut zeros_misplaced = 0i64;
+    let mut cursor_stores = 0i64;
+    let mut swap_stores = 0i64;
+    let mut swap_cheaper = 0i64;
+    let mut cursor_cheaper = 0i64;
+    let mut digest = 0i64;
+
+    let mut len = 0i64;
+    while len <= 6i64 {
+        let mut span = 1i64;
+        let mut e = 0i64;
+        while e < len { span = span * 4i64; e = e + 1i64; }
+        let mut code = 0i64;
+        while code < span {
+            // alphabet {0, 0, 1, 2} — about half of every array is zero
+            let mut src: Vec[i64] = Vec.new();
+            let mut m = code;
+            let mut d = 0i64;
+            while d < len {
+                let pick = m % 4i64;
+                m = m / 4i64;
+                if pick == 0i64 or pick == 1i64 { src.push(0i64); }
+                if pick == 2i64 { src.push(1i64); }
+                if pick == 3i64 { src.push(2i64); }
+                d = d + 1i64;
+            }
+
+            let mut a = src;
+            let mut b = src;
+            let mut c = src;
+            let mut wa = 0i64;
+            let mut wb = 0i64;
+            let mut wc = 0i64;
+            cursor(mut a, mut wa);
+            swap_cursor(mut b, mut wb);
+            by_definition(mut c, mut wc);
+
+            if not equal(a, c) { cursor_vs_stable = cursor_vs_stable + 1i64; }
+            if not equal(b, c) { swap_vs_stable = swap_vs_stable + 1i64; }
+            if not same_multiset(src, a) or not same_multiset(src, b) or not same_multiset(src, c) {
+                multiset_broken = multiset_broken + 1i64;
+            }
+            if not nonzero_order_kept(src, a) or not nonzero_order_kept(src, b) or not nonzero_order_kept(src, c) {
+                order_broken = order_broken + 1i64;
+            }
+            if not zeros_all_at_end(a) or not zeros_all_at_end(b) or not zeros_all_at_end(c) {
+                zeros_misplaced = zeros_misplaced + 1i64;
+            }
+
+            cursor_stores = cursor_stores + wa;
+            swap_stores = swap_stores + wb;
+            if wb < wa { swap_cheaper = swap_cheaper + 1i64; }
+            if wa < wb { cursor_cheaper = cursor_cheaper + 1i64; }
+
+            let mut z = 0i64;
+            while z < c.len() { digest = (digest * 131i64 + c[z] + 1i64) % 1000000007i64; z = z + 1i64; }
+            cases = cases + 1i64;
+            code = code + 1i64;
+        }
+        len = len + 1i64;
+    }
+
+    println(f"cases {cases}");
+    println(f"total writes: cursor {cursor_stores}, swap {swap_stores}");
+    println(f"cases where swap wrote less {swap_cheaper}, where the cursor wrote less {cursor_cheaper}");
+    println(f"digest {digest}");
+    println(f"multiset broken {multiset_broken}, non-zero order broken {order_broken}, zeros misplaced {zeros_misplaced}");
+    println(f"cursor vs definition {cursor_vs_stable}, swap vs definition {swap_vs_stable}");
+}
