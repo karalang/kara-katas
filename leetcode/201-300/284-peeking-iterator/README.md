@@ -11,6 +11,7 @@ supports `peek()` — return the next element **without advancing**.
 | `peeking_iterator_lazy.kara` | same slot, filled on demand | 0 | **`mut ref`** |
 | `peeking_iterator_materialized.kara` | drain into a `Vec`, index it | n | `ref` |
 | `differential.kara` | 840 random operation sequences | — | — |
+| `bench/peekiter.kara` | 320 rounds, two peeks per next | — | — |
 
 ## You cannot see inside, so you must have already asked
 
@@ -121,6 +122,47 @@ gave a clear diagnostic naming the collision.
   operation is `ref` in one implementation and `mut ref` in the other.
 - **`karac fix` applying both marker directions in one pass** — 6 fixes covering
   E0218 insertions and E0219 deletions together.
+
+## Benchmarks
+
+**The wrapper is what's measured, not the source.** A drain that only calls
+`next()` measures the underlying iterator — the slot bookkeeping is two field
+accesses per element and vanishes into the cost of walking a `Vec`. So the mix is
+peek-heavy: two peeks per next, the pattern the wrapper exists to support.
+
+The operation mix is **deterministic**, not random, so every lane executes an
+identical sequence — a randomly-driven bench would need the RNG mirrored exactly
+across four languages just to be comparable, and any drift shows up as a
+performance difference that is really a workload difference.
+
+320 rounds over 200,000 elements. Every lane prints `434217027 64000000` — the
+sink *and* the pull count.
+
+| lane | time | vs C |
+|---|---:|---:|
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **927.3 ms ± 5.6** | **0.98×** |
+| **`karac build`** | **941.5 ms ± 12.9** | **0.99×** |
+| `clang -O3` | 946.3 ms ± 5.8 | 1.00× |
+| `rustc -O` | 961.6 ms ± 6.4 | 1.02× |
+| `go build` | 1163 ms ± 56 | 1.23× |
+
+**1.02× against the equal-safety comparator**, and the four compiled lanes span
+under 4% — close enough that ordering between them is not a meaningful result.
+Note that overflow-checked Rust came out *faster* than unchecked here (927 vs
+962 ms), which is a clear sign the difference is noise and layout rather than
+codegen: checks cannot make code faster.
+
+What the workload really exercises is struct-field access through a nested owned
+struct — `p.src.pos` on every operation — so all four are doing the same handful
+of loads and stores per element.
+
+### No parallel lane
+
+A wrapper is a sequential state machine: every operation depends on what the
+previous one left in the slot. The rounds could be fanned out, but they drive an
+identical sequence over identical data and would measure the harness.
+[#282](../282-expression-add-operators/) is where a fan-out was genuinely
+available and I had wrongly skipped it.
 
 ## Running
 
