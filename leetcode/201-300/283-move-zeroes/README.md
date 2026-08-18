@@ -16,6 +16,7 @@ elements. In place.
 | `move_zeroes_swap.kara` | swap when the cursor falls behind | 2 per displaced element |
 | `move_zeroes_stable.kara` | collect non-zeros, pad, copy back | `n` (+ O(n) space) |
 | `differential.kara` | every array of length 0–6, four checks | — |
+| `bench/movezero.kara` | 60 rounds over a 2M-element array | benchmark lane |
 
 ## The answer is unique — so this kata measures something else
 
@@ -135,3 +136,45 @@ The differential's range was picked by measurement, as in
 [#282](../282-expression-add-operators/): at length 6 every injection above is
 still caught with each invariant firing alone, while the `--interp` leg goes
 58 s → 4m35s → ~20 min for lengths 6, 7 and 8.
+
+## Benchmarks
+
+60 rounds of the write-cursor pass over a 2,000,000-element array that is ~50%
+zeros. Every lane prints `661890145 120000000` — the sink *and* the write count,
+so a lane that skipped stores would be caught even if its output were right.
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 802.3 ms ± 12.1 | 1.00× |
+| `rustc -O` | 806.7 ms ± 8.5 | 1.01× |
+| `clang -O3 -march=x86-64-v3` | 809.3 ms ± 9.7 | 1.01× |
+| **`karac build`** | **840.2 ms ± 18.6** | **1.05×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **851.0 ms ± 14.5** | **1.06×** |
+| `go build` | 911.3 ms ± 34.8 | 1.14× |
+
+**0.99× against the equal-safety comparator** — a tie, and the whole field spans
+14%. This is a memory-bandwidth workload: each round copies 16 MB, scans it once
+with a compare-and-maybe-store, and scans it again to hash. Every lane is waiting
+on memory, so the honest reading is that all six are within 14% of the bus rather
+than any of them being better at compiling a loop — the same caveat
+[#280](../280-wiggle-sort/) carries, and for the same reason.
+
+The equal-safety penalty is 5.5% here (806.7 → 851.0 ms), against 64% on
+[#279](../279-perfect-squares/). Stalled on memory, the overflow checks are
+nearly free.
+
+### The refresh is load-bearing, again
+
+This is an in-place reorder, so a second pass over an already-moved array finds
+the zeros already at the end and does almost nothing. Each round copies from the
+source first, inside the timed region — the same trap
+[#280](../280-wiggle-sort/) documented, where omitting it reported a number ~3×
+too good while measuring a no-op.
+
+### No parallel lane
+
+The rounds are dependent by construction and the pass is a sequential scan whose
+cursor position depends on every earlier element.
+[#282](../282-expression-add-operators/) is where a fan-out was genuinely
+available and I had wrongly skipped it; here the dependency is in the algorithm,
+as in [#279](../279-perfect-squares/) through [#281](../281-zigzag-iterator/).
