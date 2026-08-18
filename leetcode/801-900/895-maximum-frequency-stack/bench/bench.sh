@@ -61,6 +61,36 @@ build_c() {
     fi
 }
 
+build_kara_par() {
+    local src="$1"
+    local stem="$(basename "$src" .kara)"
+    local out="target/${stem}_kara_par"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (auto-par default) ..." >&2
+        karac build "$src" >/dev/null
+        mv "$stem" "$out"
+    fi
+}
+
+build_rayon() {
+    local out="target/${STEM}_rayon"
+    local src="rayon/src/main.rs"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp -f "rayon/target/release/${STEM}_rayon" "$out"
+    fi
+}
+
+build_go_par() {
+    local out="target/${STEM}_go_par"
+    local src="go-par/main.go"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+
 build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
@@ -86,6 +116,9 @@ build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
+build_kara_par "${STEM}.kara"
+build_rayon
+build_go_par
 # Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
 isa_build_c    "${STEM}.c"
 isa_build_rust "${STEM}.rs"
@@ -97,6 +130,9 @@ for pair in \
     "rust_ovf:./target/${STEM}_ovf" \
     "c:./target/${STEM}_c" \
     "go:./target/${STEM}_go_seq" \
+    "kara_par:./target/${STEM}_kara_par" \
+    "rayon:./target/${STEM}_rayon" \
+    "go_par:./target/${STEM}_go_par" \
     $(isa_sinks "${STEM}"); do
     name="${pair%%:*}"
     cmd="${pair#*:}"
@@ -137,6 +173,29 @@ rt_cmd --lang c --approach "$STEM" --lane seq --mode native \
 rt_cmd --lang go --approach "$STEM" --lane seq --mode native \
     --name "go   ${STEM}" --cmd "./target/${STEM}_go_seq"
 isa_rt_cmds "$STEM" seq
+rt_end
+
+echo
+echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned) ==="
+# All three parallelize the SAME reduction over independent rounds. Kara's
+# default `karac build` got there with NO parallel source — auto-par-on-
+# reduction recognized `checksum = checksum + round(r, steps)` and emitted a
+# karac_par_reduce dispatch — while Rust needed rayon's `into_par_iter` and Go
+# needed hand-written goroutine chunking + WaitGroup + partial merge.
+#
+# Apples-to-apples WITHIN this lane only. Per BENCH.md's two-lane discipline
+# these are NOT comparable to the single-threaded rows above.
+#
+# Worth stating plainly: the loop body here ALLOCATES — a fresh FreqStack with
+# two maps per round — so this exercises auto-par over heap-churning work
+# rather than the arithmetic kernels that lane usually shows.
+rt_begin --warmup 5 --runs 30
+rt_cmd --lang kara --approach "${STEM}" --lane par --mode codegen \
+    --name "kara  ${STEM} (auto-par, NO parallel code)" --cmd "./target/${STEM}_kara_par"
+rt_cmd --lang rust --approach "${STEM}" --lane par --mode native \
+    --name "rust  ${STEM} (rayon par_iter)" --cmd "./target/${STEM}_rayon"
+rt_cmd --lang go --approach "${STEM}" --lane par --mode native \
+    --name "go    ${STEM} (goroutines + WaitGroup)" --cmd "./target/${STEM}_go_par"
 rt_end
 
 echo
