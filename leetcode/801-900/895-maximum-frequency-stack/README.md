@@ -55,6 +55,36 @@ So `freq_stack.kara` uses the get/modify/insert round-trip instead. That is a
 real canonical spelling, not a contortion to dodge the bug — but it copies the
 bucket out and back, turning this problem's signature O(1) append into O(n).
 
+## Benchmarks
+
+> **Corroborating host only.** These are Linux/x86-64 container numbers from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus publishes
+> from the canonical Apple-silicon feed (`bench/results.json`), which this kata does not have
+> yet — it was authored in a container, and `bench.sh` refuses to write the canonical file from
+> the wrong host rather than silently mixing them. Read
+> [`BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of this.
+
+| | mean | vs kāra |
+|---|---:|---:|
+| C `clang -O3` | 6.6 ms ± 0.4 | 4.53× faster |
+| Go `go build` | 28.9 ms ± 4.2 | 1.03× faster |
+| kāra `karac build` | 29.8 ms ± 5.0 | — |
+| Rust `-C overflow-checks=on` (equal safety) | 34.9 ms ± 2.8 | 1.17× slower |
+| Rust `rustc -O` | 35.1 ms ± 1.4 | 1.18× slower |
+
+Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain,
+sink `3299190`. **kāra edges out `rustc -O` here and ties Go**, on a workload that is
+almost entirely hash-map traffic.
+
+Two caveats, both of which cut against reading the C row as a like-for-like win:
+
+- The C mirror hand-rolls an open-addressing table with a multiply-and-mask hash. That is
+  the *same algorithm* — the corpus rule — but a far simpler map than Rust's SwissTable or
+  Go's, and with 12 distinct keys it lives entirely in L1. It is closer to a floor for
+  "what this algorithm costs with an ideal map" than to an ergonomic competitor.
+- An earlier draft of that mirror indexed plain arrays by value instead of hashing. It was
+  ~4.5× faster than kāra and completely dishonest — a different data structure. It was
+  rewritten before these numbers were taken.
 ## Files
 
 | File | |
