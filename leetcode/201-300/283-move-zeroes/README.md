@@ -104,12 +104,18 @@ check 3. Neither disturbs the multiset.
 
 ## Two reserved words this kata walked into
 
-`writes` and `stable` are both reserved and cannot be identifiers — the first is
+`writes` and `stable` are both keywords and cannot be identifiers. The first is
 one of Kāra's eight effect verbs (`reads`, `writes`, `sends`, `receives`,
-`allocates`, `panics`, `blocks`, `suspends`), the second a layout keyword. Both
-produced clear diagnostics naming the collision; the counter here is `stores` and
-the definitional solver is `by_definition`. Worth knowing before reaching for any
-of those as a variable name.
+`allocates`, `panics`, `blocks`, `suspends`). The second is the **effect-group
+stability modifier** — `stable` marks a group's effect set as a closed contract,
+so adding an effect to it becomes a compile error (design.md § *`stable` effect
+groups*). Neither is a reserved-for-future-use word; both are load-bearing today.
+
+Both produced clear diagnostics naming the collision; the counter here is
+`stores` and the definitional solver is `by_definition`. Worth knowing before
+reaching for either as a variable name — `stable` in particular reads like an
+ordinary word for a stable-partition helper, which is exactly what I tried to
+call it.
 
 ## Kāra features exercised
 
