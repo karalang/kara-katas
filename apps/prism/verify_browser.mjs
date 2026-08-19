@@ -265,7 +265,20 @@ async function main() {
   // otherwise a completed 2x looks like it did nothing to the control.
   const rest = await evalJs(`document.getElementById('target').textContent`);
   if (!rest.startsWith("now 2 × 4")) throw new Error(`scale: readout after the op is "${rest}"`);
-  console.error("[ok] scale: percent box, geometric slider, w/h sync, Enter applies, rebase readout");
+  // Releasing the slider applies it, without a trip to the Resize button —
+  // canvas is 2x4 here, so the 200% position lands on 4x8.
+  await evalJs(`(() => { const s = document.getElementById('scale');
+    s.value = 750; s.dispatchEvent(new Event('input'));
+    s.dispatchEvent(new Event('change')); return true; })()`);
+  for (let i = 0; i < 40; i++) {
+    await sleep(100);
+    d = await evalJs("__prism.dims()");
+    if (d.w === 4 && d.h === 8) break;
+  }
+  if (d.w !== 4 || d.h !== 8) {
+    throw new Error(`scale: slider release did not apply (${d.w}x${d.h}, expected 4x8)`);
+  }
+  console.error("[ok] scale: percent box, geometric slider, w/h sync, Enter applies, release applies, rebase readout");
 
   // Crop back down via the selection path (hook sets the rect; real button applies).
   stage("crop");

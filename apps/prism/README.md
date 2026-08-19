@@ -18,8 +18,13 @@ the compute. Tracked in the compiler's dogfooding roster
   mid-track, so a halving and a doubling sit the same distance from centre —
   a linear track would bury the whole downscale range in its first sliver) and
   a percent box that takes any 1–1000 %, both writing the same width/height the
-  Resize button reads. **Enter applies** from any of the three boxes — without
-  it a typed number just sits there and the field reads as broken. The scale is
+  Resize button reads. **Every control in the panel acts on its own**: the
+  slider applies on release (the drag itself is a live preview, and `change`
+  fires once per gesture — a 300 ms debounce coalesces keyboard arrow-stepping,
+  which fires per press and would otherwise chain a dozen lossy resamples a
+  fraction of a percent apart), and Enter applies from any of the three boxes.
+  A control that needed a separate button read as inert next to ½× and 2×,
+  which never did. The scale is
   a multiplier on the image *now on screen*, and a completed op rebases it to
   100%, so the readout names both ends (`2400 × 1600 → 1200 × 800 · 1.0 MP`
   pending, `now 4800 × 3200 · 15.4 MP` at rest) — otherwise a 2× that worked

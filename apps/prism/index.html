@@ -115,7 +115,7 @@
       <input id="rh" type="number" min="1" step="1" />
       <label>scale by</label>
       <input id="scale" type="range" min="0" max="1000" value="500"
-             title="a multiplier on the image now on screen — 25%…400% on the track, 100% mid-way, any 1–1000% in the box" />
+             title="a multiplier on the image now on screen — release to apply. 25%…400% on the track, 100% mid-way; any 1–1000% in the box" />
       <input id="pct" type="number" min="1" max="1000" step="1" value="100" />
       <span style="font-size:12px;opacity:.7">%</span>
       <span id="target"></span>
@@ -249,7 +249,7 @@
   // Buttons that start wasm work; locked while a call is in flight so a slow
   // op can't be queued up behind itself.
   const BUSY = ["resize", "half", "double", "grayscale", "rotl", "rotr",
-                "fliph", "flipv", "apply"];
+                "fliph", "flipv", "apply", "scale", "pct", "rw", "rh"];
   const setBusy = (on) => { for (const id of BUSY) $(id).disabled = on; };
 
   async function apply(op, a, b, c, d, label) {
@@ -380,6 +380,17 @@
     });
   }
   scaleEl.addEventListener("input", () => setScaleFields(posToPct(Number(scaleEl.value))));
+  // Releasing the slider APPLIES it. Everything else in this panel acts on its
+  // own — ½×, 2×, Enter in a box — so a slider that also needed the Resize
+  // button read as inert. `change` fires on release, not during the drag, so
+  // one gesture is one resample; the debounce is for the keyboard, where
+  // arrow-stepping fires `change` per press and would otherwise chain a dozen
+  // lossy resamples a fraction of a percent apart.
+  let scaleCommit = null;
+  scaleEl.addEventListener("change", () => {
+    clearTimeout(scaleCommit);
+    scaleCommit = setTimeout(() => doResize(), 300);
+  });
   pctEl.addEventListener("input", () => {
     const v = Number(pctEl.value);
     if (!v) return;                       // mid-typing ("", "0") — leave it alone
