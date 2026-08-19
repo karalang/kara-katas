@@ -230,6 +230,64 @@ async function main() {
   if (d.w !== 2 || d.h !== 2) throw new Error(`crop: dims ${d.w}x${d.h} != 2x2`);
   console.error("[ok] crop selection applies");
 
+  // ── Samples: the "try it without finding a photo first" path ────────────
+  // Both chips GENERATE their scene in the page (no fetch, no bundled asset),
+  // so a broken generator would fail silently on the live site. Drive chip 0
+  // through the real button path; the second chip only has to produce its
+  // declared size (an 11.8 MP resize is not what this leg is timing).
+  stage("sample");
+  const chipLabels = await evalJs(
+    `[...document.querySelectorAll('#samples .chip')].map((b) => b.textContent)`);
+  if (chipLabels.length !== 2) {
+    throw new Error(`sample: ${chipLabels.length} chips rendered, expected 2`);
+  }
+  await evalJs(`document.querySelectorAll('#samples .chip')[0].click()`);
+  let sd = null;
+  for (let i = 0; i < 60; i++) {
+    await sleep(100);
+    sd = await evalJs("__prism.dims()");
+    if (sd.w === 2400 && sd.h === 1600) break;
+  }
+  if (!sd || sd.w !== 2400 || sd.h !== 1600) {
+    throw new Error(`sample: dims ${sd && sd.w}x${sd && sd.h} != 2400x1600`);
+  }
+  const sun = await evalJs("__prism.pixel(1720, 430)");
+  if (sun[0] < 240 || sun[1] < 230) throw new Error(`sample: sun pixel ${sun} is not lit`);
+  const strip = await evalJs("__prism.pixel(20, 1580)");
+  if (strip[0] > 40 || strip[2] > 60) throw new Error(`sample: instrument strip ${strip} is not dark`);
+  // The zone plate is the point of the strip: it must carry full-swing detail,
+  // which is what makes Lanczos-3 vs bilinear visible at ½×.
+  const swing = await evalJs(`(() => {
+    const d = document.getElementById('screen').getContext('2d')
+      .getImageData(140, 1360, 120, 120).data;
+    let lo = 255, hi = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i] < lo) lo = d[i]; if (d[i] > hi) hi = d[i]; }
+    return { lo, hi }; })()`);
+  if (swing.lo > 40 || swing.hi < 215) {
+    throw new Error(`sample: zone plate swing ${JSON.stringify(swing)} is not full-range`);
+  }
+  await evalJs(`(() => {
+    document.getElementById('method').value = '1';
+    document.getElementById('half').click();
+    return true;
+  })()`);
+  for (let i = 0; i < 100; i++) {
+    await sleep(100);
+    sd = await evalJs("__prism.dims()");
+    if (sd.w === 1200 && sd.h === 800) break;
+  }
+  if (sd.w !== 1200 || sd.h !== 800) throw new Error(`sample: ½× gave ${sd.w}x${sd.h} != 1200x800`);
+  await evalJs(`document.querySelectorAll('#samples .chip')[1].click()`);
+  for (let i = 0; i < 150; i++) {
+    await sleep(100);
+    sd = await evalJs("__prism.dims()");
+    if (sd.w === 4200 && sd.h === 2800) break;
+  }
+  if (sd.w !== 4200 || sd.h !== 2800) {
+    throw new Error(`sample: big chip gave ${sd.w}x${sd.h} != 4200x2800`);
+  }
+  console.error("[ok] samples: both generated in-page, full-swing detail, ½× through the kernel");
+
   // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
   // COOP/COEP), fresh page, assert the threaded module is picked, then prove
   // an op produces oracle-exact pixels with the pool active.
@@ -353,7 +411,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained, generated samples), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

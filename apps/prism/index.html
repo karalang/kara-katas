@@ -73,6 +73,13 @@
   #note { opacity: .55; max-width: 660px; text-align: center; font-size: 12px; }
   code { color: #9ad0ff; }
   input[type=file] { display: none; }
+  .samples { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .samples .lead { font-size: 12px; opacity: .55; }
+  .chip {
+    background: #0d1526; border: 1px solid #2b3a5e; color: #9fc7ff;
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .chip:hover { border-color: #6fd3ff; color: #dcefff; }
   .lock { cursor: pointer; user-select: none; opacity: .8; }
 </style>
 </head>
@@ -86,6 +93,7 @@
   <div id="drop">
     <div class="big">Drop an image here, or click to choose</div>
     <div class="small">JPEG · PNG · WebP — stays on your device</div>
+    <div class="samples" id="samples"><span class="lead">no photo handy?</span></div>
     <input id="file" type="file" accept="image/*" />
   </div>
 
@@ -154,7 +162,9 @@
     watch it stay empty. Each edit calls the Kāra
     <code>process(op, w, h, …)</code> export on the working image; the result
     becomes the new working image, so edits chain (crop → resize → adjust).
-    Drag on the image to select a crop. Download re-encodes locally.</p>
+    Drag on the image to select a crop. Download re-encodes locally.
+    The samples are <b>drawn in the page</b> rather than fetched, so the Network
+    tab stays empty on those too.</p>
 
 <script>
   // coi-serviceworker (vendored, MIT — gzuidhof/coi-serviceworker v0.1.7):
@@ -237,6 +247,17 @@
     setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM, ${mode})`);
   }
 
+  // Every entry point into the app — the file picker, a drop, a sample —
+  // funnels through here: decoded RGBA in, working image out.
+  function adoptSource(data, w, h, note) {
+    orig = new Uint8ClampedArray(data); origW = w; origH = h;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
+    dropEl.style.display = "none";
+    stage.style.display = "flex";
+    setMeta(note);
+  }
+
   async function loadFile(file) {
     if (!file || !file.type.startsWith("image/")) return;
     const bmp = await createImageBitmap(file);
@@ -246,12 +267,7 @@
     sctx.drawImage(bmp, 0, 0);
     const img = sctx.getImageData(0, 0, bmp.width, bmp.height);
     bmp.close && bmp.close();
-    orig = new Uint8ClampedArray(img.data); origW = img.width; origH = img.height;
-    undoStack.length = 0;
-    adopt(new Uint8ClampedArray(orig), origW, origH);
-    dropEl.style.display = "none";
-    stage.style.display = "flex";
-    setMeta("loaded");
+    adoptSource(img.data, img.width, img.height, "loaded");
   }
 
   // ── Resize ───────────────────────────────────────────────────────────────
@@ -419,6 +435,228 @@
       return { median: times[times.length >> 1], threaded: handle.threaded };
     },
   };
+
+  // ── Samples: DRAWN in the page, never fetched ────────────────────────────
+  // The pitch is "open the Network tab and watch it stay empty", so a sample
+  // that arrived over the wire would undercut the exact claim it exists to
+  // demonstrate. These are painted with canvas 2D on click: zero requests, no
+  // third-party licensing, no EXIF. The scene deliberately carries the things
+  // a resampler is judged on — a zone plate, a Siemens star, hairline grids,
+  // a text ladder — so ½× with Lanczos-3 vs bilinear is a visible difference
+  // rather than a claim. The big one is sized to reproduce the multicore
+  // number from the write-up. A real photo can be added later as
+  // { label, url } — loadSample handles both shapes.
+  const SAMPLES = [
+    { label: "Sample · 2400 × 1600", w: 2400, h: 1600, gen: drawSampleScene },
+    { label: "Big sample · 4200 × 2800 (11.8 MP)", w: 4200, h: 2800, gen: drawSampleScene },
+  ];
+
+  async function loadSample(s, btn) {
+    const label = btn && btn.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = "drawing…"; }
+    // Yield a frame so the disabled/"drawing…" state paints before the big
+    // one blocks the main thread for a beat.
+    await new Promise((r) => requestAnimationFrame(() => r()));
+    try {
+      let img;
+      if (s.url) {
+        const bmp = await createImageBitmap(await (await fetch(s.url)).blob());
+        const sc = document.createElement("canvas");
+        sc.width = bmp.width; sc.height = bmp.height;
+        const scx = sc.getContext("2d");
+        scx.drawImage(bmp, 0, 0);
+        img = scx.getImageData(0, 0, bmp.width, bmp.height);
+        bmp.close && bmp.close();
+      } else {
+        img = s.gen(s.w, s.h);
+      }
+      adoptSource(img.data, img.width, img.height,
+        "sample drawn in-page (not fetched) — try ½× at Lanczos-3, then at bilinear");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  const samplesEl = $("samples");
+  for (const s of SAMPLES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = s.label;
+    // The drop zone itself opens the file picker on click — don't let a chip
+    // press bubble into it.
+    b.addEventListener("click", (e) => { e.stopPropagation(); loadSample(s, b); });
+    samplesEl.appendChild(b);
+  }
+
+  // A zone plate: cos(k·r²), the frequency climbing with the radius up to just
+  // under Nyquist at the rim. Downscale it and a poor kernel folds the outer
+  // rings into wide moiré arcs; Lanczos-3 turns them to flat grey instead.
+  // Rendered at device resolution so the transform never resamples it.
+  function zonePlate(dev) {
+    const o = document.createElement("canvas");
+    o.width = o.height = dev;
+    const oc = o.getContext("2d");
+    const im = oc.createImageData(dev, dev);
+    const d = im.data, R = dev / 2, k = 0.45 * Math.PI / R;
+    for (let y = 0; y < dev; y++) {
+      const dy = y - R;
+      for (let x = 0; x < dev; x++) {
+        const dx = x - R, r2 = dx * dx + dy * dy, i = (y * dev + x) * 4;
+        if (r2 > R * R) { d[i + 3] = 0; continue; }
+        const v = 128 + 127 * Math.cos(k * r2);
+        d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+      }
+    }
+    oc.putImageData(im, 0, 0);
+    return o;
+  }
+
+  function drawSampleScene(w, h) {
+    const AW = 2400, AH = 1600;          // authored size; both samples are 3:2
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const S = w / AW;
+    g.scale(S, h / AH);
+    const sans = (px, wt) => `${wt || 400} ${px}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    const mono = (px) => `${px}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    const HORIZON = 1080, STRIP = 1290;
+
+    // sky
+    const sky = g.createLinearGradient(0, 0, 0, HORIZON);
+    sky.addColorStop(0, "#081b47");
+    sky.addColorStop(0.42, "#2f6fb0");
+    sky.addColorStop(0.76, "#8fbcdc");
+    sky.addColorStop(1, "#f6b06a");
+    g.fillStyle = sky; g.fillRect(0, 0, AW, HORIZON);
+
+    // sun + glow
+    const glow = g.createRadialGradient(1720, 430, 10, 1720, 430, 340);
+    glow.addColorStop(0, "rgba(255,246,214,.95)");
+    glow.addColorStop(0.18, "rgba(255,228,160,.45)");
+    glow.addColorStop(1, "rgba(255,210,140,0)");
+    g.fillStyle = glow; g.fillRect(1380, 90, 680, 680);
+    g.beginPath(); g.arc(1720, 430, 78, 0, Math.PI * 2);
+    g.fillStyle = "#fff8dc"; g.fill();
+
+    // clouds
+    g.fillStyle = "rgba(255,255,255,.16)";
+    for (const [cx, cy, rx, ry] of [[380, 300, 260, 46], [520, 340, 190, 34],
+                                    [1180, 250, 300, 40], [980, 470, 220, 30],
+                                    [2050, 380, 240, 38], [1500, 620, 320, 26]]) {
+      g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fill();
+    }
+
+    // three ridges, far to near
+    const ridge = (base, amp, seed, fill) => {
+      g.beginPath(); g.moveTo(0, base);
+      for (let x = 0; x <= AW; x += 40) {
+        const y = base - amp * (0.55 + 0.45 * Math.sin(x / 260 + seed) * Math.cos(x / 91 + seed * 2));
+        g.lineTo(x, y);
+      }
+      g.lineTo(AW, HORIZON); g.lineTo(0, HORIZON); g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    ridge(900, 300, 0.7, "#3f7ea0");
+    ridge(980, 250, 2.1, "#255d80");
+    ridge(1050, 180, 4.3, "#123a58");
+
+    // water
+    const sea = g.createLinearGradient(0, HORIZON, 0, STRIP);
+    sea.addColorStop(0, "#0f3552");
+    sea.addColorStop(1, "#071d2f");
+    g.fillStyle = sea; g.fillRect(0, HORIZON, AW, STRIP - HORIZON);
+
+    // Ripples: hairlines whose spacing opens up toward the viewer — honest
+    // high-frequency content, and the moiré source under a careless downscale.
+    // Each line carries a brighter segment under the sun, so the reflection is
+    // built out of the ripples instead of laid over them as a block.
+    for (let y = HORIZON + 4, gap = 2; y < STRIP; y += gap, gap += 0.28) {
+      const depth = (y - HORIZON) / (STRIP - HORIZON);
+      const inset = depth * 340;
+      g.fillStyle = "rgba(190,225,255,.28)";
+      g.fillRect(inset, y, AW - inset * 2, 1);
+      if ((y | 0) % 9 === 4) continue;                     // broken, not a ladder
+      const jitter = 0.62 + 0.38 * Math.abs(Math.sin(y * 1.9));
+      const half = (26 + depth * 150) * jitter;
+      const wobble = Math.sin(y * 0.7) * 34 * depth;
+      g.fillStyle = `rgba(255,232,178,${(0.8 - depth * 0.5) * jitter})`;
+      g.fillRect(1720 + wobble - half, y, half * 2, 1);
+    }
+
+    // reeds in the near foreground — thin, uneven, never a picket fence
+    g.strokeStyle = "rgba(6,20,32,.9)";
+    for (let i = 0; i < 84; i++) {
+      const x = 20 + i * 28.4 + ((i * 53) % 11);
+      const hgt = 34 + ((i * 71) % 9) * 16 + (Math.sin(i) + 1) * 22;
+      const lean = ((i * 37) % 19) - 9;
+      g.lineWidth = 1 + (i % 3) * 0.6;
+      g.beginPath(); g.moveTo(x, STRIP); g.lineTo(x + lean, STRIP - hgt); g.stroke();
+    }
+
+    // ── instrument strip: what a resampler is actually judged on ───────────
+    g.fillStyle = "#0b1120"; g.fillRect(0, STRIP, AW, AH - STRIP);
+    g.fillStyle = "#2b3a5e"; g.fillRect(0, STRIP, AW, 1);
+
+    const R = 118, cy = STRIP + 130, zx = 200;
+    g.drawImage(zonePlate(Math.max(2, Math.round(2 * R * S))), zx - R, cy - R, 2 * R, 2 * R);
+
+    // Siemens star — 36 wedges; the converging spokes alias long before the rim
+    const starX = 520;
+    g.save(); g.translate(starX, cy);
+    for (let i = 0; i < 36; i++) {
+      const a0 = (i * 2 * Math.PI) / 18, a1 = a0 + Math.PI / 18;
+      g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R, a0, a1); g.closePath();
+      g.fillStyle = "#e8eefc"; g.fill();
+    }
+    g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2);
+    g.strokeStyle = "#2b3a5e"; g.lineWidth = 2; g.stroke();
+    g.restore();
+
+    // hairline grids: 1px lines at tightening pitch, vertical then horizontal
+    g.fillStyle = "#cfe0ff";
+    let x = 700;
+    for (let pitch = 8; pitch >= 3; pitch--) {
+      for (let i = 0; i < 8; i++, x += pitch) g.fillRect(x, STRIP + 26, 1, 118);
+      x += 12;
+    }
+    let y = STRIP + 150;
+    for (let pitch = 7; pitch >= 3; pitch--) {
+      for (let i = 0; i < 4; i++, y += pitch) g.fillRect(700, y, 300, 1);
+      y += 8;
+    }
+
+    // text ladder
+    g.fillStyle = "#dbe6fb";
+    const ladder = [
+      [30, "Lanczos-3 vs bilinear"],
+      [22, "the strokes stay separate at half size"],
+      [16, "hairlines, serifs, and diacritics survive a good kernel"],
+      [12, "at 12px the difference between the two resamplers is unmistakable"],
+      [9, "and at 9px a bad one turns this line into a grey smear — try ½× twice"],
+    ];
+    let ty = STRIP + 52;
+    for (const [px, text] of ladder) {
+      g.font = px >= 16 ? sans(px, 600) : sans(px);
+      ty += px + 12;
+      g.fillText(text, 1080, ty);
+    }
+    g.font = mono(13); g.fillStyle = "#63e6a8";
+    g.fillText("drawn in your browser · 0 bytes fetched", 1080, STRIP + 280);
+
+    // colour swatches + a grey step wedge (for the adjust sliders)
+    const chips = ["#e5484d", "#f5a524", "#f7ce00", "#46a758", "#00a2c7",
+                   "#3e63dd", "#8e4ec6", "#e93d82"];
+    chips.forEach((col2, i) => { g.fillStyle = col2; g.fillRect(1780 + i * 74, STRIP + 40, 66, 66); });
+    for (let i = 0; i < 12; i++) {
+      const v = Math.round((i / 11) * 255);
+      g.fillStyle = `rgb(${v},${v},${v})`;
+      g.fillRect(1780 + i * 49, STRIP + 126, 47, 60);
+    }
+    g.fillStyle = "#8ea3c4"; g.font = sans(13);
+    g.fillText("brightness · contrast · saturation act on these", 1780, STRIP + 214);
+
+    return g.getImageData(0, 0, w, h);
+  }
 
   // ── Drop / file wiring ───────────────────────────────────────────────────
   dropEl.addEventListener("click", () => fileEl.click());

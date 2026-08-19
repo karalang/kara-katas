@@ -73,6 +73,13 @@
   #warn { color: #ffcf6f; max-width: 660px; text-align: center; font-size: 12px; }
   code { color: #9ad0ff; }
   input[type=file] { display: none; }
+  .samples { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .samples .lead { font-size: 12px; opacity: .55; }
+  .chip {
+    background: #0d1526; border: 1px solid #2b3a5e; color: #9fc7ff;
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .chip:hover { border-color: #ff9f6f; color: #ffd9c4; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 </style>
 </head>
@@ -87,6 +94,7 @@
   <div id="drop">
     <div class="big">Drop a screenshot here, or click to choose</div>
     <div class="small">JPEG · PNG · WebP — stays on your device</div>
+    <div class="samples" id="samples"><span class="lead">nothing sensitive handy?</span></div>
     <input id="file" type="file" accept="image/*" />
   </div>
 
@@ -127,7 +135,9 @@
     the <b>solid bar</b>, which destroys the data.</p>
   <p id="note">Where's the upload? There isn't one — watch the Network tab stay
     empty. Each redaction calls the Kāra <code>process(op, w, h, x, y, rw, rh, s)</code>
-    export; the result becomes the working image, so redactions accumulate.</p>
+    export; the result becomes the working image, so redactions accumulate.
+    Even the sample screenshot is <b>drawn in the page</b> rather than fetched,
+    so the Network tab stays empty on that too.</p>
 
 <script type="module">
   import { instantiate } from "./veil.js";
@@ -179,6 +189,17 @@
     setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM)`);
   }
 
+  // Every entry point into the app — the file picker, a drop, a sample —
+  // funnels through here: decoded RGBA in, working image out.
+  function adoptSource(data, w, h, note) {
+    orig = new Uint8ClampedArray(data); origW = w; origH = h;
+    undoStack.length = 0;
+    adopt(new Uint8ClampedArray(orig), origW, origH);
+    dropEl.style.display = "none";
+    stage.style.display = "flex";
+    setMeta(note);
+  }
+
   async function loadFile(file) {
     if (!file || !file.type.startsWith("image/")) return;
     const bmp = await createImageBitmap(file);
@@ -188,12 +209,7 @@
     sctx.drawImage(bmp, 0, 0);
     const img = sctx.getImageData(0, 0, bmp.width, bmp.height);
     bmp.close && bmp.close();
-    orig = new Uint8ClampedArray(img.data); origW = img.width; origH = img.height;
-    undoStack.length = 0;
-    adopt(new Uint8ClampedArray(orig), origW, origH);
-    dropEl.style.display = "none";
-    stage.style.display = "flex";
-    setMeta("loaded — draw a box over the sensitive region");
+    adoptSource(img.data, img.width, img.height, "loaded — draw a box over the sensitive region");
   }
 
   // ── Selection (drag a rect on the canvas) ────────────────────────────────
@@ -291,6 +307,145 @@
     dims: () => ({ w: curW, h: curH }),
     pixel: (x, y) => [...ctx2d.getImageData(x, y, 1, 1).data],
   };
+
+  // ── Samples: DRAWN in the page, never fetched ────────────────────────────
+  // The whole pitch is "watch the Network tab stay empty", so a sample that
+  // arrived over the wire would undercut the exact claim it exists to
+  // demonstrate — and the first thing a visitor does with a redactor is test
+  // that claim. These are painted with canvas 2D on click: zero requests, no
+  // third-party licensing, no EXIF. A real photo can be added later as
+  // { label, url } — loadSample handles both shapes.
+  const SAMPLES = [
+    { label: "Try a sample screenshot", w: 1280, h: 820, gen: drawSampleConsole },
+  ];
+
+  async function loadSample(s) {
+    let img;
+    if (s.url) {
+      const bmp = await createImageBitmap(await (await fetch(s.url)).blob());
+      const sc = document.createElement("canvas");
+      sc.width = bmp.width; sc.height = bmp.height;
+      const scx = sc.getContext("2d");
+      scx.drawImage(bmp, 0, 0);
+      img = scx.getImageData(0, 0, bmp.width, bmp.height);
+      bmp.close && bmp.close();
+    } else {
+      img = s.gen(s.w, s.h);
+    }
+    adoptSource(img.data, img.width, img.height,
+      "sample loaded — draw a box over a secret, then Redact selection");
+  }
+
+  const samplesEl = $("samples");
+  for (const s of SAMPLES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = s.label;
+    // The drop zone itself opens the file picker on click — don't let a chip
+    // press bubble into it.
+    b.addEventListener("click", (e) => { e.stopPropagation(); loadSample(s); });
+    samplesEl.appendChild(b);
+  }
+
+  // A fabricated account page — the exact thing people reach for a redactor
+  // to publish. Every value in it is invented (example.com, 555 numbers, the
+  // well-known test card) and the image carries a SAMPLE stamp, so a redacted
+  // export can never be mistaken for a real leak. The key deliberately uses a
+  // prefix no provider issues: in a real vendor's format (sk_live_…) it trips
+  // GitHub push protection on the way in and every secret scanner the page
+  // passes through afterwards — measured, not hypothetical.
+  function drawSampleConsole(w, h) {
+    const AW = 1280, AH = 820;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.scale(w / AW, h / AH);
+    const sans = (px, wt) => `${wt || 400} ${px}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    const mono = (px) => `${px}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    const rr = (x, y, rw, rh, r) => {
+      g.beginPath();
+      if (g.roundRect) g.roundRect(x, y, rw, rh, r); else g.rect(x, y, rw, rh);
+    };
+    const panel = (x, y, pw, ph, r, fill, stroke) => {
+      rr(x, y, pw, ph, r);
+      g.fillStyle = fill; g.fill();
+      if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); }
+    };
+
+    g.fillStyle = "#eef1f6"; g.fillRect(0, 0, AW, AH);
+
+    // top bar
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, AW, 56);
+    g.fillStyle = "#e3e8f0"; g.fillRect(0, 56, AW, 1);
+    g.fillStyle = "#1b2536"; g.font = sans(17, 600);
+    g.fillText("Atlas Console", 24, 35);
+    g.fillStyle = "#6b7789"; g.font = sans(13);
+    g.textAlign = "right";
+    g.fillText("priya.raghavan@example.com", 1188, 34);
+    g.textAlign = "left";
+    g.beginPath(); g.arc(1218, 28, 15, 0, Math.PI * 2);
+    g.fillStyle = "#c9d4e6"; g.fill();
+    g.fillStyle = "#5b6a80"; g.font = sans(13, 600);
+    g.fillText("PR", 1210, 33);
+
+    // sidebar
+    g.fillStyle = "#f6f8fb"; g.fillRect(0, 57, 196, AH - 57);
+    g.fillStyle = "#e3e8f0"; g.fillRect(196, 57, 1, AH - 57);
+    const nav = ["Overview", "Projects", "Billing", "Team", "Settings"];
+    nav.forEach((label, i) => {
+      const y = 96 + i * 40;
+      const active = label === "Billing";
+      if (active) panel(12, y - 20, 172, 32, 8, "#e6edff");
+      g.fillStyle = active ? "#2b5bd7" : "#5b6a80";
+      g.font = sans(14, active ? 600 : 400);
+      g.fillText(label, 28, y + 1);
+    });
+
+    // main card
+    panel(228, 88, 1024, 636, 12, "#ffffff", "#e3e8f0");
+    g.fillStyle = "#1b2536"; g.font = sans(20, 600);
+    g.fillText("Account & billing", 260, 132);
+    g.fillStyle = "#6b7789"; g.font = sans(13);
+    g.fillText("Personal details, API credentials, and payment method.", 260, 158);
+    g.fillStyle = "#eef1f6"; g.fillRect(260, 180, 960, 1);
+
+    const rows = [
+      ["Legal name", "Priya Raghavan"],
+      ["Email", "priya.raghavan@example.com"],
+      ["Phone", "+1 (555) 0134"],
+      ["Home address", "42 Wren Lane, Apt 6B · Springfield, IL 62704"],
+      ["Date of birth", "14 March 1991"],
+    ];
+    rows.forEach(([label, value], i) => {
+      const y = 218 + i * 42;
+      g.fillStyle = "#6b7789"; g.font = sans(13);
+      g.fillText(label, 260, y);
+      g.fillStyle = "#1b2536"; g.font = sans(14);
+      g.fillText(value, 470, y);
+    });
+
+    // secret key
+    panel(260, 448, 960, 78, 8, "#f8fafc", "#e3e8f0");
+    g.fillStyle = "#6b7789"; g.font = sans(12, 600);
+    g.fillText("LIVE SECRET KEY", 280, 476);
+    g.fillStyle = "#1b2536"; g.font = mono(15);
+    g.fillText("atk_live_9f2b7c4e1a8d3f60b5c29e47", 280, 505);
+    panel(1112, 466, 88, 32, 6, "#ffffff", "#d5dce8");
+    g.fillStyle = "#5b6a80"; g.font = sans(13);
+    g.fillText("Copy", 1141, 487);
+
+    // payment method
+    panel(260, 542, 960, 78, 8, "#f8fafc", "#e3e8f0");
+    g.fillStyle = "#6b7789"; g.font = sans(12, 600);
+    g.fillText("PAYMENT METHOD", 280, 570);
+    g.fillStyle = "#1b2536"; g.font = mono(15);
+    g.fillText("VISA   4242 4242 4242 4242      exp 04 / 29      cvc 314", 280, 599);
+
+    // stamp — this image is fabricated, and says so
+    g.fillStyle = "#aab4c4"; g.font = sans(12);
+    g.fillText("SAMPLE — every value on this page is fabricated. Drawn in your browser; nothing was fetched.", 260, 688);
+
+    return g.getImageData(0, 0, w, h);
+  }
 
   // ── Drop / file wiring ───────────────────────────────────────────────────
   dropEl.addEventListener("click", () => fileEl.click());

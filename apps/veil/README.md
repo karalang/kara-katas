@@ -22,6 +22,25 @@ Roster entry: `kara/docs/dogfooding.md` § Veil.
 
 The UI states this honestly: blur/pixelate *degrade*, the bar *destroys*.
 
+## Sample screenshot
+
+The chip under the drop zone paints a fabricated account page — name, email,
+address, a live-looking API key, a card number — with canvas 2D, so a visitor
+can see what the tool does without handing it the sensitive file first. That
+catch-22 is the whole reason it exists: the pitch is "never upload the thing
+you are hiding", and until you have watched it work, taking that on trust is
+exactly what the tool asks you not to do.
+
+The API key uses a prefix no provider issues. In a real vendor's format it
+trips GitHub push protection on the way into this repo — and every secret
+scanner the page passes through after that.
+
+It is **drawn, not fetched**: no request, no bundled asset, nothing to
+license, no EXIF — the Network tab stays empty on the sample too. Every value
+in it is invented (example.com, 555 numbers, the well-known Stripe test card)
+and the image carries a SAMPLE stamp, so a redacted export can never be
+mistaken for a real leak.
+
 ## Build & run
 
 ```bash

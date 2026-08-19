@@ -218,9 +218,51 @@ async function main() {
   if (String(p) !== "127,0,127,255") throw new Error(`pixelate: pixel(0,0) ${p} != (127,0,127)`);
   console.error("[ok] pixelate: tile average on canvas");
 
+  // ── Sample screenshot: the "try it without uploading anything" path ──────
+  // The chip GENERATES the image in the page (no fetch, no bundled asset), so
+  // a broken generator would fail silently on the live site — nothing else
+  // covers it. Drive it through the real chip and the real Redact button.
+  stage("sample");
+  const chipCount = await evalJs(`document.querySelectorAll('#samples .chip').length`);
+  if (chipCount !== 1) throw new Error(`sample: ${chipCount} chips rendered, expected 1`);
+  await evalJs(`document.querySelectorAll('#samples .chip')[0].click()`);
+  let sd = null;
+  for (let i = 0; i < 50; i++) {
+    await sleep(100);
+    sd = await evalJs("__veil.dims()");
+    if (sd.w === 1280 && sd.h === 820) break;
+  }
+  if (!sd || sd.w !== 1280 || sd.h !== 820) {
+    throw new Error(`sample: dims ${sd && sd.w}x${sd && sd.h} != 1280x820`);
+  }
+  const titleBar = await evalJs("__veil.pixel(600, 20)");
+  if (String(titleBar) !== "255,255,255,255") throw new Error(`sample: title bar ${titleBar} != white`);
+  // The secret-key line is the thing a visitor reaches for the bar to kill.
+  const KEY_BOX = "280, 486, 340, 24";
+  const darkIn = (box) => `(() => {
+    const d = document.getElementById('screen').getContext('2d').getImageData(${box}).data;
+    let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 120) n++; return n; })()`;
+  const inkBefore = await evalJs(darkIn(KEY_BOX));
+  if (inkBefore < 200) throw new Error(`sample: only ${inkBefore} dark px on the secret-key line`);
+  await evalJs(`(() => {
+    document.getElementById('style').value = '2';
+    document.getElementById('style').dispatchEvent(new Event('change'));
+    document.getElementById('shade').value = '0';
+    __veil.setSel(276, 482, 420, 32);
+    document.getElementById('applysel').click();
+    return true;
+  })()`);
+  await sleep(300);
+  const litAfter = await evalJs(`(() => {
+    const d = document.getElementById('screen').getContext('2d').getImageData(${KEY_BOX}).data;
+    let n = 0; for (let i = 0; i < d.length; i += 4)
+      if (d[i] || d[i + 1] || d[i + 2]) n++; return n; })()`);
+  if (litAfter !== 0) throw new Error(`sample: ${litAfter} px survived the bar over the key`);
+  console.error("[ok] sample screenshot: generated in-page, key line inked, bar destroys it");
+
   // The whole chain ran against ONE working image with no reload — the chaining
   // model itself is what just got verified.
-  console.log("PASS — Veil page + wasm verified in real Chrome: load, bar redaction (exact), undo, pixelate (tile-average oracle).");
+  console.log("PASS — Veil page + wasm verified in real Chrome: load, bar redaction (exact), undo, pixelate (tile-average oracle), generated sample screenshot.");
   ws.close();
   process.exit(0);
 }

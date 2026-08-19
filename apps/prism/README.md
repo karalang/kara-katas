@@ -14,6 +14,14 @@ the compute. Tracked in the compiler's dogfooding roster
 
 - File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
   quality slider + encoded-size readout).
+- **Two sample scenes, drawn in the page** — no photo needed to try it, and
+  nothing fetched to load one. The chips under the drop zone paint a landscape
+  plus an instrument strip (zone plate, Siemens star, hairline grids, a text
+  ladder, colour swatches) with canvas 2D at 2400×1600 or 4200×2800 (11.8 MP,
+  for the multicore number). Generated rather than bundled on purpose: a
+  sample that arrived over the wire would undercut the empty-Network-tab claim
+  it exists to demonstrate, and the diagnostic content makes Lanczos-3 vs
+  bilinear at ½× a visible difference instead of a stated one.
 - Kernels: **grayscale** (fans out too, 1.32x — see below), **bilinear
   resize**, **Lanczos-3 resize** (separable,
   precomputed normalized tap tables, anti-aliased downscale — 360 ms for a
