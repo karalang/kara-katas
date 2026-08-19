@@ -144,7 +144,7 @@
         <input id="con" type="range" min="-100" max="100" value="0" /></div>
       <div class="sl"><label>saturation <span id="satv">0</span></label>
         <input id="sat" type="range" min="-100" max="100" value="0" /></div>
-      <button id="apply" class="primary">Apply</button>
+      <span id="adjnote" style="font-size:12px;opacity:.55">release to apply · back to 0 restores</span>
     </div>
 
     <div class="panel">
@@ -249,11 +249,13 @@
   // Buttons that start wasm work; locked while a call is in flight so a slow
   // op can't be queued up behind itself.
   const BUSY = ["resize", "half", "double", "grayscale", "rotl", "rotr",
-                "fliph", "flipv", "apply", "scale", "pct", "rw", "rh"];
+                "fliph", "flipv", "scale", "pct", "rw", "rh", "bri", "con", "sat"];
   const setBusy = (on) => { for (const id of BUSY) $(id).disabled = on; };
 
-  async function apply(op, a, b, c, d, label) {
+  async function apply(op, a, b, c, d, label, opts = {}) {
     if (!cur) return;
+    // Any other op moves the ground the adjust sliders were measured against.
+    if (op !== OP.ADJUST) clearAdjust();
     const handle = await ready;
     // A 61 MP Lanczos upscale is seconds of main-thread work on the sequential
     // build — long enough that a silent freeze reads as a hang, and the scale
@@ -263,7 +265,7 @@
     setBusy(true);
     setMeta(`${label} — working…`);
     await new Promise((r) => requestAnimationFrame(() => r()));
-    pushUndo();
+    if (!opts.noUndo) pushUndo();
     const t0 = performance.now();
     try {
       await handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
@@ -280,6 +282,7 @@
   function adoptSource(data, w, h, note) {
     orig = new Uint8ClampedArray(data); origW = w; origH = h;
     undoStack.length = 0;
+    clearAdjust();
     adopt(new Uint8ClampedArray(orig), origW, origH);
     dropEl.style.display = "none";
     stage.style.display = "flex";
@@ -465,16 +468,49 @@
   });
 
   // ── Adjust ───────────────────────────────────────────────────────────────
-  for (const [id, out] of [["bri", "briv"], ["con", "conv"], ["sat", "satv"]]) {
-    $(id).addEventListener("input", () => { $(out).textContent = $(id).value; });
+  // These act on release like every other control here. What makes that safe
+  // is the SNAPSHOT: the first time a slider leaves zero, the working image is
+  // kept aside and every subsequent move re-runs the whole triple against
+  // THAT, never against the previous preview. Three sliders each re-quantising
+  // the last result to 8 bits would drift, and pulling one back would not undo
+  // it. Against the snapshot, dragging everything to 0 restores the original
+  // pixels exactly, and the three combine in one pass — which is also why the
+  // undo stack takes a single entry for a whole adjusting session, not one per
+  // nudge.
+  const ADJ = [["bri", "briv"], ["con", "conv"], ["sat", "satv"]];
+  let adjBase = null, adjCommit = null;
+
+  function clearAdjust() {
+    adjBase = null;
+    for (const [id, out] of ADJ) { $(id).value = 0; $(out).textContent = "0"; }
   }
-  $("apply").addEventListener("click", () => {
+
+  function adjustNow() {
+    if (!cur) return;
     const b = Number($("bri").value), k = Number($("con").value), s = Number($("sat").value);
-    if (!b && !k && !s) return;
-    apply(OP.ADJUST, b, k, s, 0, `adjust b${b >= 0 ? "+" : ""}${b} c${k >= 0 ? "+" : ""}${k} s${s >= 0 ? "+" : ""}${s}`);
-    $("bri").value = $("con").value = $("sat").value = 0;
-    $("briv").textContent = $("conv").textContent = $("satv").textContent = "0";
-  });
+    if (!adjBase) {
+      if (!b && !k && !s) return;
+      adjBase = { p: cur, w: curW, h: curH };
+      pushUndo();                       // one step back to the pre-adjust image
+    }
+    if (!b && !k && !s) {
+      adopt(new Uint8ClampedArray(adjBase.p), adjBase.w, adjBase.h);
+      setMeta("adjust cleared — back to the pre-adjust image");
+      return;
+    }
+    // Serve the snapshot to read_src, then run the triple in one pass.
+    cur = adjBase.p; curW = adjBase.w; curH = adjBase.h;
+    const sign = (v) => (v >= 0 ? "+" : "") + v;
+    apply(OP.ADJUST, b, k, s, 0, `adjust b${sign(b)} c${sign(k)} s${sign(s)}`, { noUndo: true });
+  }
+
+  for (const [id, out] of ADJ) {
+    $(id).addEventListener("input", () => { $(out).textContent = $(id).value; });
+    $(id).addEventListener("change", () => {
+      clearTimeout(adjCommit);
+      adjCommit = setTimeout(adjustNow, 120);   // coalesce keyboard arrow-stepping
+    });
+  }
 
   // ── Download (format + quality + size) ───────────────────────────────────
   const fmtEl = $("fmt"), qEl = $("q");
@@ -503,10 +539,11 @@
   // ── History ──────────────────────────────────────────────────────────────
   $("undo").addEventListener("click", () => {
     const prev = undoStack.pop();
-    if (prev) { adopt(prev.p, prev.w, prev.h); setMeta("undo"); }
+    if (prev) { clearAdjust(); adopt(prev.p, prev.w, prev.h); setMeta("undo"); }
   });
   $("reset").addEventListener("click", () => {
     if (!orig) return;
+    clearAdjust();
     undoStack.length = 0;
     adopt(new Uint8ClampedArray(orig), origW, origH);
     setMeta("original");
@@ -528,6 +565,7 @@
     szEl.textContent = "";
     rwEl.value = ""; rhEl.value = "";
     pctEl.value = 100; scaleEl.value = pctToPos(100); showTarget();
+    clearAdjust();
     $("bri").value = $("con").value = $("sat").value = 0;
     $("briv").textContent = $("conv").textContent = $("satv").textContent = "0";
     // Reset the picker too, or re-choosing the SAME file fires no change event.

@@ -383,6 +383,40 @@ async function main() {
   }
   console.error("[ok] start over: canvas emptied, drop zone + chips back and live");
 
+  // ── Adjust: three sliders, one snapshot ─────────────────────────────────
+  // Exact oracles on a flat (200,100,50): brightness adds bri*2.55, contrast
+  // uses 259(c+255)/255(259-c) about 128, saturation mixes toward Rec.601
+  // luma — all in f64, clamped once at the end. The third assertion is the
+  // load-bearing one: back at zero the ORIGINAL bytes must return, which only
+  // holds if each move re-runs against the snapshot instead of the last
+  // preview.
+  stage("adjust");
+  const adjSet = (id, v) => `(() => { const s = document.getElementById('${id}');
+    s.value = ${v}; s.dispatchEvent(new Event('input'));
+    s.dispatchEvent(new Event('change')); return true; })()`;
+  await evalJs(`(() => { __prism.loadPixels(new Uint8ClampedArray(
+    [200,100,50,255, 200,100,50,255, 200,100,50,255, 200,100,50,255]), 2, 2); return true; })()`);
+  await evalJs(adjSet("bri", 50));
+  await sleep(600);
+  p = await evalJs("__prism.pixel(0, 0)");
+  if (String(p) !== "255,228,178,255") {
+    throw new Error(`adjust: brightness +50 gave ${p}, expected 255,228,178`);
+  }
+  await evalJs(adjSet("con", 50));
+  await sleep(600);
+  p = await evalJs("__prism.pixel(0, 0)");
+  if (String(p) !== "255,255,201,255") {
+    throw new Error(`adjust: b+50 c+50 gave ${p}, expected 255,255,201 (recombined from the snapshot)`);
+  }
+  await evalJs(adjSet("bri", 0));
+  await evalJs(adjSet("con", 0));
+  await sleep(600);
+  p = await evalJs("__prism.pixel(0, 0)");
+  if (String(p) !== "200,100,50,255") {
+    throw new Error(`adjust: back at zero gave ${p}, expected the original 200,100,50`);
+  }
+  console.error("[ok] adjust: release applies, sliders recombine from the snapshot, zero restores exactly");
+
   // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
   // COOP/COEP), fresh page, assert the threaded module is picked, then prove
   // an op produces oracle-exact pixels with the pool active.
@@ -506,7 +540,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

@@ -14,6 +14,16 @@ the compute. Tracked in the compiler's dogfooding roster
 
 - File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
   quality slider + encoded-size readout).
+- **Adjust is a live control over a snapshot, not three chained ops.** The
+  brightness/contrast/saturation sliders apply on release like everything else
+  in the panel; the first move away from zero keeps the working image aside,
+  and every later move re-runs the whole triple against **that snapshot**
+  rather than the previous preview. Three sliders each re-quantising the last
+  result to 8 bits would drift, and pulling one back would not undo it —
+  against the snapshot, dragging all three to zero restores the original bytes
+  exactly (asserted in `verify_browser.mjs`), and a whole adjusting session
+  costs one undo step instead of one per nudge. Any other op rebases the
+  sliders to zero, since it moves the ground they were measured against.
 - **Resize by scale or by pixels.** A geometric slider (25 %…400 %, 100 %
   mid-track, so a halving and a doubling sit the same distance from centre —
   a linear track would bury the whole downscale range in its first sliver) and
@@ -47,7 +57,7 @@ the compute. Tracked in the compiler's dogfooding roster
   12 MP → 3 MP downscale on the worker pool, 97 ms for 3 MP → 0.75 MP; see
   the measured table below), **crop** (drag a selection on the canvas),
   **rotate 90/180/270**, **flip H/V**, and
-  **brightness/contrast/saturation** adjust.
+  **brightness/contrast/saturation** adjust (see below).
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
   (crop → resize → adjust …), with an 8-step Undo, an Original reset, and a
