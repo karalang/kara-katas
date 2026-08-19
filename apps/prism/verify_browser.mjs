@@ -288,6 +288,30 @@ async function main() {
   }
   console.error("[ok] samples: both generated in-page, full-swing detail, ½× through the kernel");
 
+  // Start over: back to the drop zone with the canvas actually emptied, and
+  // the chips still live — the only route from your own photo to a sample.
+  stage("start-over");
+  await evalJs(`document.getElementById('startover').click()`);
+  await sleep(150);
+  const cleared = await evalJs(`(() => ({
+    drop: getComputedStyle(document.getElementById('drop')).display,
+    stage: getComputedStyle(document.getElementById('stagewrap')).display,
+    canvasW: document.getElementById('screen').width,
+  }))()`);
+  if (cleared.drop === "none" || cleared.stage !== "none" || cleared.canvasW !== 0) {
+    throw new Error(`start over: page did not reset — ${JSON.stringify(cleared)}`);
+  }
+  await evalJs(`document.querySelectorAll('#samples .chip')[0].click()`);
+  for (let i = 0; i < 60; i++) {
+    await sleep(100);
+    sd = await evalJs("__prism.dims()");
+    if (sd.w === 2400 && sd.h === 1600) break;
+  }
+  if (sd.w !== 2400 || sd.h !== 1600) {
+    throw new Error(`start over: chip dead after reset (${sd.w}x${sd.h})`);
+  }
+  console.error("[ok] start over: canvas emptied, drop zone + chips back and live");
+
   // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
   // COOP/COEP), fresh page, assert the threaded module is picked, then prove
   // an op produces oracle-exact pixels with the pool active.
@@ -411,7 +435,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained, generated samples), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained, generated samples, start-over reset), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

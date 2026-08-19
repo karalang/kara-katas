@@ -31,7 +31,9 @@ the compute. Tracked in the compiler's dogfooding roster
   **brightness/contrast/saturation** adjust.
 - Edits **chain**: the export is `process(op, w, h, a, b, c, d)` over the
   current *working image*; each result becomes the new working image
-  (crop → resize → adjust …), with an 8-step Undo and an Original reset.
+  (crop → resize → adjust …), with an 8-step Undo, an Original reset, and a
+  **Start over** that empties the canvas and returns to the drop zone — which
+  is also the only route from your own photo to a sample and back.
 - **Multicore + SIMD, with no parallel code in the source**: the resamplers
   are ordinary sequential `for` loops. The compiler proves that iteration `dy`
   writes the output only within `[dy * (4 * dw), (dy + 1) * (4 * dw))` — so no

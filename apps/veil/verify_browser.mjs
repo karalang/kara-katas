@@ -260,9 +260,34 @@ async function main() {
   if (litAfter !== 0) throw new Error(`sample: ${litAfter} px survived the bar over the key`);
   console.error("[ok] sample screenshot: generated in-page, key line inked, bar destroys it");
 
+  // Start over: back to the drop zone with the canvas actually emptied. For a
+  // redactor that is not just navigation — the sensitive image should stop
+  // being displayed when you ask it to go away — and the chip must still work.
+  stage("start-over");
+  await evalJs(`document.getElementById('startover').click()`);
+  await sleep(150);
+  const cleared = await evalJs(`(() => ({
+    drop: getComputedStyle(document.getElementById('drop')).display,
+    stage: getComputedStyle(document.getElementById('stagewrap')).display,
+    canvasW: document.getElementById('screen').width,
+  }))()`);
+  if (cleared.drop === "none" || cleared.stage !== "none" || cleared.canvasW !== 0) {
+    throw new Error(`start over: page did not reset — ${JSON.stringify(cleared)}`);
+  }
+  await evalJs(`document.querySelectorAll('#samples .chip')[0].click()`);
+  for (let i = 0; i < 50; i++) {
+    await sleep(100);
+    sd = await evalJs("__veil.dims()");
+    if (sd.w === 1280 && sd.h === 820) break;
+  }
+  if (sd.w !== 1280 || sd.h !== 820) {
+    throw new Error(`start over: chip dead after reset (${sd.w}x${sd.h})`);
+  }
+  console.error("[ok] start over: canvas emptied, drop zone + chip back and live");
+
   // The whole chain ran against ONE working image with no reload — the chaining
   // model itself is what just got verified.
-  console.log("PASS — Veil page + wasm verified in real Chrome: load, bar redaction (exact), undo, pixelate (tile-average oracle), generated sample screenshot.");
+  console.log("PASS — Veil page + wasm verified in real Chrome: load, bar redaction (exact), undo, pixelate (tile-average oracle), generated sample screenshot, start-over reset.");
   ws.close();
   process.exit(0);
 }

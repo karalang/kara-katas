@@ -35,6 +35,11 @@ The API key uses a prefix no provider issues. In a real vendor's format it
 trips GitHub push protection on the way into this repo — and every secret
 scanner the page passes through after that.
 
+**Start over** (next to Undo/Original) empties the canvas and returns to the
+drop zone, so you can move between the sample and your own screenshot. It
+drops the canvas bitmap, not just the references — a redactor should stop
+displaying the sensitive image the moment you ask it to.
+
 It is **drawn, not fetched**: no request, no bundled asset, nothing to
 license, no EXIF — the Network tab stays empty on the sample too. Every value
 in it is invented (example.com, 555 numbers, the well-known Stripe test card)
