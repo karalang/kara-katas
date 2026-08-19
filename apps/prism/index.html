@@ -113,9 +113,9 @@
       <input id="rw" type="number" min="1" step="1" />
       <span class="lock" id="lock" title="aspect ratio lock">🔒</span>
       <input id="rh" type="number" min="1" step="1" />
-      <label>scale</label>
+      <label>scale by</label>
       <input id="scale" type="range" min="0" max="1000" value="500"
-             title="25% … 400%, 100% mid-track — type any 1–1000% in the box" />
+             title="a multiplier on the image now on screen — 25%…400% on the track, 100% mid-way, any 1–1000% in the box" />
       <input id="pct" type="number" min="1" max="1000" step="1" value="100" />
       <span style="font-size:12px;opacity:.7">%</span>
       <span id="target"></span>
@@ -246,13 +246,31 @@
       (extra ? `\n${extra}` : "");
   }
 
+  // Buttons that start wasm work; locked while a call is in flight so a slow
+  // op can't be queued up behind itself.
+  const BUSY = ["resize", "half", "double", "grayscale", "rotl", "rotr",
+                "fliph", "flipv", "apply"];
+  const setBusy = (on) => { for (const id of BUSY) $(id).disabled = on; };
+
   async function apply(op, a, b, c, d, label) {
     if (!cur) return;
     const handle = await ready;
+    // A 61 MP Lanczos upscale is seconds of main-thread work on the sequential
+    // build — long enough that a silent freeze reads as a hang, and the scale
+    // control now puts sizes like that one click away. Show a pending line and
+    // lock the buttons first, then force a frame out so that paint actually
+    // lands before the thread is taken.
+    setBusy(true);
+    setMeta(`${label} — working…`);
+    await new Promise((r) => requestAnimationFrame(() => r()));
     pushUndo();
     const t0 = performance.now();
-    await handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
-      BigInt(a), BigInt(b), BigInt(c), BigInt(d));
+    try {
+      await handle.exports.process(BigInt(op), BigInt(curW), BigInt(curH),
+        BigInt(a), BigInt(b), BigInt(c), BigInt(d));
+    } finally {
+      setBusy(false);
+    }
     const mode = handle.threaded ? "threads" : "1 thread";
     setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM, ${mode})`);
   }
@@ -300,6 +318,10 @@
   // do (100% would land a quarter of the way along, and the whole downscale
   // range would be squeezed into the first sliver). The number box is the
   // escape hatch past the track's ends: it takes any 1–1000%.
+  // A percent box puts a gigapixel one keystroke away (1000% of 12 MP is
+  // 1.2 GP ≈ 4.7 GB), and the result, its undo copy and the original are all
+  // resident at once — so refuse loudly instead of taking the tab down.
+  const MAX_MP = 100;
   const SCALE_LO = 25, SCALE_HI = 400, SPAN = Math.log(SCALE_HI / SCALE_LO);
   const scaleEl = $("scale"), pctEl = $("pct"), targetEl = $("target");
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -307,15 +329,24 @@
   const pctToPos = (pct) => Math.round(1000 * Math.log(clamp(pct, SCALE_LO, SCALE_HI) / SCALE_LO) / SPAN);
   const roundPct = (pct) => (pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10);
 
+  // The slider is a multiplier on the image NOW on screen, and every completed
+  // op rebases it to 100% — which reads as "my 2× did nothing" unless the
+  // readout shows both ends. So: the current size on its own at 100%, and
+  // `from → to` whenever a different target is pending.
   function showTarget() {
     if (!curW) { targetEl.textContent = ""; targetEl.classList.remove("big"); return; }
     const w = Math.max(1, Math.floor(Number(rwEl.value) || 0));
     const h = Math.max(1, Math.floor(Number(rhEl.value) || 0));
     const mp = (w * h) / 1e6;
-    targetEl.textContent = `→ ${w} × ${h} · ${mp.toFixed(1)} MP`;
-    // An upscale is quadratic in memory: four buffers of it exist at once
-    // (source, result, undo, original), so say when it is about to be big.
-    targetEl.classList.toggle("big", mp > 64);
+    const same = w === curW && h === curH;
+    const over = mp > MAX_MP;
+    targetEl.textContent = same
+      ? `now ${curW} × ${curH} · ${mp.toFixed(1)} MP`
+      : `${curW} × ${curH} → ${w} × ${h} · ${mp.toFixed(1)} MP` +
+        (over ? `  ✋ over the ${MAX_MP} MP ceiling` : "");
+    // An upscale is quadratic in memory and four buffers of the result can be
+    // live at once (working, result, undo, original) — flag it before the wait.
+    targetEl.classList.toggle("big", over || mp > 64);
   }
   // Percent → the w/h fields (the single source of truth doResize reads).
   function setScaleFields(pct) {
@@ -340,6 +371,14 @@
     scaleEl.value = pctToPos(pct);
     showTarget();
   }
+  // Enter is what a person presses after typing a number into a box. Without
+  // this it does nothing at all — the value is right there and the image never
+  // changes, which reads as the field being broken.
+  for (const el of [rwEl, rhEl, pctEl]) {
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); doResize(); }
+    });
+  }
   scaleEl.addEventListener("input", () => setScaleFields(posToPct(Number(scaleEl.value))));
   pctEl.addEventListener("input", () => {
     const v = Number(pctEl.value);
@@ -347,11 +386,6 @@
     setScaleFields(v);
     scaleEl.value = pctToPos(v);
   });
-  // A percent box puts a gigapixel one keystroke away (1000% of 12 MP is
-  // 1.2 GP ≈ 4.7 GB), and the result, its undo copy and the original are all
-  // resident at once — so refuse loudly instead of taking the tab down. The
-  // readout turns amber well before this, at 64 MP.
-  const MAX_MP = 100;
   function doResize() {
     const dw = Math.max(1, Math.floor(Number(rwEl.value) || 0));
     const dh = Math.max(1, Math.floor(Number(rhEl.value) || 0));

@@ -249,16 +249,23 @@ async function main() {
     w.value = 1; w.dispatchEvent(new Event('input')); return true; })()`);
   sc = await evalJs(readScale);
   if (String(sc.pct) !== "25") throw new Error(`scale: w=1 of 4 read as ${sc.pct}%, expected 25`);
-  // And the whole thing still ends at a real resize.
+  // ENTER in the box applies it. Without this the value sits there and nothing
+  // happens, which reads as the field being broken — the resize button is the
+  // only other way in and it is not where the eye is.
   await evalJs(`(() => { const p = document.getElementById('pct');
     p.value = 50; p.dispatchEvent(new Event('input'));
-    document.getElementById('resize').click(); return true; })()`);
-  await sleep(400);
+    p.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true; })()`);
+  await sleep(500);
   d = await evalJs("__prism.dims()");
-  if (d.w !== 2 || d.h !== 4) throw new Error(`scale: resize at 50% gave ${d.w}x${d.h}, expected 2x4`);
+  if (d.w !== 2 || d.h !== 4) throw new Error(`scale: Enter at 50% gave ${d.w}x${d.h}, expected 2x4`);
   const rebased = await evalJs(`document.getElementById('pct').value`);
   if (String(rebased) !== "100") throw new Error(`scale: after the op the box reads ${rebased}%, expected 100`);
-  console.error("[ok] scale: percent box, geometric slider, w/h sync, resize, rebase to 100%");
+  // The rebase to 100% is only honest if the readout states the new size —
+  // otherwise a completed 2x looks like it did nothing to the control.
+  const rest = await evalJs(`document.getElementById('target').textContent`);
+  if (!rest.startsWith("now 2 × 4")) throw new Error(`scale: readout after the op is "${rest}"`);
+  console.error("[ok] scale: percent box, geometric slider, w/h sync, Enter applies, rebase readout");
 
   // Crop back down via the selection path (hook sets the rect; real button applies).
   stage("crop");

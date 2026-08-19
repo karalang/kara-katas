@@ -18,9 +18,14 @@ the compute. Tracked in the compiler's dogfooding roster
   mid-track, so a halving and a doubling sit the same distance from centre —
   a linear track would bury the whole downscale range in its first sliver) and
   a percent box that takes any 1–1000 %, both writing the same width/height the
-  Resize button reads, with a live `→ w × h · MP` readout. Typing in the pixel
-  fields drags the percent back into agreement. ½× and 2× stay as one-click
-  presets. A target past **100 MP** is refused with a reason rather than
+  Resize button reads. **Enter applies** from any of the three boxes — without
+  it a typed number just sits there and the field reads as broken. The scale is
+  a multiplier on the image *now on screen*, and a completed op rebases it to
+  100%, so the readout names both ends (`2400 × 1600 → 1200 × 800 · 1.0 MP`
+  pending, `now 4800 × 3200 · 15.4 MP` at rest) — otherwise a 2× that worked
+  looks to the control like it did nothing. Typing in the pixel fields drags the
+  percent back into agreement. ½× and 2× stay as one-click presets, and they
+  compound: each doubles what is on screen, so three clicks is 8×. A target past **100 MP** is refused with a reason rather than
   attempted: the result, its undo copy and the original are resident at once,
   and the percent box puts a gigapixel one keystroke away.
 - **Two sample scenes, drawn in the page** — no photo needed to try it, and
