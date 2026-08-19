@@ -19,6 +19,7 @@ successor of 25 -> None         the maximum has none
 | `inorder_successor_recursive.kara` | the same descent, with `??` as its fallback | O(h) |
 | `inorder_successor_inorder.kara` | walk in order, take the first key greater | O(n) |
 | `differential.kara` | 432 trees, 8424 probes, three shapes | — |
+| `bench/bstsucc.kara` | 300k-node BST, 2M queries | benchmark lane |
 
 ## The answer is optional by nature
 
@@ -127,6 +128,51 @@ a `Vec` field.
   kata is about the algorithm rather than about `shared` node graphs.
 - **An explicit-stack inorder walk**, so the definitional solver is also the one
   that can't blow the stack on the degenerate trees the generator builds.
+
+## Benchmarks
+
+A 300,000-node BST built by random insertion, then 2,000,000 successor queries
+mixing present and absent keys. All lanes print `509248937 1999982`.
+
+| lane | time |
+|---|---:|
+| `rustc -O -C overflow-checks=on` (equal safety) | 1.011 s ± 0.032 |
+| **`karac build`** | **1.019 s ± 0.037** |
+| `rustc -O` | 1.021 s ± 0.045 |
+| `go build` | 1.032 s ± 0.040 |
+| `clang -O3` | 1.039 s ± 0.035 |
+
+**All five within 3%, and every gap is inside one σ** — this is a dead heat and
+the ordering carries no information. Worth saying plainly rather than reporting a
+1.01× "win": every descent step is a *dependent load* into a 300k-node arena, so
+each query is a chain of cache misses and all five lanes wait on the same memory.
+There is nothing here for a code generator to be better at.
+
+That also makes the equal-safety comparison uninformative in the other direction:
+overflow-checked Rust came out fastest, which it cannot genuinely be. When the
+spread is noise, it shows up as impossible orderings — the same tell
+[#284](../284-peeking-iterator/) carried.
+
+**Build once, punch many times, and here the build really is once:** the tree is
+immutable during the timed phase and every query only reads it. Katas
+[#280](../280-wiggle-sort/) and [#283](../283-move-zeroes/) had to refresh their
+input every round because the work mutated it; this is the clean form of the
+pattern.
+
+The sink **folds the `Option`**, collapsing absent to `-1` *inside* the hash, so a
+solver that got the maximum wrong — the one query whose answer is `None` —
+changes the sink. Folding only the present answers would make exactly the case
+this problem exists for invisible.
+
+### No parallel lane
+
+The queries are genuinely independent and would fan out, but each is ~20 ns of
+pointer-chasing over a shared read-only tree, so the fan-out would measure
+dispatch rather than the descent.
+[#282](../282-expression-add-operators/) is the one where per-branch work was
+large enough for the lane to mean something — **the distinction is the work per
+branch, not whether independence exists**, which is the correction that kata's
+par lane taught.
 
 ## Running
 
