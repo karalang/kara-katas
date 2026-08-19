@@ -61,14 +61,19 @@ build_c() {
     fi
 }
 
-build_kara() {
+# The PAR binary. `KARAC_AUTO_PAR=0` is deliberately NOT set here: the env var
+# is the auto-parallelizer's kill switch, and `#[par_order_free]` is an opt-in
+# hint TO that pass rather than an explicit `par {}` block — so building the
+# annotated source with auto-par off yields a sequential binary and a par row
+# that silently measures the seq lane. Measured on kata 277: 0.30s with the
+# switch off, 0.07s with it on, from the same source file.
+build_kara_par() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
-    local out="target/${stem}_kara"
+    local out="target/${stem}_par_kara"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src (seq, KARAC_AUTO_PAR=0) ..." >&2
-        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
-        mv "$stem" "$out"
+        echo "compiling $src (auto-par ON, #[par_order_free]) ..." >&2
+        karac build "$src" -o "$out" >/dev/null
     fi
 }
 
@@ -84,7 +89,7 @@ build_go_seq() {
 build_rust "${STEM}.rs"
 build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
-build_kara "${STEM}.kara"
+build_kara_par "${STEM}.kara"
 build_go_seq
 
 # --- SEQ twin + PAR mirrors -------------------------------------------------
@@ -110,7 +115,7 @@ fi
 isa_build_c    "${STEM}.c"
 isa_build_rust "${STEM}.rs"
 
-expected=$(./target/${STEM}_kara)
+expected=$(./target/${STEM}_par_kara)
 mismatch=""
 for pair in \
     "rust:./target/${STEM}" \
@@ -152,7 +157,7 @@ rt_begin --warmup 5 --runs 30
 # PAR lane — auto-par kara against code written by someone who reached for
 # threads. Kept apart from the SEQ rows deliberately.
 rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
-    --name "kara ${STEM} (codegen, #[par_order_free])" --cmd "./target/${STEM}_kara"
+    --name "kara ${STEM} (codegen, #[par_order_free])" --cmd "./target/${STEM}_par_kara"
 rt_cmd --lang c --approach "$STEM" --lane par --mode native \
     --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
 rt_cmd --lang go --approach "$STEM" --lane par --mode native \
@@ -197,7 +202,7 @@ ce_end
 echo
 echo "=== binary size ==="
 size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_seq_kara"
-size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_par_kara"
 size_put --lang rust --approach "$STEM" --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_c"
 size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_go_seq"
@@ -205,7 +210,7 @@ size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target
 echo
 echo "=== runtime memory (peak) ==="
 mem_put --lang kara --approach "$STEM" --lane seq --mode codegen --bytes "$(mem_peak ./target/${STEM}_seq_kara)"
-mem_put --lang kara --approach "$STEM" --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_kara)"
+mem_put --lang kara --approach "$STEM" --lane par --mode codegen --bytes "$(mem_peak ./target/${STEM}_par_kara)"
 mem_put --lang rust --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM})"
 mem_put --lang c    --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_c)"
 mem_put --lang go   --approach "$STEM" --lane seq --mode native  --bytes "$(mem_peak ./target/${STEM}_go_seq)"
