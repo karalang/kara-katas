@@ -221,6 +221,45 @@ async function main() {
   if (d.w !== 4 || d.h !== 8) throw new Error(`resize: dims ${d.w}x${d.h} != 4x8`);
   console.error("[ok] resize via panel: canvas is 4x8");
 
+  // Scale control: the percent box and the slider write the same target the
+  // w/h fields hand to doResize, and the geometric track puts 100% mid-way.
+  // Canvas is 4x8 here, so 50% is 2x4 and 400% is 16x32.
+  stage("scale");
+  const readScale = `({ w: document.getElementById('rw').value,
+    h: document.getElementById('rh').value,
+    pct: document.getElementById('pct').value,
+    pos: Number(document.getElementById('scale').value),
+    target: document.getElementById('target').textContent })`;
+  await evalJs(`(() => { const p = document.getElementById('pct');
+    p.value = 50; p.dispatchEvent(new Event('input')); return true; })()`);
+  let sc = await evalJs(readScale);
+  if (String(sc.w) !== "2" || String(sc.h) !== "4") {
+    throw new Error(`scale: 50% gave ${sc.w}x${sc.h}, expected 2x4`);
+  }
+  if (sc.pos !== 250) throw new Error(`scale: slider at ${sc.pos} for 50%, expected 250 (geometric)`);
+  if (!sc.target.includes("2 × 4")) throw new Error(`scale: readout "${sc.target}" missing 2 × 4`);
+  await evalJs(`(() => { const s = document.getElementById('scale');
+    s.value = 1000; s.dispatchEvent(new Event('input')); return true; })()`);
+  sc = await evalJs(readScale);
+  if (String(sc.pct) !== "400" || String(sc.w) !== "16" || String(sc.h) !== "32") {
+    throw new Error(`scale: slider max gave ${sc.pct}% / ${sc.w}x${sc.h}, expected 400% / 16x32`);
+  }
+  // Typing w/h directly drags the percent back into agreement.
+  await evalJs(`(() => { const w = document.getElementById('rw');
+    w.value = 1; w.dispatchEvent(new Event('input')); return true; })()`);
+  sc = await evalJs(readScale);
+  if (String(sc.pct) !== "25") throw new Error(`scale: w=1 of 4 read as ${sc.pct}%, expected 25`);
+  // And the whole thing still ends at a real resize.
+  await evalJs(`(() => { const p = document.getElementById('pct');
+    p.value = 50; p.dispatchEvent(new Event('input'));
+    document.getElementById('resize').click(); return true; })()`);
+  await sleep(400);
+  d = await evalJs("__prism.dims()");
+  if (d.w !== 2 || d.h !== 4) throw new Error(`scale: resize at 50% gave ${d.w}x${d.h}, expected 2x4`);
+  const rebased = await evalJs(`document.getElementById('pct').value`);
+  if (String(rebased) !== "100") throw new Error(`scale: after the op the box reads ${rebased}%, expected 100`);
+  console.error("[ok] scale: percent box, geometric slider, w/h sync, resize, rebase to 100%");
+
   // Crop back down via the selection path (hook sets the rect; real button applies).
   stage("crop");
   await evalJs(`__prism.setSel(0, 0, 2, 2)`);
@@ -286,7 +325,19 @@ async function main() {
   if (sd.w !== 4200 || sd.h !== 2800) {
     throw new Error(`sample: big chip gave ${sd.w}x${sd.h} != 4200x2800`);
   }
-  console.error("[ok] samples: both generated in-page, full-swing detail, ½× through the kernel");
+  // The percent box reaches sizes that would take the tab down; 1000% of the
+  // 11.8 MP sample is 1176 MP, which has to be refused rather than attempted.
+  await evalJs(`(() => { const p = document.getElementById('pct');
+    p.value = 1000; p.dispatchEvent(new Event('input'));
+    document.getElementById('resize').click(); return true; })()`);
+  await sleep(400);
+  sd = await evalJs("__prism.dims()");
+  const refusal = await evalJs(`document.getElementById('meta').textContent`);
+  if (sd.w !== 4200 || sd.h !== 2800) {
+    throw new Error(`ceiling: a 1176 MP resize was attempted (now ${sd.w}x${sd.h})`);
+  }
+  if (!refusal.includes("refused")) throw new Error(`ceiling: no refusal shown — "${refusal}"`);
+  console.error("[ok] samples: both generated in-page, full-swing detail, ½× through the kernel, gigapixel target refused");
 
   // Start over: back to the drop zone with the canvas actually emptied, and
   // the chips still live — the only route from your own photo to a sample.
@@ -435,7 +486,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, crop, chained, generated samples, start-over reset), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

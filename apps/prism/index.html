@@ -68,6 +68,10 @@
   }
   select { width: auto; }
   input[type=range] { accent-color: #6fd3ff; width: 110px; }
+  #scale { width: 150px; }
+  #pct { width: 62px; }
+  #target { font-size: 12px; opacity: .7; min-width: 168px; }
+  #target.big { color: #ffcf6f; opacity: .9; }
   .sl { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; opacity: .85; }
   #meta { font-size: 12px; opacity: .7; white-space: pre; text-align: center; }
   #note { opacity: .55; max-width: 660px; text-align: center; font-size: 12px; }
@@ -109,6 +113,12 @@
       <input id="rw" type="number" min="1" step="1" />
       <span class="lock" id="lock" title="aspect ratio lock">🔒</span>
       <input id="rh" type="number" min="1" step="1" />
+      <label>scale</label>
+      <input id="scale" type="range" min="0" max="1000" value="500"
+             title="25% … 400%, 100% mid-track — type any 1–1000% in the box" />
+      <input id="pct" type="number" min="1" max="1000" step="1" value="100" />
+      <span style="font-size:12px;opacity:.7">%</span>
+      <span id="target"></span>
       <select id="method">
         <option value="2">Lanczos-3 (quality)</option>
         <option value="1">Bilinear (fast)</option>
@@ -225,7 +235,7 @@
   function adopt(pixels, w, h) {
     cur = pixels; curW = w; curH = h;
     paint();
-    rwEl.value = w; rhEl.value = h;
+    setScale(100);          // every op rebases the scale on the new image
   }
   function pushUndo() {
     undoStack.push({ p: cur, w: curW, h: curH });
@@ -277,26 +287,86 @@
   });
   rwEl.addEventListener("input", () => {
     if (aspectLocked && curW) rhEl.value = Math.max(1, Math.round(Number(rwEl.value) * curH / curW));
+    syncScaleFromDims();
   });
   rhEl.addEventListener("input", () => {
     if (aspectLocked && curH) rwEl.value = Math.max(1, Math.round(Number(rhEl.value) * curW / curH));
+    syncScaleFromDims();
   });
+
+  // ── Scale: a slider and a percent box over the same target as w/h ────────
+  // The slider is GEOMETRIC — 25%…400% with 100% mid-track — so a halving and
+  // a doubling sit the same distance from centre, which a linear track cannot
+  // do (100% would land a quarter of the way along, and the whole downscale
+  // range would be squeezed into the first sliver). The number box is the
+  // escape hatch past the track's ends: it takes any 1–1000%.
+  const SCALE_LO = 25, SCALE_HI = 400, SPAN = Math.log(SCALE_HI / SCALE_LO);
+  const scaleEl = $("scale"), pctEl = $("pct"), targetEl = $("target");
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const posToPct = (pos) => SCALE_LO * Math.exp((pos / 1000) * SPAN);
+  const pctToPos = (pct) => Math.round(1000 * Math.log(clamp(pct, SCALE_LO, SCALE_HI) / SCALE_LO) / SPAN);
+  const roundPct = (pct) => (pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10);
+
+  function showTarget() {
+    if (!curW) { targetEl.textContent = ""; targetEl.classList.remove("big"); return; }
+    const w = Math.max(1, Math.floor(Number(rwEl.value) || 0));
+    const h = Math.max(1, Math.floor(Number(rhEl.value) || 0));
+    const mp = (w * h) / 1e6;
+    targetEl.textContent = `→ ${w} × ${h} · ${mp.toFixed(1)} MP`;
+    // An upscale is quadratic in memory: four buffers of it exist at once
+    // (source, result, undo, original), so say when it is about to be big.
+    targetEl.classList.toggle("big", mp > 64);
+  }
+  // Percent → the w/h fields (the single source of truth doResize reads).
+  function setScaleFields(pct) {
+    pct = clamp(pct, 1, 1000);
+    pctEl.value = roundPct(pct);
+    if (curW) {
+      rwEl.value = Math.max(1, Math.round(curW * pct / 100));
+      rhEl.value = Math.max(1, Math.round(curH * pct / 100));
+    }
+    showTarget();
+  }
+  function setScale(pct) {
+    setScaleFields(pct);
+    scaleEl.value = pctToPos(pct);
+  }
+  // w/h typed directly → move the slider and box to match, without touching
+  // the field being typed in.
+  function syncScaleFromDims() {
+    if (!curW) return;
+    const pct = (Number(rwEl.value) || curW) / curW * 100;
+    pctEl.value = roundPct(pct);
+    scaleEl.value = pctToPos(pct);
+    showTarget();
+  }
+  scaleEl.addEventListener("input", () => setScaleFields(posToPct(Number(scaleEl.value))));
+  pctEl.addEventListener("input", () => {
+    const v = Number(pctEl.value);
+    if (!v) return;                       // mid-typing ("", "0") — leave it alone
+    setScaleFields(v);
+    scaleEl.value = pctToPos(v);
+  });
+  // A percent box puts a gigapixel one keystroke away (1000% of 12 MP is
+  // 1.2 GP ≈ 4.7 GB), and the result, its undo copy and the original are all
+  // resident at once — so refuse loudly instead of taking the tab down. The
+  // readout turns amber well before this, at 64 MP.
+  const MAX_MP = 100;
   function doResize() {
     const dw = Math.max(1, Math.floor(Number(rwEl.value) || 0));
     const dh = Math.max(1, Math.floor(Number(rhEl.value) || 0));
     if (!dw || !dh || (dw === curW && dh === curH)) return;
+    if (dw * dh > MAX_MP * 1e6) {
+      setMeta(`refused: ${(dw * dh / 1e6).toFixed(0)} MP target is past the ${MAX_MP} MP ceiling` +
+        ` — the result, its undo copy and the original are all in memory at once`);
+      return;
+    }
     const op = Number(methEl.value);
     apply(op, dw, dh, 0, 0, `resize → ${dw}×${dh} (${op === 2 ? "lanczos-3" : "bilinear"})`);
   }
   $("resize").addEventListener("click", doResize);
-  $("half").addEventListener("click", () => {
-    rwEl.value = Math.max(1, Math.round(curW / 2));
-    rhEl.value = Math.max(1, Math.round(curH / 2));
-    doResize();
-  });
-  $("double").addEventListener("click", () => {
-    rwEl.value = curW * 2; rhEl.value = curH * 2; doResize();
-  });
+  $("half").addEventListener("click", () => { setScale(50); doResize(); });
+  $("double").addEventListener("click", () => { setScale(200); doResize(); });
 
   // ── Rotate / flip / grayscale ────────────────────────────────────────────
   $("rotr").addEventListener("click", () => apply(OP.ROTATE, 1, 0, 0, 0, "rotate 90° cw"));
@@ -412,6 +482,7 @@
     metaEl.textContent = "";
     szEl.textContent = "";
     rwEl.value = ""; rhEl.value = "";
+    pctEl.value = 100; scaleEl.value = pctToPos(100); showTarget();
     $("bri").value = $("con").value = $("sat").value = 0;
     $("briv").textContent = $("conv").textContent = $("satv").textContent = "0";
     // Reset the picker too, or re-choosing the SAME file fires no change event.
