@@ -120,9 +120,9 @@ against its own written signature.
 The cause was structural: the set arms grouped `"contains" | "insert" | "remove"`
 into one match arm, so the probes inherited `insert`'s ownership requirement —
 and `insert` genuinely does store its argument (`val: T`), so the grouping had
-to be split rather than patched. Filed and fixed as `B-2026-08-19-19`.
+to be split rather than patched. Filed and fixed as `B-2026-08-19-21`.
 
-The benchmark surfaced a second gap, `B-2026-08-19-20`: **`String` has no O(1)
+The benchmark surfaced a second gap, `B-2026-08-19-22`: **`String` has no O(1)
 indexed character access.** Every mirror language spells first-and-last in
 constant time (`w[0]` / `w[-1]`); Kara's String offers only a `chars()`
 iterator, so the natural phrasing allocates a whole `Vec[char]` to read two
