@@ -1,0 +1,209 @@
+// Differential for LeetCode 293 — two implementations, and PROPERTIES that hold
+// independently of both.
+//
+// Agreement between the two arms is cheap here: they share a shape, so a
+// misread of the problem would be duplicated in both and the diff would stay
+// silent. So this file checks the arms against each other AND against four
+// facts that follow from the problem statement rather than from any code:
+//
+//   1. COUNT. The number of results equals the number of positions i where
+//      s[i] and s[i+1] are both '+'. Independently counted here, without
+//      building any state.
+//   2. LENGTH. Every result has the same length as the input. A flip replaces
+//      two characters; it never inserts or drops one.
+//   3. EDIT DISTANCE. Every result differs from the input in exactly two
+//      positions, both '+' -> '-'. That is the whole definition of a move, and
+//      it is the property that catches an off-by-one in the pair index.
+//   4. PLUS COUNT. Every result has exactly two fewer '+' than the input.
+//      Implied by 3, but it fails differently: a solver that flips the wrong
+//      pair still passes 4 while failing 3.
+//
+// The generated sweep walks every string over {+,-} up to length 12 — 8190
+// inputs, exhaustive rather than sampled, because the alphabet is binary and
+// the length that matters is small. Beyond that the count is checked on longer
+// structured strings where exhaustive enumeration would not fit.
+
+fn scan(s: ref String) -> Vec[String] {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    let mut out: Vec[String] = Vec.new();
+    let mut i = 0i64;
+    while i + 1i64 < n {
+        if cs[i] == '+' and cs[i + 1i64] == '+' {
+            let mut t = String.new();
+            let mut j = 0i64;
+            while j < n {
+                if j == i or j == i + 1i64 { t.push('-'); } else { t.push(cs[j]); }
+                j = j + 1i64;
+            }
+            out.push(t);
+        }
+        i = i + 1i64;
+    }
+    return out;
+}
+
+fn rebuild(s: ref String) -> Vec[String] {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    let mut out: Vec[String] = Vec.new();
+    let mut i = 0i64;
+    while i + 1i64 < n {
+        let mut buf: Vec[char] = Vec.new();
+        let mut j = 0i64;
+        while j < n { buf.push(cs[j]); j = j + 1i64; }
+        if buf[i] == '+' and buf[i + 1i64] == '+' {
+            buf[i] = '-';
+            buf[i + 1i64] = '-';
+            let mut t = String.new();
+            let mut k = 0i64;
+            while k < n { t.push(buf[k]); k = k + 1i64; }
+            out.push(t);
+        }
+        i = i + 1i64;
+    }
+    return out;
+}
+
+// Property 1, computed without producing any state.
+fn count_pairs(s: ref String) -> i64 {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    let mut c = 0i64;
+    let mut i = 0i64;
+    while i + 1i64 < n {
+        if cs[i] == '+' and cs[i + 1i64] == '+' { c = c + 1i64; }
+        i = i + 1i64;
+    }
+    return c;
+}
+
+fn count_char(s: ref String, target: char) -> i64 {
+    let mut c = 0i64;
+    for ch in s.chars() {
+        if ch == target { c = c + 1i64; }
+    }
+    return c;
+}
+
+// Property 3: exactly two positions differ, and both went '+' -> '-'.
+fn is_one_move_away(before: ref String, after: ref String) -> bool {
+    let a: Vec[char] = before.chars().collect();
+    let b: Vec[char] = after.chars().collect();
+    if a.len() != b.len() { return false; }
+    let mut diffs = 0i64;
+    let mut adjacent_ok = false;
+    let mut first = -1i64;
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != b[i] {
+            // Every difference must be a legal half-move.
+            if not (a[i] == '+' and b[i] == '-') { return false; }
+            if first < 0i64 { first = i; } else if i == first + 1i64 { adjacent_ok = true; }
+            diffs = diffs + 1i64;
+        }
+        i = i + 1i64;
+    }
+    return diffs == 2i64 and adjacent_ok;
+}
+
+fn lists_equal(a: ref Vec[String], b: ref Vec[String]) -> bool {
+    if a.len() != b.len() { return false; }
+    let mut i = 0i64;
+    while i < a.len() {
+        if a[i] != b[i] { return false; }
+        i = i + 1i64;
+    }
+    return true;
+}
+
+// Enumerate the k-th string of length n over {+,-}, low bit first.
+fn nth_string(n: i64, k: i64) -> String {
+    let mut s = String.new();
+    let mut i = 0i64;
+    while i < n {
+        if ((k / pow2(i)) % 2i64) == 1i64 { s.push('+'); } else { s.push('-'); }
+        i = i + 1i64;
+    }
+    return s;
+}
+
+fn pow2(e: i64) -> i64 {
+    let mut p = 1i64;
+    let mut i = 0i64;
+    while i < e { p = p * 2i64; i = i + 1i64; }
+    return p;
+}
+
+fn main() {
+    let mut inputs = 0i64;
+    let mut arm_mismatch = 0i64;
+    let mut bad_count = 0i64;
+    let mut bad_length = 0i64;
+    let mut bad_move = 0i64;
+    let mut bad_pluses = 0i64;
+    let mut total_states = 0i64;
+
+    // Exhaustive over {+,-}^n for n = 0..12.
+    let mut n = 0i64;
+    while n <= 12i64 {
+        let limit = pow2(n);
+        let mut k = 0i64;
+        while k < limit {
+            let s = nth_string(n, k);
+            let a = scan(s);
+            let b = rebuild(s);
+            inputs = inputs + 1i64;
+
+            if not lists_equal(a, b) { arm_mismatch = arm_mismatch + 1i64; }
+            if a.len() != count_pairs(s) { bad_count = bad_count + 1i64; }
+
+            let want_plus = count_char(s, '+') - 2i64;
+            let mut i = 0i64;
+            while i < a.len() {
+                total_states = total_states + 1i64;
+                if a[i].len() != s.len() { bad_length = bad_length + 1i64; }
+                if not is_one_move_away(s, a[i]) { bad_move = bad_move + 1i64; }
+                if count_char(a[i], '+') != want_plus { bad_pluses = bad_pluses + 1i64; }
+                i = i + 1i64;
+            }
+            k = k + 1i64;
+        }
+        n = n + 1i64;
+    }
+
+    println(f"exhaustive over 2^0..2^12: {inputs} inputs, {total_states} states produced");
+    println(f"  arm disagreement (scan vs rebuild): {arm_mismatch}");
+    println(f"  wrong result count:                 {bad_count}");
+    println(f"  wrong result length:                {bad_length}");
+    println(f"  not exactly one legal move away:    {bad_move}");
+    println(f"  wrong '+' count:                    {bad_pluses}");
+
+    // Longer structured strings, where the count property still applies but
+    // exhaustive enumeration does not fit.
+    let mut long_bad = 0i64;
+    let mut long_cases = 0i64;
+    let runs: Vec[i64] = [20, 50, 200];
+    let mut ri = 0i64;
+    while ri < runs.len() {
+        let len = runs[ri];
+        // All '+': every adjacent pair is a move, so len-1 results.
+        let mut allplus = String.new();
+        let mut i = 0i64;
+        while i < len { allplus.push('+'); i = i + 1i64; }
+        if scan(allplus).len() != len - 1i64 { long_bad = long_bad + 1i64; }
+        long_cases = long_cases + 1i64;
+
+        // Alternating: no two adjacent '+', so no results at all.
+        let mut alt = String.new();
+        i = 0i64;
+        while i < len {
+            if (i % 2i64) == 0i64 { alt.push('+'); } else { alt.push('-'); }
+            i = i + 1i64;
+        }
+        if scan(alt).len() != 0i64 { long_bad = long_bad + 1i64; }
+        long_cases = long_cases + 1i64;
+        ri = ri + 1i64;
+    }
+    println(f"long structured strings: {long_cases} cases, {long_bad} bad");
+}
