@@ -186,6 +186,26 @@ anywhere names it as the reason for a 3.7× loss.
 So the lane still waits, now on `B-2026-08-20-14`. Adding it today would
 measure a loop that silently runs on one core.
 
+**Update — one of those two conditions is now met.** `B-2026-08-20-3` split into
+three findings, and two are fixed:
+
+- The 2.55x pessimization was never the fan-out. `chars().collect()` lowered to
+  a push-per-char grow chain, and every `realloc` took the shared glibc arena
+  lock that all auto-par workers contend on. Fixed in `df7bef9` (pre-size the
+  fill); the probe went from 2.55x slower to ~3.5x faster.
+- The punch loop below never dispatched at all, and
+  `karac build --concurrency-report` claimed `parallel_reduction` for it
+  regardless — the report printed the analyzer's *opportunity* with no lowering
+  verdict. Fixed in `c0874f8`: the report now prints `fanned_out: false` with
+  `cost_gate: declined_unshapeable_loop` and a reason naming the cause (the
+  loop's counter `i` is a binding reused from an earlier loop rather than a
+  fresh `let mut i = 0` immediately before it).
+
+What is still open is `B-2026-08-20-14`: whether that loop *should* dispatch.
+The reused counter is dead on entry and rewritten by the loop, so the shape
+extractor could accept it — worth about 3.69x on this workload. Until that
+lands the decline is honest but still a decline, so the par lane stays out.
+
 ## Benchmarks
 
 Container x86_64, 3000-word dictionary built once, then 1M `is_unique` punches
