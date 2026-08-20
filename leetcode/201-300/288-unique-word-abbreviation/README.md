@@ -149,7 +149,7 @@ the allocation closes only part of it. The rest is undiagnosed — plausibly
 String hashing and the per-query abbreviation construction, but that has not
 been measured and is not claimed.
 
-## No par lane, and why that is a finding
+## No par lane yet, and why that is a finding
 
 The punch loop is 1M independent queries over an immutable index — textbook
 order-free fan-out, and `karac build --concurrency-report` agrees, reporting
@@ -157,23 +157,34 @@ order-free fan-out, and `karac build --concurrency-report` agrees, reporting
 
 It delivers **1.01×, at 0.96 cores busy**. No fan-out happens.
 
-The control matters here: kata #286's par lane on the same 4-core box runs at
-**3.71 cores** for a 3.32× speedup, and a synthetic reduction over pure
-arithmetic hits **4.29 cores**. Threading works, and `parallel_reduction` does
-lower to real threads — this loop is the anomaly.
+That first went in as `B-2026-08-20-3`, where I blamed the fan-out and proposed
+either declining the loop or lowering it differently. **Both would have been
+wrong**, and the fix (`df7bef9`) says why: the loop *wanted* to parallelize and
+would have won by 2.4×. `chars().collect()` lowered to `Vec.new()` plus
+push-per-char, so every collect took ~1.5 reallocs, and each realloc grabs the
+one glibc arena lock all four workers share. Presizing the Vec removed the
+contention — a synthetic probe that was 2.55× *slower* under auto-par is now
+~3.5× *faster*, at 3.00 cores.
 
-Bisecting it ruled out the `Map` read (removing the lookup, then the whole
-index, changes nothing), per-iteration String allocation (3.67 cores on its
-own), reading a captured `Vec[String]` (3.00), and the conditional accumulator
-update (3.67). What reproduces it is **`chars().collect()` in the reduction
-body** — and in a synthetic probe that construct makes the parallel build
-**2.55× slower** than sequential (326 ms → 831 ms), with system time going from
-2.9 ms to 812.8 ms.
+**This kata's loop did not move.** Still 0.95 cores, still flat across
+`KARAC_PAR_WORKERS=1/2/4`, still claiming a reduction. Bisecting it down to a
+minimal program and re-introducing differences one at a time landed on a single
+token — the loop's induction variable:
 
-So this kata gets **no par lane**: adding one would enshrine a measurement of a
-pessimization as if it were a result. Filed as `B-2026-08-20-3`. The lane goes
-in when the compiler either declines the reduction with a readable reason or
-lowers it without losing to the sequential build.
+```kara
+let mut i = 0i64;   while i < n { ... }   // 81.4 ms, 3.88 cores
+i = 0i64;           while i < n { ... }   // 300.1 ms, 1.00 cores
+```
+
+Declared fresh it dispatches; reusing the `i` that already served the
+dictionary- and pool-build loops, it does not — **3.69× ± 0.27**, with User time
+nearly identical (289 vs 296 ms), so the work is the same and only its
+distribution differs. The bench reached that phrasing without anyone trying,
+which is the point: reusing a loop counter is ordinary style, and nothing
+anywhere names it as the reason for a 3.7× loss.
+
+So the lane still waits, now on `B-2026-08-20-14`. Adding it today would
+measure a loop that silently runs on one core.
 
 ## Benchmarks
 
