@@ -149,6 +149,32 @@ the allocation closes only part of it. The rest is undiagnosed — plausibly
 String hashing and the per-query abbreviation construction, but that has not
 been measured and is not claimed.
 
+## No par lane, and why that is a finding
+
+The punch loop is 1M independent queries over an immutable index — textbook
+order-free fan-out, and `karac build --concurrency-report` agrees, reporting
+`parallel_reduction { op: +, accumulator: unique_count }`.
+
+It delivers **1.01×, at 0.96 cores busy**. No fan-out happens.
+
+The control matters here: kata #286's par lane on the same 4-core box runs at
+**3.71 cores** for a 3.32× speedup, and a synthetic reduction over pure
+arithmetic hits **4.29 cores**. Threading works, and `parallel_reduction` does
+lower to real threads — this loop is the anomaly.
+
+Bisecting it ruled out the `Map` read (removing the lookup, then the whole
+index, changes nothing), per-iteration String allocation (3.67 cores on its
+own), reading a captured `Vec[String]` (3.00), and the conditional accumulator
+update (3.67). What reproduces it is **`chars().collect()` in the reduction
+body** — and in a synthetic probe that construct makes the parallel build
+**2.55× slower** than sequential (326 ms → 831 ms), with system time going from
+2.9 ms to 812.8 ms.
+
+So this kata gets **no par lane**: adding one would enshrine a measurement of a
+pessimization as if it were a result. Filed as `B-2026-08-20-3`. The lane goes
+in when the compiler either declines the reduction with a readable reason or
+lowers it without losing to the sequential build.
+
 ## Benchmarks
 
 Container x86_64, 3000-word dictionary built once, then 1M `is_unique` punches
