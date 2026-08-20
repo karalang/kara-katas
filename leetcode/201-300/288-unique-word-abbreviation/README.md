@@ -122,16 +122,30 @@ into one match arm, so the probes inherited `insert`'s ownership requirement —
 and `insert` genuinely does store its argument (`val: T`), so the grouping had
 to be split rather than patched. Filed and fixed as `B-2026-08-19-21`.
 
-The benchmark surfaced a second gap, `B-2026-08-19-22`: **`String` has no O(1)
-indexed character access.** Every mirror language spells first-and-last in
-constant time (`w[0]` / `w[-1]`); Kara's String offers only a `chars()`
-iterator, so the natural phrasing allocates a whole `Vec[char]` to read two
-characters. Deleting that allocation — walking `chars()` once and tracking
-first/last in flight — is worth **1.30× ± 0.18** (274.6 ms → 212.0 ms) on the
-bench below.
+I also filed a second row, `B-2026-08-19-22`, claiming `String` had no indexed
+character access. **That was wrong and the row was closed as invalid.**
+`s.char_at(i) -> Option[char]` exists — specced, implemented across typechecker,
+interpreter and codegen, and named in the help text of the `s[0]` compile error.
+I had read a single per-type API table and concluded the capability was absent
+without grepping either design.md or the compiler.
 
-That does *not* account for the whole gap: Kara is 2.76× slower than Go here,
-and the allocation closes only part of it. The rest is undiagnosed — plausibly
+The correction is worth keeping because it cuts the other way too: design.md
+§ Character access explicitly *sanctions* the phrasing these solvers use —
+"when repeated indexed access is genuinely needed, convert first:
+`let chars: Vec[char] = s.chars().collect()` — then `chars[i]` is O(1) on a type
+where that is honest." So `abbrev`'s `collect()` is the recommended spelling,
+not a workaround for a missing feature.
+
+One measurement from that row survives, reframed as an ordinary cost of
+phrasing rather than evidence of a gap: replacing the `collect()` in `abbrev`
+with a single `chars()` walk that tracks first and last in flight is worth
+**1.30× ± 0.18** (274.6 ms → 212.0 ms) on the bench below. It buys that because
+it makes *one* pass; a `char_count()` + two `char_at()` rewrite makes three, and
+was measured at no gain at all. The solvers keep `collect()` — readable, and
+what the spec recommends.
+
+None of this accounts for the whole gap: Kāra is 2.76× slower than Go here, and
+the allocation closes only part of it. The rest is undiagnosed — plausibly
 String hashing and the per-query abbreviation construction, but that has not
 been measured and is not claimed.
 
