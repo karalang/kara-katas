@@ -149,62 +149,60 @@ the allocation closes only part of it. The rest is undiagnosed — plausibly
 String hashing and the per-query abbreviation construction, but that has not
 been measured and is not claimed.
 
-## No par lane yet, and why that is a finding
+## The par lane, and the two bugs it took to get one
 
 The punch loop is 1M independent queries over an immutable index — textbook
-order-free fan-out, and `karac build --concurrency-report` agrees, reporting
-`parallel_reduction { op: +, accumulator: unique_count }`.
+order-free fan-out, and `karac build --concurrency-report` said so from the
+start, reporting `parallel_reduction { op: +, accumulator: unique_count }`.
 
-It delivers **1.01×, at 0.96 cores busy**. No fan-out happens.
+For two days it delivered **1.01×, at 0.96 cores busy**. Getting the lane took
+two compiler fixes, and the first diagnosis was mine and wrong.
 
-That first went in as `B-2026-08-20-3`, where I blamed the fan-out and proposed
-either declining the loop or lowering it differently. **Both would have been
-wrong**, and the fix (`df7bef9`) says why: the loop *wanted* to parallelize and
-would have won by 2.4×. `chars().collect()` lowered to `Vec.new()` plus
-push-per-char, so every collect took ~1.5 reallocs, and each realloc grabs the
-one glibc arena lock all four workers share. Presizing the Vec removed the
-contention — a synthetic probe that was 2.55× *slower* under auto-par is now
-~3.5× *faster*, at 3.00 cores.
+**`B-2026-08-20-3`** — I blamed the fan-out and proposed either declining the
+loop or lowering it differently. Both would have been harmful: the loop wanted
+to parallelize and would have won by 2.4×. The real cause was the grow chain.
+`chars().collect()` lowered to `Vec.new()` plus push-per-char, ~1.5 reallocs per
+collect, and every realloc takes the one glibc arena lock all workers share.
+Presizing removed the contention.
 
-**This kata's loop did not move.** Still 0.95 cores, still flat across
-`KARAC_PAR_WORKERS=1/2/4`, still claiming a reduction. Bisecting it down to a
-minimal program and re-introducing differences one at a time landed on a single
-token — the loop's induction variable:
+**`B-2026-08-20-14`** — this loop still didn't move, and bisecting landed on a
+single token. `preceding_stmt_init` matched only `let mut i = 0` and had no
+assignment arm, so reusing the `i` that already served the build loops declined
+as `WhileCounterInitNotFound`. Worth **3.69×**, with the concurrency report
+claiming a reduction either way. Widening that gate then exposed a *correctness*
+bug — the counter left at its init value after a fanned-out loop — which was
+split out and fixed first, rather than trading a perf bug for a wrong answer.
 
-```kara
-let mut i = 0i64;   while i < n { ... }   // 81.4 ms, 3.88 cores
-i = 0i64;           while i < n { ... }   // 300.1 ms, 1.00 cores
-```
+With both in, the lane is real. Container x86_64, 4 cores, sink 573650 across
+all seven binaries:
 
-Declared fresh it dispatches; reusing the `i` that already served the
-dictionary- and pool-build loops, it does not — **3.69× ± 0.27**, with User time
-nearly identical (289 vs 296 ms), so the work is the same and only its
-distribution differs. The bench reached that phrasing without anyone trying,
-which is the point: reusing a loop counter is ordinary style, and nothing
-anywhere names it as the reason for a 3.7× loss.
+| lane | implementation | mean |
+|---|---|---|
+| par | c (pthreads) | 31.5 ms |
+| par | go (goroutines) | 29.6 ms |
+| par | **kāra (auto-par)** | **59.3 ms** |
+| seq | c | 92.9 ms |
+| seq | go | 86.4 ms |
+| seq | rust (overflow-checks=on) | 95.8 ms |
+| seq | **kāra (single-threaded)** | **181.2 ms** |
 
-So the lane still waits, now on `B-2026-08-20-14`. Adding it today would
-measure a loop that silently runs on one core.
+Auto-par is worth **3.06×** (181.2 → 59.3), and the fan-out is real — User time
+183 ms against 54 ms wall in the raw hyperfine output.
 
-**Update — one of those two conditions is now met.** `B-2026-08-20-3` split into
-three findings, and two are fixed:
+The honest reading of the cross-language rows: kāra is ~1.9× off C in **both**
+lanes (1.88× par, 1.95× seq). Auto-par is therefore carrying its weight —
+it delivers about what hand-written threads deliver, and the remaining gap is
+the same sequential gap, not something parallelism introduced or hid. That
+sequential gap is undiagnosed; plausibly String hashing and the per-query
+abbreviation build, but that has not been measured and is not claimed.
 
-- The 2.55x pessimization was never the fan-out. `chars().collect()` lowered to
-  a push-per-char grow chain, and every `realloc` took the shared glibc arena
-  lock that all auto-par workers contend on. Fixed in `df7bef9` (pre-size the
-  fill); the probe went from 2.55x slower to ~3.5x faster.
-- The punch loop below never dispatched at all, and
-  `karac build --concurrency-report` claimed `parallel_reduction` for it
-  regardless — the report printed the analyzer's *opportunity* with no lowering
-  verdict. Fixed in `c0874f8`: the report now prints `fanned_out: false` with
-  `cost_gate: declined_unshapeable_loop` and a reason naming the cause (the
-  loop's counter `i` is a binding reused from an earlier loop rather than a
-  fresh `let mut i = 0` immediately before it).
-
-What is still open is `B-2026-08-20-14`: whether that loop *should* dispatch.
-The reused counter is dead on entry and rewritten by the loop, so the shape
-extractor could accept it — worth about 3.69x on this workload. Until that
-lands the decline is honest but still a decline, so the par lane stays out.
+**A note on the lane's construction.** Every other par kata carries a
+`<stem>_seq.kara` differing from its par twin by a `#[par_order_free]`
+attribute. This loop is picked up by the automatic path unaided, so the two
+kāra rows here are **the same file built twice** and the only difference is the
+compiler's own decision — a byte-identical `_seq.kara` would be a duplicate
+asserting nothing. Building the par row with `KARAC_AUTO_PAR=0` would silently
+measure the seq binary, so `bench.sh` says so where someone might be tempted.
 
 ## Benchmarks
 
