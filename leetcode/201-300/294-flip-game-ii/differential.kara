@@ -40,9 +40,25 @@
 // exponential in the number of moves and runs to 10 (2,047 boards). Every band
 // here is sized by what finishes under the TREE-WALK INTERPRETER, which is the
 // slowest of the four surfaces this file must agree on and is two orders of
-// magnitude behind the compiled ones — the single-run spine and the call counts
-// below stop well short of where a compiled build could take them for that
-// reason alone.
+// magnitude behind the compiled ones.
+//
+// THE BINDING CONSTRAINT IS `next_states`, NOT THE MEMO — and that correction is
+// worth the paragraph, because the first version of this comment got it wrong.
+// The bands were cut to 12/10/18/16 when the interpreter's `Map` was an
+// association list with O(n) lookup (B-2026-08-21-8), on the assumption that
+// memo probes were the cost. That bug is now fixed — an integer-keyed
+// insert-then-lookup probe went from 27.51 s to 0.62 s at n = 8000 — and this
+// file did NOT get faster:
+//
+//     band 12/10/18/16, before the Map fix    191.60 s
+//     band 12/10/18/16, after  the Map fix    215.28 s
+//     band 13/10/18/16, after  the Map fix    440.92 s
+//
+// (The two 12-band runs are from different container instances, so read them as
+// "unchanged", not as a regression.) What actually dominates is building a fresh
+// successor `String` per node inside `next_states`, which no map change touches.
+// 12 is therefore the right band and raising it is not waiting on anything: one
+// more step costs 7.3 minutes on a file that has to agree on four surfaces.
 
 fn next_states(s: ref String) -> Vec[String] {
     let cs: Vec[char] = s.chars().collect();

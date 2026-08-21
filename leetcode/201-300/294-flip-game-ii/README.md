@@ -200,9 +200,32 @@ around here:
   differently from `karac build` (each deterministically), and
   `Map[K, V, FxBuildHasher]` — design.md's own spelling — does not resolve, so
   there is no opt-in either way.
-- **`B-2026-08-21-8`** — the interpreter's `Map` is an association list
-  (`Vec<(Value, Value)>`, looked up with `iter().find`), so every operation is a
-  linear scan. Insert-then-lookup of *n* keys measures 0.65 / 2.02 / 7.16 /
+- **`B-2026-08-21-8`** — the interpreter's `Map` was an association list
+  (`Vec<(Value, Value)>`, looked up with `iter().find`), so every operation was a
+  linear scan. Insert-then-lookup of *n* keys measured 0.65 / 2.02 / 7.16 /
   27.51 s for n = 1000 / 2000 / 4000 / 8000 — 4× per doubling, quadratic —
-  against 0.00 s compiled. That is why this kata's differential bands are 12 and
-  18 rather than 14 and 22: not caution, a complexity class.
+  against 0.00 s compiled. **Fixed the same day**; the same probe now runs in
+  0.62 s at n = 8000.
+
+### The bands are not waiting on that fix — I checked, and I was wrong
+
+When the quadratic `Map` was filed, this kata's differential bands were cut to
+12/10/18/16 and the cut was attributed to it. With the fix landed, the obvious
+follow-up was to put them back. **The measurement says no:**
+
+| | interpreter |
+|---|---:|
+| band 12/10/18/16, before the `Map` fix | 191.60 s |
+| band 12/10/18/16, after the `Map` fix | 215.28 s |
+| band 13/10/18/16, after the `Map` fix | 440.92 s |
+
+Not one second faster. (The two 12-band runs are from different container
+instances, so read them as *unchanged* rather than as a regression.) The cost is
+building a fresh successor `String` per node inside `next_states` — which no map
+change touches — and one more band step costs **7.3 minutes** on a file that has
+to agree on four surfaces.
+
+So 12 is the right band, and it was the right band for a reason nobody had
+checked. The lesson is the same one the `String.push` episode taught two katas
+earlier: a plausible attribution is not a measurement, and the way to tell them
+apart is to fix the suspected cause and see whether anything moves.
