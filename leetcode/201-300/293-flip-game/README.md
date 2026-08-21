@@ -96,7 +96,7 @@ The workload is allocation-dominated — one owned string per result — so ever
 lands in the same order of magnitude except C. Kāra is 3.25× off C and within
 7% of plain Rust.
 
-### Where the 3.25× to C goes — two answers, and one I got wrong
+### Where the 3.25× to C goes — and why three theories about it were wrong
 
 Two candidates are cleanly eliminated, each on its own measurement:
 
@@ -127,10 +127,72 @@ The check that settles it takes one minute and no disassembly. Push `'+'`
 constant of each other. A 12× gap is the signature of an inlined fast path
 beside an out-of-line slow one — exactly what the source says is there.
 
-So the remaining gap is, honestly, **unattributed**. The row is closed as
-invalid, and the next step is `perf record` on the real bench rather than
-another guess from static inspection — which is what produced a confident wrong
-answer the first time.
+So `perf record` was the next step. `perf` is not available in this container,
+but callgrind is, and for this question it is the better instrument anyway:
+exact retired-instruction counts, no sampling noise.
+
+### The profile, and the optimization it recommended
+
+|                                  | instructions | wall     | vs C (instr) | vs C (wall) |
+| -------------------------------- | -----------: | -------: | -----------: | ----------: |
+| C                                |    1.657 G   | 162.3 ms |        1.00× |       1.00× |
+| Rust `-O -C overflow-checks=on`  |    5.182 G   | 403.0 ms |        3.13× |       2.48× |
+| Kāra                             |    6.594 G   | 521.0 ms |        3.98× |       3.21× |
+
+**Most of the gap is not Kāra's.** Rust runs the same algorithm through the same
+growable-`String` abstraction and is already 2.48× C. Kāra is **1.27× Rust in
+instructions and 1.30× in wall** — and the two allocate identically, their
+`_int_malloc` counts agreeing to five significant figures (326,836,831 against
+326,836,911). What separates both from the C mirror is that C's `malloc(65)`
+carries no length and no capacity. "3.25× slower than C" is really "2.5× for
+being a safe language with a growable string, and 1.3× on top of that."
+
+The instruction-level dump then localizes the rest precisely: **33 retired
+instructions per one-byte push**, in a loop that stores one byte. Ten of them
+are a branchless `cmp`/`cmov` ladder computing the UTF-8 encoded length — 1, 2,
+3 or 4 — which the capacity check needs *before* the ASCII test happens at the
+store. Six more are the block layout that forces: three unconditional jumps, two
+stack reloads, and a re-test of `< 0x80` the ladder had already performed.
+
+Hoist the ASCII test above the ladder and the fast side gets a compile-time
+length of 1. Sixteen instructions per push, gone.
+
+### So I built it, and it is 10% slower
+
+|                     | instructions | wall               |
+| ------------------- | -----------: | -----------------: |
+| shipped             |    6.594 G   | 492.9 ms ± 28.3    |
+| ASCII test hoisted  |    4.360 G   | 542.7 ms ± 13.4    |
+
+**−33.9% instructions, +10% wall.** Both binaries from the same compiler modulo
+that one arm, 40 runs each. The hot loop did shrink to 21 instructions exactly
+as predicted; it just got slower.
+
+The disassembly names the mechanism. Before the split, the `Vec[char]` base
+pointer lives in a register across the loop — `mov 0x0(%r13,%r12,4),%r13d`, one
+load on the critical path. After it, the arm's extra basic blocks raise register
+pressure in the *enclosing* loop, the base gets spilled, and each iteration does
+`mov 0x58(%rsp),%rax` and then `mov (%rax,%r12,4),%r15d` — **two dependent loads
+where there was one**. The instructions removed were ILP-friendly filler the
+core retired for free (IPC fell from ~3.2 to ~2.0); the load added is on the
+dependency chain and is not free.
+
+A control isolates it: a 2.5M × 64-char string-build micro, with almost nothing
+else live to spill, measures 237.2 ms against 236.5 ms — dead neutral. The cost
+is not in the arm. It is in what the arm does to the loop it gets inlined into.
+
+The change is reverted and filed as `B-2026-08-21-3` (`wontfix`, with the
+numbers). The cross-reference that makes it sting is `B-2026-07-18-8`: the
+*same* optimization shape applied to `push_str`, where const-folding a length-1
+append was a real 1.15–1.56× win across a cluster of char-append katas.
+Identical reasoning, identical instruction-count evidence, opposite outcome.
+
+**The transferable result is the one in the second table.** On this workload,
+retired instruction count does not order the variants — a third of them can
+come out and leave the program slower. It is the third theory about this gap to
+be refuted, and the first to be refuted *after* being implemented rather than
+before. The string-build inner loop is latency-bound, not instruction-bound, and
+any further attempt on it needs to start from a dependency chain, not a count.
 
 ### The first run of this bench was wrong, and the sink did not notice
 
