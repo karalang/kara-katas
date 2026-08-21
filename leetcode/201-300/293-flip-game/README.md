@@ -96,10 +96,9 @@ The workload is allocation-dominated — one owned string per result — so ever
 lands in the same order of magnitude except C. Kāra is 3.25× off C and within
 7% of plain Rust.
 
-### Where the 3.25× to C actually goes
+### Where the 3.25× to C goes — two answers, and one I got wrong
 
-Worth decomposing rather than shrugging at, since the workload is simple enough
-to account for completely. Two of the three candidates turn out to be fine:
+Two candidates are cleanly eliminated, each on its own measurement:
 
 **Allocation is not it.** An `LD_PRELOAD` counter gives Kāra 2,739,223 malloc /
 255,809 realloc against C's 2,510,274 / 0 — about **1.09 malloc and 0.10 realloc
@@ -111,18 +110,27 @@ identical timing (264.0 vs 266.0 ms), so the idiom leaves nothing on the table.
 reads, building no string, runs in 55.9 ms — about **0.35 ns per read**, so
 bounds-check elision is doing its job.
 
-**`String.push` is all of it.** Adding the pushes takes that probe to 264.9 ms,
-so 160M pushes cost 209 ms — **~1.3 ns each**, roughly 4 cycles against a C byte
-store at well under one. `objdump` shows why: `karac_string_encode_char` is an
-**out-of-line call in the hot loop**, one per character. The runtime function
-already opens with `if cp < 0x80`, so the ASCII path itself is a compare and a
-store; what the program pays on top is the call boundary. Filed as
-`B-2026-08-21-1` — inlining the ASCII test at the push site is what Rust's
-`String::push` does, and is likely most of why the Rust mirror lands at 493 ms
-building strings the same way.
+**And `String.push` is not it either — though I first claimed it was.** I ran
+`objdump` on a probe, saw `karac_string_encode_char` among the calls in `main`,
+and filed `B-2026-08-21-1` proposing that an inlined ASCII fast path would
+recover ~40% of the runtime. That was wrong twice over. The fast path
+**already exists** — `codegen/vec_method.rs`'s push arm computes the UTF-8
+length inline and stores the single byte directly, and its comment explains that
+this is precisely to avoid the encode call *and* the one-byte `memmove`. And the
+call I saw was not in the loop at all: my grep covered the whole of `main`,
+which ends with `println(f"acc {acc}")`, and f-string char rendering is the
+documented caller of that helper.
 
-So: expected in that nothing is broken, but ~40% of this kata's runtime sits
-behind one un-inlined call.
+The check that settles it takes one minute and no disassembly. Push `'+'`
+(1 byte) versus `'é'` (2 bytes), 160M times each: **94.9 ms versus 1.163 s, a
+12.25× split.** If both went through one out-of-line call they would be within a
+constant of each other. A 12× gap is the signature of an inlined fast path
+beside an out-of-line slow one — exactly what the source says is there.
+
+So the remaining gap is, honestly, **unattributed**. The row is closed as
+invalid, and the next step is `perf record` on the real bench rather than
+another guess from static inspection — which is what produced a confident wrong
+answer the first time.
 
 ### The first run of this bench was wrong, and the sink did not notice
 
