@@ -96,6 +96,34 @@ The workload is allocation-dominated — one owned string per result — so ever
 lands in the same order of magnitude except C. Kāra is 3.25× off C and within
 7% of plain Rust.
 
+### Where the 3.25× to C actually goes
+
+Worth decomposing rather than shrugging at, since the workload is simple enough
+to account for completely. Two of the three candidates turn out to be fine:
+
+**Allocation is not it.** An `LD_PRELOAD` counter gives Kāra 2,739,223 malloc /
+255,809 realloc against C's 2,510,274 / 0 — about **1.09 malloc and 0.10 realloc
+per state**. The presize pass is working. Rewriting `String.new()` as
+`String.with_capacity(n)` produces *byte-identical* allocation counts and
+identical timing (264.0 vs 266.0 ms), so the idiom leaves nothing on the table.
+
+**The read side is not it.** A probe doing only the 160M `Vec[char]` indexed
+reads, building no string, runs in 55.9 ms — about **0.35 ns per read**, so
+bounds-check elision is doing its job.
+
+**`String.push` is all of it.** Adding the pushes takes that probe to 264.9 ms,
+so 160M pushes cost 209 ms — **~1.3 ns each**, roughly 4 cycles against a C byte
+store at well under one. `objdump` shows why: `karac_string_encode_char` is an
+**out-of-line call in the hot loop**, one per character. The runtime function
+already opens with `if cp < 0x80`, so the ASCII path itself is a compare and a
+store; what the program pays on top is the call boundary. Filed as
+`B-2026-08-21-1` — inlining the ASCII test at the push site is what Rust's
+`String::push` does, and is likely most of why the Rust mirror lands at 493 ms
+building strings the same way.
+
+So: expected in that nothing is broken, but ~40% of this kata's runtime sits
+behind one un-inlined call.
+
 ### The first run of this bench was wrong, and the sink did not notice
 
 C measured **29.4 ms** against Kāra's 514.7 — a 17.5× gap. That spread is too
