@@ -1,17 +1,23 @@
 // EQUAL-HASH side probe for LeetCode #294 — NOT part of bench.sh's output.
 //
-// `flipgame2.rs` uses Rust's default `HashMap`, whose hasher is SipHash-1-3
-// seeded per process — DoS-resistant. Kāra's `Map` emits FxHash (rotate-xor-
-// multiply) with a compile-time-constant seed, which is materially faster and
-// not DoS-resistant. Comparing them head to head measures that safety
-// difference as if it were a code-generation difference, which is exactly the
-// mistake BENCHMARKS.md forbids on integer overflow.
+// HISTORICAL CONTROL — the asymmetry this file corrected no longer exists.
 //
-// So this file is `flipgame2.rs` with Kāra's hash function transplanted in
-// verbatim — the same rotate-left-5 / XOR / multiply per byte, the same seed —
-// leaving the map implementation and everything else identical. The gap between
-// this and `flipgame2.rs` is the price of hash-flooding resistance; the gap
-// between this and the Kāra binary is the code generation.
+// When it was written, `flipgame2.rs` used Rust's default `HashMap` (SipHash-1-3,
+// seeded per process, DoS-resistant) while Kāra's `Map` emitted FxHash
+// (rotate-xor-multiply) under a compile-time-constant seed — materially faster
+// and not DoS-resistant. Comparing them head to head measured that safety
+// difference as if it were a code-generation difference, exactly the mistake
+// BENCHMARKS.md forbids on integer overflow. So this file is `flipgame2.rs`
+// with Kāra's hash transplanted in verbatim — same rotate-left-5 / XOR /
+// multiply per byte, same seed — and nothing else changed.
+//
+// `B-2026-08-21-6` has since made keyed SipHash-1-3 Kāra's default, so
+// `flipgame2.rs` vs the Kāra binary is ALREADY an equal-hash comparison and
+// this file no longer corrects anything. What it now models is the
+// `Map[K, V, FxBuildHasher]` opt-in. The cheaper and more direct probe is to
+// build the Kāra side both ways — see README § "The hasher is the obvious
+// explanation" — which prices the keyed default at 1.11x. Keep this as the
+// cross-check from the Rust side: it says the same thing.
 //
 // Build and run by hand:
 //     rustc -O flipgame2_fx.rs -o target/flipgame2_fx && ./target/flipgame2_fx

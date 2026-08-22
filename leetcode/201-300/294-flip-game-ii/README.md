@@ -35,7 +35,7 @@ while i < states.len() {
         let _ = memo.insert(s.clone(), true);
         return true;
     }
-    i = i + 1i64;
+    i = i + 1;
 }
 ```
 
@@ -145,41 +145,58 @@ Container, x86-64, 4 cores; full numbers and environment in
 
 | lang | mean | vs C | notes |
 |---|---:|---:|---|
-| C | 322.0 ms ± 8.0 | 1.00× | hand-rolled open-addressing table |
-| **Kāra** | **476.2 ms ± 13.2** | **1.48×** | `Map[String, bool]` |
-| Go | 634.1 ms ± 24.9 | 1.97× | `map[string]bool` |
-| Rust (`-O`, overflow-checks=on) | 688.1 ms ± 18.8 | 2.14× | `HashMap<String, bool>` |
-| Rust (`-O`) | 705.4 ms ± 45.3 | 2.19× | |
+| C | 326.5 ms ± 3.7 | 1.00× | hand-rolled open-addressing table |
+| **Kāra** | **527.7 ms ± 9.8** | **1.62×** | `Map[String, bool]`, SipHash-1-3 |
+| Go | 714.4 ms ± 29.5 | 2.19× | `map[string]bool` |
+| Rust (`-O`, overflow-checks=on) | 873.6 ms ± 15.0 | 2.68× | `HashMap<String, bool>` |
+| Rust (`-O`) | 870.6 ms ± 15.3 | 2.67× | |
 
-Kāra is **1.44× faster than equal-safety Rust** here and comfortably ahead of
+Kāra is **1.66× faster than equal-safety Rust** here and comfortably ahead of
 Go. That is the opposite of [#293](../293-flip-game/), where the same three
 languages ran string-building and Kāra sat *behind* Rust — the workload moved
 from allocating strings to hashing them, and the ordering changed with it.
 
-### The hasher is the obvious explanation, and it is wrong
+> **Re-measured 2026-08-22**, after `B-2026-08-21-6` replaced Kāra's FxHash
+> `Map` default with keyed SipHash-1-3 (below). The first cut of this table was
+> taken on the FxHash compiler and read `1.48×`; the section that follows is
+> what changed and what it cost. Read the **ratios**, not the absolutes: C
+> reproduced to within 1.4% across the two runs but Rust and Go did not
+> (Rust `-O` moved 705 → 871 ms on a nominally identical container image), so
+> the two runs are not one machine and only the within-run column is safe.
+
+### The hasher is the obvious explanation, and it is *still* mostly wrong
 
 Rust's `HashMap` defaults to SipHash-1-3, seeded per process and DoS-resistant.
-Kāra's `Map` emits FxHash — rotate/XOR/multiply — with a compile-time-constant
-seed and no flooding resistance. Comparing them head to head prices a **safety
-difference** as if it were code generation, which is the mistake BENCHMARKS.md
-forbids on integer overflow.
+When this kata was written Kāra's `Map` emitted FxHash — rotate/XOR/multiply,
+compile-time-constant seed, no flooding resistance — so the head-to-head priced
+a **safety difference** as if it were code generation, the mistake
+BENCHMARKS.md forbids on integer overflow. That was `B-2026-08-21-6`, and
+**fixing it removed the asymmetry**: the default is now keyed SipHash-1-3 on
+both sides, so the table above is already an equal-hash comparison.
 
-So [`bench/flipgame2_fx.rs`](bench/flipgame2_fx.rs) transplants Kāra's exact
-hash function into the Rust twin — same rotate-left-5, same seed, same
-per-byte loop — and changes nothing else:
+That makes the cost of the keyed default directly measurable, because
+`Map[K, V, FxBuildHasher]` now resolves and opts back out:
 
 | | mean |
 |---|---:|
-| Rust, SipHash-1-3 | 669.7 ms ± 14.1 |
-| Rust, Kāra's hash | 675.4 ms ± 31.4 |
+| Kāra, `Map[String, bool]` (SipHash-1-3, keyed) | 522.1 ms ± 6.0 |
+| Kāra, `Map[String, bool, FxBuildHasher]` | 471.6 ms ± 5.8 |
 
-**Indistinguishable.** On 22-byte keys the hasher is not where the difference
-lives, and Kāra's 1.44× lead is not bought with the weaker default. One caveat
-that cuts against the measurement: the transplant is byte-at-a-time to stay
-faithful to Kāra's emitted loop, where `rustc-hash` processes 8-byte chunks — so
-this prices *Kāra's hash function*, not the best available fast hash. Where the
-1.44× actually comes from is unattributed; ruling the hasher out is what this
-probe establishes, not what replaces it.
+**Hash-flooding resistance costs 1.11× here** — and note where the second row
+lands: 471.6 ms against the 476.2 ms this kata first recorded, confirming that
+the original `1.48×` was the FxHash number and that the whole of the regression
+to `1.62×` is the new default, not a codegen change.
+
+But 1.11× is not the gap to C. Even unkeyed, Kāra is 1.44× C on this workload,
+so **the hasher explains about a fifth of the distance and the rest is
+unattributed** — which is what the original probe concluded, and it survives
+its own premise being replaced. The Rust-side transplant
+([`bench/flipgame2_fx.rs`](bench/flipgame2_fx.rs)) still agrees from the other
+direction: Rust with SipHash-1-3 and Rust carrying Kāra's old FxHash byte-loop
+measure 870.6 ms and 849.7 ms, indistinguishable next to a 2.7× gap. It is now
+a historical control rather than a fairness correction — it models the
+`FxBuildHasher` opt-in, not the default — and it stays byte-at-a-time, so it
+prices *that* hash function and not the best available fast hash.
 
 The probe is a side file, not a `bench.sh` lane, and must be built by hand:
 
@@ -187,19 +204,23 @@ The probe is a side file, not a `bench.sh` lane, and must be built by hand:
 rustc -O flipgame2_fx.rs -o target/flipgame2_fx && ./target/flipgame2_fx
 ```
 
-### Two gaps this kata found
+### Two gaps this kata found — both now fixed
 
 Writing the probe meant reading how `Map` actually hashes, and the answer did
-not match the spec. Both are filed in the compiler repo rather than worked
-around here:
+not match the spec. Both were filed in the compiler repo rather than worked
+around here, and both have since landed:
 
-- **`B-2026-08-21-6`** — design.md says twice that `Map`/`Set` use
+- **`B-2026-08-21-6`** — design.md said twice that `Map`/`Set` use
   `SipHash13BuildHasher` seeded per process, and that iteration order therefore
-  "differ[s] from one run to the next". Neither holds: the same binary gives
-  byte-identical iteration order across runs, `karac run --interp` orders
+  "differ[s] from one run to the next". None of it held: the same binary gave
+  byte-identical iteration order across runs, `karac run --interp` ordered
   differently from `karac build` (each deterministically), and
-  `Map[K, V, FxBuildHasher]` — design.md's own spelling — does not resolve, so
-  there is no opt-in either way.
+  `Map[K, V, FxBuildHasher]` — design.md's own spelling — did not resolve, so
+  there was no opt-in either way. **Fixed**: the hash now lives in one shared
+  `karac-hash` crate that both backends bottom out in, it is SipHash-1-3 under
+  a per-process random key (`KARAC_HASH_SEED=<n>` pins it for reproducible
+  runs), and the `FxBuildHasher` opt-in resolves. The benchmark section above
+  is the price.
 - **`B-2026-08-21-8`** — the interpreter's `Map` was an association list
   (`Vec<(Value, Value)>`, looked up with `iter().find`), so every operation was a
   linear scan. Insert-then-lookup of *n* keys measured 0.65 / 2.02 / 7.16 /
