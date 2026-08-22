@@ -66,6 +66,20 @@ kara repo at `examples/mend/TASK_FORMAT.md`.
   auto-parallelizes) *and* `KARAC_AUTO_PAR=0` — effect-analysis bugs diverge only
   under auto-par. So the full A/B set is: `run` vs `build` vs default-auto-par
   `build`, all byte-identical to the reference-language output.
+- **A `Map`/`Set` walk is not a stable surface — and a divergence there is NOT a
+  compiler bug.** Iteration order is the per-process hash order (SipHash-1-3
+  under a random key; see the kara repo's CLAUDE.md), so a kata whose output
+  depends on walk order prints something different on **every run**, in every
+  mode. Under the rule above that looks exactly like a run/build divergence, and
+  it must not be filed as one. Fix it in the kata: make the output
+  order-independent — sort it, or fold it to a total, which is what katas 347 and
+  387 already do — or pin `KARAC_HASH_SEED=<n>` for the comparison. Measured on a
+  three-key map: `abc` / `bca` / `cab` across unpinned runs of ONE binary, and
+  `bca` under `KARAC_HASH_SEED=7` in `run` and `build` alike, so the pin makes
+  the two backends agree exactly. This is also the one place cross-language
+  parity cannot be reached: Go randomizes map iteration by spec, Rust's
+  `HashMap` is randomly seeded per instance, and Python's dict is
+  insertion-ordered — three different orders, none of them Kāra's.
 - **Cross-language parity.** The C/Rust/Go/Python mirrors must implement the
   **same algorithm** as the Kāra version (honest benchmarking) and produce the
   same output.
