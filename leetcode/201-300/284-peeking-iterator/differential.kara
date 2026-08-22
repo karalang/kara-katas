@@ -60,8 +60,8 @@ fn src_has_next(s: ref Source) -> bool {
 
 fn src_next(s: mut ref Source) -> i64 {
     let v = s.data[s.pos];
-    s.pos = s.pos + 1i64;
-    s.pulls = s.pulls + 1i64;
+    s.pos = s.pos + 1;
+    s.pulls = s.pulls + 1;
     return v;
 }
 
@@ -73,11 +73,11 @@ struct EagerP {
 
 fn make_peeking_eager(data: ref Vec[i64]) -> EagerP {
     let mut buf: Vec[i64] = Vec.new();
-    let mut ci = 0i64;
-    while ci < data.len() { buf.push(data[ci]); ci = ci + 1i64; }
-    let mut s = Source { data: buf, pos: 0i64, pulls: 0i64 };
+    let mut ci = 0;
+    while ci < data.len() { buf.push(data[ci]); ci = ci + 1; }
+    let mut s = Source { data: buf, pos: 0, pulls: 0 };
     let mut full = false;
-    let mut slot = 0i64;
+    let mut slot = 0;
     if src_has_next(s) {
         slot = src_next(mut s);
         full = true;
@@ -111,10 +111,10 @@ struct LazyP {
 
 fn make_peeking_lazy(data: ref Vec[i64]) -> LazyP {
     let mut buf: Vec[i64] = Vec.new();
-    let mut ci = 0i64;
-    while ci < data.len() { buf.push(data[ci]); ci = ci + 1i64; }
-    let s = Source { data: buf, pos: 0i64, pulls: 0i64 };
-    return LazyP { src: s, slot: 0i64, full: false };
+    let mut ci = 0;
+    while ci < data.len() { buf.push(data[ci]); ci = ci + 1; }
+    let s = Source { data: buf, pos: 0, pulls: 0 };
+    return LazyP { src: s, slot: 0, full: false };
 }
 
 fn peek_lazy(p: mut ref LazyP) -> i64 {
@@ -146,14 +146,14 @@ struct MatP {
 
 fn make_peeking_mat(data: ref Vec[i64]) -> MatP {
     let mut buf: Vec[i64] = Vec.new();
-    let mut ci = 0i64;
-    while ci < data.len() { buf.push(data[ci]); ci = ci + 1i64; }
-    let mut s = Source { data: buf, pos: 0i64, pulls: 0i64 };
+    let mut ci = 0;
+    while ci < data.len() { buf.push(data[ci]); ci = ci + 1; }
+    let mut s = Source { data: buf, pos: 0, pulls: 0 };
     let mut all: Vec[i64] = Vec.new();
     while src_has_next(s) {
         all.push(src_next(mut s));
     }
-    return MatP { src: s, all: all, pos: 0i64 };
+    return MatP { src: s, all: all, pos: 0 };
 }
 
 fn peek_mat(p: ref MatP) -> i64 {
@@ -166,35 +166,35 @@ fn has_next_mat(p: ref MatP) -> bool {
 
 fn next_mat(p: mut ref MatP) -> i64 {
     let v = p.all[p.pos];
-    p.pos = p.pos + 1i64;
+    p.pos = p.pos + 1;
     return v;
 }
 
 
 fn main() {
-    let mut sequences = 0i64;
-    let mut operations = 0i64;
-    let mut has_next_mismatch = 0i64;
-    let mut peek_mismatch = 0i64;
-    let mut next_mismatch = 0i64;
-    let mut peek_advanced = 0i64;
-    let mut eager_pulls = 0i64;
-    let mut lazy_pulls = 0i64;
-    let mut mat_pulls = 0i64;
-    let mut digest = 0i64;
+    let mut sequences = 0;
+    let mut operations = 0;
+    let mut has_next_mismatch = 0;
+    let mut peek_mismatch = 0;
+    let mut next_mismatch = 0;
+    let mut peek_advanced = 0;
+    let mut eager_pulls = 0;
+    let mut lazy_pulls = 0;
+    let mut mat_pulls = 0;
+    let mut digest = 0;
 
-    let mut seed = 20260822i64;
-    let mut len = 0i64;
-    while len <= 6i64 {
-        let mut t = 0i64;
-        while t < 120i64 {
+    let mut seed = 20260822;
+    let mut len = 0;
+    while len <= 6 {
+        let mut t = 0;
+        while t < 120 {
             // the underlying data
             let mut data: Vec[i64] = Vec.new();
-            let mut d = 0i64;
+            let mut d = 0;
             while d < len {
-                seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
-                data.push(seed % 1000i64);
-                d = d + 1i64;
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                data.push(seed % 1000);
+                d = d + 1;
             }
 
             let mut a = make_peeking_eager(data);
@@ -206,21 +206,21 @@ fn main() {
             // drains, so the pull difference is only observable when the caller
             // STOPS EARLY — which is the realistic case for a wrapper and the
             // one a drain-only generator never reaches.
-            seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
-            let steps = (seed / 31i64) % (3i64 * len + 7i64);
-            let mut step = 0i64;
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let steps = (seed / 31) % (3 * len + 7);
+            let mut step = 0;
             while step < steps {
-                seed = (seed * 1103515245i64 + 12345i64) % 2147483648i64;
-                let op = (seed / 29i64) % 4i64;
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                let op = (seed / 29) % 4;
 
                 // has_next is asked of all three independently — never asked of
                 // one and assumed for the others
                 let ha = has_next_eager(a);
                 let hb = has_next_lazy(b);
                 let hc = has_next_mat(c);
-                if ha != hb or ha != hc { has_next_mismatch = has_next_mismatch + 1i64; }
-                digest = (digest * 131i64 + step) % 1000000007i64;
-                if ha { digest = (digest + 7i64) % 1000000007i64; }
+                if ha != hb or ha != hc { has_next_mismatch = has_next_mismatch + 1; }
+                digest = (digest * 131 + step) % 1000000007;
+                if ha { digest = (digest + 7) % 1000000007; }
 
                 // Operations run only when ALL THREE agree there is a next
                 // element. Gating on one implementation's answer would drive a
@@ -228,19 +228,19 @@ fn main() {
                 // which is what the first version of this harness did, despite
                 // the note above saying not to.
                 let all_ready = ha and hb and hc;
-                if op == 0i64 {
+                if op == 0 {
                     // has_next only — already compared above
-                    operations = operations + 1i64;
+                    operations = operations + 1;
                 } else {
                     if all_ready {
-                        if op == 1i64 {
+                        if op == 1 {
                             let pa = peek_eager(a);
                             let pb = peek_lazy(mut b);
                             let pc = peek_mat(c);
-                            if pa != pb or pa != pc { peek_mismatch = peek_mismatch + 1i64; }
-                            digest = (digest * 131i64 + pa) % 1000000007i64;
+                            if pa != pb or pa != pc { peek_mismatch = peek_mismatch + 1; }
+                            digest = (digest * 131 + pa) % 1000000007;
                         } else {
-                            if op == 2i64 {
+                            if op == 2 {
                                 // peek twice, then next: peek must not advance
                                 let p1 = peek_eager(a);
                                 let p2 = peek_eager(a);
@@ -249,37 +249,37 @@ fn main() {
                                 let r1 = peek_mat(c);
                                 let r2 = peek_mat(c);
                                 if p1 != p2 or q1 != q2 or r1 != r2 {
-                                    peek_advanced = peek_advanced + 1i64;
+                                    peek_advanced = peek_advanced + 1;
                                 }
                                 let na = next_eager(mut a);
                                 let nb = next_lazy(mut b);
                                 let nc = next_mat(mut c);
                                 if na != p1 or nb != q1 or nc != r1 {
-                                    peek_advanced = peek_advanced + 1i64;
+                                    peek_advanced = peek_advanced + 1;
                                 }
-                                if na != nb or na != nc { next_mismatch = next_mismatch + 1i64; }
-                                digest = (digest * 131i64 + na) % 1000000007i64;
+                                if na != nb or na != nc { next_mismatch = next_mismatch + 1; }
+                                digest = (digest * 131 + na) % 1000000007;
                             } else {
                                 let na = next_eager(mut a);
                                 let nb = next_lazy(mut b);
                                 let nc = next_mat(mut c);
-                                if na != nb or na != nc { next_mismatch = next_mismatch + 1i64; }
-                                digest = (digest * 131i64 + na) % 1000000007i64;
+                                if na != nb or na != nc { next_mismatch = next_mismatch + 1; }
+                                digest = (digest * 131 + na) % 1000000007;
                             }
                         }
-                        operations = operations + 1i64;
+                        operations = operations + 1;
                     }
                 }
-                step = step + 1i64;
+                step = step + 1;
             }
 
             eager_pulls = eager_pulls + a.src.pulls;
             lazy_pulls = lazy_pulls + b.src.pulls;
             mat_pulls = mat_pulls + c.src.pulls;
-            sequences = sequences + 1i64;
-            t = t + 1i64;
+            sequences = sequences + 1;
+            t = t + 1;
         }
-        len = len + 1i64;
+        len = len + 1;
     }
 
     println(f"sequences {sequences}, operations executed {operations}");

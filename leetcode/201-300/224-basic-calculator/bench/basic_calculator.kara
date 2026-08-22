@@ -14,132 +14,132 @@
 
 // ASCII: '+'=43 '-'=45 '('=40 ')'=41 '0'=48 '9'=57
 fn calculate(bytes: ref Vec[i64], n: i64) -> i64 {
-    let mut result = 0i64;
-    let mut sign = 1i64;
+    let mut result = 0;
+    let mut sign = 1;
     let mut stack: Vec[i64] = Vec.new();
-    let mut i = 0i64;
+    let mut i = 0;
     while i < n {
         let b = bytes[i];
-        if b >= 48i64 and b <= 57i64 {
-            let mut num = 0i64;
-            while i < n and bytes[i] >= 48i64 and bytes[i] <= 57i64 {
-                num = num * 10i64 + (bytes[i] - 48i64);
-                i = i + 1i64;
+        if b >= 48 and b <= 57 {
+            let mut num = 0;
+            while i < n and bytes[i] >= 48 and bytes[i] <= 57 {
+                num = num * 10 + (bytes[i] - 48);
+                i = i + 1;
             }
             result = result + sign * num;
-        } else if b == 43i64 {
-            sign = 1i64;
-            i = i + 1i64;
-        } else if b == 45i64 {
-            sign = -1i64;
-            i = i + 1i64;
-        } else if b == 40i64 {
+        } else if b == 43 {
+            sign = 1;
+            i = i + 1;
+        } else if b == 45 {
+            sign = -1;
+            i = i + 1;
+        } else if b == 40 {
             stack.push(result);
             stack.push(sign);
-            result = 0i64;
-            sign = 1i64;
-            i = i + 1i64;
-        } else if b == 41i64 {
+            result = 0;
+            sign = 1;
+            i = i + 1;
+        } else if b == 41 {
             let saved_sign = match stack.pop() {
                 Some(v) => v,
-                None => 1i64,
+                None => 1,
             };
             let saved_result = match stack.pop() {
                 Some(v) => v,
-                None => 0i64,
+                None => 0,
             };
             result = saved_result + saved_sign * result;
-            i = i + 1i64;
+            i = i + 1;
         } else {
-            i = i + 1i64;
+            i = i + 1;
         }
     }
     return result;
 }
 
 fn push_number(buf: mut ref Vec[i64], num: i64) {
-    if num >= 100i64 {
-        buf.push(48i64 + num / 100i64);
-        buf.push(48i64 + (num / 10i64) % 10i64);
-        buf.push(48i64 + num % 10i64);
-    } else if num >= 10i64 {
-        buf.push(48i64 + num / 10i64);
-        buf.push(48i64 + num % 10i64);
+    if num >= 100 {
+        buf.push(48 + num / 100);
+        buf.push(48 + (num / 10) % 10);
+        buf.push(48 + num % 10);
+    } else if num >= 10 {
+        buf.push(48 + num / 10);
+        buf.push(48 + num % 10);
     } else {
-        buf.push(48i64 + num);
+        buf.push(48 + num);
     }
 }
 
 fn main() {
-    let nums = 250000i64;                    // operand count in the expression
-    let passes = 80i64;
-    let max_depth = 16i64;
-    let modulus = 1000000007i64;
+    let nums = 250000;                    // operand count in the expression
+    let passes = 80;
+    let max_depth = 16;
+    let modulus = 1000000007;
 
     let mut buf: Vec[i64] = Vec.new();
-    let mut state = 12345i64;
-    let mut depth = 0i64;
+    let mut state = 12345;
+    let mut depth = 0;
 
     // First operand (0..999).
-    state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-    push_number(mut buf, state % 1000i64);
+    state = (state * 1103515245 + 12345) & 2147483647;
+    push_number(mut buf, state % 1000);
 
-    let mut t = 1i64;
+    let mut t = 1;
     while t < nums {
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        if state % 2i64 == 0i64 { buf.push(43i64); } else { buf.push(45i64); }
+        state = (state * 1103515245 + 12345) & 2147483647;
+        if state % 2 == 0 { buf.push(43); } else { buf.push(45); }
 
         // Open parens (bounded by max_depth).
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let opens = state % 3i64;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let opens = state % 3;
         let mut opened_here = false;
-        let mut o = 0i64;
+        let mut o = 0;
         while o < opens {
             if depth < max_depth {
-                buf.push(40i64);
-                depth = depth + 1i64;
+                buf.push(40);
+                depth = depth + 1;
                 opened_here = true;
             }
-            o = o + 1i64;
+            o = o + 1;
         }
 
         // Optional unary minus, only right after an open paren (always valid).
         if opened_here {
-            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-            if state % 4i64 == 0i64 { buf.push(45i64); }
+            state = (state * 1103515245 + 12345) & 2147483647;
+            if state % 4 == 0 { buf.push(45); }
         }
 
         // Operand.
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        push_number(mut buf, state % 1000i64);
+        state = (state * 1103515245 + 12345) & 2147483647;
+        push_number(mut buf, state % 1000);
 
         // Close parens.
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let closes = state % 3i64;
-        let mut c = 0i64;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let closes = state % 3;
+        let mut c = 0;
         while c < closes {
-            if depth > 0i64 {
-                buf.push(41i64);
-                depth = depth - 1i64;
+            if depth > 0 {
+                buf.push(41);
+                depth = depth - 1;
             }
-            c = c + 1i64;
+            c = c + 1;
         }
-        t = t + 1i64;
+        t = t + 1;
     }
     // Close any remaining open parens.
-    while depth > 0i64 {
-        buf.push(41i64);
-        depth = depth - 1i64;
+    while depth > 0 {
+        buf.push(41);
+        depth = depth - 1;
     }
 
     let n = buf.len();
-    let mut sink = 0i64;
-    let mut p = 0i64;
+    let mut sink = 0;
+    let mut p = 0;
     while p < passes {
-        buf[0] = 48i64 + (p % 10i64);        // perturb leading digit to '0'..'9'
+        buf[0] = 48 + (p % 10);        // perturb leading digit to '0'..'9'
         let r = calculate(buf, n);
         sink = ((sink + r) % modulus + modulus) % modulus;
-        p = p + 1i64;
+        p = p + 1;
     }
     println(sink);
 }

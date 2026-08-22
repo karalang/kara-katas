@@ -45,7 +45,7 @@
 
 fn digit_at(s: ref String, i: i64) -> i64 {
     let b = s.bytes();
-    return (b[i] as i64) - 48i64;
+    return (b[i] as i64) - 48;
 }
 
 fn slice(s: ref String, lo: i64, hi: i64) -> String {
@@ -58,36 +58,36 @@ fn search(num: ref String, target: i64, pos: i64, expr: String, cur: i64, last: 
         if cur == target { out.push(expr); }
         return;
     }
-    let mut end = pos + 1i64;
+    let mut end = pos + 1;
     while end <= num.len() {
         // leading zero: only the single digit `0` may start at a `0`
-        if end > pos + 1i64 and digit_at(num, pos) == 0i64 {
+        if end > pos + 1 and digit_at(num, pos) == 0 {
             return;
         }
         let piece = slice(num, pos, end);
-        let mut n = 0i64;
+        let mut n = 0;
         let mut k = pos;
         while k < end {
-            n = n * 10i64 + digit_at(num, k);
-            k = k + 1i64;
+            n = n * 10 + digit_at(num, k);
+            k = k + 1;
         }
-        if pos == 0i64 {
+        if pos == 0 {
             // first operand — no operator in front of it
             search(num, target, end, piece, n, n, out);
         } else {
-            search(num, target, end, expr + "+" + piece, cur + n, n, out);
-            search(num, target, end, expr + "-" + piece, cur - n, 0i64 - n, out);
+            search(num, target, end, expr + "+" + piece.clone(), cur + n, n, out);
+            search(num, target, end, expr + "-" + piece, cur - n, 0 - n, out);
             // `*` binds to the previous term: undo it, re-add it multiplied
             search(num, target, end, expr + "*" + piece, cur - last + last * n, last * n, out);
         }
-        end = end + 1i64;
+        end = end + 1;
     }
 }
 
 fn solve_backtrack(num: String, target: i64) -> Vec[String] {
     let mut out: Vec[String] = Vec.new();
-    if num.len() == 0i64 { return out; }
-    search(num, target, 0i64, "", 0i64, 0i64, mut out);
+    if num.len() == 0 { return out; }
+    search(num, target, 0, "", 0, 0, mut out);
     return out;
 }
 
@@ -96,48 +96,48 @@ fn eval_expr(expr: ref String) -> i64 {
     let mut vals: Vec[i64] = Vec.new();
     let mut ops: Vec[i64] = Vec.new();     // 0 = '+', 1 = '-', 2 = '*'
     let b = expr.bytes();
-    let mut i = 0i64;
-    let mut cur = 0i64;
+    let mut i = 0;
+    let mut cur = 0;
     let mut started = false;
     while i < b.len() {
         let c = b[i] as i64;
-        if c >= 48i64 and c <= 57i64 {
-            cur = cur * 10i64 + (c - 48i64);
+        if c >= 48 and c <= 57 {
+            cur = cur * 10 + (c - 48);
             started = true;
         } else {
             vals.push(cur);
-            cur = 0i64;
+            cur = 0;
             started = false;
-            if c == 43i64 { ops.push(0i64); }
-            if c == 45i64 { ops.push(1i64); }
-            if c == 42i64 { ops.push(2i64); }
+            if c == 43 { ops.push(0); }
+            if c == 45 { ops.push(1); }
+            if c == 42 { ops.push(2); }
         }
-        i = i + 1i64;
+        i = i + 1;
     }
     vals.push(cur);
 
     // pass 1 — fold every `*`
     let mut v2: Vec[i64] = Vec.new();
     let mut o2: Vec[i64] = Vec.new();
-    v2.push(vals[0i64]);
-    let mut k = 0i64;
+    v2.push(vals[0]);
+    let mut k = 0;
     while k < ops.len() {
-        if ops[k] == 2i64 {
-            let top = v2[v2.len() - 1i64];
-            v2[v2.len() - 1i64] = top * vals[k + 1i64];
+        if ops[k] == 2 {
+            let top = v2[v2.len() - 1];
+            v2[v2.len() - 1] = top * vals[k + 1];
         } else {
             o2.push(ops[k]);
-            v2.push(vals[k + 1i64]);
+            v2.push(vals[k + 1]);
         }
-        k = k + 1i64;
+        k = k + 1;
     }
 
     // pass 2 — fold `+` and `-` left to right
-    let mut acc = v2[0i64];
-    let mut m = 0i64;
+    let mut acc = v2[0];
+    let mut m = 0;
     while m < o2.len() {
-        if o2[m] == 0i64 { acc = acc + v2[m + 1i64]; } else { acc = acc - v2[m + 1i64]; }
-        m = m + 1i64;
+        if o2[m] == 0 { acc = acc + v2[m + 1]; } else { acc = acc - v2[m + 1]; }
+        m = m + 1;
     }
     return acc;
 }
@@ -145,68 +145,68 @@ fn eval_expr(expr: ref String) -> i64 {
 // A built expression is legal iff no operand of length > 1 starts with '0'.
 fn operands_legal(expr: ref String) -> bool {
     let b = expr.bytes();
-    let mut i = 0i64;
-    let mut start = 0i64;
+    let mut i = 0;
+    let mut start = 0;
     while i <= b.len() {
         let at_end = i == b.len();
         let mut is_op = false;
         if not at_end {
             let c = b[i] as i64;
-            if c == 43i64 or c == 45i64 or c == 42i64 { is_op = true; }
+            if c == 43 or c == 45 or c == 42 { is_op = true; }
         }
         if at_end or is_op {
             let len = i - start;
-            if len > 1i64 and (b[start] as i64) == 48i64 { return false; }
-            start = i + 1i64;
+            if len > 1 and (b[start] as i64) == 48 { return false; }
+            start = i + 1;
         }
-        i = i + 1i64;
+        i = i + 1;
     }
     return true;
 }
 
 fn pow4(e: i64) -> i64 {
-    let mut p = 1i64;
-    let mut i = 0i64;
-    while i < e { p = p * 4i64; i = i + 1i64; }
+    let mut p = 1;
+    let mut i = 0;
+    while i < e { p = p * 4; i = i + 1; }
     return p;
 }
 
 fn solve_enumerate(num: String, target: i64) -> Vec[String] {
     let mut out: Vec[String] = Vec.new();
     let n = num.len();
-    if n == 0i64 { return out; }
-    let gaps = n - 1i64;
+    if n == 0 { return out; }
+    let gaps = n - 1;
     let total = pow4(gaps);
-    let mut mask = 0i64;
+    let mut mask = 0;
     while mask < total {
         // build the expression: digit, then the gap's choice, then the next
-        let mut expr: String = num.substring(0i64, 1i64);
-        let mut g = 0i64;
+        let mut expr: String = num.substring(0, 1);
+        let mut g = 0;
         let mut m = mask;
         while g < gaps {
-            let choice = m % 4i64;
-            m = m / 4i64;
-            if choice == 1i64 { expr = expr + "+"; }
-            if choice == 2i64 { expr = expr + "-"; }
-            if choice == 3i64 { expr = expr + "*"; }
-            expr = expr + num.substring(g + 1i64, g + 2i64);
-            g = g + 1i64;
+            let choice = m % 4;
+            m = m / 4;
+            if choice == 1 { expr = expr + "+"; }
+            if choice == 2 { expr = expr + "-"; }
+            if choice == 3 { expr = expr + "*"; }
+            expr = expr + num.substring(g + 1, g + 2);
+            g = g + 1;
         }
         if operands_legal(expr) {
             if eval_expr(expr) == target { out.push(expr); }
         }
-        mask = mask + 1i64;
+        mask = mask + 1;
     }
     return out;
 }
 
 fn show(v: ref Vec[String]) -> String {
     let mut s: String = "[";
-    let mut i = 0i64;
+    let mut i = 0;
     while i < v.len() {
-        if i > 0i64 { s = s + ", "; }
+        if i > 0 { s = s + ", "; }
         s = s + v[i];
-        i = i + 1i64;
+        i = i + 1;
     }
     return s + "]";
 }
@@ -215,16 +215,16 @@ fn sort_strings(v: mut ref Vec[String]) {
     // the answer is a SET, and the two solvers enumerate it in different orders
     // (DFS versus mask order), so both sort before reporting — that makes the
     // two mains directly diffable without either pretending order is meaningful
-    let mut a = 1i64;
+    let mut a = 1;
     while a < v.len() {
         let mut b = a;
-        while b > 0i64 and v[b - 1i64] > v[b] {
-            let t = v[b - 1i64];
-            v[b - 1i64] = v[b];
+        while b > 0 and v[b - 1] > v[b] {
+            let t = v[b - 1];
+            v[b - 1] = v[b];
             v[b] = t;
-            b = b - 1i64;
+            b = b - 1;
         }
-        a = a + 1i64;
+        a = a + 1;
     }
 }
 
@@ -232,91 +232,91 @@ fn sort_strings(v: mut ref Vec[String]) {
 fn strip_operators(expr: ref String) -> String {
     let b = expr.bytes();
     let mut out: String = "";
-    let mut i = 0i64;
+    let mut i = 0;
     while i < b.len() {
         let c = b[i] as i64;
-        if c >= 48i64 and c <= 57i64 { out = out + expr.substring(i, i + 1i64); }
-        i = i + 1i64;
+        if c >= 48 and c <= 57 { out = out + expr.substring(i, i + 1); }
+        i = i + 1;
     }
     return out;
 }
 
 fn main() {
-    let mut cases = 0i64;
-    let mut set_mismatches = 0i64;
-    let mut wrong_value = 0i64;
-    let mut illegal_operand = 0i64;
-    let mut digits_not_preserved = 0i64;
-    let mut expressions_found = 0i64;
-    let mut cases_with_a_solution = 0i64;
-    let mut digest = 0i64;
+    let mut cases = 0;
+    let mut set_mismatches = 0;
+    let mut wrong_value = 0;
+    let mut illegal_operand = 0;
+    let mut digits_not_preserved = 0;
+    let mut expressions_found = 0;
+    let mut cases_with_a_solution = 0;
+    let mut digest = 0;
 
     // every digit string of length 1..5 over {0,1,2,3}, against targets -4..8
-    let mut len = 1i64;
-    while len <= 3i64 {
-        let mut span = 1i64;
-        let mut e = 0i64;
-        while e < len { span = span * 4i64; e = e + 1i64; }
-        let mut code = 0i64;
+    let mut len = 1;
+    while len <= 3 {
+        let mut span = 1;
+        let mut e = 0;
+        while e < len { span = span * 4; e = e + 1; }
+        let mut code = 0;
         while code < span {
             let mut num: String = "";
             let mut m = code;
-            let mut d = 0i64;
+            let mut d = 0;
             while d < len {
-                let dig = m % 4i64;
-                m = m / 4i64;
-                if dig == 0i64 { num = num + "0"; }
-                if dig == 1i64 { num = num + "1"; }
-                if dig == 2i64 { num = num + "2"; }
-                if dig == 3i64 { num = num + "3"; }
-                d = d + 1i64;
+                let dig = m % 4;
+                m = m / 4;
+                if dig == 0 { num = num + "0"; }
+                if dig == 1 { num = num + "1"; }
+                if dig == 2 { num = num + "2"; }
+                if dig == 3 { num = num + "3"; }
+                d = d + 1;
             }
-            let mut target = 0i64 - 4i64;
-            while target <= 8i64 {
-                let mut a = solve_backtrack(num, target);
+            let mut target = 0 - 4;
+            while target <= 8 {
+                let mut a = solve_backtrack(num.clone(), target);
                 let mut b = solve_enumerate(num, target);
                 sort_strings(mut a);
                 sort_strings(mut b);
 
                 if a.len() != b.len() {
-                    set_mismatches = set_mismatches + 1i64;
+                    set_mismatches = set_mismatches + 1;
                 } else {
-                    let mut i = 0i64;
+                    let mut i = 0;
                     let mut same = true;
                     while i < a.len() {
                         if a[i] != b[i] { same = false; }
-                        i = i + 1i64;
+                        i = i + 1;
                     }
-                    if not same { set_mismatches = set_mismatches + 1i64; }
+                    if not same { set_mismatches = set_mismatches + 1; }
                 }
 
                 // the per-expression checks run over BOTH solvers' output, not
                 // just the first: a harness that validated only one would catch
                 // a bug in the other solely through the set comparison, which is
                 // a weaker signal and says nothing about WHAT is wrong
-                let mut j = 0i64;
+                let mut j = 0;
                 while j < a.len() {
-                    if eval_expr(a[j]) != target { wrong_value = wrong_value + 1i64; }
-                    if not operands_legal(a[j]) { illegal_operand = illegal_operand + 1i64; }
-                    if strip_operators(a[j]) != num { digits_not_preserved = digits_not_preserved + 1i64; }
-                    digest = (digest * 131i64 + a[j].len() + target + 5i64) % 1000000007i64;
-                    j = j + 1i64;
+                    if eval_expr(a[j]) != target { wrong_value = wrong_value + 1; }
+                    if not operands_legal(a[j]) { illegal_operand = illegal_operand + 1; }
+                    if strip_operators(a[j]) != num { digits_not_preserved = digits_not_preserved + 1; }
+                    digest = (digest * 131 + a[j].len() + target + 5) % 1000000007;
+                    j = j + 1;
                 }
-                let mut jb = 0i64;
+                let mut jb = 0;
                 while jb < b.len() {
-                    if eval_expr(b[jb]) != target { wrong_value = wrong_value + 1i64; }
-                    if not operands_legal(b[jb]) { illegal_operand = illegal_operand + 1i64; }
-                    if strip_operators(b[jb]) != num { digits_not_preserved = digits_not_preserved + 1i64; }
-                    jb = jb + 1i64;
+                    if eval_expr(b[jb]) != target { wrong_value = wrong_value + 1; }
+                    if not operands_legal(b[jb]) { illegal_operand = illegal_operand + 1; }
+                    if strip_operators(b[jb]) != num { digits_not_preserved = digits_not_preserved + 1; }
+                    jb = jb + 1;
                 }
                 expressions_found = expressions_found + a.len();
-                if a.len() > 0i64 { cases_with_a_solution = cases_with_a_solution + 1i64; }
-                cases = cases + 1i64;
-                target = target + 1i64;
+                if a.len() > 0 { cases_with_a_solution = cases_with_a_solution + 1; }
+                cases = cases + 1;
+                target = target + 1;
             }
-            code = code + 1i64;
+            code = code + 1;
         }
-        len = len + 1i64;
+        len = len + 1;
     }
 
     println(f"cases {cases}, of which have at least one solution {cases_with_a_solution}");

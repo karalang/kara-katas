@@ -30,92 +30,92 @@
 // occasional empty string appears, which is the case the codec exists to handle.
 
 fn main() {
-    let count = 50000i64;
-    let rounds = 250i64;
+    let count = 50000;
+    let rounds = 250;
 
     // ---- build once: a flat corpus --------------------------------------
     let mut src: Vec[u8] = Vec.new();
     let mut off: Vec[i64] = Vec.new();
     let mut len: Vec[i64] = Vec.new();
-    let mut state = 271271i64;
-    let mut i = 0i64;
+    let mut state = 271271;
+    let mut i = 0;
     while i < count {
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let n = (state / 65536i64) % 25i64;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let n = (state / 65536) % 25;
         off.push(src.len());
         len.push(n);
-        let mut p = 0i64;
+        let mut p = 0;
         while p < n {
-            state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-            src.push(97u8 + ((state / 65536i64) % 26i64) as u8);
-            p = p + 1i64;
+            state = (state * 1103515245 + 12345) & 2147483647;
+            src.push(97u8 + ((state / 65536) % 26) as u8);
+            p = p + 1;
         }
-        i = i + 1i64;
+        i = i + 1;
     }
 
     // ---- hoisted working buffers ----------------------------------------
     // Encoded stream: every item costs at most 2 digits + '#' + payload.
     let mut enc: Vec[u8] = Vec.new();
-    let mut cap = src.len() + count * 3i64;
-    let mut z = 0i64;
-    while z < cap { enc.push(0u8); z = z + 1i64; }
+    let mut cap = src.len() + count * 3;
+    let mut z = 0;
+    while z < cap { enc.push(0u8); z = z + 1; }
     let mut dout: Vec[u8] = Vec.new();
-    z = 0i64;
-    while z < src.len() { dout.push(0u8); z = z + 1i64; }
+    z = 0;
+    while z < src.len() { dout.push(0u8); z = z + 1; }
 
     // ---- punch -----------------------------------------------------------
-    let mut sink = 0i64;
-    let mut r = 0i64;
+    let mut sink = 0;
+    let mut r = 0;
     while r < rounds {
         // encode
-        let mut w = 0i64;
-        let mut k = 0i64;
+        let mut w = 0;
+        let mut k = 0;
         while k < count {
             let n = len[k];
             // hand-rolled decimal, most significant digit first
-            if n >= 10i64 {
-                enc[w] = 48u8 + (n / 10i64) as u8;
-                w = w + 1i64;
+            if n >= 10 {
+                enc[w] = 48u8 + (n / 10) as u8;
+                w = w + 1;
             }
-            enc[w] = 48u8 + (n % 10i64) as u8;
-            w = w + 1i64;
+            enc[w] = 48u8 + (n % 10) as u8;
+            w = w + 1;
             enc[w] = 35u8;                       // '#'
-            w = w + 1i64;
+            w = w + 1;
             let base = off[k];
-            let mut p = 0i64;
+            let mut p = 0;
             while p < n {
                 enc[w + p] = src[base + p];
-                p = p + 1i64;
+                p = p + 1;
             }
             w = w + n;
-            k = k + 1i64;
+            k = k + 1;
         }
         let encoded_len = w;
 
         // decode
-        let mut rp = 0i64;
-        let mut dp = 0i64;
-        let mut items = 0i64;
-        let mut check = 0i64;
+        let mut rp = 0;
+        let mut dp = 0;
+        let mut items = 0;
+        let mut check = 0;
         while rp < encoded_len {
-            let mut n = 0i64;
+            let mut n = 0;
             while enc[rp] != 35u8 {
-                n = n * 10i64 + (enc[rp] as i64 - 48i64);
-                rp = rp + 1i64;
+                n = n * 10 + (enc[rp] as i64 - 48);
+                rp = rp + 1;
             }
-            rp = rp + 1i64;
-            let mut p = 0i64;
+            rp = rp + 1;
+            let mut p = 0;
             while p < n {
                 dout[dp + p] = enc[rp + p];
-                p = p + 1i64;
+                p = p + 1;
             }
-            check = (check * 31i64 + n) % 1000000007i64;
+            check = (check * 31 + n) % 1000000007;
             rp = rp + n;
             dp = dp + n;
-            items = items + 1i64;
+            items = items + 1;
         }
-        sink = (sink * 131i64 + check + items) % 1000000007i64;
-        r = r + 1i64;
+        sink = (sink * 131 + check + items) % 1000000007;
+        r = r + 1;
     }
 
     println(sink);

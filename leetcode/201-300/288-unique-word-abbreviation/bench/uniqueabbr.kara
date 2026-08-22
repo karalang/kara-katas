@@ -17,52 +17,52 @@ enum Bucket {
 fn abbrev(w: ref String) -> String {
     let cs: Vec[char] = w.chars().collect();
     let n = cs.len();
-    if n <= 2i64 {
+    if n <= 2 {
         return w.clone();
     }
     let mut out = String.new();
     out.push(cs[0]);
-    out.push_str(f"{n - 2i64}");
-    out.push(cs[n - 1i64]);
+    out.push_str(f"{n - 2}");
+    out.push(cs[n - 1]);
     return out;
 }
 
 // The corpus's 31-bit LCG, mirrored bit-for-bit in the C/Rust/Go/Python twins.
 // The mask keeps it in range: Kara traps integer overflow by default.
 fn next_rand(state: i64) -> i64 {
-    return (state * 1103515245i64 + 12345i64) & 2147483647i64;
+    return (state * 1103515245 + 12345) & 2147483647;
 }
 
 fn main() {
     let letters: Vec[char] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
                               'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
                               'u', 'v', 'w', 'x', 'y', 'z'];
-    let dict_n = 3000i64;
-    let pool_n = 20000i64;
-    let punches = 1000000i64;
+    let dict_n = 3000;
+    let pool_n = 20000;
+    let punches = 1000000;
 
-    let mut seed = 12345i64;
+    let mut seed = 12345;
 
     // --- dictionary -----------------------------------------------------
     let mut dict: Vec[String] = Vec.new();
-    let mut i = 0i64;
+    let mut i = 0;
     while i < dict_n {
         seed = next_rand(seed);
-        let n = 3i64 + ((seed / 65536i64) % 8i64);
+        let n = 3 + ((seed / 65536) % 8);
         let mut w = String.new();
-        let mut j = 0i64;
+        let mut j = 0;
         while j < n {
             seed = next_rand(seed);
-            w.push(letters[(seed / 65536i64) % 26i64]);
-            j = j + 1i64;
+            w.push(letters[(seed / 65536) % 26]);
+            j = j + 1;
         }
         dict.push(w);
-        i = i + 1i64;
+        i = i + 1;
     }
 
     // --- index (built once) ---------------------------------------------
     let mut idx: Map[String, Bucket] = Map.new();
-    i = 0i64;
+    i = 0;
     while i < dict_n {
         let w = dict[i];
         let a = abbrev(w);
@@ -77,33 +77,33 @@ fn main() {
             }
             Some(Bucket.Conflicted) => {}
         }
-        i = i + 1i64;
+        i = i + 1;
     }
 
     // --- query pool: half from the dictionary, half fresh ----------------
     let mut pool: Vec[String] = Vec.new();
-    i = 0i64;
+    i = 0;
     while i < pool_n {
-        if (i % 2i64) == 0i64 {
-            pool.push(dict[(i * 7i64) % dict_n]);
+        if (i % 2) == 0 {
+            pool.push(dict[(i * 7) % dict_n]);
         } else {
             seed = next_rand(seed);
-            let n = 3i64 + ((seed / 65536i64) % 8i64);
+            let n = 3 + ((seed / 65536) % 8);
             let mut w = String.new();
-            let mut j = 0i64;
+            let mut j = 0;
             while j < n {
                 seed = next_rand(seed);
-                w.push(letters[(seed / 65536i64) % 26i64]);
-                j = j + 1i64;
+                w.push(letters[(seed / 65536) % 26]);
+                j = j + 1;
             }
             pool.push(w);
         }
-        i = i + 1i64;
+        i = i + 1;
     }
 
     // --- punch ----------------------------------------------------------
-    let mut unique_count = 0i64;
-    i = 0i64;
+    let mut unique_count = 0;
+    i = 0;
     while i < punches {
         let word = pool[i % pool_n];
         let a = abbrev(word);
@@ -113,9 +113,9 @@ fn main() {
             Some(Bucket.Conflicted) => false,
         };
         if u {
-            unique_count = unique_count + 1i64;
+            unique_count = unique_count + 1;
         }
-        i = i + 1i64;
+        i = i + 1;
     }
 
     println(f"unique {unique_count}");

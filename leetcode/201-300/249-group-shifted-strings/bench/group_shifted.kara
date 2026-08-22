@@ -22,59 +22,59 @@
 fn canonical(word: ref String) -> String {
     let bytes = word.bytes();
     let n = bytes.len();
-    if n == 0i64 {
+    if n == 0 {
         return "";
     }
     let shift = (bytes[0] as i64) - (b'a' as i64);
     let mut out: String = "";
-    let mut i = 0i64;
+    let mut i = 0;
     while i < n {
-        let c = (((bytes[i] as i64) - (b'a' as i64) - shift) + 26i64) % 26i64;
+        let c = (((bytes[i] as i64) - (b'a' as i64) - shift) + 26) % 26;
         out.push_str(f"{c},");
-        i = i + 1i64;
+        i = i + 1;
     }
     out
 }
 
 fn main() {
-    let words_n = 120000i64;
-    let rounds = 5i64;
+    let words_n = 120000;
+    let rounds = 5;
 
     // ---- build the corpus once -------------------------------------------
     let mut words: Vec[String] = Vec.new();
-    let mut state = 249249i64;
-    let mut w = 0i64;
+    let mut state = 249249;
+    let mut w = 0;
     while w < words_n {
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let len = (state / 65536i64) % 10i64 + 3i64;
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let seed = (state / 65536i64) % 40i64;
-        state = (state * 1103515245i64 + 12345i64) & 2147483647i64;
-        let shift = (state / 65536i64) % 26i64;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let len = (state / 65536) % 10 + 3;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let seed = (state / 65536) % 40;
+        state = (state * 1103515245 + 12345) & 2147483647;
+        let shift = (state / 65536) % 26;
 
         let mut s: String = "";
-        let mut i = 0i64;
+        let mut i = 0;
         while i < len {
             // Deterministic per (seed, position), then shifted — words sharing a
             // seed and length are in the same shift family.
-            let base = (seed * 7i64 + i * 11i64) % 26i64;
-            let ch = (base + shift) % 26i64;
-            let c = ((97i64 + ch) as u8) as char;
+            let base = (seed * 7 + i * 11) % 26;
+            let ch = (base + shift) % 26;
+            let c = ((97 + ch) as u8) as char;
             s.push_str(f"{c}");
-            i = i + 1i64;
+            i = i + 1;
         }
         words.push(s);
-        w = w + 1i64;
+        w = w + 1;
     }
 
     // ---- punch -----------------------------------------------------------
-    let mut sink = 0i64;
-    let mut r = 0i64;
+    let mut sink = 0;
+    let mut r = 0;
     while r < rounds {
         let mut table: Map[String, Vec[String]] = Map.new();
-        let mut groups = 0i64;
-        let mut keysum = 0i64;
-        let mut i = 0i64;
+        let mut groups = 0;
+        let mut keysum = 0;
+        let mut i = 0;
         while i < words.len() {
             let key = canonical(words[i]);
             // `key` is BORROWED twice (bytes, contains_key) and CONSUMED once
@@ -84,20 +84,20 @@ fn main() {
             // map insertion. The order-sensitive part of the sink is carried by
             // `keysum` folded in encounter order instead.
             let kb = key.bytes();
-            let mut j = 0i64;
+            let mut j = 0;
             while j < kb.len() {
-                keysum = (keysum * 31i64 + (kb[j] as i64)) % 1000000007i64;
-                j = j + 1i64;
+                keysum = (keysum * 31 + (kb[j] as i64)) % 1000000007;
+                j = j + 1;
             }
             if not table.contains_key(key) {
-                groups = groups + 1i64;
+                groups = groups + 1;
             }
             table.entry(key).or_insert(Vec.new()).push(words[i]);
-            i = i + 1i64;
+            i = i + 1;
         }
-        sink = (sink * 131i64 + groups) % 1000000007i64;
-        sink = (sink * 31i64 + keysum) % 1000000007i64;
-        r = r + 1i64;
+        sink = (sink * 131 + groups) % 1000000007;
+        sink = (sink * 31 + keysum) % 1000000007;
+        r = r + 1;
     }
     println(sink);
 }

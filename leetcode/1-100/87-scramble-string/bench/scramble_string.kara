@@ -18,105 +18,105 @@
 
 fn scramble(s1: ref Vec[u8], i1: i64, s2: ref Vec[u8], i2: i64, len: i64,
         memo: mut ref Vec[i64], n: i64) -> bool {
-    if len == 0i64 {
+    if len == 0 {
         return true;
     }
-    let key = (i1 * n + i2) * (n + 1i64) + len;
-    if memo[key] != -1i64 {
-        return memo[key] == 1i64;
+    let key = (i1 * n + i2) * (n + 1) + len;
+    if memo[key] != -1 {
+        return memo[key] == 1;
     }
     let mut equal = true;
-    let mut k = 0i64;
+    let mut k = 0;
     while k < len {
         if s1[i1 + k] != s2[i2 + k] {
             equal = false;
             break;
         }
-        k = k + 1i64;
+        k = k + 1;
     }
     if equal {
-        memo[key] = 1i64;
+        memo[key] = 1;
         return true;
     }
     // Fixed 26-slot count table on the stack (a fresh Array[i64, 26], re-zeroed each
     // call) — the same shape C's `int64_t counts[26]` and Rust's `[0i64; 26]` use, so
     // the hot recursion allocates nothing (contrast a per-call Vec.new(), which heap-
     // allocates and grows every call — see ../87.. bench notes).
-    let mut counts: Array[i64, 26] = [0i64; 26];
-    let mut c = 0i64;
-    k = 0i64;
+    let mut counts: Array[i64, 26] = [0; 26];
+    let mut c = 0;
+    k = 0;
     while k < len {
-        let a = (s1[i1 + k] as i64) - 97i64;
-        let b = (s2[i2 + k] as i64) - 97i64;
-        counts[a] = counts[a] + 1i64;
-        counts[b] = counts[b] - 1i64;
-        k = k + 1i64;
+        let a = (s1[i1 + k] as i64) - 97;
+        let b = (s2[i2 + k] as i64) - 97;
+        counts[a] = counts[a] + 1;
+        counts[b] = counts[b] - 1;
+        k = k + 1;
     }
-    c = 0i64;
-    while c < 26i64 {
-        if counts[c] != 0i64 {
-            memo[key] = 0i64;
+    c = 0;
+    while c < 26 {
+        if counts[c] != 0 {
+            memo[key] = 0;
             return false;
         }
-        c = c + 1i64;
+        c = c + 1;
     }
-    let mut split = 1i64;
+    let mut split = 1;
     while split < len {
         if scramble(s1, i1, s2, i2, split, memo, n)
             and scramble(s1, i1 + split, s2, i2 + split, len - split, memo, n) {
-            memo[key] = 1i64;
+            memo[key] = 1;
             return true;
         }
         if scramble(s1, i1, s2, i2 + len - split, split, memo, n)
             and scramble(s1, i1 + split, s2, i2, len - split, memo, n) {
-            memo[key] = 1i64;
+            memo[key] = 1;
             return true;
         }
-        split = split + 1i64;
+        split = split + 1;
     }
-    memo[key] = 0i64;
+    memo[key] = 0;
     false
 }
 
 fn one(len: i64, seed: i64) -> i64 {
     let mut s1: Vec[u8] = Vec.new();
     let mut s2: Vec[u8] = Vec.new();
-    let mut j = 0i64;
+    let mut j = 0;
     while j < len {
-        s1.push((97i64 + (j % 8i64)) as u8);
-        j = j + 1i64;
+        s1.push((97 + (j % 8)) as u8);
+        j = j + 1;
     }
-    j = 0i64;
+    j = 0;
     while j < len {
-        s2.push(s1[(j * 5i64 + seed) % len]);
-        j = j + 1i64;
+        s2.push(s1[(j * 5 + seed) % len]);
+        j = j + 1;
     }
-    let cells = len * len * (len + 1i64);
+    let cells = len * len * (len + 1);
     let mut memo: Vec[i64] = Vec.new();
-    let mut i = 0i64;
+    let mut i = 0;
     while i < cells {
-        memo.push(-1i64);
-        i = i + 1i64;
+        memo.push(-1);
+        i = i + 1;
     }
-    let r = if scramble(s1, 0i64, s2, 0i64, len, mut memo, len) { 1i64 } else { 0i64 };
+    let r = if scramble(s1, 0, s2, 0, len, mut memo, len) { 1 } else { 0 };
     // Work-sensitive checksum: fold the filled memo state so the sink reflects the
     // actual recursion, not just the boolean answer.
     let mut h = r;
-    i = 0i64;
+    i = 0;
     while i < cells {
-        h = (h * 131i64 + (memo[i] + 2i64)) % 1000000007i64;
-        i = i + 1i64;
+        h = (h * 131 + (memo[i] + 2)) % 1000000007;
+        i = i + 1;
     }
     h
 }
 
 fn main() {
-    let len = 12i64;
-    let total = 60000i64;
+    let len = 12;
+    let total = 60000;
 
     // Associative sum over K independent scramble decisions; the default build auto-
     // parallelizes this `for` reduction, KARAC_AUTO_PAR=0 keeps it single-threaded.
-    let mut sum = 0i64;
+    let mut sum = 0;
     for k in 0..total {
         sum = sum + one(len, k);
     }
