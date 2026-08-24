@@ -114,39 +114,51 @@ A differential that cannot fail proves nothing, so this one was mutation-tested
 | A averages nothing: even counts return `lo`'s root alone | ✅ |
 | the sift-down forgets the right child | ✅ |
 | C reads only the second rank (the run-straddling bug named above) | ✅ |
-| `lower_bound` starts at 1, so B inserts out of range | **found a compiler bug** |
+| `lower_bound` starts at 1, so B inserts out of range | **found `B-2026-08-24-15`** |
 
-## The fourth mutation: `B-2026-08-24-15`
+## The fourth mutation: `B-2026-08-24-15`, found here and now fixed
 
 The broken `lower_bound` made arm B call `Vec.insert(1, v)` on an empty vec.
 design.md says `insert` "panics if out of bounds" and `karac run --interp`
-does. **Neither compiled backend checks at all**, so instead of a panic the
-mutation produced a glibc `free(): invalid pointer` abort.
+did — but **neither compiled backend checked at all**, so instead of a panic
+the mutation produced a glibc `free(): invalid pointer` abort.
 
-Reduced away from the kata, on a `Vec[i64]` holding two elements:
+Reduced away from the kata, on a `Vec[i64]` holding two elements. The right
+column is what this kata found; the fix landed in `114a9d2` and the fourth
+column is the same probe re-run after it:
 
-| op | `--interp` | `karac run` / `karac build` |
-|---|---|---|
-| `v.insert(7, 9)` | panic | `free(): invalid pointer`, exit 134 |
-| `v.remove(7)` | panic | `free(): invalid pointer`, exit 134 |
-| `v.swap_remove(7)` | panic | **no error, exit 0** |
-| `v[7]` | panic | panic, exit 101 |
+| op | `--interp` | compiled, when filed | compiled, now |
+|---|---|---|---|
+| `v.insert(7, 9)` | panic | `free(): invalid pointer`, exit 134 | panic, exit 101 |
+| `v.remove(7)` | panic | `free(): invalid pointer`, exit 134 | panic, exit 101 |
+| `v.swap_remove(7)` | panic | **no error, exit 0** | panic, exit 101 |
+| `v[7]` | panic | panic, exit 101 | panic, exit 101 |
 
-The last row is the control, and it is what makes this a bug rather than a
-policy: plain indexing **is** checked in codegen, so the split is inconsistent
-inside one type. `swap_remove` is the worst of the three because it does not
-crash — the AOT build returns `0`, sets `len` to 1 and drops an element with a
-clean exit; under the JIT the same call returned `94405721258608`, a live heap
-pointer handed back as an `i64`.
+The last row was the control, and it is what made this a bug rather than a
+policy: plain indexing **was** checked in codegen, so the split was
+inconsistent inside one type. `swap_remove` was the worst of the three because
+it did not crash — the AOT build returned `0`, set `len` to 1 and dropped an
+element with a clean exit; under the JIT the same call returned
+`94405721258608`, a live heap pointer handed back as an `i64`.
 
-The cause is in `insert`'s lowering: `move_count` is computed as `len - idx`
-and handed to `memmove`, so `idx > len` makes it negative and it arrives as a
-huge unsigned byte count. `insert(len, v)` — appending at the end — is legal
-and correct on both backends; the boundary is exactly `idx > len`.
+The cause was in `insert`'s lowering: `move_count` is computed as `len - idx`,
+so `idx > len` made it negative and it reached `memmove` as a huge unsigned
+byte count. The fix is one `icmp` + branch per call site, and the one subtle
+part is that the predicate is not the same for all three — `insert` compares
+UGT because `insert(len, v)` is a legal **append**, while `remove` and
+`swap_remove` compare UGE. Using UGE for `insert` would have traded a
+memory-safety hole for a broken `push`.
 
-**The kata does not depend on the bug and is unaffected.** It surfaced only
-because the differential was being checked for its ability to fail, which is
-the one test that finds a compiler bug instead of a kata bug.
+The mutation itself is the shortest proof the fix works. It used to die with
+`exit 139`, SIGSEGV, no diagnostic. Now:
+
+```
+panic at m4.kara:168:23 in ss_add: Vec.insert index out of bounds
+```
+
+**The kata never depended on the bug and was unaffected by it or by the fix.**
+It surfaced only because the differential was being checked for its ability to
+fail, which is the one test that finds a compiler bug instead of a kata bug.
 
 ## One deferred feature this kata hit
 
@@ -173,6 +185,14 @@ number, so no float formatting enters the comparison.
 Container, x86-64, 4 cores; full numbers in
 [`bench/results.container-x86.json`](bench/results.container-x86.json). See
 [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
+
+> These numbers were taken before `B-2026-08-24-15`'s bounds-check fix and
+> **still stand**, which is a structural fact rather than a hope: the fix adds
+> a compare to `insert` / `remove` / `swap_remove`, and the benched path calls
+> none of them — the heap is `push` and `pop` only. (`Vec.insert` appears in
+> arm B, which is not a bench lane.) Re-running on the fixed compiler gives the
+> identical sink and 373.1 ms ± 39.6 against the recorded 382.6 ± 24.0, well
+> inside this container's ~10% variance.
 
 | lang | mean | vs C | notes |
 |---|---:|---:|---|
