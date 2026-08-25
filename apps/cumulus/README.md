@@ -236,6 +236,49 @@ isolation** — it serves from any static host and instantiates in any browser
 that runs wasm at all. The sequential scheduler that `--target=wasm_browser`
 links is what buys that; the threaded archive would have cost the whole setup.
 
+### Threads, and the two headers they cost
+
+The page runs the **threaded** wasm module by default. Measured on an 18-core
+M5 Pro, same 1024×768 ×16 input:
+
+| leg | time | vs native |
+|---|---|---|
+| native, auto-par (18 cores) | 0.27 s | 1.0× |
+| native, forced sequential | 2.18 s | 8.1× |
+| wasm sequential | 3.82 s | 14.1× |
+| **wasm threaded** | **0.46 s** | **1.7×** |
+
+Threads are worth **8.3×** here, and the wasm tax that remains is a flat 1.63×
+— measured at 0.79, 3.15 and 6.00 Mpx as 1.62×, 1.62×, 1.65×, so it does not
+degrade with frame size.
+
+The cost is two response headers:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+They put the page in cross-origin isolation, which browsers require before
+handing out `SharedArrayBuffer`. That is a Spectre mitigation, not a Kāra
+constraint. Concretely it costs: a host that lets you set headers (GitHub Pages
+does not, without a proxy), and a standing rule that the page may never embed a
+cross-origin asset without CORP/CORS. This page loads **zero** external
+resources, so the second is free — it is the same self-containment that makes
+"nothing is uploaded" true.
+
+Memory cost of threading is a **fixed +36 MB**, not a multiplier: measured
++36.0, +36.0, +36.1 MB at 0.79, 3.15 and 6.00 Mpx. It is per-worker tile
+buffers — 18 workers × `n·TILE·STRIP·8` — so it scales with worker and frame
+count, never with frame area. At 24 MP that is about 4% on top.
+
+Without the headers the glue falls back to the sequential module **silently and
+correctly**: same pixels, 8.3× slower. That is precisely the regression that
+ships unnoticed, so `verify_browser.mjs` asserts `getThreaded() === true`.
+Removing the headers from its server is confirmed to fail that check — while
+"byte-identical to native" still passes, which is the whole argument for
+asserting it separately.
+
 `verify_browser.mjs` runs the page at iPhone 13 and Pixel 5 viewports: zero
 horizontal overflow, a canvas that fits the screen, a file-picker target big
 enough to tap, and a stack that completes and paints. Emulation exercises

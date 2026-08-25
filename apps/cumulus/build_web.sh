@@ -18,7 +18,7 @@ if [[ -z "${RUSTUP_TOOLCHAIN:-}" ]]; then
 fi
 
 echo "==> building cumulus.wasm"
-"$KARAC" build cumulus.kara --target=wasm_browser
+"$KARAC" build cumulus.kara --target=wasm_browser --features wasm-threads
 
 echo "==> demo subs"
 [[ -d demo ]] || python3 gen_fits.py demo --frames 16 --width 96 --height 64 --rays 12 --dither 3.0

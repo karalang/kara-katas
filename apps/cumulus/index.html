@@ -193,6 +193,13 @@ let workerUnavailable = false;
 // worker would still produce correct pixels and a green browser check — the
 // verifier asserts on this so that failure cannot pass unnoticed.
 let lastRunPath = null;
+// Whether the wasm ran on the THREADED module. Reported by the worker, because
+// only it can see which one `instantiateThreaded` chose. Threads need
+// cross-origin isolation (COOP/COEP); without those headers the glue falls back
+// to the sequential module SILENTLY and correctly — same pixels, 8.3x slower.
+// A silent 8x regression is exactly the kind that ships unnoticed, so the
+// verifier asserts on this the way it already asserts worker-vs-inline.
+let lastRunThreaded = null;
 
 function stackInWorker(msg) {
   return new Promise((resolve, reject) => {
@@ -276,6 +283,7 @@ async function stack() {
       try {
         out = await stackInWorker(payload(mode));
         lastRunPath = "worker";
+        lastRunThreaded = !!out.threaded;
       } catch (e) {
         if (e.message !== "worker-unavailable") throw e;
         // Fall through to the inline path below.
@@ -286,6 +294,7 @@ async function stack() {
           "finishes, and every frame has to be held in memory.", "warn");
       out = await stackInline(payload(mode));
       lastRunPath = "inline";
+      lastRunThreaded = false;   // the file:// fallback never spawns threads
     }
     result = { w: out.w, h: out.h, px: out.px };
     const ms = performance.now() - t0;
@@ -382,6 +391,8 @@ window.__cumulus = {
   stack,
   getResult: () => (result ? { w: result.w, h: result.h, px: Array.from(result.px) } : null),
   getRunPath: () => lastRunPath,
+  getThreaded: () => lastRunThreaded,
+  isIsolated: () => (typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : null),
   // What the page is actually HOLDING per sub, by kind. The whole streaming
   // claim is that this is handles and numbers and never pixels, and that is a
   // property no pixel comparison can see: a page that quietly went back to

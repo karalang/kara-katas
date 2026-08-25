@@ -116,6 +116,19 @@ try {
   // regression that permanently broke the worker — the whole reason the page
   // stays responsive, and the difference between usable and killed on a phone
   // — would ship green.
+  // Threads need cross-origin isolation. The glue falls back to the sequential
+  // module without error when it is missing — same pixels, 8.3x slower — so
+  // nothing downstream would notice. Assert it explicitly.
+  const threaded = await page.evaluate(() => window.__cumulus.getThreaded());
+  const isolated = await page.evaluate(() => window.__cumulus.isIsolated());
+  if (threaded !== true) {
+    console.log(`  FAIL: stack ran on the SEQUENTIAL module (crossOriginIsolated=${isolated}) ` +
+                `— threads give 8.3x here, and losing them is silent`);
+    failures++;
+  } else {
+    console.log(`  stack ran on the threaded module (crossOriginIsolated=${isolated})`);
+  }
+
   if (runPath !== "worker") {
     console.log(`  FAIL: stack ran via "${runPath}", expected the worker`);
     failures++;

@@ -210,6 +210,18 @@ if command -v node >/dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
   "$WORK/cumulus" "$WORK/w_tall_mean.cstack" mean "$WORK/tall.cstack" > /dev/null
   node test_node.mjs "$WORK/tall.cstack" "$WORK/w_tall_mean.cstack" "$WORK/tall_res_stack.cstack"
 
+  if [[ -f cumulus.threads.wasm ]]; then
+    echo "== threaded wasm equals native (repeated: races are intermittent) =="
+    # The page runs the THREADED module; test_node.mjs only ever exercises the
+    # sequential one. Eighteen workers writing one output buffer is exactly where
+    # a disjointness bug would show, and it would show as a few wrong pixels
+    # rather than a crash — so this compares against the native reference, five
+    # times, at a size big enough to give the scheduler room to interleave.
+    node test_node_threaded.mjs "$WORK/tall.cstack" "$WORK/tall_res_stack.cstack" 2 5
+  else
+    echo "== threaded wasm check SKIPPED (build with --features wasm-threads) =="
+  fi
+
   if node -e "require('playwright')" 2>/dev/null && [[ -d demo ]]; then
     echo "== the real page in a real browser =="
     "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null
