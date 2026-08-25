@@ -27,6 +27,17 @@ Or all of it, both backends, checked against the reference:
 KARAC=/path/to/karac ./verify.sh
 ```
 
+That run is strongest with four optional tools present, and says so when they
+are missing rather than quietly doing less: **numpy** (the differential
+oracle), **node** (the wasm checks), **playwright** (the real-browser check),
+and **`sips` or `tiffcp`** (the third-party TIFF control — `sips` ships with
+macOS, `tiffcp` comes from libtiff, `apt install libtiff-tools`).
+
+On a fresh clone, run `./build_web.sh` first: the wasm bundle is generated
+output and is gitignored, so `verify.sh` skips every wasm and browser check
+until it exists. (The `demo/` fixture is generated too, but `verify.sh` now
+makes it on demand rather than treating its absence as a missing tool.)
+
 ## What it does
 
 Six modes over a stack of 16-bit frames. The two integrators are the core;
@@ -1215,16 +1226,42 @@ that keeps even the lossy case an equality rather than a tolerance.
 
 All of the above shares one author's mental model of TIFF between the generator
 and the reader. A mistake made in **both** is invisible: every test passes while
-real files fail. So `verify.sh` re-encodes the fixtures with `sips` — macOS
-ImageIO — which writes its own IFD layout, its own tag set, and as it happens
-the opposite byte order, and demands the same stack:
+real files fail. So `verify.sh` re-encodes the fixtures with something that has
+never seen this code, and demands the same stack:
 
 ```
-  ImageIO re-encode (MM byte order): byte-identical stack
+  sips re-encode (MM byte order): byte-identical stack       # macOS
+  tiffcp re-encode (II byte order): byte-identical stack     # anywhere else
 ```
 
-Agreement with a decoder that has never seen this code is worth more than
-agreement with six variants of my own.
+Two tools, in preference order, because neither is everywhere. `sips` is macOS
+ImageIO, which rewrites the IFD in its own layout and — as it happens — the
+opposite byte order. `tiffcp` is libtiff's own copier, so on Linux the control
+is the format's **reference implementation**. Agreement with either is worth
+more than agreement with six variants of my own.
+
+ImageMagick is deliberately *not* on that list. It is an image processor rather
+than a container copier: it may apply colour management, and a Q8 build
+silently halves the depth. Either would make the comparison fail while the
+reader was perfectly correct — a false alarm pointing at the wrong file.
+
+Which is the hazard the rest of this needs guarding against, since a control
+that can be wrong in a way that looks like the thing it is controlling is worse
+than no control. So a candidate tool has to earn the job:
+
+- **It must not change the image.** `gen_tiff.py --probe` is a *third* reader —
+  four tags, no pixels, separate from both the ones under test — so "did the
+  encoder alter this file" is not a question either suspect gets to answer.
+  A tool that emits 8-bit where it was given 16 is rejected by name and the
+  next one is tried.
+- **It must actually re-encode.** A tool that copies the bytes verbatim proves
+  nothing, so a byte-identical output disqualifies it too.
+- **If none qualifies, the run says so** and stays green, rather than passing
+  silently as though the control had run.
+
+Every one of those branches is exercised — including a stand-in that halves the
+depth (`changed the image shape (96 64 3 16 -> 96 64 3 8)`) and one that really
+does stack differently, which exits 1 as it should.
 
 ### RGB: three planes, one transform
 

@@ -347,26 +347,68 @@ fi
 
 echo "== a THIRD-PARTY encoder's TIFF decodes to the same pixels =="
 # Without this, gen_tiff.py and the reader in cumulus.kara share one author's
-# mental model of the format, and a mistake made in both is invisible: every
-# test above would pass while real files failed. `sips` is macOS ImageIO — it
-# re-encodes with its own IFD layout, its own tag set, and (as it happens) the
-# opposite byte order. Agreement with it is agreement with something that has
-# never seen this code.
-if command -v sips > /dev/null 2>&1; then
+# mental model of the format, and a mistake made in BOTH is invisible: every
+# test above would pass while real files failed. So the fixtures are re-encoded
+# by something that has never seen this code, and the stack must not move.
+#
+# Two tools, in preference order, because neither is everywhere:
+#   sips    — macOS ImageIO. Rewrites the IFD in its own layout and, as it
+#             happens, the opposite byte order.
+#   tiffcp  — libtiff's own copier, so on Linux the control is the format's
+#             REFERENCE implementation. `-c none` keeps it uncompressed.
+#
+# ImageMagick is deliberately NOT in that list. It is an image processor rather
+# than a container copier: it may apply colour management, and a Q8 build
+# silently halves the depth. Either would make the comparison below fail while
+# the reader was correct — a false alarm pointing at the wrong file.
+reenc_tool=""
+reencode_one() {   # $1 = tool, $2 = in, $3 = out
+  case "$1" in
+    sips)   sips -s format tiff -s formatOptions none "$2" --out "$3" > /dev/null 2>&1 || true ;;
+    tiffcp) tiffcp -c none "$2" "$3" > /dev/null 2>&1 || true ;;
+  esac
+}
+for tool in sips tiffcp; do
+  command -v "$tool" > /dev/null 2>&1 || continue
   rm -rf "$WORK/reenc"; mkdir -p "$WORK/reenc"
+  probe_src="$WORK/rgbtif/sub_000.tif"
+  probe_dst="$WORK/reenc/sub_000.tif"
+  reencode_one "$tool" "$probe_src" "$probe_dst"
+  if [[ ! -f "$probe_dst" ]]; then
+    echo "  $tool: could not re-encode the fixture — trying the next" >&2
+    continue
+  fi
+  # An encoder that changed the image is not a control, it is a second bug
+  # source. gen_tiff.py --probe is a THIRD reader — four tags, no pixels — so
+  # this question is not answered by either reader under test.
+  before="$(python3 gen_tiff.py --probe "$probe_src")"
+  after="$(python3 gen_tiff.py --probe "$probe_dst")"
+  if [[ "$before" != "$after" ]]; then
+    echo "  $tool: changed the image shape ($before -> $after), not a usable control" >&2
+    continue
+  fi
+  # And an encoder that copied the bytes verbatim proves nothing at all.
+  if cmp -s "$probe_src" "$probe_dst"; then
+    echo "  $tool: copied the file byte for byte, so it re-encoded nothing" >&2
+    continue
+  fi
+  reenc_tool="$tool"
+  break
+done
+if [[ -n "$reenc_tool" ]]; then
   for f in "$WORK"/rgbtif/*.tif; do
-    sips -s format tiff -s formatOptions none "$f" \
-         --out "$WORK/reenc/$(basename "$f")" > /dev/null 2>&1
+    reencode_one "$reenc_tool" "$f" "$WORK/reenc/$(basename "$f")"
   done
   "$WORK/cumulus" "$WORK/reenc.cstack" stack "$WORK"/reenc/*.tif > /dev/null
+  order="$(head -c 2 "$WORK/reenc/sub_000.tif")"
   if cmp -s "$WORK/rgbtif.cstack" "$WORK/reenc.cstack"; then
-    echo "  ImageIO re-encode ($(python3 -c "print(open('$WORK/reenc/sub_000.tif','rb').read(2).decode())") byte order): byte-identical stack"
+    echo "  $reenc_tool re-encode ($order byte order): byte-identical stack"
   else
-    echo "  a third-party re-encode of the same pixels stacked differently" >&2
+    echo "  a $reenc_tool re-encode of the same pixels stacked differently" >&2
     exit 1
   fi
 else
-  echo "  no sips on this platform — third-party control SKIPPED" >&2
+  echo "  no usable third-party TIFF encoder (tried sips, tiffcp) — control SKIPPED" >&2
 fi
 
 echo "== calibration masters are refused for RGB, not applied per-channel =="
@@ -409,12 +451,19 @@ echo "== wasm kernels equal native =="
     echo "== threaded wasm check SKIPPED (build with --features wasm-threads) =="
   fi
 
-  if node -e "require('playwright')" 2>/dev/null && [[ -d demo ]]; then
+  # `demo/` is a generated fixture and is gitignored, so a FRESH CLONE has none
+  # — and this check used to read that as "no playwright" and skip, which is the
+  # same shape of hole as a third-party control that quietly is not there. It is
+  # deterministic (fixed seed) and costs a second, so generate it rather than
+  # silently doing less. build_web.sh has always done exactly this.
+  [[ -d demo ]] || python3 gen_fits.py demo --frames 16 --width 96 --height 64 \
+                          --rays 12 --dither 3.0 > /dev/null
+  if node -e "require('playwright')" 2>/dev/null; then
     echo "== the real page in a real browser =="
     "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null
     node verify_browser.mjs "$WORK/demo_native.cstack" --tiff "$WORK/rgbtif" "$WORK/rgbtif.cstack"
   else
-    echo "== browser check SKIPPED (no playwright or no demo/) =="
+    echo "== browser check SKIPPED (no playwright — npm install playwright) =="
   fi
 else
   echo "== wasm checks SKIPPED (no node, or cumulus.wasm not built) =="

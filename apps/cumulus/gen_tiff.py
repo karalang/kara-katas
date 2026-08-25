@@ -205,6 +205,58 @@ def render_rgb(w, h, dx, dy):
     return out
 
 
+# Field widths by TIFF type code: BYTE, SHORT, LONG.
+_W = {1: 1, 3: 2, 4: 4}
+_F = {1: "B", 2: "H", 4: "I"}
+
+
+def probe_tiff(path):
+    """(width, height, samples_per_pixel, bits_per_sample) of a TIFF.
+
+    Deliberately minimal, and deliberately a THIRD reader — separate from both
+    cumulus.kara's and tiff.mjs's. It exists so verify.sh can tell a
+    third-party encoder that changed the image (an 8-bit re-encode, a channel
+    drop) apart from a reader that decoded it wrongly, and leaning on either
+    reader under test to make that call would defeat the point.
+
+    It reads four tags and no pixels. It seeks to the directory rather than
+    assuming it is near the front, because libtiff writes it after the data.
+    """
+    with open(path, "rb") as f:
+        head = f.read(8)
+        if len(head) < 8:
+            raise SystemExit(f"{path}: shorter than a TIFF header")
+        if head[:2] == b"II":
+            e = "<"
+        elif head[:2] == b"MM":
+            e = ">"
+        else:
+            raise SystemExit(f"{path}: not a TIFF (no II/MM byte-order mark)")
+        magic, ifd = struct.unpack(e + "HI", head[2:8])
+        if magic != 42:
+            raise SystemExit(f"{path}: not a classic TIFF (magic {magic})")
+        f.seek(ifd)
+        (n,) = struct.unpack(e + "H", f.read(2))
+        ent = f.read(12 * n)
+        tags = {}
+        for i in range(n):
+            tag, typ, cnt = struct.unpack(e + "HHI", ent[i * 12:i * 12 + 8])
+            raw = ent[i * 12 + 8:i * 12 + 12]
+            width = _W.get(typ)
+            if width is None or cnt <= 0 or cnt > 65536:
+                continue
+            if cnt * width > 4:
+                (at,) = struct.unpack(e + "I", raw)
+                here = f.tell()
+                f.seek(at)
+                raw = f.read(cnt * width)
+                f.seek(here)
+            tags[tag] = [struct.unpack(e + _F[width], raw[j * width:(j + 1) * width])[0]
+                         for j in range(cnt)]
+        return (tags.get(256, [0])[0], tags.get(257, [0])[0],
+                tags.get(277, [1])[0], tags.get(258, [0])[0])
+
+
 def read_cstack(path):
     with open(path, "rb") as f:
         data = f.read()
@@ -217,7 +269,9 @@ def read_cstack(path):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("outdir")
+    ap.add_argument("outdir", nargs="?")
+    ap.add_argument("--probe", metavar="FILE",
+                    help="print 'w h spp bits' of a TIFF and exit")
     ap.add_argument("--from-cstack", help="transcribe this container to mono TIFFs")
     ap.add_argument("--width", type=int, default=96)
     ap.add_argument("--height", type=int, default=64)
@@ -237,6 +291,12 @@ def main() -> int:
                                      "reader should decode these TIFFs to")
     ap.add_argument("--truth", help="write the injected per-frame offsets here")
     args = ap.parse_args()
+
+    if args.probe:
+        print(" ".join(str(v) for v in probe_tiff(args.probe)))
+        return 0
+    if not args.outdir:
+        ap.error("outdir is required unless --probe is given")
 
     endian = "<" if args.endian == "little" else ">"
     rps = args.rows_per_strip or None
