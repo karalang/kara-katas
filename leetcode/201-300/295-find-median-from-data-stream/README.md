@@ -99,10 +99,17 @@ Streams alternate between a wide value spread and a deliberately repeat-heavy
 one, so C's distinct-key path and its within-run median both get hit.
 
 **Bands are sized by the tree-walk interpreter**, the slowest of the four
-surfaces every kata must agree on: **19s** under `karac run --interp` against
-**0.01s** compiled. That ~1900x ratio is what sizes this file — the compiled
-build could afford a hundred times the streams, and the interpreter is the
-whole of the constraint.
+surfaces every kata must agree on. The durable fact is the RATIO — the
+interpreter runs this file **~1500-1900x** slower than the compiled build — and
+that is what sizes it: the compiled build could afford a hundred times the
+streams, and the interpreter is the whole of the constraint.
+
+> The absolutes are machine-dependent and should not be read as fixed. First
+> recorded as 19s interpreted; re-measured later at 27.8s on a slower container,
+> where the C benchmark binary — unchanged, same compiler — also ran 33% slower,
+> which is how you can tell that is the machine and not a regression. The
+> compiled side is **18.2ms ± 0.4**; an earlier "0.01s" here was an artifact of
+> `/usr/bin/time`'s 10ms resolution rather than a measurement.
 
 ### The differential was checked for its ability to fail
 
@@ -201,6 +208,13 @@ Container, x86-64, 4 cores; full numbers in
 | Rust (`-O`, overflow-checks=on) | 360.7 ms ± 25.3 | 1.50× | equal-safety twin |
 | **Kāra** | **382.6 ms ± 24.0** | **1.59×** | hand-rolled heap, 337 KiB binary |
 | Go | 604.8 ms ± 33.1 | 2.51× | hand-rolled heap |
+
+> **Re-measured 2026-08-25 on a later compiler: Kāra's gap to C narrowed from
+> 1.59x to 1.47x** (469.7ms ± 13.9 against C's 320.1ms ± 5.7, 20 runs). Both
+> absolutes are higher than the table because that run was on a slower container
+> — C moved too, on an unchanged binary — so only the ratio carries across, and
+> it moved in Kāra's favour. The table below is the recorded run; the JSON keeps
+> its environment stamp.
 
 **Kāra and equal-safety Rust are a tie here, and the σ is the reason to say so
 rather than claim a winner.** The table's 382.6 vs 360.7 looks like a 1.06×
