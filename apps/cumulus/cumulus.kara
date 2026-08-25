@@ -759,7 +759,8 @@ fn cfa_luminance(px: ref Vec[u16], w: i64, h: i64, nframes: i64) -> Vec[u16] {
 /// is the mosaic plus a quarter of it rather than the mosaic twice over.
 fn stack_cfa(px: ref Vec[u16], w: i64, h: i64, nframes: i64, codes: ref Vec[i64],
              dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
-             keep: ref Vec[i64], use_clip: bool) -> Vec[i64] {
+             keep: ref Vec[i64], use_clip: bool,
+             horizon: i64, feather: i64) -> Vec[i64] {
     let hw = w / 2;
     let hh = h / 2;
     let np = hw * hh;
@@ -767,7 +768,8 @@ fn stack_cfa(px: ref Vec[u16], w: i64, h: i64, nframes: i64, codes: ref Vec[i64]
     let mut greens: i64 = 0;
     for p in 0..4 {
         let plane = extract_plane(px, w, h, nframes, p);
-        let st = stack_tiled(plane, hw, hh, nframes, dxs, dys, rots, keep, use_clip);
+        let st = stack_tiled(plane, hw, hh, nframes, dxs, dys, rots, keep, use_clip,
+                             horizon / 2, feather / 2);
         // 82 = 'R', 66 = 'B'; anything else in a BAYERPAT is 'G'.
         let code = codes[p];
         let ci = if code == 82 { 0 } else { if code == 66 { 2 } else { 1 } };
@@ -1347,8 +1349,30 @@ fn resample_bilinear(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f
 /// drift. `h` is still the FRAME height — coverage is a property of the frame,
 /// not of how much of it happens to be in memory, so a pixel outside the frame
 /// is NO DATA while a pixel outside the window is a bug in the caller's halo.
+/// Weight of the SKY transform at source row `y`: 1.0 above the horizon, 0.0
+/// below it, and a linear ramp across `feather` rows centred on it.
+///
+/// A hard edge between a registered sky and an unregistered foreground is
+/// visible as a seam — the two halves have different noise after integration,
+/// and above all the sky side has been resampled while the land side has not.
+/// The ramp costs a band of rows that are a blend of both and belongs to
+/// neither, which is the right trade: a soft transition reads as haze, a hard
+/// one reads as a mistake.
+fn sky_weight(y: i64, horizon: i64, feather: i64) -> f64 {
+    if horizon <= 0 { return 1.0; }
+    if feather <= 0 {
+        if y < horizon { return 1.0; }
+        return 0.0;
+    }
+    let half = (feather as f64) / 2.0;
+    let d = (y as f64) - (horizon as f64);
+    if d <= 0.0 - half { return 1.0; }
+    if d >= half { return 0.0; }
+    0.5 - d / (2.0 * half)
+}
+
 fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
-                 rot: f64, cx: f64, cy: f64,
+                 rot: f64, cx: f64, cy: f64, horizon: i64, feather: i64,
                  x0: i64, y0: i64, tw: i64, th: i64, wr0: i64, wrows: i64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(tw * th);
     for i in 0..(tw * th) { out.push(-1); }
@@ -1359,11 +1383,24 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
     let ct = rot.cos();
     let st = rot.sin();
     for ty in 0..th {
+        // The sky/foreground split is a function of ROW alone, so it is decided
+        // once per row rather than per pixel. A tile is usually entirely one or
+        // the other; only the tiles straddling the horizon do any blending.
+        let skyw = sky_weight(y0 + ty, horizon, feather);
         for tx in 0..tw {
             let rx = ((x0 + tx) as f64) - cx;
             let ry = ((y0 + ty) as f64) - cy;
-            let sxf = cx + rx * ct - ry * st + dx;
-            let syf = cy + rx * st + ry * ct + dy;
+            // Below the horizon the camera is on a tripod and the LAND does not
+            // move: sampling it through the sky's transform is what smears a
+            // nightscape foreground. Weight 0 samples the source pixel itself.
+            let sxf = if skyw >= 1.0 { cx + rx * ct - ry * st + dx }
+                      else { if skyw <= 0.0 { (x0 + tx) as f64 }
+                             else { (cx + rx * ct - ry * st + dx) * skyw
+                                    + ((x0 + tx) as f64) * (1.0 - skyw) } };
+            let syf = if skyw >= 1.0 { cy + rx * st + ry * ct + dy }
+                      else { if skyw <= 0.0 { (y0 + ty) as f64 }
+                             else { (cy + rx * st + ry * ct + dy) * skyw
+                                    + ((y0 + ty) as f64) * (1.0 - skyw) } };
             let fx0 = sxf.floor();
             let fy0 = syf.floor();
             let fx = sxf - fx0;
@@ -1683,7 +1720,8 @@ fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
 fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
                     dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
                     keep: ref Vec[i64],
-                    use_clip: bool, sy0: i64, sh: i64, wr0: i64, wrows: i64,
+                    use_clip: bool, horizon: i64, feather: i64,
+                    sy0: i64, sh: i64, wr0: i64, wrows: i64,
                     wcap: i64, out_row0: i64, out: mut ref Vec[i64]) {
     let cx = ((w - 1) as f64) / 2.0;
     let cy = ((h - 1) as f64) / 2.0;
@@ -1704,7 +1742,7 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
             for f in 0..nframes {
                 if keep[f] != 0 {
                     let t = resample_tile(px, f * w * wcap, w, h, dxs[f], dys[f],
-                                          rots[f], cx, cy,
+                                          rots[f], cx, cy, horizon, feather,
                                           x0, y0, tw, th, wr0, wrows);
                     for v in t { tile.push(v); }
                     kept = kept + 1;
@@ -1738,6 +1776,7 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
 fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                    bzero: i64, bscale: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
                    rots: ref Vec[f64], keep: ref Vec[i64], use_clip: bool,
+                   horizon: i64, feather: i64,
                    dark: ref Master, flat: ref Master) -> Vec[i64]
     with reads(FileSystem) writes(FileSystem)
 {
@@ -1806,6 +1845,7 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
             }
 
             integrate_window(win, w, h, nframes, dxs, dys, rots, keep, use_clip,
+                             horizon, feather,
                              sy0, sh, wr0, wrows, cap, 0, mut out);
         }
     } else {
@@ -1817,11 +1857,12 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
 /// The resident whole-stack path: one window covering every row.
 fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
                dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
-               keep: ref Vec[i64], use_clip: bool) -> Vec[i64] {
+               keep: ref Vec[i64], use_clip: bool,
+               horizon: i64, feather: i64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
     for i in 0..(w * h) { out.push(0); }
     integrate_window(px, w, h, nframes, dxs, dys, rots, keep, use_clip,
-                     0, h, 0, h, h, 0, mut out);
+                     horizon, feather, 0, h, 0, h, h, 0, mut out);
     out
 }
 
@@ -1872,6 +1913,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
     if argv.len() < 4 {
         println("usage: cumulus <out.cstack> <mean|sigmaclip|register|stack|stackcfa|meancfa>");
         println("               [--bias b.cstack] [--dark d.cstack] [--flat f.cstack]");
+        println("               [--horizon ROW] [--feather ROWS]");
         println("               <in.cstack | sub1.fits ...>");
     } else {
         let outp = argv[1];
@@ -1888,6 +1930,19 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         // masters first, then applied. Nothing new is needed to make them, and
         // the masters inherit the clipping that rejects rays in a dark exactly
         // as it does in a light.
+        // Sky/foreground split for a TRIPOD nightscape. `--horizon R` marks
+        // rows below R as land, which does not move between frames and must be
+        // stacked WITHOUT the sky's transform; `--feather N` ramps between the
+        // two over N rows so the join reads as haze rather than a seam.
+        //
+        // A straight line is the crudest possible mask and deliberately so: it
+        // is the mode Sequator ships as its simplest, it needs no drawing UI or
+        // mask-file format, and it is honest about what it cannot do — a tree
+        // line or a peak crossing the boundary is not served by a horizontal
+        // cut. An irregular mask is the natural follow-on and reuses all of
+        // this; only the weight lookup changes.
+        let mut horizon: i64 = 0;
+        let mut feather: i64 = 0;
         let mut darkp = "";
         let mut flatp = "";
         let mut biasp = "";
@@ -1898,6 +1953,8 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             if k == "--dark" { darkp = argv[ai + 1].clone(); }
             if k == "--flat" { flatp = argv[ai + 1].clone(); }
             if k == "--bias" { biasp = argv[ai + 1].clone(); }
+            if k == "--horizon" { horizon = parse_int(argv[ai + 1]); }
+            if k == "--feather" { feather = parse_int(argv[ai + 1]); }
             ai = ai + 2;
             first_in = ai;
         }
@@ -1919,7 +1976,13 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         let mut bzero: i64 = 0;
         let mut bscale: i64 = 1;
 
-        if argv.len() > 4 or inp.ends_with(".fits") {
+        // Multiple INPUTS means a FITS sequence; one means a container. Count
+        // from `first_in`, not from argv — the old `argv.len() > 4` counted
+        // FLAGS too, so `--dark d.cstack in.cstack` already sent a single
+        // `.cstack` down the FITS path and failed with "no END card in header".
+        // Two flag pairs made it unmissable; one always could.
+        let ninputs = argv.len() - first_in;
+        if ninputs > 1 or inp.ends_with(".fits") {
             // Headers first, pixels never — enough to learn the geometry, spot
             // a mismatched sequence, and decide whether this run can stream.
             let mut i = first_in;
@@ -1956,7 +2019,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             }
         }
 
-        if not streaming and (argv.len() > 4 or inp.ends_with(".fits")) {
+        if not streaming and (ninputs > 1 or inp.ends_with(".fits")) {
             let mut i = first_in;
             let mut bad = false;
             while i < argv.len() and not bad {
@@ -2065,8 +2128,12 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             }
 
             let codes = pattern_codes(bayer.clone());
+            // The CFA planes are half-resolution, so a horizon expressed in
+            // MOSAIC rows halves with them — `stack_cfa` does that division at
+            // the plane boundary rather than making the caller remember which
+            // coordinate system it is in.
             let rgb = stack_cfa(px, width, height, nframes, codes, dxs, dys, rots, keep,
-                                mode == "stackcfa");
+                                mode == "stackcfa", horizon, feather);
             write_stack(outp.clone(), rgb, hw, hh, 3);
             println(f"cumulus: {mode} {bayer} {width}x{height} x{nframes} -> {hw}x{hh} RGB {outp}");
             loaded = false;  // handled here; skip the monochrome path below
@@ -2148,9 +2215,11 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
             let out = if streaming {
                 stack_streaming(paths, width, height, nframes, bzero, bscale,
-                                dxs, dys, rots, keep, use_clip, dark, flat)
+                                dxs, dys, rots, keep, use_clip, horizon, feather,
+                                dark, flat)
             } else {
-                stack_tiled(px, width, height, nframes, dxs, dys, rots, keep, use_clip)
+                stack_tiled(px, width, height, nframes, dxs, dys, rots, keep, use_clip,
+                            horizon, feather)
             };
             write_stack(outp.clone(), out, width, height, 1);
             let how = if streaming { "streamed" } else { "resident" };
@@ -2376,6 +2445,7 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
 
         // `sy0` as the output origin: this buffer's row 0 IS source row sy0.
         integrate_window(win, w, h, nframes, dxs, dys, rots, keep, mode != 0,
+                         0, 0,
                          sy0, sh, wr0, wrows, cap, sy0, mut out);
 
         // Hand this strip back as 16-bit little-endian; the page owns the

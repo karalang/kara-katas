@@ -1056,6 +1056,85 @@ offset and resamples by its negation passes every other check in this repo.
 Verified by doing exactly that: negating the resample scores **0.749×** peak
 brightness — worse than not registering — and the check fails.
 
+## Nightscapes: two subjects in one exposure
+
+Everything above assumes the frame has **one** subject. A nightscape does not.
+The camera is on a fixed tripod, the sky turns, the land does not — so a single
+transform cannot serve both. Register on the stars and the stars come out sharp
+while the ridge line smears into a grey band. Do not register and the land is
+sharp and the stars are streaks. This is the whole reason Starry Landscape
+Stacker and Sequator exist as separate tools from Siril and DSS.
+
+`--horizon R` splits the frame at row `R`: rows above it are sky and take the
+measured transform, rows below are land and are integrated with no transform at
+all. `--feather N` ramps the weight linearly across `N` rows so the join reads
+as haze rather than a seam.
+
+```kara
+fn sky_weight(y: i64, horizon: i64, feather: i64) -> f64 { ... }
+```
+
+The decision is per **row**, not per pixel, and that is not a shortcut — a
+horizontal cut is constant along a row, so a per-pixel test would recompute the
+same number `w` times. Only the tiles straddling the boundary blend at all;
+above and below, the weight is exactly 1 or exactly 0 and the resampler takes
+the branch it would have taken anyway.
+
+### What it is worth, measured
+
+Three stacks of the same ten frames, with 0.35°/frame of sky rotation and a
+static foreground of ridge, town lights and a lake reflection. Sharpness is
+summed squared gradient over each region:
+
+| strategy | sky | land |
+|---|---|---|
+| unregistered | 67144 | 464313 |
+| sky-only — *what a deep-sky stacker does* | 68207 | **377507** |
+| **masked** | **68207** | **464313** |
+
+The masked stack keeps **100%** of the unregistered land sharpness and beats
+sky-only by **1.23×**, giving up nothing in the sky. Both halves get the
+treatment they want, which is the entire claim.
+
+### An oracle nothing else in the harness could replace
+
+A smeared foreground is invisible to every other check here. Such a stack is
+still byte-identical across backends, still matches the integration oracle to
+the bit, still recovers its dithers to a hundredth of a pixel — it is *exactly
+correct* at everything the pipeline was asked to do, and still the wrong
+picture. So `check_nightscape.py` compares the three stacks above and asserts
+the ordering only a working mask produces.
+
+It is proven to fail two ways, because a checker that cannot fail is decoration:
+
+- Feed it the **sky-only** stack in the masked slot and it catches the smear
+  (`0.813 < 0.97`) and the missing gain (`1.000 < 1.08`).
+- Run it on a fixture with **no foreground** and a non-vacuity guard catches
+  that instead — if sky-only registration barely smeared the land (`0.860×`),
+  there was nothing to protect and the pass would have meant nothing.
+
+The second guard is the one worth having. Without it the check quietly turns
+green the day someone regenerates the fixture without `--foreground`, and it
+stays green forever.
+
+### The bug the flags exposed
+
+`--horizon` and `--feather` are the third and fourth flags Cumulus accepts, and
+adding them made a latent argument-parsing bug unmissable. The input-shape test
+counted `argv.len()`, which includes flags — so two flag pairs made a single
+`.cstack` look like a sequence of FITS files, and it died with *"no END card in
+header"* on a container it had just written itself.
+
+```kara
+let ninputs = argv.len() - first_in;
+if ninputs > 1 or inp.ends_with(".fits") { ... }
+```
+
+`--dark d.cstack in.cstack` could already trip this with one flag pair; my two
+just made it certain. It is now counted from `first_in`, with a regression test
+that runs `mean --horizon 40 --feather 4` against a `.cstack` and demands the
+same bytes as running it with no flags at all.
+
 ## FITS input
 
 `cumulus` reads the subset a smart telescope actually emits: `BITPIX = 16`,
@@ -1102,9 +1181,13 @@ FITS is read directly (see above); this container is not required for input.
 
 Deliberately absent, in the order they matter:
 
-1. **Rotation** — translation only. Fine for a tracked mount over a short
-   session; an alt-az mount accumulates field rotation that this will not
-   correct.
+1. **Irregular horizon masks.** `--horizon` is a horizontal line, which is the
+   crudest mask that works and the mode Sequator ships as its simplest. A tree
+   line, a peak, or an arch crossing the boundary is not served by a straight
+   cut. The rest of the machinery does not care: the mask enters as a weight
+   per sample, so an arbitrary mask changes `sky_weight` and nothing else. What
+   it really needs is a way to *author* the mask — a drawing surface in the
+   page, or a PNG alpha channel from another tool.
 2. **Calibration in the BROWSER.** The CLI takes `--dark`, `--flat` and
    `--bias`; the page has no UI for them and passes none, so a browser stack is
    uncalibrated. The kernels are already shared and target-agnostic

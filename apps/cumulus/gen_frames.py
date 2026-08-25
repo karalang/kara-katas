@@ -60,6 +60,33 @@ class LCG:
         return sigma * math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
 
 
+def add_foreground(sky: list[float], width: int, height: int, horizon: int) -> None:
+    """A STATIC landscape below `horizon` — it does not move, ever.
+
+    This is what makes a nightscape a different problem from a deep-sky stack.
+    The camera is on a tripod, so the land is fixed to the sensor while the sky
+    turns; registering on stars sharpens the stars and SMEARS the land, and not
+    registering does the reverse. Any test that only has stars in it cannot tell
+    a masked stacker from an unmasked one.
+
+    Deliberately high-contrast and pointy: a ridge line, a few bright windows,
+    and their reflection. Soft, low-contrast terrain would blur without anyone
+    being able to measure that it had.
+    """
+    for x in range(width):
+        # A ridge: two overlapping humps, so the horizon is not a straight edge.
+        ridge = horizon + int(6.0 * math.sin(x * 0.11) + 4.0 * math.sin(x * 0.031))
+        for y in range(max(0, ridge), height):
+            sky[y * width + x] = 900.0 + 2.0 * (y - ridge)
+        # Town lights along the ridge, and a dimmer reflection below it.
+        if x % 17 == 3:
+            for yy in range(ridge, min(height, ridge + 3)):
+                sky[yy * width + x] = 42000.0
+            refl = min(height - 1, ridge + 14)
+            if refl < height:
+                sky[refl * width + x] = 12000.0
+
+
 def base_sky(width: int, height: int, dx: float = 0.0, dy: float = 0.0,
              rot: float = 0.0) -> list[float]:
     """The scene, optionally SHIFTED by (dx, dy) pixels and ROTATED by `rot` degrees.
@@ -123,6 +150,9 @@ def main() -> int:
     ap.add_argument("--rotate", type=float, default=0.0,
                     help="degrees of field rotation ACCUMULATED per frame "
                          "(frame k is rotated k*rotate); models an untracked mount")
+    ap.add_argument("--foreground", type=int, default=0,
+                    help="add a STATIC landscape below this row (0 = sky only); "
+                         "models a tripod nightscape, where the land does not move")
     ap.add_argument("--truth", help="write the injected per-frame offsets here")
     args = ap.parse_args()
 
@@ -146,6 +176,8 @@ def main() -> int:
             rot = fi * args.rotate
             truth.append((dx, dy, rot))
             sky = base_sky(w, h, dx, dy, rot)
+            if args.foreground > 0:
+                add_foreground(sky, w, h, args.foreground)
             px = [0] * (w * h)
             for i in range(w * h):
                 v = sky[i] + rng.gauss(args.noise)

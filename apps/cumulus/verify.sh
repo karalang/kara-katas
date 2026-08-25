@@ -170,6 +170,39 @@ echo "== registered stack is sharper than an unregistered one =="
 "$WORK/cumulus" "$WORK/stack_unreg.cstack" sigmaclip "$WORK/dith.cstack" > /dev/null
 python3 check_stack.py "$WORK/stack_reg.cstack" "$WORK/stack_unreg.cstack"
 
+echo "== nightscape: sky and foreground registered SEPARATELY =="
+# The problem a deep-sky stacker does not have. On a tripod the sky turns and
+# the land does not, so ONE transform cannot serve both: registering on stars
+# sharpens the stars and smears the land, and not registering does the reverse.
+# `--horizon` splits them and `--feather` ramps the join.
+#
+# Nothing else in this file can see a smeared foreground — such a stack is still
+# byte-identical across backends, still passes the integration oracle, still
+# recovers its dithers. So this compares three stacks of the same frames and
+# checks the ordering only a working mask produces, and refuses to pass a
+# fixture whose foreground was never smeared in the first place.
+python3 gen_frames.py "$WORK/ns.cstack" --width 240 --height 180 --frames 10 \
+        --rays 0 --rotate 0.35 --foreground 120 > /dev/null
+"$WORK/cumulus" "$WORK/ns_none.cstack" sigmaclip "$WORK/ns.cstack" > /dev/null
+"$WORK/cumulus" "$WORK/ns_sky.cstack"  stack     "$WORK/ns.cstack" > /dev/null
+"$WORK/cumulus" "$WORK/ns_mask.cstack" stack --horizon 120 --feather 8 \
+        "$WORK/ns.cstack" > /dev/null
+python3 check_nightscape.py "$WORK/ns_none.cstack" "$WORK/ns_sky.cstack" \
+        "$WORK/ns_mask.cstack" 120
+
+echo "== a container input survives flags before it =="
+# `--horizon`/`--feather` are the third and fourth flags, and the input-shape
+# test used to count ARGV rather than inputs — so two flag pairs made a single
+# `.cstack` look like a FITS sequence and it died with "no END card in header".
+# `--dark d.cstack in.cstack` could already trip it with one pair.
+"$WORK/cumulus" "$WORK/flagged.cstack" mean --horizon 40 --feather 4 "$WORK/in.cstack" > /dev/null
+if cmp -s "$WORK/flagged.cstack" "$WORK/mean.cstack"; then
+  echo "  flags before a .cstack: same result as without them"
+else
+  echo "  a flag before the input changed the result" >&2
+  exit 1
+fi
+
 echo "== malformed FITS is refused, not misread =="
 # A reader that quietly mishandles BITPIX produces a plausible image, which is
 # worse than no image — so the refusals are part of the contract.
