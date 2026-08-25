@@ -130,12 +130,12 @@ Container, x86-64, 4 cores; full numbers in
 
 | lang | mean | vs C | notes |
 |---|---:|---:|---|
-| Go | 396.4 ms ± 10.7 | 0.70× | 2178 KiB binary |
-| **Kāra** | **459.9 ms ± 9.0** | **0.81×** | sequential lane, 341 KiB binary |
-| Rust (`-O`, target-cpu=v3) | 475.3 ms ± 6.9 | 0.84× | |
-| Rust (`-O`, overflow-checks=on) | 518.1 ms ± 8.4 | 0.91× | equal-safety twin |
-| Rust (`-O`) | 519.8 ms ± 11.6 | 0.92× | |
-| C | 566.9 ms ± 10.6 | 1.00× | 16 KiB binary |
+| Go | 568.9 ms ± 16.8 | 0.88× | 2178 KiB binary |
+| **Kāra** | **614.1 ms ± 13.2** | **0.95×** | sequential lane, 341 KiB binary |
+| Rust (`-O`, overflow-checks=on) | 618.6 ms ± 10.7 | 0.95× | equal-safety twin |
+| Rust (`-O`) | 623.8 ms ± 15.0 | 0.96× | |
+| Rust (`-O`, target-cpu=v3) | 630.3 ms ± 8.3 | 0.97× | |
+| C | 648.2 ms ± 10.7 | 1.00× | 16 KiB binary |
 
 **C is last here, and that is not a typo.** It is the first kata in this series
 where C is not the baseline winner, so the obvious suspicion is a handicapped C
@@ -150,22 +150,47 @@ Kāra beats both Rust configurations and trails only Go, which is a better
 showing than [#295](../295-find-median-from-data-stream/)'s tie against
 equal-safety Rust — different bottleneck, different ordering.
 
-### The Kāra lane is the sequential build, deliberately
+### The par lane — Kāra writes no parallel code and still wins it
 
-`karac` auto-parallelises this workload, and the effect is large: on the
-shipped source the default build measures **222.6 ms ± 11.2** against
-**463.1 ms ± 6.4** under `KARAC_AUTO_PAR=0` — **2.08×**, over 12 runs, with
-`User` time roughly double wall-clock on the parallel build. Timing that
-against single-threaded C, Rust and Go would credit code generation with what
-is actually free parallelism.
+The seq table above is single-threaded on every row: `bench.sh` builds the Kāra
+lane with `KARAC_AUTO_PAR=0`, because timing an auto-parallelised binary against
+single-threaded C, Rust and Go would credit code generation with free
+parallelism. BENCHMARKS.md records an earlier incident where exactly that
+happened, and `scripts/lint-par-lane.py` exists to catch it.
 
-`bench.sh` already builds the Kāra lane with `KARAC_AUTO_PAR=0` for exactly
-this reason — BENCHMARKS.md records an earlier incident where a parallel binary
-got timed in a lane labelled `seq`, and the harness has guarded against it
-since.
+The par lane is where the parallelism belongs. **All four rows do the same
+four-way fan-out** — the difference is who wrote it:
 
-**What is parallelised is the four edge searches**, and the compiler will tell
-you so directly — `karac query concurrency` reports, for `min_area`:
+| lang | mean | who wrote the parallelism |
+|---|---:|---|
+| Go | 393.9 ms ± 7.0 | 3 goroutines + `WaitGroup`, by hand |
+| **Kāra** | **406.2 ms ± 16.7** | **nobody — `karac` inferred it** |
+| C | 525.8 ms ± 24.5 | 3 raw `pthread_create` per call, by hand |
+| Rust | 574.9 ms ± 15.1 | two nested `rayon::join`, by hand |
+
+Kāra ties Go (1.03× ± 0.05 — inside the noise) and beats hand-written C and
+Rust, **from source containing no concurrency construct at all**. Against its
+own sequential build it is 614.1 → 406.2 ms, a **1.51×** self-speedup.
+
+Why not 4× on four branches: the branches are unequal. The two **column**
+searches stride by `w` and miss cache on nearly every probe while the two
+**row** searches walk contiguous bytes, so the critical path is the slowest
+branch, not the average.
+
+Why C and Rust trail: both pay per-call. C creates three OS threads on every
+one of the 1200 calls — that is the "metal floor", raw pthreads with no pool,
+and its `System` time (224 ms, the highest of the four) is where it shows.
+Rayon's `join` submits to a work-stealing pool rather than spawning, but at
+this granularity the submit-and-steal overhead still costs more than the fan-out
+returns. Go's goroutines multiplex onto an existing M:N scheduler, which is why
+it is the one hand-written mirror that keeps up.
+
+**This lane is not comparable to the seq rows above.** Those are all
+single-threaded; these are all using four cores.
+
+#### What exactly got parallelised, and how to ask
+
+Not a guess — `karac query concurrency` reports it. For `min_area`:
 
 ```json
 "parallel_groups": [{"statements": [0,1,2,3],
@@ -173,23 +198,18 @@ you so directly — `karac query concurrency` reports, for `min_area`:
 ```
 
 Statements 0–3 are exactly `top`, `bottom`, `left`, `right`. They read the same
-immutable image and write nothing, so the pass fans all four out; the binary
-carries four `__par_branch_0_0…_0_3` symbols the sequential build lacks.
+immutable image and write nothing, so the pass fans all four out, and the
+binary carries four `__par_branch_0_0…_0_3` symbols the sequential build lacks.
 
-**2.08× rather than 4× because the branches are unequal.** The two column
-searches stride through memory by `w` and miss cache on nearly every probe; the
-two row searches walk contiguous bytes. The critical path is the slowest
-branch, not the average, so a 4-way fan-out of a badly-skewed set buys about
-half of what the branch count suggests.
-
-> Recorded because it cost time: an earlier draft of this section claimed the
-> mechanism was *unattributed* and listed the four-searches explanation as
-> DISPROVED. That was a bad experiment, not a finding. The test replaced two of
-> the four searches with constants — which leaves `min_area` with four
-> dependency-free statements either way, so the group stays four wide and the
-> branch count never moves. Cutting the *statement count* is the test that
-> discriminates; `karac query concurrency` is the tool that makes guessing
-> unnecessary in the first place.
+> Worth recording because it cost an hour: an earlier draft of this section
+> claimed the mechanism was *unattributed* and listed the four-searches
+> explanation as DISPROVED. That was a bad experiment, not a finding. The test
+> replaced two of the four searches with **constants**, which leaves `min_area`
+> with four dependency-free statements either way — so the group stays four
+> wide and the branch count cannot move. Cutting the *statement count* is the
+> discriminating test. The real lesson is smaller and more useful: `karac query
+> concurrency` answers this directly, and reaching for it first would have
+> skipped six probes and one wrong conclusion.
 
 ### Every mirror hand-rolls the search, except Python's scale
 

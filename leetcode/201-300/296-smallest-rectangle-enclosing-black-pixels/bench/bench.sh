@@ -21,6 +21,7 @@ require hyperfine "brew install hyperfine"
 require rustc     "rustup (https://rustup.rs) or 'brew install rustup-init'"
 require clang     "xcode-select --install (macOS) or your distro's clang package"
 require go        "brew install go  or your distro's golang package"
+require cargo     "rustup (https://rustup.rs) — needed for the rayon par-lane variant"
 require karac     "cargo install --path . --features llvm  (from karac-rust checkout)"
 
 if [ "${BENCH_JSON:-1}" = "1" ]; then
@@ -81,11 +82,61 @@ build_go_seq() {
     fi
 }
 
+# ---- par lane -------------------------------------------------------------
+# Kara's auto-par fans out the FOUR INDEPENDENT EDGE SEARCHES inside min_area
+# with no annotation — `karac query concurrency` reports
+# parallel_groups [0,1,2,3] "no data or effect dependencies". These three
+# mirrors do that same fan-out BY HAND, which is what the par lane compares.
+#
+# NOTE the auto-par build below deliberately does NOT set KARAC_AUTO_PAR=0 —
+# that is the whole point of the lane, and scripts/lint-par-lane.py exists to
+# catch a par row that accidentally names the seq helper's output.
+build_kara_par() {
+    local src="$1"
+    local stem="$(basename "$src" .kara)"
+    local out="target/${stem}_kara_par"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (par, auto-par ON) ..." >&2
+        karac build "$src" >/dev/null
+        mv "$stem" "$out"
+    fi
+}
+
+build_c_par() {
+    local src="${STEM}_par.c"
+    local out="target/${STEM}_c_par"
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
+        echo "compiling $src (pthreads) ..." >&2
+        clang -O3 -pthread "$src" -o "$out"
+    fi
+}
+
+build_rayon() {
+    local out="target/${STEM}_rayon"
+    if [ ! -x "$out" ] || [ "rayon/src/main.rs" -nt "$out" ]; then
+        echo "building rayon variant (cargo) ..." >&2
+        ( cd rayon && cargo build --release --quiet )
+        cp "rayon/target/release/blackpixels_rayon" "$out"
+    fi
+}
+
+build_go_par() {
+    local out="target/${STEM}_go_par"
+    if [ ! -x "$out" ] || [ "go-par/main.go" -nt "$out" ]; then
+        echo "compiling go-par ..." >&2
+        ( cd go-par && go build -o "../$out" . )
+    fi
+}
+
 build_rust "${STEM}.rs"
 build_rust_ovf "${STEM}.rs"
 build_c    "${STEM}.c"
 build_kara "${STEM}.kara"
 build_go_seq
+build_kara_par "${STEM}.kara"
+build_c_par
+build_rayon
+build_go_par
 # Matched-ISA twins (equal safety + equal ISA). No-ops off x86-64.
 isa_build_c    "${STEM}.c"
 isa_build_rust "${STEM}.rs"
@@ -140,6 +191,22 @@ isa_rt_cmds "$STEM" seq
 rt_end
 
 echo
+echo "=== runtime — par lane ==="
+# Kara writes NO parallel code; the other three hand-write the same four-way
+# fan-out. Apples-to-apples WITHIN this lane; NOT comparable to the seq rows
+# above, which are all single-threaded.
+rt_begin --warmup 3 --runs 25
+rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
+    --name "kara ${STEM} (auto-par, NO parallel code)" --cmd "./target/${STEM}_kara_par"
+rt_cmd --lang c --approach "$STEM" --lane par --mode native \
+    --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
+rt_cmd --lang rust --approach "$STEM" --lane par --mode native \
+    --name "rust ${STEM} (rayon nested join)" --cmd "./target/${STEM}_rayon"
+rt_cmd --lang go --approach "$STEM" --lane par --mode native \
+    --name "go   ${STEM} (goroutines + WaitGroup)" --cmd "./target/${STEM}_go_par"
+rt_end
+
+echo
 echo "=== runtime — long workloads (py) ==="
 rt_begin --warmup 1 --runs 3
 rt_cmd --lang python --approach "$STEM" --lane seq --mode interp \
@@ -164,6 +231,10 @@ ce_end
 echo
 echo "=== binary size ==="
 size_put --lang kara --approach "$STEM" --lane seq --mode codegen --path "target/${STEM}_kara"
+size_put --lang kara --approach "$STEM" --lane par --mode codegen --path "target/${STEM}_kara_par"
+size_put --lang c    --approach "$STEM" --lane par --mode native  --path "target/${STEM}_c_par"
+size_put --lang rust --approach "$STEM" --lane par --mode native  --path "target/${STEM}_rayon"
+size_put --lang go   --approach "$STEM" --lane par --mode native  --path "target/${STEM}_go_par"
 size_put --lang rust --approach "$STEM" --lane seq --mode native  --path "target/${STEM}"
 size_put --lang c    --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_c"
 size_put --lang go   --approach "$STEM" --lane seq --mode native  --path "target/${STEM}_go_seq"
