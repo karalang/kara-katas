@@ -41,7 +41,7 @@ let MAX_SHIFT: f64 = 128.0;
 // bytes, so 16 frames at 256 is 8 MB regardless of how large the frames are.
 let TILE: i64 = 256;
 
-fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
+fn read_all(path: ref String) -> Vec[u8] with reads(FileSystem) {
     let mut data: Vec[u8] = Vec.new();
     match File.open(path) {
         Ok(f) => {
@@ -642,7 +642,7 @@ fn read_sub_rows(f: ref File, m: ref SubMeta, plane: i64, row0: i64, nrows: i64,
 }
 
 /// True if `path` is a `.cstack` container, by its magic rather than its name.
-fn is_cstack(path: String) -> bool with reads(FileSystem) {
+fn is_cstack(path: ref String) -> bool with reads(FileSystem) {
     let mut yes = false;
     match File.open(path) {
         Ok(f) => {
@@ -959,7 +959,7 @@ fn parse_int(s: String) -> i64 {
     if neg { 0 - n } else { n }
 }
 
-fn read_fits(path: String) -> FitsImage with reads(FileSystem) {
+fn read_fits(path: ref String) -> FitsImage with reads(FileSystem) {
     let data = read_all(path);
     let mut img = FitsImage {
         width: 0, height: 0, px: Vec.new(), bayer: "", ok: false, err: "",
@@ -1901,7 +1901,7 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
 struct Master { px: Vec[u16], present: bool, scale: f64 }
 
 /// Load a single-frame `.cstack` as a master and check it matches the lights.
-fn load_master(path: String, w: i64, h: i64, label: String) -> Master
+fn load_master(path: ref String, w: i64, h: i64, label: String) -> Master
     with reads(FileSystem) writes(FileSystem)
 {
     let mut m = Master { px: Vec.new(), present: false, scale: 1.0 };
@@ -2000,7 +2000,7 @@ fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64
 
 /// Just the header of `path` — opens, parses, closes. Used to learn a sub's
 /// geometry before deciding whether the run can stream.
-fn read_sub_meta(path: String) -> SubMeta with reads(FileSystem) {
+fn read_sub_meta(path: ref String) -> SubMeta with reads(FileSystem) {
     let mut m = new_sub_meta();
     m.err = "cannot open input";
     match File.open(path) {
@@ -2345,7 +2345,7 @@ fn write_stack_rows(f: ref File, out: ref Vec[i64], n: i64) -> bool
     ok
 }
 
-fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64, planes: i64)
+fn write_stack(path: ref String, out: ref Vec[i64], width: i64, height: i64, planes: i64)
     with writes(FileSystem)
 {
     match File.create(path) {
@@ -2444,9 +2444,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         // already sent a single container down the sequence path and failed
         // with "no END card in header".
         let ninputs = argv.len() - first_in;
-        // `inp.clone()` because `File.open` takes an owned `String`, so a
-        // read-only path predicate cannot borrow one. One clone per run.
-        let is_container = ninputs == 1 and is_cstack(inp.clone());
+        let is_container = ninputs == 1 and is_cstack(inp);
         // Set when the pre-scan succeeded but the sequence cannot stream — the
         // mosaic case, and only that case.
         let mut resident_seq = false;
@@ -2614,7 +2612,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             // coordinate system it is in.
             let rgb = stack_cfa(px, width, height, nframes, codes, dxs, dys, rots, keep,
                                 mode == "stackcfa", horizon, feather);
-            write_stack(outp.clone(), rgb, hw, hh, 3);
+            write_stack(outp, rgb, hw, hh, 3);
             println(f"cumulus: {mode} {bayer} {width}x{height} x{nframes} -> {hw}x{hh} RGB {outp}");
             loaded = false;  // handled here; skip the monochrome path below
         }
@@ -2640,9 +2638,9 @@ fn main() with reads(FileSystem) writes(FileSystem) {
 
             // Masters load once, after geometry is known so the dimension check
             // has something to check against.
-            let mut dark = load_master(darkp.clone(), width, height, "dark");
-            let mut flat = load_master(flatp.clone(), width, height, "flat");
-            let bias = load_master(biasp.clone(), width, height, "bias");
+            let mut dark = load_master(darkp, width, height, "dark");
+            let mut flat = load_master(flatp, width, height, "flat");
+            let bias = load_master(biasp, width, height, "bias");
             prepare_flat(mut flat, bias, npix);
             if dark.present or flat.present {
                 let d = if dark.present { " dark" } else { "" };
@@ -2717,7 +2715,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 // drives all three: colour planes of one exposure were captured
                 // by one sensor through one lens, so registering them
                 // independently could only introduce disagreement between them.
-                match File.create(outp.clone()) {
+                match File.create(outp) {
                     Ok(fo) => {
                         let mut okw = write_stack_header(fo, width, height, nplanes);
                         for pl in 0..nplanes {
@@ -2734,7 +2732,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             } else {
                 let out = stack_tiled(px, width, height, nframes, dxs, dys, rots, keep,
                                       use_clip, horizon, feather);
-                write_stack(outp.clone(), out, width, height, 1);
+                write_stack(outp, out, width, height, 1);
             }
             let how = if streaming { "streamed" } else { "resident" };
             let colour = if nplanes > 1 { " RGB" } else { "" };
