@@ -241,9 +241,28 @@ measures interpreter dispatch and nothing else. It still runs the full 2M adds
 and lands at ~2.4s — no scale-down was needed, and its sink matches the other
 four exactly.
 
-The absence of a stdlib heap is worth naming as a gap rather than leaving
-implicit: `Vec`, `Map`, `Set`, `VecDeque`, `SortedMap` and `SortedSet` all
-ship, and a priority queue is the obvious missing member of that set. This
-kata works fine without one — hand-rolling the heap **is** the exercise for
-#295 — but a language that has `SortedSet.min` and no `BinaryHeap` will send
-every scheduler, Dijkstra and top-k program through a hand-rolled sift loop.
+### The stdlib gained a `PriorityQueue` — and this kata still can't use it
+
+When this kata was written there was no stdlib heap, and the paragraph above
+named that as a gap. **It has since landed**: `PriorityQueue[T: Ord]`, a
+`Vec`-backed binary heap in `runtime/stdlib/priority_queue.kara`, smallest-first
+by default with a `max_first()` sibling — exactly the two directions the
+two-heap median wants, and it type-checks, interprets and AOT-compiles.
+
+So the natural rewrite is to delete the hand-rolled `Heap` and call it. **That
+does not work, for one missing method**: there is no `peek`. The surface is
+`new` / `max_first` / `from` / `max_first_from` / `push` / `pop` / `len` /
+`is_empty` / `clear` / `into_sorted_vec`, and none of those reads the root
+without removing it. The median is *the two roots*, read on every query, so
+without `peek` the O(1) query becomes a `pop` + `push` pair — O(log n), and
+mutating where a reader wants `ref self`.
+
+That is filed as **`B-2026-08-25-32`**, along with a second defect it exposed:
+the stdlib file's own header advertises `peek / len O(1)` in its complexity
+table for a method that exists in neither the file nor design.md's method
+table. The spec and the implementation agree; only the documentation is wrong.
+
+Until that closes, hand-rolling stays — which is no loss for #295, where
+writing the heap **is** the exercise. The point of recording it here is that
+the gap moved rather than disappeared: it was "no priority queue at all", and
+it is now "a priority queue you cannot read the head of".
