@@ -152,17 +152,37 @@ equal-safety Rust — different bottleneck, different ordering.
 
 ### The Kāra lane is the sequential build, deliberately
 
-`karac` auto-parallelises this workload, and the effect is large: the default
-build runs **2.16× faster** than the same source under `KARAC_AUTO_PAR=0`
-(445.2 ms vs 960.2 ms at a larger query count). Timing that against
-single-threaded C, Rust and Go would credit code generation with what is
-actually free parallelism.
+`karac` auto-parallelises this workload, and the effect is large: on the
+shipped source the default build measures **222.6 ms ± 11.2** against
+**463.1 ms ± 6.4** under `KARAC_AUTO_PAR=0` — **2.08×**, over 12 runs, with
+`User` time roughly double wall-clock on the parallel build. Timing that
+against single-threaded C, Rust and Go would credit code generation with what
+is actually free parallelism.
 
 `bench.sh` already builds the Kāra lane with `KARAC_AUTO_PAR=0` for exactly
 this reason — BENCHMARKS.md records an earlier incident where a parallel binary
 got timed in a lane labelled `seq`, and the harness has guarded against it
-since. The 2.16× is a real Kāra advantage; it belongs in the auto-par section,
-not smuggled into a sequential comparison.
+since.
+
+**What is being parallelised is UNATTRIBUTED, and the elimination is recorded
+here so the next reader starts past it.** The auto-par binary carries exactly
+four `__par_branch_0_0…_0_3` symbols that the sequential one does not, so the
+pass emits one par region with a four-way fan-out. It is *not*:
+
+- the four independent edge searches in `min_area` — cutting them to two still
+  emits four branches;
+- the worker count — `KARAC_PAR_WORKERS=2` and `=8` both still emit four;
+- the query loop, the blob-building loops, or `Vec.filled` — removing each in
+  turn leaves four;
+- boilerplate — a hello-world and a plain accumulate loop emit zero.
+
+So the speedup is real and reproducible while its mechanism is open. **That is
+also why this kata has no par lane.** A par lane's worth is the comparison
+"Kāra found *this* for free, here is C with pthreads / Rust with rayon / Go
+with goroutines doing the same thing by hand" — and that comparison cannot be
+written honestly until the *this* is known. Adding one now would invite the
+reader to credit the four independent searches, which the first bullet above
+disproves.
 
 ### Every mirror hand-rolls the search, except Python's scale
 
