@@ -27,39 +27,47 @@ if (!inPath) {
 }
 const mode = Number(modeArg ?? 2);
 
-// With `--assert-model`, fail if peak falls outside
-// `[STRIP*w*8, max(w*h*2, strip) + STRIP*w*10 + SLACK]`.
+// With `--assert-model`, fail if peak falls outside `[STRIP*w*8, bound]`, where
 //
-// Read the model term by term, because its SHAPE is the claim being made:
+//   pass1 = w*(STRIP+6)*2 + 65536*8      strip buffer (+3-row halo) + histogram
+//   pass2 = n*w*WIN*2 + n*TILE*STRIP*8   strip window + per-tile gather
+//         + STRIP*w*10                   strip accumulator + strip rows out
+//   bound = max(pass1, pass2) + SLACK
 //
-//   STRIP*w*8   the i64 accumulator — ONE STRIP tall, not one frame
-//   STRIP*w*2   the 16-bit rows handed to the host, likewise one strip
-//   max(...)    EITHER pass 1's resident frame (`w*h*2`) OR the pass-2 strip
-//               window plus per-tile gather, whichever is LARGER — never both
+// THERE IS NO `w*h` TERM. Peak scales with frame WIDTH and sub count, never with
+// frame HEIGHT or area — a 4000-row frame costs what a 768-row frame of the same
+// width costs. Both passes stream now:
 //
-// OUTPUT STREAMING removed the two `w*h` terms that used to dominate. The
-// accumulator was `w*h*8` and the result `w*h*2`; both are now `STRIP` rows.
-// `put_rows` hands each strip to the host as it completes, so the finished
-// image is assembled in the JS heap instead of inside wasm — which is the whole
-// point, because wasm32's 4 GiB address space is the scarce one and the JS heap
-// is not. Measured, at 16 frames:
+//   pass 1  registration reads a strip at a time. Clipped statistics need the
+//           whole frame before the scan can begin, so the sub is walked twice —
+//           once to build a 65536-bin histogram, once to detect. The histogram
+//           is what holds that at TWO reads instead of six: the three clipping
+//           rounds each need a sum and a variance, and they run over bins rather
+//           than pixels. Detection strips carry a 3-row halo (the 3x3 maximum
+//           test and the +/-3 centroid window both reach that far) and emit only
+//           for their core rows, so no star is found twice.
 //
-//     1024x768     12.8 ->   6.8 MB
-//     2048x1536    33.1 ->   9.1 MB
-//     3000x2000    58.3 ->  12.8 MB
-//     6016x4016   275.7 ->  47.4 MB     <- 24 MP, 5.8x less
+//   pass 2  integration writes each strip out through `put_rows` as it
+//           completes, so the finished image is assembled in the JS heap rather
+//           than inside wasm — which is the point, because wasm32's 4 GiB
+//           address space is the scarce one and the JS heap is not.
 //
-// What REMAINS proportional to `w*h` is pass 1's resident frame, `w*h*2`, and
-// at 24 MP that is 46 of the 47 MB. Star detection needs global background
-// statistics before it can scan, so the frame is read whole; splitting
-// `detect_stars` into a statistics pass and a scan pass would strip that too,
-// at the cost of reading each sub twice in pass 1. That is the next lever, and
-// after this slice it is the ONLY `w*h` term left.
+// Measured at 16 frames, across the three slices that got here:
 //
-// The `max` is a wasm property, not a program one: linear memory is a
-// HIGH-WATER MARK and never returns pages, so pass 1's freed frame leaves a
-// hole that pass 2's window either fits inside (costing nothing) or does not.
-// They never add.
+//                    resident   output-streamed   both streamed
+//    1024x768          12.8            6.8              6.0 MB
+//    2048x1536         33.1            9.1              9.3 MB
+//    3000x2000         58.3           12.8             11.8 MB
+//    6016x4016 (24MP) 275.7           47.4             20.1 MB    <- 13.7x
+//
+// Thirty times the area between the first row and the last, and 3.3x the
+// memory. What is left is linear in `w`, which is why the model has no area
+// term to state.
+//
+// The `max` between passes is a wasm property rather than a program one: linear
+// memory is a HIGH-WATER MARK and never returns pages, so pass 1's freed
+// buffers leave a hole that pass 2's either fit inside — costing nothing — or
+// do not. The two never add.
 const STRIP = 64, MAX_HALO = 24, TILE = 256, WIN = STRIP + 2 * MAX_HALO;
 const SLACK = 4 * 1048576;
 
@@ -114,9 +122,10 @@ console.log(
 );
 
 if (assertModel) {
-  const model = `max(w*h*2, n*w*${WIN}*2 + n*${TILE}*${STRIP}*8) + ${STRIP}*w*10`;
-  const bound =
-    Math.max(w * h * 2, n * w * WIN * 2 + n * TILE * STRIP * 8) + STRIP * w * 10 + SLACK;
+  const model = `max(pass1, pass2)`;
+  const pass1 = w * (STRIP + 6) * 2 + 65536 * 8;
+  const pass2 = n * w * WIN * 2 + n * TILE * STRIP * 8 + STRIP * w * 10;
+  const bound = Math.max(pass1, pass2) + SLACK;
   const floor = STRIP * w * 8;
   if (peakWasm > bound) {
     console.log(`  FAIL: peak ${MB(peakWasm)} MB exceeds the ${model} model ` +

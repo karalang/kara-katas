@@ -793,15 +793,54 @@ struct Star { x: f64, y: f64, flux: f64 }
 /// and standard deviation of the whole frame. Stars occupy a tiny fraction of
 /// the pixels, so they barely move the mean — good enough for a detection
 /// threshold, and it costs one pass.
-fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
-    // SIGMA-CLIPPED, and it has to be. A raw mean/sd is wrecked by the very
-    // things detection is supposed to find: a dozen cosmic rays at 60000 in a
-    // field whose sky sits near 1500 inflate the sd enough that `mean + 6*sd`
-    // lands ABOVE most of the real stars. Measured before this: 8 of 12 stars
-    // detected in the reference frame and 11 in the others — the difference
-    // being rays, not stars, which is precisely backwards.
-    //
-    // Clipping to 3 sigma for 3 passes pulls the estimate back onto the sky.
+/// Number of bins in a 16-bit intensity histogram — the whole u16 range, so a
+/// pixel maps to a bin with no quantisation whatsoever.
+const HIST_BINS: i64 = 65536;
+
+/// Accumulate `npix` pixels into a 65536-bin intensity histogram.
+///
+/// The histogram is what lets pass 1 stream. Clipped statistics need several
+/// traversals of the data (three clipping rounds, each needing a sum and then a
+/// variance), and re-reading a 24 MP sub six times per frame is not affordable
+/// when every read is a Blob slice and a decode. A histogram is built in ONE
+/// traversal and every later round runs over 65536 bins instead of 24 million
+/// pixels — so the frame is read once, and the statistics get ~6x cheaper as a
+/// side effect.
+///
+/// It is also EXACT. The pixels are u16, so a bin per value loses nothing; this
+/// is a lossless re-encoding of the frame for the purpose of computing order
+/// statistics, not an approximation of it.
+fn hist_add(px: ref Vec[u16], base: i64, npix: i64, hist: mut ref Vec[i64]) {
+    for i in 0..npix {
+        let v = px[base + i] as i64;
+        hist[v] = hist[v] + 1;
+    }
+}
+
+/// Sigma-clipped (mean, sd) from an intensity histogram.
+///
+/// SIGMA-CLIPPED, and it has to be. A raw mean/sd is wrecked by the very things
+/// detection is supposed to find: a dozen cosmic rays at 60000 in a field whose
+/// sky sits near 1500 inflate the sd enough that `mean + 6*sd` lands ABOVE most
+/// of the real stars. Measured before this: 8 of 12 stars detected in the
+/// reference frame and 11 in the others — the difference being rays, not stars,
+/// which is precisely backwards. Clipping to 3 sigma for 3 passes pulls the
+/// estimate back onto the sky.
+///
+/// Summing bins rather than pixels changes the ORDER of the floating-point
+/// accumulation. The MEAN is unaffected — every partial sum is an integer below
+/// 2^53, so it is exact whichever order it is taken in — but the variance is
+/// not, and the sd differs from a pixel-order accumulation in its last few bits
+/// (measured: 185.90641024128087 against 185.9064102412528 on a 6 Mpx frame).
+/// That moved the detection threshold by 2e-10 and put ZERO pixels on a
+/// different side of it, but "no pixel happened to sit in the gap" is a property
+/// of one frame, not a guarantee.
+///
+/// So BOTH backends compute it this way. Cross-backend byte-identity — the bar
+/// this project actually holds itself to — stays provable because native and
+/// wasm run the same accumulation in the same order. What changed is only the
+/// value against the historical baseline, which nothing pins bit-exactly.
+fn stats_from_hist(hist: ref Vec[i64]) -> (f64, f64) {
     let mut lo: f64 = -1.0e30;
     let mut hi: f64 = 1.0e30;
     let mut mean: f64 = 0.0;
@@ -809,18 +848,27 @@ fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
     for pass in 0..3 {
         let mut sum: f64 = 0.0;
         let mut count: i64 = 0;
-        for i in 0..npix {
-            let v = px[base + i] as f64;
-            if v >= lo and v <= hi { sum = sum + v; count = count + 1; }
+        for b in 0..HIST_BINS {
+            let c = hist[b];
+            if c > 0 {
+                let v = b as f64;
+                if v >= lo and v <= hi {
+                    sum = sum + v * (c as f64);
+                    count = count + c;
+                }
+            }
         }
         if count > 0 {
             mean = sum / (count as f64);
             let mut var: f64 = 0.0;
-            for i in 0..npix {
-                let v = px[base + i] as f64;
-                if v >= lo and v <= hi {
-                    let d = v - mean;
-                    var = var + d * d;
+            for b in 0..HIST_BINS {
+                let c = hist[b];
+                if c > 0 {
+                    let v = b as f64;
+                    if v >= lo and v <= hi {
+                        let d = v - mean;
+                        var = var + d * d * (c as f64);
+                    }
                 }
             }
             sd = (var / (count as f64)).sqrt();
@@ -831,6 +879,14 @@ fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
     (mean, sd)
 }
 
+/// Whole-frame convenience wrapper: build the histogram, then reduce it.
+/// The streaming caller skips this and accumulates the histogram strip by strip.
+fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
+    let mut hist: Vec[i64] = Vec.filled(HIST_BINS, 0);
+    hist_add(px, base, npix, mut hist);
+    stats_from_hist(hist)
+}
+
 /// Detect stars: 3x3 local maxima above `mean + k*sd`, centroided over a
 /// (2r+1)^2 window with the background subtracted.
 ///
@@ -838,16 +894,27 @@ fn frame_stats(px: ref Vec[u16], base: i64, npix: i64) -> (f64, f64) {
 /// sky left in, the window's own gradient pulls the centroid toward the bright
 /// side of the frame — a systematic bias that looks like a real offset and
 /// would be recovered as one.
-fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> Vec[Star] {
-    let mut stars: Vec[Star] = Vec.new();
-    let stats = frame_stats(px, base, w * h);
-    let mean = stats.0;
-    let sd = stats.1;
+/// Star detection over a ROW RANGE, reading from a buffer that need not hold the
+/// whole frame.
+///
+/// `buf_row0` is the source row that buffer row 0 holds, and `[scan_y0, scan_y1)`
+/// are the source rows detections are EMITTED for. The two differ by the halo:
+/// the 3x3 maximum test and the +/-3 centroid window both reach 3 rows beyond
+/// the pixel being tested, so a strip must carry 3 rows of context on each side
+/// and must not emit detections inside them — those rows belong to the
+/// neighbouring strip and would be found twice.
+///
+/// Star coordinates stay ABSOLUTE (source rows), so a caller stitching strips
+/// gets one coherent list. Only the indexing is buffer-relative.
+fn detect_stars_rows(px: ref Vec[u16], base: i64, w: i64, buf_row0: i64,
+                     scan_y0: i64, scan_y1: i64, mean: f64, sd: f64,
+                     thresh_k: f64, stars: mut ref Vec[Star]) {
     let thresh = mean + thresh_k * sd;
     let r: i64 = 3;
-    for y in r..(h - r) {
+    for y in scan_y0..scan_y1 {
+        let by = y - buf_row0;
         for x in r..(w - r) {
-            let v = px[base + y * w + x] as f64;
+            let v = px[base + by * w + x] as f64;
             if v > thresh {
                 // 3x3 local maximum. `>=` on the earlier neighbours and `>` on
                 // the later ones breaks ties in a flat-topped (saturated) core
@@ -856,7 +923,7 @@ fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> V
                 for dy in -1..2 {
                     for dx in -1..2 {
                         if dx != 0 or dy != 0 {
-                            let nv = px[base + (y + dy) * w + (x + dx)] as f64;
+                            let nv = px[base + (by + dy) * w + (x + dx)] as f64;
                             if nv > v { is_max = false; }
                         }
                     }
@@ -870,10 +937,10 @@ fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> V
                 // frame can agree with.
                 if is_max {
                     let peak = v - mean;
-                    let nsum = (px[base + (y - 1) * w + x] as f64 - mean)
-                        + (px[base + (y + 1) * w + x] as f64 - mean)
-                        + (px[base + y * w + (x - 1)] as f64 - mean)
-                        + (px[base + y * w + (x + 1)] as f64 - mean);
+                    let nsum = (px[base + (by - 1) * w + x] as f64 - mean)
+                        + (px[base + (by + 1) * w + x] as f64 - mean)
+                        + (px[base + by * w + (x - 1)] as f64 - mean)
+                        + (px[base + by * w + (x + 1)] as f64 - mean);
                     if peak <= 0.0 or nsum / peak < 0.5 { is_max = false; }
                 }
                 if is_max {
@@ -882,7 +949,7 @@ fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> V
                     let mut sy: f64 = 0.0;
                     for dy in (0 - r)..(r + 1) {
                         for dx in (0 - r)..(r + 1) {
-                            let pv = (px[base + (y + dy) * w + (x + dx)] as f64) - mean;
+                            let pv = (px[base + (by + dy) * w + (x + dx)] as f64) - mean;
                             if pv > 0.0 {
                                 sw = sw + pv;
                                 sx = sx + pv * ((x + dx) as f64);
@@ -897,6 +964,15 @@ fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> V
             }
         }
     }
+}
+
+/// Whole-frame detection: the buffer holds every row, so the scan runs the full
+/// height in one call. The streaming caller drives `detect_stars_rows` directly,
+/// strip by strip, and dedups once at the end.
+fn detect_stars(px: ref Vec[u16], base: i64, w: i64, h: i64, thresh_k: f64) -> Vec[Star] {
+    let stats = frame_stats(px, base, w * h);
+    let mut stars: Vec[Star] = Vec.new();
+    detect_stars_rows(px, base, w, 0, 3, h - 3, stats.0, stats.1, thresh_k, mut stars);
     deduplicate(stars)
 }
 
@@ -1982,17 +2058,57 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
     let mut kept = nframes;
 
     if mode == 2 {
-        // PASS 1 — registration, one frame resident. The buffer is allocated
-        // once and overwritten per frame rather than reallocated, and it is
-        // scoped to this block so it is gone before pass 2 allocates its
-        // window: the two peaks never overlap.
-        let mut frame: Vec[u16] = Vec.filled(npix, 0);
+        // PASS 1 — registration, STREAMED. No frame is ever resident: the
+        // buffer is one strip plus the 3-row halo detection reaches into, so
+        // this costs `w*(STRIP+6)*2` rather than `w*h*2` — 842 KB against 48 MB
+        // on a 24 MP sub, and flat in frame height.
+        //
+        // It costs a second read of each sub. Clipped statistics need the whole
+        // frame before the scan can start (the threshold is `mean + 6*sd` over
+        // all of it), so the frame is walked twice: once to build the
+        // histogram, once to detect. The histogram is what keeps that at TWO
+        // reads instead of six — the three clipping rounds each need a sum and
+        // a variance, and they now run over 65536 bins rather than the pixels.
+        let sbuf_rows = STRIP + 6;
+        let mut sbuf: Vec[u16] = Vec.filled(w * sbuf_rows, 0);
+        let nsp = (h + STRIP - 1) / STRIP;
         let mut ref_stars: Vec[Star] = Vec.new();
         let mut nref: i64 = 0;
         kept = 0;
         for f in 0..nframes {
-            read_rows(f, 0, h, frame.as_ptr(), 0);
-            let st = detect_stars(frame, 0, w, h, 6.0);
+            // 1a — histogram the whole sub, a strip at a time.
+            let mut hist: Vec[i64] = Vec.filled(HIST_BINS, 0);
+            for sp in 0..nsp {
+                let y0 = sp * STRIP;
+                let rem = h - y0;
+                let nr = if rem < STRIP { rem } else { STRIP };
+                read_rows(f, y0, nr, sbuf.as_ptr(), 0);
+                hist_add(sbuf, 0, nr * w, mut hist);
+            }
+            let stats = stats_from_hist(hist);
+
+            // 1b — detect, a strip at a time, each carrying a 3-row halo.
+            // Detections are emitted only for the strip's CORE rows; the halo
+            // belongs to the neighbour and would otherwise be found twice.
+            let mut st: Vec[Star] = Vec.new();
+            for sp in 0..nsp {
+                let sy0 = sp * STRIP;
+                let rem2 = h - sy0;
+                let sy1 = if rem2 < STRIP { h } else { sy0 + STRIP };
+                let scan_y0 = if sy0 < 3 { 3 } else { sy0 };
+                let scan_y1 = if sy1 > h - 3 { h - 3 } else { sy1 };
+                if scan_y0 < scan_y1 {
+                    let buf_row0 = scan_y0 - 3;
+                    let buf_rows = (scan_y1 + 3) - buf_row0;
+                    read_rows(f, buf_row0, buf_rows, sbuf.as_ptr(), 0);
+                    detect_stars_rows(sbuf, 0, w, buf_row0, scan_y0, scan_y1,
+                                      stats.0, stats.1, 6.0, mut st);
+                }
+            }
+            // Dedup once, over the stitched list -- the strips emit in the same
+            // ascending order the whole-frame scan does, so this is the same
+            // input `detect_stars` would have handed it.
+            let st = deduplicate(st);
             if f == 0 {
                 for s in st { ref_stars.push(s); }
                 nref = ref_stars.len();

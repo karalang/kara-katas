@@ -356,48 +356,73 @@ modest 3 Mpx ×32, on the device with the least memory. The page now streams
 (see *Streaming*), and the term is gone:
 
 ```
-peak ≈ max( w·h·2 , n·w·112·2 + n·256·64·8 )  +  STRIP·w·10
-       ↑ pass-1 frame  ↑ strip window + tile gather   ↑ strip accumulator + rows
+peak ≈ max( pass1 , pass2 )
+
+  pass1 = w·(STRIP+6)·2 + 65536·8          strip + halo, and the histogram
+  pass2 = n·w·112·2 + n·256·64·8           strip window + tile gather
+        + STRIP·w·10                       strip accumulator + rows out
 ```
 
-**Round three: stream the OUTPUT too.** The input streamed; the output did not.
-A `w·h·8` i64 accumulator and a `w·h·2` result sat in wasm for the whole run,
-and both counted against wasm32's 4 GiB address space. `put_rows` now hands each
-strip to the host as it completes, so the finished image is assembled in the JS
-heap — which has no such ceiling — while wasm holds one strip:
+**There is no `w·h` term.** Peak scales with frame **width** and sub count, and
+never with frame **height** or area. Measured directly: 1024×4000 peaks at
+**6.0 MB — the same as 1024×768**, with 5.2× the rows.
 
-| frame | ×16 before | ×16 after | |
+Three slices got here, and each removed a different `w·h` term:
+
+| frame | resident | output streamed | both streamed |
 |---|---|---|---|
-| 1024×768 | 12.8 MB | **6.8 MB** | 1.9× |
-| 2048×1536 | 33.1 MB | **9.1 MB** | 3.6× |
-| 3000×2000 | 58.3 MB | **12.8 MB** | 4.6× |
-| **6016×4016** (24 MP) | 275.7 MB | **47.4 MB** | **5.8×** |
+| 1024×768 | 12.8 MB | 6.8 MB | **6.0 MB** |
+| 2048×1536 | 33.1 MB | 9.1 MB | **9.3 MB** |
+| 3000×2000 | 58.3 MB | 12.8 MB | **11.8 MB** |
+| **6016×4016** (24 MP) | 275.7 MB | 47.4 MB | **20.1 MB** |
 
-The constrained heap holds a strip; the unconstrained one holds the picture.
+Thirty times the area between the first row and the last, and 3.3× the memory.
+At 24 MP that is **13.7× less than where the day started**.
 
-**What remains proportional to `w·h` is pass 1's resident frame — `w·h·2`, and
-at 24 MP that is 46 of the 47 MB.** Star detection needs global background
-statistics before it can scan, so the frame is read whole. Splitting
-`detect_stars` into a statistics pass and a scan pass would strip that too, at
-the cost of reading each sub twice in pass 1. After this slice it is the *only*
-`w·h` term left, and therefore the whole of the remaining resolution ceiling.
+**Pass 2 streams its output.** `put_rows` hands each strip to the host as it
+completes, so the finished image is assembled in the JS heap — which has no
+4 GiB ceiling — instead of inside wasm, which does. The constrained heap holds a
+strip; the unconstrained one holds the picture.
 
-The `max` is a wasm property rather than a program one: linear memory is a
-**high-water mark and never returns pages**, so pass 1's freed frame leaves a
-hole that pass 2's window either fits inside — costing nothing — or does not.
-The two never add. Which term is visible flips at roughly `h = 112·n`.
+**Pass 1 streams its registration**, which needs a trick. Clipped statistics
+need the whole frame before the scan can start, since the threshold is
+`mean + 6·sd` over all of it. So the sub is walked twice: once to build a
+**65536-bin histogram**, once to detect. The histogram is what holds that at two
+reads rather than six — the three clipping rounds each need a sum and a
+variance, and they now run over bins instead of pixels, which also makes the
+statistics about 6× cheaper. A u16 histogram is a *lossless* re-encoding, so
+nothing is approximated.
+
+Detection strips carry a 3-row halo — the 3×3 maximum test and the ±3 centroid
+window both reach that far — and emit only for their core rows, so no star is
+found twice. The strips scan in the same ascending order the whole-frame version
+did, so the stitched list is what `deduplicate` would have received anyway.
+
+One thing genuinely changed, and it is worth stating rather than burying.
+Summing histogram bins instead of pixels changes the floating-point accumulation
+order. The **mean is unaffected** — every partial sum is an integer below 2⁵³, so
+it is exact in any order — but the variance is not: the sd shifted in its last
+few bits (185.90641024128087 against 185.9064102412528 on a 6 Mpx frame), moving
+the detection threshold by 2e-10. Zero pixels fell on a different side of it, but
+"no pixel happened to sit in the gap" is a property of one frame, not a
+guarantee. So **both backends** compute it the new way: cross-backend
+byte-identity, the bar this project actually holds itself to, stays provable
+because native and wasm run the same accumulation in the same order.
+
+The `max` between passes is a wasm property, not a program one: linear memory is
+a **high-water mark and never returns pages**, so pass 1's freed buffers leave a
+hole that pass 2's either fit inside — costing nothing — or do not. They never
+add.
 
 `mem_probe.mjs --assert-model` enforces this in `build_web.sh`, validated across
-0.79→24.16 Mpx and n from 2 to 64, with a lower bound of `STRIP·w·8` so a run
-that measures nothing cannot pass.
+0.79→24.16 Mpx, n from 2 to 64, and the height axis independently.
 
-Two earlier versions of this model were wrong, and the way they were wrong is
-worth keeping. The first read `w·h·(4n+8)`; the input-streaming slice cut it to
-`w·h·10 + n·w·112·2 + …`, which was wrong in *both* directions at once — it
-always charged the strip window even when the hole absorbed it, and never
-charged pass 1's frame at all. Those two errors are close in size at n=16, and
-every measurement ever taken was at n≥16, so they cancelled and the bound
-passed. One untested axis was all it took.
+Two earlier versions of this model were wrong, and how they were wrong is the
+part worth keeping. The second read `w·h·10 + n·w·112·2 + …`, which was wrong in
+*both* directions at once — it always charged the strip window even when the
+hole absorbed it, and never charged pass 1's frame at all. Those two errors are
+close in size at n=16, and every measurement ever taken was at n≥16, so they
+cancelled and the bound passed. One untested axis was all it took.
 
 > A model that holds because two errors point opposite ways is not a model.
 
