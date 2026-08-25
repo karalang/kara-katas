@@ -27,7 +27,7 @@
   }
   #drop.hot { border-color: var(--accent); color: var(--ink); background: #0f1520; }
   label { display: block; margin: 14px 0 5px; font-size: 13px; color: var(--dim); }
-  select, button {
+  select, button, input[type="number"] {
     width: 100%; padding: 9px 11px; border-radius: 7px; font: inherit;
     background: #0f1520; color: var(--ink); border: 1px solid var(--line);
   }
@@ -44,6 +44,7 @@
   #barfill { height: 100%; width: 0; background: var(--accent); transition: width .12s; }
   #log { margin-top: 12px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); white-space: pre-wrap; }
   .ok { color: var(--ok); } .warn { color: var(--warn); }
+  .hint { color: var(--dim); font-weight: 400; }
   footer { max-width: 1100px; margin: 0 auto; padding: 0 24px 40px; color: var(--dim); font-size: 13px; }
   code { background: #0f1520; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 </style>
@@ -61,9 +62,9 @@
     <div class="panel">
       <h2>Frames</h2>
       <div id="drop">
-        <strong>Drop FITS subs here</strong><br />
+        <strong>Drop FITS or TIFF subs here</strong><br />
         or click to choose files
-        <input id="file" type="file" multiple accept=".fits,.fit" hidden />
+        <input id="file" type="file" multiple accept=".fits,.fit,.fts,.tif,.tiff" hidden />
       </div>
       <div class="row"><button id="demo">Load demo stack</button></div>
 
@@ -73,6 +74,11 @@
         <option value="1">Sigma clip, no registration</option>
         <option value="0">Mean, no registration</option>
       </select>
+
+      <label for="horizon">Horizon row <span class="hint">(0 = off)</span></label>
+      <input id="horizon" type="number" min="0" step="1" value="0" />
+      <label for="feather">Feather rows</label>
+      <input id="feather" type="number" min="0" step="1" value="8" />
 
       <label for="stretch">Display stretch</label>
       <select id="stretch">
@@ -105,7 +111,7 @@
 
 <script type="module">
 import { instantiate } from "./cumulus.js";
-import { decodeRows, readHeader } from "./fits.mjs";
+import { decodeInto, mismatch, readSubHeader, rowRanges } from "./subs.mjs";
 
 const $ = (id) => document.getElementById(id);
 const log = (msg, cls = "") => { $("log").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; };
@@ -131,6 +137,14 @@ let result = null; // {w, h, px: Uint16Array}
 // faint detail without blowing out the star cores.
 function render(res, mode) {
   const { w, h, px } = res;
+  const planes = res.planes || 1;
+  const np = w * h;
+  // ONE stretch across all three channels, not one per channel. A per-channel
+  // stretch is an automatic white balance: it maps each channel's own
+  // percentiles to the same output range, so it flattens exactly the colour
+  // the pipeline just worked to preserve — a red star and a blue one come out
+  // the same shade. Light pollution being redder than the sky is real, and
+  // showing it is more honest than hiding it behind three normalisations.
   const sorted = Uint16Array.from(px).sort();
   const lo = sorted[Math.floor(sorted.length * 0.005)];
   const hi = sorted[Math.floor(sorted.length * 0.999)];
@@ -142,12 +156,17 @@ function render(res, mode) {
   const img = ctx.createImageData(w, h);
   const A = 12; // asinh softening — higher lifts faint signal harder
   const norm = Math.asinh(A);
-  for (let i = 0; i < w * h; i++) {
-    let t = (px[i] - lo) / span;
+  const level = (v) => {
+    let t = (v - lo) / span;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
     if (mode === "asinh") t = Math.asinh(A * t) / norm;
-    const v = Math.round(t * 255);
-    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+    return Math.round(t * 255);
+  };
+  for (let i = 0; i < np; i++) {
+    const r = level(px[i]);
+    const g = planes === 3 ? level(px[np + i]) : r;
+    const b = planes === 3 ? level(px[2 * np + i]) : r;
+    img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -180,10 +199,16 @@ function onProgress({ stage, done, total }) {
 // blobs cross a postMessage by reference, so this is a few hundred bytes
 // whatever the session weighs.
 function payload(mode) {
+  // The whole meta crosses, minus the display-only `name`: which fields the
+  // decoder needs is the decoder's business, and enumerating them here was one
+  // more place to update whenever a format was added — the shape this page had
+  // before TIFF, and the reason the first attempt at it silently dropped every
+  // strip offset.
   return {
-    subs: subs.map(({ blob, w, h, bzero, bscale, dataOff }) =>
-      ({ blob, w, h, bzero, bscale, dataOff })),
-    w: dims.w, h: dims.h, n: subs.length, mode,
+    subs: subs.map(({ name, ...m }) => m),
+    w: dims.w, h: dims.h, n: subs.length, planes: dims.planes, mode,
+    horizon: Math.max(0, parseInt($("horizon").value, 10) || 0),
+    feather: Math.max(0, parseInt($("feather").value, 10) || 0),
   };
 }
 
@@ -226,7 +251,7 @@ function stackInWorker(msg) {
   });
 }
 
-async function stackInline({ subs, w, h, n, mode }) {
+async function stackInline({ subs, w, h, n, planes, mode, horizon, feather }) {
   // `FileReaderSync` is worker-only, and `read_rows` is synchronous, so on this
   // thread there is no way to answer it from a Blob: the bytes have to be
   // resident before wasm starts. The fallback therefore pre-reads every sub and
@@ -235,41 +260,45 @@ async function stackInline({ subs, w, h, n, mode }) {
   // still lighter than the pre-streaming page was, because these are the raw
   // FITS bytes, decoded a row range at a time, rather than a decoded copy plus a
   // concatenated second copy.
+  // WHOLE files, indexed by absolute offset. The old version read only the
+  // FITS data section, which a TIFF does not have — its rows live at strip
+  // offsets that can sit anywhere, including after the directory.
   const raw = [];
-  for (const s of subs) {
-    raw.push(new Uint8Array(await s.blob.slice(s.dataOff, s.dataOff + s.w * s.h * 2).arrayBuffer()));
-  }
+  for (const s of subs) raw.push(new Uint8Array(await s.blob.arrayBuffer()));
 
   let out = null;
   const host = {
-    read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+    read_rows(frame, plane, row0, nrows, dst, dstOff, ctx) {
       const i = Number(frame), s = subs[i], src = raw[i];
-      const r0 = Number(row0), count = Number(nrows) * s.w, off = r0 * s.w * 2;
-      if (off + count * 2 > src.length) {
-        throw new Error(`frame ${i}: rows ${r0}..${r0 + Number(nrows)} run past the data section`);
+      const r0 = Number(row0), nr = Number(nrows), pl = Number(plane);
+      const dest = new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, nr * s.w);
+      for (const run of rowRanges(s, r0, nr)) {
+        if (run.start + run.length > src.length) {
+          throw new Error(`frame ${i}: rows ${r0}..${r0 + nr} run past the end of the file`);
+        }
+        decodeInto(src.subarray(run.start, run.start + run.length),
+                   dest, run.row * s.w, s, pl, run.rows);
       }
-      decodeRows(
-        src.subarray(off, off + count * 2),
-        new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, count),
-        s.bzero, s.bscale,
-      );
     },
-    put_rows(ptr, len, row0, nrows, rw, rh, ctx) {
-      // Streamed: one call per strip. Assembled here, in the JS heap — which is
-      // the point of the slice, since wasm32's 4 GiB budget is the scarce one.
+    put_rows(ptr, len, plane, row0, nrows, rw, rh, ctx) {
+      // Streamed: one call per strip, per plane. Assembled here, in the JS heap
+      // — the point of the slice, since wasm32's 4 GiB budget is the scarce one.
       const W = Number(rw), H = Number(rh), r0 = Number(row0), nr = Number(nrows);
-      if (!out) out = { w: W, h: H, px: new Uint16Array(W * H) };
+      const pl = Number(plane);
+      if (!out) out = { w: W, h: H, planes, px: new Uint16Array(W * H * planes) };
       const strip = new Uint16Array(
         new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice().buffer);
-      out.px.set(strip.subarray(0, nr * W), r0 * W);
+      out.px.set(strip.subarray(0, nr * W), pl * W * H + r0 * W);
     },
     progress: (stage, done, total) =>
       onProgress({ stage: Number(stage), done: Number(done), total: Number(total) }),
   };
   const { exports } = await instantiate(host);
-  const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
+  const kept = Number(exports.stack_frames(
+    BigInt(w), BigInt(h), BigInt(n), BigInt(planes), BigInt(mode),
+    BigInt(horizon), BigInt(feather)));
   if (!out) throw new Error("stack_frames returned without emitting any rows");
-  return { kept, w: out.w, h: out.h, px: out.px };
+  return { kept, w: out.w, h: out.h, planes, px: out.px };
 }
 
 async function stack() {
@@ -301,7 +330,7 @@ async function stack() {
       lastRunPath = "inline";
       lastRunThreaded = false;   // the file:// fallback never spawns threads
     }
-    result = { w: out.w, h: out.h, px: out.px };
+    result = { w: out.w, h: out.h, planes: out.planes || 1, px: out.px };
     const ms = performance.now() - t0;
     render(result, $("stretch").value);
     const dropped = n - out.kept;
@@ -328,23 +357,31 @@ async function loadFiles(fileList) {
   const problems = [];
   for (const f of files) {
     try {
-      const m = await readHeader(f);
+      // Format from the file's own first bytes, not from its name — so a
+      // `.tif` that is really FITS, and a sub with no extension at all, both
+      // land in the right reader.
+      const m = await readSubHeader(f);
       if (m.bayer) {
-        throw new Error(`is a Bayer mosaic (BAYERPAT ${m.bayer}); this page stacks monochrome only`);
+        throw new Error(`is a Bayer mosaic (BAYERPAT ${m.bayer}); this page stacks monochrome and RGB, not mosaics`);
       }
-      if (f.size < m.dataOff + m.w * m.h * 2) throw new Error("data section shorter than NAXIS1*NAXIS2");
-      if (!dims) dims = { w: m.w, h: m.h };
-      if (m.w !== dims.w || m.h !== dims.h) throw new Error(`is ${m.w}×${m.h}, expected ${dims.w}×${dims.h}`);
+      if (m.kind === "fits" && f.size < m.dataOff + m.w * m.h * 2) {
+        throw new Error("data section shorter than NAXIS1*NAXIS2");
+      }
+      if (!dims) dims = { w: m.w, h: m.h, planes: m.spp, kind: m.kind };
       subs.push({ blob: f, name: f.name, ...m });
+      const why = mismatch(subs);
+      if (why) { subs.pop(); throw new Error(why.replace(/^frame \d+ /, "")); }
     } catch (e) {
       problems.push(`${f.name}: ${e.message}`);
     }
   }
   $("go").disabled = subs.length < 2;
   if (!subs.length) {
+    dims = null;
     log(problems.length ? problems.join("\n") : "No usable frames.", "warn");
   } else {
-    const head = `${subs.length} frame${subs.length > 1 ? "s" : ""} at ${dims.w}×${dims.h}`;
+    const colour = dims.planes === 3 ? " RGB" : "";
+    const head = `${subs.length} ${dims.kind.toUpperCase()}${colour} frame${subs.length > 1 ? "s" : ""} at ${dims.w}×${dims.h}`;
     log(problems.length ? `${head}\n<span class="warn">skipped:\n${problems.join("\n")}</span>` : head);
   }
 }
@@ -394,7 +431,9 @@ window.__cumulus = {
   loadBuffers: (bufs) =>
     loadFiles(bufs.map((b, i) => new File([b], `sub_${String(i).padStart(3, "0")}.fits`))),
   stack,
-  getResult: () => (result ? { w: result.w, h: result.h, px: Array.from(result.px) } : null),
+  getResult: () => (result
+    ? { w: result.w, h: result.h, planes: result.planes || 1, px: Array.from(result.px) }
+    : null),
   getRunPath: () => lastRunPath,
   getThreaded: () => lastRunThreaded,
   isIsolated: () => (typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : null),

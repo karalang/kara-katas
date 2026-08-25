@@ -45,8 +45,11 @@ const progressCalls = [];
 // share is the request pattern, not the mechanism.
 const rowsRead = [];
 const host = {
-  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+  read_rows(frame, plane, row0, nrows, dst, dstOff, ctx) {
     const f = Number(frame), r0 = Number(row0), nr = Number(nrows);
+    // A `.cstack` is single-plane, so every request — including the median
+    // luminance one, plane -1 — is answered from the one plane it has.
+    if (Number(plane) > 0) throw new Error(`read_rows: plane ${plane} on a 1-plane stack`);
     if (f < 0 || f >= src.n) throw new Error(`read_rows: frame ${f} out of range`);
     if (r0 < 0 || r0 + nr > src.h) throw new Error(`read_rows: rows ${r0}..${r0 + nr} out of range`);
     const off = (f * src.w * src.h + r0 * src.w) * 2, len = nr * src.w * 2;
@@ -54,7 +57,7 @@ const host = {
     new Uint8Array(ctx.memory.buffer, dst + Number(dstOff) * 2, len)
       .set(src.px.subarray(off, off + len));
   },
-  put_rows(ptr, len, row0, nrows, w, h, ctx) {
+  put_rows(ptr, len, plane, row0, nrows, w, h, ctx) {
     // Streamed: one call per strip, assembled here as BYTES (this file compares
     // against the native .cstack byte for byte, so it keeps the wire form).
     const W = Number(w), H = Number(h), r0 = Number(row0), n = Number(nrows);
@@ -78,7 +81,8 @@ for (const m of MODES) {
   rowsRead.length = 0;
   const { exports } = await instantiate(host);
   const kept = Number(
-    exports.stack_frames(BigInt(src.w), BigInt(src.h), BigInt(src.n), BigInt(m.mode)),
+    exports.stack_frames(BigInt(src.w), BigInt(src.h), BigInt(src.n),
+                         1n, BigInt(m.mode), 0n, 0n),
   );
 
   if (!result) {
@@ -132,7 +136,11 @@ for (const m of MODES) {
   // back to pulling every row of every frame in one call, so the request shape
   // is asserted directly: pass 2 must never ask for more than a strip plus its
   // halo, and the only full-height reads allowed are pass 1's, one per frame.
-  const maxStrip = 64 + 2 * 24; // STRIP + 2*MAX_HALO, from cumulus.kara
+  // STRIP + 2*MAX_HALO, from cumulus.kara. It must track those constants: it
+  // was left at 24 when MAX_HALO grew to 64 for the rotation slice, which made
+  // this bound three times tighter than the module's real worst case — passing
+  // only because these fixtures never rotate far enough to need the halo.
+  const maxStrip = 64 + 2 * 64;
   const biggest = Math.max(...rowsRead);
   if (src.h <= maxStrip) {
     // A frame no taller than one strip is read whole no matter what the module

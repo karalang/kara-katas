@@ -2789,7 +2789,11 @@ effect resource Display;  // the <canvas> we paint, via put_rows
 // run aborts with a message instead of painting a plausible picture made
 // partly of stale rows. It leaks whatever the aborted run had allocated, which
 // costs nothing here because the page terminates the worker after every stack.
-host fn read_rows(frame: i64, row0: i64, nrows: i64,
+// `plane` selects which sample of each pixel to deliver: 0 for a mono sub,
+// 0/1/2 for a colour one, and -1 for the MEDIAN of the three — the luminance
+// registration runs on. JS does the median, because JS is already decoding the
+// interleave and doing it there costs one pass instead of two.
+host fn read_rows(frame: i64, plane: i64, row0: i64, nrows: i64,
                   dst: *const u16, dst_off: i64) with reads(Input);
 
 // JS reads `len` bytes of 16-bit result at `ptr` — rows `[row0, row0+nrows)` of
@@ -2809,7 +2813,7 @@ host fn read_rows(frame: i64, row0: i64, nrows: i64,
 //
 // `w` and `h` ride along on every call so the host can size its buffer on the
 // first strip without a separate handshake.
-host fn put_rows(ptr: *const u8, len: i64, row0: i64, nrows: i64,
+host fn put_rows(ptr: *const u8, len: i64, plane: i64, row0: i64, nrows: i64,
                  w: i64, h: i64) with writes(Display);
 
 // Progress ticks so a long stack does not look hung. `stage`: 0 = starting,
@@ -2830,7 +2834,8 @@ host fn progress(stage: i64, done: i64, total: i64) with writes(Display);
 /// `detect_stars`, `estimate_offset`, `integrate_window` — are shared outright
 /// with the CLI, which is what lets `test_node.mjs` demand byte-identity.
 #[target(wasm_browser)]
-pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
+pub fn stack_frames(w: i64, h: i64, nframes: i64, nplanes: i64, mode: i64,
+                    horizon: i64, feather: i64) -> i64
     with reads(Input) writes(Display) panics
 {
     let npix = w * h;
@@ -2869,7 +2874,7 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
                 let y0 = sp * STRIP;
                 let rem = h - y0;
                 let nr = if rem < STRIP { rem } else { STRIP };
-                read_rows(f, y0, nr, sbuf.as_ptr(), 0);
+                read_rows(f, 0 - 1, y0, nr, sbuf.as_ptr(), 0);
                 hist_add(sbuf, 0, nr * w, mut hist);
             }
             let stats = stats_from_hist(hist);
@@ -2887,7 +2892,7 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
                 if scan_y0 < scan_y1 {
                     let buf_row0 = scan_y0 - 3;
                     let buf_rows = (scan_y1 + 3) - buf_row0;
-                    read_rows(f, buf_row0, buf_rows, sbuf.as_ptr(), 0);
+                    read_rows(f, 0 - 1, buf_row0, buf_rows, sbuf.as_ptr(), 0);
                     detect_stars_rows(sbuf, 0, w, buf_row0, scan_y0, scan_y1,
                                       stats.0, stats.1, 6.0, mut st);
                 }
@@ -2943,38 +2948,46 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
     let mut out: Vec[i64] = Vec.filled(STRIP * w, 0);
     let mut bytes: Vec[u8] = Vec.with_capacity(STRIP * w * 2);
     let nstrips = (h + STRIP - 1) / STRIP;
-    for s in 0..nstrips {
-        let sy0 = s * STRIP;
-        let rem = h - sy0;
-        let sh = if rem < STRIP { rem } else { STRIP };
-        let wr0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
-        let mut wr1 = sy0 + sh + halo;
-        if wr1 > h { wr1 = h; }
-        let wrows = wr1 - wr0;
+    // One plane at a time, and the SAME transform for all of them: colour
+    // planes of one exposure came through one lens onto one sensor, so
+    // registering them independently could only introduce disagreement the
+    // optics never had. `nplanes` is 1 for FITS and for a mono TIFF, 3 for an
+    // RGB one — the whole colour question is this loop and the `plane` argument
+    // it passes down.
+    for pl in 0..nplanes {
+        for s in 0..nstrips {
+            let sy0 = s * STRIP;
+            let rem = h - sy0;
+            let sh = if rem < STRIP { rem } else { STRIP };
+            let wr0 = if sy0 - halo < 0 { 0 } else { sy0 - halo };
+            let mut wr1 = sy0 + sh + halo;
+            if wr1 > h { wr1 = h; }
+            let wrows = wr1 - wr0;
 
-        for f in 0..nframes {
-            if keep[f] != 0 {
-                read_rows(f, wr0, wrows, win.as_ptr(), f * w * cap);
+            for f in 0..nframes {
+                if keep[f] != 0 {
+                    read_rows(f, pl, wr0, wrows, win.as_ptr(), f * w * cap);
+                }
             }
-        }
 
-        // `sy0` as the output origin: this buffer's row 0 IS source row sy0.
-        integrate_window(win, w, h, nframes, dxs, dys, rots, keep, mode != 0,
-                         0, 0,
-                         sy0, sh, wr0, wrows, cap, sy0, mut out);
+            // `sy0` as the output origin: this buffer's row 0 IS source row sy0.
+            integrate_window(win, w, h, nframes, dxs, dys, rots, keep, mode != 0,
+                             horizon, feather,
+                             sy0, sh, wr0, wrows, cap, sy0, mut out);
 
-        // Hand this strip back as 16-bit little-endian; the page owns the
-        // display stretch, so the full dynamic range crosses the boundary
-        // intact rather than being pre-flattened to 8-bit here.
-        bytes.clear();
-        for i in 0..(sh * w) {
-            let v = out[i];
-            let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
-            bytes.push((c % 256) as u8);
-            bytes.push(((c / 256) % 256) as u8);
+            // Hand this strip back as 16-bit little-endian; the page owns the
+            // display stretch, so the full dynamic range crosses the boundary
+            // intact rather than being pre-flattened to 8-bit here.
+            bytes.clear();
+            for i in 0..(sh * w) {
+                let v = out[i];
+                let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
+                bytes.push((c % 256) as u8);
+                bytes.push(((c / 256) % 256) as u8);
+            }
+            put_rows(bytes.as_ptr(), bytes.len(), pl, sy0, sh, w, h);
+            progress(2, pl * nstrips + s + 1, nplanes * nstrips);
         }
-        put_rows(bytes.as_ptr(), bytes.len(), sy0, sh, w, h);
-        progress(2, s + 1, nstrips);
     }
     kept
 }

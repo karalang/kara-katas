@@ -25,19 +25,20 @@ let bad = 0;
 for (let r = 0; r < Number(reps ?? 5); r++) {
   let result = null;
   const host = {
-    read_rows(frame,row0,nrows,dst,dstOff,ctx){
+    read_rows(frame,plane,row0,nrows,dst,dstOff,ctx){
       const f=Number(frame),r0=Number(row0),nr=Number(nrows);
       const off=(f*src.w*src.h+r0*src.w)*2, len=nr*src.w*2;
       new Uint8Array(ctx.memory.buffer,dst+Number(dstOff)*2,len).set(src.px.subarray(off,off+len));
     },
-    put_rows(ptr,len,row0,nrows,w,h,ctx){
+    put_rows(ptr,len,plane,row0,nrows,w,h,ctx){
       const W=Number(w),H=Number(h),r0=Number(row0);
       if(!result) result={w:W,h:H,px:new Uint8Array(W*H*2)};
       result.px.set(new Uint8Array(ctx.memory.buffer,ptr,Number(len)), r0*W*2); },
     progress(){},
   };
   const hd = await instantiateThreaded(host);
-  await hd.exports.stack_frames(BigInt(src.w),BigInt(src.h),BigInt(src.n),BigInt(modeArg??2));
+  await hd.exports.stack_frames(BigInt(src.w),BigInt(src.h),BigInt(src.n),
+                                1n,BigInt(modeArg??2),0n,0n);
   await hd.terminate?.();
   if (!result) { console.log(`run ${r}: NO RESULT`); bad++; continue; }
   const wantPx = want.px.subarray(0, result.px.length);

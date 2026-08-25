@@ -1,19 +1,23 @@
-# Cumulus — deep-sky sub-frame integration
+# Cumulus — sub-frame integration for deep-sky and nightscape stacking
 
-A browser-side deep-sky stacker written in Kāra. **So far: the integration
-engine and its differential oracle, FITS input, star-based registration,
-sub-pixel resampling, a browser shell, colour via the Bayer mosaic a converted
-RAW becomes, calibration with darks/flats/bias, and streaming — on the CLI *and*
-in the page — so peak memory stops scaling with the size of the session.** No
-rotation and no drizzle yet; those are later slices, and the ordering is
-deliberate (see *Why the oracle came first*).
+A browser-side astrophotography stacker written in Kāra. **So far: the
+integration engine and its differential oracle; FITS input from a telescope and
+TIFF input from a camera, mono or RGB; star-based registration with rotation;
+sub-pixel resampling; a sky/foreground mask for tripod nightscapes; colour, both
+via the Bayer mosaic a converted RAW becomes and via RGB TIFF; calibration with
+darks, flats and bias; and streaming — on the CLI *and* in the page — so peak
+memory stops scaling with the size of the session.** No drizzle yet; that is a
+later slice, and the ordering is deliberate (see *Why the oracle came first*).
 
 ```
 python3 gen_frames.py in.cstack               # synthetic 16-frame stack
 python3 gen_fits.py subs/                     # ...or the same scene as FITS
+python3 gen_tiff.py tsubs/                    # ...or as RGB TIFF, as a camera writes
 karac build cumulus.kara -o cumulus
 ./cumulus out.cstack sigmaclip in.cstack      # or: mean
-./cumulus out.cstack sigmaclip subs/*.fits    # one sub per file
+./cumulus out.cstack stack subs/*.fits        # one sub per file: register + clip
+./cumulus out.cstack stack tsubs/*.tif        # TIFF, mono or RGB, sniffed not guessed
+./cumulus out.cstack stack --horizon 1400 --feather 40 tsubs/*.tif   # nightscape
 python3 oracle.py in.cstack mean.cstack clip.cstack
 ```
 
@@ -25,12 +29,17 @@ KARAC=/path/to/karac ./verify.sh
 
 ## What it does
 
-Two integration modes over a stack of 16-bit mono frames:
+Six modes over a stack of 16-bit frames. The two integrators are the core;
+the rest are those two with registration and channel handling around them:
 
 | mode | what it computes |
 |---|---|
 | `mean` | arithmetic mean across all frames |
 | `sigmaclip` | iterative 3σ clipping about the **median**, scaled by the **MAD** (max 5 passes), then the mean of the survivors |
+| `register` | report the recovered per-frame transform and stack nothing |
+| `stack` | register, then sigma-clip integrate — the one to reach for |
+| `meancfa` | separate a Bayer mosaic into R,G,B and take the mean |
+| `stackcfa` | register on luminance, then integrate the colour planes |
 
 The synthetic frames carry a sky gradient, three Gaussian stars, per-frame read
 noise, and **cosmic-ray hits in different places on each frame**. The rays are
@@ -178,8 +187,10 @@ unregistered modes started sharing the resample path.
 
 ## The browser shell
 
-`index.html` is the app: drop FITS subs in, pick an integration mode, get a
-stacked image. Nothing is uploaded — the pixels never leave the tab.
+`index.html` is the app: drop FITS or TIFF subs in, pick an integration mode,
+set a horizon row if the frame has foreground in it, get a stacked image — in
+colour if the subs were RGB. Nothing is uploaded; the pixels never leave the
+tab.
 
 ```
 KARAC=/path/to/karac ./build_web.sh          # build + verify
@@ -216,11 +227,13 @@ rather than the display.
   Pixel 5 393x727: no overflow, canvas 311px, stacked and painted
 ```
 
-The one thing the page reimplements is the **FITS reader**, in JS
-(`fits.mjs`) — header parse plus row decode, because the wasm entry point takes
-pixels rather than files. That is a real duplication of the `BZERO` trap, so the
-browser check pins the two decoders to each other: same files, same stack, or
-the run fails.
+The one thing the page reimplements is the **file readers**, in JS — `fits.mjs`
+and `tiff.mjs`, each a header parse plus a row decode, behind the `subs.mjs`
+dispatcher that sniffs which is which. They exist because the wasm entry point
+takes pixels rather than files, and they are a real duplication: of the `BZERO`
+trap on one side and of strip offsets, sample strides and byte order on the
+other. So the checks pin the two decoders to each other on pixels — same files,
+same stack, or the run fails — rather than leaving them to agree by inspection.
 
 ## Will it run on a phone?
 
@@ -1263,6 +1276,66 @@ mono path inherited it for free. Planes are stacked one at a time, which reads
 each file three times; at 24 MP that trades about two seconds of warm-cache I/O
 for four hundred megabytes of resident accumulator.
 
+### And in the browser, where the app actually lives
+
+A TIFF path that worked only on the CLI would be half a feature for a tool
+whose whole identity is *stack in a tab*. `tiff.mjs` is the page-side reader,
+`subs.mjs` the dispatcher that sniffs which of the two formats a file is — the
+JS twin of `read_sub_header` / `read_sub_rows` in `cumulus.kara`, and it exists
+for the same reason: everything above it wants one question answered and should
+not branch on the container twice.
+
+The host contract grew a `plane` argument on both sides (`read_rows(frame,
+plane, …)`, `put_rows(ptr, len, plane, …)`), and `stack_frames` gained
+`nplanes`, `horizon` and `feather` — so the page can now do the nightscape
+split too, via a horizon-row control it did not have.
+
+**Two decoders of one format is where disagreements hide**, because each is
+self-consistent and the page still paints something. So `test_node_tiff.mjs`
+pins them together on pixels — RGB, mono, 8-bit, both byte orders, multi-strip,
+and Apple ImageIO's re-encode — each byte-identical to what the native binary
+made of the same files. It also asserts the *request shape*: a run must ask for
+plane −1 and planes 0/1/2 and nothing else, because a host that answered every
+request from plane 0 would return a grey image in three identical planes, which
+is a valid stack of the right size.
+
+`verify_browser.mjs` then drives the real page in real Chromium and adds the
+one thing only a browser can check — that three planes reach the **canvas** as
+colour:
+
+```
+  RGB TIFF in the page: byte-identical to native over 18432 samples
+  canvas painted in colour (R-B spans -68..122)
+```
+
+Ablate `render` to paint plane 0 into all three channels and the byte
+comparison still passes — the data is right, only the display is grey — and
+only the colour assertion fails. Which is the point of having it.
+
+One stretch spans all three channels rather than one per channel. A per-channel
+stretch is an automatic white balance: it maps each channel's own percentiles
+onto the same output range, flattening exactly the colour the pipeline just
+worked to preserve. Light pollution really is redder than the sky, and showing
+that is more honest than hiding it behind three normalisations.
+
+### The stale reference this slice exposed
+
+`build_web.sh` builds a native binary to `/tmp/cumulus_ref` and measures every
+"byte-identical to native" claim against it. Its default compiler was a
+tree-local **debug** build — and a `karac` compiled without `--features llvm`
+makes `build` a no-op: it type-checks every target, prints nothing about
+emitting, and **exits 0**. So the previous run's binary stayed in `/tmp` and the
+whole suite compared today's wasm against a week-old native.
+
+Green, and measuring nothing. It had been that way since 2026-08-22 and nothing
+noticed, because a stale reference still agrees with itself on everything that
+did not change. TIFF is what broke the silence: the old binary could not read
+one, so the step failed loudly instead of passing vacuously.
+
+The fix is to delete the binary first and require it back, with a message that
+names the cause — plus preferring `karac` on PATH, which is what `verify.sh`
+already did and is why `verify.sh` never had the bug.
+
 ### Refusals
 
 Every fixture behind these is a **valid** TIFF that other decoders open — real
@@ -1320,7 +1393,9 @@ Deliberately absent, in the order they matter:
    `--bias`; the page has no UI for them and passes none, so a browser stack is
    uncalibrated. The kernels are already shared and target-agnostic
    (`calibrate_rows` is called from the row loop either way), so this is a file
-   picker and three more `read_rows`-shaped host calls, not new numerics.
+   picker and three more `read_rows`-shaped host calls, not new numerics. It is
+   now the *only* CLI capability the page lacks — masking and TIFF both reached
+   it with the slices above.
 3. **Drizzle.** The CFA path is superpixel demosaic, so colour output is half
    resolution. The dithers carry the information needed to recover full
    resolution, and using it is the natural follow-on — the plane-separated

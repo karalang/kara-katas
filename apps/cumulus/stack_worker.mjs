@@ -23,52 +23,55 @@
 // delegated to fits.mjs, which the page shares.
 
 import { instantiateThreaded } from "./cumulus.js";
-import { decodeRows } from "./fits.mjs";
+import { decodeInto, rowRanges } from "./subs.mjs";
 
 const frs = new FileReaderSync();
 
-let subs = [];     // [{ blob, w, h, bzero, bscale, dataOff }] — handles, not pixels
-let result = null; // set by put_result before stack_frames returns
+let subs = [];     // [{ blob, ...meta }] — file handles and headers, not pixels
+let result = null; // filled a strip at a time by put_rows
 
 const host = {
-  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+  read_rows(frame, plane, row0, nrows, dst, dstOff, ctx) {
     const s = subs[Number(frame)];
-    const r0 = Number(row0), nr = Number(nrows), count = nr * s.w;
-    const start = s.dataOff + r0 * s.w * 2;
-    // Read exactly the rows asked for, straight off the Blob. This is the whole
-    // streaming design in one line: nothing before or after this range is ever
-    // resident, in this worker or in the page.
-    const buf = frs.readAsArrayBuffer(s.blob.slice(start, start + count * 2));
-    if (buf.byteLength !== count * 2) {
-      throw new Error(
-        `frame ${Number(frame)}: rows ${r0}..${r0 + nr} read ${buf.byteLength} bytes, wanted ${count * 2}`,
-      );
-    }
+    const r0 = Number(row0), nr = Number(nrows), pl = Number(plane);
     // `ctx.memory.buffer` is re-read on every call: a wasm heap growth detaches
     // the old ArrayBuffer, so a cached view would silently be writing to nothing.
-    decodeRows(
-      new Uint8Array(buf),
-      new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, count),
-      s.bzero, s.bscale,
-    );
+    const out = new Uint16Array(ctx.memory.buffer, dst + Number(dstOff) * 2, nr * s.w);
+    // Read exactly the rows asked for, straight off the Blob. This is the whole
+    // streaming design: nothing before or after this range is ever resident, in
+    // this worker or in the page. A multi-strip TIFF needs one read per strip
+    // the range touches, which is why this is a loop and not a line.
+    for (const run of rowRanges(s, r0, nr)) {
+      const buf = frs.readAsArrayBuffer(s.blob.slice(run.start, run.start + run.length));
+      if (buf.byteLength !== run.length) {
+        throw new Error(
+          `frame ${Number(frame)}: rows ${r0}..${r0 + nr} read ${buf.byteLength} bytes, wanted ${run.length}`,
+        );
+      }
+      decodeInto(new Uint8Array(buf), out, run.row * s.w, s, pl, run.rows);
+    }
   },
-  put_rows(ptr, len, row0, nrows, w, h, ctx) {
-    // Streamed: one call per strip. Allocate on the first, then fill — the
-    // assembled image lives HERE, in the JS heap, which is exactly where the
-    // output-streaming slice moved it to get it off wasm32's 4 GiB budget.
+  put_rows(ptr, len, plane, row0, nrows, w, h, ctx) {
+    // Streamed: one call per strip, per plane. Allocate on the first, then fill
+    // — the assembled image lives HERE, in the JS heap, which is exactly where
+    // the output-streaming slice moved it to get it off wasm32's 4 GiB budget.
     const W = Number(w), H = Number(h), r0 = Number(row0), n = Number(nrows);
-    if (!result) result = { w: W, h: H, px: new Uint16Array(W * H) };
+    const pl = Number(plane);
+    if (!result) result = { w: W, h: H, planes: nplanes, px: new Uint16Array(W * H * nplanes) };
     const strip = new Uint16Array(
       new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice().buffer);
-    result.px.set(strip.subarray(0, n * W), r0 * W);
+    result.px.set(strip.subarray(0, n * W), pl * W * H + r0 * W);
   },
   progress(stage, done, total) {
     postMessage({ t: "progress", stage: Number(stage), done: Number(done), total: Number(total) });
   },
 };
 
+let nplanes = 1;
+
 self.onmessage = async (e) => {
-  const { subs: incoming, w, h, n, mode } = e.data;
+  const { subs: incoming, w, h, n, planes, mode, horizon, feather } = e.data;
+  nplanes = planes || 1;
   // Blobs cross a postMessage by reference, not by copy — the bytes stay
   // wherever the browser is keeping them (usually on disk, for a picked File).
   subs = incoming;
@@ -93,11 +96,13 @@ self.onmessage = async (e) => {
     // Threaded exports are async — the call is a message round-trip to the
     // primary worker, not a direct wasm call.
     const kept = Number(await handle.exports.stack_frames(
-      BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
+      BigInt(w), BigInt(h), BigInt(n), BigInt(nplanes), BigInt(mode),
+      BigInt(horizon || 0), BigInt(feather || 0)));
     subs = [];
     if (!result) throw new Error("stack_frames returned without emitting any rows");
     postMessage({ t: "done", kept, threaded: !!handle.threaded,
-                  w: result.w, h: result.h, px: result.px }, [result.px.buffer]);
+                  w: result.w, h: result.h, planes: result.planes, px: result.px },
+                [result.px.buffer]);
     result = null;
   } catch (err) {
     // A `read_rows` that could not serve its range throws, and the exception

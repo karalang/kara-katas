@@ -31,13 +31,24 @@ const TYPES = {
   ".wasm": "application/wasm", ".fits": "application/octet-stream",
 };
 
+// Optional RGB-TIFF fixture, served under /tiff/ from wherever it was
+// generated. Kept OUT of the source tree deliberately: the demo FITS subs are
+// committed, and a second committed fixture that only one check reads would be
+// 400 KB of repo for one assertion.
+const ti = process.argv.indexOf("--tiff");
+const tiffDir = ti > 0 ? process.argv[ti + 1] : null;
+const tiffNative = ti > 0 ? process.argv[ti + 2] : null;
+
 const root = process.cwd();
 const server = createServer((req, res) => {
   // Chromium always asks for /favicon.ico. Answer it rather than muting 4xx in
   // the error check — a genuine missing asset (a stale .wasm path, a renamed
   // module) must still fail the run.
   if (req.url === "/favicon.ico") { res.writeHead(204).end(); return; }
-  const path = join(root, decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") || "index.html");
+  const rel = decodeURIComponent(req.url.split("?")[0]).replace(/^\/+/, "") || "index.html";
+  const path = (tiffDir && rel.startsWith("tiff/"))
+    ? join(tiffDir, rel.slice(5))
+    : join(root, rel);
   try {
     const body = readFileSync(path);
     res.writeHead(200, {
@@ -58,10 +69,14 @@ const base = `http://127.0.0.1:${server.address().port}`;
 function readCstack(path) {
   const buf = readFileSync(path);
   const dv = new DataView(buf.buffer, buf.byteOffset);
-  const w = dv.getUint32(4, true), h = dv.getUint32(8, true);
-  const px = new Uint16Array(w * h);
-  for (let i = 0; i < w * h; i++) px[i] = dv.getUint16(16 + i * 2, true);
-  return { w, h, px };
+  // The third header field is the image COUNT — 1 for a mono result, 3 for
+  // R,G,B. Reading only `w*h` was correct while every result was mono and
+  // silently truncated the first colour one to its red channel.
+  const w = dv.getUint32(4, true), h = dv.getUint32(8, true), planes = dv.getUint32(12, true);
+  const n = w * h * planes;
+  const px = new Uint16Array(n);
+  for (let i = 0; i < n; i++) px[i] = dv.getUint16(16 + i * 2, true);
+  return { w, h, planes, px };
 }
 
 const want = readCstack(nativePath);
@@ -198,6 +213,81 @@ try {
   if (process.argv.includes("--shot")) {
     await page.screenshot({ path: "browser-shot.png", fullPage: true });
     console.log("  wrote browser-shot.png");
+  }
+
+  // ── RGB TIFF through the real page ────────────────────────────────────────
+  //
+  // The page's TIFF reader (tiff.mjs) is a SECOND implementation of the format,
+  // racing the Kāra one. test_node_tiff.mjs already pins the two together on
+  // pixels; what only a browser can check is the rest of the path — the file
+  // picker's sniffing, the worker's FileReaderSync reads of a multi-strip file,
+  // and whether three planes actually reach the canvas as COLOUR rather than as
+  // three greys.
+  if (tiffDir && tiffNative) {
+    const tiffWant = readCstack(tiffNative);
+    const names = readdirSync(tiffDir).filter((f) => /\.tiff?$/i.test(f)).sort();
+    const tpage = await browser.newPage();
+    const terrors = [];
+    tpage.on("pageerror", (e) => terrors.push(String(e)));
+    await tpage.goto(`${base}/index.html`, { waitUntil: "load" });
+    await tpage.evaluate(async (ns) => {
+      const bufs = await Promise.all(ns.map((n) => fetch(`tiff/${n}`).then((r) => r.arrayBuffer())));
+      await window.__cumulus.loadBuffers(bufs);
+    }, names);
+    await tpage.selectOption("#mode", "2");
+    await tpage.evaluate(() => window.__cumulus.stack());
+    await tpage.waitForFunction(() => window.__cumulus.getResult() !== null, { timeout: 60000 });
+    const tgot = await tpage.evaluate(() => window.__cumulus.getResult());
+    const tlog = (await tpage.textContent("#log")).trim().replace(/\s+/g, " ");
+
+    if (tgot.planes !== 3) {
+      console.log(`  FAIL: RGB TIFF stacked to ${tgot.planes} plane(s), expected 3`);
+      failures++;
+    } else if (tgot.px.length !== tiffWant.px.length) {
+      console.log(`  FAIL: RGB TIFF produced ${tgot.px.length} samples, native ${tiffWant.px.length}`);
+      failures++;
+    } else {
+      let d = 0;
+      for (let i = 0; i < tiffWant.px.length; i++) if (tgot.px[i] !== tiffWant.px[i]) d++;
+      if (d === 0) {
+        console.log(`  RGB TIFF in the page: byte-identical to native over ${tiffWant.px.length} samples`);
+      } else {
+        console.log(`  FAIL: RGB TIFF differs from native in ${d}/${tiffWant.px.length} samples`);
+        failures++;
+      }
+    }
+
+    // Three planes must reach the CANVAS as colour. Painting plane 0 into all
+    // three channels produces a grey image that is byte-identical in
+    // `getResult` — the assertion above cannot see it, because it reads the
+    // data rather than the display. Nor can the flat-canvas check, which only
+    // looks at the red channel. So this samples the canvas where the red star
+    // is and demands the pixels there actually be red.
+    const chroma = await tpage.evaluate(() => {
+      const cv = document.getElementById("view");
+      const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+      let best = 0, worst = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        best = Math.max(best, d[i] - d[i + 2]);      // reddest pixel
+        worst = Math.min(worst, d[i] - d[i + 2]);    // bluest
+      }
+      return { best, worst };
+    });
+    if (chroma.best < 16 || chroma.worst > -16) {
+      console.log(`  FAIL: canvas has no colour (max R-B ${chroma.best}, min ${chroma.worst}) ` +
+                  `— three planes were painted as grey`);
+      failures++;
+    } else {
+      console.log(`  canvas painted in colour (R-B spans ${chroma.worst}..${chroma.best})`);
+    }
+    if (terrors.length) {
+      console.log(`  RGB TIFF page errors: ${terrors.slice(0, 2).join(" | ")}`);
+      failures++;
+    }
+    console.log(`  RGB TIFF status: ${tlog}`);
+    await tpage.close();
+  } else {
+    console.log("  no --tiff fixture given — RGB TIFF page check SKIPPED");
   }
 
   // A colour mosaic stacked as if it were grey does not fail — it produces a

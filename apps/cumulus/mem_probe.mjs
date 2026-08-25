@@ -85,7 +85,7 @@ const sample = () => {
 };
 
 const host = {
-  read_rows(frame, row0, nrows, dst, dstOff, ctx) {
+  read_rows(frame, plane, row0, nrows, dst, dstOff, ctx) {
     memRef = ctx.memory;
     const f = Number(frame), r0 = Number(row0), nr = Number(nrows);
     const off = (f * w * h + r0 * w) * 2, len = nr * w * 2;
@@ -93,7 +93,7 @@ const host = {
       .set(px.subarray(off, off + len));
     sample();
   },
-  put_rows(ptr, len, row0, nrows, rw, rh, ctx) {
+  put_rows(ptr, len, plane, row0, nrows, rw, rh, ctx) {
     // One call per strip now. The probe does not assemble the image — it only
     // measures the WASM heap, and assembling here would add a JS-side buffer
     // that has nothing to do with the number being measured.
@@ -106,7 +106,11 @@ const host = {
 
 const t0 = process.hrtime.bigint();
 const { exports } = await instantiate(host);
-const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
+// A `.cstack` is single-plane and this probe measures the mono path, so
+// `nplanes` is 1 and the mask is off — the model below is written for that
+// shape, and a colour run would simply be it three times over.
+const kept = Number(exports.stack_frames(
+  BigInt(w), BigInt(h), BigInt(n), 1n, BigInt(mode), 0n, 0n));
 sample();
 const secs = Number(process.hrtime.bigint() - t0) / 1e9;
 

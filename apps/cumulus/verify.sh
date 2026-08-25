@@ -327,6 +327,24 @@ python3 check_register.py "$WORK/rgbtif_truth.txt" "$WORK/rgbtif_reg.txt"
 # stars, and passes every other oracle in this file.
 python3 check_tiff.py "$WORK/rgbtif.cstack"
 
+echo "== the page's OWN TIFF reader agrees with the compiler's =="
+# tiff.mjs is a second implementation of the format, racing the one in
+# cumulus.kara. Two self-consistent decoders of one container is exactly where a
+# stride or byte-order disagreement hides for months, so they are pinned to each
+# other on pixels rather than left to agree by inspection. RGB has the most room
+# to disagree (three interleaved samples, a plane argument, a median computed on
+# the JS side); the big-endian multi-strip mono file exercises run-splitting.
+if command -v node > /dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
+  node test_node_tiff.mjs "$WORK/rgbtif" "$WORK/rgbtif.cstack"
+  rm -rf "$WORK/monotif"
+  python3 gen_tiff.py "$WORK/monotif" --from-cstack "$WORK/in.cstack" \
+          --endian big --rows-per-strip 7 > /dev/null
+  "$WORK/cumulus" "$WORK/monotif.cstack" stack "$WORK"/monotif/*.tif > /dev/null
+  node test_node_tiff.mjs "$WORK/monotif" "$WORK/monotif.cstack"
+else
+  echo "  no node or no cumulus.wasm — browser TIFF reader NOT checked" >&2
+fi
+
 echo "== a THIRD-PARTY encoder's TIFF decodes to the same pixels =="
 # Without this, gen_tiff.py and the reader in cumulus.kara share one author's
 # mental model of the format, and a mistake made in both is invisible: every
@@ -394,7 +412,7 @@ echo "== wasm kernels equal native =="
   if node -e "require('playwright')" 2>/dev/null && [[ -d demo ]]; then
     echo "== the real page in a real browser =="
     "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null
-    node verify_browser.mjs "$WORK/demo_native.cstack"
+    node verify_browser.mjs "$WORK/demo_native.cstack" --tiff "$WORK/rgbtif" "$WORK/rgbtif.cstack"
   else
     echo "== browser check SKIPPED (no playwright or no demo/) =="
   fi
