@@ -164,25 +164,32 @@ this reason — BENCHMARKS.md records an earlier incident where a parallel binar
 got timed in a lane labelled `seq`, and the harness has guarded against it
 since.
 
-**What is being parallelised is UNATTRIBUTED, and the elimination is recorded
-here so the next reader starts past it.** The auto-par binary carries exactly
-four `__par_branch_0_0…_0_3` symbols that the sequential one does not, so the
-pass emits one par region with a four-way fan-out. It is *not*:
+**What is parallelised is the four edge searches**, and the compiler will tell
+you so directly — `karac query concurrency` reports, for `min_area`:
 
-- the four independent edge searches in `min_area` — cutting them to two still
-  emits four branches;
-- the worker count — `KARAC_PAR_WORKERS=2` and `=8` both still emit four;
-- the query loop, the blob-building loops, or `Vec.filled` — removing each in
-  turn leaves four;
-- boilerplate — a hello-world and a plain accumulate loop emit zero.
+```json
+"parallel_groups": [{"statements": [0,1,2,3],
+                     "reason": "no data or effect dependencies"}]
+```
 
-So the speedup is real and reproducible while its mechanism is open. **That is
-also why this kata has no par lane.** A par lane's worth is the comparison
-"Kāra found *this* for free, here is C with pthreads / Rust with rayon / Go
-with goroutines doing the same thing by hand" — and that comparison cannot be
-written honestly until the *this* is known. Adding one now would invite the
-reader to credit the four independent searches, which the first bullet above
-disproves.
+Statements 0–3 are exactly `top`, `bottom`, `left`, `right`. They read the same
+immutable image and write nothing, so the pass fans all four out; the binary
+carries four `__par_branch_0_0…_0_3` symbols the sequential build lacks.
+
+**2.08× rather than 4× because the branches are unequal.** The two column
+searches stride through memory by `w` and miss cache on nearly every probe; the
+two row searches walk contiguous bytes. The critical path is the slowest
+branch, not the average, so a 4-way fan-out of a badly-skewed set buys about
+half of what the branch count suggests.
+
+> Recorded because it cost time: an earlier draft of this section claimed the
+> mechanism was *unattributed* and listed the four-searches explanation as
+> DISPROVED. That was a bad experiment, not a finding. The test replaced two of
+> the four searches with constants — which leaves `min_area` with four
+> dependency-free statements either way, so the group stays four wide and the
+> branch count never moves. Cutting the *statement count* is the test that
+> discriminates; `karac query concurrency` is the tool that makes guessing
+> unnecessary in the first place.
 
 ### Every mirror hand-rolls the search, except Python's scale
 
