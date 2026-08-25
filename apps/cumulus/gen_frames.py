@@ -60,13 +60,20 @@ class LCG:
         return sigma * math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
 
 
-def base_sky(width: int, height: int, dx: float = 0.0, dy: float = 0.0) -> list[float]:
-    """The scene, optionally SHIFTED by (dx, dy) pixels.
+def base_sky(width: int, height: int, dx: float = 0.0, dy: float = 0.0,
+             rot: float = 0.0) -> list[float]:
+    """The scene, optionally SHIFTED by (dx, dy) pixels and ROTATED by `rot` degrees.
 
     The gradient is a property of the sensor, not the sky, so it does NOT move
     with the dither — only the stars do. That asymmetry is deliberate: a
     registration pass that latches onto the gradient instead of the stars would
     otherwise look correct.
+
+    Rotation is about the FRAME CENTRE and is applied before the shift, matching
+    what an untracked camera actually sees: the sky turns about the celestial
+    pole, which inside a small field is a rotation plus a translation. It is the
+    component translation-only registration cannot remove, and its error is zero
+    at the centre and largest in the corners.
     """
     # A dozen stars spread over the field, spanning ~30x in brightness. Three
     # was enough to look like a star field but not enough for offset recovery
@@ -81,6 +88,15 @@ def base_sky(width: int, height: int, dx: float = 0.0, dy: float = 0.0) -> list[
         (0.85, 0.90,  2500.0, 1.2), (0.30, 0.55,  5500.0, 1.7),
     ]
     stars = [(fx * width, fy * height, amp, sig) for fx, fy, amp, sig in stars]
+    if rot != 0.0:
+        th = math.radians(rot)
+        cx, cy = (width - 1) / 2.0, (height - 1) / 2.0
+        stars = [
+            (cx + (sx - cx) * math.cos(th) - (sy - cy) * math.sin(th),
+             cy + (sx - cx) * math.sin(th) + (sy - cy) * math.cos(th),
+             amp, sig)
+            for sx, sy, amp, sig in stars
+        ]
     sky = []
     for y in range(height):
         for x in range(width):
@@ -104,6 +120,9 @@ def main() -> int:
     ap.add_argument("--noise", type=float, default=60.0)
     ap.add_argument("--dither", type=float, default=0.0,
                     help="max per-frame star shift in pixels (0 = aligned)")
+    ap.add_argument("--rotate", type=float, default=0.0,
+                    help="degrees of field rotation ACCUMULATED per frame "
+                         "(frame k is rotated k*rotate); models an untracked mount")
     ap.add_argument("--truth", help="write the injected per-frame offsets here")
     args = ap.parse_args()
 
@@ -124,8 +143,9 @@ def main() -> int:
             else:
                 dx = (rng.uniform() * 2.0 - 1.0) * args.dither
                 dy = (rng.uniform() * 2.0 - 1.0) * args.dither
-            truth.append((dx, dy))
-            sky = base_sky(w, h, dx, dy)
+            rot = fi * args.rotate
+            truth.append((dx, dy, rot))
+            sky = base_sky(w, h, dx, dy, rot)
             px = [0] * (w * h)
             for i in range(w * h):
                 v = sky[i] + rng.gauss(args.noise)
@@ -140,10 +160,11 @@ def main() -> int:
 
     if args.truth:
         with open(args.truth, "w") as th:
-            for dx, dy in truth:
-                th.write(f"{dx:.9f} {dy:.9f}\n")
+            for dx, dy, rot in truth:
+                th.write(f"{dx:.9f} {dy:.9f} {rot:.9f}\n")
     print(f"wrote {args.out}: {w}x{h} x {n} frames, {args.rays} rays/frame, "
-          f"dither +/-{args.dither}px, seed {args.seed}")
+          f"dither +/-{args.dither}px, rotate {args.rotate}deg/frame, "
+          f"seed {args.seed}")
     return 0
 
 

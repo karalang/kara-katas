@@ -945,6 +945,81 @@ worst case per axis, 0.10 px mean. Currently **0.025 / 0.035 px mean, 0.224 px
 worst** over 16 frames. It also fails if the consensus rests on fewer than 60%
 of the reference stars, since a two-star agreement is luck rather than a match.
 
+## Rotation
+
+Registration recovers a rotation as well as a translation. For a tracked mount
+translation is enough; an **untracked** camera is a different problem. The sky
+turns about the celestial pole, and inside a small field that is a translation
+PLUS a field rotation — and the rotation's error is zero at the frame centre and
+largest in the corners, so a translation-only stack looks perfect in the middle
+and is mush at the edges.
+
+Measured on a real 20-frame nightscape sequence (Nikon Z5, 24 mm, 13 s, 4 min
+45 s total): **0.40° of field rotation**, which is **25 px of corner error** on a
+6016×4016 frame. Cross-checked two ways — summing 19 consecutive-pair fits gave
+0.4014° against 0.4037° fitting every frame to the reference — and against sky
+mechanics: in 285 s the sky turns 1.191°, and the ratio 0.337 puts the field
+centre near dec +20°, right for the summer Milky Way.
+
+`estimate_transform` returns `(dx, dy, θ, votes)` in two stages, because neither
+works alone. The **vote** finds the translation most star pairs agree on; it is
+robust to the two lists having different membership, which they do, but it
+cannot see rotation. Then **refinement** iterates: match each reference star to
+its nearest neighbour under the current transform and refit rotation and
+translation together, tightening the match radius as the fit improves. The refit
+is the closed-form 2-D Kabsch solution. Scale is deliberately not fitted — the
+sky does not change scale between frames, and a free scale would absorb
+residuals and flatter the fit while hiding the rotation.
+
+### Fitting one more parameter always helps, which is the trap
+
+The first working version **invented up to 0.56° on frames that were purely
+dithered**. That is not a coding error, it is identifiability: on a 96×64 frame
+the corner is 58 px from centre, so half a degree moves it 0.6 px — the same
+order as centroid noise. An extra free parameter always reduces the residual,
+even against noise, so "the fit improved" proves nothing.
+
+Rotation is therefore accepted only when it explains materially more than
+translation alone: sum of squared residuals with the fitted angle against the
+same with θ forced to zero. Self-normalising, so there is no pixel threshold to
+tune per frame size, and it degrades to exactly the old translation-only answer
+when the lever arm is too short to tell. The separation is total rather than
+marginal:
+
+| stack | rotation reported |
+|---|---|
+| dithered, none injected | **0.0000°** |
+| rotated 0.5°/frame | recovered to 0.023° mean |
+
+Translation got *better* too (0.025 px mean against 0.031), because it is no
+longer absorbing a spurious angle.
+
+This was caught by `check_register.py` precisely because that oracle is **ground
+truth, not a differential**: a numpy reimplementation of the same estimator
+would have made the identical mistake and agreed with itself.
+
+### Rotation widens the halo
+
+A tilted sample line draws a frame-edge pixel from a source row up to
+`sin(θ)·w/2` away — about 21 rows for 0.40° at 6016 wide, on top of the dither.
+`MAX_HALO` is 64 rather than the 24 that sufficed when registration was
+translation-only, and the halo is still sized from the transform *actually*
+recovered, so a tracked session pays nothing for the headroom. Exceeding it
+degrades safely: `resample_tile`'s window test fails and those pixels become
+NO DATA, which the integrator already excludes. Wrong data would be the
+alternative.
+
+### Measured, not merely measured
+
+`verify.sh` checks the angle against injected ground truth, and separately that
+the resampler *uses* it — a build that measured rotation perfectly and then
+resampled by translation alone passes every other check in the file.
+**Concentration** is the discriminating metric there, not peak: rotation error is
+zero at the centre where the brightest stars sit, so peak barely moves while the
+flux smears outward. On a 640×480 stack with 3.6° total, rotation-aware beats
+translation-only by **1.305× concentration** at 0.99× peak — which is exactly the
+signature, and exactly why comparing peaks would have called it a regression.
+
 ## Resampling and the full pipeline
 
 `stack` runs the lot: register every frame against the reference, resample it

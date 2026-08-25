@@ -83,6 +83,19 @@ fn read_all(path: String) -> Vec[u8] with reads(FileSystem) {
 // `seek` at all today — strips advance top-to-bottom and FITS rows are stored
 // top-to-bottom, so a sliding window over sequential reads never needs one.
 //
+// ROTATION widens the halo. A translation needs |dy| rows of context; a
+// rotation of `theta` tilts the sampled row across the frame, so a pixel at the
+// left or right edge is drawn from a source row up to `sin(theta) * w/2` away.
+// On a 6016-wide frame the 0.40 degrees a real 5-minute untracked sequence
+// accumulates is ~21 rows on top of the dither — which is why MAX_HALO is 64
+// and not the 24 that sufficed when registration was translation-only. The
+// halo is still sized from the transform ACTUALLY recovered, so a tracked
+// session pays nothing for the headroom.
+//
+// Exceeding MAX_HALO degrades safely rather than silently: `resample_tile`'s
+// `in_window` test fails and those pixels become NO DATA, which the integrator
+// already excludes. Wrong data would be the alternative.
+//
 // The window carries a HALO of `MAX_HALO` rows above and below the output
 // strip, because a dithered frame contributes rows shifted by its own dy and
 // the bilinear resample reads one row past that.
@@ -94,7 +107,7 @@ let STRIP: i64 = 64;
 /// Rows of slack kept above and below each strip. Dithers are a few pixels in
 /// practice; a frame needing more than this is dropped by registration long
 /// before it gets here.
-let MAX_HALO: i64 = 24;
+let MAX_HALO: i64 = 64;
 
 /// Header fields plus enough to decode the data section. `read_fits_header`
 /// reports `data_off`, the byte offset of the first pixel, so any later read
@@ -745,8 +758,8 @@ fn cfa_luminance(px: ref Vec[u16], w: i64, h: i64, nframes: i64) -> Vec[u16] {
 /// One plane is materialised at a time and dropped before the next, so the peak
 /// is the mosaic plus a quarter of it rather than the mosaic twice over.
 fn stack_cfa(px: ref Vec[u16], w: i64, h: i64, nframes: i64, codes: ref Vec[i64],
-             dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
-             use_clip: bool) -> Vec[i64] {
+             dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
+             keep: ref Vec[i64], use_clip: bool) -> Vec[i64] {
     let hw = w / 2;
     let hh = h / 2;
     let np = hw * hh;
@@ -754,7 +767,7 @@ fn stack_cfa(px: ref Vec[u16], w: i64, h: i64, nframes: i64, codes: ref Vec[i64]
     let mut greens: i64 = 0;
     for p in 0..4 {
         let plane = extract_plane(px, w, h, nframes, p);
-        let st = stack_tiled(plane, hw, hh, nframes, dxs, dys, keep, use_clip);
+        let st = stack_tiled(plane, hw, hh, nframes, dxs, dys, rots, keep, use_clip);
         // 82 = 'R', 66 = 'B'; anything else in a BAYERPAT is 'G'.
         let code = codes[p];
         let ci = if code == 82 { 0 } else { if code == 66 { 2 } else { 1 } };
@@ -1051,6 +1064,160 @@ fn deduplicate(stars: Vec[Star]) -> Vec[Star] {
 ///
 /// Returns (dx, dy, votes). Zero votes means no consensus and the caller should
 /// treat the frame as unregisterable rather than stack it at a guessed offset.
+/// Recover a rotation-AND-translation transform mapping `b` (the reference) onto
+/// `a` (this frame), about the frame centre `(cx, cy)`.
+///
+/// Returns `(dx, dy, theta_radians, votes)`. Translation-only registration is
+/// `theta = 0`, and for a tracked mount that is right — but an untracked camera
+/// sees the sky turn about the celestial pole, which inside a small field is a
+/// translation PLUS a field rotation. The rotation's error is zero at the frame
+/// centre and largest in the corners, so translation-only leaves the corners
+/// smeared while the middle looks perfect. Measured on a real 20-frame
+/// nightscape sequence (Nikon Z5, 24mm, 13s, 4m45s total): 0.40 degrees of field
+/// rotation, which is 25 px of corner error on a 6016x4016 frame. That is mush,
+/// not softness, and no amount of sub-pixel resampling recovers it.
+///
+/// Two stages, because neither works alone:
+///
+///   VOTE   `estimate_offset` finds the translation the most star pairs agree
+///          on. It is robust to the two star lists having entirely different
+///          membership — which they do, since frames drift and detection is
+///          unstable at the faint end — but it cannot see rotation.
+///
+///   REFINE Then iterate: match each reference star to its nearest neighbour
+///          under the current transform, and refit rotation and translation
+///          together over the matched pairs. Small rotations barely move stars
+///          near the centre, so the vote's translation is a good enough start
+///          for the first match to succeed there, and each round widens the set
+///          that agrees.
+///
+/// The refit is the closed-form least-squares rotation (the 2-D Kabsch
+/// solution): `theta = atan2(sum of cross products, sum of dot products)` over
+/// centred pairs. SCALE IS DELIBERATELY NOT FITTED — the sky does not change
+/// scale between frames, and a free scale would absorb residuals and flatter
+/// the fit while hiding the very rotation this exists to measure.
+fn estimate_transform(a: ref Vec[Star], b: ref Vec[Star], tol: f64,
+                      cx: f64, cy: f64) -> (f64, f64, f64, i64) {
+    let seed = estimate_offset(a, b, tol);
+    let mut dx = seed.0;
+    let mut dy = seed.1;
+    let mut th: f64 = 0.0;
+    let mut votes = seed.2;
+    if votes == 0 { return (0.0, 0.0, 0.0, 0); }
+
+    // Match radius: start at the vote's tolerance and tighten as the transform
+    // improves, so early rounds can tolerate the rotation the seed ignored and
+    // later ones reject genuine mismatches.
+    let mut rad = tol * 3.0;
+    for round in 0..4 {
+        let ct = th.cos();
+        let st = th.sin();
+        // Accumulators for the centred Kabsch fit over matched pairs.
+        let mut n: i64 = 0;
+        let mut srx: f64 = 0.0;
+        let mut sry: f64 = 0.0;
+        let mut sax: f64 = 0.0;
+        let mut say: f64 = 0.0;
+        let mut mrx: Vec[f64] = Vec.new();
+        let mut mry: Vec[f64] = Vec.new();
+        let mut max_: Vec[f64] = Vec.new();
+        let mut may: Vec[f64] = Vec.new();
+        for j in 0..b.len() {
+            // Where the current transform predicts reference star j lands.
+            let rx = b[j].x - cx;
+            let ry = b[j].y - cy;
+            let px = cx + rx * ct - ry * st + dx;
+            let py = cy + rx * st + ry * ct + dy;
+            let mut bi: i64 = -1;
+            let mut bd: f64 = rad * rad;
+            for i in 0..a.len() {
+                let ex = a[i].x - px;
+                let ey = a[i].y - py;
+                let d2 = ex * ex + ey * ey;
+                if d2 <= bd { bd = d2; bi = i; }
+            }
+            if bi >= 0 {
+                n = n + 1;
+                srx = srx + b[j].x; sry = sry + b[j].y;
+                sax = sax + a[bi].x; say = say + a[bi].y;
+                mrx.push(b[j].x); mry.push(b[j].y);
+                max_.push(a[bi].x); may.push(a[bi].y);
+            }
+        }
+        // Under 3 pairs there is no rotation to speak of — keep the vote's
+        // translation rather than fit noise.
+        if n < 3 { return (dx, dy, th, votes); }
+
+        let fr = n as f64;
+        let brx = srx / fr;
+        let bry = sry / fr;
+        let bax = sax / fr;
+        let bay = say / fr;
+        let mut cross: f64 = 0.0;
+        let mut dot: f64 = 0.0;
+        for k in 0..n {
+            let ux = mrx[k] - brx;
+            let uy = mry[k] - bry;
+            let vx = max_[k] - bax;
+            let vy = may[k] - bay;
+            cross = cross + ux * vy - uy * vx;
+            dot = dot + ux * vx + uy * vy;
+        }
+        if dot != 0.0 or cross != 0.0 { th = cross.atan2(dot); }
+
+        // IS THE ROTATION IDENTIFIABLE? Fitting one more parameter always
+        // reduces the residual a little, even against pure noise, so a fit that
+        // merely "improves" proves nothing. On a 96x64 frame with a dozen stars
+        // the corner is 58 px from centre, so half a degree of rotation moves it
+        // 0.6 px — the same order as centroid noise. Left ungated this invented
+        // up to 0.56 degrees on frames that were purely dithered, and the
+        // ground-truth check caught it.
+        //
+        // So compare the two models directly: sum of squared residuals with the
+        // rotation against the same with theta forced to zero. Rotation is kept
+        // only if it explains materially more, which is self-normalising — no
+        // pixel threshold to tune per frame size, and it degrades to exactly the
+        // old translation-only answer when the lever arm is too short to tell.
+        let mut sse_rot: f64 = 0.0;
+        let mut sse_tr: f64 = 0.0;
+        let ctf = th.cos();
+        let stf = th.sin();
+        for k in 0..n {
+            let ux = mrx[k] - brx;
+            let uy = mry[k] - bry;
+            let vx = max_[k] - bax;
+            let vy = may[k] - bay;
+            // Rotated model: the centred reference point turned by theta.
+            let px2 = ux * ctf - uy * stf;
+            let py2 = ux * stf + uy * ctf;
+            let ex = vx - px2;
+            let ey = vy - py2;
+            sse_rot = sse_rot + ex * ex + ey * ey;
+            // Translation-only: centred points should coincide outright.
+            let tx = vx - ux;
+            let ty = vy - uy;
+            sse_tr = sse_tr + tx * tx + ty * ty;
+        }
+        // 0.7 is a margin, not a tuned constant: a spurious fit on n>=3 pairs
+        // buys a few percent, a real rotation removes most of the residual. The
+        // dithered case lands near 1.0 and the rotated case near 0.0, so the
+        // gate is nowhere near either.
+        if sse_rot > 0.7 * sse_tr { th = 0.0; }
+
+        let ct2 = th.cos();
+        let st2 = th.sin();
+        // Translation that carries the reference centroid onto the frame's,
+        // given the rotation just fitted about (cx, cy).
+        let ox = brx - cx;
+        let oy = bry - cy;
+        dx = bax - (cx + ox * ct2 - oy * st2);
+        dy = bay - (cy + ox * st2 + oy * ct2);
+        votes = n;
+        rad = if tol > rad * 0.5 { tol } else { rad * 0.5 };
+    }
+    (dx, dy, th, votes)
+}
+
 fn estimate_offset(a: ref Vec[Star], b: ref Vec[Star], tol: f64) -> (f64, f64, i64) {
     let side = ((2.0 * MAX_SHIFT) / tol) as i64 + 1;
     let mut bins: Vec[i64] = Vec.filled(side * side, 0);
@@ -1181,13 +1348,22 @@ fn resample_bilinear(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f
 /// not of how much of it happens to be in memory, so a pixel outside the frame
 /// is NO DATA while a pixel outside the window is a bug in the caller's halo.
 fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
+                 rot: f64, cx: f64, cy: f64,
                  x0: i64, y0: i64, tw: i64, th: i64, wr0: i64, wrows: i64) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(tw * th);
     for i in 0..(tw * th) { out.push(-1); }
+    // Rotation about the frame centre, then translation — the same convention
+    // `estimate_transform` fits, so the two cannot drift apart. Sin and cos are
+    // hoisted: they are constant over the tile, and leaving them in the inner
+    // loop would put two transcendentals on every pixel.
+    let ct = rot.cos();
+    let st = rot.sin();
     for ty in 0..th {
         for tx in 0..tw {
-            let sxf = ((x0 + tx) as f64) + dx;
-            let syf = ((y0 + ty) as f64) + dy;
+            let rx = ((x0 + tx) as f64) - cx;
+            let ry = ((y0 + ty) as f64) - cy;
+            let sxf = cx + rx * ct - ry * st + dx;
+            let syf = cy + rx * st + ry * ct + dy;
             let fx0 = sxf.floor();
             let fy0 = syf.floor();
             let fx = sxf - fx0;
@@ -1391,7 +1567,7 @@ fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
 fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                              bzero: i64, bscale: i64,
                              dark: ref Master, flat: ref Master)
-    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], i64)
+    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], i64, Vec[f64])
     with reads(FileSystem) writes(FileSystem)
 {
     let npix = w * h;
@@ -1399,8 +1575,11 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
     let mut dys: Vec[f64] = Vec.new();
     let mut keep: Vec[i64] = Vec.new();
     let mut votes: Vec[i64] = Vec.new();
+    let mut rots: Vec[f64] = Vec.new();
     let mut ref_stars: Vec[Star] = Vec.new();
     let mut nref: i64 = 0;
+    let cx = ((w - 1) as f64) / 2.0;
+    let cy = ((h - 1) as f64) / 2.0;
 
     for f in 0..nframes {
         let mut frame: Vec[u16] = Vec.filled(npix, 0);
@@ -1422,45 +1601,50 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
         }
         if not got {
             println(f"cumulus: could not stream frame {f}");
-            dxs.push(0.0); dys.push(0.0); keep.push(0); votes.push(0);
+            dxs.push(0.0); dys.push(0.0); keep.push(0); votes.push(0); rots.push(0.0);
         } else {
             let st = detect_stars(frame, 0, w, h, 6.0);
             if f == 0 {
                 for s in st { ref_stars.push(s); }
                 nref = ref_stars.len();
-                dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(nref);
+                dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(nref); rots.push(0.0);
             } else {
-                let est = estimate_offset(st, ref_stars, 1.5);
+                let est = estimate_transform(st, ref_stars, 1.5, cx, cy);
                 dxs.push(est.0);
                 dys.push(est.1);
-                votes.push(est.2);
+                rots.push(est.2);
+                votes.push(est.3);
                 let need = (nref * 6) / 10;
-                if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+                if est.3 >= need and est.3 > 0 { keep.push(1); } else { keep.push(0); }
             }
         }
     }
-    (dxs, dys, keep, votes, nref)
+    (dxs, dys, keep, votes, nref, rots)
 }
 
 fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
-    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64])
+    -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], Vec[f64])
 {
     let npix = w * h;
     let mut dxs: Vec[f64] = Vec.new();
     let mut dys: Vec[f64] = Vec.new();
     let mut keep: Vec[i64] = Vec.new();
     let mut votes: Vec[i64] = Vec.new();
+    let mut rots: Vec[f64] = Vec.new();
+    let cx = ((w - 1) as f64) / 2.0;
+    let cy = ((h - 1) as f64) / 2.0;
     let ref_stars = detect_stars(px, 0, w, h, 6.0);
     let need = (ref_stars.len() * 6) / 10;
     for f in 0..nframes {
         let st = detect_stars(px, f * npix, w, h, 6.0);
-        let est = estimate_offset(st, ref_stars, 1.5);
+        let est = estimate_transform(st, ref_stars, 1.5, cx, cy);
         dxs.push(est.0);
         dys.push(est.1);
-        votes.push(est.2);
-        if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+        rots.push(est.2);
+        votes.push(est.3);
+        if est.3 >= need and est.3 > 0 { keep.push(1); } else { keep.push(0); }
     }
-    (dxs, dys, keep, votes)
+    (dxs, dys, keep, votes, rots)
 }
 
 /// The stacking pipeline, TILE BY TILE.
@@ -1497,9 +1681,12 @@ fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
 /// into its neighbour — which looks exactly like a correct stack of subtly
 /// wrong data.
 fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
-                    dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
+                    dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
+                    keep: ref Vec[i64],
                     use_clip: bool, sy0: i64, sh: i64, wr0: i64, wrows: i64,
                     wcap: i64, out_row0: i64, out: mut ref Vec[i64]) {
+    let cx = ((w - 1) as f64) / 2.0;
+    let cy = ((h - 1) as f64) / 2.0;
     let ntx = (w + TILE - 1) / TILE;
     let nty = (sh + TILE - 1) / TILE;
     for tyi in 0..nty {
@@ -1517,6 +1704,7 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
             for f in 0..nframes {
                 if keep[f] != 0 {
                     let t = resample_tile(px, f * w * wcap, w, h, dxs[f], dys[f],
+                                          rots[f], cx, cy,
                                           x0, y0, tw, th, wr0, wrows);
                     for v in t { tile.push(v); }
                     kept = kept + 1;
@@ -1549,19 +1737,23 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
 /// rows. Every file is therefore read exactly once per pass, front to back.
 fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                    bzero: i64, bscale: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
-                   keep: ref Vec[i64], use_clip: bool,
+                   rots: ref Vec[f64], keep: ref Vec[i64], use_clip: bool,
                    dark: ref Master, flat: ref Master) -> Vec[i64]
     with reads(FileSystem) writes(FileSystem)
 {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
     for i in 0..(w * h) { out.push(0); }
 
-    // Halo sized from the offsets actually recovered, not from MAX_SHIFT: a
-    // dither of a few pixels should not cost a 128-row window.
+    // Halo sized from the transform actually recovered, not from MAX_SHIFT: a
+    // dither of a few pixels should not cost a 128-row window. Rotation adds
+    // `sin(theta) * w/2` — the vertical reach at the frame's left and right
+    // edges, which is where a tilted sample line travels furthest from its
+    // own row.
     let mut halo: i64 = 1;
+    let halfw = ((w - 1) as f64) / 2.0;
     for f in 0..nframes {
         if keep[f] != 0 {
-            let a = dys[f].abs() as i64;
+            let a = (dys[f].abs() + rots[f].sin().abs() * halfw) as i64;
             if a + 1 > halo { halo = a + 1; }
         }
     }
@@ -1613,7 +1805,7 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
                 }
             }
 
-            integrate_window(win, w, h, nframes, dxs, dys, keep, use_clip,
+            integrate_window(win, w, h, nframes, dxs, dys, rots, keep, use_clip,
                              sy0, sh, wr0, wrows, cap, 0, mut out);
         }
     } else {
@@ -1624,11 +1816,12 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
 
 /// The resident whole-stack path: one window covering every row.
 fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
-               dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
-               use_clip: bool) -> Vec[i64] {
+               dxs: ref Vec[f64], dys: ref Vec[f64], rots: ref Vec[f64],
+               keep: ref Vec[i64], use_clip: bool) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
     for i in 0..(w * h) { out.push(0); }
-    integrate_window(px, w, h, nframes, dxs, dys, keep, use_clip, 0, h, 0, h, h, 0, mut out);
+    integrate_window(px, w, h, nframes, dxs, dys, rots, keep, use_clip,
+                     0, h, 0, h, h, 0, mut out);
     out
 }
 
@@ -1836,6 +2029,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let mut dxs: Vec[f64] = Vec.new();
             let mut dys: Vec[f64] = Vec.new();
             let mut keep: Vec[i64] = Vec.new();
+            let mut rots: Vec[f64] = Vec.new();
 
             if mode == "stackcfa" {
                 // Registration runs on half-resolution luminance, so the
@@ -1849,11 +2043,12 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 dys = off.1;
                 keep = off.2;
                 let votes = off.3;
+                rots = off.4;
 
                 let rs = detect_stars(lum, 0, hw, hh, 6.0);
                 println(f"ref_stars {rs.len()}");
                 for f in 0..nframes {
-                    println(f"frame {f} dx {dxs[f] * 2.0} dy {dys[f] * 2.0} votes {votes[f]} stars {rs.len()}");
+                    println(f"frame {f} dx {dxs[f] * 2.0} dy {dys[f] * 2.0} rot {rots[f] * 57.29577951308232} votes {votes[f]} stars {rs.len()}");
                 }
                 let mut nkept: i64 = 0;
                 for f in 0..nframes { if keep[f] != 0 { nkept = nkept + 1; } }
@@ -1866,11 +2061,11 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 // longer an identity sample and only a tolerance comparison
                 // would be possible — which would let a real defect in the new
                 // code hide inside the tolerance.
-                for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); }
+                for f in 0..nframes { dxs.push(0.0); dys.push(0.0); rots.push(0.0); keep.push(1); }
             }
 
             let codes = pattern_codes(bayer.clone());
-            let rgb = stack_cfa(px, width, height, nframes, codes, dxs, dys, keep,
+            let rgb = stack_cfa(px, width, height, nframes, codes, dxs, dys, rots, keep,
                                 mode == "stackcfa");
             write_stack(outp.clone(), rgb, hw, hh, 3);
             println(f"cumulus: {mode} {bayer} {width}x{height} x{nframes} -> {hw}x{hh} RGB {outp}");
@@ -1908,6 +2103,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let mut dys: Vec[f64] = Vec.new();
             let mut keep: Vec[i64] = Vec.new();
             let mut votes: Vec[i64] = Vec.new();
+            let mut rots: Vec[f64] = Vec.new();
             let mut nref: i64 = 0;
             if mode == "stack" or mode == "register" {
                 if streaming {
@@ -1918,17 +2114,21 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                     keep = off.2;
                     votes = off.3;
                     nref = off.4;
+                    rots = off.5;
                 } else {
                     let off = compute_offsets(px, width, height, nframes);
                     dxs = off.0;
                     dys = off.1;
                     keep = off.2;
                     votes = off.3;
+                    rots = off.4;
                     let rs = detect_stars(px, 0, width, height, 6.0);
                     nref = rs.len();
                 }
             } else {
-                for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(0); }
+                for f in 0..nframes {
+                    dxs.push(0.0); dys.push(0.0); keep.push(1); votes.push(0); rots.push(0.0);
+                }
             }
 
             if mode == "register" {
@@ -1936,7 +2136,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 // independently checkable against the injected dithers.
                 println(f"ref_stars {nref}");
                 for f in 0..nframes {
-                    println(f"frame {f} dx {dxs[f]} dy {dys[f]} votes {votes[f]} stars {nref}");
+                    println(f"frame {f} dx {dxs[f]} dy {dys[f]} rot {rots[f] * 57.29577951308232} votes {votes[f]} stars {nref}");
                 }
             }
 
@@ -1948,9 +2148,9 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
             let out = if streaming {
                 stack_streaming(paths, width, height, nframes, bzero, bscale,
-                                dxs, dys, keep, use_clip, dark, flat)
+                                dxs, dys, rots, keep, use_clip, dark, flat)
             } else {
-                stack_tiled(px, width, height, nframes, dxs, dys, keep, use_clip)
+                stack_tiled(px, width, height, nframes, dxs, dys, rots, keep, use_clip)
             };
             write_stack(outp.clone(), out, width, height, 1);
             let how = if streaming { "streamed" } else { "resident" };
@@ -2054,8 +2254,11 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
 
     let mut dxs: Vec[f64] = Vec.new();
     let mut dys: Vec[f64] = Vec.new();
+    let mut rots: Vec[f64] = Vec.new();
     let mut keep: Vec[i64] = Vec.new();
     let mut kept = nframes;
+    let cx = ((w - 1) as f64) / 2.0;
+    let cy = ((h - 1) as f64) / 2.0;
 
     if mode == 2 {
         // PASS 1 — registration, STREAMED. No frame is ever resident: the
@@ -2112,19 +2315,27 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
             if f == 0 {
                 for s in st { ref_stars.push(s); }
                 nref = ref_stars.len();
-                dxs.push(0.0); dys.push(0.0); keep.push(1);
+                dxs.push(0.0); dys.push(0.0); rots.push(0.0); keep.push(1);
             } else {
-                let est = estimate_offset(st, ref_stars, 1.5);
+                let est = estimate_transform(st, ref_stars, 1.5, cx, cy);
                 dxs.push(est.0);
                 dys.push(est.1);
+                rots.push(est.2);
                 let need = (nref * 6) / 10;
-                if est.2 >= need and est.2 > 0 { keep.push(1); } else { keep.push(0); }
+                if est.3 >= need and est.3 > 0 { keep.push(1); } else { keep.push(0); }
             }
             if keep[f] != 0 { kept = kept + 1; }
             progress(1, f + 1, nframes);
         }
     } else {
-        for f in 0..nframes { dxs.push(0.0); dys.push(0.0); keep.push(1); }
+        // Unregistered modes: an all-zero transform makes the resample an
+        // identity sample, so `mean`/`sigmaclip` and `stack` share one path.
+        // `rots` MUST be filled here too — the halo below indexes it for every
+        // frame, and leaving it empty is an out-of-bounds read on exactly the
+        // modes that do no registration.
+        for f in 0..nframes {
+            dxs.push(0.0); dys.push(0.0); rots.push(0.0); keep.push(1);
+        }
     }
 
     // PASS 2 — integrate in strips, sized exactly as the native streamer sizes
@@ -2132,9 +2343,10 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
     // The output buffers are allocated with the window below, STRIP-tall: no
     // frame-sized accumulator exists on this path at all.
     let mut halo: i64 = 1;
+    let halfw = ((w - 1) as f64) / 2.0;
     for f in 0..nframes {
         if keep[f] != 0 {
-            let a = dys[f].abs() as i64;
+            let a = (dys[f].abs() + rots[f].sin().abs() * halfw) as i64;
             if a + 1 > halo { halo = a + 1; }
         }
     }
@@ -2163,7 +2375,7 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
         }
 
         // `sy0` as the output origin: this buffer's row 0 IS source row sy0.
-        integrate_window(win, w, h, nframes, dxs, dys, keep, mode != 0,
+        integrate_window(win, w, h, nframes, dxs, dys, rots, keep, mode != 0,
                          sy0, sh, wr0, wrows, cap, sy0, mut out);
 
         // Hand this strip back as 16-bit little-endian; the page owns the

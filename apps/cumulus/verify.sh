@@ -130,6 +130,37 @@ else
   exit 1
 fi
 
+echo "== rotation: recover a known field rotation =="
+# An untracked camera sees the sky turn about the pole, which inside a small
+# field is a translation PLUS a field rotation. Translation-only registration
+# removes the first and leaves the second, and the residue is zero at the frame
+# centre and largest in the corners — so a stack can look perfect in the middle
+# and be mush at the edges. Measured on a real 20-frame nightscape sequence
+# (Nikon Z5, 24mm, 13s, 4m45s): 0.40 deg, which is 25 px of corner error at
+# 6016x4016.
+#
+# Ground truth, not a differential: gen_frames.py rotates the star field about
+# the frame centre by a known amount per frame and writes it to the truth file,
+# and check_register.py compares what was recovered. It also refuses to pass a
+# build that reports zero rotation while rotation was injected — the shape a
+# translation-only regression would take.
+python3 gen_frames.py "$WORK/rot.cstack" --width 96 --height 64 --frames 8 \
+        --rays 0 --rotate 0.5 --truth "$WORK/rot_truth.txt" > /dev/null
+"$WORK/cumulus" "$WORK/rot_reg.cstack" register "$WORK/rot.cstack" > "$WORK/rot_reg.txt"
+python3 check_register.py "$WORK/rot_truth.txt" "$WORK/rot_reg.txt"
+
+echo "== rotation is APPLIED, not merely measured =="
+# `register` proves the angle is recovered; this proves the resampler uses it.
+# A build that measured rotation perfectly and then resampled by translation
+# alone passes every check above. Concentration is the discriminating metric —
+# rotation error is zero at the frame centre, so PEAK barely moves while the
+# flux smears outward, and only a concentration comparison sees that.
+python3 gen_frames.py "$WORK/bigrot.cstack" --width 640 --height 480 --frames 10 \
+        --rays 6 --rotate 0.4 > /dev/null
+"$WORK/cumulus" "$WORK/bigrot_stack.cstack"  stack     "$WORK/bigrot.cstack" > /dev/null
+"$WORK/cumulus" "$WORK/bigrot_unreg.cstack"  sigmaclip "$WORK/bigrot.cstack" > /dev/null
+python3 check_stack.py "$WORK/bigrot_stack.cstack" "$WORK/bigrot_unreg.cstack"
+
 echo "== registered stack is sharper than an unregistered one =="
 # `register` proves the offsets are right; this proves they were USED, and used
 # in the RIGHT DIRECTION. A pipeline that measures a correct offset and then
