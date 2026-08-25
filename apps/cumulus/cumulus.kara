@@ -1,11 +1,16 @@
-// Cumulus — deep-sky sub-frame integration.
+// Cumulus — sub-frame integration for deep-sky and nightscape stacking.
 //
-// Step 1: the integration engine and nothing else. Reads a `.cstack` (see
-// gen_frames.py), integrates the frames per pixel by one of two modes, and
-// writes a single-frame `.cstack` back out.
+// Reads a `.cstack` (see gen_frames.py), a FITS sequence from a telescope, or a
+// TIFF sequence from a camera — mono or RGB, told apart by the files' own magic
+// rather than by their names — integrates them per pixel, and writes a
+// `.cstack` back out.
 //
 //   mean        arithmetic mean across all frames
 //   sigmaclip   iterative sigma clipping, then the mean of the survivors
+//   register    report the recovered per-frame transform, stack nothing
+//   stack       register, then sigma-clip integrate
+//   meancfa     separate a Bayer mosaic into R,G,B and take the mean
+//   stackcfa    register on luminance, then integrate the colour planes
 //
 // EVERY KERNEL IS AN ORDINARY SEQUENTIAL `for` LOOP. There is no `TaskGroup`,
 // no `spawn`, no `par {}` anywhere in this file. The compiler proves that
@@ -112,9 +117,29 @@ let MAX_HALO: i64 = 64;
 /// Header fields plus enough to decode the data section. `read_fits_header`
 /// reports `data_off`, the byte offset of the first pixel, so any later read
 /// can seek straight to the rows it wants.
-struct FitsMeta {
-    width: i64, height: i64, bzero: i64, bscale: i64, data_off: i64,
-    bayer: String, ok: bool, err: String,
+/// What a sub-frame turned out to BE, once its header was read.
+///
+/// One struct for both containers rather than a pair of them, because
+/// everything downstream — the header pre-scan, the two streaming passes, the
+/// row reader — wants exactly one question answered ("where are row `r`'s
+/// pixels, and how do I decode them"), and a per-format type would make every
+/// one of those sites branch twice: once on which type it holds, once on what
+/// to do. `kind` says which half of the fields is live.
+struct SubMeta {
+    kind: i64,                                     // 0 = FITS, 1 = TIFF
+    width: i64, height: i64,
+    bzero: i64, bscale: i64, data_off: i64, bayer: String,          // FITS
+    big: bool, spp: i64, bits: i64,                                 // TIFF
+    rows_per_strip: i64, strip_offs: Vec[i64],                      // TIFF
+    ok: bool, err: String,
+}
+
+fn new_sub_meta() -> SubMeta {
+    SubMeta {
+        kind: 0, width: 0, height: 0, bzero: 0, bscale: 1, data_off: 0,
+        bayer: "", big: false, spp: 1, bits: 16, rows_per_strip: 0,
+        strip_offs: Vec.new(), ok: false, err: "",
+    }
 }
 
 /// Fill `buf` completely, topping up from an offset after a short read.
@@ -145,11 +170,8 @@ fn read_exact(f: ref File, buf: mut Slice[u8]) -> bool with reads(FileSystem) {
 /// Header blocks are 2880 bytes and the END card can fall anywhere in one, so
 /// this consumes WHOLE blocks and records the offset just past the block
 /// containing END — where the data section begins.
-fn read_fits_header(f: ref File) -> FitsMeta with reads(FileSystem) {
-    let mut m = FitsMeta {
-        width: 0, height: 0, bzero: 0, bscale: 1, data_off: 0,
-        bayer: "", ok: false, err: "",
-    };
+fn read_fits_header(f: ref File) -> SubMeta with reads(FileSystem) {
+    let mut m = new_sub_meta();
     let mut bitpix: i64 = 0;
     let mut naxis: i64 = 0;
     let mut roworder = "";
@@ -239,6 +261,401 @@ fn read_rows_at(f: ref File, data_off: i64, row0: i64, nrows: i64, w: i64,
         }
     }
     ok
+}
+
+// ─── TIFF input ──────────────────────────────────────────────────────────────
+//
+// FITS is what a telescope writes. TIFF is what a camera-on-a-tripod session
+// BECOMES: the nightscape workflow is RAW -> Lightroom/ACR/darktable -> 16-bit
+// TIFF, and that TIFF is what Starry Landscape Stacker and Sequator ingest.
+// Reading it is what makes this usable on files a photographer already has
+// rather than on files they would first have to convert.
+//
+// Baseline, uncompressed, strip-organised only — and every other flavour is
+// refused BY NAME rather than guessed at, the same rule the FITS reader follows
+// for BITPIX and ROWORDER and for the same reason: a stacker that half
+// understands its container still produces a picture, just the wrong one.
+//
+// The refusals are the interesting half of the work here, so they are tested
+// against files a third-party decoder accepts (gen_tiff.py --refuse writes real
+// zlib strips and real tiles) — otherwise "we refused it" and "we wrote a
+// broken fixture" are indistinguishable.
+
+/// Read `n` bytes at absolute offset `off`. Empty on any failure.
+///
+/// TIFF needs this and FITS does not: a FITS header is a prefix, so it can be
+/// read forward from byte zero, whereas a TIFF's directory can sit ANYWHERE —
+/// libtiff writes it after the pixels by default — and the strip table it
+/// points at can sit somewhere else again.
+fn read_at(f: ref File, off: i64, n: i64) -> Vec[u8] with reads(FileSystem) {
+    let mut buf: Vec[u8] = Vec.filled(n, 0);
+    let mut ok = false;
+    match f.seek(SeekFrom.Start, off) {
+        Ok(p) => { ok = true; }
+        Err(e) => { }
+    }
+    if ok { ok = read_exact(f, mut buf); }
+    if not ok { buf = Vec.new(); }
+    buf
+}
+
+/// Two- and four-byte unsigned fields, in either of TIFF's two byte orders.
+///
+/// TIFF is the rare format that lets the FILE choose its endianness — the "II"
+/// or "MM" at offset 0 — so every multi-byte read carries it. FITS never had
+/// to: it is big-endian, always, by specification.
+fn tu16(d: ref Vec[u8], off: i64, big: bool) -> i64 {
+    if big {
+        (d[off] as i64) * 256 + (d[off + 1] as i64)
+    } else {
+        (d[off] as i64) + (d[off + 1] as i64) * 256
+    }
+}
+
+fn tu32(d: ref Vec[u8], off: i64, big: bool) -> i64 {
+    if big {
+        (d[off] as i64) * 16777216 + (d[off + 1] as i64) * 65536
+            + (d[off + 2] as i64) * 256 + (d[off + 3] as i64)
+    } else {
+        (d[off] as i64) + (d[off + 1] as i64) * 256
+            + (d[off + 2] as i64) * 65536 + (d[off + 3] as i64) * 16777216
+    }
+}
+
+fn tval(d: ref Vec[u8], off: i64, width: i64, big: bool) -> i64 {
+    if width == 1 { return d[off] as i64; }
+    if width == 2 { return tu16(d, off, big); }
+    tu32(d, off, big)
+}
+
+/// Every value of IFD entry `eo`, whatever its type and count.
+///
+/// A value of four bytes or fewer lives INSIDE the twelve-byte entry, left
+/// justified; a longer one lives elsewhere and the entry holds its offset. That
+/// split is why this needs the file handle at all: the strip table of a
+/// row-per-strip image is megabytes and is never inline.
+fn tiff_values(f: ref File, ent: ref Vec[u8], eo: i64, big: bool) -> Vec[i64]
+    with reads(FileSystem)
+{
+    let mut out: Vec[i64] = Vec.new();
+    let typ = tu16(ent, eo + 2, big);
+    let cnt = tu32(ent, eo + 4, big);
+    // 1 = BYTE, 3 = SHORT, 4 = LONG. Nothing this reader needs is stored as a
+    // rational, an ascii string or a signed type, and a tag that arrives as one
+    // is treated as absent rather than misread.
+    let mut width: i64 = 0;
+    if typ == 1 { width = 1; }
+    if typ == 3 { width = 2; }
+    if typ == 4 { width = 4; }
+    if width == 0 or cnt <= 0 or cnt > 16777216 { return out; }
+    let total = cnt * width;
+    if total <= 4 {
+        for i in 0..cnt { out.push(tval(ent, eo + 8 + i * width, width, big)); }
+    } else {
+        let d = read_at(f, tu32(ent, eo + 8, big), total);
+        if d.len() == total {
+            for i in 0..cnt { out.push(tval(d, i * width, width, big)); }
+        }
+    }
+    out
+}
+
+/// Parse IFD0 of a classic TIFF and validate that it is a flavour we read.
+fn read_tiff_header(f: ref File, big: bool) -> SubMeta with reads(FileSystem) {
+    let mut m = new_sub_meta();
+    m.kind = 1;
+    m.big = big;
+
+    let head = read_at(f, 0, 8);
+    if head.len() < 8 { m.err = "file shorter than a TIFF header"; return m; }
+    let magic = tu16(head, 2, big);
+    if magic == 43 {
+        m.err = "BigTIFF is not implemented (only the classic 42 magic)";
+        return m;
+    }
+    if magic != 42 { m.err = "not a TIFF (bad magic number)"; return m; }
+
+    let ifd_off = tu32(head, 4, big);
+    let cntbuf = read_at(f, ifd_off, 2);
+    if cntbuf.len() < 2 { m.err = "IFD offset points past the end of the file"; return m; }
+    let nent = tu16(cntbuf, 0, big);
+    if nent <= 0 or nent > 512 { m.err = "implausible IFD entry count"; return m; }
+    let ent = read_at(f, ifd_off + 2, nent * 12);
+    if ent.len() != nent * 12 { m.err = "truncated IFD"; return m; }
+
+    let mut comp: i64 = 1;
+    let mut photo: i64 = 0 - 1;
+    let mut planar: i64 = 1;
+    let mut fmt: i64 = 1;
+    let mut tiled: i64 = 0;
+    let mut bits: Vec[i64] = Vec.new();
+    let mut strips: Vec[i64] = Vec.new();
+    let mut counts: Vec[i64] = Vec.new();
+
+    for e in 0..nent {
+        let eo = e * 12;
+        let tag = tu16(ent, eo, big);
+        // Only the tags that decide where the samples are and how wide they
+        // are, plus the ones whose mere PRESENCE means "a flavour we do not
+        // read". Everything else — resolution, software, timestamps, the whole
+        // EXIF block — is metadata this pipeline has no use for.
+        let want = tag == 256 or tag == 257 or tag == 258 or tag == 259
+            or tag == 262 or tag == 273 or tag == 277 or tag == 278
+            or tag == 279 or tag == 284 or tag == 322 or tag == 339;
+        if want {
+            let v = tiff_values(f, ent, eo, big);
+            if v.len() > 0 {
+                if tag == 256 { m.width = v[0]; }
+                if tag == 257 { m.height = v[0]; }
+                if tag == 258 { for i in 0..v.len() { bits.push(v[i]); } }
+                if tag == 259 { comp = v[0]; }
+                if tag == 262 { photo = v[0]; }
+                if tag == 273 { for i in 0..v.len() { strips.push(v[i]); } }
+                if tag == 277 { m.spp = v[0]; }
+                if tag == 278 { m.rows_per_strip = v[0]; }
+                if tag == 279 { for i in 0..v.len() { counts.push(v[i]); } }
+                if tag == 284 { planar = v[0]; }
+                if tag == 322 { tiled = v[0]; }
+                if tag == 339 { fmt = v[0]; }
+            }
+        }
+    }
+
+    if m.width <= 0 or m.height <= 0 {
+        m.err = "TIFF carries no image dimensions";
+        return m;
+    }
+    if tiled != 0 {
+        m.err = "tiled TIFF is not implemented (only strip-organised files)";
+        return m;
+    }
+    if comp != 1 {
+        // Naming the code matters: 5 is LZW, 8 is Deflate, 32773 PackBits, and
+        // an operator who knows which one it is knows which flag to re-export
+        // with. `magick in.tif -compress none out.tif` converts any of them.
+        m.err = f"unsupported TIFF compression {comp} — only uncompressed is implemented (re-export with compression off, or `magick in.tif -compress none out.tif`)";
+        return m;
+    }
+    if planar != 1 {
+        m.err = "unsupported PlanarConfiguration (only chunky, 1, is implemented)";
+        return m;
+    }
+    if fmt != 1 {
+        m.err = "unsupported SampleFormat (only unsigned integer is implemented)";
+        return m;
+    }
+    if m.spp != 1 and m.spp != 3 {
+        // 4 is the common one: RGBA, or RGB plus an unnamed extra sample. An
+        // alpha channel over a photograph of the sky means nothing, and picking
+        // three of the four silently is a guess about which three.
+        m.err = f"unsupported SamplesPerPixel {m.spp} — only 1 (mono) and 3 (RGB) are implemented";
+        return m;
+    }
+    if bits.len() != m.spp {
+        m.err = "BitsPerSample count disagrees with SamplesPerPixel";
+        return m;
+    }
+    m.bits = bits[0];
+    let mut mixed = false;
+    for i in 0..m.spp { if bits[i] != m.bits { mixed = true; } }
+    if mixed { m.err = "channels of differing bit depth are not implemented"; return m; }
+    if m.bits != 8 and m.bits != 16 {
+        m.err = f"unsupported BitsPerSample {m.bits} — only 8 and 16 are implemented";
+        return m;
+    }
+    // Photometric 0 is WhiteIsZero, an INVERTED image; reading it as if it were
+    // BlackIsZero yields a negative, which is a picture, so it is refused like
+    // every other silent-wrong-answer case here. 3 is a palette, which is not a
+    // measurement of anything.
+    if m.spp == 1 and photo != 1 and photo != 0 - 1 {
+        m.err = f"unsupported PhotometricInterpretation {photo} for a 1-sample TIFF — only 1 (BlackIsZero)";
+        return m;
+    }
+    if m.spp == 3 and photo != 2 {
+        m.err = f"unsupported PhotometricInterpretation {photo} for a 3-sample TIFF — only 2 (RGB)";
+        return m;
+    }
+    // RowsPerStrip defaults to "the whole image in one strip", which is also
+    // what an out-of-range value means in practice.
+    if m.rows_per_strip <= 0 or m.rows_per_strip > m.height {
+        m.rows_per_strip = m.height;
+    }
+    let nstrips = (m.height + m.rows_per_strip - 1) / m.rows_per_strip;
+    if strips.len() != nstrips {
+        m.err = "StripOffsets count disagrees with the image height";
+        return m;
+    }
+    // The first strip's byte count must be exactly what an uncompressed strip
+    // of that geometry weighs. This is the one check that catches a file whose
+    // COMPRESSION TAG says 1 but whose payload is not — and, equally, a reader
+    // whose idea of the row stride is wrong.
+    let row_bytes = m.width * m.spp * (m.bits / 8);
+    if counts.len() == nstrips {
+        let mut rows0 = m.rows_per_strip;
+        if rows0 > m.height { rows0 = m.height; }
+        if counts[0] != rows0 * row_bytes {
+            m.err = "StripByteCounts does not match an uncompressed strip of this geometry";
+            return m;
+        }
+    }
+    m.strip_offs = strips;
+    m.ok = true;
+    m
+}
+
+/// One sample, expanded to the 16-bit scale the whole pipeline works in.
+fn tsample(d: ref Vec[u8], off: i64, bits: i64, big: bool) -> i64 {
+    // 8-bit expands by bit REPLICATION (x257), which sends 255 to exactly
+    // 65535. A bare shift by 8 would cap at 65280 and quietly darken an 8-bit
+    // sequence by a quarter of a percent relative to a 16-bit one — invisible
+    // in a picture, fatal to a byte-identity oracle.
+    if bits == 8 { return (d[off] as i64) * 257; }
+    tu16(d, off, big)
+}
+
+/// The MEDIAN of a pixel's three samples, which is what registration runs on.
+///
+/// Median rather than mean, for the same reason `cfa_luminance` takes the
+/// median of four photosites: a hot pixel or a cosmic ray usually lands in one
+/// channel, and a median removes that outlier outright, where a mean merely
+/// divides it by three and lets it drag the star's measured centre. The colour
+/// planes themselves are integrated with sigma clipping, which rejects rays on
+/// its own — this is only for finding stars.
+fn tluma(d: ref Vec[u8], off: i64, bits: i64, big: bool) -> i64 {
+    let bp = bits / 8;
+    let a = tsample(d, off, bits, big);
+    let b = tsample(d, off + bp, bits, big);
+    let c = tsample(d, off + 2 * bp, bits, big);
+    let mut lo = a;
+    if b < lo { lo = b; }
+    if c < lo { lo = c; }
+    let mut hi = a;
+    if b > hi { hi = b; }
+    if c > hi { hi = c; }
+    a + b + c - lo - hi
+}
+
+/// Read rows `[row0, row0+nrows)`, taking sample `plane` of each pixel.
+///
+/// `plane` is 0..spp for a colour plane, or -1 for the median luminance.
+///
+/// Rows are fetched in runs that stay inside ONE strip, because a strip is
+/// contiguous on disk: a whole-image strip — what most encoders write — makes
+/// any request a single read, and a row-per-strip file degrades to one read per
+/// row rather than to something incorrect.
+fn read_tiff_rows_at(f: ref File, m: ref SubMeta, plane: i64,
+                     row0: i64, nrows: i64,
+                     dst: mut ref Vec[u16], dst_base: i64) -> bool
+    with reads(FileSystem)
+{
+    let w = m.width;
+    let bp = m.bits / 8;
+    let row_bytes = w * m.spp * bp;
+    let mut r = row0;
+    let mut ok = true;
+    while r < row0 + nrows and ok {
+        let si = r / m.rows_per_strip;
+        let within = r - si * m.rows_per_strip;
+        let mut run = m.rows_per_strip - within;
+        if run > row0 + nrows - r { run = row0 + nrows - r; }
+        if si < 0 or si >= m.strip_offs.len() {
+            ok = false;
+        } else {
+            let raw = read_at(f, m.strip_offs[si] + within * row_bytes, run * row_bytes);
+            if raw.len() != run * row_bytes {
+                ok = false;
+            } else {
+                let base = dst_base + (r - row0) * w;
+                for y in 0..run {
+                    let ro = y * row_bytes;
+                    let po = base + y * w;
+                    for x in 0..w {
+                        let so = ro + x * m.spp * bp;
+                        let v = if plane >= 0 {
+                            tsample(raw, so + plane * bp, m.bits, m.big)
+                        } else {
+                            tluma(raw, so, m.bits, m.big)
+                        };
+                        dst[po + x] = v as u16;
+                    }
+                }
+            }
+            r = r + run;
+        }
+    }
+    ok
+}
+
+/// Which container this is, from its first bytes rather than from its name.
+///
+/// Extensions lie: `.fit`, `.fits`, `.fts`, `.tif`, `.tiff`, and plenty of
+/// files carrying none at all. The first two bytes settle it — "II" or "MM" is
+/// a TIFF byte-order mark, and everything else is offered to the FITS reader,
+/// which has its own END-card check to refuse what is not FITS either.
+fn read_sub_header(f: ref File) -> SubMeta with reads(FileSystem) {
+    let head = read_at(f, 0, 8);
+    if head.len() < 8 {
+        let mut m = new_sub_meta();
+        m.err = "file shorter than any header";
+        return m;
+    }
+    let b0 = head[0] as i64;
+    let b1 = head[1] as i64;
+    if b0 == 73 and b1 == 73 { return read_tiff_header(f, false); }   // 'I','I'
+    if b0 == 77 and b1 == 77 { return read_tiff_header(f, true); }    // 'M','M'
+    let mut m2 = new_sub_meta();
+    // Anything else must be FITS, whose first card key is the literal SIMPLE.
+    // Checking it here rather than letting the block scan run out is the
+    // difference between "this is not a container I know" and "no END card in
+    // header" — which is what a JPEG renamed `.tif` used to get told, and which
+    // sends the reader looking for a corrupt FITS file that never existed.
+    let simple = (head[0] as i64) == 83 and (head[1] as i64) == 73
+        and (head[2] as i64) == 77 and (head[3] as i64) == 80
+        and (head[4] as i64) == 76 and (head[5] as i64) == 69;
+    if not simple {
+        m2.err = "unrecognised file — expected FITS (SIMPLE), TIFF (II/MM) or a .cstack container (CSTK)";
+        return m2;
+    }
+    // `read_at` left the cursor at byte 8; the FITS reader consumes whole
+    // 2880-byte blocks from wherever it starts, so it has to start at zero.
+    m2.err = "cannot rewind to read the header";
+    match f.seek(SeekFrom.Start, 0) {
+        Ok(p) => { m2 = read_fits_header(f); }
+        Err(e) => { }
+    }
+    m2
+}
+
+/// Read rows from whichever container this sub turned out to be.
+fn read_sub_rows(f: ref File, m: ref SubMeta, plane: i64, row0: i64, nrows: i64,
+                 dst: mut ref Vec[u16], dst_base: i64) -> bool
+    with reads(FileSystem)
+{
+    if m.kind == 1 {
+        // A mono TIFF has one sample, so the luminance request and the plane-0
+        // request are the same request.
+        let mut p = plane;
+        if m.spp == 1 { p = 0; }
+        return read_tiff_rows_at(f, m, p, row0, nrows, dst, dst_base);
+    }
+    read_rows_at(f, m.data_off, row0, nrows, m.width, m.bzero, m.bscale, dst, dst_base)
+}
+
+/// True if `path` is a `.cstack` container, by its magic rather than its name.
+fn is_cstack(path: String) -> bool with reads(FileSystem) {
+    let mut yes = false;
+    match File.open(path) {
+        Ok(f) => {
+            let h = read_at(f, 0, 4);
+            // 'C', 'S', 'T', 'K'
+            if h.len() == 4 {
+                yes = (h[0] as i64) == 67 and (h[1] as i64) == 83
+                    and (h[2] as i64) == 84 and (h[3] as i64) == 75;
+            }
+        }
+        Err(e) => { }
+    }
+    yes
 }
 
 fn u32_at(data: ref Vec[u8], off: i64) -> i64 {
@@ -787,9 +1204,10 @@ fn stack_cfa(px: ref Vec[u16], w: i64, h: i64, nframes: i64, codes: ref Vec[i64]
 
 // ─── Registration ────────────────────────────────────────────────────────────
 //
-// Translation only, sub-pixel, star-based. Rotation is a later slice: a tracked
-// mount and a short session are translation-dominated, and getting translation
-// exactly right is the prerequisite for rotation anyway.
+// Sub-pixel, star-based, and now a similarity transform rather than a pure
+// translation — see `estimate_transform`, which fits rotation about the frame
+// centre on top of the offset and refuses to when the two are not
+// distinguishable in the data it has.
 //
 // Three stages, each independently checkable:
 //   1. detect  — local maxima above a background-derived threshold
@@ -1582,13 +2000,11 @@ fn calibrate_rows(px: mut ref Vec[u16], base: i64, w: i64, row0: i64, nrows: i64
 
 /// Just the header of `path` — opens, parses, closes. Used to learn a sub's
 /// geometry before deciding whether the run can stream.
-fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
-    let mut m = FitsMeta {
-        width: 0, height: 0, bzero: 0, bscale: 1, data_off: 0, bayer: "",
-        ok: false, err: "cannot open input",
-    };
+fn read_sub_meta(path: String) -> SubMeta with reads(FileSystem) {
+    let mut m = new_sub_meta();
+    m.err = "cannot open input";
     match File.open(path) {
-        Ok(f) => { m = read_fits_header(f); }
+        Ok(f) => { m = read_sub_header(f); }
         Err(e) => { }
     }
     m
@@ -1602,7 +2018,7 @@ fn read_fits_meta(path: String) -> FitsMeta with reads(FileSystem) {
 /// star list (a few dozen structs). Peak here is one frame regardless of how
 /// many subs the session has.
 fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
-                             bzero: i64, bscale: i64,
+                             plane: i64,
                              dark: ref Master, flat: ref Master)
     -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], i64, Vec[f64])
     with reads(FileSystem) writes(FileSystem)
@@ -1623,9 +2039,9 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
         let mut got = false;
         match File.open(paths[f]) {
             Ok(fh) => {
-                let m = read_fits_header(fh);
+                let m = read_sub_header(fh);
                 if m.ok {
-                    got = read_rows_at(fh, m.data_off, 0, h, w, bzero, bscale, mut frame, 0);
+                    got = read_sub_rows(fh, m, plane, 0, h, mut frame, 0);
                     // Registration must run on CALIBRATED pixels: vignetting is
                     // a brightness gradient across the frame, so an uncorrected
                     // flat biases the background estimate and therefore the
@@ -1763,25 +2179,30 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
     }
 }
 
-/// Stack a list of FITS subs without ever holding the whole set.
+/// Stack one PLANE of a list of subs, without ever holding the whole set, and
+/// write each strip of the result as it is finished.
 ///
-/// PASS 1 reads each sub in turn, detects its stars, and drops the pixels — one
-/// frame resident. PASS 2 reopens them all and walks the output in strips,
-/// sliding a row window forward through every file at once.
+/// PASS 1 (`compute_offsets_streaming`) reads each sub in turn, detects its
+/// stars, and drops the pixels — one frame resident. This is PASS 2: it reopens
+/// them all and walks the output in strips, each strip reading exactly the row
+/// window it needs from every file.
 ///
-/// The window slide is what makes this work without `File.seek`. Consecutive
-/// strips overlap by the halo, so rather than re-reading those rows the window
-/// RETAINS them: shift the tail to the front, then read only the genuinely new
-/// rows. Every file is therefore read exactly once per pass, front to back.
-fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
-                   bzero: i64, bscale: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
+/// Nothing here is frame-sized. The window is `nframes * w * (STRIP + 2*halo)`,
+/// the result buffer is one strip, and the strip goes to disk before the next
+/// one is gathered — so peak memory is set by STRIP and the halo, never by `h`.
+///
+/// `plane` selects the sample: 0 for mono, and 0/1/2 in turn for RGB. Calling
+/// it three times reads each file three times, which is the price of not
+/// holding three planes at once; at 24 MP that trades ~2 s of warm-cache I/O
+/// for 400 MB of resident accumulator.
+fn stack_streaming_to(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
+                   plane: i64, dxs: ref Vec[f64], dys: ref Vec[f64],
                    rots: ref Vec[f64], keep: ref Vec[i64], use_clip: bool,
                    horizon: i64, feather: i64,
-                   dark: ref Master, flat: ref Master) -> Vec[i64]
+                   dark: ref Master, flat: ref Master, fout: ref File) -> bool
     with reads(FileSystem) writes(FileSystem)
 {
-    let mut out: Vec[i64] = Vec.with_capacity(w * h);
-    for i in 0..(w * h) { out.push(0); }
+    let mut out: Vec[i64] = Vec.filled(STRIP * w, 0);
 
     // Halo sized from the transform actually recovered, not from MAX_SHIFT: a
     // dither of a few pixels should not cost a 128-row window. Rotation adds
@@ -1800,21 +2221,22 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
 
     let cap = STRIP + 2 * halo;
     let mut win: Vec[u16] = Vec.filled(nframes * w * cap, 0);
-    let mut metas: Vec[i64] = Vec.new();
+    let mut metas: Vec[SubMeta] = Vec.new();
     let mut handles: Vec[File] = Vec.new();
     let mut opened = true;
     for f in 0..nframes {
         match File.open(paths[f]) {
             Ok(fh) => {
-                let m = read_fits_header(fh);
+                let m = read_sub_header(fh);
                 if not m.ok { opened = false; }
-                metas.push(m.data_off);
+                metas.push(m);
                 handles.push(fh);
             }
             Err(e) => { opened = false; }
         }
     }
 
+    let mut wrote = true;
     if opened and handles.len() as i64 == nframes {
         let nstrips = (h + STRIP - 1) / STRIP;
         for s in 0..nstrips {
@@ -1837,21 +2259,25 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
             // to each file's read offset.
             for f in 0..nframes {
                 if keep[f] != 0 {
-                    let got = read_rows_at(handles[f], metas[f], wr0, wrows, w,
-                                           bzero, bscale, mut win, f * w * cap);
+                    let got = read_sub_rows(handles[f], metas[f], plane,
+                                            wr0, wrows, mut win, f * w * cap);
                     if not got { println("cumulus: short read while streaming"); }
                     calibrate_rows(mut win, f * w * cap, w, wr0, wrows, dark, flat);
                 }
             }
 
+            // `sy0` as the output origin: this buffer's row 0 IS source row
+            // sy0, the same convention the browser path uses.
             integrate_window(win, w, h, nframes, dxs, dys, rots, keep, use_clip,
                              horizon, feather,
-                             sy0, sh, wr0, wrows, cap, 0, mut out);
+                             sy0, sh, wr0, wrows, cap, sy0, mut out);
+            if wrote { wrote = write_stack_rows(fout, out, sh * w); }
         }
     } else {
         println("cumulus: could not reopen the subs for streaming");
+        wrote = false;
     }
-    out
+    wrote
 }
 
 /// The resident whole-stack path: one window covering every row.
@@ -1871,7 +2297,7 @@ fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
 /// meant "n images of w x h", and three colour planes are three images. Every
 /// existing reader loads a colour result without a change, and sees it as what
 /// it is.
-fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64, planes: i64)
+fn write_stack_header(f: ref File, width: i64, height: i64, planes: i64) -> bool
     with writes(FileSystem)
 {
     let mut bytes: Vec[u8] = Vec.new();
@@ -1886,17 +2312,47 @@ fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64, planes:
         bytes.push(((d / 65536) % 256) as u8);
         bytes.push(((d / 16777216) % 256) as u8);
     }
-    for v in out {
+    let mut ok = false;
+    match f.write(bytes.as_slice()) {
+        Ok(n) => { ok = true; }
+        Err(e) => { }
+    }
+    ok
+}
+
+/// Append `n` samples of `out` as 16-bit little-endian.
+///
+/// Split from the header so the streaming path can hand back a strip at a time
+/// and never hold a frame-sized result. That is the same move the browser
+/// slice made with `put_rows`, arriving on the native side: an RGB stack of a
+/// 24 MP sequence would otherwise carry 576 MB of `i64` accumulator plus 288 MB
+/// of encoded bytes before a single one of them reached the disk.
+fn write_stack_rows(f: ref File, out: ref Vec[i64], n: i64) -> bool
+    with writes(FileSystem)
+{
+    let mut bytes: Vec[u8] = Vec.with_capacity(n * 2);
+    for i in 0..n {
+        let v = out[i];
         let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
         bytes.push((c % 256) as u8);
         bytes.push(((c / 256) % 256) as u8);
     }
+    let mut ok = false;
+    match f.write(bytes.as_slice()) {
+        Ok(m) => { ok = true; }
+        Err(e) => { }
+    }
+    ok
+}
+
+fn write_stack(path: String, out: ref Vec[i64], width: i64, height: i64, planes: i64)
+    with writes(FileSystem)
+{
     match File.create(path) {
         Ok(f) => {
-            match f.write(bytes.as_slice()) {
-                Ok(n) => { }
-                Err(e) => { println("cumulus: write failed"); }
-            }
+            let mut ok = write_stack_header(f, width, height, planes);
+            if ok { ok = write_stack_rows(f, out, out.len()); }
+            if not ok { println("cumulus: write failed"); }
         }
         Err(e) => { println("cumulus: cannot create output"); }
     }
@@ -1914,7 +2370,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         println("usage: cumulus <out.cstack> <mean|sigmaclip|register|stack|stackcfa|meancfa>");
         println("               [--bias b.cstack] [--dark d.cstack] [--flat f.cstack]");
         println("               [--horizon ROW] [--feather ROWS]");
-        println("               <in.cstack | sub1.fits ...>");
+        println("               <in.cstack | sub1.fits ... | sub1.tif ...>");
     } else {
         let outp = argv[1];
         let mode = argv[2];
@@ -1973,53 +2429,78 @@ fn main() with reads(FileSystem) writes(FileSystem) {
         // Set when the run streams the subs off disk instead of loading them.
         let mut streaming = false;
         let mut paths: Vec[String] = Vec.new();
-        let mut bzero: i64 = 0;
-        let mut bscale: i64 = 1;
+        // Samples per pixel of the sequence: 1 for FITS and for a mono TIFF,
+        // 3 for an RGB TIFF. It is the plane count of the RESULT too.
+        let mut nplanes: i64 = 1;
 
-        // Multiple INPUTS means a FITS sequence; one means a container. Count
-        // from `first_in`, not from argv — the old `argv.len() > 4` counted
-        // FLAGS too, so `--dark d.cstack in.cstack` already sent a single
-        // `.cstack` down the FITS path and failed with "no END card in header".
-        // Two flag pairs made it unmissable; one always could.
+        // Two input shapes, told apart by the file's own first bytes rather
+        // than by its NAME: a `.cstack` carries the whole stack, and anything
+        // else is one sub per file — FITS from a telescope, TIFF from a camera.
+        // Extensions lie (`.fit`, `.fts`, `.tif`, and files carrying none at
+        // all); the "CSTK" magic does not.
+        //
+        // The count is taken from `first_in`, not from argv: the old
+        // `argv.len() > 4` counted FLAGS too, so `--dark d.cstack in.cstack`
+        // already sent a single container down the sequence path and failed
+        // with "no END card in header".
         let ninputs = argv.len() - first_in;
-        if ninputs > 1 or inp.ends_with(".fits") {
+        // `inp.clone()` because `File.open` takes an owned `String`, so a
+        // read-only path predicate cannot borrow one. One clone per run.
+        let is_container = ninputs == 1 and is_cstack(inp.clone());
+        // Set when the pre-scan succeeded but the sequence cannot stream — the
+        // mosaic case, and only that case.
+        let mut resident_seq = false;
+        if not is_container {
             // Headers first, pixels never — enough to learn the geometry, spot
             // a mismatched sequence, and decide whether this run can stream.
             let mut i = first_in;
             let mut hdr_ok = true;
             while i < argv.len() and hdr_ok {
-                let m = read_fits_meta(argv[i]);
+                let m = read_sub_meta(argv[i]);
                 if not m.ok {
+                    println(f"cumulus: {argv[i]}: {m.err}");
                     hdr_ok = false;
                 } else {
                     if paths.len() == 0 {
                         width = m.width;
                         height = m.height;
                         bayer = m.bayer.clone();
-                        bzero = m.bzero;
-                        bscale = m.bscale;
+                        nplanes = m.spp;
                     }
-                    if m.width != width or m.height != height or m.bayer != bayer {
+                    // A sequence that changes shape partway through is two
+                    // sessions concatenated, not one stack.
+                    if m.width != width or m.height != height {
+                        println(f"cumulus: {argv[i]}: frames differ in size");
                         hdr_ok = false;
-                    } else {
-                        paths.push(argv[i].clone());
                     }
+                    if hdr_ok and m.bayer != bayer {
+                        println(f"cumulus: {argv[i]}: frames disagree about BAYERPAT");
+                        hdr_ok = false;
+                    }
+                    if hdr_ok and m.spp != nplanes {
+                        println(f"cumulus: {argv[i]}: frames differ in channel count");
+                        hdr_ok = false;
+                    }
+                    if hdr_ok { paths.push(argv[i].clone()); }
                 }
                 i = i + 1;
             }
-            // A colour mosaic still loads whole: `stack_cfa` separates the
+            // A colour MOSAIC still loads whole: `stack_cfa` separates the
             // planes across the FULL frame, so a row window would have to be
-            // threaded through the plane extraction as well. Monochrome — the
-            // shape a real session is mostly made of, and the one that gets
-            // large — streams.
+            // threaded through the plane extraction as well. Everything else —
+            // mono FITS, mono TIFF, RGB TIFF — streams, and an RGB TIFF is
+            // exactly the case that has to: three planes of a 24 MP sub is
+            // 144 MB, so a ten-frame nightscape would be 1.4 GB resident.
             if hdr_ok and bayer == "" and paths.len() as i64 > 0 {
                 streaming = true;
                 nframes = paths.len();
                 loaded = true;
             }
+            resident_seq = hdr_ok and not streaming and paths.len() as i64 > 0;
+            if not hdr_ok { paths = Vec.new(); }
         }
 
-        if not streaming and (ninputs > 1 or inp.ends_with(".fits")) {
+        if resident_seq {
             let mut i = first_in;
             let mut bad = false;
             while i < argv.len() and not bad {
@@ -2051,24 +2532,23 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 i = i + 1;
             }
             loaded = not bad and nframes > 0;
-        } else {
+        }
+
+        if is_container {
             // A `.cstack` stays resident: it is one file holding every frame
             // back to back, so a strip of frame f and the same strip of frame
-            // f+1 are a whole frame apart in the byte stream. Walking them
-            // together needs seeks, and `File` has none — the FITS layout, one
-            // file per sub, is what makes a sequential strip walk possible.
-            if not streaming {
-                let data = read_all(inp);
-                if data.len() < 16 {
-                    println("cumulus: input too short to hold a header");
-                } else {
-                    width = u32_at(data, 4);
-                    height = u32_at(data, 8);
-                    nframes = u32_at(data, 12);
-                    let n = width * height * nframes;
-                    for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
-                    loaded = true;
-                }
+            // f+1 are a whole frame apart in the byte stream. One file per sub
+            // — FITS or TIFF — is the layout that makes a strip walk possible.
+            let data = read_all(inp);
+            if data.len() < 16 {
+                println("cumulus: input too short to hold a header");
+            } else {
+                width = u32_at(data, 4);
+                height = u32_at(data, 8);
+                nframes = u32_at(data, 12);
+                let n = width * height * nframes;
+                for i in 0..n { px.push(u16_at(data, 16 + i * 2) as u16); }
+                loaded = true;
             }
         }
 
@@ -2139,6 +2619,22 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             loaded = false;  // handled here; skip the monochrome path below
         }
 
+        // Calibration masters are single-plane containers, so an RGB sequence
+        // would need one master PER CHANNEL — a dark's hot pixels and a flat's
+        // vignetting are both wavelength-dependent, and applying a mono master
+        // to R, G and B alike is not an approximation of the right answer, it
+        // is a different correction on each channel. Refused rather than
+        // guessed at, the same as every other half-supported case here.
+        if loaded and nplanes > 1 and (darkp != "" or flatp != "" or biasp != "") {
+            println("cumulus: calibration masters are single-plane; an RGB sequence needs one per channel (not implemented)");
+            loaded = false;
+        }
+        // A demosaiced RGB file has no mosaic to separate.
+        if loaded and nplanes > 1 and is_cfa_mode {
+            println(f"cumulus: `{mode}` needs a Bayer mosaic; this input is already demosaiced RGB");
+            loaded = false;
+        }
+
         if loaded {
             let npix = width * height;
 
@@ -2174,8 +2670,11 @@ fn main() with reads(FileSystem) writes(FileSystem) {
             let mut nref: i64 = 0;
             if mode == "stack" or mode == "register" {
                 if streaming {
+                    // -1 asks for the median luminance. For a mono sub that
+                    // is just its one plane; for RGB it is what keeps a star's
+                    // measured centre from depending on its colour.
                     let off = compute_offsets_streaming(paths, width, height, nframes,
-                                                        bzero, bscale, dark, flat);
+                                                        0 - 1, dark, flat);
                     dxs = off.0;
                     dys = off.1;
                     keep = off.2;
@@ -2213,17 +2712,33 @@ fn main() with reads(FileSystem) writes(FileSystem) {
                 println(f"cumulus: registered {nkept}/{nframes} frames");
             }
             let use_clip = mode == "sigmaclip" or mode == "stack" or mode == "register";
-            let out = if streaming {
-                stack_streaming(paths, width, height, nframes, bzero, bscale,
-                                dxs, dys, rots, keep, use_clip, horizon, feather,
-                                dark, flat)
+            if streaming {
+                // One plane at a time, straight to disk. The SAME transform
+                // drives all three: colour planes of one exposure were captured
+                // by one sensor through one lens, so registering them
+                // independently could only introduce disagreement between them.
+                match File.create(outp.clone()) {
+                    Ok(fo) => {
+                        let mut okw = write_stack_header(fo, width, height, nplanes);
+                        for pl in 0..nplanes {
+                            if okw {
+                                okw = stack_streaming_to(paths, width, height, nframes, pl,
+                                                         dxs, dys, rots, keep, use_clip,
+                                                         horizon, feather, dark, flat, fo);
+                            }
+                        }
+                        if not okw { println("cumulus: write failed"); }
+                    }
+                    Err(e) => { println("cumulus: cannot create output"); }
+                }
             } else {
-                stack_tiled(px, width, height, nframes, dxs, dys, rots, keep, use_clip,
-                            horizon, feather)
-            };
-            write_stack(outp.clone(), out, width, height, 1);
+                let out = stack_tiled(px, width, height, nframes, dxs, dys, rots, keep,
+                                      use_clip, horizon, feather);
+                write_stack(outp.clone(), out, width, height, 1);
+            }
             let how = if streaming { "streamed" } else { "resident" };
-            println(f"cumulus: {mode} {width}x{height} x{nframes} ({how}) -> {outp}");
+            let colour = if nplanes > 1 { " RGB" } else { "" };
+            println(f"cumulus: {mode}{colour} {width}x{height} x{nframes} ({how}) -> {outp}");
         }
     }
 }

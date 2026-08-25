@@ -1161,6 +1161,134 @@ has to be checked against the spec, not against whatever a library happens to
 emit, and hand-writing keeps every byte the reader must handle visible: card
 padding, the `END` card, block padding, the `BZERO` round trip.
 
+## TIFF input, and the RGB path
+
+FITS is what a telescope writes. TIFF is what a camera-on-a-tripod session
+**becomes**: RAW into Lightroom, ACR or darktable, 16-bit TIFF out, and that
+TIFF is what Starry Landscape Stacker and Sequator ingest. Reading it is the
+difference between a tool that works on files a photographer already has and
+one that works on files they would first have to convert.
+
+Baseline, uncompressed, strip-organised TIFF: both byte orders, 8 or 16 bits,
+1 sample (mono) or 3 (RGB), any `RowsPerStrip`. The format is sniffed from the
+file's first bytes rather than from its name, so `.tif`, `.fits`, `.fit`, and a
+file with no extension at all are all handled by what they actually are.
+
+### Transcription as the oracle
+
+The check is not "does it decode plausibly". `gen_tiff.py --from-cstack`
+rewrites an **existing** container as one TIFF per frame, so stacking the TIFFs
+must land on exactly the bytes stacking the container lands on:
+
+```
+  16-bit little-endian, 64 rows/strip: identical to the container
+  16-bit big-endian,    64 rows/strip: identical to the container
+  16-bit little-endian,  8 rows/strip: identical to the container
+  16-bit big-endian,     7 rows/strip: identical to the container
+   8-bit little-endian, 64 rows/strip: identical to the container
+   8-bit big-endian,     5 rows/strip: identical to the container
+```
+
+Zero tolerance, which is what makes it useful — a stride error, a byte-order
+slip or an off-by-one strip offset cannot hide inside an equality. The odd
+`RowsPerStrip` values are there because they make the **last strip partial**,
+which is where a strip walk goes wrong if it goes wrong. The 8-bit rows are
+lossy by construction, so the generator also writes the container that round
+trip should land on (8-bit expands by bit replication, ×257, which sends 255 to
+exactly 65535 — a bare shift would cap at 65280 and darken the whole sequence);
+that keeps even the lossy case an equality rather than a tolerance.
+
+### The control that matters more than any of them
+
+All of the above shares one author's mental model of TIFF between the generator
+and the reader. A mistake made in **both** is invisible: every test passes while
+real files fail. So `verify.sh` re-encodes the fixtures with `sips` — macOS
+ImageIO — which writes its own IFD layout, its own tag set, and as it happens
+the opposite byte order, and demands the same stack:
+
+```
+  ImageIO re-encode (MM byte order): byte-identical stack
+```
+
+Agreement with a decoder that has never seen this code is worth more than
+agreement with six variants of my own.
+
+### RGB: three planes, one transform
+
+Registration runs on the **median** of a pixel's three samples, for the same
+reason `cfa_luminance` takes the median of four photosites: a hot pixel or a
+cosmic ray usually lands in one channel, and a median drops that outlier
+outright where a mean merely divides it by three and lets it drag the star's
+measured centre.
+
+The single transform it recovers then drives all three planes. Colour planes of
+one exposure came through one lens onto one sensor; registering them
+independently could only introduce disagreement between them that the optics
+never had.
+
+`check_tiff.py` asserts the injected R:G:B ratios came back, because nothing
+else here can see a channel transposition — such a stack is the right size, has
+sharp stars, and passes every other oracle in this repo:
+
+```
+  star 0 R:G:B  got 1.00:0.35:0.20  want 1.00:0.35:0.20  (max err 0.005)
+  star 1 R:G:B  got 0.24:0.45:1.00  want 0.25:0.45:1.00  (max err 0.007)
+  star 2 R:G:B  got 1.00:1.00:1.00  want 1.00:1.00:1.00  (max err 0.003)
+```
+
+Three ablations, three correct failures: transpose R and B (2 stars off),
+shift one plane by a single pixel (1 star off), and neutralise the injected
+colours — at which point the non-vacuity guard refuses to certify anything,
+because with a grey fixture it could not have caught either of the first two.
+
+That guard reads the **injected** table, not the result, and the distinction is
+the whole point. Measuring the result's own discrimination looks equivalent and
+is not: a genuine transposition inverts it, so the run fails with *"your fixture
+is weak"* when what actually happened is *"your pipeline swapped two
+channels"* — the checker blaming its own input for the defect it exists to find.
+That is exactly what the first version of it did.
+
+### RGB is what forced the output to stream
+
+Three planes of a 24 MP sub is 144 MB, so a ten-frame nightscape is 1.4 GB
+resident — a TIFF sequence has no resident path at all, it always streams. But
+the *output* was still frame-sized: an `i64` accumulator of `w·h` per plane
+plus the encoded bytes on top, which at 24 MP RGB is 576 MB + 288 MB before a
+single byte reached the disk.
+
+So `stack_streaming` became `stack_streaming_to`, writing each strip as it is
+finished — the same move the browser slice made with `put_rows`, arriving on
+the native side. Peak is now set by `STRIP` and the halo, never by `h`, and the
+mono path inherited it for free. Planes are stacked one at a time, which reads
+each file three times; at 24 MP that trades about two seconds of warm-cache I/O
+for four hundred megabytes of resident accumulator.
+
+### Refusals
+
+Every fixture behind these is a **valid** TIFF that other decoders open — real
+zlib strips, real tiles, a real planar layout — which is what makes a refusal a
+statement about Cumulus rather than about a broken fixture:
+
+```
+cumulus: sub.tif: unsupported TIFF compression 8 — only uncompressed is
+         implemented (re-export with compression off, or
+         `magick in.tif -compress none out.tif`)
+cumulus: sub.tif: tiled TIFF is not implemented (only strip-organised files)
+cumulus: sub.tif: unsupported PlanarConfiguration (only chunky, 1, is implemented)
+cumulus: sub.tif: unsupported SampleFormat (only unsigned integer is implemented)
+cumulus: sub.tif: unrecognised file — expected FITS (SIMPLE), TIFF (II/MM) or a
+         .cstack container (CSTK)
+```
+
+The last one is new and replaced a worse message. A JPEG named `.tif` used to
+fall through to the FITS reader and be told *"no END card in header"*, which
+sends the operator looking for a corrupt FITS file that never existed.
+
+Calibration is refused for RGB rather than approximated: a dark's hot pixels and
+a flat's vignetting are both wavelength-dependent, so one mono master applied to
+R, G and B alike is three different wrong corrections, not one roughly right
+one. Per-channel masters are the fix and are not implemented.
+
 ## The `.cstack` container
 
 A deliberately boring container, so the first slice could be about numerics
@@ -1207,3 +1335,11 @@ Deliberately absent, in the order they matter:
    HDUs, and `ROWORDER = 'BOTTOM-UP'`. Vendor RAW decoding stays out of scope:
    `rawpy`, `dcraw` or `siril -s` convert to FITS in a few lines, which is
    exactly what Siril itself does internally before any astronomy happens.
+7. **Wider TIFF** — LZW/Deflate/PackBits compression, tiled layout, BigTIFF,
+   floating-point samples, RGBA. Compression is the one that will actually be
+   hit, because several exporters default to it; it wants a `zlib` and an LZW
+   decoder in the row reader and changes nothing above that line, since a strip
+   is decompressed into exactly the bytes the current reader already expects.
+8. **Per-channel calibration masters**, without which an RGB sequence cannot be
+   calibrated at all — see the TIFF section for why a mono master is not an
+   approximation of the right answer.

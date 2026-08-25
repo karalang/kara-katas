@@ -223,7 +223,7 @@ PYEOF
 for f in bad_bitpix bad_naxis not_fits; do
   msg="$("$WORK/cumulus" "$WORK/junk.cstack" mean "$WORK/$f.fits" 2>&1 | head -1)"
   case "$msg" in
-    *"unsupported BITPIX"*|*"unsupported NAXIS"*|*"no END card"*)
+    *"unsupported BITPIX"*|*"unsupported NAXIS"*|*"unrecognised file"*)
       echo "  $f: refused — ${msg##*: }" ;;
     *)
       echo "  $f: expected a refusal, got: $msg" >&2; exit 1 ;;
@@ -257,8 +257,113 @@ python3 check_cal.py "$WORK/cumulus" "$WORK/cal"
 echo "== CFA: exact integration, injected colours, recovered dithers =="
 python3 check_cfa.py "$WORK/cumulus"
 
+echo "== TIFF input: what a camera session actually produces =="
+# FITS is what a telescope writes; TIFF is what RAW becomes after Lightroom,
+# ACR or darktable, and it is what SLS and Sequator ingest. The oracle is
+# transcription: gen_tiff.py rewrites an EXISTING container as one TIFF per
+# frame, so stacking the TIFFs must land on the same bytes as stacking the
+# container. Zero tolerance — a stride error, a byte-order slip or an
+# off-by-one strip offset cannot survive it.
+#
+# The 8-bit rows are lossy by construction (high byte only), so `--expect`
+# writes the container that round trip should land on: still an equality, not a
+# tolerance. The odd rows-per-strip values matter because they make the last
+# strip PARTIAL, which is where a strip walk goes wrong if it goes wrong.
+for variant in 16:little:64 16:big:64 16:little:8 16:big:7 8:little:64 8:big:5; do
+  bits=${variant%%:*}; rest=${variant#*:}; end=${rest%%:*}; rps=${rest##*:}
+  rm -rf "$WORK/tif" "$WORK/tif_expect.cstack"
+  python3 gen_tiff.py "$WORK/tif" --from-cstack "$WORK/in.cstack" \
+          --bits "$bits" --endian "$end" --rows-per-strip "$rps" \
+          --expect "$WORK/tif_expect.cstack" > /dev/null
+  "$WORK/cumulus" "$WORK/tif_a.cstack" stack "$WORK"/tif/*.tif > /dev/null
+  "$WORK/cumulus" "$WORK/tif_b.cstack" stack "$WORK/tif_expect.cstack" > /dev/null
+  if cmp -s "$WORK/tif_a.cstack" "$WORK/tif_b.cstack"; then
+    echo "  ${bits}-bit ${end}-endian, ${rps} rows/strip: identical to the container"
+  else
+    echo "  ${bits}-bit ${end}-endian, ${rps} rows/strip: DIFFERS from the container" >&2
+    exit 1
+  fi
+done
+
+echo "== TIFF flavours we do not read are refused BY NAME =="
+# Every fixture here is a VALID TIFF that other decoders open — real zlib
+# strips, real tiles, a real planar layout. That is what makes a refusal a
+# statement about Cumulus rather than about a broken fixture, and it is why
+# gen_tiff.py goes to the trouble of writing them properly.
+for kind in deflate tiled planar float; do
+  rm -rf "$WORK/bad_tif"
+  python3 gen_tiff.py "$WORK/bad_tif" --width 96 --height 64 --frames 1 \
+          --refuse "$kind" --rows-per-strip 16 > /dev/null
+  msg="$("$WORK/cumulus" "$WORK/junk.cstack" mean "$WORK"/bad_tif/*.tif 2>&1 | head -1)"
+  case "$msg" in
+    *"compression"*|*"tiled TIFF"*|*"PlanarConfiguration"*|*"SampleFormat"*)
+      echo "  $kind: refused — ${msg##*: }" ;;
+    *)
+      echo "  $kind: expected a refusal, got: $msg" >&2; exit 1 ;;
+  esac
+done
+printf '\xff\xd8\xff\xe0not a tiff at all' > "$WORK/jpeg.tif"
+msg="$("$WORK/cumulus" "$WORK/junk.cstack" mean "$WORK/jpeg.tif" 2>&1 | head -1)"
+case "$msg" in
+  *"unrecognised file"*) echo "  a JPEG named .tif: refused — ${msg##*— }" ;;
+  *) echo "  a JPEG named .tif: expected a refusal, got: $msg" >&2; exit 1 ;;
+esac
+
+echo "== RGB TIFF: three planes, one transform =="
+# The nightscape case. Registration runs on the median of the three samples —
+# a hot pixel usually lands in ONE channel, and a median drops it where a mean
+# would divide it by three and let it drag the star's centre — and the single
+# transform it recovers drives all three planes. Colour planes of one exposure
+# came through one lens; registering them independently could only introduce
+# disagreement between them.
+python3 gen_tiff.py "$WORK/rgbtif" --width 96 --height 64 --frames 8 \
+        --dither 3.0 --truth "$WORK/rgbtif_truth.txt" > /dev/null
+"$WORK/cumulus" "$WORK/rgb_reg.cstack" register "$WORK"/rgbtif/*.tif \
+        > "$WORK/rgbtif_reg.txt"
+python3 check_register.py "$WORK/rgbtif_truth.txt" "$WORK/rgbtif_reg.txt"
+"$WORK/cumulus" "$WORK/rgbtif.cstack" stack "$WORK"/rgbtif/*.tif > /dev/null
+# check_tiff.py asserts the injected R:G:B ratios came back. Nothing else here
+# can see a channel transposition: such a stack is the right size, has sharp
+# stars, and passes every other oracle in this file.
+python3 check_tiff.py "$WORK/rgbtif.cstack"
+
+echo "== a THIRD-PARTY encoder's TIFF decodes to the same pixels =="
+# Without this, gen_tiff.py and the reader in cumulus.kara share one author's
+# mental model of the format, and a mistake made in both is invisible: every
+# test above would pass while real files failed. `sips` is macOS ImageIO — it
+# re-encodes with its own IFD layout, its own tag set, and (as it happens) the
+# opposite byte order. Agreement with it is agreement with something that has
+# never seen this code.
+if command -v sips > /dev/null 2>&1; then
+  rm -rf "$WORK/reenc"; mkdir -p "$WORK/reenc"
+  for f in "$WORK"/rgbtif/*.tif; do
+    sips -s format tiff -s formatOptions none "$f" \
+         --out "$WORK/reenc/$(basename "$f")" > /dev/null 2>&1
+  done
+  "$WORK/cumulus" "$WORK/reenc.cstack" stack "$WORK"/reenc/*.tif > /dev/null
+  if cmp -s "$WORK/rgbtif.cstack" "$WORK/reenc.cstack"; then
+    echo "  ImageIO re-encode ($(python3 -c "print(open('$WORK/reenc/sub_000.tif','rb').read(2).decode())") byte order): byte-identical stack"
+  else
+    echo "  a third-party re-encode of the same pixels stacked differently" >&2
+    exit 1
+  fi
+else
+  echo "  no sips on this platform — third-party control SKIPPED" >&2
+fi
+
+echo "== calibration masters are refused for RGB, not applied per-channel =="
+# A dark's hot pixels and a flat's vignetting are both wavelength-dependent, so
+# a mono master applied to R, G and B alike is three different wrong
+# corrections, not one approximate one.
+msg="$("$WORK/cumulus" "$WORK/junk.cstack" stack --dark "$WORK/in.cstack" \
+        "$WORK"/rgbtif/*.tif 2>&1 | head -1)"
+case "$msg" in
+  *"one per channel"*) echo "  refused — ${msg##*: }" ;;
+  *) echo "  expected a refusal, got: $msg" >&2; exit 1 ;;
+esac
+
 if command -v node >/dev/null 2>&1 && [[ -f cumulus.wasm ]]; then
-  echo "== wasm kernels equal native =="
+echo "== wasm kernels equal native =="
   "$WORK/cumulus" "$WORK/w_mean.cstack"  mean  "$WORK/dith.cstack" > /dev/null
   "$WORK/cumulus" "$WORK/w_stack.cstack" stack "$WORK/dith.cstack" > /dev/null
   node test_node.mjs "$WORK/dith.cstack" "$WORK/w_mean.cstack" "$WORK/w_stack.cstack"
