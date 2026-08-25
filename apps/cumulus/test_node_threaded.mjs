@@ -30,8 +30,10 @@ for (let r = 0; r < Number(reps ?? 5); r++) {
       const off=(f*src.w*src.h+r0*src.w)*2, len=nr*src.w*2;
       new Uint8Array(ctx.memory.buffer,dst+Number(dstOff)*2,len).set(src.px.subarray(off,off+len));
     },
-    put_result(ptr,len,w,h,ctx){ result={w:Number(w),h:Number(h),
-      px:new Uint8Array(ctx.memory.buffer,ptr,Number(len)).slice()}; },
+    put_rows(ptr,len,row0,nrows,w,h,ctx){
+      const W=Number(w),H=Number(h),r0=Number(row0);
+      if(!result) result={w:W,h:H,px:new Uint8Array(W*H*2)};
+      result.px.set(new Uint8Array(ctx.memory.buffer,ptr,Number(len)), r0*W*2); },
     progress(){},
   };
   const hd = await instantiateThreaded(host);

@@ -254,16 +254,21 @@ async function stackInline({ subs, w, h, n, mode }) {
         s.bzero, s.bscale,
       );
     },
-    put_result(ptr, len, rw, rh, ctx) {
-      const raw2 = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
-      out = { w: Number(rw), h: Number(rh), px: new Uint16Array(raw2.buffer) };
+    put_rows(ptr, len, row0, nrows, rw, rh, ctx) {
+      // Streamed: one call per strip. Assembled here, in the JS heap — which is
+      // the point of the slice, since wasm32's 4 GiB budget is the scarce one.
+      const W = Number(rw), H = Number(rh), r0 = Number(row0), nr = Number(nrows);
+      if (!out) out = { w: W, h: H, px: new Uint16Array(W * H) };
+      const strip = new Uint16Array(
+        new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice().buffer);
+      out.px.set(strip.subarray(0, nr * W), r0 * W);
     },
     progress: (stage, done, total) =>
       onProgress({ stage: Number(stage), done: Number(done), total: Number(total) }),
   };
   const { exports } = await instantiate(host);
   const kept = Number(exports.stack_frames(BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
-  if (!out) throw new Error("stack_frames returned without calling put_result");
+  if (!out) throw new Error("stack_frames returned without emitting any rows");
   return { kept, w: out.w, h: out.h, px: out.px };
 }
 

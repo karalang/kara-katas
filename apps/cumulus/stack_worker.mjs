@@ -52,10 +52,15 @@ const host = {
       s.bzero, s.bscale,
     );
   },
-  put_result(ptr, len, w, h, ctx) {
-    // Copy out immediately — the pointer is only valid until wasm reclaims it.
-    const raw = new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice();
-    result = { w: Number(w), h: Number(h), px: new Uint16Array(raw.buffer) };
+  put_rows(ptr, len, row0, nrows, w, h, ctx) {
+    // Streamed: one call per strip. Allocate on the first, then fill — the
+    // assembled image lives HERE, in the JS heap, which is exactly where the
+    // output-streaming slice moved it to get it off wasm32's 4 GiB budget.
+    const W = Number(w), H = Number(h), r0 = Number(row0), n = Number(nrows);
+    if (!result) result = { w: W, h: H, px: new Uint16Array(W * H) };
+    const strip = new Uint16Array(
+      new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice().buffer);
+    result.px.set(strip.subarray(0, n * W), r0 * W);
   },
   progress(stage, done, total) {
     postMessage({ t: "progress", stage: Number(stage), done: Number(done), total: Number(total) });
@@ -90,7 +95,7 @@ self.onmessage = async (e) => {
     const kept = Number(await handle.exports.stack_frames(
       BigInt(w), BigInt(h), BigInt(n), BigInt(mode)));
     subs = [];
-    if (!result) throw new Error("stack_frames returned without calling put_result");
+    if (!result) throw new Error("stack_frames returned without emitting any rows");
     postMessage({ t: "done", kept, threaded: !!handle.threaded,
                   w: result.w, h: result.h, px: result.px }, [result.px.buffer]);
     result = null;

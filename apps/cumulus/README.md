@@ -356,56 +356,50 @@ modest 3 Mpx ×32, on the device with the least memory. The page now streams
 (see *Streaming*), and the term is gone:
 
 ```
-peak ≈ w·h·10  +  max( w·h·2 ,  n·w·112·2 + n·256·64·8 )
-       ↑ output    ↑ pass-1 frame  ↑ strip window + per-tile gather
+peak ≈ max( w·h·2 , n·w·112·2 + n·256·64·8 )  +  STRIP·w·10
+       ↑ pass-1 frame  ↑ strip window + tile gather   ↑ strip accumulator + rows
 ```
 
-The `max` is the whole subtlety, and it is a property of wasm rather than of
-this program: **linear memory is a high-water mark and never returns pages.**
-Pass 1's frame is freed before pass 2 allocates, but freeing does not shrink
-`memory.buffer.byteLength` — it leaves a hole. Pass 2's strip window either fits
-in that hole, costing nothing, or does not, and extends memory by its own size.
-The two never add, and which one is visible flips at roughly `h = 112·n`:
+**Round three: stream the OUTPUT too.** The input streamed; the output did not.
+A `w·h·8` i64 accumulator and a `w·h·2` result sat in wasm for the whole run,
+and both counted against wasm32's 4 GiB address space. `put_rows` now hands each
+strip to the host as it completes, so the finished image is assembled in the JS
+heap — which has no such ceiling — while wasm holds one strip:
 
-| regime | condition | behaviour |
-|---|---|---|
-| tall frame, few subs | `h > 112·n` | peak is `w·h·12` and **`n` does not appear** |
-| short frame, many subs | `h < 112·n` | peak grows with `n` |
+| frame | ×16 before | ×16 after | |
+|---|---|---|---|
+| 1024×768 | 12.8 MB | **6.8 MB** | 1.9× |
+| 2048×1536 | 33.1 MB | **9.1 MB** | 3.6× |
+| 3000×2000 | 58.3 MB | **12.8 MB** | 4.6× |
+| **6016×4016** (24 MP) | 275.7 MB | **47.4 MB** | **5.8×** |
 
-Measured at 6000×4000, peak is byte-identical — 275.7 MB — at ×2, ×4, ×8 and
-×16: on a real camera frame, **adding subs is free**. At 1024×768 the same sweep
-gives 10.1 MB at ×2 and ×4, 12.8 at ×16, 16.9 at ×32 — the strip window is
-larger than the hole there, so it shows.
+The constrained heap holds a strip; the unconstrained one holds the picture.
 
-Thirteen measurements, 0.79 → 60.22 Mpx and n from 2 to 64, every one within
-1.9 MB of the model:
+**What remains proportional to `w·h` is pass 1's resident frame — `w·h·2`, and
+at 24 MP that is 46 of the 47 MB.** Star detection needs global background
+statistics before it can scan, so the frame is read whole. Splitting
+`detect_stars` into a statistics pass and a scan pass would strip that too, at
+the cost of reading each sub twice in pass 1. After this slice it is the *only*
+`w·h` term left, and therefore the whole of the remaining resolution ceiling.
 
-| frame | ×2 | ×16 | ×32 | ×64 |
-|---|---|---|---|---|
-| 1024×768 | 10.1 MB | 12.8 MB | 16.9 MB | 25.3 MB |
-| 2048×1536 | 37.1 MB | 37.1 MB | — | — |
-| 6000×4000 (24 MP) | 275.7 MB | 275.7 MB | — | — |
-| 8256×5504 (45 MP) | 521.1 MB | — | — | — |
-| 9504×6336 (60 MP) | 690.2 MB | — | — | — |
+The `max` is a wasm property rather than a program one: linear memory is a
+**high-water mark and never returns pages**, so pass 1's freed frame leaves a
+hole that pass 2's window either fits inside — costing nothing — or does not.
+The two never add. Which term is visible flips at roughly `h = 112·n`.
 
-**The model this section used to print was wrong, and wrong in both directions
-at once.** It read `w·h·10 + n·w·112·2 + n·256·64·8`: it always charged the strip
-window even when the hole absorbed it, and never charged pass 1's frame at all,
-on the stated grounds that the frame is "freed before pass 2 allocates". Those
-two errors are close in size at n=16 — and every measurement ever taken here was
-at n≥16, so they cancelled. Drop to n=2 and the old bound fails at 2048×1536, the
-size this section called good; raise the area to 24 MP and it fails the other
-way, at n=16.
+`mem_probe.mjs --assert-model` enforces this in `build_web.sh`, validated across
+0.79→24.16 Mpx and n from 2 to 64, with a lower bound of `STRIP·w·8` so a run
+that measures nothing cannot pass.
 
-The correction is not that the old model broke at scale. It was never right; one
-untested axis hid it. The paragraph it replaced already knew the failure mode by
-name, which is worth more than the model it was attached to:
+Two earlier versions of this model were wrong, and the way they were wrong is
+worth keeping. The first read `w·h·(4n+8)`; the input-streaming slice cut it to
+`w·h·10 + n·w·112·2 + …`, which was wrong in *both* directions at once — it
+always charged the strip window even when the hole absorbed it, and never
+charged pass 1's frame at all. Those two errors are close in size at n=16, and
+every measurement ever taken was at n≥16, so they cancelled and the bound
+passed. One untested axis was all it took.
 
 > A model that holds because two errors point opposite ways is not a model.
-
-`mem_probe.mjs --assert-model` enforces the corrected bound in `build_web.sh`,
-with a lower bound of `w·h·8` — the accumulator alone — so a run that measures
-nothing cannot pass.
 
 ### The freeze
 

@@ -1403,6 +1403,14 @@ fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
 /// frame as the window; the streaming caller passes one strip's worth. Writes
 /// straight into `out`, so the streaming path never materialises more than the
 /// output it has finished.
+/// `out_row0` is the source row that `out[0]` holds — the output's ORIGIN, not
+/// the window's. A whole-frame caller passes 0 and writes at absolute rows; a
+/// caller holding only one strip passes `sy0`, so the same tile lands at the
+/// top of a `STRIP`-tall buffer. Getting this wrong writes every strip at the
+/// frame's absolute offset into a strip-sized buffer, which is an out-of-bounds
+/// index rather than a plausible picture — the loud direction, unlike `wcap`
+/// below.
+///
 /// `wcap` is the SLAB STRIDE — rows reserved per frame in `px` — and `wrows` is
 /// how many of them currently hold data. They are not the same number and must
 /// not be conflated: the streaming buffer is allocated once at the largest
@@ -1415,7 +1423,7 @@ fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
 fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
                     dxs: ref Vec[f64], dys: ref Vec[f64], keep: ref Vec[i64],
                     use_clip: bool, sy0: i64, sh: i64, wr0: i64, wrows: i64,
-                    wcap: i64, out: mut ref Vec[i64]) {
+                    wcap: i64, out_row0: i64, out: mut ref Vec[i64]) {
     let ntx = (w + TILE - 1) / TILE;
     let nty = (sh + TILE - 1) / TILE;
     for tyi in 0..nty {
@@ -1446,7 +1454,7 @@ fn integrate_window(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
             };
             for ty in 0..th {
                 for tx in 0..tw {
-                    out[(y0 + ty) * w + x0 + tx] = ot[ty * tw + tx];
+                    out[(y0 + ty - out_row0) * w + x0 + tx] = ot[ty * tw + tx];
                 }
             }
         }
@@ -1530,7 +1538,7 @@ fn stack_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i64,
             }
 
             integrate_window(win, w, h, nframes, dxs, dys, keep, use_clip,
-                             sy0, sh, wr0, wrows, cap, mut out);
+                             sy0, sh, wr0, wrows, cap, 0, mut out);
         }
     } else {
         println("cumulus: could not reopen the subs for streaming");
@@ -1544,7 +1552,7 @@ fn stack_tiled(px: ref Vec[u16], w: i64, h: i64, nframes: i64,
                use_clip: bool) -> Vec[i64] {
     let mut out: Vec[i64] = Vec.with_capacity(w * h);
     for i in 0..(w * h) { out.push(0); }
-    integrate_window(px, w, h, nframes, dxs, dys, keep, use_clip, 0, h, 0, h, h, mut out);
+    integrate_window(px, w, h, nframes, dxs, dys, keep, use_clip, 0, h, 0, h, h, 0, mut out);
     out
 }
 
@@ -1885,7 +1893,7 @@ fn main() with reads(FileSystem) writes(FileSystem) {
 // in the page, not a port of them.
 
 effect resource Input;    // the sub-frames JS holds, pulled in via read_rows
-effect resource Display;  // the <canvas> we paint, via put_result
+effect resource Display;  // the <canvas> we paint, via put_rows
 
 // JS decodes rows `[row0, row0 + nrows)` of frame `frame` and writes them into
 // wasm memory at `dst`, offset by `dst_off` u16 ELEMENTS. Synchronous, so the
@@ -1924,8 +1932,25 @@ effect resource Display;  // the <canvas> we paint, via put_result
 host fn read_rows(frame: i64, row0: i64, nrows: i64,
                   dst: *const u16, dst_off: i64) with reads(Input);
 
-// JS reads `len` bytes of 16-bit result at `ptr` and paints it.
-host fn put_result(ptr: *const u8, len: i64, w: i64, h: i64) with writes(Display);
+// JS reads `len` bytes of 16-bit result at `ptr` — rows `[row0, row0+nrows)` of
+// a `w` x `h` image — and stores or paints them.
+//
+// Called ONCE PER STRIP rather than once per image, and that is the whole of the
+// output-streaming slice. Holding the finished image inside wasm cost
+// `w*h*10` bytes: an i64 accumulator plus the 16-bit result, both full-frame,
+// and both counted against wasm32's 4 GiB address space. Emitting each strip as
+// it completes bounds that to `STRIP` rows, so the resident output stops
+// scaling with frame HEIGHT — the same move the input side already made, in the
+// opposite direction.
+//
+// The assembled image still exists, but on the JS side, where the 4 GiB ceiling
+// does not apply. That is the point: the constrained heap holds a strip, the
+// unconstrained one holds the picture.
+//
+// `w` and `h` ride along on every call so the host can size its buffer on the
+// first strip without a separate handshake.
+host fn put_rows(ptr: *const u8, len: i64, row0: i64, nrows: i64,
+                 w: i64, h: i64) with writes(Display);
 
 // Progress ticks so a long stack does not look hung. `stage`: 0 = starting,
 // 1 = registering (pass 1, per frame), 2 = integrating (pass 2, per strip).
@@ -1988,9 +2013,8 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
 
     // PASS 2 — integrate in strips, sized exactly as the native streamer sizes
     // them so the two produce the same pixels rather than merely similar ones.
-    let mut out: Vec[i64] = Vec.with_capacity(npix);
-    for i in 0..npix { out.push(0); }
-
+    // The output buffers are allocated with the window below, STRIP-tall: no
+    // frame-sized accumulator exists on this path at all.
     let mut halo: i64 = 1;
     for f in 0..nframes {
         if keep[f] != 0 {
@@ -2002,6 +2026,10 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
 
     let cap = STRIP + 2 * halo;
     let mut win: Vec[u16] = Vec.filled(nframes * w * cap, 0);
+    // Output buffers are STRIP-tall, not frame-tall. Allocated once at the
+    // largest strip and reused, so the loop below allocates nothing.
+    let mut out: Vec[i64] = Vec.filled(STRIP * w, 0);
+    let mut bytes: Vec[u8] = Vec.with_capacity(STRIP * w * 2);
     let nstrips = (h + STRIP - 1) / STRIP;
     for s in 0..nstrips {
         let sy0 = s * STRIP;
@@ -2018,20 +2046,22 @@ pub fn stack_frames(w: i64, h: i64, nframes: i64, mode: i64) -> i64
             }
         }
 
+        // `sy0` as the output origin: this buffer's row 0 IS source row sy0.
         integrate_window(win, w, h, nframes, dxs, dys, keep, mode != 0,
-                         sy0, sh, wr0, wrows, cap, mut out);
+                         sy0, sh, wr0, wrows, cap, sy0, mut out);
+
+        // Hand this strip back as 16-bit little-endian; the page owns the
+        // display stretch, so the full dynamic range crosses the boundary
+        // intact rather than being pre-flattened to 8-bit here.
+        bytes.clear();
+        for i in 0..(sh * w) {
+            let v = out[i];
+            let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
+            bytes.push((c % 256) as u8);
+            bytes.push(((c / 256) % 256) as u8);
+        }
+        put_rows(bytes.as_ptr(), bytes.len(), sy0, sh, w, h);
         progress(2, s + 1, nstrips);
     }
-
-    // Hand back 16-bit little-endian; the page owns the display stretch, so the
-    // full dynamic range crosses the boundary intact rather than being
-    // pre-flattened to 8-bit here.
-    let mut bytes: Vec[u8] = Vec.with_capacity(npix * 2);
-    for v in out {
-        let c = if v < 0 { 0 } else { if v > 65535 { 65535 } else { v } };
-        bytes.push((c % 256) as u8);
-        bytes.push(((c / 256) % 256) as u8);
-    }
-    put_result(bytes.as_ptr(), bytes.len(), w, h);
     kept
 }

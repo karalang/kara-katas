@@ -54,13 +54,12 @@ const host = {
     new Uint8Array(ctx.memory.buffer, dst + Number(dstOff) * 2, len)
       .set(src.px.subarray(off, off + len));
   },
-  put_result(ptr, len, w, h, ctx) {
-    // Copy out immediately — the pointer is only valid until wasm reclaims it.
-    result = {
-      w: Number(w),
-      h: Number(h),
-      px: new Uint8Array(ctx.memory.buffer, ptr, Number(len)).slice(),
-    };
+  put_rows(ptr, len, row0, nrows, w, h, ctx) {
+    // Streamed: one call per strip, assembled here as BYTES (this file compares
+    // against the native .cstack byte for byte, so it keeps the wire form).
+    const W = Number(w), H = Number(h), r0 = Number(row0), n = Number(nrows);
+    if (!result) result = { w: W, h: H, px: new Uint8Array(W * H * 2) };
+    result.px.set(new Uint8Array(ctx.memory.buffer, ptr, Number(len)), r0 * W * 2);
   },
   progress(stage, done, total) {
     progressCalls.push([Number(stage), Number(done), Number(total)]);
