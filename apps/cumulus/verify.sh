@@ -458,7 +458,15 @@ echo "== wasm kernels equal native =="
   # silently doing less. build_web.sh has always done exactly this.
   [[ -d demo ]] || python3 gen_fits.py demo --frames 16 --width 96 --height 64 \
                           --rays 12 --dither 3.0 > /dev/null
-  if node -e "require('playwright')" 2>/dev/null; then
+  # Probe the way verify_browser.mjs actually loads it: an ESM `import`, not a
+  # CJS `require`. The two do not resolve alike — NODE_PATH feeds `require` and
+  # is ignored by `import` — so a globally-installed playwright satisfied the
+  # old gate and the script then died with ERR_MODULE_NOT_FOUND. That is this
+  # file's usual vacuous-pass hazard run backwards: not a check that quietly
+  # does less, but a skip that turns into a hard failure. Either way the lesson
+  # is the same — a gate means nothing unless it probes the same resolution the
+  # code it guards will use.
+  if node --input-type=module -e "await import('playwright')" 2>/dev/null; then
     echo "== the real page in a real browser =="
     "$WORK/cumulus" "$WORK/demo_native.cstack" stack demo/*.fits > /dev/null
     node verify_browser.mjs "$WORK/demo_native.cstack" --tiff "$WORK/rgbtif" "$WORK/rgbtif.cstack"

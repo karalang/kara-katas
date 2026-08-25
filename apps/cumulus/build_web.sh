@@ -91,7 +91,10 @@ else
   echo "==> memory-model check skipped (needs numpy)"
 fi
 
-if node -e "require('playwright')" 2>/dev/null; then
+# ESM `import`, matching how verify_browser.mjs loads it — a CJS `require`
+# probe answers a different question (NODE_PATH feeds one and not the other),
+# so a global-only playwright passed the gate and then failed inside the script.
+if node --input-type=module -e "await import('playwright')" 2>/dev/null; then
   echo "==> the real page in a real browser"
   node verify_browser.mjs /tmp/cw_demo.cstack --tiff /tmp/cw_rgbtif /tmp/cw_rgbtif.cstack "$@"
 else
