@@ -3,6 +3,7 @@
 //   A  two heaps        max-heap lower half + min-heap upper half   median_finder.kara
 //   B  sorted vec       binary search + insert, read the middle     median_finder_sorted.kara
 //   C  ordered multiset SortedMap value->count, walk to the rank    median_finder_multiset.kara
+//   D  stdlib heaps     the SAME algorithm as A on PriorityQueue    median_finder_stdlib.kara
 //
 // A and B are both POSITIONAL — they hold elements and the median is wherever
 // the middle happens to land. A misreading of "median" for even counts would
@@ -14,7 +15,7 @@
 // The five properties are read off the problem statement, not off any
 // implementation:
 //
-//   P1  all three arms agree after EVERY add, not just at the end
+//   P1  all FOUR arms agree after EVERY add, not just at the end
 //   P2  the median depends only on the multiset — reordering the stream cannot move it
 //   P3  A's heap invariant holds: max(lo) <= min(hi), and the sizes stay balanced
 //   P4  min <= median <= max, and for an odd count the median is a member of the stream
@@ -222,6 +223,40 @@ fn cs_median(c: ref CountingStream) -> f64 {
     return (first as f64 + second as f64) / 2.0;
 }
 
+// ---------------------------------------------------------------- arm D
+//
+// The same algorithm as A, on the stdlib `PriorityQueue` instead of the
+// hand-rolled `Heap`. It is here because a collection that landed the same day
+// deserves a cross-check against three implementations that share none of its
+// code — and because `peek` (B-2026-08-25-32) is what makes the O(1) query
+// expressible at all.
+
+struct StdFinder {
+    mut lo: PriorityQueue[i64],
+    mut hi: PriorityQueue[i64],
+}
+
+fn sf_new() -> StdFinder {
+    return StdFinder { lo: PriorityQueue.max_first(), hi: PriorityQueue.new() };
+}
+
+fn sf_add(m: mut ref StdFinder, v: i64) {
+    m.lo.push(v);
+    match m.lo.pop() { Some(moved) => { m.hi.push(moved); } None => {} }
+    if m.hi.len() > m.lo.len() {
+        match m.hi.pop() { Some(back) => { m.lo.push(back); } None => {} }
+    }
+}
+
+fn sf_median(m: ref StdFinder) -> f64 {
+    if m.lo.len() > m.hi.len() {
+        return match m.lo.peek() { Some(v) => v as f64, None => 0.0 };
+    }
+    let a = match m.lo.peek() { Some(v) => v as f64, None => 0.0 };
+    let b = match m.hi.peek() { Some(v) => v as f64, None => 0.0 };
+    return (a + b) / 2.0;
+}
+
 // ---------------------------------------------------------------- harness
 
 fn lcg(state: i64) -> i64 {
@@ -289,6 +324,7 @@ fn main() {
         let mut a = mf_new();
         let mut b = ss_new();
         let mut c = cs_new();
+        let mut d = sf_new();
         let mut seen: Vec[i64] = Vec.new();
 
         let mut i = 0;
@@ -299,13 +335,15 @@ fn main() {
             mf_add(mut a, v);
             ss_add(mut b, v);
             cs_add(mut c, v);
+            sf_add(mut d, v);
             seen.push(v);
             adds = adds + 1;
 
             let ma = mf_median(a);
             let mb = ss_median(b);
             let mc = cs_median(c);
-            if ma != mb or ma != mc {
+            let md = sf_median(d);
+            if ma != mb or ma != mc or ma != md {
                 p1 = p1 + 1;
             }
 
@@ -389,18 +427,20 @@ fn main() {
     let extremes = [i64.MIN, i64.MAX, 0, i64.MIN, i64.MAX, -1, 1, i64.MIN];
     let mut e = mf_new();
     let mut f = ss_new();
+    let mut g = sf_new();
     let mut ei = 0;
     while ei < extremes.len() {
         mf_add(mut e, extremes[ei]);
         ss_add(mut f, extremes[ei]);
-        if mf_median(e) != ss_median(f) {
+        sf_add(mut g, extremes[ei]);
+        if mf_median(e) != ss_median(f) or mf_median(e) != sf_median(g) {
             p5 = p5 + 1;
         }
         ei = ei + 1;
     }
 
     println(f"streams {streams} adds {adds}");
-    println(f"P1 three-arm disagreements {p1}");
+    println(f"P1 four-arm disagreements {p1}");
     println(f"P2 order-dependence failures {p2}");
     println(f"P3 heap-invariant failures {p3}");
     println(f"P4 bracketing/membership failures {p4}");

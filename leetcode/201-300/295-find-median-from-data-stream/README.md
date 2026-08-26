@@ -18,7 +18,8 @@ add 4     median 2.5    (1 2 3 4)  -> (2+3)/2
 | `median_finder.kara` ★ | two heaps meeting at the middle | O(log n) | O(1) |
 | `median_finder_sorted.kara` | binary search + insert into one sorted vec | O(n) | O(1) |
 | `median_finder_multiset.kara` | `SortedMap` value→count, walked by rank | O(log d) | O(d) |
-| `differential.kara` | 900 streams, three arms, five properties | — | — |
+| `median_finder_stdlib.kara` | the ★ algorithm on the stdlib `PriorityQueue` | O(log n) | O(1) |
+| `differential.kara` | 900 streams, **four** arms, five properties | — | — |
 | `bench/medianfinder.kara` | 2M streamed adds, median after every one | benchmark lane | |
 
 ## The median is a position, so hold the positions either side of it
@@ -88,7 +89,7 @@ looking backwards is the version that gets the run case wrong.
 
 | | property |
 |---|---|
-| **P1** | all three arms agree after **every** add, not just at the end |
+| **P1** | all **four** arms agree after **every** add, not just at the end |
 | **P2** | the median depends only on the multiset — reordering cannot move it |
 | **P3** | A's heap invariant holds: `max(lo) <= min(hi)`, sizes balanced |
 | **P4** | `min <= median <= max`, and for an odd count the median is a member |
@@ -105,10 +106,11 @@ that is what sizes it: the compiled build could afford a hundred times the
 streams, and the interpreter is the whole of the constraint.
 
 > The absolutes are machine-dependent and should not be read as fixed. First
-> recorded as 19s interpreted; re-measured later at 27.8s on a slower container,
+> recorded as 19s interpreted with three arms; re-measured at 46.2s once a fourth
+> arm joined and on a slower container,
 > where the C benchmark binary — unchanged, same compiler — also ran 33% slower,
 > which is how you can tell that is the machine and not a regression. The
-> compiled side is **18.2ms ± 0.4**; an earlier "0.01s" here was an artifact of
+> compiled side is **23.7ms ± 3.0** with four arms (18.2ms ± 0.4 with three); an earlier "0.01s" here was an artifact of
 > `/usr/bin/time`'s 10ms resolution rather than a measurement.
 
 ### The differential was checked for its ability to fail
@@ -274,8 +276,40 @@ the reason is worth knowing: `Option[ref T]` appears in this stdlib only on
 body cannot return one. The consequence is that `peek` **copies** the root —
 free for a scalar, a clone for a heap-carrying `T`.
 
-**The hand-rolled heap stays anyway**, because writing it *is* the exercise for
-#295, and because the mirrors must implement the same algorithm for the
-benchmark to be honest. What changed is the reason: it used to be *"there is no
-stdlib heap"*, and it is now *"there is one, and this kata deliberately does not
-use it."* Those are different sentences, and only the second one is true.
+**So it is now a fourth arm**, `median_finder_stdlib.kara` — the ★ algorithm
+with the hand-rolled `Heap` deleted and `PriorityQueue` called instead. It is in
+the differential, so a collection that landed the same day is cross-checked
+against three implementations sharing none of its code, and P5 pushes
+`i64.MIN` / `i64.MAX` through it.
+
+It also has no negation anywhere, which the ★ arm's header spends a paragraph
+earning: `PriorityQueue` ships **both** directions as constructors
+(`new()` smallest-first, `max_first()` largest-first), so there is no
+`Reverse`-style wrapper and no `-i64.MIN` overflow hazard to avoid.
+
+`peek` returns `Option[T]`, not the `Option[ref T]` the bug report proposed, so
+it **copies** the root — free for the `i64` here, a clone for a heap-carrying
+element. That is a stdlib-wide constraint rather than an oversight: the only
+`Option[ref T]` returns in the stdlib are `#[compiler_builtin]` stubs whose
+bodies are never evaluated, so a real Kāra body cannot return one.
+
+**The ★ arm stays hand-rolled**, because writing the heap *is* the exercise for
+#295 and because the C/Rust/Go mirrors must implement the same algorithm for
+the benchmark to be honest. The two now sit side by side: what the exercise
+asks for, and what you would actually write.
+
+### A fourth mutation, and a symmetry worth knowing
+
+Arm D was mutation-tested like the rest. Reading only `lo`'s root on an even
+count, and dropping the rebalance, are both caught. **Swapping the two
+constructors is not** — and that is correct, not a gap:
+
+```kara
+lo: PriorityQueue.new(), hi: PriorityQueue.max_first()   // both flipped
+```
+
+produces byte-identical output over all 18,250 adds. The algorithm is symmetric
+under flipping *both* directions: `lo` then holds the upper half with its
+minimum at the root and `hi` the lower half with its maximum, and those are the
+same two middle elements, named in the other order. Confirmed by diffing the
+binaries, not by argument.
