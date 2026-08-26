@@ -241,28 +241,41 @@ measures interpreter dispatch and nothing else. It still runs the full 2M adds
 and lands at ~2.4s — no scale-down was needed, and its sink matches the other
 four exactly.
 
-### The stdlib gained a `PriorityQueue` — and this kata still can't use it
+### The stdlib gained a `PriorityQueue`, and it now does this problem
 
-When this kata was written there was no stdlib heap, and the paragraph above
-named that as a gap. **It has since landed**: `PriorityQueue[T: Ord]`, a
-`Vec`-backed binary heap in `runtime/stdlib/priority_queue.kara`, smallest-first
-by default with a `max_first()` sibling — exactly the two directions the
-two-heap median wants, and it type-checks, interprets and AOT-compiles.
+When this kata was written there was no stdlib heap, and the section above named
+that as a gap. **It has since landed**: `PriorityQueue[T: Ord]`, a `Vec`-backed
+binary heap in `runtime/stdlib/priority_queue.kara`, smallest-first by default
+with a `max_first()` sibling — exactly the two directions the two-heap median
+wants.
 
-So the natural rewrite is to delete the hand-rolled `Heap` and call it. **That
-does not work, for one missing method**: there is no `peek`. The surface is
-`new` / `max_first` / `from` / `max_first_from` / `push` / `pop` / `len` /
-`is_empty` / `clear` / `into_sorted_vec`, and none of those reads the root
-without removing it. The median is *the two roots*, read on every query, so
-without `peek` the O(1) query becomes a `pop` + `push` pair — O(log n), and
-mutating where a reader wants `ref self`.
+It arrived without a `peek`, which is the one operation this algorithm needs on
+every query: the median *is* the two roots. That was filed as
+**`B-2026-08-25-32`** — together with a second defect it exposed, the stdlib
+file's own header advertising `peek / len O(1)` for a method present in neither
+the file nor design.md's table. **Both are now fixed.**
 
-That is filed as **`B-2026-08-25-32`**, along with a second defect it exposed:
-the stdlib file's own header advertises `peek / len O(1)` in its complexity
-table for a method that exists in neither the file nor design.md's method
-table. The spec and the implementation agree; only the documentation is wrong.
+So the whole kata is expressible against the stdlib type, verified end to end:
 
-Until that closes, hand-rolling stays — which is no loss for #295, where
-writing the heap **is** the exercise. The point of recording it here is that
-the gap moved rather than disappeared: it was "no priority queue at all", and
-it is now "a priority queue you cannot read the head of".
+```kara
+let mut lo: PriorityQueue[i64] = PriorityQueue.max_first();
+let mut hi: PriorityQueue[i64] = PriorityQueue.new();
+…
+lo.push(v);
+match lo.pop() { Some(x) => { hi.push(x); } None => {} }
+if hi.len() > lo.len() { match hi.pop() { Some(x) => { lo.push(x); } None => {} } }
+```
+
+— which builds and reproduces this kata's output exactly.
+
+`peek` returns `Option[T]`, not the `Option[ref T]` the bug report proposed, and
+the reason is worth knowing: `Option[ref T]` appears in this stdlib only on
+`#[compiler_builtin]` stubs whose bodies are never evaluated, so a real Kāra
+body cannot return one. The consequence is that `peek` **copies** the root —
+free for a scalar, a clone for a heap-carrying `T`.
+
+**The hand-rolled heap stays anyway**, because writing it *is* the exercise for
+#295, and because the mirrors must implement the same algorithm for the
+benchmark to be honest. What changed is the reason: it used to be *"there is no
+stdlib heap"*, and it is now *"there is one, and this kata deliberately does not
+use it."* Those are different sentences, and only the second one is true.
