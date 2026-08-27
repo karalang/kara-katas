@@ -18,7 +18,7 @@ one runs the same counter to the end and reports its peak.
 
 | file | state | encodes the touching rule as |
 |---|---|---|
-| `min_meeting_rooms.kara` ★ | min-heap of end times | `heap[0] <= start` |
+| `min_meeting_rooms.kara` ★ | min-heap of end times | `PriorityQueue[i64]`, `peek() <= start` |
 | `min_meeting_rooms_sweep.kara` | two sorted coordinate lists | `ends[j] <= starts[k]` |
 | `min_meeting_rooms_events.kara` | `(time, ±1)` event list | a **sort tie-break** |
 | `differential.kara` | 1,500 randomized inputs, all three agree | — |

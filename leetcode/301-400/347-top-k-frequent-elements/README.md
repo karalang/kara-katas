@@ -25,7 +25,8 @@ Only the map's halves differ, and that is the entire point.
 |---|---|---|
 | **Scalar-keyed** ★ | [`top_k_frequent.kara`](top_k_frequent.kara) | `Map[i64, i64]` — both halves scalar |
 | String-keyed | [`top_k_frequent_words.kara`](top_k_frequent_words.kara) | `Map[String, i64]` — heap key half |
-| Reference oracles | [`top_k_frequent.py`](top_k_frequent.py), [`top_k_frequent_words.py`](top_k_frequent_words.py) | known-correct answers |
+| Bounded heap | [`top_k_frequent_heap.kara`](top_k_frequent_heap.kara) | `PriorityQueue[Weakest]` — a user-defined `Ord`, because the answer's two sort keys disagree on direction |
+| Reference oracles | [`top_k_frequent.py`](top_k_frequent.py), [`top_k_frequent_words.py`](top_k_frequent_words.py), [`top_k_frequent_heap.py`](top_k_frequent_heap.py) | known-correct answers |
 
 ## Why this kata
 

@@ -17,6 +17,7 @@ Return the **k-th largest** element in an array — by value, so duplicates coun
 | Approach | Kāra | Python |
 |---|---|---|
 | **quickselect (Lomuto partition)** ★ | [`kth_largest.kara`](kth_largest.kara) | [`kth_largest.py`](kth_largest.py) |
+| bounded min-heap of size k | [`kth_largest_heap.kara`](kth_largest_heap.kara) | [`kth_largest_heap.py`](kth_largest_heap.py) |
 
 Runs end-to-end across interpreter, JIT, and codegen (default auto-par and `KARAC_AUTO_PAR=0`), byte-identical to the Python mirror. valgrind-clean (`KARAC_AUTO_PAR=0`).
 

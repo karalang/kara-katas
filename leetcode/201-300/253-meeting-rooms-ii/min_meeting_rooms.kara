@@ -13,84 +13,49 @@
 // occupied set is "has the EARLIEST-finishing one freed up yet" — a min-heap
 // answers that in O(1) and maintains it in O(log k).
 //
-// Kāra has no standard-library heap, so it is built by hand over a `Vec[i64]`,
-// the same shape [#23](../../1-100/23-merge-k-sorted-lists/)'s `heap.kara` uses
-// over shared-struct handles: push appends and sifts up, pop swaps the last
-// element into the root and sifts down. Keys here are plain `i64`, so there is
-// no refcount traffic — a deliberately different surface from #23's.
+// The occupied set is a `PriorityQueue[i64]` from the standard library —
+// smallest-first, which is exactly the "earliest finisher" this asks for, so no
+// direction argument is needed. `peek()` answers the release test without
+// disturbing the queue and `pop()` performs the release.
+//
+// This file used to hand-roll the heap over a `Vec[i64]`, because Kāra had no
+// stdlib one. The BENCH arm (`bench/min_meeting_rooms.kara`) still does, and
+// deliberately: its C / Rust / Go mirrors hand-roll the same sift loop so the
+// benchmark measures code generation rather than library maturity — the rule
+// [#295](../295-find-median-from-data-stream/) states. That reasoning governs
+// the benchmark only; the solution file is a dogfooding surface for the stdlib
+// type, which is why the two now differ on purpose.
 //
 // **Touching does not need a second room.** A meeting ending exactly as the next
 // begins frees its room in time, so the release test is `<=`, not `<`. That is
 // the same boundary [#252](../252-meeting-rooms/) turns on, and the reason
 // `[[1,5],[5,10]]` needs one room rather than two.
 
-fn heap_push(heap: mut ref Vec[i64], v: i64) {
-    heap.push(v);
-    let mut i = heap.len() - 1;
-    while i > 0 {
-        let parent = (i - 1) / 2;
-        if heap[i] < heap[parent] {
-            let tmp = heap[i];
-            heap[i] = heap[parent];
-            heap[parent] = tmp;
-            i = parent;
-        } else {
-            break;
-        }
-    }
-}
-
-fn heap_pop(heap: mut ref Vec[i64]) {
-    let n = heap.len();
-    if n == 0 {
-        return;
-    }
-    let last = match heap.pop() {
-        Some(v) => v,
-        None => 0,
-    };
-    if n == 1 {
-        return;
-    }
-    heap[0] = last;
-    let m = heap.len();
-    let mut i = 0;
-    while true {
-        let l = 2 * i + 1;
-        let r = 2 * i + 2;
-        let mut smallest = i;
-        if l < m and heap[l] < heap[smallest] {
-            smallest = l;
-        }
-        if r < m and heap[r] < heap[smallest] {
-            smallest = r;
-        }
-        if smallest == i {
-            break;
-        }
-        let tmp = heap[i];
-        heap[i] = heap[smallest];
-        heap[smallest] = tmp;
-        i = smallest;
-    }
-}
-
 fn min_meeting_rooms(intervals: Slice[(i64, i64)]) -> i64 {
     let mut s: Vec[(i64, i64)] = Vec.from_slice(intervals);
     s.sort_by(|a, b| a.0.cmp(b.0));
 
-    let mut heap: Vec[i64] = Vec.new();
+    let mut occupied: PriorityQueue[i64] = PriorityQueue.new();
     let mut rooms = 0;
     let mut i = 0;
     while i < s.len() {
         // Free every room whose meeting has already ended. `<=`: a meeting
-        // ending exactly now releases its room for this one.
-        while heap.len() > 0 and heap[0] <= s[i].0 {
-            heap_pop(mut heap);
+        // ending exactly now releases its room for this one. `peek` reads the
+        // earliest end without removing it, so the test and the release stay
+        // separate steps.
+        while true {
+            let done = match occupied.peek() {
+                Some(end) => end <= s[i].0,
+                None => false,
+            };
+            if not done {
+                break;
+            }
+            let _freed = occupied.pop();
         }
-        heap_push(mut heap, s[i].1);
-        if heap.len() > rooms {
-            rooms = heap.len();
+        occupied.push(s[i].1);
+        if occupied.len() > rooms {
+            rooms = occupied.len();
         }
         i = i + 1;
     }
