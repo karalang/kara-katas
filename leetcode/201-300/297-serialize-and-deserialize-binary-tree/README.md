@@ -104,15 +104,19 @@ reverses it.
 |---|---|---|
 | [`B-2026-08-26-11`](../../../../kara/docs/bug-ledger.md) | design.md's `String` method table documents `push_char`, which does not exist; the working method is `push(c: char)` and has no row | fixed |
 | [`B-2026-08-26-12`](../../../../kara/docs/bug-ledger.md) | **heap corruption**: an `if`-expression yielding an `Option[shared]`, passed by value into a function inside a loop that rebinds it, aborts on both compiled backends | fixed (`3454927`) |
-| [`B-2026-08-27-34`](../../../../kara/docs/bug-ledger.md) | **silent wrong answer**: 3454927 emits the branch-leaf retain once per *binding*, not per *use*, so the third read of the selected value returns garbage — and the binary exits `0` | open |
+| [`B-2026-08-27-34`](../../../../kara/docs/bug-ledger.md) | **silent wrong answer**: 3454927 emits the branch-leaf retain once per *binding*, not per *use*, so the third read of the selected value returns garbage — and the binary exits `0` | fixed (`c56e598`) |
+| [`B-2026-08-27-43`](../../../../kara/docs/bug-ledger.md) | the same defect one shape over, split out of `-34`: when the arm hands out an ARM-LOCAL binding its own scope-exit dec cancels the leaf retain, so the *first* read already returns garbage | fixed (`9f62ac6`) |
 | [`B-2026-08-26-13`](../../../../kara/docs/bug-ledger.md) | `String.split` has no borrowing form — one allocation and one copy per token | relocated to the roadmap's `StringSlice` item |
 
-### `differential.kara` is the live witness for B-2026-08-27-34
+### `differential.kara` was the live witness for B-2026-08-27-34
 
-The three codec arms are byte-identical on all four surfaces — `karac run
---interp`, `karac run` (JIT), `karac build`, and `KARAC_AUTO_PAR=0 karac build`.
-`differential.kara` is not: it prints `DIFFERENTIAL OK` under the interpreter and
-aborts on both compiled backends.
+All four arms are now byte-identical on all four surfaces — `karac run
+--interp`, `karac run` (JIT), `karac build`, and `KARAC_AUTO_PAR=0 karac build`
+— and `codec.kara` matches `codec.py` exactly. The differential printed
+`DIFFERENTIAL OK` under the interpreter and aborted on both compiled backends
+until `c56e598` and `9f62ac6`; the account below is what it took to get here,
+kept because each fix left the kata still wrong in a way that looked like the
+one before it.
 
 Property 5 selects between two subtree handles with an `if`-expression and then
 consumes the result four times — once for the expected fingerprint and once per
@@ -140,8 +144,17 @@ fn main() {
 }                                               // build:  1 1 <garbage>, exit 0
 ```
 
-The compiled binary **exits 0**. There is no abort and no diagnostic — only a
-wrong number that differs run to run. Removing the `if` makes it green.
+The compiled binary **exited 0**. There was no abort and no diagnostic — only a
+wrong number that differed run to run. Removing the `if` made it green.
+
+`c56e598` fixed that by registering the consuming binding, so it takes a retain
+per use rather than inheriting the leaf's single one. One shape survived it:
+when the arm hands out an ARM-LOCAL binding (`if c { let u = make(1); u }`) that
+local's own scope-exit dec cancels the leaf retain inside the arm, so the value
+escapes owned by nobody and the FIRST read is already garbage. Static
+re-derivation could not see it — the arm's name env is reverted before the
+consuming `let` classifies its RHS — so `9f62ac6` (`B-2026-08-27-43`) records
+the retains at emission instead and matches the leaf against that record.
 
 Notably, linking either form with `-fsanitize=address` runs **clean**, and
 structurally so: the sanitizer is linked in, never compiled in, so it sees
@@ -231,7 +244,7 @@ during every deserialize.
 ```bash
 karac run  codec.kara
 karac build codec.kara && ./codec
-karac run  --interp differential.kara     # compiled backends abort: B-2026-08-27-34
+karac run  differential.kara              # agrees on all four surfaces
 python3 codec.py
 bash bench/bench.sh
 ```
