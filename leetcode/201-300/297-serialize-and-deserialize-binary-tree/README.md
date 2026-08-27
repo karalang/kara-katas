@@ -177,42 +177,51 @@ for methodology and caveats.
 
 | | mean | vs C |
 |---|---|---|
-| c (`-O3`) | 0.890 s | 1.00× |
-| rust (`-O`) | 0.914 s | 1.03× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 0.919 s | 1.03× |
-| go | 1.172 s | 1.32× |
-| **kara** (codegen, seq) | **1.667 s** | **1.87×** |
-| python | 11.176 s | 12.6× |
+| c (`-O3`) | 1.185 s | 1.00× |
+| rust (`-O`) | 1.213 s | 1.02× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 1.226 s | 1.03× |
+| go | 1.497 s | 1.26× |
+| **kara** (codegen, seq) | **2.438 s** | **2.06×** |
+| python | 16.770 s | 14.2× |
 
-### Where the 1.9× goes, measured
+> **Ratios on this container move with load, so they are cross-checked by
+> interleaving.** Alternating the kāra and C binaries 12 times each gives a
+> median ratio of **2.08×** (2.43 s / 1.17 s) and a min-of-runs ratio of 1.99×,
+> which is what the table above should be read as. An earlier sequential run at
+> lower load reported 1.87×; that was measurement, not a code change — the kāra
+> binary is byte-identical in size across both, and the bench lane contains no
+> branch-leaf `let`, so neither compiler fix above could have touched its
+> codegen. Every figure below is likewise a median over interleaved runs.
+
+### Where the 2× goes, measured
 
 Ablating the compiled Kāra binary one stage at a time (200k nodes, 24 rounds,
-best of three):
+median of 7 interleaved runs):
 
 | stage | time |
 |---|---|
-| serialize + hash, no deserialize | 0.66 s |
-| serialize + deserialize, no hash | 1.32 s |
-| all three | 1.64 s |
+| serialize + hash, no deserialize | 0.89 s |
+| serialize + deserialize, no hash | 2.16 s |
+| all three | 2.45 s |
 
-So **deserialize is ~1.0 s of it** — the majority, and effectively the whole
-gap. It is not the tree building and not the string append.
+So **deserialize is ~1.6 s of it** — two thirds of the total, and effectively
+the whole gap. It is not the tree building and not the string append.
 
 Narrowed to a micro-benchmark (split a 3.2 MB comma-separated string 24 times):
 
 | | time |
 |---|---|
-| C, split in place (no copies) | 0.02 s |
-| Rust, `split(',').collect::<Vec<&str>>()` (borrowed) | 0.11 s |
-| **Kāra, `s.split(",")`** | **0.47 s** |
-| Rust, `split(',').map(String::from).collect()` (owned copies) | 0.71 s |
+| C, split in place (no copies) | 0.04 s |
+| Rust, `split(',').collect::<Vec<&str>>()` (borrowed) | 0.19 s |
+| **Kāra, `s.split(",")`** | **0.68 s** |
+| Rust, `split(',').map(String::from).collect()` (owned copies) | 1.01 s |
 
 **Kāra's `split` is not slow — it beats Rust's same-semantics version by 1.5×.**
 The gap is that `String.split` returns `Vec[String]`: one heap allocation and
 one copy per token, with no slice-returning variant to reach for. C splits in
 place, Rust and Go hand back views into the original buffer, and those are the
 versions the other three arms are running. Python allocates copies as Kāra does
-and is 12.6× slower than C, so this is the cost of the API *shape*, not of the
+and is 14× slower than C, so this is the cost of the API *shape*, not of the
 implementation behind it.
 
 That is `B-2026-08-26-13`, now tracked on the roadmap's `StringSlice` item as
@@ -220,12 +229,12 @@ specified v1 behaviour with a v2 successor. It is not worked around here: the
 kata keeps the idiomatic `s.split(",")` spelling, which is the whole point of
 writing katas.
 
-> The deserializer reads each token as `let tok = ref tokens[i];`. The
-> borrow is not an optimisation for the benchmark's sake — since
-> `E_INDEX_MOVE_NON_COPY` landed, `tokens[i]` on a non-`Copy` element is a hard
-> error, and `ref` is the apt one of the three offered repairs for a read-only
-> use. `karac fix` proposes `.clone()`, which also compiles and cost this lane
-> 0.9 s: worth knowing that the machine-applicable fix is not always the right
+> The deserializer reads each token as `let tok = ref tokens[i];`. The borrow is
+> not an optimisation for the benchmark's sake — since `E_INDEX_MOVE_NON_COPY`
+> landed, `tokens[i]` on a non-`Copy` element is a hard error, and `ref` is the
+> apt one of the three offered repairs for a read-only use. `karac fix` proposes
+> `.clone()`, which also compiles and cost this lane roughly a third of its
+> runtime: worth knowing that the machine-applicable fix is not always the right
 > one.
 
 ### Elsewhere
@@ -233,8 +242,8 @@ writing katas.
 | | kara | c | rust | go |
 |---|---|---|---|---|
 | binary size | 345.7 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
-| peak RSS | 67.5 MiB | 14.3 MiB | 25.7 MiB | 24.3 MiB |
-| compile (cold) | 350 ms | 124 ms | 230 ms | — |
+| peak RSS | 67.5 MiB | 14.2 MiB | 25.7 MiB | 25.0 MiB |
+| compile (cold) | 475 ms | 151 ms | 276 ms | — |
 
 Peak RSS tracks the same story: an owned `Vec[String]` of ~400k tokens is live
 during every deserialize.
