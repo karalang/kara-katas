@@ -83,6 +83,15 @@ kara repo at `examples/mend/TASK_FORMAT.md`.
 - **Cross-language parity.** The C/Rust/Go/Python mirrors must implement the
   **same algorithm** as the Kāra version (honest benchmarking) and produce the
   same output.
+- **The A/B rule has exactly one precondition: the kata must not observe
+  unspecified order.** `Map`/`Set` iteration order is per-process random and a
+  different permutation on each backend, so a kata that prints a bare
+  `for (k, v) in m` fails A/B for a reason that is not a compiler bug. The same
+  applies to a `Drop` body on a container ELEMENT — the destruction sequence is
+  that same iteration order, and unlike a loop there is no use site to sort at
+  (kara `B-2026-08-27-7`). Use `SortedMap`/`SortedSet` when a kata needs a
+  defined order; both iterate and destroy in key order, identically on every
+  backend.
 
 ## Katas are bug-finders — never route around
 
