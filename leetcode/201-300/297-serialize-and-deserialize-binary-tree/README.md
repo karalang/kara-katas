@@ -100,43 +100,55 @@ reverses it.
 
 ## Compiler bugs this kata found
 
-| id | what |
-|---|---|
-| [`B-2026-08-26-11`](../../../../kara/docs/bug-ledger.md) | design.md's `String` method table documents `push_char`, which does not exist; the working method is `push(c: char)` and has no row |
-| [`B-2026-08-26-12`](../../../../kara/docs/bug-ledger.md) | **heap corruption**: an `if`-expression yielding an `Option[shared]`, passed by value into a function inside a loop that rebinds it, aborts on both compiled backends |
-| [`B-2026-08-26-13`](../../../../kara/docs/bug-ledger.md) | `String.split` has no borrowing form — one heap allocation and one copy per token, and no slice-returning variant to reach for |
+| id | what | status |
+|---|---|---|
+| [`B-2026-08-26-11`](../../../../kara/docs/bug-ledger.md) | design.md's `String` method table documents `push_char`, which does not exist; the working method is `push(c: char)` and has no row | fixed |
+| [`B-2026-08-26-12`](../../../../kara/docs/bug-ledger.md) | **heap corruption**: an `if`-expression yielding an `Option[shared]`, passed by value into a function inside a loop that rebinds it, aborts on both compiled backends | fixed (`3454927`) |
+| [`B-2026-08-27-34`](../../../../kara/docs/bug-ledger.md) | **silent wrong answer**: 3454927 emits the branch-leaf retain once per *binding*, not per *use*, so the third read of the selected value returns garbage — and the binary exits `0` | open |
+| [`B-2026-08-26-13`](../../../../kara/docs/bug-ledger.md) | `String.split` has no borrowing form — one allocation and one copy per token | relocated to the roadmap's `StringSlice` item |
 
-### B-2026-08-26-12 is why `differential.kara` does not currently agree across surfaces
+### `differential.kara` is the live witness for B-2026-08-27-34
 
 The three codec arms are byte-identical on all four surfaces — `karac run
 --interp`, `karac run` (JIT), `karac build`, and `KARAC_AUTO_PAR=0 karac build`.
 `differential.kara` is not: it prints `DIFFERENTIAL OK` under the interpreter and
-aborts on both compiled backends with glibc's `malloc(): unaligned tcache chunk
-detected`.
+aborts on both compiled backends.
 
-Property 5 selects between two subtree handles with an `if`-expression and hands
-the result to a function — the exact construct in the bug. Per the corpus rule
-that a kata must **never route around a compiler gap**, the differential is not
-being rephrased to dodge it. It stays in the shape that finds it and serves as
-the live witness until the bug is fixed. The minimal form is thirteen lines:
+Property 5 selects between two subtree handles with an `if`-expression and then
+consumes the result four times — once for the expected fingerprint and once per
+codec arm. **That count is the bug.** The first form of it (`B-2026-08-26-12`,
+fixed by `3454927`) taught a value-position branch leaf to retain the
+`Option[shared]` it hands out; the retain is emitted once for the *binding* and
+not once per *use*, so two reads balance and the third reads through a freed
+box. Dropping any one of P5's three arms makes it green, and duplicating one arm
+instead of adding a distinct one crashes just the same — which is what shows the
+count, not the arms, to be the variable.
+
+Per the corpus rule that a kata must **never route around a compiler gap**, the
+differential is not being rephrased. It stays in the shape that finds it. The
+minimal form has no loop at all:
 
 ```kara
 shared struct Node { val: i64 }
 fn make(n: i64) -> Option[Node] { return Some(Node { val: n }); }
-fn show(t: Option[Node]) { match t { None => { } Some(n) => { println(f"v {n.val}"); } } }
+fn show(t: Option[Node]) -> i64 { match t { None => { return 0; } Some(n) => { return n.val; } } }
 fn main() {
-    let mut s = 0;
-    while s < 2 {
-        let a = make(s);
-        show(if s == 0 { a } else { a });   // crashes; `show(a)` is green
-        s = s + 1;
-    }
-}
+    let a = make(1);
+    let b = make(2);
+    let t = if true { a } else { b };
+    println(f"{show(t)} {show(t)} {show(t)}");   // interp: 1 1 1
+}                                               // build:  1 1 <garbage>, exit 0
 ```
 
-Notably, linking that program with `-fsanitize=address` runs **clean and
-correct**, which is why the compiler's ~1200-fixture ASAN corpus never caught
-the class. The regression test therefore lives in the ordinary E2E harness.
+The compiled binary **exits 0**. There is no abort and no diagnostic — only a
+wrong number that differs run to run. Removing the `if` makes it green.
+
+Notably, linking either form with `-fsanitize=address` runs **clean**, and
+structurally so: the sanitizer is linked in, never compiled in, so it sees
+allocator faults and cannot see a use-after-free *access* from the
+uninstrumented Kāra object. That is why the compiler's ~1200-fixture ASAN corpus
+never caught the class, and why the regression tests live in the ordinary E2E
+harness instead.
 
 ## Benchmarks
 
@@ -152,53 +164,64 @@ for methodology and caveats.
 
 | | mean | vs C |
 |---|---|---|
-| c (`-O3`) | 1.184 s | 1.00× |
-| rust (`-O`) | 1.194 s | 1.01× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 1.258 s | 1.06× |
-| go | 1.519 s | 1.28× |
-| **kara** (codegen, seq) | **2.571 s** | **2.17×** |
-| python | 17.958 s | 15.2× |
+| c (`-O3`) | 0.890 s | 1.00× |
+| rust (`-O`) | 0.914 s | 1.03× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 0.919 s | 1.03× |
+| go | 1.172 s | 1.32× |
+| **kara** (codegen, seq) | **1.667 s** | **1.87×** |
+| python | 11.176 s | 12.6× |
 
-### Where the 2.2× goes, measured
+### Where the 1.9× goes, measured
 
-Ablating the compiled Kāra binary one stage at a time (200k nodes, 24 rounds):
+Ablating the compiled Kāra binary one stage at a time (200k nodes, 24 rounds,
+best of three):
 
 | stage | time |
 |---|---|
-| serialize + hash, no deserialize | 0.82 s |
-| serialize + deserialize, no hash | 2.31 s |
-| all three | 2.57 s |
+| serialize + hash, no deserialize | 0.66 s |
+| serialize + deserialize, no hash | 1.32 s |
+| all three | 1.64 s |
 
-So **deserialize is ~1.9 s of it** — three quarters of the total, and the whole
+So **deserialize is ~1.0 s of it** — the majority, and effectively the whole
 gap. It is not the tree building and not the string append.
 
 Narrowed to a micro-benchmark (split a 3.2 MB comma-separated string 24 times):
 
 | | time |
 |---|---|
-| C, split in place (no copies) | 0.03 s |
-| Rust, `split(',').collect::<Vec<&str>>()` (borrowed) | 0.18 s |
-| **Kāra, `s.split(",")`** | **0.67 s** |
-| Rust, `split(',').map(String::from).collect()` (owned copies) | 1.17 s |
+| C, split in place (no copies) | 0.02 s |
+| Rust, `split(',').collect::<Vec<&str>>()` (borrowed) | 0.11 s |
+| **Kāra, `s.split(",")`** | **0.47 s** |
+| Rust, `split(',').map(String::from).collect()` (owned copies) | 0.71 s |
 
-**Kāra's `split` is not slow — it beats Rust's same-semantics version by 1.7×.**
-The gap is that Kāra has no *borrowing* split: `String.split` returns
-`Vec[String]`, one heap allocation and one copy per token, and there is no
-slice-returning variant to reach for. C splits in place, Rust and Go hand back
-views into the original buffer, and those are the versions the other three arms
-are running. Python allocates copies like Kāra does and is 15× slower than C, so
-this is the cost of the API shape rather than of the implementation behind it.
+**Kāra's `split` is not slow — it beats Rust's same-semantics version by 1.5×.**
+The gap is that `String.split` returns `Vec[String]`: one heap allocation and
+one copy per token, with no slice-returning variant to reach for. C splits in
+place, Rust and Go hand back views into the original buffer, and those are the
+versions the other three arms are running. Python allocates copies as Kāra does
+and is 12.6× slower than C, so this is the cost of the API *shape*, not of the
+implementation behind it.
 
-That is filed as `B-2026-08-26-13`, not worked around here: the kata keeps the
-idiomatic `s.split(",")` spelling, which is the whole point of writing katas.
+That is `B-2026-08-26-13`, now tracked on the roadmap's `StringSlice` item as
+specified v1 behaviour with a v2 successor. It is not worked around here: the
+kata keeps the idiomatic `s.split(",")` spelling, which is the whole point of
+writing katas.
+
+> The deserializer reads each token as `let tok = ref tokens[i];`. The
+> borrow is not an optimisation for the benchmark's sake — since
+> `E_INDEX_MOVE_NON_COPY` landed, `tokens[i]` on a non-`Copy` element is a hard
+> error, and `ref` is the apt one of the three offered repairs for a read-only
+> use. `karac fix` proposes `.clone()`, which also compiles and cost this lane
+> 0.9 s: worth knowing that the machine-applicable fix is not always the right
+> one.
 
 ### Elsewhere
 
 | | kara | c | rust | go |
 |---|---|---|---|---|
-| binary size | 345.8 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
-| peak RSS | 73.6 MiB | 14.2 MiB | 25.8 MiB | 25.8 MiB |
-| compile (cold) | 392 ms | 137 ms | 251 ms | — |
+| binary size | 345.7 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
+| peak RSS | 67.5 MiB | 14.3 MiB | 25.7 MiB | 24.3 MiB |
+| compile (cold) | 350 ms | 124 ms | 230 ms | — |
 
 Peak RSS tracks the same story: an owned `Vec[String]` of ~400k tokens is live
 during every deserialize.
@@ -208,7 +231,7 @@ during every deserialize.
 ```bash
 karac run  codec.kara
 karac build codec.kara && ./codec
-karac run  differential.kara --interp     # compiled backends abort: B-2026-08-26-12
+karac run  --interp differential.kara     # compiled backends abort: B-2026-08-27-34
 python3 codec.py
 bash bench/bench.sh
 ```
