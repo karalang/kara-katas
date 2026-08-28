@@ -179,6 +179,17 @@ check now takes the heap itself, which is the better factoring anyway — a
 heap's validity belongs to the heap, not to its owner.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are a 2026-08-25 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+
+> **Host:** the tables below are a shared **x86-64 Linux cloud container**
+> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
+> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
+> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> comparable between the two hosts; only the **within-file cross-language
+> ratios** are.
 
 2M streamed adds, median read after every one, so the measured work is 2M
 inserts plus 2M queries against heaps that grow to 1M elements. A binary heap

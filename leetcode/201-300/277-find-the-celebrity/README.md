@@ -182,6 +182,16 @@ done
 ```
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+
+> **Host:** the tables below are a shared **x86-64 Linux cloud container**
+> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
+> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
+> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> comparable between the two hosts; only the **within-file cross-language
+> ratios** are.
 
 **The matrix is the wrong workload.** Representing `knows` as `Vec[Vec[bool]]`
 makes the bench measure O(n²) construction and O(n²) memory while the algorithm

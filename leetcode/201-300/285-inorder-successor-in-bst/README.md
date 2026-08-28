@@ -130,6 +130,16 @@ a `Vec` field.
   that can't blow the stack on the degenerate trees the generator builds.
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+
+> **Host:** the tables below are a shared **x86-64 Linux cloud container**
+> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
+> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
+> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> comparable between the two hosts; only the **within-file cross-language
+> ratios** are.
 
 A 300,000-node BST built by random insertion, then 2,000,000 successor queries
 mixing present and absent keys. All lanes print `509248937 1999982`.

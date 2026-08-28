@@ -56,6 +56,17 @@ real canonical spelling, not a contortion to dodge the bug — but it copies the
 bucket out and back, turning this problem's signature O(1) append into O(n).
 
 ## Benchmarks
+<!-- bench-staleness -->
+> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+
+> **Host:** the tables below are a shared **x86-64 Linux cloud container**
+> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
+> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
+> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> comparable between the two hosts; only the **within-file cross-language
+> ratios** are.
 
 > **Corroborating host only.** Linux/x86-64 container numbers from
 > [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus publishes from
@@ -92,6 +103,17 @@ round — so this exercises auto-par over heap-churning work rather than an arit
 
 Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, sink `3299190`.
 **kāra beats `rustc -O` and edges Go** on work that is almost entirely hash-map traffic.
+
+> **This ordering does not survive the M5.** On the canonical Apple M5 Pro lane
+> ([`bench/results.json`](bench/results.json), 2026-08-28) the row above
+> **inverts**: kāra 28.4 ms against rust 15.3, rust_ovf 15.6, go 15.9, c 3.6 —
+> kāra is **1.86× behind `rustc -O`** and 1.78× behind Go, not ahead of either.
+> Container→M5, Rust improved 2.2× and C 1.8× while kāra went 26.5 → 28.4 ms,
+> i.e. it took no benefit from the faster host at all. That "only kāra doesn't
+> move" signature points at allocator-bound behaviour (the loop body builds a
+> fresh `FreqStack` with two maps per round) rather than codegen, which is a
+> hypothesis worth chasing and not a settled cause. Treat the sentence above as
+> an x86-container result only.
 
 Two caveats on the C row, both cutting against reading it as a like-for-like win:
 
