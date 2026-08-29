@@ -168,13 +168,14 @@ harness instead.
 > **Figures in this section are a 2026-08-26 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Two hosts, both shown.** The headline table is the canonical Apple M5 Pro
+> lane, [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The second
+> table is a shared x86-64 Linux cloud container,
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), which
+> is where every figure in the analysis was measured. Absolute milliseconds are
+> NOT comparable between the two; only the **within-file cross-language ratios**
+> are.
 
 Build one balanced 200,000-node tree, then 24 **chained** round trips —
 serialize, hash the string, deserialize, repeat on the reconstruction. Chaining
@@ -183,11 +184,28 @@ string length and move the sink, which serializing the same original 24 times
 would not notice. Sink: a polynomial hash over the bytes of every encoded
 string, `checksum 397546302`, identical in all five languages.
 
-Container x86-64, `results.container-x86.json`. See `../../../../BENCHMARKS.md`
-for methodology and caveats.
+**Canonical lane — Apple M5 Pro**, [`bench/results.json`](bench/results.json),
+30 runs each. This is the feed `scripts/consolidate-bench.sh` publishes:
+
+| lang | mean | vs C |
+|---|---:|---:|
+| Go | 436.6 ms ± 2.3 | 0.92× |
+| C `clang -O3` | 477.0 ms ± 4.0 | 1.00× |
+| Rust `-O` | 484.5 ms ± 5.9 | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal safety) | 486.0 ms ± 4.6 | 1.02× |
+| **Kāra** (codegen, seq) | **841.9 ms ± 12.3** | **1.77×** |
+
+Kāra is **1.77× C**. Note that Go beats C here by 1.09×, which it does not do on
+the container — a reminder that the cross-language ordering is a property of the
+host as much as of the code.
+
+**Corroborating lane — x86-64 Linux container**,
+[`bench/results.container-x86.json`](bench/results.container-x86.json). Every
+figure in the analysis below was measured here, so the container table is what
+those numbers should be read against:
 
 | | mean | vs C |
-|---|---|---|
+|---|---:|---:|
 | c (`-O3`) | 1.185 s | 1.00× |
 | rust (`-O`) | 1.213 s | 1.02× |
 | rust (`-O -C overflow-checks=on`, equal safety) | 1.226 s | 1.03× |
@@ -195,16 +213,20 @@ for methodology and caveats.
 | **kara** (codegen, seq) | **2.438 s** | **2.06×** |
 | python | 16.770 s | 14.2× |
 
-> **Ratios on this container move with load, so they are cross-checked by
+> **Ratios on the container move with load, so they are cross-checked by
 > interleaving.** Alternating the kāra and C binaries 12 times each gives a
 > median ratio of **2.08×** (2.43 s / 1.17 s) and a min-of-runs ratio of 1.99×,
-> which is what the table above should be read as. An earlier sequential run at
-> lower load reported 1.87×; that was measurement, not a code change — the kāra
-> binary is byte-identical in size across both, and the bench lane contains no
-> branch-leaf `let`, so neither compiler fix above could have touched its
+> which is what the container table should be read as. An earlier sequential run
+> at lower load reported 1.87×; that was measurement, not a code change — the
+> kāra binary is byte-identical in size across both, and the bench lane contains
+> no branch-leaf `let`, so none of the fixes above could have touched its
 > codegen. Every figure below is likewise a median over interleaved runs.
+>
+> The 2.06× container figure and the 1.77× M5 figure are the same program on two
+> hosts, not a disagreement. Absolute milliseconds are not comparable between
+> them; only within-file ratios are, and both put the gap in the same place.
 
-### Where the 2× goes, measured
+### Where the gap goes, measured (container lane)
 
 Ablating the compiled Kāra binary one stage at a time (200k nodes, 24 rounds,
 median of 7 interleaved runs):
@@ -250,14 +272,28 @@ writing katas.
 
 ### Elsewhere
 
-| | kara | c | rust | go |
-|---|---|---|---|---|
-| binary size | 345.7 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
-| peak RSS | 67.5 MiB | 14.2 MiB | 25.7 MiB | 25.0 MiB |
-| compile (cold) | 475 ms | 151 ms | 276 ms | — |
+| | | kara | c | rust | go |
+|---|---|---:|---:|---:|---:|
+| binary size | M5 | 295.9 KiB | 33.1 KiB | 456.8 KiB | 2451.5 KiB |
+| | container | 345.7 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
+| peak RSS | M5 | 179.9 MiB | 19.8 MiB | 174.4 MiB | 28.6 MiB |
+| | container | 67.5 MiB | 14.2 MiB | 25.7 MiB | 25.0 MiB |
+| compile (cold) | M5 | 116 ms | 49 ms | 114 ms | — |
+| | container | 475 ms | 151 ms | 276 ms | — |
 
-Peak RSS tracks the same story: an owned `Vec[String]` of ~400k tokens is live
-during every deserialize.
+**The two hosts disagree about memory, and only one of them supports the
+obvious story.** On the container, Kāra's 67.5 MiB against Rust's 25.7 MiB looks
+like exactly what the tokenizer analysis predicts: ~400k owned token `String`s
+live during every deserialize. On the M5, Rust sits at 174.4 MiB — within 3% of
+Kāra — while C stays at 19.8 MiB, so whatever separates them there is not the
+`Vec[String]`. Peak RSS is measured differently enough across the two platforms
+(and Rust's allocator returns pages differently under each) that it should not
+be read as corroborating the split-allocation finding. **The runtime ablation
+and the split micro-benchmark do carry that finding; RSS does not, and this
+table previously claimed it did.**
+
+Binary size is the one row that is comparable in shape: Kāra's ~300 KiB sits
+between C's tens of kilobytes and Go's ~2.4 MiB on both hosts.
 
 ## Running it
 
