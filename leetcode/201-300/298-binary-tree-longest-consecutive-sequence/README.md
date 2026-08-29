@@ -169,7 +169,7 @@ its children, every run would have length 1, and the `run = arriving + 1` branch
 the algorithm is *about* would never be taken.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json).
-See [BENCHMARKS.md](../../../../BENCHMARKS.md) for methodology and caveats.
+See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
 | | mean | vs C |
 |---|---:|---:|
@@ -190,7 +190,7 @@ none.
 
 The first run of this lane had C at 345 ms against Rust's 1.17 s — a 3.4× gap on
 what is meant to be the same algorithm, which is exactly the shape
-[BENCHMARKS.md](../../../../BENCHMARKS.md) warns about. It was a **mirror
+[BENCHMARKS.md](../../../BENCHMARKS.md) warns about. It was a **mirror
 asymmetry, and the fault was mine**:
 
 ```c
