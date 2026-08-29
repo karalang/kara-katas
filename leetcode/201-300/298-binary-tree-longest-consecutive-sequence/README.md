@@ -113,7 +113,7 @@ the answer.
 
 | id | what | status |
 |---|---|---|
-| [`B-2026-08-29-39`](../../../../kara/docs/bug-ledger.md) | a binding initialized to `None` is classified as non-RC for the rest of its life, so reusing an `Option[shared T]` after passing it by value is wrongly reported as a move-after-move — and `karac check` exits 1 | open |
+| [`B-2026-08-29-39`](../../../../kara/docs/bug-ledger.md) | an annotated `let` recorded the *literal's* uninstantiated type rather than the binding's, so a `None`-initialized `Option[shared T]` scored non-`Copy` and its reuse was wrongly reported as a move | fixed (`c793ad0`) |
 
 The differential's P5 block builds spines with the standard accumulator:
 
@@ -123,8 +123,7 @@ while k < s { up_l = node(s - k, up_l, None); k = k + 1; }
 if arm_a(up_l) != s or arm_b(up_l) != s or arm_c(up_l) != s { p5 = p5 + 1; }
 ```
 
-That warns, and `karac check` returns exit 1 — enough to fail a Mend loop or a
-CI gate. Four programs differing only in their initializer isolate it exactly:
+That warned. Four programs differing only in their initializer isolated it:
 
 | binding | result |
 |---|---|
@@ -133,14 +132,27 @@ CI gate. Four programs differing only in their initializer isolate it exactly:
 | `let mut x = make(0);` then `x = make(1);` | clean |
 | `let mut x: Option[Node] = make(0);` then `x = make(1);` | clean |
 
-It is a false positive: both warned programs print the right answer on all four
-surfaces and `karac build` emits a working binary. The `help` text gives the
-mechanism away — it claims the value *"has no `.clone()` — that exists only on
-… RC types"* when `Option[shared Node]` **is** an RC type and `.clone()`
-compiles and runs. The pass has concluded the binding is not RC at all, which is
-what classification-by-initializer would do to a `None`.
+Same type, same callee, same two uses — and later reassignment never
+rehabilitated the binding, which is what pointed at the declaration rather than
+the dataflow.
 
-Per the corpus rule, the kata keeps the natural spelling rather than dodging it.
+The cause turned out to be one step upstream of the ownership pass, which had
+decided nothing. `check_expr(value, &declared)` verifies a bare `None` against
+the annotation but did not re-record it, so the typechecker stored
+`Option[TypeParam("T")]` where the binding is `Option[shared Node]`. The
+classifier reads that RHS type *as* the binding's type, and `is_copy_type`
+answers `Option[T]` by asking whether every argument is `Copy` — a bare type
+parameter is not. `Option[shared T]` **is** `Copy`, since a use bumps a
+refcount rather than moving the binding, which is why the same annotation
+spelled `= Some(..)` was always clean.
+
+> **One claim in the original report was wrong and is corrected in the ledger
+> row.** It asserted that `karac check` exits 1 on the warning. It does not —
+> an ownership warning prints and still reports "All checks passed" with exit
+> 0. The exit 1 seen while filing came from two unrelated `mut`-marker
+> typecheck errors in the same file. The finding stands on being a false
+> positive on an idiomatic shape that reaches `karac check --output=json`, not
+> on a broken gate.
 
 ## Benchmarks
 
