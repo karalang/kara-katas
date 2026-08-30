@@ -146,6 +146,58 @@ pair worth keeping: signed `/ 2` costs clang 31% and the shift recovers it, whil
 in Kāra the shift *loses* 61%. Two languages, one source-level choice, opposite
 signs.
 
+#### Resolved: `wontfix`, and the reason is a good one
+
+The cause is LLVM's `X86CmovConversion`, a pass that rewrites a `cmov` **back**
+into a branch when the `cmov` looks like it sits on a loop-carried dependency
+chain short enough for a predicted branch to win. Rebuilding the `>> 1` lane
+with `KARAC_LLVM_ARGS="-x86-cmov-converter=false"` restores exactly the `/ 2`
+lane's branchless loop and is then the fastest build measured, 634.9 ms.
+
+So `/ 2` was never the better spelling. Signed division by 2 truncates toward
+zero, which costs a three-instruction sign correction; that dead weight is the
+only thing lengthening the chain enough to stop the pass. **The correct, cheaper
+`>> 1` spelling loses the branchless form precisely because it is cheaper.**
+
+It is not fixable in the compiler, and the reason is worth more than the cliff
+was. `karac` recognises this idiom syntactically, so it *can* mark the
+comparison branch `!unpredictable` and suppress the pass. That was implemented
+and it works — this kata went to 639.0 ms, 1.86× — and it was **reverted**,
+because the same annotation makes kata #275's h-index search 2.02× *slower*
+(454.0 → 916.0 ms). The deciding measurement is within this one program, same
+spelling and same compiler, changing only the input values:
+
+| #300 data | branchy (default) | branchless (forced) | winner |
+|---|---:|---:|---|
+| uniform random | 1.187 s | **639.0 ms** | branchless, 1.86× |
+| ramp (`i % SPREAD`) | **416.7 ms** | 480.1 ms | branchy, 1.15× |
+
+The sign flips on the data alone, so which lowering is right is a property of
+the *input distribution* — something no compiler can know statically. Cache
+residency was tested as a rival explanation and refuted: #275's search shrunk to
+512 elements (4 KiB, L1-resident) still prefers the branch, 162.8 vs 190.2 ms.
+
+Two corrections to the section above, from re-measuring on current `main`:
+
+- The cliff is **1.66×** (713.9 ms vs 1.187 s), not 1.61×. It is unchanged by
+  `kara 7a10c4e`, which taught the midpoint recogniser to accept `>> 1` — so the
+  once-plausible "the shift lane is missing the bounds-check assumes" story is
+  now retired on landed code rather than on a patch.
+- **clang emits zero `cmov` in `main` for every spelling here**, so it never
+  makes this if-conversion decision at all; in C the spread is pure instruction
+  cost (`long / 2` 1.206 s, `long >> 1` 927.7 ms, `size_t / 2` 933.1 ms). The
+  contrast with Kāra is therefore sharper than "opposite signs": Kāra is playing
+  a game clang never enters. Adding `__builtin_unpredictable` to the C
+  comparison — the C spelling of the reverted annotation — takes clang to
+  663.7 ms, 1.40×, which is how we know the mechanism is LLVM-wide and not a
+  `karac` artifact.
+
+Worth stating plainly, since this kata's numbers otherwise read as a loss:
+Kāra's default `/ 2` lane at 713.9 ms beats **every** unannotated clang build
+measured here, while still carrying a bounds check clang does not emit.
+
+Tracked as `kara B-2026-08-29-62` (`wontfix` — measured to a standstill).
+
 ### Elsewhere
 
 | | kara | c | rust | go |
