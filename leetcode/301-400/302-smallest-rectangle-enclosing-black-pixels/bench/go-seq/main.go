@@ -1,20 +1,11 @@
-// Par-lane Go mirror for LeetCode #296 — the four edge searches by hand.
+// LeetCode 302 benchmark lane — Go mirror of blackpixels.kara.
 //
-// Kara's auto-par fans out the four independent searches inside min_area with
-// no annotation (`karac query concurrency`: parallel_groups [0,1,2,3]). Here it
-// is written out: three goroutines plus the calling goroutine, joined by a
-// WaitGroup, over the same immutable image.
-//
-// Goroutines are the cheapest of the three hand-parallel mirrors to spawn —
-// they multiplex onto an existing M:N scheduler rather than creating an OS
-// thread per call the way the raw-pthreads C mirror does. That difference is
-// part of what the par lane is measuring.
+// Same algorithm: 4-way binary search on the row/column projections. Plain
+// index loops rather than sort.Search, so the shape matches the other mirrors
+// instead of measuring a closure-per-probe indirection.
 package main
 
-import (
-	"fmt"
-	"sync"
-)
+import "fmt"
 
 var (
 	img  []uint8
@@ -87,15 +78,11 @@ func firstWhiteCol(lo, hi int64) int64 {
 	return lo
 }
 
-func minAreaPar(x, y int64) int64 {
-	var top, bottom, left, right int64
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { defer wg.Done(); bottom = firstWhiteRow(x+1, H) }()
-	go func() { defer wg.Done(); left = firstBlackCol(0, y+1) }()
-	go func() { defer wg.Done(); right = firstWhiteCol(y+1, W) }()
-	top = firstBlackRow(0, x+1)
-	wg.Wait()
+func minArea(x, y int64) int64 {
+	top := firstBlackRow(0, x+1)
+	bottom := firstWhiteRow(x+1, H)
+	left := firstBlackCol(0, y+1)
+	right := firstWhiteCol(y+1, W)
 	return (bottom - top) * (right - left)
 }
 
@@ -104,6 +91,7 @@ func main() {
 	const queries int64 = 1200
 	W, H = n, n
 	img = make([]uint8, n*n)
+
 	r0, c0 := n/2, n/2
 	for r := int64(0); r < 40; r++ {
 		for c := int64(0); c < 40; c++ {
@@ -118,7 +106,7 @@ func main() {
 	for q := int64(0); q < queries; q++ {
 		sx := r0 + q%40
 		sy := c0 + (q*7)%40
-		checksum = (checksum*31 + minAreaPar(sx, sy)) % 1000000007
+		checksum = (checksum*31 + minArea(sx, sy)) % 1000000007
 	}
 	fmt.Printf("queries %d checksum %d\n", queries, checksum)
 }

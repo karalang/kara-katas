@@ -1,4 +1,4 @@
-/* Par-lane C mirror for LeetCode #296 — the four edge searches by hand.
+/* Par-lane C mirror for LeetCode #302 — the four edge searches by hand.
  *
  * Kara's auto-par fans out the four independent searches inside min_area with
  * no annotation (`karac query concurrency`: parallel_groups [0,1,2,3]). This is

@@ -1,4 +1,4 @@
-/* LeetCode 296 benchmark lane — C mirror of blackpixels.kara.
+/* LeetCode 302 benchmark lane — C mirror of blackpixels.kara.
  *
  * Same algorithm: 4-way binary search on the row/column projections, which the
  * connectivity precondition makes contiguous. Same frame, same blob, same

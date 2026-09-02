@@ -1,8 +1,9 @@
-// LeetCode 296 benchmark lane — Rust mirror of blackpixels.kara.
+// Par-lane Rust mirror for LeetCode #302 — the four edge searches by hand.
 //
-// Same algorithm: 4-way binary search on the row/column projections. Written as
-// plain index loops rather than iterator combinators so the shape matches the
-// Kara and C mirrors — an `any()` chain would be measuring a different thing.
+// Kara's auto-par found this fan-out with no annotation. Here it is written
+// out: two nested `rayon::join`s give a 4-way split over the same four
+// independent searches, against the same immutable image.
+use rayon::join;
 
 struct Image { data: Vec<u8>, w: i64, h: i64 }
 
@@ -38,11 +39,16 @@ impl Image {
         lo
     }
 
+    // THE HAND-WRITTEN EQUIVALENT of what karac inferred: four independent
+    // searches, fanned out. Two nested joins rather than four spawns, so the
+    // calling thread does real work instead of only waiting.
     fn min_area(&self, x: i64, y: i64) -> i64 {
-        let top = self.first_black_row(0, x + 1);
-        let bottom = self.first_white_row(x + 1, self.h);
-        let left = self.first_black_col(0, y + 1);
-        let right = self.first_white_col(y + 1, self.w);
+        let ((top, bottom), (left, right)) = join(
+            || join(|| self.first_black_row(0, x + 1),
+                    || self.first_white_row(x + 1, self.h)),
+            || join(|| self.first_black_col(0, y + 1),
+                    || self.first_white_col(y + 1, self.w)),
+        );
         (bottom - top) * (right - left)
     }
 }
@@ -51,7 +57,6 @@ fn main() {
     let n: i64 = 4096;
     let queries: i64 = 1200;
     let mut data = vec![0u8; (n * n) as usize];
-
     let (r0, c0) = (n / 2, n / 2);
     for r in 0..40 { for c in 0..40 { data[((r0 + r) * n + (c0 + c)) as usize] = 1; } }
     for k in 0..25 { data[((r0 + 40 + k) * n + (c0 + 20)) as usize] = 1; }

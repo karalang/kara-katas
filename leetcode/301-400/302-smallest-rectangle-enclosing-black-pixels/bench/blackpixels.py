@@ -1,4 +1,4 @@
-"""LeetCode 296 benchmark lane — Python mirror of blackpixels.kara.
+"""LeetCode 302 benchmark lane — Python mirror of blackpixels.kara.
 
 SCALED DOWN to 120 queries against the compiled lanes' 1200. The row/column
 probes are per-pixel Python loops over a 4096-wide frame, which is exactly the

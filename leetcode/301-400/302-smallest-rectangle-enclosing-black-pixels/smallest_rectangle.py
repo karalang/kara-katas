@@ -1,4 +1,4 @@
-"""LeetCode 296 — Smallest Rectangle Enclosing Black Pixels (binary search).
+"""LeetCode 302 — Smallest Rectangle Enclosing Black Pixels (binary search).
 
 Mirror of smallest_rectangle.kara: same algorithm, same output.
 

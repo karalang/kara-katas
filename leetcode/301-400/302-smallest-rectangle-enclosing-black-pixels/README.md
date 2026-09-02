@@ -1,4 +1,4 @@
-# 296. Smallest Rectangle Enclosing Black Pixels
+# 302. Smallest Rectangle Enclosing Black Pixels
 
 A binary image: `1` is a black pixel, `0` is white. **Every black pixel is
 connected** to every other, and you are given the coordinates of one of them.
