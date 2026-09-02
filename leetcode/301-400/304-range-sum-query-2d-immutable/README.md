@@ -267,11 +267,63 @@ generation is not dominating.
 
 ## Compiler findings
 
-None. All five sources produced zero `karac check` diagnostics on the first
-pass — including the nested compound index-assign `pre[r + 1][c + 1] = …`,
-`Vec[Vec[i64]]` parameters passed by `ref`, and four `impl` blocks reading
-through `ref self` — and all five are byte-identical under `karac run`,
-`karac build` and the default auto-parallelising build.
+**The kata as written is clean.** All six sources produced zero `karac check`
+diagnostics on the first pass — including the nested compound index-assign
+`pre[r + 1][c + 1] = …`, `Vec[Vec[i64]]` parameters passed by `ref`, and four
+`impl` blocks reading through `ref self` — and all five kata sources are
+byte-identical under `karac run`, `karac build` and the default
+auto-parallelising build, and match the Python oracle.
+
+**But "the kata is clean" is not the same as "the surface is clean", and the
+gap between those two is where the bugs were.** This kata was written
+monomorphically over `i64`, in `while` loops, with free-function constructors —
+all idioms already known to work. Probing what it had steered around turned up
+two defects, both reproducing on `main` at `4449b8034`:
+
+- **[`B-2026-09-02-18`](../../../../kara/docs/bug-ledger.md)** (typecheck,
+  medium) — the **generic** form of this kata's own algorithm does not compile.
+  Adding an element of an owned local `Vec[T]` to anything that is not also an
+  element of an owned local `Vec[T]` is rejected with `arithmetic on a
+  'Add'-bounded type parameter requires both operands to have the same type,
+  found 'T' and 'T'` — a message that asserts the operands differ and then
+  prints them identically. Blocks `run` and `build`.
+
+  ```kara
+  fn prefix[T: Copy + Add](xs: ref Vec[T], zero: T) -> Vec[T] {
+      let mut pre: Vec[T] = Vec.new();
+      pre.push(zero);
+      let mut i = 0;
+      while i < xs.len() { pre.push(pre[i] + xs[i]); i = i + 1; }  // E0200
+      return pre;
+  }
+  ```
+
+  Two owned-local vectors added together (`a[0] + b[0]`) are *fine*, which
+  refutes the obvious "`Vec.new()` mints a fresh element type" explanation; the
+  row records the boundary and declines to guess further. A running-total
+  accumulator is a working workaround, which is why it is medium and not high.
+
+- **[`B-2026-09-02-19`](../../../../kara/docs/bug-ledger.md)** (ownership,
+  medium) — a declared `T: Copy` bound is not honoured for a bare
+  type-parameter binding. `fn f[T: Copy](x: T) { let a = x; let b = x; }` warns
+  `value 'x' moved here, used again here`; the concrete twin `fn f(x: i64)` is
+  clean. Warning only — it runs and builds correctly — but `karac check
+  --output=json` is the Mend loop's input, so a false diagnostic on correct
+  generic code is noise the loop has to be taught to ignore. The same bound
+  missed on an index read (`let a = v[0]` through a `ref Vec[T]`) is a hard
+  error claiming "this element type is not `Copy`", contradicting both the
+  signature and design.md's own rule that `v[i]` requires exactly `T: Copy`.
+
+Neither is a duplicate of the closest prior row, `B-2026-07-12-19`, which was
+the *typecheck-layer* bound gate rejecting `impl[T: Copy] Cell[T]` at a
+primitive instantiation; that path is fixed and its repro is clean here. These
+sit in the ownership layer inside the generic body, before any instantiation.
+
+Idioms probed and found clean: associated-function constructors
+(`NumMatrix.new(...)`), range-`for` (`for r in 0..h`), compound assignment
+through a nested index (`g[1][1] += 5`), generic structs and `impl[T]` blocks,
+returning a row out of a `ref self` method, and `mut ref self` mutators. Several
+of those are more natural than what this kata actually uses.
 
 ## Running it
 
