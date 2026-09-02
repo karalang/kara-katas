@@ -44,6 +44,16 @@
 // results bytewise before returning, so the three agree as SEQUENCES and the
 // program is byte-stable across `run`, `build`, and auto-par.
 
+// A NOTE ON BYTES. Every arm here works on `s.bytes()` and rebuilds results
+// with `push(b as char)`. That spelling is correct for ASCII and WRONG for
+// anything else — it re-encodes each byte >= 0x80 as its own two-byte sequence,
+// so "(é)日" round-trips to "(Ã©)æ¥", 7 bytes in and 12 out. It is used here
+// deliberately: #301's alphabet is parentheses and lowercase English letters,
+// all single-byte, and staying on bytes is what keeps the Kara arm the same
+// algorithm as its C/Rust/Go/Python mirrors. For a byte rebuild that must
+// survive non-ASCII, accumulate a `Vec[u8]` and finish with
+// `String.from_utf8(buf).unwrap()`, which validates and round-trips exactly.
+
 // --- byte-lexicographic order, so the mirrors in C/Rust/Go/Python sort the
 // --- same way Kāra does without depending on any locale or collation.
 fn str_less(a: ref String, b: ref String) -> bool {
