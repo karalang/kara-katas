@@ -26,7 +26,8 @@ difficulty of the problem, and the whole source of its bugs.
 | `range_sum_query_mutable_segment.kara` | segment tree — child arithmetic, repairs upward | O(log n) | O(log n) |
 | `range_sum_query_mutable_blocks.kara` | √n decomposition — block totals, partial edges | O(1) | O(√n) |
 | `range_sum_query_mutable_naive.kara` | the array itself, the definition verbatim | O(1) | O(n) |
-| `differential.kara` | 640 arrays, 76,800 queries, four arms, seven properties | — | — |
+| `range_sum_query_mutable_generic.kara` | arm ★ over `T: Copy + Add + Sub` — same mathematics | O(log n) | O(log n) |
+| `differential.kara` | 640 arrays, 76,800 queries, five arms, seven properties | — | — |
 | `bench/fenwick.kara` | 65,536-element tree × 200,000 ops × 110 passes (22M operations) | — | — |
 
 ## The mechanism, and the two lines that are the whole trick
@@ -64,7 +65,7 @@ consistency and shows up only as a disagreement with the segment tree.
 
 | # | property | what it pins down |
 |---|---|---|
-| P1 | four arms, one answer, at every state | the algorithm, from four directions |
+| P1 | five arms, one answer, at every state | the algorithm, from five directions |
 | P2 | a width-one range is the element itself | ties the summary to the data |
 | P3 | the whole array is the independent total | the outermost query |
 | P4 | a write is invertible — put the old value back and every answer returns | that a write leaves no residue |
@@ -86,7 +87,7 @@ DIFFERENTIAL OK
 depend only on the array's current contents — never on the sequence of writes
 that produced them. Every arm is inherently history-dependent: each carries
 mutated state forward and none ever recomputes from scratch. So a history
-dependence is exactly the fault four-way agreement is blind to, because all four
+dependence is exactly the fault arm agreement is blind to, because every arm
 would carry it. The differential reaches each final array by four routes —
 built directly, written left-to-right from zeros, written right-to-left, and
 written with junk intermediates (`999`, then `-999`, then the real value twice)
@@ -187,26 +188,23 @@ kata is the far end of that scale.
 
 ## Compiler findings
 
-The four arms are clean — zero `karac check` diagnostics across all five
-sources, all byte-identical under `karac run`, `karac build` and the default
+The arms are clean — zero `karac check` diagnostics across all six sources, all
+byte-identical under `karac run`, `karac build` and the default
 auto-parallelising build, matching the Python oracle.
 
-**A fifth arm is missing, and its absence is the finding.** A Fenwick tree is a
-monoid structure, so `Fenwick[T: Copy + Add + Sub]` is what a reader who knows
-the structure reaches for — and it was to be this kata's twin arm precisely to
-dogfood [`fe82c7b`](https://github.com/karalang/kara), this session's fix for
-the generic-arithmetic and `T: Copy` gaps found in #304. It does not compile:
+**One defect, found and since fixed.** The generic arm above is the reason this
+kata is worth re-reading. It could not be written when the kata was first
+published: a body type annotation naming the impl's own type parameter poisoned
+every later bounded use of that value.
 
-- **`B-2026-09-02-42`** (typecheck, medium) — a body type annotation that names
-  the impl's own type parameter poisons every later bounded method call on that
-  value:
+- **`B-2026-09-02-42`** (typecheck, medium) — **fixed in `a7c8af7`**:
 
   ```kara
   struct Box[T] { v: T }
   impl[T: Copy] Box[T] {
       fn set(mut ref self, v: T) { self.v = v; }
       fn make(v: T) -> Box[T] {
-          let w: T = v;          // delete this annotation and it compiles
+          let w: T = v;          // delete this annotation and it compiled
           let mut b = Box { v: w };
           b.set(v);              // error[E0236]: trait bound `T: Copy` is not
           return b;              //   satisfied; `T` does not implement `Copy`
@@ -214,25 +212,36 @@ the generic-arithmetic and `T: Copy` gaps found in #304. It does not compile:
   }
   ```
 
-  The bound it reports unsatisfied is declared three lines above. The control is
-  one token — `let w = v;` compiles and prints 5 — and the trigger is precisely
-  *writing `T` in a body annotation*: `let mut xs: Vec[T] = Vec.new()` fails,
-  `let mut xs = Vec.new()` and `let mut xs: Vec[i64] = Vec.new()` both pass.
-  This is very likely the same Named-vs-`TypeParam` spelling trap `fe82c7b`
-  diagnosed, reaching a third consumer — the method-resolution bound gate — but
-  that mechanism is inferred from that commit rather than read out of the source,
-  so the row files it as the leading hypothesis rather than a finding.
+  The bound reported unsatisfied was declared three lines above. The control was
+  one token. **The kata shipped with four arms and this one documented as absent
+  rather than rewritten to drop the annotation** — dropping it would have
+  compiled, but the annotated form is this corpus's idiom, and rewriting to
+  dodge a gap is what the kata rules forbid. The fifth arm was restored once the
+  fix landed, which is the whole argument for recording an absence instead of
+  papering over it.
 
-The arm is **absent rather than rewritten**. Dropping the annotation would make
-it compile, but the annotated form is the idiomatic spelling used throughout this
-corpus, and rewriting to dodge a gap is exactly what the kata rules forbid.
+  A probe pass after filing widened the row in three directions the first
+  version understated: it reaches **free generic functions** too (under `E0200`
+  rather than `E0236`), it is **not `Copy`-specific** (`Ord` and `Add` behave
+  identically), and the **`where`-clause form reported it worse** — `no method
+  'set' on type 'Box'`, sending the reader after a typo rather than a bound. It
+  also narrowed it usefully: the poison is **per-value, not per-body**, since an
+  annotated local that is never used leaves the rest of the function clean.
 
-Idioms probed and found clean: `x & -x` with unary minus on a variable,
-bitwise-and in both walk directions, range-`for` over an `i64` bound, `+=` and
-`-=` on `Vec` elements through `mut ref self`, associated-function constructors
-taking `ref Vec[i64]`, and a generic `Fenwick[T]` *free-standing* (the generic
-structure itself is fine — it is only the annotated-local constructor that
-fails).
+  That narrowing turned out to be the mechanism. All three defects this kata
+  range surfaced — `B-2026-09-02-18`, `-19` (from #304) and `-42` (from here) —
+  are one root cause: a type parameter has two internal spellings,
+  `Type::TypeParam("T")` from a signature and `Type::Named{"T"}` from a body
+  annotation, and `Type` compares structurally, so the two are unequal. Each fix
+  taught one more consumer to accept either.
+
+Idioms probed and found clean, recorded so the next kata need not re-probe them:
+a `trait` with `impl Trait for` plus a function generic over the trait (the
+idiom this kata most obviously avoided — five arms, one interface); a
+**recursive** segment tree with `mut ref self` recursing through two children;
+tuple returns and tuple parameters; `x & -x` with unary minus on a variable;
+range-`for` over an `i64` bound; `+=` / `-=` on `Vec` elements through
+`mut ref self`; and associated-function constructors taking `ref Vec[i64]`.
 
 ## Running it
 
@@ -241,6 +250,7 @@ karac run range_sum_query_mutable.kara            # ★ Fenwick tree
 karac run range_sum_query_mutable_segment.kara    # segment tree
 karac run range_sum_query_mutable_blocks.kara     # sqrt decomposition
 karac run range_sum_query_mutable_naive.kara      # the definition
+karac run range_sum_query_mutable_generic.kara    # the same Fenwick, generic
 karac run differential.kara                       # 640 arrays, 76,800 queries
 
 bash bench/bench.sh                               # cross-language lane

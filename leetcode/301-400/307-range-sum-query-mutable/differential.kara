@@ -1,10 +1,17 @@
-// LeetCode 307 — four arms against each other and against seven properties
+// LeetCode 307 — five arms against each other and against seven properties
 // that follow from the STATEMENT rather than from any implementation.
 //
 //   A  Fenwick tree      — lowbit walks, absorbs a DELTA, keeps a shadow array
 //   B  segment tree      — child arithmetic, repairs from CHILDREN, no shadow
 //   C  sqrt decomposition— block totals, partial edges walked element by element
 //   D  naive             — the array itself, the definition transcribed
+//   E  generic Fenwick   — arm A over `T: Copy + Add + Sub`, same mathematics
+//
+// Arm E is arm A's twin under a different type discipline, so a disagreement
+// between THEM localises to how the compiler handles the abstraction rather
+// than to the algorithm. It could not be written when this kata was first
+// published — see its own file for the three defects that stood in the way,
+// all now fixed, all one root cause.
 //
 // WHAT THE ARMS CANNOT SHARE. Each maintains a SECOND representation of the
 // array and answers from it; keeping that second representation in step with
@@ -254,6 +261,66 @@ fn new_d(nums: ref Vec[i64]) -> NaiD {
     return NaiD.new(nums);
 }
 
+// ------------------------------------------------------------------- arm E
+
+struct FenE[T] {
+    tree: Vec[T],
+    data: Vec[T],
+    zero: T,
+    n: i64,
+}
+
+impl[T: Copy + Add + Sub] FenE[T] {
+    fn new(nums: ref Vec[T], zero: T) -> FenE[T] {
+        let n = nums.len();
+        let mut tree: Vec[T] = Vec.new();
+        for i in 0..(n + 1) {
+            tree.push(zero);
+        }
+        let mut data: Vec[T] = Vec.new();
+        for i in 0..n {
+            data.push(zero);
+        }
+        let mut f = FenE { tree: tree, data: data, zero: zero, n: n };
+        for i in 0..n {
+            f.update(i, nums[i]);
+        }
+        return f;
+    }
+
+    fn add(mut ref self, i: i64, delta: T) {
+        let mut x = i + 1;
+        while x <= self.n {
+            self.tree[x] = self.tree[x] + delta;
+            x += x & -x;
+        }
+    }
+
+    fn update(mut ref self, i: i64, val: T) {
+        let delta = val - self.data[i];
+        self.data[i] = val;
+        self.add(i, delta);
+    }
+
+    fn prefix(ref self, i: i64) -> T {
+        let mut total = self.zero;
+        let mut x = i;
+        while x > 0 {
+            total = total + self.tree[x];
+            x -= x & -x;
+        }
+        return total;
+    }
+
+    fn sum_range(ref self, l: i64, r: i64) -> T {
+        return self.prefix(r + 1) - self.prefix(l);
+    }
+}
+
+fn new_e(nums: ref Vec[i64]) -> FenE[i64] {
+    return FenE.new(nums, 0);
+}
+
 // ------------------------------------------------------------------ harness
 
 fn lcg(state: i64) -> i64 {
@@ -301,6 +368,7 @@ fn main() {
             let mut b = new_b(base);
             let mut c = new_c(base);
             let mut d = new_d(base);
+            let mut e = new_e(base);
             // The reference array every arm is supposed to be tracking.
             let mut ref_arr: Vec[i64] = Vec.new();
             for i in 0..n { ref_arr.push(base[i]); }
@@ -320,6 +388,7 @@ fn main() {
                         if b.sum_range(l, r) != va { p1 += 1; }
                         if c.sum_range(l, r) != va { p1 += 1; }
                         if d.sum_range(l, r) != va { p1 += 1; }
+                        if e.sum_range(l, r) != va { p1 += 1; }
 
                         // P2 — a width-one range is the element itself.
                         if l == r and va != ref_arr[l] { p2 += 1; }
@@ -346,6 +415,7 @@ fn main() {
                 b.update(idx6, ref_arr[idx6]);
                 c.update(idx6, ref_arr[idx6]);
                 d.update(idx6, ref_arr[idx6]);
+                e.update(idx6, ref_arr[idx6]);
                 if a.sum_range(0, n - 1) != before6 { p6 += 1; }
 
                 // ---- P4 — a write is invertible: put the old value back and
@@ -369,6 +439,7 @@ fn main() {
                 b.update(widx, wval);
                 c.update(widx, wval);
                 d.update(widx, wval);
+                e.update(widx, wval);
                 ref_arr[widx] = wval;
 
                 step = step + 1;
