@@ -488,6 +488,19 @@ if the compiled artifact is byte-identical across the runs and the source uses
 none of the constructs touched by commits landing between them, no codegen change
 is available to explain the delta.
 
+**The drift is not only self-inflicted, and not uniform across lanes.** Re-running
+[#312](leetcode/301-400/312-burst-balloons/)'s suite the same day moved its lanes
+by −1% (both `c` builds) to +40% (`go`) with no consistent ordering — Go's
+runtime appears markedly more sensitive to machine state than the static lanes.
+So a rerun is not automatically the more trustworthy number, and replacing a
+table from a single fresh run can make it worse.
+
+The practical rule this leaves: **trust a ratio only to the precision at which it
+reproduces.** #312's headline (kāra level with equal-safety Rust) reproduced at
+0.999 vs 1.025 and stands; the "0.1% apart" phrasing it originally carried did
+not, and was softened. Quote a sub-percent gap only when two independent runs
+agree to better than that — on this container they generally do not.
+
 ### Code placement (arm64)
 
 On Apple silicon a program's speed depends partly on **where its machine code

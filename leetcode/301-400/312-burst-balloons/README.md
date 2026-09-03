@@ -245,9 +245,19 @@ Python is a correctness oracle here rather than a timed lane (it is gated behind
 `KARA_BENCH_INCLUDE_PY=1` and absent from the JSON); the 51.2 s is one direct
 run, not a hyperfine mean.
 
-**Kāra ties equal-safety Rust exactly** — 553.2 ms against 554.0 ms is a 0.1%
-difference, and the matched-ISA equal-safety build lands at 551.9 ms. All three
-are one number. Kāra beats Go by 1.18× and trails plain `rustc -O` by 1.32×.
+**Kāra lands level with equal-safety Rust** — 553.2 ms against 554.0 ms, with
+the matched-ISA equal-safety build at 551.9 ms. Kāra beats Go by 1.18× and
+trails plain `rustc -O` by 1.32×.
+
+Read "level", not "0.1% apart", which is what this passage originally claimed.
+An independent rerun of the whole suite (2026-09-03, prompted by
+[#313](../313-super-ugly-number/#a-methodology-note-because-the-first-version-of-this-table-was-wrong)
+finding a contended table of its own) put the same two lanes at 629.0 ms and
+613.5 ms — a ratio of 1.025 against this run's 0.999. The conclusion is
+unchanged and every directional claim above reproduced, but this container's
+absolute times drift enough between runs that a sub-percent gap is not a
+measurement, only a coincidence of one run. See
+[BENCHMARKS.md § Concurrent work during a run](../../../BENCHMARKS.md).
 
 That is a weaker showing than [#311](../311-sparse-matrix-multiplication/), where
 kāra beat equal-safety Rust by 1.38×, and the reason is visible in the ISA
