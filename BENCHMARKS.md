@@ -455,6 +455,39 @@ noise-limited (shared M5 Pro), while size and memory are stable. Read the shape,
 not the last digit, and consult [`bench-results.json`](bench-results.json) for
 the underlying numbers.
 
+### Concurrent work during a run (measured 2026-09-03)
+
+**Never run anything else while a benchmark is measuring**, and treat a single
+run as unvalidated until a second, independent run reproduces its *ratios*.
+
+Kata [#313](leetcode/301-400/313-super-ugly-number/)'s first table was measured
+from an agent session that kept issuing tool calls while `bench.sh` ran. It put
+kāra **last** at 464.7 ms. Two later runs, both taken with the box idle, agree
+with each other to ~1% on every lane and put the same byte-identical binary at
+314.5 / 315.0 ms — a 48% error, large enough to invert the kata's conclusion
+(kāra goes from trailing equal-safety Rust by 1.13× to beating it by 1.05×).
+
+The absolute times are the *weak* tell, because a uniformly slower box is easy to
+dismiss as ambient noise. The strong tell is the **within-run ratio**, which
+should be immune to overall machine speed:
+
+| ratio | contended | idle | idle repeat |
+|---|---:|---:|---:|
+| kara / rust (equal safety) | 1.131 | 0.952 | 0.958 |
+| kara / go | 1.347 | 0.939 | 0.957 |
+| c / rust (equal safety) | 0.786 | 0.838 | 0.835 |
+
+Only the ratios involving kāra moved (19–43%); the rows without it moved 7–9%.
+The asymmetry is the mechanism: hyperfine measures the lanes **in order**, kāra
+is first in the batch, and the concurrent work overlapped the front of it. So
+contention does not scale a table uniformly — it distorts whichever lanes happen
+to overlap it, which is why it can survive as a plausible-looking result.
+
+Checking `git diff` on the binary is what rules out the flattering explanation:
+if the compiled artifact is byte-identical across the runs and the source uses
+none of the constructs touched by commits landing between them, no codegen change
+is available to explain the delta.
+
 ### Code placement (arm64)
 
 On Apple silicon a program's speed depends partly on **where its machine code

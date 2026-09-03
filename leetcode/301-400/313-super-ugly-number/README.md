@@ -272,67 +272,102 @@ languages, which keeps the measured work in the `O(n * k)` merge rather than in
 the allocator.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
-30 runs each.
+30 runs each. The bracketed column is an **independent repeat of the whole
+suite**, for the reason in the methodology note below.
 
-| | mean | vs kara |
-|---|---:|---:|
-| c (`-O3 -march=x86-64-v3`, matched ISA) | 183.5 ms ± 15.3 | 0.39× |
-| c (`-O3`) | 322.8 ms ± 12.1 | 0.69× |
-| go | 345.0 ms ± 11.4 | 0.74× |
-| rust (`-O`) | 368.1 ms ± 21.7 | 0.79× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 410.9 ms ± 7.4 | 0.88× |
-| rust (equal safety + matched ISA) | 418.3 ms ± 13.4 | 0.90× |
-| **kara** (codegen, seq) | **464.7 ms ± 23.8** | **1.00×** |
-| python | 15.5 s | 33.4× |
+| | mean | repeat | vs kara |
+|---|---:|---:|---:|
+| c (`-O3 -march=x86-64-v3`, matched ISA) | 143.8 ms ± 3.2 | 144.4 | 0.46× |
+| c (`-O3`) | 276.8 ms ± 6.8 | 274.5 | 0.88× |
+| rust (`-O`) | 304.1 ms ± 2.9 | 308.5 | 0.97× |
+| **kara** (codegen, seq) | **314.5 ms ± 6.2** | **315.0** | **1.00×** |
+| rust (equal safety + matched ISA) | 318.4 ms ± 9.1 | 320.1 | 1.01× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 330.2 ms ± 8.3 | 328.7 | 1.05× |
+| go | 334.8 ms ± 13.0 | 329.2 | 1.06× |
+| python | 15.5 s | — | 49.3× |
 
-Python is a correctness oracle here rather than a timed lane (it is gated behind
-`KARA_BENCH_INCLUDE_PY=1` and absent from the JSON); the 15.5 s is one direct
-run, not a hyperfine mean.
+Python is a correctness oracle rather than a timed lane (gated behind
+`KARA_BENCH_INCLUDE_PY=1`, absent from the JSON); the 15.5 s is one direct run.
 
-**Kāra is last among the compiled lanes**, trailing equal-safety Rust by 1.13×
-and plain `rustc -O` by 1.26×. That is a weaker result than
-[#312](../312-burst-balloons/), where kāra tied equal-safety Rust exactly
-(553.2 ms against 554.0 ms), and it is worth recording as a gap rather than
-rounding to a tie: 464.7 against 410.9 is well outside the two σ.
+**Kāra beats equal-safety Rust by 1.05× and Go by 1.06×**, ties matched-ISA
+equal-safety Rust, and trails unchecked `rustc -O` by 1.03× and `clang -O3` by
+1.14×. Against the equal-safety comparator that BENCHMARKS.md treats as the fair
+one, kāra is ahead — a k-way merge is a good shape for it: the inner scan is a
+short unit-stride loop over `primes` with a data-dependent gather into `ugly`,
+and no allocation anywhere in the punch.
+
+### A methodology note, because the first version of this table was wrong
+
+This table replaces an earlier one that had kāra **last** at 464.7 ms. That
+number was measured while this session was issuing other tool calls, and it is
+an artifact of that contention rather than of the compiler.
+
+The tell was not the absolute times — the whole box was slower, which is easy to
+dismiss — but the **within-run ratios**, which should be immune to overall
+machine speed:
+
+| ratio | contended run | idle run | idle repeat |
+|---|---:|---:|---:|
+| kara / rust (equal safety) | 1.131 | 0.952 | 0.958 |
+| kara / c | 1.440 | 1.136 | 1.147 |
+| kara / go | 1.347 | 0.939 | 0.957 |
+| c / rust (equal safety) | 0.786 | 0.838 | 0.835 |
+| c (v3) / c | 0.568 | 0.519 | 0.526 |
+
+The two idle runs agree with each other to ~1% on every lane. The contended run
+disagrees by 19–43%, and **only on the ratios involving kāra** — the rows
+without it move 7–9%. Kāra is hyperfine's first benchmark in the batch, so it is
+the lane exposed to the tail of concurrent work; the later lanes had the box to
+themselves.
+
+The kāra binary is **byte-identical** across all three runs (349,696 bytes), and
+`ugly.kara` uses none of the constructs the compiler commits landing between them
+touch — no `Drop`, `Option`, tuple destructuring or `match`. So there was no
+mechanism for a codegen change, which is what rules out the flattering
+explanation.
+
+Two rules follow, and they generalise past this kata: **never run anything else
+while a benchmark is measuring**, and **a single benchmark run is not
+self-validating** — the ratios have to be reproduced by a second, independent
+run before they mean anything.
 
 ### The ISA column, for the second kata running
 
 | | baseline | matched ISA (v3) | gain |
 |---|---:|---:|---:|
-| c (unchecked) | 322.8 ms | 183.5 ms | **1.76×** |
-| rust (checked) | 410.9 ms | 418.3 ms | **none** (−1.8%, inside σ) |
+| c (unchecked) | 276.8 ms | 143.8 ms | **1.93×** |
+| rust (checked) | 330.2 ms | 318.4 ms | **1.04×** |
 
 This reproduces [#312](../312-burst-balloons/)'s controlled comparison with a
-larger effect on the unchecked side: the same compiler (rustc/LLVM) on the same
-loop gains **nothing** from `-C target-cpu=x86-64-v3` with overflow checks on,
-while clang with no checks at all gains **1.76×** (against 1.27× on #312's
-loop). Kāra, which checks by default, again sits in the checked group.
+much larger effect on the unchecked side: the same compiler (rustc/LLVM) on the
+same loop gains **4%** from `-C target-cpu=x86-64-v3` with overflow checks on,
+while clang with no checks at all gains **1.93×** (against 1.27× on #312's
+loop). Both figures replicate in the repeat run (1.90× and 1.03×).
 
 **It stays a suspect, not a finding**, for the reason #312 already gave: the
 comparison does not isolate *which* check blocks the gain — checked Rust carries
 overflow **and** bounds checks, clang carries neither — and kāra has no ISA
 variant of its own in this lane. What this kata adds is that the pattern is not
-specific to an interval DP: a k-way merge with a stride-1 scan and a
-data-dependent gather (`ugly[idx[i]]`) shows it too, and more strongly.
+specific to an interval DP, and that kāra sitting in the checked group costs it
+much less here than the 1.93× headline suggests: it still beats the checked
+comparator outright.
 
-### Auto-par is a 2.2× loss on this workload
+### Auto-par is a 1.27× loss on this workload
 
 Not a lane in the table (this is a seq-only kata) but measured, because #312
-found a defect exactly here:
+found a defect exactly here and this kata found its residual:
 
-| | time |
-|---|---:|
-| `KARAC_AUTO_PAR=0` (sequential) | 0.44 s |
-| default auto-par | 0.95 s |
+| | before `953006d` | after |
+|---|---:|---:|
+| `KARAC_AUTO_PAR=0` (sequential) | 0.44 s | **0.30 s** |
+| default auto-par | 0.95 s | **0.38 s** |
+| ratio | 2.2× | **1.27×** |
 
-The [`B-2026-09-03-18`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md)
-cliff is gone — system time is 0.00 s where it used to be 51.8 s. What is left
-is 0.29 s of per-dispatch environment lookups, which is a second defect filed
-below, plus ordinary task-framework overhead for regions this fine. The merge's
-inner scan is 40 elements; there is not enough work in one to pay for a
-dispatch, and no amount of worker tuning changes that — the sweep is flat at
-0.73–0.80 s for every explicit worker count from 1 to 16.
-
+Most of that gap closed when `B-2026-09-03-27` (below) removed 3M environment
+scans. What remains is ordinary task-framework overhead for regions this fine:
+the merge's inner scan is 40 elements, which is not enough work to pay for a
+dispatch, and no worker tuning changes it — the sweep was flat at every explicit
+count from 1 to 16 even before the fix.
 
 ## Compiler findings
 
@@ -340,12 +375,16 @@ The arms are clean — zero `karac check` diagnostics across all seven sources,
 all byte-identical under `karac run`, `karac build` and the default
 auto-parallelising build.
 
-### One defect found: the use-after-move hint denies a `.clone()` that exists
+Both defects this kata found were fixed within hours of being filed, and both
+fixes **corrected the row that reported them**. Those corrections are the more
+useful half of what follows.
+
+### One defect found: the use-after-move hint denied a `.clone()` that exists
 
 [kara `B-2026-09-03-26`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md)
-— filed from this kata. The `_frontier` arm needs `SortedSet` for its minimum,
-and probing that surface for the methods it required turned up a diagnostic
-that gives confidently wrong advice:
+— **fixed** in `f77d2cc`. The `_frontier` arm needs `SortedSet` for its minimum,
+and probing that surface turned up a diagnostic that gave confidently wrong
+advice:
 
 ```
 warning E0500  value 'q' moved here, used again here
@@ -354,73 +393,85 @@ warning E0500  value 'q' moved here, used again here
         built-in heap collections and RC types)
 ```
 
-`SortedSet` **is** a built-in heap collection, and `q.clone()` compiles with
-zero diagnostics, runs identically on all three backends, and is a genuine deep
-copy. The hint names the one fix that works and says it does not exist — and
-because the same predicate gates the machine-applicable edit, `karac fix`
-reports *"no fixable diagnostics"* where the `Set` spelling of the same program
-is repaired automatically.
+`SortedSet` **is** a built-in heap collection, and `q.clone()` compiled with zero
+diagnostics, ran identically on all three backends, and was a genuine deep copy.
+The hint named the one fix that works and said it did not exist — and because the
+same predicate gated the machine-applicable edit, `karac fix` reported *"no
+fixable diagnostics"* where the `Set` spelling of the identical program was
+repaired automatically.
 
-Five categories are affected, all of which have a working `.clone()`:
-`Option[T]`, `Result[T, E]`, `SortedSet[T]`, `SortedMap[K, V]`, and **any user
-type carrying `#[derive(Clone)]`** — where the diagnostic contradicts the user's
-own annotation. `Vec`, `Map`, `Set`, `VecDeque` and `String` get the correct
-hint; `PriorityQueue`, which genuinely has no `clone`, is correctly told so.
+Five categories were affected: `Option[T]`, `Result[T, E]`, `SortedSet[T]`,
+`SortedMap[K, V]`, and **any user type carrying `#[derive(Clone)]`** — where the
+diagnostic contradicted the user's own annotation. The root cause was a third
+copy of a predicate already reconciled twice: `moved_type_supports_clone` kept
+`["Vec", "Map", "Set", "VecDeque"]` while the typechecker's `type_supports_clone`
+listed the `Sorted` pair, `Option` and `Result` too. Its doc comment asserted as
+fact that `Option`/`Result` have no callable clone, citing `B-2026-07-29-31` —
+the row whose *fix* gave `Option` one.
 
-The root cause is a third copy of a predicate that was already reconciled twice.
-`moved_type_supports_clone` (`src/ownership.rs`) keeps its own list —
-`["Vec", "Map", "Set", "VecDeque"]` — while the typechecker's authoritative
-`type_supports_clone` (`src/typechecker/derives.rs`) lists `Option`, `Result`,
-`SortedMap` and `SortedSet` too and consults `#[derive(Clone)]`. The ownership
-copy's doc comment states, as fact, that `Option`/`Result` have no callable
-clone, and cites `B-2026-07-29-31` — the row whose *fix* gave `Option` one
-(`Result` followed in `B-2026-07-30-10`). It is a fossil of the world before the
-rows it cites.
+Re-verified here after the fix, over 12 types: **0 of 12 wrong**, where 5 were
+wrong before. All five now offer the hint *and* have `karac fix` apply the edit;
+every applied edit compiles and runs identically under run/build/auto-par. The
+two correct-silence controls (`PriorityQueue`, a struct with no derive) stay
+silent.
 
-**To be exact about provenance:** the shipped `_frontier` arm does not itself
-move a `SortedSet`, so it does not trigger this. The diagnostic surfaced while
-probing the collection's API — set algebra returns a new set and takes its
-argument by value, so `p.union(q)` followed by `p.difference(q)` moves `q`
-twice, which is the ordinary shape that draws E0500.
+**The row's suggested fix was wrong, and that is the interesting part.** It
+proposed wiring the hint to `type_supports_clone`. That is the *bound*-side
+predicate ("does `T: Clone` discharge"), not the *method*-side one ("does
+`recv.clone()` resolve"), and it errs in both directions — measured here on the
+fixed compiler, which now gets all four right:
+
+| case | hint | `.clone()` truth |
+|---|---|---|
+| `Result[P, i64]`, `Result[Option[String], i64]`, `Result[Map[i64,i64], i64]` | NO-CLONE | REJECTED |
+| `Vec[Q]` where `Q` has no `Clone` | offers clone | WORKS |
+
+Had the hint been wired as the row suggested, the three `Result` rows would have
+had `karac fix` **auto-insert a `.clone()` that does not compile** — strictly
+worse than the withheld edit the row was about, and precisely the
+confident-wrong-steer failure `B-2026-07-29-36` exists to prevent. The shipped
+fix reads a span set precomputed from `clone_receiver_self_type` instead, so hint
+and compiler agree by construction. It also found a **sixth** affected category
+the row missed: a `T: Clone`-bounded generic move site, verified working here.
 
 ### A second defect: an environment lookup per parallel dispatch
 
 [kara `B-2026-09-03-27`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md)
-— the follow-on to `B-2026-09-03-18`, filed from #312. That fix cached the
-expensive *auto-detect* tier of `resolve_pool_workers()` and deliberately left
-the `std::env::var("KARAC_PAR_WORKERS")` in front of it per-call, on the
-reasoning that it is "cheap libc getenv" at 111 ns against the probe's 15.2 µs.
+— **fixed** in `953006d`, the follow-on to `B-2026-09-03-18` from #312. That
+earlier fix cached the expensive *auto-detect* tier of `resolve_pool_workers()`
+and deliberately left the `std::env::var("KARAC_PAR_WORKERS")` in front of it
+per-call, on the reasoning that it is "cheap libc getenv" at 111 ns against the
+probe's 15.2 µs.
 
-The per-call figure is right. The aggregate is not, because the same doc comment
-establishes that the function runs **once per parallel-region entry**, so the
-cost scales with the workload rather than with the program. Counted with an
-`LD_PRELOAD` interposer on this benchmark:
+The per-call figure was right; the aggregate was not, because the same doc
+comment established that the function runs **once per parallel-region entry**.
+Counted with an `LD_PRELOAD` interposer on this benchmark:
 
 ```
-[getenv] total=2999972 KARAC_PAR_WORKERS=2999970
+before:  [getenv] total=2999972 KARAC_PAR_WORKERS=2999970
+after:   [getenv] total=3       KARAC_PAR_WORKERS=1
 ```
 
-**2,999,970** — exactly 30 passes × 99,999 merge steps, one lookup per step.
-The sequential build of the same program makes **one** getenv call in total.
+**2,999,970** was exactly 30 passes × 99,999 merge steps, one lookup per step,
+against **one** for the sequential build of the same program. And it was not a
+constant-cost getenv: `std::env::var` scans the environment block, so the same
+binary took 0.66 s under `env -i`, 0.95 s normally and 1.53 s with 300 extra
+variables. The documented escape hatch had also silently stopped escaping —
+`KARAC_PAR_WORKERS=4` made the same 3M calls and was no faster.
 
-Two corrections to the reasoning that left it in place:
+Re-verified after the fix: **2,999,970 → 1** on both the set and unset paths, and
+wall clock now **flat across environment size** — 0.38 s at `env -i`, normally,
+with +300 variables, and with the escape hatch set, where before it was 0.66 /
+0.95 / 1.53 / 1.60.
 
-1. **It is not a constant-cost getenv.** `std::env::var` scans the environment
-   block, so the cost is linear in how many variables the process was started
-   with. Measured on the same binary: **0.66 s** under `env -i`, **0.95 s** with
-   a normal environment, **1.53 s** with 300 extra variables — 98 ns and 292 ns
-   per call respectively. The program's runtime is a function of its environment
-   size.
+**The row over-sold one number.** It led with "0.29 s of scanning, 66% of the
+sequential runtime." The close calibrates that: the ratio is a property of
+**region granularity**, not of the defect. On a workload with 25 µs of real work
+per region the same bug is 0.8% at a normal environment size. What generalises is
+"per parallel-region entry, linear in environment size" — not the percentage.
+The figure was right for this workload and framed too broadly.
 
-2. **The documented escape hatch no longer escapes.** Under `B-2026-09-03-18`,
-   setting `KARAC_PAR_WORKERS` explicitly was a 45× speedup because it returned
-   before the cgroup probe. Now that the probe is cached, both paths pay the
-   lookup — `KARAC_PAR_WORKERS=4` makes the same 2,999,970 calls and is not
-   faster (1.60 s vs 1.53 s under a padded environment).
-
-0.29 s of the 0.95 s auto-par run is environment scanning — **66% of the entire
-0.44 s sequential runtime**, spent re-asking a question whose answer cannot
-change. Correctness is unaffected: every arm is byte-identical in all three
-modes and the benchmark prints `checksum 24228156` everywhere. As with its
-predecessor, the clock is the only detector.
-
+The fix also resolved a constraint the row flagged as possibly needing a
+`#[cfg(test)]` path, without one: `resolve_pool_workers()` stays uncached as the
+*policy* function the unit tests drive, and the memoization lives in a
+`pool_workers()` wrapper that the hot path calls.
