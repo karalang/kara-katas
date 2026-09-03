@@ -296,8 +296,7 @@ auto-parallelising build.
 
 ### One defect found: a user associated function on a primitive type
 
-[kara `B-2026-09-03-17`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
-Three lines reproduce it:
+[kara `B-2026-09-03-17`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md) — **fixed** in `335261c`. Three lines reproduced it:
 
 ```kara
 trait Zero { fn zero() -> Self; }
@@ -305,8 +304,8 @@ impl Zero for i64 { fn zero() -> i64 { return 0; } }
 fn main() { let x: i64 = i64.zero(); println(x.to_string()); }
 ```
 
-`karac check --output=json` reports **zero diagnostics**. Then every executor
-refuses it: the interpreter errors `internal: name 'i64' resolved but has no
+`karac check --output=json` reported **zero diagnostics**. Then every executor
+refused it: the interpreter errors `internal: name 'i64' resolved but has no
 binding at run time. This is a compiler bug`, and the JIT and AOT build both
 error `codegen: no handler for method 'zero' on variable 'i64'`. Two of the
 three messages declare themselves compiler bugs. This is **not** a run/build
@@ -338,15 +337,23 @@ primitives; this row is the other half, where the name is legitimately
 implemented so there is correctly nothing to diagnose — and yet no backend can
 execute it.
 
-**Nothing here is phrased around the gap.** The `_generic` arm seeds its table
-with `T.zero()` through the bound, which is the form that works and the form one
+**Nothing here was phrased around the gap.** The `_generic` arm seeds its table
+with `T.zero()` through the bound, which is the form that worked and the form one
 would write; its local accumulator uses a literal `0`, likewise. The two
 spellings sitting side by side is how the gap was found.
 
-### A second defect: the default auto-par build is 123× slower here
+The fix roots the cause in the parser: primitive type names are lowercase, and
+`starts_upper` was the parser's whole notion of "this identifier names a type",
+so `P.zero()` parsed as a type-rooted path while `i64.zero()` parsed as a
+*variable* named `i64` — which is exactly what the interpreter's "resolved but
+has no binding at run time" and codegen's "no handler for method 'zero' on
+variable 'i64'" were both reporting. Re-verified here after the fix: all three
+backends print `0`, the inherent-impl and all five primitive variants work, and
+`i64.max_value()` still yields `E0236` (no regression on the unknown-name half).
 
-[kara `B-2026-09-03-18`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
-On this kata's benchmark workload:
+### A second defect: the default auto-par build was 123× slower here
+
+[kara `B-2026-09-03-18`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md) — **fixed** in `e62f74a`. On this kata's benchmark workload, before the fix:
 
 | build | time | |
 |---|---:|---|
@@ -391,6 +398,25 @@ every test in this repo — the clock is again the only detector, as it was for
 [#311](../311-sparse-matrix-multiplication/)'s zero-skip guard.
 
 The published table above is the **sequential** lane and is unaffected.
+
+**The fix caches the auto-detect tier only** (a `OnceLock` around
+`available_parallelism()`), leaving the env read per-call so a user can still
+override the count for one invocation without rebuilding. The commit measures
+the two tiers directly: **15.2 µs** for the cgroup probe against **111 ns** for
+the getenv sitting in front of it.
+
+Re-measured here after the fix, same workload and host:
+
+| build | before | after |
+|---|---:|---:|
+| `KARAC_AUTO_PAR=0` (sequential) | 0.553 s | 0.43 s |
+| `karac build` (default, auto-par) | 67.8 s | **1.17 s** |
+| auto-par, `KARAC_PAR_WORKERS=4` | 1.51 s | 1.26 s |
+
+**58× faster**, with system time now zero, and the default no longer differs
+from the explicit-worker case. Same `checksum 289414141` in both modes. The
+residual 2.7× of auto-par over sequential is ordinary task-framework overhead
+for regions this fine — that is a cost, not the bug.
 
 ### Probed clean
 
