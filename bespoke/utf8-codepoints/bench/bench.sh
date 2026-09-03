@@ -193,8 +193,13 @@ mem_put --lang python --approach utf8_codepoints --lane seq --mode interp --byte
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/utf8_codepoints_kara utf8_codepoints
-bytes=$(mem_peak karac build utf8_codepoints.kara); mv utf8_codepoints target/utf8_codepoints_kara 2>/dev/null || true
+# NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+# That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+# a plain `karac build` here is an AUTO-PAR build, so moving it into place
+# left the next run's freshness check satisfied and the seq lane silently
+# measuring an auto-par binary.
+rm -f utf8_codepoints
+bytes=$(mem_peak karac build utf8_codepoints.kara); rm -f utf8_codepoints
 cmem_put --lang kara --approach utf8_codepoints --mode codegen --bytes "$bytes"
 rm -f target/utf8_codepoints
 cmem_put --lang rust --approach utf8_codepoints --mode native --bytes "$(mem_peak rustc -O utf8_codepoints.rs -o target/utf8_codepoints)"

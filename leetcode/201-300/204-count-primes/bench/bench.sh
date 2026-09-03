@@ -229,9 +229,14 @@ mem_put --lang c    --approach count --lane par --mode native  --bytes "$(mem_pe
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/count_kara count
+# NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+# That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+# a plain `karac build` here is an AUTO-PAR build, so moving it into place
+# left the next run's freshness check satisfied and the seq lane silently
+# measuring an auto-par binary.
+rm -f count
 cmem_put --lang kara --approach count --mode codegen --bytes "$(mem_peak karac build count.kara)"
-mv count target/count_kara 2>/dev/null || true
+rm -f count
 rm -f target/count
 cmem_put --lang rust --approach count --mode native --bytes "$(mem_peak rustc -O count.rs -o target/count)"
 rm -f target/count_c

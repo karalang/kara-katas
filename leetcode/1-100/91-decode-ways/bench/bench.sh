@@ -201,9 +201,14 @@ fi
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/decode_ways_kara decode_ways
+# NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+# That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+# a plain `karac build` here is an AUTO-PAR build, so moving it into place
+# left the next run's freshness check satisfied and the seq lane silently
+# measuring an auto-par binary.
+rm -f decode_ways
 cmem_put --lang kara --approach decode_ways --mode codegen --bytes "$(mem_peak karac build decode_ways.kara)"
-mv decode_ways target/decode_ways_kara 2>/dev/null || true
+rm -f decode_ways
 rm -f target/decode_ways
 cmem_put --lang rust --approach decode_ways --mode native --bytes "$(mem_peak rustc -O decode_ways.rs -o target/decode_ways)"
 rm -f target/decode_ways_c

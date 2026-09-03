@@ -213,9 +213,14 @@ mem_put --lang python --approach "$STEM" --lane seq --mode interp --bytes "$(mem
 
 echo
 echo "=== compile memory (cold) ==="
-rm -f "target/${STEM}_kara" "${STEM}"
+# NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+# That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+# a plain `karac build` here is an AUTO-PAR build, so moving it into place
+# left the next run's build_kara freshness check satisfied and the seq lane
+# silently measuring an auto-par binary.
+rm -f "${STEM}"
 bytes=$(mem_peak karac build "${STEM}.kara")
-mv "${STEM}" "target/${STEM}_kara" 2>/dev/null || true
+rm -f "${STEM}"
 cmem_put --lang kara --approach "${STEM}" --mode codegen --bytes "$bytes"
 rm -f "target/${STEM}"
 cmem_put --lang rust --approach "${STEM}" --mode native --bytes "$(mem_peak rustc -O "${STEM}.rs" -o "target/${STEM}")"

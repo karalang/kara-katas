@@ -350,9 +350,14 @@ echo "=== compile memory (cold) ==="
 # comparable to a single-file rustc/clang/karac invocation.
 for src in brute_force.kara hash_map.kara; do
     stem="$(basename "$src" .kara)"
-    rm -f "target/${stem}_kara" "$stem"
+    # NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+    # That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+    # a plain `karac build` here is an AUTO-PAR build, so moving it into place
+    # left the next run's build_kara freshness check satisfied and the seq lane
+    # silently measuring an auto-par binary.
+    rm -f "$stem"
     bytes=$(mem_peak karac build "$src")
-    mv "$stem" "target/${stem}_kara" 2>/dev/null || true
+    rm -f "$stem"
     cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
 for src in brute_force.rs hash_map.rs; do

@@ -254,9 +254,14 @@ mem_put --lang kara --approach nextperm  --lane par --mode codegen --bytes "$(me
 # ── compile memory (cold) ───────────────────────────────────────────────────
 echo
 echo "=== compile memory (cold) ==="
-rm -f target/ps_fact_kara permutation_sequence
+# NOTE: measure the cold compile WITHOUT touching the benchmarked binary.
+# That path holds the KARAC_AUTO_PAR=0 build the seq runtime lane measures;
+# a plain `karac build` here is an AUTO-PAR build, so moving it into place
+# left the next run's freshness check satisfied and the seq lane silently
+# measuring an auto-par binary.
+rm -f permutation_sequence
 cmem_put --lang kara --approach factorial --mode codegen --bytes "$(mem_peak karac build permutation_sequence.kara)"
-mv permutation_sequence target/ps_fact_kara 2>/dev/null || true
+rm -f permutation_sequence
 rm -f target/ps_fact_rust
 cmem_put --lang rust --approach factorial --mode native --bytes "$(mem_peak rustc -O permutation_sequence.rs -o target/ps_fact_rust)"
 rm -f target/ps_fact_c
