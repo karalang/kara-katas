@@ -296,7 +296,7 @@ auto-parallelising build.
 
 ### One defect found: a user associated function on a primitive type
 
-[kara `B-2026-09-03-13`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
+[kara `B-2026-09-03-17`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
 Three lines reproduce it:
 
 ```kara
@@ -345,7 +345,7 @@ spellings sitting side by side is how the gap was found.
 
 ### A second defect: the default auto-par build is 123× slower here
 
-[kara `B-2026-09-03-14`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
+[kara `B-2026-09-03-18`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md).
 On this kata's benchmark workload:
 
 | build | time | |
