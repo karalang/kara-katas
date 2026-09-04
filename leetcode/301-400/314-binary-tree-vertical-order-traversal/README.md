@@ -189,7 +189,7 @@ build, and `--interp`.
 
 ### One defect: codegen's `Map.keys()` can iterate SORTED and seed-independent, diverging from the interpreter
 
-Filed as kara `B-2026-09-04-15`. `Map` iteration order is specified to be
+Filed as kara `B-2026-09-04-16`. `Map` iteration order is specified to be
 per-process random (SipHash under a random key, pinnable with `KARAC_HASH_SEED`).
 It is, under `--interp`. Under **codegen (JIT and AOT alike) a
 `Map[i64, Vec[i64]].keys()` can instead iterate in sorted key order, identical at
