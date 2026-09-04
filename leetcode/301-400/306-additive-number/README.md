@@ -234,16 +234,16 @@ wider ISA has nothing to do regardless of what the checks allow. That is a
 useful control on the earlier two katas' suspect: it shows the "checks block
 vectorisation" story only applies where vectorisable work exists.
 
-### Auto-par is a 7× loss here, and that is a filed defect
+### Auto-par was a 7× loss here; after `5641972` it is a 1.9× win
 
-| | time | system time |
+| | before `5641972` | after |
 |---|---:|---:|
-| `KARAC_AUTO_PAR=0` (sequential) | **0.29 s** | 0.00 s |
-| default auto-par | **2.05 s** | 1.42 s |
+| `KARAC_AUTO_PAR=0` (sequential) | 0.29 s | 0.30 s |
+| default auto-par | **2.05 s** | **0.16 s** |
+| | 7.1× **slower** | 1.9× **faster** |
 
-The published table is the sequential lane. The default build is 7.1× slower —
-see [`B-2026-09-03-40`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md)
-below.
+The published table is the sequential lane and is unaffected. The differential
+moved further still — 0.069 s vs 27.5 s before, 0.06 s vs 0.07 s now.
 
 ## Compiler findings
 
@@ -251,47 +251,78 @@ The arms are clean — zero `karac check` diagnostics across all seven sources,
 all byte-identical under `karac run`, `karac build` and the default
 auto-parallelising build.
 
-### One defect found: the auto-par cost gate is defeated by an implausible estimate
+### One defect found — and the row I filed for it was wrong about where it was
 
 [kara `B-2026-09-03-40`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.md)
-— filed from this kata. The **default** build fans out a region entered on the
-order of a million times:
+— **fixed** in `5641972`. The symptom was real and large: the **default** build
+was 7.1× slower than the sequential one on this kata's benchmark and 398× slower
+on its differential, with `strace` putting 100% of syscall time in `futex`.
 
-| workload | sequential | default auto-par | |
-|---|---:|---:|---|
-| `bench/additive.kara` | 0.29 s | 2.05 s | **7.1×** |
-| `differential.kara` | 0.069 s | 27.5 s | **398×** |
+**The cause was not where I said it was, and my headline number was a red
+herring.** That is the useful part of this entry, so it goes first.
 
-`KARAC_COST_DEBUG=1` reports `per_iter_cost=3578073120 floor=64
-substantial=true`. That cannot be a per-**iteration** cost: the whole benchmark
-executes on the order of 3e8 operations, so one iteration cannot cost 3.6e9
-units. Whatever the estimator is measuring, it clears the floor by **eight
-orders of magnitude**, so the gate that exists to decline unprofitable fan-outs
-cannot fire. The accumulation is `saturating_*` on `u64`, so this is not a
-wraparound.
+I filed the row against `per_iter_cost=3578073120`, the one number
+`KARAC_COST_DEBUG=1` printed, and made "the cost gate is defeated by an
+implausible estimate" the title. The estimate *is* implausible — it is `64^4`,
+the nested-runtime-loop multiplier compounded through `is_additive` →
+`add_digits`, i.e. ~3.6 **seconds** for an iteration that really takes 23 µs —
+but it is a documented over-count and **not this bug**:
 
-`strace -c` attributes 100% of syscall time to `futex`: **1,843,996** calls at
-four workers and **1,963,832** at *one*. The volume is driven by dispatch count,
-not by contention between workers — the region is entered about a million times
-and each entry pays a pool round trip. Worker count then adds contention on top,
-monotonically: 1 → 0.68 s, 2 → 1.69 s, 4 → 1.99 s.
+- The loop it governs is entered **90 times**, not ~1M.
+- Fanning that loop out is the **right** call, and is where the post-fix 2.3×
+  actually comes from. A correct estimate would not have changed the verdict
+  either: 220 iterations at the true 23 µs clears the 80,000-unit threshold by
+  63×.
 
-Ruled out by measurement rather than inspection, because this has the same
-*look* as [`B-2026-09-03-18`](../313-super-ugly-number/) and is a different
-defect: not the per-dispatch environment read (a `getenv` interposer counts five
-calls in the whole run), not nested fan-out (`KARAC_PAR_MAX_FORK_DEPTH=0/1`
-unchanged), not atomic promotion (`KARAC_PAR_ATOMIC_PROMOTION=0` unchanged), not
-worker contention as the root.
+So "fix the estimator", which is what my row's title points a reader at, would
+have cost this kata its speedup and left the regression in place.
 
-The likely missing question is separate from the bad number: every gate asks
-*"is this body substantial?"* and none asks *"how often is this region
-**entered**?"*. A region entered a million times loses on dispatch cost no matter
-how substantial its body, because the amortisation has to happen across entries.
+**What it actually was**: a statement-level auto-par **band** over `add_digits`'s
+four-statement prologue, dispatched once per call. `callgrind` names it —
+`__par_branch_1_2` and `__par_branch_1_3` are each entered **2,250,901** times
+and `karac_par_run_auto` burns 1.14e9 instructions, 17.7% of the run, in a
+**one-worker** run with no threads and no futex calls at all.
 
-**Correctness is unaffected**, which is why no A/B test in the corpus catches it:
-all five arms are byte-identical in every mode, the benchmark prints
-`checksum 370052193` everywhere and the differential prints `DIFFERENTIAL OK`
-everywhere. The clock is the only detector, for the third time in this class.
+**The band gate was inverted.** It declines a band when
+`total < 500` **and** `min_per_branch >= 50`. This band totals 54 — the most
+obviously unprofitable band the compiler can construct — and the second clause
+is exactly what saved it, because `carry = 0` scores **1** and drags the minimum
+under the floor:
+
+```
+karac-band-debug: fn=add_digits stmts=[0, 1, 2, 3] total=54 min_per_branch=1
+                  dispatch_floor=500 visibility_floor=50 may_hide_work=false
+```
+
+The floor's premise is "an estimate this low means I could not *see* the
+branch" — but a bare integer literal is the one thing the estimator understands
+perfectly. The rule read cheapness as blindness, so **the cheaper and more
+obviously unprofitable a band was, the more certainly it escaped being
+declined.** The fix names blindness instead of inferring it from magnitude: only
+a polymorphic call or a user-resource effect can hide work, and the analyzer
+already knows both per statement.
+
+**Why I looked in the wrong place**, since that is reproducible and worth
+recording: `KARAC_COST_DEBUG=1` printed exactly one line on this kata — the
+reduce loop's `per_iter_cost`, for a region entered 90 times — and was silent
+about the band entered 2.25 million times. I filed against the number that
+printed. Finding the real site needed a probe patched into the compiler. The fix
+adds band printing under the same lever, which is the line quoted above, and it
+appears on this kata today.
+
+What survived from the row is the instinct, not the diagnosis: I wrote that
+every gate asks *"is this body substantial?"* and none asks *"how often is this
+region **entered**?"*. That is recorded as correct and is what the fix answers
+for bands — though not by counting entries, since a band whose work is fully
+visible and totals 54 units against a 500-unit dispatch never pays off at *any*
+entry count. The reduce path still has no entry-count notion, and that stays
+open.
+
+**Correctness was never affected**, which is why no A/B test in the corpus
+caught it: all five arms were byte-identical in every mode throughout, the
+benchmark printed `checksum 370052193` everywhere and the differential printed
+`DIFFERENTIAL OK` everywhere. The clock was the only detector, for the third
+time in this class.
 
 ### Nothing was phrased around a gap
 
