@@ -81,9 +81,10 @@ first pair usually *is* the answer.
 ## Differential
 
 `karac run differential.kara` sweeps every list size up to 9 across four
-word-length caps and five alphabet widths, plus ten patterned lists the sweep
-will not reliably produce (all-alphabet words, anagram families, two long
-colliding words hiding a shorter disjoint pair, a private-alphabet family).
+word-length caps and five alphabet widths (2,160 lists), plus fifteen patterned
+ones the sweep will not reliably produce: all-alphabet words, anagram families,
+two long colliding words hiding a shorter disjoint pair below them, and five
+private-alphabet families.
 
 ```
 cases 2175 nonzero 1367 pairable 1693 nonempty 1934 private-alphabet 28
@@ -174,4 +175,76 @@ the differential, which do run on every backend.
 
 ## Benchmarks
 
-_Benchmark run in progress — table and prose land in the follow-up commit._
+`bench/max_product.kara` and its four mirrors build a 6,000-word corpus once
+(lengths 1–16, each word drawn from its own random 7-letter window of the
+alphabet) and then run 15 passes. Each pass rewrites exactly ONE word and
+re-answers the whole corpus.
+
+What each pass measures is deliberately *not* the bare global maximum. Over
+6,000 words that answer saturates: the best disjoint pair of two 16-letter
+words almost always survives one word being rewritten, so the answer sits at
+256 pass after pass and the punch measures nothing. (Confirmed rather than
+assumed — an instrumented build prints `top 256` on all 15 passes.) So each
+pass instead records, for every word, the best partner it can pair with: the
+same pair scan, with the result scattered across the corpus rather than
+collapsed into one register. That moves on every rewrite — `total` walks
+817376, 817456, 817408, … — and it keeps the inner loop honest, because a loop
+that stores cannot be turned into a pure reduction.
+
+30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
+lane at 3 runs.
+
+| implementation | mean | vs fastest |
+|---|---|---|
+| rust `-C target-cpu=x86-64-v3` + overflow-checks (matched) | 1162.7 ms ± 11.8 | 1.00× |
+| c `-march=x86-64-v3` (matched-ISA) | 1163.9 ms ± 6.7 | 1.00× |
+| rust `-O` | 1170.9 ms ± 8.0 | 1.01× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1184.2 ms ± 6.7 | 1.02× |
+| c `clang -O3` | 1199.4 ms ± 14.2 | 1.03× |
+| **kāra `karac build`** | **1215.6 ms ± 15.9** | **1.05×** |
+| go `go build` | 1350.1 ms ± 13.1 | 1.16× |
+| python 3.11 | 18411 ms ± 680 | 15.8× |
+
+Six of the seven compiled legs land inside 5% of each other, which is the
+honest headline: **this workload measures the floor, not the ceiling.** The
+inner loop is one load, one `AND`, one compare and a branch that is almost
+never taken, and there is very little for a backend to be clever about. None
+of the three binaries vectorises it — `objdump` finds zero packed-integer
+instructions in any of them — because the two conditional stores into
+`best[i]` and `best[j]` are a scatter, and a scatter defeats the same
+vectoriser in clang, rustc and karac alike. A kata where every backend is
+blocked by the same wall is a weak discriminator between backends, and it
+should be read as "karac's scalar codegen has no gap here", not as a
+throughput claim.
+
+Two secondary readings do survive:
+
+- **Equal-safety costs ~1%.** Kāra checks integer overflow by default and
+  `rustc -O` silently wraps, so the comparison that matters is against
+  `-C overflow-checks=on`: 1184.2 ms vs 1170.9 ms, a 1.1% tax on Rust, and
+  Kāra pays the same kind of tax inside its own 1215.6 ms. Over 270M pair
+  tests per run the checks are simply not where the time goes.
+- **The matched-ISA twins barely move.** `-march=x86-64-v3` buys C 3.0% and
+  Rust 0.7% — again, nothing to vectorise.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 93.5 ms ± 1.9 | 15.8 KiB | 2.41 MiB |
+| rust | 156.2 ms ± 5.1 | 3864.2 KiB | 2.80 MiB |
+| kāra | 336.9 ms ± 16.7 | 341.5 KiB | 3.19 MiB |
+| go | — | 2179.3 KiB | 2.52 MiB |
+| python | — | — | 8.83 MiB |
+
+`karac build` is 3.6× clang's cold compile and 2.2× rustc's; its binary is 22×
+clang's and 11× smaller than rustc's. Raw numbers in
+`bench/results.container-x86.json`; methodology and caveats in
+[`BENCHMARKS.md`](../../../BENCHMARKS.md).
+
+## Compiler findings
+
+Nothing to file. Every arm type-checked on the first `karac check` except the
+demo loop in `max_product.kara`, where `let ws = cases[k];` moved out of an
+index expression; `karac fix` applied the suggested `.clone()` and the file was
+clean. No workarounds, no contorted phrasing, no `KARAC_AUTO_PAR=0`-only pass.
