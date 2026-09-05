@@ -262,7 +262,20 @@ the six-megabyte bulb array, as it should be. Raw numbers in
 
 ## Compiler findings
 
-Nothing to file. Across five `.kara` files the only diagnostics were three
+**One filed: [`B-2026-09-05-24`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)
+— `karac run` leaves its `karac_jit_runner` child alive when the parent is
+signalled.** Found by this kata's own mutation harness. M3 turns Newton's loop
+into an infinite spin, the harness kills the timed-out `karac run`, and the
+runner it spawned keeps going. SIGINT, SIGTERM and SIGKILL were each tested on
+a freshly spawned pair and all three behave the same way: `karac run` dies, the
+runner survives, spinning at 100% CPU. Ctrl-C on a looping Kāra program returns
+the prompt while the program is still executing; for a harness, every timed-out
+run pins a core and quietly corrupts subsequent measurements — which is exactly
+how it surfaced here, after an orphan had already inflated an unrelated timing
+in this kata's own benchmark set. The temp `/tmp/karac_run_<pid>_jit.ll` handoff
+file leaks on the same paths.
+
+Nothing else. Across five `.kara` files the only diagnostics were three
 `E0218`s in the differential, where `next(seed)` needed the call-site `mut`
 marker Kāra requires on a fresh binding; `karac fix` applied all three. No
 workarounds, no contorted phrasing, no `KARAC_AUTO_PAR=0`-only pass.
