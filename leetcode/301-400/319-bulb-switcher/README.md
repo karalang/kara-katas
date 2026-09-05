@@ -175,11 +175,9 @@ order-independent, so P11 stays green and eight other properties do the work.
 
 ## Verification
 
-All four arms are byte-identical under `karac run` (LLJIT),
-`karac run --interp`, `karac build` with `KARAC_AUTO_PAR=0`, and the default
-auto-parallelising `karac build` — the full A/B set the repo requires. The
-differential's own four-backend run is still in flight as this is written and
-lands in the follow-up commit alongside the benchmark.
+All four arms plus the differential are byte-identical under `karac run`
+(LLJIT), `karac run --interp`, `karac build` with `KARAC_AUTO_PAR=0`, and the
+default auto-parallelising `karac build` — the full A/B set the repo requires.
 
 The benchmark mirror is verified on JIT, AOT-sequential and AOT-auto-par, and
 against all four language twins, but not under `--interp`: it is ten passes of
@@ -189,7 +187,78 @@ which do run on every backend.
 
 ## Benchmarks
 
-_Benchmark run in progress — table and prose land in the follow-up commit._
+`bench/bulb_switcher.kara` and its four mirrors run ten passes, each
+simulating **all `n` rounds** over an `n`-bulb byte array for a different `n`,
+from 6,000,000 down to 5,189,901. The benchmark deliberately measures the arm
+the closed form replaces: `floor(sqrt(n))` is six Newton iterations and not a
+workload, while the simulation is a harmonic-sum number of writes — about
+`n ln n`, roughly 97 million per pass — laid down at every stride from 1 to
+`n`. Round 1 is a linear sweep of six megabytes; round 700,000 touches two
+bulbs a megabyte apart. It is a cache-behaviour benchmark, not an arithmetic
+one.
+
+The `n` changes each pass so the answer moves (2449 down to 2278) rather than
+being one constant, and the fold takes both the count of lit bulbs and the sum
+of their indices, so the array has to be materialised and walked. Bulbs are
+`u8` in every mirror so that all five measure the same six megabytes of
+traffic and not their own choice of bit packing.
+
+30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
+lane at 3 runs.
+
+| implementation | mean | vs fastest |
+|---|---|---|
+| c `clang -O3` | 1409.7 ms ± 22.9 | 1.00× |
+| c `-march=x86-64-v3` (matched-ISA) | 1435.2 ms ± 36.7 | 1.02× |
+| **kāra `karac build`** | **1437.4 ms ± 44.5** | **1.02×** |
+| rust `-C target-cpu=x86-64-v3` + overflow-checks (matched) | 1489.9 ms ± 26.6 | 1.06× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1521.1 ms ± 22.6 | 1.08× |
+| rust `-O` | 1544.1 ms ± 43.1 | 1.10× |
+| go `go build` | 1619.1 ms ± 28.0 | 1.15× |
+| python 3.11 | 93519 ms ± 6943 | 66.3× |
+
+Unlike kata 318 — where six of seven compiled legs finished inside 5% and the
+benchmark discriminated nothing — this workload does separate the backends.
+Kāra lands 2.0% behind clang and ahead of all three Rust legs.
+
+**The Rust gap was investigated and the obvious explanation ruled out.** The
+inner loop indexes a byte slice, so bounds checking is the natural suspect, and
+the Rust binary does retain a `panic_bounds_check` path where the C mirror
+(a raw pointer) has none. It is not the cause: a `get_unchecked_mut` variant,
+timed against the checked one in the same hyperfine run, came out at
+1.563 s ± 0.070 against 1.537 s ± 0.042 — no faster, and both still behind
+C's 1.463 s in that run. So the 7% is real and its cause is *not* isolated
+here; that variant is a scratch diagnostic and is deliberately not in the repo,
+because shipping an `unsafe` mirror would break the equal-safety framing the
+whole benchmark rests on.
+
+Two comparisons that usually carry weight turn out to be non-events on this
+kata, and saying so is more useful than quoting them:
+
+- **Equal-safety is unmeasurable here.** `rustc -O -C overflow-checks=on`
+  came in at 1521.1 ms against plain `-O`'s 1544.1 ms — nominally *faster*,
+  which is not a real effect but noise (σ ≈ 23 and 43 ms). The inner loop is an
+  XOR and a pointer bump; there is essentially no arithmetic to check, so
+  Kāra's default-checked overflow costs it nothing measurable either.
+- **`-march=x86-64-v3` does nothing.** It made C nominally slower (1435.2 vs
+  1409.7 ms, ~1σ). A scattered read-modify-write over a strided array has
+  nothing to vectorise.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 95.3 ms ± 1.8 | 15.8 KiB | 7.16 MiB |
+| rust | 118.6 ms ± 3.5 | 3862.6 KiB | 7.62 MiB |
+| kāra | 337.2 ms ± 6.0 | 337.4 KiB | 8.12 MiB |
+| go | — | 2178.2 KiB | 7.64 MiB |
+| python | — | — | 13.33 MiB |
+
+`karac build` is 3.5× clang's cold compile and 2.8× rustc's; its binary is 21×
+clang's and 11× smaller than rustc's. Every leg's resident set is dominated by
+the six-megabyte bulb array, as it should be. Raw numbers in
+`bench/results.container-x86.json`; methodology and caveats in
+[`BENCHMARKS.md`](../../../BENCHMARKS.md).
 
 ## Compiler findings
 
