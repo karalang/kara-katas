@@ -181,9 +181,26 @@ seven digits so the enumerating solver stays practical under `--interp`; the
 10-digit LeetCode case `"3456237490"` with target 9191 returns `[]`, and
 `"2147483647"` with target 2147483647 returns itself.
 
+## The par lane loses most of its scaling on the M5 — `B-2026-08-28-76`
+
+| host | seq | par | auto-par worth | par CPU | par user-CPU vs seq |
+|---|---:|---:|---:|---:|---:|
+| container x86-64, 4 cores | 1176.3 ms | 303.9 ms | **3.87×** | 389% | 1.00× |
+| Apple M5 Pro, 6P+12E | 1099.2 ms | 355.5 ms | **3.09×** | 1566% | 5.10× |
+
+On the container the lane is near-perfect — 3.87× out of 3.885 cores is 99.6%
+efficiency, and the parallel build's total CPU equals the sequential build's to
+0.3%. On the M5 the same source returns 3.09× for 15.7 cores (19.7% efficiency)
+while doing **5.10× the sequential lane's CPU work**. Go on that host gets 2.96×
+for 6.9 cores.
+
+This kata is the second witness for `B-2026-08-28-76` ([#288](../288-unique-word-abbreviation/)
+is the sharper one at 1.08×) and the one that supplied the homogeneous-placement
+control behind `B-2026-09-05-22`.
+
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are undated; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**

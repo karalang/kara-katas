@@ -57,7 +57,7 @@ bucket out and back, turning this problem's signature O(1) append into O(n).
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are a 2026-08-28 snapshot; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
@@ -70,9 +70,8 @@ bucket out and back, turning this problem's signature O(1) append into O(n).
 
 > **Corroborating host only.** Linux/x86-64 container numbers from
 > [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus publishes from
-> the canonical Apple-silicon feed (`bench/results.json`), which this kata does not have yet —
-> `bench.sh` refuses to write it from the wrong host rather than silently mixing them. Read
-> [`BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of this.
+> the canonical Apple-silicon feed ([`bench/results.json`](bench/results.json)), which this kata
+> now has. Read [`BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of this.
 
 ### Par lane — auto-par vs hand-tuned
 
@@ -88,7 +87,15 @@ goroutine chunking, a `WaitGroup`, and a partial merge.
 | Rust — rayon `par_iter` | 12.0 ms ± 1.7 | 1.20× slower |
 
 kāra auto-par is **2.7× faster than its own sequential build** and edges out both
-hand-written parallel versions. The loop body allocates — a fresh `FreqStack` with two maps per
+hand-written parallel versions.
+
+> **This ordering does not survive the M5 either.** On the canonical Apple M5 Pro
+> lane the par row is kāra 6.85 ms against rayon 3.61 ms and Go 4.52 ms — kāra is
+> **1.90× behind rayon** and 1.52× behind Go, not ahead of either. The auto-par
+> lane itself is healthy on that host (**4.33×** over its own sequential twin, up
+> from 2.7×); what moved is that the seq baseline it multiplies is the one
+> `B-2026-08-28-77` is about. Treat the ordering above as an x86-container
+> result only. The loop body allocates — a fresh `FreqStack` with two maps per
 round — so this exercises auto-par over heap-churning work rather than an arithmetic kernel.
 
 ### Seq lane — single-threaded, per-core codegen quality
@@ -105,15 +112,24 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 **kāra beats `rustc -O` and edges Go** on work that is almost entirely hash-map traffic.
 
 > **This ordering does not survive the M5.** On the canonical Apple M5 Pro lane
-> ([`bench/results.json`](bench/results.json), 2026-08-28) the row above
+> ([`bench/results.json`](bench/results.json), measured 28 August 2026) the row above
 > **inverts**: kāra 28.4 ms against rust 15.3, rust_ovf 15.6, go 15.9, c 3.6 —
 > kāra is **1.86× behind `rustc -O`** and 1.78× behind Go, not ahead of either.
 > Container→M5, Rust improved 2.2× and C 1.8× while kāra went 26.5 → 28.4 ms,
-> i.e. it took no benefit from the faster host at all. That "only kāra doesn't
-> move" signature points at allocator-bound behaviour (the loop body builds a
-> fresh `FreqStack` with two maps per round) rather than codegen, which is a
-> hypothesis worth chasing and not a settled cause. Treat the sentence above as
-> an x86-container result only.
+> i.e. it took no benefit from the faster host at all — the only row in the
+> corpus that got *slower* on the faster machine. Re-measured on 5 September
+> 2026 against current `karac`: kāra 29.63 ms against rust 16.00, rust_ovf 16.49, go 16.53,
+> c 3.76, so it reproduces and is not a one-off. Treat the sentence above as an
+> x86-container result only.
+>
+> Filed as `B-2026-08-28-77`. The leading suspect is now specific rather than
+> vague: `src/codegen/mono.rs:5399` gates the map hash-tag compare on
+> `!target_is_aarch64` for primitive keys, so this `Map[i64, Vec[i64]]` workload
+> got that optimization on the container and does **not** get it on the M5.
+> That gate was the settled outcome of `B-2026-08-05-5` / `B-2026-08-06-33`,
+> measured on a different kata — nobody has flipped it for this one. Note also
+> that the host and the compiler revision moved together, so the row does not
+> yet separate them.
 
 Two caveats on the C row, both cutting against reading it as a like-for-like win:
 

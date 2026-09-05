@@ -204,9 +204,32 @@ compiler's own decision — a byte-identical `_seq.kara` would be a duplicate
 asserting nothing. Building the par row with `KARAC_AUTO_PAR=0` would silently
 measure the seq binary, so `bench.sh` says so where someone might be tempted.
 
+### The M5 lane does not reproduce this — `B-2026-08-28-76`
+
+Everything above was measured on the shared 4-core x86-64 container. On the
+canonical Apple M5 Pro (6P+12E) lane the same source returns **1.08×**:
+
+| host | seq | par | auto-par worth | par CPU | par user-CPU vs seq |
+|---|---:|---:|---:|---:|---:|
+| container x86-64, 4 cores | 181.2 ms | 59.3 ms | **3.06×** | 325% | 1.06× |
+| Apple M5 Pro, 6P+12E | 114.5 ms | 106.1 ms | **1.08×** | 1572% | 3.15× |
+
+So "auto-par is carrying its weight" above is a **container-only** statement. On
+the M5 the lane burns 15.7 cores to gain 8%, and it does 3.15× the sequential
+lane's total CPU work to do it. No `KARAC_PAR_WORKERS` setting recovers it — the
+best (N=4) is 1.16× the sequential twin, and N=2 is *worse* than N=1.
+
+The hand-written pthreads mirror collapses the same way on that host (**0.76×** —
+slower than its own sequential build, at 1489% CPU), while Go, which does not
+statically partition, scales **5.50×**. That points at a static equal-count split
+sized to `available_parallelism()` meeting 12 efficiency cores — a hypothesis,
+not a settled cause. Filed as `B-2026-08-28-76`, with two sub-findings split
+out: `B-2026-09-05-22` (N=2 slower than N=1, on homogeneous cores too) and
+`B-2026-09-05-23` (kernel time linear in worker count).
+
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are undated; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
