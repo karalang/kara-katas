@@ -122,14 +122,18 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 > c 3.76, so it reproduces and is not a one-off. Treat the sentence above as an
 > x86-container result only.
 >
-> Filed as `B-2026-08-28-77`. The leading suspect is now specific rather than
-> vague: `src/codegen/mono.rs:5399` gates the map hash-tag compare on
-> `!target_is_aarch64` for primitive keys, so this `Map[i64, Vec[i64]]` workload
-> got that optimization on the container and does **not** get it on the M5.
-> That gate was the settled outcome of `B-2026-08-05-5` / `B-2026-08-06-33`,
-> measured on a different kata — nobody has flipped it for this one. Note also
-> that the host and the compiler revision moved together, so the row does not
-> yet separate them.
+> Filed as `B-2026-08-28-77`. The first suspect was the arm64 map hash-tag gate
+> (`map_tag_compare` emits the tag compare for primitive keys only when the
+> target is **not** aarch64, so this `Map[i64, Vec[i64]]` workload gets it on the
+> container and not on the M5). **That is now refuted.** Flipping it with the
+> existing `KARAC_MAP_TAG=1` override changes nothing here — 29.08 ms on against
+> 29.20 ms off over 50 interleaved runs, 0.4% the wrong way against a 4–5% σ —
+> while the same override does move `#170`, the kata the gate's own doc comment
+> cites (1.2%), so the lever is live and simply has no purchase on this
+> workload. The cause is still open. Note the host and the compiler revision
+> moved together, and the cheapest way to separate them needs no Mac at all:
+> re-run the **current** compiler on the x86 container, where the old one gave
+> 26.50 ms.
 
 Two caveats on the C row, both cutting against reading it as a like-for-like win:
 
