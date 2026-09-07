@@ -204,32 +204,48 @@ compiler's own decision — a byte-identical `_seq.kara` would be a duplicate
 asserting nothing. Building the par row with `KARAC_AUTO_PAR=0` would silently
 measure the seq binary, so `bench.sh` says so where someone might be tempted.
 
-### The M5 lane does not reproduce this — `B-2026-08-28-76`
+### The M5 lane, and the `snprintf` bug this kata found — `B-2026-09-05-23`
 
-Everything above was measured on the shared 4-core x86-64 container. On the
-canonical Apple M5 Pro (6P+12E) lane the same source returns **1.08×**:
+Everything above was measured on the shared 4-core x86-64 container. Measuring
+the canonical Apple M5 Pro (6P+12E) lane found auto-par returning **1.08×** —
+15.7 cores burned to gain 8%, at 3.15× the sequential lane's total CPU. That was
+filed as `B-2026-08-28-76`, blaming a static equal-count split meeting 12
+efficiency cores.
 
-| host | seq | par | auto-par worth | par CPU | par user-CPU vs seq |
-|---|---:|---:|---:|---:|---:|
-| container x86-64, 4 cores | 181.2 ms | 59.3 ms | **3.06×** | 325% | 1.06× |
-| Apple M5 Pro, 6P+12E | 114.5 ms | 106.1 ms | **1.08×** | 1572% | 3.15× |
+**That diagnosis was wrong, and this kata is what disproved it.** A uniform
+reduction that does not allocate scales **9.58×** at 18 workers on the same host
+with flat CPU, so the partition was never the problem. What this kata actually
+found is that `abbrev` formats — `out.push_str(f"{n - 2}")`, once per call over
+1M punches — and f-string interpolation lowered to libc **`snprintf`**, which
+serializes on locale and lock state. At 18 workers the program spent **1301 ms
+in the kernel** to produce a 107 ms wall.
 
-So "auto-par is carrying its weight" above is a **container-only** statement. On
-the M5 the lane burns 15.7 cores to gain 8%, and it does 3.15× the sequential
-lane's total CPU work to do it. No `KARAC_PAR_WORKERS` setting recovers it — the
-best (N=4) is 1.16× the sequential twin, and N=2 is *worse* than N=1.
+Fixed in `kara@7542b0f28` by formatting integers through a lock-free,
+allocation-free runtime helper instead:
 
-The hand-written pthreads mirror collapses the same way on that host (**0.76×** —
-slower than its own sequential build, at 1489% CPU), while Go, which does not
-statically partition, scales **5.50×**. That points at a static equal-count split
-sized to `available_parallelism()` meeting 12 efficiency cores — a hypothesis,
-not a settled cause. Filed as `B-2026-08-28-76`, with two sub-findings split
-out: `B-2026-09-05-22` (N=2 slower than N=1, on homogeneous cores too) and
-`B-2026-09-05-23` (kernel time linear in worker count).
+| | seq | par | auto-par worth | sys @ 18 workers |
+|---|---:|---:|---:|---:|
+| container x86-64, 4 cores | 181.2 ms | 59.3 ms | **3.06×** | — |
+| M5, before the fix | 114.5 ms | 106.1 ms | **1.08×** | 1301 ms |
+| M5, after the fix | 92.5 ms | 26.8 ms | **3.45×** | 2.5 ms |
+
+The sequential lane got 1.24× faster too, because `snprintf` was the slower path
+single-threaded as well — so this was never purely a parallelism defect.
+
+The par lane also **inverts against the hand-written pthreads floor**: C's
+mirror, which spawns one thread per logical core and collapses on this host
+(72.0 ms, *slower* than its own 57.5 ms sequential build), is now **2.68×**
+behind kāra's auto-par. Go still leads the lane at 7.1 ms.
+
+Two findings this kata surfaced remain open: `B-2026-08-28-76` for whatever
+gap is left now that formatting is accounted for, and `B-2026-09-05-22` —
+**N=2 is still pathological here** (179.8 ms against 91.6 at N=1), because that
+one is allocation under two workers, not formatting, and the fix above does not
+touch it.
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are undated; the feed was last measured 2026-09-07.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
