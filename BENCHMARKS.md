@@ -38,6 +38,33 @@ backtracking — `karac`'s ownership/RC codegen). What survives equal-safety is 
 handful of string-shaped kernels (~1.2×) and the low-cardinality sort in #1665 —
 both tracked.
 
+> **⚠️ The `maps` half of that claim was withdrawn on 2026-09-08.** karac
+> `59c8d30cd` (2026-08-22) replaced codegen's integer hash — a single multiply
+> against a **compile-time-constant seed in the compiler's own source** — with
+> per-process-seeded SipHash-1-3, closing an offline-collision hole. Every
+> map-bearing figure recorded before that date was measuring kāra hashing far
+> more cheaply than the comparators it was being scored against.
+>
+> All twelve affected katas have been re-benched on the current compiler
+> (#3, #30, #133, #146, #166, #170, #217, #219, #220, #347, #387, #726) and
+> **nine of them crossed from ahead of safety-matched Rust to behind it**;
+> #217 is the sole survivor, narrowly. Comparators held within 1–4% on
+> byte-identical binaries throughout, so the movement is the compiler's, not
+> the host's.
+>
+> **The linked-list, tree and backtracking kernels in that same set are
+> unaffected** — they do not hash, and their figures stand. Only the map
+> members moved. Two katas, [#347](leetcode/301-400/347-top-k-frequent-elements/)
+> and [#387](leetcode/301-400/387-first-unique-character-in-a-string/), had
+> flagged this exact mismatch in advance and predicted a statistical tie at
+> equal hashing; the measured outcome is 1.18× behind on both.
+>
+> What remains is real but far smaller than the raw ratios suggest: an isolated
+> `Map[i64,i64]` lookup puts kāra at **1.73× Rust's instruction count but only
+> 1.14× its wall clock**. See kara `B-2026-09-07-42` (bisect) and
+> `B-2026-09-07-53` (corpus measurement) — the latter also records an inline-
+> SipHash codegen path that was built, measured at 2.6–4.8%, and declined.
+
 **Three-way decomposition of the overflow tax, measured on
 [#228](leetcode/201-300/228-summary-ranges/) (2026-07-30, x86 container).** The
 caveat above is easy to read as special pleading, so here it is isolated against
@@ -340,9 +367,13 @@ per-core compiler-quality comparison.
 
 Kāra's cloud tracks C's closely and sits at or below the **Rust (checked)** rings
 on most programs — i.e. at parity with *safety-matched* Rust, ahead on the
-collection/pointer kernels, with the only daylight to the gray `rust -O` baseline
-being the overflow checks Rust opts out of by default (see the baseline caveat
-above). The residual equal-safety gaps are string-building kernels and #1665's sort.
+pointer/tree/backtracking kernels, with the only daylight to the gray `rust -O`
+baseline being the overflow checks Rust opts out of by default (see the baseline
+caveat above). The residual equal-safety gaps are string-building kernels,
+#1665's sort, and — since 2026-09-08 — the **map-bearing kernels**, which moved
+behind safety-matched Rust when codegen adopted SipHash-1-3 (see the withdrawal
+note in § Baseline caveat above). This chart predates that re-bench for the map
+katas.
 Go trails on most single-threaded work.
 
 Corpus-level, sequential lane, on the 249 program-rows that carry a
@@ -358,6 +389,13 @@ behind C" — not as a headline. The p10/p90 spread is the real content: the
 distribution is wide in both directions, the tails are what the per-kata pages
 explain, and the figure still averages across compiler generations (see
 Provenance).
+
+**This table is a 2026-07-28 snapshot and has not been recomputed since the
+2026-08-22 hash change.** Twelve of its 249 rows are map-bearing and have since
+moved against safety-matched Rust (see the withdrawal note above); nine crossed.
+The median is computed over enough rows that twelve will not move it far, but it
+has not been re-derived, so treat the `Kāra faster 133/249` count as an upper
+bound until it is.
 
 ## Binary size — sequential lane
 
