@@ -57,9 +57,6 @@ Both implementations, all four surfaces, byte-identical to the oracle —
 including the empty-string and single-character edge cases.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-04.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 [`bench/`](bench/) — `bash bench/bench.sh`. Read
 [`../../../BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of these.
 
@@ -82,25 +79,29 @@ measurement. Sink = `8000000`, identical across all five languages.
 
 ### Runtime — 30 runs, 5 warmup
 
+Apple M5 Pro, karac `0.1.0-dev.8508+gc9032a670`, measured 2026-09-08.
+
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| c | 50.7 ms ± 5.2 | **2.89× faster** |
-| **kāra** | **146.6 ms ± 14.9** | — |
-| go | 434.1 ms ± 23.8 | 2.96× slower |
-| rust (overflow-checks=on) | 562.8 ms ± 27.3 | 3.84× slower |
-| rust | 574.3 ms ± 39.5 | 3.92× slower |
+| c | 13.8 ms ± 0.5 | **15.29× faster** |
+| go | 161.5 ms ± 2.6 | 1.31× faster |
+| rust | 186.5 ms ± 8.6 | 1.13× faster |
+| rust (overflow-checks=on) | 179.8 ms ± 2.3 | 1.18× faster |
+| **kāra** | **211.6 ms ± 4.1** | — |
 
-### ⚠️ The 3.9× over Rust is mostly the hash function, not codegen
+### ✅ The hasher mismatch this section warned about is now CLOSED — and the warning was right
 
-Kāra hashes an integer key with a single Fibonacci multiply
-(`runtime/src/map.rs`: `(v as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)`). Rust's
-default `HashMap` uses SipHash-1-3, which is **DoS-resistant**; Kāra's is not.
-Comparing them directly is a safety mismatch on the hashing axis — the same
-category of error as benchmarking against `rustc -O`'s silent wrapping.
+Every revision of this file before 2026-09-08 led with **"the 3.9× over Rust is
+mostly the hash function, not codegen."** That was correct, and it has since
+been settled by the compiler rather than by argument.
 
-[`bench/first_unique_char_fasthash.rs`](bench/first_unique_char_fasthash.rs)
-swaps Rust onto the *same* Fibonacci multiply. Measured in one hyperfine run,
-same protocol:
+As written: Kāra hashed an integer key with a single Fibonacci multiply
+(`(v as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)`) while Rust's default
+`HashMap` used **DoS-resistant** SipHash-1-3, so comparing them directly was
+"a safety mismatch on the hashing axis — the same category of error as
+benchmarking against `rustc -O`'s silent wrapping."
+[`bench/first_unique_char_fasthash.rs`](bench/first_unique_char_fasthash.rs) put
+Rust on the same multiply and measured a **statistical tie**:
 
 | Lane | mean ± σ | ratio |
 |---|---|---|
@@ -108,13 +109,24 @@ same protocol:
 | rust (Fibonacci multiply, **equal-hash**) | 161.2 ms ± 18.7 | kāra **1.12 ± 0.16×** faster |
 | rust (SipHash, default) | 570.2 ms ± 27.8 | kāra 3.97 ± 0.40× faster |
 
-**On equal hashing the two are a statistical tie** — the ±0.16 uncertainty spans
-1.0. Roughly 72% of the headline gap is hasher choice. The honest claim is that
-kāra's map lowering is competitive with Rust's, *not* that it is 4× better. This
-lane is deliberately kept out of `results.json`: `scripts/bench-graph.py` has a
-fixed `LANGS` set and silently drops unknown lanes.
+That analysis put ~72% of the headline gap on hasher choice and concluded kāra's
+map lowering was "competitive with Rust's, *not* 4× better."
 
-**C's 2.9× lead has its own caveat.** Its map is a fixed 64-slot stack array
+**karac `59c8d30cd` (2026-08-22) removed the mismatch at the source.** The
+Fibonacci multiply is gone; both backends now hash with per-process-seeded
+SipHash-1-3 — because that multiply's seed was a compile-time constant in the
+compiler's own source, so colliding keys could be generated offline. The main
+table above is therefore the equal-hash comparison, and the `fasthash.rs` arm is
+retained as history rather than as a claim.
+
+The outcome at genuine parity is **1.18× behind** equal-safety Rust — the
+prediction was a tie, and the measurement landed just outside it on the
+unfavourable side. Both the old 3.9× lead and the "72% of it is the hasher"
+decomposition are now history; what survives is the section's actual thesis,
+that kāra's map is in the same class as `std::collections::HashMap`. See kara
+`B-2026-09-07-42` (bisect) and `B-2026-09-07-53` (twelve katas, corpus-wide).
+
+**C's 15.3× lead has its own caveat.** Its map is a fixed 64-slot stack array
 that fits in L1 with no allocation, no resizing, and no rehash — a real
 implementation advantage over every heap-allocating stdlib map here. It is still
 an open-addressed hash map (not a direct-address count table, which would have
