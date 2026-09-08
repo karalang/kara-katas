@@ -29,7 +29,12 @@ the compute. Tracked in the compiler's dogfooding roster
   in-page rather than decoded from a file, so they carry no source figure and
   the comparison stays off. A 12 MP PNG encode is a few hundred ms and a full
   extra copy, so the recompute is debounced 200 ms and deliberately not hooked
-  to the bench path.
+  to the bench path. Sizes print in three bands — `B` under a kilobyte (so a
+  small file reads as small rather than as `0 KB`), `KB`, then `MB` from
+  1023.5 KB up, promoting at the rounding boundary rather than at 2²⁰ so
+  nothing can ever render `1024 KB`. `MB` means MiB here, including in the fit
+  cap, which is how server-side limits are almost always implemented
+  (`upload_max_filesize = 5M`, `client_max_body_size 5m`).
 - **`fit under [ 5 ] MB` does the search for you.** The readout above turns
   "will this fit?" into a glance; this turns "make it fit" into one click.
   Quality first, by binary search over ~6 encodes, because that is free and

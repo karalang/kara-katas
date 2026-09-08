@@ -233,9 +233,18 @@
   // Bumped by every adopt(); invalidates a cached encode of the previous image.
   let generation = 0;
 
-  const fmtBytes = (n) => n > 1048576
-    ? (n / 1048576).toFixed(2) + " MB"
-    : (n / 1024).toFixed(0) + " KB";
+  // Three bands, and the two seams are where this used to be wrong. Under a
+  // kilobyte it reported "0 KB", which reads as broken rather than small (a
+  // 300-byte PNG is a real thing to drop on it). And the KB band is printed
+  // without decimals, so anything from 1023.5 KB up would render "1024 KB" --
+  // a unit the reader then has to convert themselves, right at the boundary
+  // where the MB form exists to save them that. Promote at the rounding
+  // boundary, not at the exact power, so no input can print 1024 of anything.
+  const fmtBytes = (n) => {
+    if (n < 1024) return `${Math.round(n)} B`;
+    const kb = n / 1024;
+    return kb < 1023.5 ? `${kb.toFixed(0)} KB` : `${(n / 1048576).toFixed(2)} MB`;
+  };
 
   const host = {
     read_src(dst, len, ctx) {
@@ -832,6 +841,7 @@
     // Lets verify_browser.mjs read the pre-download readout and compare it
     // against the bytes a real download would carry.
     sizeText: () => szEl.textContent,
+    fmtBytes: (n) => fmtBytes(n),
     fitNote: () => fitNoteEl.textContent,
     blobSize: () => new Promise((res) => canvas.toBlob(
       (b) => res(b ? b.size : -1), fmtEl.value,

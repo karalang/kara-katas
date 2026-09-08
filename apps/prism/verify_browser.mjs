@@ -426,9 +426,32 @@ async function main() {
   // guard the staleness the old post-download readout had: it never moved when
   // the quality slider did, and it survived an edit that invalidated it.
   stage("size readout");
-  const fmtBytes = (n) => n > 1048576
-    ? (n / 1048576).toFixed(2) + " MB"
-    : (n / 1024).toFixed(0) + " KB";
+  // A copy of the page's formatter, so the assertions below can be written
+  // synchronously. It is checked against the page's own on a fixed table
+  // first -- a silently drifted copy would make every size assertion in this
+  // file agree with itself and with nothing else.
+  const fmtBytes = (n) => {
+    if (n < 1024) return `${Math.round(n)} B`;
+    const kb = n / 1024;
+    return kb < 1023.5 ? `${kb.toFixed(0)} KB` : `${(n / 1048576).toFixed(2)} MB`;
+  };
+  // The seams are the point: nothing may print "0 KB" (reads as broken) and
+  // nothing may print "1024 KB" (the unit the MB band exists to spare you),
+  // and the promotion happens at the rounding boundary rather than at 2^20.
+  const FMT_CASES = [
+    [0, "0 B"], [312, "312 B"], [1023, "1023 B"], [1024, "1 KB"],
+    [491520, "480 KB"], [1047551, "1023 KB"], [1048063, "1023 KB"],
+    [1048064, "1.00 MB"], [1048575, "1.00 MB"], [1048576, "1.00 MB"],
+    [3400000, "3.24 MB"], [26214400, "25.00 MB"],
+  ];
+  for (const [n, want] of FMT_CASES) {
+    const got = await evalJs(`__prism.fmtBytes(${n})`);
+    if (got !== want) throw new Error(`page formats ${n} B as "${got}", expected "${want}"`);
+    if (fmtBytes(n) !== want) {
+      throw new Error(`this file's fmtBytes copy has drifted: ${n} B -> "${fmtBytes(n)}", expected "${want}"`);
+    }
+  }
+  console.error(`[ok] byte formatter: ${FMT_CASES.length} boundaries, no "0 KB" and no "1024 KB"`);
   // Poll rather than sleep: the encode is debounced and then async.
   const settledSize = async (not = null) => {
     for (let i = 0; i < 80; i++) {
@@ -745,7 +768,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles, byte-exact pre-download size readout, fit-under-a-cap on both the quality and the resample path), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles, byte-formatter boundaries, byte-exact pre-download size readout, fit-under-a-cap on both the quality and the resample path), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }
