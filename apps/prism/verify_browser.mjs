@@ -528,6 +528,100 @@ async function main() {
   }
   console.error("[ok] size readout: pre-download and byte-exact, tracks quality/format/edits, cleared on start over");
 
+  // ── Fit under a cap ─────────────────────────────────────────────────────
+  // Two paths, and the interesting one is the second. A cap quality alone can
+  // reach must leave the pixels untouched; a cap it cannot must come down in
+  // dimensions and STILL land under. Both are asserted against a real encode
+  // rather than against the note the page writes about itself.
+  stage("fit under a cap");
+  const setCap = (v, unit) => `(() => {
+    const c = document.getElementById('cap'), u = document.getElementById('capunit');
+    c.value = ${v}; u.value = '${unit}';
+    c.dispatchEvent(new Event('input')); u.dispatchEvent(new Event('change'));
+    return true; })()`;
+  const settledFit = async () => {
+    for (let i = 0; i < 200; i++) {
+      const t = await evalJs("__prism.fitNote()");
+      if (t && !t.startsWith("fitting…")) return t;
+      await sleep(100);
+    }
+    throw new Error("fit never settled");
+  };
+
+  // Same incompressible noise: it does not shrink for free, so a cap that
+  // bites really does force the search to do something.
+  await evalJs(`(() => {
+    const W = 384, H = 384, a = new Uint8ClampedArray(W * H * 4);
+    let s = 999;
+    for (let i = 0; i < W * H; i++) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      a[i * 4] = s & 255; a[i * 4 + 1] = (s >> 8) & 255;
+      a[i * 4 + 2] = (s >> 16) & 255; a[i * 4 + 3] = 255;
+    }
+    __prism.loadPixels(a, W, H, 0);
+    return true; })()`);
+  await evalJs(pickFmt("image/jpeg"));
+  await evalJs(setQ(100));
+  await settledSize();
+  const fullBytes = await evalJs("__prism.blobSize()");
+
+  // (a) Reachable on quality alone: ask for two thirds of the q100 size.
+  const softCapKB = Math.floor((fullBytes * 0.66) / 1024);
+  const dimsBefore = await evalJs("__prism.dims()");
+  await evalJs(setCap(softCapKB, "1024"));
+  await evalJs("(() => { document.getElementById('fit').click(); return true; })()");
+  let fitNote = await settledFit();
+  let fitBytes = await evalJs("__prism.blobSize()");
+  let dimsAfter = await evalJs("__prism.dims()");
+  if (fitBytes > softCapKB * 1024) {
+    throw new Error(`fit overshot its cap: ${fitBytes} B against ${softCapKB * 1024} B ("${fitNote}")`);
+  }
+  if (dimsAfter.w !== dimsBefore.w || dimsAfter.h !== dimsBefore.h) {
+    throw new Error(`fit resampled for a cap quality could reach (${dimsBefore.w}×${dimsBefore.h}` +
+      ` -> ${dimsAfter.w}×${dimsAfter.h}) — "${fitNote}"`);
+  }
+  if (!fitNote.startsWith("fits ")) {
+    throw new Error(`fit reached the cap but reported "${fitNote}"`);
+  }
+  // The readout must agree with the file the Download button would now write.
+  let szAfter = await evalJs("__prism.sizeText()");
+  if (!szAfter.includes(fmtBytes(fitBytes))) {
+    throw new Error(`fit left the size readout disagreeing: "${szAfter}" vs ${fmtBytes(fitBytes)}`);
+  }
+
+  // (b) Out of quality's reach: a cap under what q40 gives at full size, so
+  //     the run has to come down in pixels to get there.
+  await evalJs(setQ(40));
+  await settledSize();
+  const floorBytes = await evalJs("__prism.blobSize()");
+  const hardCapKB = Math.max(1, Math.floor((floorBytes * 0.35) / 1024));
+  await evalJs(setCap(hardCapKB, "1024"));
+  await evalJs("(() => { document.getElementById('fit').click(); return true; })()");
+  fitNote = await settledFit();
+  fitBytes = await evalJs("__prism.blobSize()");
+  dimsAfter = await evalJs("__prism.dims()");
+  if (!fitNote.startsWith("fits ")) {
+    throw new Error(`fit could not reach a cap that pixels should have bought: "${fitNote}"`);
+  }
+  if (fitBytes > hardCapKB * 1024) {
+    throw new Error(`fit reported success at ${fitBytes} B over a ${hardCapKB * 1024} B cap`);
+  }
+  if (!(dimsAfter.w < dimsBefore.w)) {
+    throw new Error(`fit claimed a sub-quality-floor cap without resampling ` +
+      `(${dimsAfter.w}×${dimsAfter.h}) — "${fitNote}"`);
+  }
+  if (!/resized/.test(fitNote)) {
+    throw new Error(`fit resampled but did not say so: "${fitNote}"`);
+  }
+  // Every resample went through apply(), so it is on the undo stack.
+  await evalJs("(() => { document.getElementById('undo').click(); return true; })()");
+  await sleep(300);
+  const undone = await evalJs("__prism.dims()");
+  if (undone.w <= dimsAfter.w) {
+    throw new Error(`fit's resample was not undoable (${dimsAfter.w} -> ${undone.w})`);
+  }
+  console.error("[ok] fit: quality-only cap leaves pixels alone, sub-floor cap resamples and lands under, both undoable");
+
   // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
   // COOP/COEP), fresh page, assert the threaded module is picked, then prove
   // an op produces oracle-exact pixels with the pool active.
@@ -651,7 +745,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles, byte-exact pre-download size readout), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles, byte-exact pre-download size readout, fit-under-a-cap on both the quality and the resample path), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

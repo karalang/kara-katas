@@ -70,6 +70,9 @@
   input[type=range] { accent-color: #6fd3ff; width: 110px; }
   #scale { width: 150px; }
   #pct { width: 62px; }
+  #cap { width: 62px; }
+  #fitnote { font-size: 12px; opacity: .55; }
+  #fitnote.warn { color: #ffcf6f; opacity: .9; }
   #target { font-size: 12px; opacity: .7; min-width: 168px; }
   #target.big { color: #ffcf6f; opacity: .9; }
   .sl { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; opacity: .85; }
@@ -159,6 +162,17 @@
       </div>
       <button id="download" class="primary">Download</button>
       <span id="sz" style="font-size:12px;opacity:.7"></span>
+    </div>
+
+    <div class="panel">
+      <label>fit under</label>
+      <input id="cap" type="number" min="1" step="1" value="5" />
+      <select id="capunit">
+        <option value="1048576">MB</option>
+        <option value="1024">KB</option>
+      </select>
+      <button id="fit">Fit</button>
+      <span id="fitnote">drops quality first, then resizes only if it must</span>
     </div>
 
     <div class="row">
@@ -264,7 +278,8 @@
   // Buttons that start wasm work; locked while a call is in flight so a slow
   // op can't be queued up behind itself.
   const BUSY = ["resize", "half", "double", "grayscale", "rotl", "rotr",
-                "fliph", "flipv", "scale", "pct", "rw", "rh", "bri", "con", "sat"];
+                "fliph", "flipv", "scale", "pct", "rw", "rh", "bri", "con", "sat",
+                "fit"];
   const setBusy = (on) => { for (const id of BUSY) $(id).disabled = on; };
 
   async function apply(op, a, b, c, d, label, opts = {}) {
@@ -546,6 +561,7 @@
   let sizeToken = 0;              // guards against an out-of-order encode
   let sizeTimer = null;
   let cachedBlob = null, cachedKey = "";
+  let fitting = false;
 
   // What an encode is a function of. `generation` covers the pixels (adopt()
   // bumps it), so a resize or an undo retires the cache without this needing
@@ -560,6 +576,7 @@
   // README quotes. The callers below are the points a person finished
   // something instead.
   function scheduleSize(delay = 200) {
+    if (fitting) return;          // the fit run prices its own result
     clearTimeout(sizeTimer);
     // Mark it stale NOW, not when the encode starts. Otherwise the debounce
     // window puts the previous number on screen as though it were current --
@@ -642,6 +659,119 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
+  // ── Fit under a cap ──────────────────────────────────────────────────────
+  // The readout above turns "will this fit?" into one glance; this turns
+  // "make it fit" into one click. Quality first, because it is free and
+  // reversible -- the pixels are untouched and the slider can be dragged
+  // back. Only when quality alone cannot reach the cap does it resample, and
+  // each resample is an ordinary apply() so it lands on the undo stack like
+  // anything else a person clicked.
+  const capEl = $("cap"), capUnitEl = $("capunit"), fitNoteEl = $("fitnote");
+  const FIT_NOTE = fitNoteEl.textContent;
+
+  // The search floor. A binary search over the full 1..100 would "succeed" by
+  // handing back a q3 smear that technically fits, which is not what anyone
+  // means by fitting a photo to a limit. Below this it is better to give up
+  // some pixels than the rest of the image, so the run resizes instead.
+  const Q_FLOOR = 40;
+  const FIT_ROUNDS = 5;           // resample rounds before admitting defeat
+
+  const encodeAt = (type, q) => new Promise((res) => canvas.toBlob(
+    res, type, type === "image/png" ? undefined : q / 100));
+
+  // Largest quality in [Q_FLOOR, 100] whose encode fits, or null. ~6 encodes.
+  async function bestQualityUnder(type, cap) {
+    let lo = Q_FLOOR, hi = 100, best = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const blob = await encodeAt(type, mid);
+      if (blob && blob.size <= cap) { best = { q: mid, blob }; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return best;
+  }
+
+  const setFitNote = (text, warn = false) => {
+    fitNoteEl.textContent = text;
+    fitNoteEl.classList.toggle("warn", warn);
+  };
+
+  async function doFit() {
+    if (!cur || fitting) return;
+    const cap = Math.floor(Number(capEl.value) * Number(capUnitEl.value));
+    if (!(cap > 0)) { setFitNote("give me a size to aim at", true); return; }
+
+    const type = fmtEl.value;
+    const png = type === "image/png";
+    fitting = true;
+    $("fit").disabled = true;
+    setFitNote("fitting…");
+    let resizes = 0;
+    try {
+      for (let round = 0; round <= FIT_ROUNDS; round++) {
+        // PNG has no quality control at all, so for it this is only ever a
+        // question of how many pixels there are.
+        const hit = png
+          ? await (async () => {
+              const b = await encodeAt(type, 100);
+              return b && b.size <= cap ? { q: null, blob: b } : null;
+            })()
+          : await bestQualityUnder(type, cap);
+
+        if (hit) {
+          if (hit.q !== null) { qEl.value = hit.q; $("qv").textContent = hit.q; }
+          cachedBlob = hit.blob; cachedKey = encodeKey();
+          renderSize(hit.blob);
+          const at = resizes ? ` at ${curW} × ${curH}` : "";
+          const via = png
+            ? (resizes ? `resized ${resizes === 1 ? "once" : resizes + "×"}` : "already under")
+            : `q${hit.q}${resizes ? `, resized ${resizes === 1 ? "once" : resizes + "×"}` : ""}`;
+          setFitNote(`fits ${fmtBytes(cap)} — ${via}${at}`);
+          return;
+        }
+        if (round === FIT_ROUNDS) break;
+
+        // Encoded size tracks pixel count closely enough for photos, so the
+        // measurement at the floor tells us how far to come down. The 0.92
+        // is slack for the fact that it only tracks closely, and the halving
+        // clamp stops a wild first estimate from throwing away the image in
+        // one step.
+        const probe = await encodeAt(type, png ? 100 : Q_FLOOR);
+        if (!probe) { setFitNote("encode failed", true); return; }
+        let f = Math.sqrt((cap / probe.size) * 0.92);
+        f = Math.min(f, 0.9);                   // always make real progress
+        f = Math.max(f, 0.5);                   // but never more than a halving
+        const dw = Math.max(16, Math.round(curW * f));
+        const dh = Math.max(16, Math.round(curH * f));
+        if (dw === curW && dh === curH) break;  // nothing left to give
+        setFitNote(`fitting… ${dw} × ${dh}`);
+        await apply(OP.LANCZOS, dw, dh, 0, 0, `fit → ${dw}×${dh} (lanczos-3)`);
+        $("fit").disabled = true;               // apply() re-enabled the panel
+        resizes++;
+      }
+      // Out of rounds. Say where it got to rather than silently stopping --
+      // the undo stack holds every step, so backing out is one button.
+      const last = await encodeAt(type, png ? 100 : Q_FLOOR);
+      if (last) { cachedBlob = last; cachedKey = encodeKey(); renderSize(last); }
+      setFitNote(`couldn't reach ${fmtBytes(cap)} — stopped at ${curW} × ${curH}` +
+        (last ? ` · ${fmtBytes(last.size)}` : "") +
+        (png ? " (PNG is lossless — try JPEG or WebP)" : ""), true);
+    } finally {
+      fitting = false;
+      $("fit").disabled = false;
+    }
+  }
+  $("fit").addEventListener("click", doFit);
+  capEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doFit(); }
+  });
+  // A different target or format makes the last verdict about a question
+  // nobody asked; drop it rather than leave it looking current.
+  const resetFitNote = () => { if (!fitting) setFitNote(FIT_NOTE); };
+  capEl.addEventListener("input", resetFitNote);
+  capUnitEl.addEventListener("change", resetFitNote);
+  fmtEl.addEventListener("change", resetFitNote);
+
   // ── History ──────────────────────────────────────────────────────────────
   $("undo").addEventListener("click", () => {
     const prev = undoStack.pop();
@@ -671,6 +801,7 @@
     srcBytes = 0;
     metaEl.textContent = "";
     clearSize();
+    setFitNote(FIT_NOTE);
     rwEl.value = ""; rhEl.value = "";
     pctEl.value = 100; scaleEl.value = pctToPos(100); showTarget();
     clearAdjust();
@@ -701,6 +832,7 @@
     // Lets verify_browser.mjs read the pre-download readout and compare it
     // against the bytes a real download would carry.
     sizeText: () => szEl.textContent,
+    fitNote: () => fitNoteEl.textContent,
     blobSize: () => new Promise((res) => canvas.toBlob(
       (b) => res(b ? b.size : -1), fmtEl.value,
       fmtEl.value === "image/png" ? undefined : Number(qEl.value) / 100)),

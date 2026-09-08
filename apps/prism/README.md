@@ -30,6 +30,21 @@ the compute. Tracked in the compiler's dogfooding roster
   the comparison stays off. A 12 MP PNG encode is a few hundred ms and a full
   extra copy, so the recompute is debounced 200 ms and deliberately not hooked
   to the bench path.
+- **`fit under [ 5 ] MB` does the search for you.** The readout above turns
+  "will this fit?" into a glance; this turns "make it fit" into one click.
+  Quality first, by binary search over ~6 encodes, because that is free and
+  reversible — the pixels are untouched and the slider drags back. The search
+  floors at **q40**: a search over the full 1–100 would "succeed" by handing
+  back a q3 smear that technically fits, which is not what anyone means by
+  fitting a photo to a limit, so below that floor it is better to give up some
+  pixels than the rest of the image. Only then does it resample, through the
+  ordinary Lanczos-3 path, so every step lands on the undo stack like anything
+  else you clicked — it estimates the scale from an encode at the floor (bytes
+  track pixel count closely enough for photos), clamped to never take more than
+  a halving in one round or less than 10%, and re-searches quality after each.
+  PNG is lossless, so for PNG this is only ever about pixel count and it says
+  so. If it runs out of rounds it reports where it stopped rather than leaving
+  you to find out from the file.
 - **Adjust is a live control over a snapshot, not three chained ops.** The
   brightness/contrast/saturation sliders apply on release like everything else
   in the panel; the first move away from zero keeps the working image aside,
@@ -142,7 +157,8 @@ the compute. Tracked in the compiler's dogfooding roster
 - **Real-browser verified, three legs**: `verify_browser.mjs` drives the
   actual page in headless Chrome over CDP — the sequential-fallback leg
   (`?seq`: fallback pinned + load, grayscale oracle pixels, undo, rotate,
-  resize, crop, chained, byte-exact pre-download size readout), the threaded leg (real COOP/COEP headers, threaded
+  resize, crop, chained, byte-exact pre-download size readout, fit-under-a-cap
+  on both its quality-only and its resampling path), the threaded leg (real COOP/COEP headers, threaded
   module picked, grayscale oracle, banded Lanczos resize on the pool), AND
   the coi-shim leg (headerless server → SW-injected isolation → threaded +
   oracle — the GitHub Pages simulation). `./build.sh --verify`.
