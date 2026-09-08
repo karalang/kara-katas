@@ -36,19 +36,17 @@ Store a `Map[number → count]`. `add` bumps the count (O(1)). `find(value)` sca
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`762965`). Workload: build a 170-add sparse multiset over [0,6K) keys (~168 distinct), then 1.2M full-scan find(target) queries; sink=count of trues. NOTE: Kara/Rust/Go/Python use a hash map; C hand-rolls a direct-address count table + distinct-key list (same membership semantics)..
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-04 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-08 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 295.3 ms | 0.30× |
-| Rust `-O` | 746.9 ms | 0.75× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 761.1 ms | 0.76× |
-| **Kāra (codegen)** | 997.1 ms | 1.00× |
-| Go | 1.16 s | 1.17× |
+| C `clang -O3` | 294.7 ms | 0.09× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 740.5 ms | 0.22× |
+| Rust `-O` | 748.9 ms | 0.23× |
+| Go | 1.09 s | 0.33× |
+| **Kāra (codegen)** | 3.32 s | 1.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 9e8558e68059); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
-
-> **The Kāra row above is a 2026-08-04 measurement and is now stale on the slow side.** Part of the `B-2026-08-05-5` regression it captured has since been fixed in `karac` (see the note below): the same binary measures 858–870 ms on the same host after the fix, against 986–1026 ms before it. The table is left at the recorded value deliberately — these numbers come from the `bench.sh` → `results.json` pipeline and are never hand-edited, and the remaining residual is still open, so the kata is due one re-bench once that lands rather than two.
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 8dc5a4d8baeb); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
