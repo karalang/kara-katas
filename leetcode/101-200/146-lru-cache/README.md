@@ -45,17 +45,17 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-05 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-08 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 197.6 ms | 0.84× |
-| **Kāra (codegen)** | 236.6 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 768.6 ms | 3.25× |
-| Rust `-O` | 778.2 ms | 3.29× |
-| Go | 977.0 ms | 4.13× |
+| C `clang -O3` | 186.8 ms | 0.11× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 730.7 ms | 0.44× |
+| Rust `-O` | 738.7 ms | 0.44× |
+| Go | 923.7 ms | 0.55× |
+| **Kāra (codegen)** | 1.68 s | 1.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 2ed967c9f1c1); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 8dc5a4d8baeb); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -70,7 +70,9 @@ diff <(karac run lru_cache.kara) <(python3 lru_cache.py) && echo OK
 
 The first *design-a-data-structure* kata in the corpus. It implements a real O(1) LRU (hash map + sentinel doubly-linked list) via an index-based node pool, and surfaced the discarded-`Map.remove`-of-shared-value leak (`B-2026-07-19-16`).
 
-It has since surfaced a second, larger one — now **fixed**, and the fix left this kata faster than it has ever been.
+It has since surfaced a second one — fixed — and then a third, which is open
+and is why the table above reads the way it does. Take them in order, because
+the middle one's conclusion was true when written and is no longer.
 
 **`B-2026-08-05-4` (fixed) — Kāra's row regressed 1.76× (231.7 ms → 422.9 ms) between the 2026-07-28 and 2026-08-04 measurements**, with the kata source unchanged. Root-caused by holding the compiler fixed and swapping only the runtime archive: the cause was `B-2026-07-31-21`'s fix, which stopped the map's capacity from ratcheting on total removals and instead performed a **same-width compacting rehash** when the live count sat at or below ⅜ of capacity. An LRU is the canonical remove-heavy map — every insert past capacity evicts — so the live count parks near that threshold and the O(len) compaction re-fires on eviction after eviction, where the old code paid one doubling and then stopped rehashing. That fix bought a large RSS win (297 MB → 10 MB on a sliding window) and was never a revert candidate; the wall-time it cost a churn-dominated map was simply the half nobody had measured, because no bench in the corpus covered that shape. This kata is now that bench.
 
@@ -81,4 +83,15 @@ It was closed in two independent parts, and the second one is why the row above 
 
 The two stack rather than subsume each other: compaction re-hash work on the runtime's sliding-window churn test is 15.52% of the workload at ⅜ with tombstoning, 6.29% at ³⁄₁₆, 7.06% at ⅜ with the release, and **1.92%** with both.
 
-**What the numbers cost.** Kāra's runtime peak RSS on this workload rose 1.36 MB → 1.41 MB (+3.6%) — the ³⁄₁₆ band deliberately holds the table one doubling wider than ⅜ did. That is the trade the fix makes, and at 48 KB against a 1.79× speedup it is the right side of it. Note also that every reference language in the table above reads ~5% slower than the 2026-08-04 snapshot despite byte-identical binaries; that is machine state between sessions, not a toolchain change, so Kāra's improvement here is if anything understated.
+**What the numbers cost.** Kāra's runtime peak RSS on this workload rose 1.36 MB → 1.41 MB (+3.6%) — the ³⁄₁₆ band deliberately holds the table one doubling wider than ⅜ did. That is the trade the fix makes, and at 48 KB against the 1.79× speedup it bought *at the time*, it was the right side of it.
+
+**`B-2026-09-07-42` / `B-2026-09-07-53` (OPEN) — and this is why the table above no longer shows any of that.** Every figure in the two paragraphs before this one predates karac `59c8d30cd` (2026-08-22), which replaced codegen's integer hash — a single multiply against a **compile-time constant seed sitting in the compiler's own source** — with per-process-seeded SipHash-1-3. That closed a real hash-flooding hole: colliding keys could be generated offline and used to drive any map keyed on request data quadratic. It is not a revert candidate either.
+
+Re-benched on it, this kata is the corpus's worst-hit: **236.6 ms → 1676.3 ms, 7.09×**, and 4.07× on instruction count. Against equal-safety Rust it goes from **0.31× to 2.29×** — from three times faster to more than twice as slow. All four reference languages held to within 5% across the same two sessions on byte-identical binaries, which is what makes the move attributable to the compiler rather than the host.
+
+Two things worth stating plainly, because the shape here is easy to misread:
+
+- **The old margin was not real.** Kāra was hashing an integer key with one multiply while every comparator used a DoS-resistant hash; the 0.31× was substantially a measurement of that asymmetry rather than of the map. Sibling katas [#347](../../301-400/347-top-k-frequent-elements/README.md) and [#387](../../301-400/387-first-unique-character-in-a-string/README.md) carried that caveat explicitly and predicted a statistical tie at equal hashing.
+- **The residue is still real and still ours.** At genuinely equal hashing kāra is behind, and an isolated lookup microbenchmark puts the gap at 1.73× on instructions but only **1.14× on wall clock** — sizing it on instruction count alone overstates it by roughly half. This kata's 2.29× is worse than that floor, and it runs at low IPC on both sides, so some of what is left here is memory behaviour rather than the lookup sequence. That is tracked, unresolved, and deliberately not guessed at.
+
+An inline-SipHash codegen path was built and measured against exactly this question: it is worth 2.6–4.8% and was not landed. The regression is essentially irreducible while scalar keys hash with SipHash-1-3.
