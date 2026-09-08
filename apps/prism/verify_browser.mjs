@@ -417,6 +417,117 @@ async function main() {
   }
   console.error("[ok] adjust: release applies, sliders recombine from the snapshot, zero restores exactly");
 
+  // ── Size readout: the number arrives BEFORE the download ────────────────
+  // The claim the panel makes is that what it shows is the byte count of the
+  // file the Download button is about to write — not an approximation of it.
+  // That is only true if the readout encodes through the same toBlob(type, q)
+  // the download uses, so the load-bearing assertion here is an equality
+  // against a freshly encoded blob, not a plausible-looking string. The rest
+  // guard the staleness the old post-download readout had: it never moved when
+  // the quality slider did, and it survived an edit that invalidated it.
+  stage("size readout");
+  const fmtBytes = (n) => n > 1048576
+    ? (n / 1048576).toFixed(2) + " MB"
+    : (n / 1024).toFixed(0) + " KB";
+  // Poll rather than sleep: the encode is debounced and then async.
+  const settledSize = async (not = null) => {
+    for (let i = 0; i < 80; i++) {
+      const t = await evalJs("__prism.sizeText()");
+      if (t && t !== "sizing…" && t !== not) return t;
+      await sleep(100);
+    }
+    throw new Error("size readout never settled");
+  };
+  const pickFmt = (v) => `(() => { const f = document.getElementById('fmt');
+    f.value = '${v}'; f.dispatchEvent(new Event('change')); return true; })()`;
+  const setQ = (v) => `(() => { const q = document.getElementById('q');
+    q.value = ${v}; q.dispatchEvent(new Event('input')); return true; })()`;
+
+  // Incompressible noise, so JPEG quality actually moves the byte count (a
+  // flat or smooth test image encodes to about the same size at any q, which
+  // would let a stale readout pass). SOURCE_BYTES is a stand-in for the file
+  // size a real drop would carry in.
+  const SOURCE_BYTES = 500000;
+  await evalJs(`(() => {
+    const W = 256, H = 256, a = new Uint8ClampedArray(W * H * 4);
+    let s = 12345;
+    for (let i = 0; i < W * H; i++) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      a[i * 4] = s & 255; a[i * 4 + 1] = (s >> 8) & 255;
+      a[i * 4 + 2] = (s >> 16) & 255; a[i * 4 + 3] = 255;
+    }
+    __prism.loadPixels(a, W, H, ${SOURCE_BYTES});
+    return true; })()`);
+
+  await evalJs(pickFmt("image/jpeg"));
+  await evalJs(setQ(90));
+  let szText = await settledSize();
+  let realBytes = await evalJs("__prism.blobSize()");
+  if (!szText.startsWith("JPEG · ")) {
+    throw new Error(`size readout: expected a JPEG label, got "${szText}"`);
+  }
+  if (!szText.includes(fmtBytes(realBytes))) {
+    throw new Error(`size readout showed "${szText}" but a real encode is ` +
+      `${realBytes} B (${fmtBytes(realBytes)}) — the number is not the file`);
+  }
+  // Shown before any download: nothing has been written to disk at this point.
+  const q90 = realBytes;
+
+  // Quality moves it. This is the exact staleness the old readout had.
+  await evalJs(setQ(10));
+  szText = await settledSize();
+  realBytes = await evalJs("__prism.blobSize()");
+  if (!szText.includes(fmtBytes(realBytes))) {
+    throw new Error(`size readout after q=10 showed "${szText}", real ${fmtBytes(realBytes)}`);
+  }
+  if (!(realBytes < q90)) {
+    throw new Error(`q=10 (${realBytes} B) did not come in under q=90 (${q90} B)`);
+  }
+
+  // Format switch re-prices too, and PNG carries no quality.
+  await evalJs(pickFmt("image/png"));
+  szText = await settledSize();
+  realBytes = await evalJs("__prism.blobSize()");
+  if (!szText.startsWith("PNG · ") || !szText.includes(fmtBytes(realBytes))) {
+    throw new Error(`size readout after PNG switch showed "${szText}", real ${fmtBytes(realBytes)}`);
+  }
+
+  // The source file's size rides the meta line, and the readout says what the
+  // export saved against it — the two halves of "did I get under the cap".
+  const metaText = await evalJs("document.getElementById('meta').textContent");
+  if (!metaText.includes(`from ${fmtBytes(SOURCE_BYTES)}`)) {
+    throw new Error(`meta line lost the source size: "${metaText}"`);
+  }
+  if (!/· \d+% (smaller|larger)|· same size/.test(szText)) {
+    throw new Error(`size readout carried no delta against the source: "${szText}"`);
+  }
+
+  // An edit invalidates the price. Halve it and the number must fall.
+  const pngBefore = realBytes;
+  await evalJs("(() => { document.getElementById('half').click(); return true; })()");
+  for (let i = 0; i < 60; i++) {
+    const d = await evalJs("__prism.dims()");
+    if (d.w === 128 && d.h === 128) break;
+    await sleep(100);
+  }
+  szText = await settledSize(szText);
+  realBytes = await evalJs("__prism.blobSize()");
+  if (!szText.includes(fmtBytes(realBytes))) {
+    throw new Error(`size readout went stale across an edit: "${szText}", real ${fmtBytes(realBytes)}`);
+  }
+  if (!(realBytes < pngBefore)) {
+    throw new Error(`½× did not shrink the PNG (${realBytes} B vs ${pngBefore} B)`);
+  }
+
+  // Start over clears both halves rather than leaving a dead number behind.
+  await evalJs("(() => { document.getElementById('startover').click(); return true; })()");
+  await sleep(300);
+  const clearedSz = await evalJs("__prism.sizeText()");
+  if (clearedSz !== "") {
+    throw new Error(`start over left a stale size readout: "${clearedSz}"`);
+  }
+  console.error("[ok] size readout: pre-download and byte-exact, tracks quality/format/edits, cleared on start over");
+
   // ── Phase 2: THREADED leg — serve cross-origin isolated (serve.py sets
   // COOP/COEP), fresh page, assert the threaded module is picked, then prove
   // an op produces oracle-exact pixels with the pool active.
@@ -540,7 +651,7 @@ async function main() {
   if (String(gp3) !== "76,76,76,255") throw new Error(`coi-shim grayscale: pixel ${gp3} != 76-gray`);
   console.error("[ok] coi-shim leg: headerless server -> SW-injected COOP/COEP -> threaded + oracle");
 
-  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
+  console.log("PASS — page + wasm verified in real Chrome: sequential leg (?seq: fallback pinned + load, grayscale oracle, undo, rotate, resize, scale control, crop, chained, generated samples, start-over reset, adjust oracles, byte-exact pre-download size readout), threaded leg (real COOP/COEP headers + lanczos on the pool), AND coi-shim leg (headerless server, SW-injected isolation -> threaded).");
   ws.close();
   process.exit(0);
 }

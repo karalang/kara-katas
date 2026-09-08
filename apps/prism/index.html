@@ -209,6 +209,19 @@
   const undoStack = [];
   const UNDO_MAX = 8;
   let aspectLocked = true;
+  // Byte size of the file that was dropped, when there was one. The decoded
+  // RGBA the app works on says nothing about it (4 bytes a pixel regardless),
+  // and "did this get under the limit" is a question about the ENCODED file at
+  // both ends -- so the source figure has to be kept at the door or it is gone.
+  // 0 for the in-page samples: they were drawn, not decoded from a file, so
+  // there is no honest number to show and the readout stays off.
+  let srcBytes = 0;
+  // Bumped by every adopt(); invalidates a cached encode of the previous image.
+  let generation = 0;
+
+  const fmtBytes = (n) => n > 1048576
+    ? (n / 1048576).toFixed(2) + " MB"
+    : (n / 1024).toFixed(0) + " KB";
 
   const host = {
     read_src(dst, len, ctx) {
@@ -234,6 +247,7 @@
   }
   function adopt(pixels, w, h) {
     cur = pixels; curW = w; curH = h;
+    generation++;           // any cached encode described the previous image
     paint();
     setScale(100);          // every op rebases the scale on the new image
   }
@@ -243,6 +257,7 @@
   }
   function setMeta(extra) {
     metaEl.textContent = `${curW} × ${curH}px · ${(curW * curH / 1e6).toFixed(1)} MP` +
+      (srcBytes ? ` · from ${fmtBytes(srcBytes)}` : "") +
       (extra ? `\n${extra}` : "");
   }
 
@@ -275,18 +290,21 @@
     }
     const mode = handle.threaded ? "threads" : "1 thread";
     setMeta(`${label} in ${(performance.now() - t0).toFixed(0)} ms (Kāra/WASM, ${mode})`);
+    scheduleSize();
   }
 
   // Every entry point into the app — the file picker, a drop, a sample —
   // funnels through here: decoded RGBA in, working image out.
-  function adoptSource(data, w, h, note) {
+  function adoptSource(data, w, h, note, bytes = 0) {
     orig = new Uint8ClampedArray(data); origW = w; origH = h;
+    srcBytes = bytes;
     undoStack.length = 0;
     clearAdjust();
     adopt(new Uint8ClampedArray(orig), origW, origH);
     dropEl.style.display = "none";
     stage.style.display = "flex";
     setMeta(note);
+    scheduleSize();
   }
 
   async function loadFile(file) {
@@ -298,7 +316,7 @@
     sctx.drawImage(bmp, 0, 0);
     const img = sctx.getImageData(0, 0, bmp.width, bmp.height);
     bmp.close && bmp.close();
-    adoptSource(img.data, img.width, img.height, "loaded");
+    adoptSource(img.data, img.width, img.height, "loaded", file.size);
   }
 
   // ── Resize ───────────────────────────────────────────────────────────────
@@ -513,33 +531,121 @@
   }
 
   // ── Download (format + quality + size) ───────────────────────────────────
+  // The size readout used to be filled in from inside the download's own
+  // toBlob callback, which put the number AFTER the commit: the one workflow
+  // this panel exists for -- get under some site's attachment cap -- became
+  // guess quality, download, read, delete the file, nudge, download again,
+  // leaving a trail of prism (1).jpg behind. It also went stale, because
+  // nothing recomputed it when the quality slider moved or an edit landed.
+  //
+  // So encode ahead of the click instead. This is not an estimate: toBlob with
+  // the same type and quality is the very encoder the download uses, so the
+  // figure shown IS the byte count of the file you are about to save, and the
+  // blob is kept so the click reuses it rather than encoding twice.
   const fmtEl = $("fmt"), qEl = $("q");
+  let sizeToken = 0;              // guards against an out-of-order encode
+  let sizeTimer = null;
+  let cachedBlob = null, cachedKey = "";
+
+  // What an encode is a function of. `generation` covers the pixels (adopt()
+  // bumps it), so a resize or an undo retires the cache without this needing
+  // to know anything about the ops.
+  const encodeKey = () =>
+    `${generation}|${fmtEl.value}|${fmtEl.value === "image/png" ? "" : qEl.value}`;
+
+  // A 12 MP PNG is a few hundred ms and a full extra copy, so coalesce: a
+  // quality drag fires `input` per pixel of travel and must not queue an
+  // encode per tick. Deliberately NOT hooked to adopt() -- bench() adopts once
+  // per rep, and re-encoding inside a timed loop would tax the numbers the
+  // README quotes. The callers below are the points a person finished
+  // something instead.
+  function scheduleSize(delay = 200) {
+    clearTimeout(sizeTimer);
+    // Mark it stale NOW, not when the encode starts. Otherwise the debounce
+    // window puts the previous number on screen as though it were current --
+    // a smaller version of the very staleness this readout replaced, and the
+    // one moment a person is actually reading it is mid-drag.
+    if (cur && encodeKey() !== cachedKey) szEl.textContent = "sizing…";
+    sizeTimer = setTimeout(showSize, delay);
+  }
+
+  function showSize() {
+    if (!cur) { szEl.textContent = ""; return; }
+    const key = encodeKey();
+    if (key === cachedKey && cachedBlob) { renderSize(cachedBlob); return; }
+    const type = fmtEl.value;
+    const my = ++sizeToken;
+    szEl.textContent = "sizing…";
+    canvas.toBlob((blob) => {
+      // Two ways an encode can arrive already obsolete, and they need
+      // different guards. `key` moving means the slider or an op ran while
+      // this was in flight -- the bytes are real but describe settings nobody
+      // is looking at any more. `sizeToken` moving means the image itself is
+      // gone (start over), where the key would compare equal and still be
+      // wrong. Neither may be painted: a number that does not match the
+      // panel above it is worse than no number at all.
+      if (my !== sizeToken || key !== encodeKey()) return;
+      if (!blob) { szEl.textContent = "encode failed"; return; }
+      cachedBlob = blob; cachedKey = key;
+      renderSize(blob);
+    }, type, type === "image/png" ? undefined : Number(qEl.value) / 100);
+  }
+
+  function renderSize(blob) {
+    const label = fmtEl.value === "image/png" ? "PNG"
+                : fmtEl.value === "image/jpeg" ? "JPEG" : "WebP";
+    // Against the source file when there was one -- "under the cap?" and "was
+    // this worth it?" are the same glance. Samples have no source file, and a
+    // result that grew (a PNG re-encode of a JPEG, routinely) says so plainly
+    // rather than showing a negative saving.
+    let delta = "";
+    if (srcBytes) {
+      const pct = Math.round((1 - blob.size / srcBytes) * 100);
+      delta = pct > 0 ? ` · ${pct}% smaller`
+            : pct < 0 ? ` · ${-pct}% larger`
+            : " · same size";
+    }
+    szEl.textContent = `${label} · ${fmtBytes(blob.size)}${delta}`;
+  }
+
+  function clearSize() {
+    clearTimeout(sizeTimer);
+    sizeToken++;                  // orphan any encode still in flight
+    cachedBlob = null; cachedKey = "";
+    szEl.textContent = "";
+  }
+
   fmtEl.addEventListener("change", () => {
     $("qwrap").style.display = fmtEl.value === "image/png" ? "none" : "flex";
-    szEl.textContent = "";
+    scheduleSize(0);              // a deliberate pick, not a drag -- no wait
   });
-  qEl.addEventListener("input", () => { $("qv").textContent = qEl.value; });
-  $("download").addEventListener("click", () => {
+  qEl.addEventListener("input", () => {
+    $("qv").textContent = qEl.value;
+    scheduleSize();
+  });
+
+  $("download").addEventListener("click", async () => {
+    if (!cur) return;
     const type = fmtEl.value;
-    const q = Number(qEl.value) / 100;
-    canvas.toBlob((blob) => {
-      if (!blob) { szEl.textContent = "encode failed"; return; }
-      szEl.textContent = blob.size > 1048576
-        ? (blob.size / 1048576).toFixed(2) + " MB"
-        : (blob.size / 1024).toFixed(0) + " KB";
-      const ext = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "webp";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "prism." + ext;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, type, type === "image/png" ? undefined : q);
+    const key = encodeKey();
+    // The readout already encoded exactly this; don't pay for it twice.
+    const blob = (key === cachedKey && cachedBlob) ? cachedBlob : await new Promise(
+      (res) => canvas.toBlob(res, type, type === "image/png" ? undefined : Number(qEl.value) / 100));
+    if (!blob) { szEl.textContent = "encode failed"; return; }
+    cachedBlob = blob; cachedKey = key;
+    renderSize(blob);
+    const ext = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : "webp";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "prism." + ext;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
   // ── History ──────────────────────────────────────────────────────────────
   $("undo").addEventListener("click", () => {
     const prev = undoStack.pop();
-    if (prev) { clearAdjust(); adopt(prev.p, prev.w, prev.h); setMeta("undo"); }
+    if (prev) { clearAdjust(); adopt(prev.p, prev.w, prev.h); setMeta("undo"); scheduleSize(); }
   });
   $("reset").addEventListener("click", () => {
     if (!orig) return;
@@ -547,6 +653,7 @@
     undoStack.length = 0;
     adopt(new Uint8ClampedArray(orig), origW, origH);
     setMeta("original");
+    scheduleSize();
   });
   // Clear the working image and go back to the drop zone. That screen is also
   // where the sample chips live, so this is how you get from your own photo to
@@ -561,8 +668,9 @@
     canvas.width = canvas.height = 0;
     stage.style.display = "none";
     dropEl.style.display = "flex";
+    srcBytes = 0;
     metaEl.textContent = "";
-    szEl.textContent = "";
+    clearSize();
     rwEl.value = ""; rhEl.value = "";
     pctEl.value = 100; scaleEl.value = pctToPos(100); showTarget();
     clearAdjust();
@@ -580,14 +688,22 @@
   window.__prism = {
     ready: () => ready.then(() => true),
     threaded: () => ready.then((h) => h.threaded),
-    loadPixels: (arr, w, h) => {
+    loadPixels: (arr, w, h, bytes = 0) => {
       orig = new Uint8ClampedArray(arr); origW = w; origH = h;
+      srcBytes = bytes;
       undoStack.length = 0;
       adopt(new Uint8ClampedArray(orig), w, h);
       dropEl.style.display = "none";
       stage.style.display = "flex";
       setMeta("loaded (test hook)");
+      scheduleSize();
     },
+    // Lets verify_browser.mjs read the pre-download readout and compare it
+    // against the bytes a real download would carry.
+    sizeText: () => szEl.textContent,
+    blobSize: () => new Promise((res) => canvas.toBlob(
+      (b) => res(b ? b.size : -1), fmtEl.value,
+      fmtEl.value === "image/png" ? undefined : Number(qEl.value) / 100)),
     setSel: (x, y, w, h) => { sel = { x, y, w, h }; $("docrop").disabled = false; },
     dims: () => ({ w: curW, h: curH }),
     pixel: (x, y) => [...ctx2d.getImageData(x, y, 1, 1).data],
@@ -646,7 +762,8 @@
         img = s.gen(s.w, s.h);
       }
       adoptSource(img.data, img.width, img.height,
-        "sample drawn in-page (not fetched) — try ½× at Lanczos-3, then at bilinear");
+        "sample drawn in-page (not fetched) — try ½× at Lanczos-3, then at bilinear",
+        0);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = label; }
     }

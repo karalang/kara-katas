@@ -14,6 +14,22 @@ the compute. Tracked in the compiler's dogfooding roster
 
 - File-drop → decode → **Kāra kernels** → canvas → download (PNG/JPEG/WebP +
   quality slider + encoded-size readout).
+- **The size readout comes before the download, not after it.** The panel
+  encodes through the same `toBlob(type, quality)` the Download button uses, so
+  the figure next to it (`JPEG · 480 KB · 86% smaller`) is not an estimate —
+  it is the byte count of the file that button is about to write. That
+  ordering is the whole point: fitting under a site's attachment cap used to
+  mean download, check, delete, nudge the slider, download again, and the
+  number was only ever reported for a file already on disk. It re-prices on
+  every format pick, quality move and edit; the blob is kept so the click
+  reuses it instead of encoding twice, and an encode that lands after its own
+  settings have moved on is discarded rather than painted. The dropped file's
+  own size rides the dimensions line (`4032 × 3024px · 12.2 MP · from 3.4 MB`),
+  which is what the percentage is measured against — the samples are drawn
+  in-page rather than decoded from a file, so they carry no source figure and
+  the comparison stays off. A 12 MP PNG encode is a few hundred ms and a full
+  extra copy, so the recompute is debounced 200 ms and deliberately not hooked
+  to the bench path.
 - **Adjust is a live control over a snapshot, not three chained ops.** The
   brightness/contrast/saturation sliders apply on release like everything else
   in the panel; the first move away from zero keeps the working image aside,
@@ -126,7 +142,7 @@ the compute. Tracked in the compiler's dogfooding roster
 - **Real-browser verified, three legs**: `verify_browser.mjs` drives the
   actual page in headless Chrome over CDP — the sequential-fallback leg
   (`?seq`: fallback pinned + load, grayscale oracle pixels, undo, rotate,
-  resize, crop, chained), the threaded leg (real COOP/COEP headers, threaded
+  resize, crop, chained, byte-exact pre-download size readout), the threaded leg (real COOP/COEP headers, threaded
   module picked, grayscale oracle, banded Lanczos resize on the pool), AND
   the coi-shim leg (headerless server → SW-injected isolation → threaded +
   oracle — the GitHub Pages simulation). `./build.sh --verify`.
