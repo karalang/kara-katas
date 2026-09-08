@@ -42,6 +42,17 @@ These string enums are what the dashboard groups/filters on. Keep them exact.
 - **`lang`**: `kara` · `rust` · `c` · `go` · `python`
 - **`approach`**: the algorithm variant slug, e.g. `brute_force`, `hash_map`,
   `count`. A kata with one approach uses one value throughout.
+  > **It is NOT a source-file stem, and a tool must not treat it as one.** The
+  > slug names the ALGORITHM; which file implements it is a separate question
+  > that `lane` can change. `133-clone-graph` is the standing example: both its
+  > lanes are `approach: "clone_bfs"` because both run the same algorithm, but
+  > the `seq` row is built from `clone_bfs.kara` and the `par` row from a
+  > hand-written `clone_bfs_par.kara` (a `par {}` over a `frozen` graph — that
+  > kata does not auto-par). Rebuilding `<approach>.kara` and comparing it
+  > against the recorded `par` binary therefore compares a sequential program
+  > against a parallel one; done once, on 2026-09-07, it produced a confident
+  > and entirely wrong 9.2x "auto-par regression" (kara `B-2026-09-07-61`,
+  > retracted). To find what produced a row, read that kata's `bench.sh`.
 - **`lane`**: `seq` (single-threaded codegen quality) · `par` (parallel-runtime
   quality). Cross-lane comparisons are not meaningful — see `BENCH.md § Lanes`.
 - **`mode`**: `codegen` (karac `build`) · `interp` (karac `run`) · `native`
