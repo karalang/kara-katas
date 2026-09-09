@@ -191,11 +191,17 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 > function-pointer call shape): the per-call seed read is 13.0 instructions but
 > **0.46 cycles** per hash, 1.4% — ~0.9M cycles on this kata's 1.93M calls
 > against a ~100M-cycle program, not the 20% share the instruction table assigns
-> it. On arm64 kāra's integer hash is in fact *cheaper* than Rust's own (96.5
-> instr / 32.6 cycles against Rust's inlined `RandomState` at 102.8 / 38.3), so
-> the "kāra pays more to hash" reading is an x86 statement, not a portable one.
-> x86 cycles are still unmeasured. See kāra `B-2026-09-07-53` and
-> `docs/investigations/hash-cost/`.
+> it. x86 cycles are still unmeasured.
+>
+> The seed read is not, however, the whole of what the boundary costs. Measured
+> on the M5 in the shape each language actually uses — kāra's hash reached
+> through a function pointer, Rust's inlined into its probe — a `Map[i64,i64]`
+> lookup costs 132.0 instr / 61.5 cycles against Rust's 81.0 / 32.3, and the
+> hash halves are ~89.6 / ~26.8 against 54.5 / 10.6. **kāra's permutation is not
+> the problem**: forced into kāra's call shape, Rust's own hasher costs 118.8 /
+> 39.5, worse than kāra's. What kāra lacks is the ability to *inline* it, so
+> nothing hoists out of the caller's loop and nothing overlaps with the probe.
+> See kāra `B-2026-09-07-53` and `docs/investigations/hash-cost/`.
 >
 > So the largest identified component is **allocator churn, not hashing** —
 > confirming with numbers what `B-2026-08-28-77` had only hypothesised about
