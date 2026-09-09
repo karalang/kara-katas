@@ -155,14 +155,34 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 > container's ratios today (1.48× behind equal-safety Rust, 7.76× behind C) now
 > match the M5's (1.76×, 7.89×) rather than its own baseline's (0.76×, 4.03×) —
 > the split is by compiler version, not by host, and there is no arch-specific
-> penalty left to explain. `callgrind` puts **36.6% of the whole program in
-> `karac_hash_u64`** (1,931,520 calls at 93.0 instructions each); subtract
-> hashing and kāra runs *fewer* instructions than equal-safety Rust (311.2M vs
-> 337.0M). The 2026-08-18 baseline predates the SipHash-1-3 migration
-> (`59c8d30cd`, 22 August 2026) by four days, so the table above is a
-> pre-migration measurement. Tracked on `B-2026-09-07-53`; this kata is its
-> end-to-end acceptance test, and should return to ≤ 26.5 ms here when the hash
-> cost is fixed.
+> penalty left to explain. The 2026-08-18 baseline predates the SipHash-1-3
+> migration (`59c8d30cd`, 22 August 2026) by four days, so the table above is a
+> pre-migration measurement.
+>
+> **Where the gap actually is.** `callgrind` puts 36.6% of the program in
+> `karac_hash_u64` (1,931,520 calls at 93.0 instructions each), but that is
+> *not* the same as the hash being the gap — Rust's `HashMap` defaults to
+> SipHash-1-3 as well, inlined into `insert`/`get`/`remove`, so it pays the
+> permutation too. Measured in isolation (2M iterations, empty loop differenced
+> out): **kāra 95.0 instructions per hash against Rust std's 76.0** — a
+> 19-instruction, 25% surcharge for identical work, which is FFI bookkeeping
+> rather than extra rounds. Decomposing the 153.8M-instruction gap to
+> equal-safety Rust:
+>
+> | | | share |
+> |---|---:|---:|
+> | allocator traffic (kāra 49.6M vs Rust 4.0M — **12.4×**) | 45.6M | 30% |
+> | hash FFI surcharge (1,931,520 × 19) | 36.7M | 24% |
+> | `memcpy` | ~14M | 9% |
+> | remainder (map machinery) | ~57M | 37% |
+>
+> So the largest identified component is **allocator churn, not hashing** —
+> confirming with numbers what `B-2026-08-28-77` had only hypothesised about
+> this kata: `get_or(f, Vec.new())` + `insert(f, b)` round-trips a bucket
+> through the allocator on every push and pop, where the Rust mirror's
+> `remove`/`insert` moves a 24-byte `Vec` header. Tracked on
+> `B-2026-09-07-53`; this kata is its end-to-end acceptance test, and should
+> return to ≤ 26.5 ms here.
 
 Two caveats on the C row, both cutting against reading it as a like-for-like win:
 
