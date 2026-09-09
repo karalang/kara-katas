@@ -79,15 +79,22 @@ measurement. Sink = `8000000`, identical across all five languages.
 
 ### Runtime — 30 runs, 5 warmup
 
-Apple M5 Pro, karac `0.1.0-dev.8508+gc9032a670`, measured 2026-09-08.
+Apple M5 Pro, karac `0.1.0-dev.8616+g4a9297ad0`, measured 2026-09-09.
 
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| c | 13.8 ms ± 0.5 | **15.29× faster** |
-| go | 161.5 ms ± 2.6 | 1.31× faster |
-| rust | 186.5 ms ± 8.6 | 1.13× faster |
-| rust (overflow-checks=on) | 179.8 ms ± 2.3 | 1.18× faster |
-| **kāra** | **211.6 ms ± 4.1** | — |
+| c | 14.0 ms ± 0.5 | **14.88× faster** |
+| go | 162.3 ms ± 1.6 | 1.28× faster |
+| rust | 182.7 ms ± 0.7 | 1.14× faster |
+| rust (overflow-checks=on) | 181.9 ms ± 0.3 | 1.14× faster |
+| **kāra** | **207.9 ms ± 5.6** | — |
+
+Re-run 2026-09-09 against the typed hash entry point (`9ce695e9e`) and the
+runtime control-byte group scan (`6cc029853`): **1.14× behind equal-safety Rust,
+against 1.18× before them**. Inside this kata's own run-to-run spread, so the
+honest reading is unchanged rather than improved — neither landing moves a
+scalar-keyed map, which takes codegen's monomorphized probe and never reaches
+the runtime path the group scan sits on. kāra `B-2026-09-07-53`.
 
 ### ✅ The hasher mismatch this section warned about is now CLOSED — and the warning was right
 
@@ -119,7 +126,7 @@ compiler's own source, so colliding keys could be generated offline. The main
 table above is therefore the equal-hash comparison, and the `fasthash.rs` arm is
 retained as history rather than as a claim.
 
-The outcome at genuine parity is **1.18× behind** equal-safety Rust — the
+The outcome at genuine parity is **1.14× behind** equal-safety Rust — the
 prediction was a tie, and the measurement landed just outside it on the
 unfavourable side. Both the old 3.9× lead and the "72% of it is the hasher"
 decomposition are now history; what survives is the section's actual thesis,
