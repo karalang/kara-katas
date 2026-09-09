@@ -134,6 +134,35 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 > moved together, and the cheapest way to separate them needs no Mac at all:
 > re-run the **current** compiler on the x86 container, where the old one gave
 > 26.50 ms.
+>
+> **That container re-run is now done (9 September 2026), and it answers the
+> question: this is the COMPILER, not the host — so the sentence above is no
+> longer an x86-container result either.** Same container shape, and the
+> comparator toolchains are *identical* to the ones that produced the table
+> (rustc 1.94.1 `e408947bf`, clang 18.1.3, go1.24.7), so only `karac` moved.
+> 20 interleaved blocks × 6 runs, sink `3299190` throughout:
+>
+> | | recorded 2026-08-18 | today | |
+> |---|---:|---:|---|
+> | Rust `-C overflow-checks=on` | 34.71 ms | 34.24 | −1.4% |
+> | Rust `rustc -O` | 35.26 ms | 34.12 | −3.2% |
+> | C `clang -O3` | 6.58 ms | 6.55 | −0.5% |
+> | Go `go build` | 27.77 ms | 27.73 | −0.1% |
+> | **kāra** | **26.50 ms** | **50.77** | **+92%** |
+>
+> Three independent binaries land within 1.5% of their recorded numbers, which
+> is what licenses reading the fourth row as real: **kāra alone doubled.** The
+> container's ratios today (1.48× behind equal-safety Rust, 7.76× behind C) now
+> match the M5's (1.76×, 7.89×) rather than its own baseline's (0.76×, 4.03×) —
+> the split is by compiler version, not by host, and there is no arch-specific
+> penalty left to explain. `callgrind` puts **36.6% of the whole program in
+> `karac_hash_u64`** (1,931,520 calls at 93.0 instructions each); subtract
+> hashing and kāra runs *fewer* instructions than equal-safety Rust (311.2M vs
+> 337.0M). The 2026-08-18 baseline predates the SipHash-1-3 migration
+> (`59c8d30cd`, 22 August 2026) by four days, so the table above is a
+> pre-migration measurement. Tracked on `B-2026-09-07-53`; this kata is its
+> end-to-end acceptance test, and should return to ≤ 26.5 ms here when the hash
+> cost is fixed.
 
 Two caveats on the C row, both cutting against reading it as a like-for-like win:
 
