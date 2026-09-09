@@ -45,17 +45,17 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-08 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-09 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 186.8 ms | 0.11× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 730.7 ms | 0.44× |
-| Rust `-O` | 738.7 ms | 0.44× |
-| Go | 923.7 ms | 0.55× |
-| **Kāra (codegen)** | 1.68 s | 1.00× |
+| C `clang -O3` | 190.0 ms | 0.11× |
+| Rust `-O` | 727.2 ms | 0.44× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 760.6 ms | 0.46× |
+| Go | 940.4 ms | 0.57× |
+| **Kāra (codegen)** | 1.66 s | 1.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 8dc5a4d8baeb); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 30e6c45b187e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
