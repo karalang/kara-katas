@@ -163,18 +163,28 @@ Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, 
 > `karac_hash_u64` (1,931,520 calls at 93.0 instructions each), but that is
 > *not* the same as the hash being the gap — Rust's `HashMap` defaults to
 > SipHash-1-3 as well, inlined into `insert`/`get`/`remove`, so it pays the
-> permutation too. Measured in isolation (2M iterations, empty loop differenced
-> out): **kāra 95.0 instructions per hash against Rust std's 76.0** — a
-> 19-instruction, 25% surcharge for identical work, which is FFI bookkeeping
-> rather than extra rounds. Decomposing the 153.8M-instruction gap to
-> equal-safety Rust:
+> permutation too. Measured in isolation (8M iterations, empty loop differenced
+> out, each configuration in its own binary):
+>
+> | | instr/hash |
+> |---|---:|
+> | Rust `RandomState` — what `HashMap` actually holds | 74.0 |
+> | kāra permutation, key hoisted out of the loop | 78.0 |
+> | kāra `hash_u64` inlined (reads the process seed) | 94.0 |
+> | kāra `karac_hash_u64` across the FFI boundary | 95.0 |
+>
+> The 21-instruction gap is **not** the FFI boundary — that costs ~1 instruction
+> (94.0 inlined vs 95.0 through the archive) — and it is not the permutation,
+> which is at parity. It is that kāra reads its per-process hash seed on *every
+> hash*, where Rust reads it once per map (`RandomState` holds the keys in the
+> `HashMap` instance). Decomposing the 153.8M-instruction gap:
 >
 > | | | share |
 > |---|---:|---:|
 > | allocator traffic (kāra 49.6M vs Rust 4.0M — **12.4×**) | 45.6M | 30% |
-> | hash FFI surcharge (1,931,520 × 19) | 36.7M | 24% |
+> | per-call seed read (1,931,520 × 16) | 30.9M | 20% |
 > | `memcpy` | ~14M | 9% |
-> | remainder (map machinery) | ~57M | 37% |
+> | remainder (map machinery) | ~57M | 41% |
 >
 > So the largest identified component is **allocator churn, not hashing** —
 > confirming with numbers what `B-2026-08-28-77` had only hypothesised about
