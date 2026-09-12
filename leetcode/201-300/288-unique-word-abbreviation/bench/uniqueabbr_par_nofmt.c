@@ -1,31 +1,34 @@
 /* uniqueabbr_par.c with ONE function changed — the B-2026-08-28-76 control.
  *
- * That row's most load-bearing evidence was that the C pthreads mirror ALSO
- * fails to scale on the M5 (0.76x against its own sequential lane), which read
- * as "this machine does not scale this workload in any language" and pointed
- * the diagnosis away from kara's auto-par. It is not that. The mirror's
- * `abbrev` calls `sprintf` once per punch, a million times, across 18 threads,
- * and libc formatting serializes on macOS — B-2026-09-05-23 measured exactly
- * that on the KARA lane of this same kata.
+ * That row leaned on this mirror failing to scale on the M5 (0.76x against its
+ * own sequential lane) as evidence that the machine does not scale this
+ * workload in any language. The collapse is one libc call: `abbrev` calls
+ * sprintf once per punch, a million times, across 18 threads, and libc
+ * formatting serializes on macOS — B-2026-09-05-23 measured exactly that on the
+ * KARA lane of this same kata.
  *
- * This file is the mirror with `abbrev` writing its digits by hand and nothing
- * else touched. Measured on an M5 Pro, hyperfine 15 runs, all arms printing
- * `unique 573650`:
+ * This file is the mirror with `abbrev` writing its digits by hand. Both
+ * variants take an OPTIONAL argv[1] thread count, which is what makes a real
+ * speedup measurable: the same binary at one thread against itself at
+ * eighteen. Measured on an M5 Pro, hyperfine 15 runs, sink `unique 573650`:
  *
- *     C seq                 54.34 ms   user  52.35   sys   1.28
- *     C par, sprintf        70.94 ms   user 160.58   sys 903.57   0.77x
- *     C par, manual digits   3.24 ms   user  22.30   sys   0.95  16.76x
+ *     lane                1 thread   18 threads   speedup
+ *     sprintf              55.04 ms     70.68 ms    0.78x
+ *     manual digits        18.99 ms      3.87 ms    4.91x
  *
- * 21.9x between the two par lanes, from one function. The 903 ms of SYSTEM
- * time on a 71 ms run is the mechanism showing through; `/usr/bin/time -l`
- * agrees, 865 involuntary context switches against 63.
+ * and 906 ms of SYSTEM time plus 865 involuntary context switches disappear
+ * with the formatting.
  *
- * So the C mirror is not evidence about partitioning, and with the formatting
- * gone it gets 16.76x on ~15.7 cores — close to what the hardware offers. Keep
- * both files: the sprintf one is what the bench harness measures and what the
- * corpus row reports, and this one is why that number means what it means.
+ * READ THE 4.91x CAREFULLY. An earlier revision of the row quoted 16.76x here.
+ * That compared this binary at 18 threads against `uniqueabbr.c` — a different
+ * file, which still calls sprintf — so it was not a speedup at all. This
+ * workload tops out near 5x on eighteen cores even in C with neither formatting
+ * nor allocation, which is worth knowing before reading any Kara number on it
+ * as a shortfall.
  *
  *   clang -O3 uniqueabbr_par_nofmt.c -o nofmt -lpthread
+ *   ./nofmt 1    # one thread
+ *   ./nofmt      # every core
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,7 +137,7 @@ static void *punch_worker(void *p) {
     return NULL;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     static char dict[DICT_N][MAXW];
     static char pool[POOL_N][MAXW];
     int64_t seed = 12345;
@@ -176,7 +179,10 @@ int main(void) {
     }
 
     int64_t unique_count = 0;
-    long nthreads = sysconf(_SC_NPROCESSORS_ONLN);
+    /* argv[1] overrides the thread count, so the same binary gives both ends
+     * of a speedup. Without it the only available baseline is a different
+     * source file, which is not a speedup measurement. */
+    long nthreads = (argc > 1) ? atol(argv[1]) : sysconf(_SC_NPROCESSORS_ONLN);
     if (nthreads < 1) nthreads = 1;
     if (nthreads > MAX_THREADS) nthreads = MAX_THREADS;
 
