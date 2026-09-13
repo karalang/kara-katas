@@ -237,11 +237,69 @@ mirror, which spawns one thread per logical core and collapses on this host
 (72.0 ms, *slower* than its own 57.5 ms sequential build), is now **2.68×**
 behind kāra's auto-par. Go still leads the lane at 7.1 ms.
 
-Two findings this kata surfaced remain open: `B-2026-08-28-76` for whatever
-gap is left now that formatting is accounted for, and `B-2026-09-05-22` —
-**N=2 is still pathological here** (179.8 ms against 91.6 at N=1), because that
-one is allocation under two workers, not formatting, and the fix above does not
-touch it.
+Two findings this kata surfaced went on from here: `B-2026-08-28-76` for
+whatever gap was left once formatting was accounted for, and `B-2026-09-05-22` —
+**N=2 is pathological here** (179.8 ms against 91.6 at N=1), because that one is
+allocation under two workers, not formatting, and the fix above does not touch
+it. `B-2026-09-05-22` closed `wontfix`: the N=2 cliff is macOS libmalloc's, not
+kāra's. `B-2026-08-28-76` is answered, below.
+
+### What the remaining gap was: one allocation per lookup — `B-2026-09-12-28`
+
+After the `snprintf` fix, kāra's auto-par still returned about **three fifths**
+of what a hand-written C pthreads mirror got on the same host and the same
+workload, and nothing moved it. Region length did not (stretching the 3 ms
+region 10× doubled *both* languages' speedups and left the ratio alone), nor did
+working-set size (shrinking the table 16× to an L1-resident 40 KB made it
+slightly worse), nor the machine's ceiling (pure-arithmetic C reaches 14.90× at
+18 threads, so the cores are real). Auto-par's own dispatch did not either: the
+par binary at **one** worker is 1.02× its own seq binary, so the parallel
+lowering costs nothing per iteration.
+
+The answer was in the disassembly. `___karac_reduce_worker_0`'s loop body holds
+two dyld stubs that resolve to `_malloc` and `_free`. The punch loop is
+
+```kara
+let u = match idx.get(a) {
+    None => true,
+    Some(Bucket.Sole(w)) => w == word,   // reads w, keeps nothing
+    Some(Bucket.Conflicted) => false,
+};
+```
+
+and `Bucket` is an enum with a `String` payload, so it is 32 bytes — tag plus
+`String{ptr,len,cap}`. `_karac_map_get` has *already* written those four words
+into a stack out-slot; codegen then mallocs 32 bytes, copies the same four words
+onto the heap with two `stp`s, runs the arm, and frees the box before the next
+iteration. No arm keeps anything.
+
+The control is one edit: `Bucket.Sole` carries an `i64` index into `dict`
+instead of an owned `String`, so the matched value has nothing to drop. Worker
+malloc/free callsites go 2 → 0 and the sink is unchanged at `unique 5736500`.
+10M punches, dual binaries, hyperfine 7 runs:
+
+| lane | seq | par | speedup | user CPU par/seq | vs C |
+|---|---:|---:|---:|---:|---:|
+| kāra, `Sole(String)` | 319.29 ms | 54.81 ms | 5.83× | 2.37× | 0.56 |
+| kāra, `Sole(i64)` | 193.30 ms | 19.96 ms | **9.68×** | **1.32×** | **0.93** |
+| C mirror | 150.32 ms | 14.37 ms | 10.46× | 1.34× | — |
+
+One allocation per lookup is the difference between 56% and 93% of the C
+mirror's speedup. The parallel run's CPU amplification does not shrink, it goes
+away: 2.37× → 1.32×, against C's 1.34×. The sequential gap closes at the same
+time, 2.12× → 1.29×.
+
+It read as a *parallel* defect for so long because a malloc/free pair is cheap
+on one thread, where libmalloc serves it from a per-thread cache, and expensive
+on eighteen — `B-2026-09-05-22`'s ceiling again. A flat per-iteration cost
+presents as a scaling loss. So the auto-par question this kata opened is
+settled: on a loop that does not allocate, kāra returns 93% of a C pthreads
+mirror's speedup with matching CPU efficiency. What is left is codegen, tracked
+as `B-2026-09-12-28`.
+
+One caveat on the table: `Sole(i64)` is a *control*, not a proposed rewrite of
+the kata. It answers what the box costs; it is not the idiomatic spelling, and
+the fix belongs in the compiler.
 
 ## Benchmarks
 <!-- bench-staleness -->

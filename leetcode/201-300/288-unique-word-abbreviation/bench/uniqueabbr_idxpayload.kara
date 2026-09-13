@@ -1,48 +1,33 @@
-// ALLOCATION-FREE PUNCH LOOP variant of the #288 benchmark workload — the
-// Kara side of B-2026-08-28-76's comparison, and the mirror of
-// uniqueabbr_par_nofmt.c on the C side.
+// THE CONTROL THAT ANSWERED B-2026-08-28-76 — `uniqueabbr_noalloc.kara` with
+// exactly one change: `Bucket.Sole` carries an i64 index into `dict` instead of
+// an owned String, so the value `idx.get(a)` returns has nothing to drop.
 //
-// The original's punch loop allocates THREE times per punch: `chars().collect()`
-// builds a Vec[char], the f-string builds a String, and `abbrev` returns a
-// third. The C mirror allocates nothing. This hoists all of it out by
-// precomputing the abbreviations once, leaving the measured loop doing a map
-// lookup and nothing else. Same dictionary, same pool, same index, same
-// predicate, same sink (`unique 573650`).
+// That one change takes the punch loop from two malloc/free callsites to zero.
+// The no-alloc file removes the three allocations that are VISIBLE in the source
+// — `chars().collect()`, the f-string, `abbrev`'s return — and leaves a fourth
+// that is not: codegen heap-boxes the 32-byte `Bucket` that `_karac_map_get` has
+// already written to a stack out-slot, and frees it, on every hit, even though
+// the match only reads it. That is B-2026-09-12-28.
 //
-// MEASURED on an M5 Pro, dual binaries (KARAC_AUTO_PAR is a BUILD-time switch;
-// setting it at run time measures one parallel binary twice), hyperfine 15 runs:
-//
-//     lane                         seq        par      speedup
-//     original                  90.29 ms   24.14 ms     3.74x
-//     this file                 36.33 ms    9.18 ms     3.96x
-//     C mirror, no formatting   18.99 ms    3.87 ms     4.91x
-//
-// So removing the allocation cuts absolute time 2.5x and moves the SPEEDUP by
-// 0.22x. Allocation is most of Kara's work on this kata and almost none of its
-// under-return — B-2026-09-05-22's libmalloc ceiling does not explain kata:288.
-//
-// RETRACTED 2026-09-12, and by this file's own successor. The last sentence is
-// wrong: the libmalloc ceiling explains ALL of it. This file removes the three
-// allocations that are visible in the source (`chars().collect()`, the f-string,
-// `abbrev`'s return) and leaves a fourth that is not — `idx.get(a)` returns
-// `Bucket`, an enum with a String payload, and codegen heap-boxes that 32-byte
-// value and frees it on every hit even though the match only reads it
-// (B-2026-09-12-28). Disassemble `___karac_reduce_worker_0` and the loop body
-// still holds a `_malloc`/`_free` pair.
-//
-// Changing `Sole(String)` to `Sole(i64)` — an index into `dict`, nothing to drop
-// — takes the callsite count to zero and settles B-2026-08-28-76. 10M punches:
+// MEASURED on an M5 Pro, 10M punches (10x this file's, to get the region past
+// fan-out cost), dual binaries because KARAC_AUTO_PAR is a BUILD-time switch,
+// hyperfine 7 runs. Same sink in every lane:
 //
 //     lane                     seq       par    speedup   user CPU par/seq  vs C
-//     String payload        319.29    54.81      5.83x        2.37x         0.56
-//     i64-index payload     193.30    19.96      9.68x        1.32x         0.93
+//     Sole(String)          319.29    54.81      5.83x        2.37x         0.56
+//     Sole(i64), this file  193.30    19.96      9.68x        1.32x         0.93
 //     C mirror              150.32    14.37     10.46x        1.34x          --
 //
-// One allocation per lookup is the difference between 56% and 93% of the C
-// mirror's speedup, and the CPU amplification does not shrink but disappears.
+// So one allocation per lookup is the difference between 56% and 93% of a hand
+// written C pthreads mirror's speedup, and the parallel run's CPU amplification
+// does not shrink but disappears — 1.32x against C's 1.34x.
+//
+// THIS IS A CONTROL, NOT A PROPOSED REWRITE. It isolates what the box costs. The
+// idiomatic spelling is the one in `uniqueabbr_noalloc.kara`, and the fix
+// belongs in the compiler, not in the kata.
 
 enum Bucket {
-    Sole(String),
+    Sole(i64),
     Conflicted,
 }
 
@@ -100,10 +85,10 @@ fn main() {
         let a = abbrev(w);
         match idx.get(a) {
             None => {
-                let _ = idx.insert(a, Bucket.Sole(w.clone()));
+                let _ = idx.insert(a, Bucket.Sole(i));
             }
-            Some(Bucket.Sole(prev)) => {
-                if prev != w {
+            Some(Bucket.Sole(pi)) => {
+                if dict[pi] != w {
                     let _ = idx.insert(a, Bucket.Conflicted);
                 }
             }
@@ -153,7 +138,7 @@ fn main() {
         let a = ref abbrs[i % pool_n];
         let u = match idx.get(a) {
             None => true,
-            Some(Bucket.Sole(w)) => w == word,
+            Some(Bucket.Sole(wi)) => dict[wi] == word,
             Some(Bucket.Conflicted) => false,
         };
         if u {
