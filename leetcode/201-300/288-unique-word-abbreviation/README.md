@@ -301,6 +301,41 @@ One caveat on the table: `Sole(i64)` is a *control*, not a proposed rewrite of
 the kata. It answers what the box costs; it is not the idiomatic spelling, and
 the fix belongs in the compiler.
 
+#### Fixed — the box moved to the stack (`kara@ef9a76f90`)
+
+The compiler already knew the box's lifetime. `track_freshtemp_boxed_enum_
+scrutinee` queues a **box-only** free at the enclosing construct's scope frame
+for exactly this shape, which is a statement that the box cannot outlive the
+`match`. A lifetime bounded by the construct is one an entry-block `alloca`
+covers, so `coerce_to_payload_words` now takes an alloca instead of calling
+`malloc`, and that registration declines to queue the free. The box pointer
+cannot escape: an arm binds the payload through `reconstruct_payload_value`,
+which `inttoptr`s word 0 and **loads** `T`, so the binding owns `T`'s inner heap
+and the box was only ever a container.
+
+Same 10M punches, dual binaries, hyperfine 7 runs, same lane. Identical sinks
+and byte-identical binary sizes in all four:
+
+| lane | seq | par | speedup | user CPU par/seq |
+|---|---:|---:|---:|---:|
+| baseline karac | 325.36 ms | 55.67 ms | 5.84× | 2.41× |
+| stack-box karac | 211.73 ms | 19.91 ms | **10.63×** | **1.23×** |
+| C pthreads mirror | 150.32 ms | 14.37 ms | 10.46× | 1.34× |
+
+**1.54× sequentially and 2.80× in parallel**, from deleting one `malloc`/`free`
+pair per lookup. kāra's auto-par speedup now edges past the C mirror's, and its
+CPU amplification is *lower* than C's — so the auto-par question this kata
+opened closes here, on the idiomatic `Sole(String)` spelling rather than on the
+`i64` control.
+
+The `Sole(i64)` file stays in `bench/` as the control that located the cost, not
+as a recommendation. Write the enum the way the problem reads.
+
+What is **not** covered: `Vec.pop()` / `first()` / `last()` and a
+`-> Option[Wide]` return still heap-box per iteration in the same construct.
+The mechanism transfers but the plumbing keys on the call's argument slice, and
+those take no arguments — tracked as `B-2026-09-12-29`, unmeasured.
+
 ## Benchmarks
 <!-- bench-staleness -->
 > **Figures in this section are undated; the feed was last measured 2026-09-07.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
