@@ -336,9 +336,34 @@ What is **not** covered: `Vec.pop()` / `first()` / `last()` and a
 The mechanism transfers but the plumbing keys on the call's argument slice, and
 those take no arguments — tracked as `B-2026-09-12-29`, unmeasured.
 
+##### And in the canonical feed
+
+The table above is a controlled A/B that isolates *this* change. The feed
+measures what `main` produces, which by 2026-09-13 also carries two further
+codegen fixes from a concurrent session in the same enum-payload machinery — so
+the movement below is main's, not this commit's alone.
+
+Quoted as **language ratios**, because every comparator moved between the two
+snapshots (C seq 1.08× better, Go seq 1.10× better, Go par 1.10× *worse*): the
+machine is not the machine it was on 2026-09-07, and absolute milliseconds do
+not survive that. Ratios measured within a single session do.
+
+| | 2026-09-07 | 2026-09-13 |
+|---|---:|---:|
+| kāra seq / Rust seq | 1.735 | **1.582** |
+| kāra seq / Rust seq, equal-safety | 1.758 | **1.652** |
+| kāra seq / C seq | 1.581 | **1.519** |
+| kāra par / Go par | 3.605 | **2.518** |
+| kāra auto-par worth (seq ÷ par) | 3.79× | **4.40×** |
+
+Rust is the comparator to read here: it moved only 2% between sessions, against
+Go's 10%, so the 10% gain against Rust is the one least likely to be the host
+talking. The kāra-vs-Go *seq* ratio barely moved (1.02×) for exactly that
+reason — Go's own sequential lane improved by about as much as kāra's did.
+
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-09-07.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are undated; the feed was last measured 2026-09-13.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 > Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
