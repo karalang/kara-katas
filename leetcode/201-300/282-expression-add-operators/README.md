@@ -198,6 +198,58 @@ This kata is the second witness for `B-2026-08-28-76` ([#288](../288-unique-word
 is the sharper one at 1.08×) and the one that supplied the homogeneous-placement
 control behind `B-2026-09-05-22`.
 
+### Answered: it is not auto-par, it is 3.67× the allocation *count* — `B-2026-09-13-22`
+
+`B-2026-08-28-76` is closed, and its premise was wrong on both witnesses. Here
+the search allocates **3.67× as often as the C mirror** for byte-identical
+output, and that is the whole story — a malloc/free pair is cheap on one thread
+and expensive on eighteen, so a flat per-branch cost presents as a scaling loss.
+
+Counted rather than timed, deliberately: this kata carries the corpus's largest
+**build-to-build** placement spread — 1.38× on the *same* compiler — so a timing
+answer would cost far more and settle far less. Cumulative counts via a
+dyld-interposed counter, each language's own startup subtracted, sequential
+lanes, sink `60478588` in every lane:
+
+| lane | allocating calls | bytes | vs C |
+|---|---:|---:|---:|
+| C mirror | 19,224,041 | 296,384,992 | 1.00× |
+| kāra, concat chain | 70,482,502 | 734,792,852 | **3.67×** |
+| kāra, `push_str` control | 44,894,302 | 719,074,952 | **2.34×** |
+
+The C mirror mallocs **once** per branch and memcpys the parts in:
+
+```c
+char *buf = malloc(nl + 1);
+memcpy(buf, expr, elen); buf[elen] = ops[o];
+memcpy(buf + elen + 1, num + pos, plen);
+```
+
+kāra's spelling of the same branch allocates **four** times — one per `.clone()`
+and one per `+`, because each `+` builds a fresh buffer from its two operands:
+
+```kara
+search(num, target, end, expr.clone() + "+" + piece.clone(), ...)
+```
+
+Three of the four are dead on the next instruction. [`bench/exprops_pushstr.kara`](bench/exprops_pushstr.kara)
+is the control that splits the gap: building the same value with a clone and two
+`push_str` calls removes 25.6M allocations — **36%** of kāra's total — leaving
+2.34×, which is the clones themselves plus `push_str`'s growth reallocs against
+C's single exact-sized malloc.
+
+Note what did *not* move: bytes went 734.8M → 719.1M, essentially flat. This is
+a call-**frequency** defect, not a memory-volume one — and call frequency is
+precisely what macOS libmalloc serialises on (`B-2026-09-05-22`), which is why
+it surfaced as an auto-par deficit rather than a sequential one.
+
+The fix shape, not yet attempted: lower a chain of `+` on `String` as **one**
+allocation sized to the sum, then memcpy each part in — the C mirror's shape.
+The operand widths are all available at the concat site. Tracked as
+`B-2026-09-13-22`. The other witness, [#288](../288-unique-word-abbreviation/),
+was a redundant heap box per `Map.get` and is **fixed** (`B-2026-09-12-28`);
+auto-par there now returns 93–104% of a C pthreads mirror's speedup.
+
 ## Benchmarks
 <!-- bench-staleness -->
 > **Figures in this section are undated; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
