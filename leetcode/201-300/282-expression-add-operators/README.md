@@ -243,10 +243,37 @@ a call-**frequency** defect, not a memory-volume one — and call frequency is
 precisely what macOS libmalloc serialises on (`B-2026-09-05-22`), which is why
 it surfaced as an auto-par deficit rather than a sequential one.
 
-The fix shape, not yet attempted: lower a chain of `+` on `String` as **one**
-allocation sized to the sum, then memcpy each part in — the C mirror's shape.
-The operand widths are all available at the concat site. Tracked as
-`B-2026-09-13-22`. The other witness, [#288](../288-unique-word-abbreviation/),
+#### Fixed — the chain is one allocation (`kara@fea7ac09b`)
+
+Done, and it moved more than expected. The fused lowering flattens the left
+spine at the outermost `+`, sums the leaf lengths, mallocs **once**, and memcpys
+each leaf at its running offset. Same harness, same sink:
+
+| lane | allocating calls | bytes | vs C |
+|---|---:|---:|---:|
+| C mirror | 19,224,041 | 296,384,992 | 1.00× |
+| kāra, before | 70,482,502 | 734,792,852 | 3.67× |
+| **kāra, fused** | **51,260,662** | **483,279,392** | **2.67×** |
+
+**−27% allocating calls and −34% bytes copied.** The byte win being the larger
+of the two was not predicted, and it is the more interesting half: the nested
+form re-copied the *whole left prefix* at every level — `(a+b)+c` copies `a+b` a
+second time — so this is a memcpy fix as much as an allocator one.
+
+Two things fusing can silently break, both pinned. The frees move to the leaves
+now that there are no intermediates, and macOS ASAN carries **no**
+LeakSanitizer — so the compiler's 16,869-test suite is blind to a leak here.
+`leaks --atExit` is the detector: ablating the leaf frees gives 408 leaks / 6528
+bytes, restoring them gives 0. And evaluation **order**, which the nested form
+gave for free, is pinned with a side-effecting leaf that no value comparison
+would catch.
+
+What is left is the larger half: the residual **2.67×** is the two `.clone()`
+calls per branch, which fusing cannot touch. That wants a separate *append into
+a fresh-temp left operand* analysis — the same shape `B-2026-09-12-28` used for
+the enum box, where a temp whose lifetime is the expression can be extended in
+place rather than copied. [`bench/exprops_pushstr.kara`](bench/exprops_pushstr.kara)
+sits at 2.34×, which bounds what that is worth. The other witness, [#288](../288-unique-word-abbreviation/),
 was a redundant heap box per `Map.get` and is **fixed** (`B-2026-09-12-28`);
 auto-par there now returns 93–104% of a C pthreads mirror's speedup.
 
