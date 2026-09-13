@@ -323,3 +323,32 @@ branch, so the stack-buffer lane wasn't running the same algorithm — it measur
 a memory strategy and called it a compiler comparison. Switching to
 `malloc`/`free` per branch moved it to **385 ms**, and that 174 ms gap is the
 price of parity.
+
+### The remaining gap is the concatenation chain — kara `B-2026-09-13-22`
+
+The 3.67× figure above is an **allocation-count** gap, not a throughput one, and
+36% of it has a single named cause. `expr.clone() + "+" + piece.clone()`
+allocates **four** times: one per `.clone()`, and one per `+`, because each `+`
+builds a fresh buffer from its two operands. Three of the four are dead on the
+next instruction. The C mirror of the same branch `malloc`s **once**, sized to
+the total, and `memcpy`s the parts in.
+
+Measured on this kata's sequential lane, cumulative allocation counts with each
+language's startup subtracted (sink `60478588` in every lane):
+
+| lane | alloc calls | bytes | vs C |
+|---|---|---|---|
+| C mirror | 19,224,041 | 296,384,992 | 1.00× |
+| kāra concat chain | 70,482,502 | 734,792,852 | 3.67× |
+| kāra `push_str` control | 44,894,302 | 719,074,952 | 2.34× |
+
+The control is one edit — the branch string built with a clone plus two
+`push_str` calls instead of the chain — and it removes 25.6M allocations. Note
+that **bytes barely move** (734.8M → 719.1M): the intermediates are small,
+short-lived and numerous, so this is a call-*frequency* defect rather than a
+memory-volume one. That matters because call frequency is what macOS libmalloc
+serialises on, which is why it first surfaced as an auto-par deficit
+(`B-2026-08-28-76`) rather than as an allocator cost.
+
+The residual 2.34× is the clones plus `push_str`'s growth reallocs, and is a
+separate question from the chain.
