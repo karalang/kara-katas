@@ -146,6 +146,56 @@ would put a UTF-8 decode and two allocations in front of about twenty integer
 operations — the lane would report allocator throughput under a
 bulls-and-cows-shaped name.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are, and this kata's differ by more
+> than any other in the 2026-09-21 M5 batch.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs C |
+|---|---:|---:|
+| c (`-O3`) | 19.1 ms | 1.00× |
+| rust (`-O`) | 19.9 ms | 1.04× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 23.8 ms | 1.25× |
+| **kara** (codegen, seq) | **58.3 ms** | **3.05×** |
+| go | 82.3 ms | 4.31× |
+| python | 2.195 s | 114.9× |
+
+**The deficit nearly doubles on arm64**: 1.84× → 3.05× against C, and
+1.40× → 2.45× against the equal-safety Rust that is the fair comparison.
+Everything else in the table compresses (C and unchecked Rust land 1.04× apart
+where x86 had them 1.18×), so this is Kāra moving, not the field.
+
+The disassembly says where to look, and it is one observation rather than an
+attribution. In `_main`:
+
+| in `_main` | overflow branches (`b.vs`) | SIMD-width operands |
+|---|---:|---:|
+| kara | 13 | 2 |
+| c (`-O3`) | 0 | 7 |
+| rust (`-O`) | 0 | 880 |
+| rust (`-O -C overflow-checks=on`) | 0 (12 whole-binary) | 880 |
+
+**Equal-safety Rust keeps its vectorised form while carrying its checks** — it
+pays 1.25× over C here, not the 3.05× Kāra pays — so "checked arithmetic costs
+this" is not sufficient on its own. The `WIDTH = 4` reconciliation body is a
+fixed-trip-count scatter into two `Array[i64, 4]`s, exactly the shape LLVM
+fully unrolls and SLP-vectorises for the other two, and Kāra's is neither
+unrolled nor vectorised while carrying a trap per arithmetic op.
+
+Filed as `kara B-2026-09-21-13`, which also records what this does to
+`B-2026-08-16-11` (`wontfix`): that row closed partly on the finding that
+"equal-safety parity is exact, everywhere on the ladder", measured on
+Xeon/AVX2, and explicitly warned its numbers should not be quoted for the M5
+without re-running. On this shape and this host, parity is not exact — the gap
+is 2.45×.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
