@@ -93,6 +93,33 @@ reused by resetting a logical length — matching C's `long tails[512]` and Rust
 `[0i64; 512]` exactly, which is the mirror-symmetry lesson #299 learned the hard
 way. All five languages print `checksum 122670492`.
 
+> **Host:** this kata has two lanes. The canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between the two hosts; only the
+> **within-file cross-language ratios** are. **The two hosts rank the languages
+> differently here**, which is the first thing to read below.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| rust (`-O -C overflow-checks=on`, equal safety) | 289.9 ms | 0.86× |
+| rust (`-O`) | 290.1 ms | 0.86× |
+| **kara** (codegen, seq) | **336.8 ms** | **1.00×** |
+| c (`-O3`) | 385.3 ms | 1.14× |
+| go | 595.1 ms | 1.77× |
+| python | 6.598 s | 19.6× |
+
+Kāra leads `clang -O3` by 1.14× on this host and trails Rust by 1.16×, so the
+x86 table's headline — "Kāra is the fastest mirror here" — is host-specific and
+does not hold on arm64. The reason is one source-level spelling, and it is the
+`>> 1` cliff below reading in reverse; see
+[§ The cliff inverts on arm64](#the-cliff-inverts-on-arm64-and-costs-this-lane-116).
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
@@ -197,6 +224,41 @@ Kāra's default `/ 2` lane at 713.9 ms beats **every** unannotated clang build
 measured here, while still carrying a bounds check clang does not emit.
 
 Tracked as `kara B-2026-08-29-62` (`wontfix` — measured to a standstill).
+
+### The cliff inverts on arm64, and costs this lane 1.16×
+
+Everything above is an x86-64 story, and the mechanism it names —
+`X86CmovConversion` — does not exist on arm64. Measured 2026-09-21 on the M5
+Pro, karac `0.1.0-dev.9423+g4ef50cbf3`, both binaries built `KARAC_AUTO_PAR=0`
+from the same source with only the midpoint spelling changed, both printing
+`checksum 122670492`:
+
+| | `/ 2` (published) | `>> 1` | ratio |
+|---|---:|---:|---:|
+| wall (hyperfine, 15 runs) | 337.1 ms ± 0.5 | **290.4 ms ± 0.6** | **1.16×** |
+| instructions (`scripts/pmc.c`) | 2,560,072,381 | 2,219,310,536 | 1.154× |
+| cycles | 1,535,858,077 | 1,323,870,202 | 1.160× |
+| IPC | 1.667 | 1.677 | 1.01× |
+
+**The sign is opposite to x86's and the mechanism is different.** On x86 the
+shift spelling runs 1.66× *slower* on 7.5% *fewer* instructions, because the
+missing sign correction lets `X86CmovConversion` rewrite the search's `cmov`
+back into a mispredicted branch. On arm64 nothing rewrites anything: both
+binaries disassemble to the same 24 `csel` / 117 conditional branches in
+`_main`, IPC is flat to 1%, and the cycle ratio tracks the instruction ratio
+almost exactly. The 16% is simply the three-instruction sign correction that
+signed `/ 2` needs and `>> 1` does not — dead weight on every search step, paid
+15.4% of the program's entire instruction stream.
+
+So the two hosts want opposite spellings of the same line, for unrelated
+reasons, and the corpus currently publishes the x86-optimal one. At `>> 1` the
+Kāra lane measures 290.4 ms against Rust's 289.9 — a dead heat rather than a
+1.16× deficit — so **the whole of this kata's arm64 gap to Rust is this one
+character**. The kata source is deliberately left alone: switching it would
+hand the M5 lane a tie and cost the x86 lane 1.66×, and BENCHMARKS.md's rule is
+that a kata is written the natural way rather than tuned per host. Recorded
+here so the next reader of the x86 table does not carry its conclusion onto
+Apple silicon.
 
 ### Elsewhere
 
