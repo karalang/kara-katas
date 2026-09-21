@@ -79,7 +79,17 @@ fn main() {
 
             let mut d = 0;
             while d < ALPHABET {
-                if s_left[d] < g_left[d] { cows = cows + s_left[d]; } else { cows = cows + g_left[d]; }
+                // A VALUE-`if` feeding ONE add, not an add duplicated into two
+                // arms. The mirrors all select a value and accumulate once
+                // (`cows += s < g ? s : g` in C, the same `if` expression in
+                // Rust, the conditional expression in Python), and in a
+                // checked-arithmetic language the difference is not cosmetic:
+                // an add in each arm is two checked adds with two trap edges,
+                // which nothing can if-convert, and it costs 2.6x. Measured
+                // 2026-09-21 — and `rustc -C overflow-checks=on` pays the same
+                // 2.6x for the duplicated spelling, so this is the shape of
+                // checked arithmetic rather than anything kara-specific.
+                cows = cows + (if s_left[d] < g_left[d] { s_left[d] } else { g_left[d] });
                 d = d + 1;
             }
 

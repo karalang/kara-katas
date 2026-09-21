@@ -152,8 +152,9 @@ bulls-and-cows-shaped name.
 > x86-64 Linux cloud container snapshot is
 > [`bench/results.container-x86.json`](bench/results.container-x86.json).
 > Absolute milliseconds are NOT comparable between hosts; only the
-> **within-file cross-language ratios** are, and this kata's differ by more
-> than any other in the 2026-09-21 M5 batch.
+> **within-file cross-language ratios** are. The x86 table below predates the
+> mirror fix described next, so its Kāra row is not comparable to this one
+> even as a ratio.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
 `0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
@@ -162,39 +163,63 @@ Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
 |---|---:|---:|
 | c (`-O3`) | 19.1 ms | 1.00× |
 | rust (`-O`) | 19.9 ms | 1.04× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 23.8 ms | 1.25× |
-| **kara** (codegen, seq) | **58.3 ms** | **3.05×** |
-| go | 82.3 ms | 4.31× |
-| python | 2.195 s | 114.9× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 23.3 ms | 1.22× |
+| **kara** (codegen, seq) | **23.7 ms** | **1.24×** |
+| go | 83.9 ms | 4.39× |
+| python | 2.161 s | 113.0× |
 
-**The deficit nearly doubles on arm64**: 1.84× → 3.05× against C, and
-1.40× → 2.45× against the equal-safety Rust that is the fair comparison.
-Everything else in the table compresses (C and unchecked Rust land 1.04× apart
-where x86 had them 1.18×), so this is Kāra moving, not the field.
+**Kāra ties the equal-safety Rust row at 1.02×** — the fair comparison, since
+both trap on integer overflow — and trails unchecked C by 1.24×.
 
-The disassembly says where to look, and it is one observation rather than an
-attribution. In `_main`:
+### The third time this kata has caught a mirror asymmetry
 
-| in `_main` | overflow branches (`b.vs`) | SIMD-width operands |
-|---|---:|---:|
-| kara | 13 | 2 |
-| c (`-O3`) | 0 | 7 |
-| rust (`-O`) | 0 | 880 |
-| rust (`-O -C overflow-checks=on`) | 0 (12 whole-binary) | 880 |
+The first M5 run of this lane measured Kāra at **58.3 ms, 3.05× C**, and the
+gap was entirely an asymmetry in the Kāra mirror. It is recorded here because
+the kata has now caught the same class of mistake three times (the
+`Vec.filled` tally above, #298's C mirror, and this), and the third one was
+written by someone who had just read the first two.
 
-**Equal-safety Rust keeps its vectorised form while carrying its checks** — it
-pays 1.25× over C here, not the 3.05× Kāra pays — so "checked arithmetic costs
-this" is not sufficient on its own. The `WIDTH = 4` reconciliation body is a
-fixed-trip-count scatter into two `Array[i64, 4]`s, exactly the shape LLVM
-fully unrolls and SLP-vectorises for the other two, and Kāra's is neither
-unrolled nor vectorised while carrying a trap per arithmetic op.
+The cow reconciliation was spelled with the accumulate **duplicated into both
+arms**, where every other mirror selects a value and accumulates **once**:
 
-Filed as `kara B-2026-09-21-13`, which also records what this does to
-`B-2026-08-16-11` (`wontfix`): that row closed partly on the finding that
-"equal-safety parity is exact, everywhere on the ladder", measured on
-Xeon/AVX2, and explicitly warned its numbers should not be quoted for the M5
-without re-running. On this shape and this host, parity is not exact — the gap
-is 2.45×.
+```kara
+// was — two checked adds, two trap edges, nothing to if-convert
+if s_left[d] < g_left[d] { cows = cows + s_left[d]; } else { cows = cows + g_left[d]; }
+
+// now — one checked add, matching `cows += s < g ? s : g` in C and Rust
+cows = cows + (if s_left[d] < g_left[d] { s_left[d] } else { g_left[d] });
+```
+
+In a checked-arithmetic language that is not a cosmetic difference, and the
+decisive measurement is the **same rewrite applied to the mirrors** (M5, 15
+runs, all printing `checksum 951123599`):
+
+| spelling | c `-O3` | rust `-C overflow-checks=on` | kara |
+|---|---:|---:|---:|
+| value-select, one add (published) | 18.8 ms | 23.0 ms | 23.3 ms |
+| add duplicated into both arms | 18.8 ms | **60.2 ms** | **59.1 ms** |
+
+`rustc` pays the identical 2.6× for the duplicated spelling, and C — which
+has no checks to trap — does not move at all. So the cost is the shape of
+**checked arithmetic**, not anything Kāra-specific: an add in each arm is two
+trapping operations, and no compiler will if-convert a branch whose arms can
+trap. Kāra tracks equal-safety Rust to within 2% on *both* spellings.
+
+Two conclusions worth keeping, since a wrong version of each was briefly
+published here:
+
+- **There is no arm64 codegen gap on this kata.** `B-2026-09-21-13` was filed
+  claiming one, on the 3.05× figure, and is now `invalid` — the premise was a
+  mirror asymmetry, and the row records the refutation.
+- **`B-2026-08-16-11`'s finding that equal-safety parity is exact survives**
+  on this shape and this host. This kata was briefly read as refuting it; it
+  confirms it.
+
+The remaining opportunity is real but is not a defect, and is tracked as
+`kara B-2026-09-21-14`: a compiler *could* canonicalise the duplicated
+spelling into select-then-add and take the 2.6× back, which would put Kāra
+ahead of equal-safety Rust on a shape rustc does not optimise either.
+
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
