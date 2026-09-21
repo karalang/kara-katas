@@ -133,6 +133,32 @@ coordinate buffers are allocated once at worst-case capacity and reused by
 resetting a logical length, so nothing allocates in the timed loop. All five
 languages print `checksum 258938743`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| rust (`-O`) | 315.6 ms | 0.97× |
+| c (`-O3`) | 320.3 ms | 0.98× |
+| **kara** (codegen, seq) | **325.3 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 326.4 ms | 1.00× |
+| go | 356.2 ms | 1.09× |
+| python | 8.849 s | 27.2× |
+
+The arm64 cluster is tighter than x86's and the standing is slightly better:
+Kāra is level with equal-safety Rust (1.00×), 1.02× behind `clang -O3` where
+x86 had it 1.09× behind, and 1.09× ahead of Go. The matched-ISA rows are
+absent by design — `-march=x86-64-v3` has no arm64 counterpart, so the ISA
+helpers are deliberate no-ops there.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
