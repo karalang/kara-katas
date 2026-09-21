@@ -168,6 +168,43 @@ actually occur — a balanced build over a shuffled array would relate no node t
 its children, every run would have length 1, and the `run = arriving + 1` branch
 the algorithm is *about* would never be taken.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are — and here they disagree, which
+> the note after the M5 table takes up.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs C |
+|---|---:|---:|
+| go | 110.2 ms | 0.98× |
+| c (`-O3`) | 112.4 ms | 1.00× |
+| rust (`-O`) | 124.0 ms | 1.10× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 126.0 ms | 1.12× |
+| **kara** (codegen, seq) | **164.3 ms** | **1.46×** |
+| python | 2.513 s | 22.4× |
+
+**The dead tie with Rust does not survive the host change**, and that is the
+one result worth carrying forward from this run. On x86 Kāra and Rust sit at
+1.01× of each other with both 1.7× behind C; on the M5 Rust closes to 1.10× of
+C while Kāra stays at 1.46×, so the Kāra-to-Rust ratio goes **1.07× → 1.33×**.
+The x86 section's reasoning below — that whatever costs Rust 1.7× costs Kāra
+the same, so the cost cannot be reference counting — is sound *on that host*
+and does not transfer: on arm64 there is now a Kāra-specific 1.33× that Rust
+does not pay, and the section's own elimination argument no longer covers it.
+
+Not attributed here. This run measured the lane rather than diagnosing it, and
+naming a mechanism would need the same instruction/cycle decomposition the
+sibling katas got, on both hosts. Flagged rather than filed, because the
+`build-once` tree here is also the corpus's heaviest `shared`-node allocation
+shape and that makes reference counting a live suspect again on this host
+alone.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json).
 See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
