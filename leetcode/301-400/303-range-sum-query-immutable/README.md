@@ -148,6 +148,33 @@ then punch 1,800 passes over the query list — 360,000,000 queries,
 `build-once + punch` ([BENCHMARKS.md](../../../BENCHMARKS.md)). All five
 languages print `checksum 1017312464`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 294.6 ms | 0.94× |
+| rust (`-O`) | 295.0 ms | 0.94× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 308.3 ms | 0.99× |
+| go | 312.4 ms | 1.00× |
+| **kara** (codegen, seq) | **312.6 ms** | **1.00×** |
+| python | 19.176 s | 61.3× |
+
+**The tightest five-language cluster in the corpus**: every compiled language
+lands within 6% of every other, and Kāra is 1.01× behind equal-safety Rust and
+1.06× behind unchecked `clang -O3`. The arm64 standing is markedly better than
+x86's, where Kāra sat 1.52× behind C — a prefix-sum scan over a contiguous
+`Vec[i64]` is close to pure memory traffic, and on this host the four compiled
+mirrors converge on the same bandwidth limit.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
