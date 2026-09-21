@@ -177,6 +177,33 @@ getting it wrong first. Nothing allocates inside the timed loop, and the sink
 folds each repaired string into a rolling mod-p hash rather than collecting it,
 so the measurement is the search rather than the collection.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 139.4 ms | 0.57× |
+| rust (`-O`) | 165.5 ms | 0.67× |
+| go | 230.5 ms | 0.93× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 242.4 ms | 0.98× |
+| **kara** (codegen, seq) | **246.6 ms** | **1.00×** |
+| python | 6.731 s | 27.3× |
+
+The equal-safety reading holds on arm64 but narrows to a tie: Kāra is 1.02×
+*behind* Rust-with-checks here where x86 had it 1.05× ahead. Turning Rust's
+checks on still costs it 46% (165.5 → 242.4 ms), so the overall shape of the
+comparison is the same one the x86 section describes; the two languages simply
+land on top of each other rather than with Kāra in front. Against unchecked C
+the deficit widens slightly, 1.64× → 1.77×.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 
