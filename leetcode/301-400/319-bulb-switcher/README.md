@@ -203,6 +203,39 @@ of their indices, so the array has to be materialised and walked. Bulbs are
 `u8` in every mirror so that all five measure the same six megabytes of
 traffic and not their own choice of bit packing.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| **kara** (codegen, seq) | **358.2 ms** | **1.00×** |
+| go | 392.8 ms | 1.10× |
+| rust (`-O`) | 394.8 ms | 1.10× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 394.9 ms | 1.10× |
+| c (`-O3`) | 450.4 ms | 1.26× |
+| python | 29.616 s | 82.7× |
+
+**Kāra is the fastest mirror on this host — ahead of `clang -O3` by 1.26×**,
+having been 1.02× behind it on the container. It is the only kata in the
+2026-09-21 M5 batch where Kāra finishes first outright.
+
+The section above explains why this lane can produce that result without
+anything surprising happening: it is a cache-behaviour benchmark, ~97 million
+`u8` writes per pass laid down at every stride, where the arithmetic is
+incidental. Overflow checks are nearly free against that traffic — Rust's
+checked and unchecked builds are 0.03% apart here (394.8 vs 394.9 ms) — so the
+comparison is decided by how each compiler shapes the strided write loop, not
+by what it costs to make it safe. The strided store is also why the three
+non-C mirrors bunch within 1% of each other while C sits apart.
+
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
 lane at 3 runs.
 
