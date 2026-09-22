@@ -170,6 +170,32 @@ optimiser cannot hoist is not the same as a punch the workload can feel.
 Relocating a building shifts every pass's answer (3,379 … 3,545 across the
 run), so each pass now measures a different problem of the same size.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 499.4 ms | 0.97× |
+| **kara** (codegen, seq) | **513.2 ms** | **1.00×** |
+| rust (`-O`) | 561.6 ms | 1.09× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 565.3 ms | 1.10× |
+| go | 608.6 ms | 1.19× |
+| python | 11.814 s | 23.0× |
+
+Kāra finishes **second of the compiled five, 1.03× behind `clang -O3`** — a
+clear gain on the container's 1.26× — while keeping its lead over both Rust
+rows (1.10× against equal-safety, 1.07× on x86). Multi-source BFS over a flat
+grid is sequential memory traffic with a short arithmetic body, which is the
+profile that travels best to this host.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each, box otherwise idle. σ is 1–3% on every lane except Rust's default
 build (5.4%) and Go's (10.3%) — canonical Apple-silicon numbers await an idle
