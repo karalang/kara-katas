@@ -23,13 +23,18 @@ const PASSES: i64 = 90;
 const MASK: i64 = 1073741823;
 
 fn digits_span(flat: ref Vec[i64], base: i64, lo: i64, hi: i64) -> Vec[i64] {
-    let mut out: Vec[i64] = Vec.new();
+    // One right-sized allocation, matching the mirrors: C mallocs exactly
+    // `hi - lo` and Go's `append([]int64(nil), flat[lo:hi]...)` does the same.
+    // `Vec.new()` here grows 1->2->4->...->hi and costs 1.8x on the lane.
+    let mut out: Vec[i64] = Vec.with_capacity(hi - lo);
     for i in lo..hi { out.push(flat[base + i]); }
     return out;
 }
 
 fn add_digits(a: ref Vec[i64], b: ref Vec[i64]) -> Vec[i64] {
-    let mut rev: Vec[i64] = Vec.new();
+    // Matches Go's `make([]int64, 0, 64)` and C's `long rev[64]` — the
+    // scratch buffer is reserved once, never grown.
+    let mut rev: Vec[i64] = Vec.with_capacity(64);
     let mut i = a.len() - 1;
     let mut j = b.len() - 1;
     let mut carry = 0;
@@ -40,7 +45,7 @@ fn add_digits(a: ref Vec[i64], b: ref Vec[i64]) -> Vec[i64] {
         rev.push(s % 10);
         carry = s / 10;
     }
-    let mut out: Vec[i64] = Vec.new();
+    let mut out: Vec[i64] = Vec.with_capacity(rev.len());
     let mut k = rev.len() - 1;
     while k >= 0 { out.push(rev[k]); k = k - 1; }
     return out;

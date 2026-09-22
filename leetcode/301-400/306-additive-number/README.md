@@ -174,6 +174,60 @@ full `O(n^3)` scans over them, `build-once + punch`
 ([BENCHMARKS.md](../../../BENCHMARKS.md)). All five languages print
 `checksum 370052193`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are. The x86 table below predates the
+> mirror fix described next, so its Kāra row is not comparable to this one
+> even as a ratio.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| go | 120.1 ms | 0.60× |
+| c (`-O3`) | 145.2 ms | 0.73× |
+| **kara** (codegen, seq) | **200.0 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 318.9 ms | 1.60× |
+| rust (`-O`) | 319.5 ms | 1.60× |
+| python | 1.445 s | 7.2× |
+
+Kāra still beats both Rust rows — by 1.60×, against 1.47× on x86 — but Go
+inverts completely: 1.15× *behind* Kāra on the container, 1.66× *ahead* here.
+The gap to `clang -O3` also widens, 2.12× → 1.38×… in Kāra's favour, because
+the fix below moved the Kāra row and not the others.
+
+### The mirror reserved nothing where C and Go reserve — 346.9 ms → 200.0 ms
+
+The first M5 run measured Kāra at **346.9 ms**, slowest of the four compiled
+languages. That was an asymmetry in the Kāra mirror, found by reading the three
+sources side by side at every allocation site:
+
+| buffer | C | Go | kara (was) |
+|---|---|---|---|
+| `digits_span` result | `malloc(hi - lo)` | `append([]int64(nil), flat[lo:hi]...)` | `Vec.new()`, grown by `push` |
+| `add_digits` scratch | `long rev[64]` (stack) | `make([]int64, 0, 64)` | `Vec.new()`, grown by `push` |
+| `add_digits` result | `malloc(m)` | `make([]int64, len(rev))` | `Vec.new()`, grown by `push` |
+
+Every mirror makes **one right-sized allocation** per buffer. The Kāra mirror
+made one allocation *per doubling* — 1 → 2 → 4 → … — on a workload whose whole
+inner loop is building small digit vectors. Spelling the reservations the way
+the mirrors already do (`Vec.with_capacity(hi - lo)`, `with_capacity(64)`,
+`with_capacity(rev.len())`) is **1.81×**: 360.0 → 199.2 ms on a matched pair,
+and 346.9 → 200.0 ms through the full bench harness. Sink `370052193`
+unchanged, and `karac run`, the default build and `KARAC_AUTO_PAR=0` all agree
+on it.
+
+Why it surfaced here and not on x86, where the same asymmetry was present and
+Kāra still led Go: this is a per-allocation workload, and those are exactly the
+shapes that **invert** between the Linux container and macOS/arm64 — libmalloc
+serialises where glibc does not. The container lane absorbed the extra
+allocations; this host does not.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. The bracketed column is an independent repeat of the whole suite;
 every ratio below reproduces within 5%, which is the precision these numbers are
