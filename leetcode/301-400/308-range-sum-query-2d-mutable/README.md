@@ -144,6 +144,33 @@ half rectangle reads) once; then punch 54 passes — 5.4M operations,
 `build-once + punch` ([BENCHMARKS.md](../../../BENCHMARKS.md)). All five
 languages print `checksum 108334916`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 82.8 ms | 0.63× |
+| rust (`-O`) | 85.1 ms | 0.65× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 115.3 ms | 0.88× |
+| **kara** (codegen, seq) | **131.1 ms** | **1.00×** |
+| go | 147.1 ms | 1.12× |
+| python | 11.206 s | 85.5× |
+
+**The largest improvement in standing of the M5 batch.** On x86 this was the
+corpus's widest compiled gap — Kāra 2.94× behind `clang -O3` and last of the
+compiled four, behind Go. Here it is 1.58× behind clang and ahead of Go, with
+the equal-safety Rust gap down from 1.18× to 1.14×. Nothing about the kata
+changed; the 2D Fenwick's nested dependent-load chains simply cost far less
+relative to the arithmetic on this core.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
