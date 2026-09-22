@@ -271,6 +271,32 @@ reset explicitly. So a single allocation is correct for every pass in all five
 languages, which keeps the measured work in the `O(n * k)` merge rather than in
 the allocator.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 157.0 ms | 0.88× |
+| go | 162.6 ms | 0.91× |
+| rust (`-O`) | 166.9 ms | 0.93× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 173.7 ms | 0.97× |
+| **kara** (codegen, seq) | **178.7 ms** | **1.00×** |
+| python | 3.969 s | 22.2× |
+
+The most host-stable lane in the batch: Kāra is **1.14× behind `clang -O3` on
+both hosts**, to two decimal places, and the whole compiled field fits in 14%.
+The equal-safety gap tightens slightly, 1.05× → 1.03×. A k-pointer merge is
+branch-heavy and allocation-free, so neither the allocator nor the vectoriser
+has anything to say about it — which is presumably why it travels so well.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. The bracketed column is an **independent repeat of the whole
 suite**, for the reason in the methodology note below.
