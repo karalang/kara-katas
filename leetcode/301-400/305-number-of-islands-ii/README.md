@@ -158,6 +158,60 @@ union-find operations, `build-once + punch`
 ([BENCHMARKS.md](../../../BENCHMARKS.md)). All five languages print
 `checksum 852131712`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 147.2 ms | 0.85× |
+| rust (`-O`) | 147.7 ms | 0.85× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 148.5 ms | 0.85× |
+| **kara** (codegen, seq) | **174.1 ms** | **1.00×** |
+| go | 188.4 ms | 1.08× |
+| python | 3.589 s | 20.6× |
+
+**The equal-safety lead does not survive the host change.** On x86 Kāra is
+1.14× *ahead* of Rust-with-checks; here it is 1.17× behind, because the checks
+cost Rust essentially nothing on arm64 (147.7 → 148.5 ms, 0.5%) where they
+cost it 31% on x86 (498.1 → 650.9). The three checked and unchecked C/Rust
+rows collapse onto each other and Kāra does not join them.
+
+### Where the 1.18× is, and where it is not — measured 2026-09-21
+
+Exact counters (`scripts/pmc.c`): Kāra runs **1.80× C's instructions** but only
+**1.14× its cycles** (1.999G/0.794G against 1.109G/0.700G). This is a
+latency-bound pointer chase, so most of the extra work hides in the shadow of
+the dependent loads. Three candidates were checked and each is ruled out:
+
+- **Not the chase loop.** `while parent[ra] != ra { ra = parent[ra]; }` compiles
+  to six instructions in *both* languages — Kāra `mov / cmp / b.hs / ldr / cmp /
+  b.ne`, Rust `mov / lsr / cbnz / ldr / cmp / b.ne`. Rust's slice bound is a
+  shift-test, Kāra's a compare; they cost the same.
+- **Not the reset loop's codegen.** An isolated `for k in 0..n { v[k] = -1 }`
+  over a `Vec[i64]` of length `n` runs 8.8 ms against C's 8.2 — vectorised,
+  at parity.
+- **Not a mirror asymmetry, though the mirrors do differ.** C and Rust allocate
+  `parent`/`rank` once and reset them in place; the Kāra mirror builds both
+  `Vec`s fresh per pass. Making Kāra match — hoist the allocation, reset with
+  indexed stores — measures **194.2 ms against 174.8**, i.e. *worse*, on
+  **fewer** instructions (1.958G) and **more** cycles (0.895G). That is
+  allocation locality, not work, and it is why the mirror is left as it is:
+  the per-pass rebuild is Kāra's faster spelling here, so the published number
+  is not a handicap.
+
+What is left is diffuse — ~890M extra instructions spread across the
+neighbour scan and per-cell bookkeeping, with no single site to name. Recorded
+rather than filed: a row that cannot name a mechanism is a row nobody can act
+on.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
