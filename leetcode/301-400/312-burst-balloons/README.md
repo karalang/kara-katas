@@ -227,6 +227,36 @@ the pass that reads it, and the `j - i < 2` band is the base case that must stay
 five languages, which keeps the measured work in the `O(w³)` inner loop rather
 than in allocation.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 130.0 ms | 0.44× |
+| rust (`-O`) | 135.0 ms | 0.46× |
+| go | 231.2 ms | 0.78× |
+| **kara** (codegen, seq) | **295.8 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 296.6 ms | 1.00× |
+| python | 18.610 s | 62.9× |
+
+**Kāra and equal-safety Rust land on top of each other on both hosts** — 295.8
+vs 296.6 ms here, 553.2 vs 554.0 on the container. Two ISAs, two
+allocators, one ratio: 1.00×. That is as clean a demonstration as the corpus
+has that the cost is *checked arithmetic*, not either implementation of it.
+
+What moves is the unchecked field: `clang -O3` goes from 1.60× ahead to 2.28×,
+and Go from 1.18× behind to 1.28× ahead. An O(n³) interval DP over a dense
+table is pure indexed arithmetic, which is exactly where dropping the overflow
+trap buys the most.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
