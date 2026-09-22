@@ -152,6 +152,40 @@ Build two 320×320 matrices at ~4% density once in flat row-major; then punch
 a pure function of its operands, so 620 identical multiplications of unchanging
 inputs are exactly what an optimiser may hoist and run once.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 151.9 ms | 0.47× |
+| rust (`-O`) | 237.8 ms | 0.74× |
+| **kara** (codegen, seq) | **322.0 ms** | **1.00×** |
+| go | 334.1 ms | 1.04× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 374.2 ms | 1.16× |
+| python | 20.274 s | 63.0× |
+
+**This lane loses ground where most of the batch gains it**: 1.20× → 2.12×
+against `clang -O3` and 1.04× → 1.35× against unchecked Rust. Kāra keeps its
+lead over equal-safety Rust (1.16×, against 1.38× on x86), so the ordering is
+unchanged and only the margins move.
+
+The cost is in the multiply-accumulate kernel, not the setup. The Kāra mirror
+does grow `a`, `b` and `c` from `Vec.new()` where Rust reserves
+(`Vec::with_capacity(cells)`, `vec![0; cells]`) and C mallocs exactly — the
+asymmetry that cost [#306](../306-additive-number/) 1.81× — but here it is
+worth nothing: a matched build (`with_capacity(n * n)` / `Vec.filled`)
+measures **325.0 ms against 321.9**, inside noise, because the build is one
+pass against 620 multiply passes. The mirror is therefore left as written, and
+the gap is the kernel's.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
