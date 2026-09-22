@@ -133,6 +133,30 @@ an optimiser is entitled to hoist and run once. Making pass *p*'s input depend
 on pass *p−1*'s output creates a serial dependency, so every pass must actually
 run — and it is the realistic shape anyway.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 179.7 ms | 0.83× |
+| rust (`-O`) | 181.6 ms | 0.84× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 203.8 ms | 0.94× |
+| **kara** (codegen, seq) | **215.9 ms** | **1.00×** |
+| go | 723.9 ms | 3.35× |
+| python | 14.906 s | 69.1× |
+
+Every gap narrows on this host: 1.87× → 1.20× against `clang -O3`, and
+1.39× → 1.06× against equal-safety Rust, which is close enough to call a tie.
+Go's outlier widens instead, 2.44× → 3.35×.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
