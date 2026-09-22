@@ -255,6 +255,33 @@ fold reads every emitted byte back, so no mirror can skip the encoding, and the
 word changes each pass so the answer moves rather than being one constant. A
 run can be at most 20 letters long here, so two digits always suffice.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| **kara** (codegen, seq) | **424.1 ms** | **1.00×** |
+| c (`-O3`) | 424.5 ms | 1.00× |
+| go | 438.5 ms | 1.03× |
+| rust (`-O`) | 451.4 ms | 1.06× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 451.7 ms | 1.07× |
+| python | 11.044 s | 26.0× |
+
+**Kāra ties `clang -O3` to within 0.1% and leads every other mirror**, having
+finished last of the compiled five on the container (1.17× behind C). The whole
+field compresses from 17% to 7%, and Rust's checked and unchecked builds are
+0.07% apart — on this workload the trap costs nothing, which is what makes the
+comparison a clean read on the integer-formatting and string-append paths the
+section above describes.
+
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
 lane at 3 runs.
 
