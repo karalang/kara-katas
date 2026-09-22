@@ -170,6 +170,32 @@ rectangles once; then punch 1,800 passes over the query list — 180,000,000
 queries, `build-once + punch` ([BENCHMARKS.md](../../../BENCHMARKS.md)). All
 five languages print `checksum 950743584`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 168.8 ms | 0.67× |
+| go | 191.1 ms | 0.76× |
+| rust (`-O`) | 193.8 ms | 0.77× |
+| **kara** (codegen, seq) | **252.0 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 282.2 ms | 1.12× |
+| python | 19.563 s | 77.6× |
+
+Both of the x86 readings below survive the host change, and the second one
+strengthens: Kāra is 1.49× behind `clang -O3` (narrower than x86's 1.74×) and
+**1.12× ahead of equal-safety Rust** (against 1.08× there). The ordering of
+all five languages is identical on the two hosts, which — given how many katas
+in this batch reorder — is worth noting on its own.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
