@@ -123,6 +123,32 @@ pure function of its tree, so 950 identical peels of one unchanging tree are
 exactly the shape an optimiser may hoist and run once; making the choice depend
 on the last answer creates a serial dependency, so every pass must run.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 170.8 ms | 0.83× |
+| rust (`-O`) | 191.1 ms | 0.93× |
+| go | 199.9 ms | 0.98× |
+| **kara** (codegen, seq) | **204.7 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 219.0 ms | 1.07× |
+| python | 10.238 s | 50.0× |
+
+Kāra keeps its lead over equal-safety Rust (1.07×, the same margin as x86) and
+stays within 2% of Go. The row that moves is **C**, which goes from *slowest*
+compiled mirror on the container (1.17× behind Kāra) to fastest here (1.20×
+ahead) — a 1.40× swing that belongs entirely to the C mirror's own behaviour
+across the two hosts, not to anything in this comparison.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
