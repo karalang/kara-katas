@@ -149,6 +149,32 @@ then per element a binary search, a prefix query and a point update. The
 per-pass allocations (rank table, tree, answer) are part of the algorithm and
 every mirror makes the same ones. All five print `checksum 399910461`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| rust (`-O`) | 330.8 ms | 0.89× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 341.4 ms | 0.91× |
+| **kara** (codegen, seq) | **373.5 ms** | **1.00×** |
+| c (`-O3`) | 522.4 ms | 1.40× |
+| go | 750.2 ms | 2.01× |
+| python | 3.554 s | 9.5× |
+
+**Kāra is ahead of `clang -O3` on both hosts** — 1.40× here, 1.56× on the
+container — which is still the unusual result in this kata and the reason to
+read the C mirror's structure below before quoting it. The Rust pair tightens
+its lead slightly (1.03× → 1.09× against equal-safety Rust), so the ordering is
+identical on the two hosts and only the margins move.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. **Noisy**: σ is 8–10% on every lane in this run, wider than #314's,
 so read the compiled lanes as one band — canonical Apple-silicon numbers await
