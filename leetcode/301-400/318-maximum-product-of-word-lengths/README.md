@@ -191,6 +191,36 @@ collapsed into one register. That moves on every rewrite — `total` walks
 817376, 817456, 817408, … — and it keeps the inner loop honest, because a loop
 that stores cannot be turned into a pure reduction.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 352.8 ms | 0.73× |
+| rust (`-O`) | 384.4 ms | 0.80× |
+| **kara** (codegen, seq) | **483.3 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 548.6 ms | 1.14× |
+| go | 595.0 ms | 1.23× |
+| python | 7.462 s | 15.4× |
+
+**The field stops being a dead heat.** On the container every compiled mirror
+lands within 4% of every other — Kāra 1.01× behind `clang -O3`, 0.97× against
+equal-safety Rust. Here the same six programs spread over 1.7×: Kāra falls to
+1.37× behind clang while moving *ahead* of equal-safety Rust, 0.97× → 1.14×.
+Both moves are the same fact seen twice — the overflow trap costs more relative
+to this kernel on this core, and Rust-with-checks pays it harder than Kāra
+does (1.43× over its own unchecked build, against 1.01× on x86).
+
+The x86 table below is the one the surrounding analysis refers to.
+
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
 lane at 3 runs.
 
