@@ -157,6 +157,40 @@ languages print `checksum 414883072`. The `_offset` arm is mirrored — the one
 arm that is the same algorithm in C, Rust, Go and Python (the ★ arm's `SortedMap`
 has no C equivalent).
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 116.5 ms | 0.78× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 120.8 ms | 0.80× |
+| rust (`-O`) | 129.2 ms | 0.86× |
+| **kara** (codegen, seq) | **150.1 ms** | **1.00×** |
+| go | 233.5 ms | 1.55× |
+| python | 1.732 s | 11.5× |
+
+Kāra gives up its equal-safety tie here: 1.02× behind Rust-with-checks on the
+container, 1.24× behind on this host, with the gap to `clang -O3` widening
+1.09× → 1.29×. Note the odd shape of the Rust pair — the *checked* build is
+1.07× **faster** than the unchecked one, on both hosts, so the equal-safety row
+is the harder target rather than the softer one here.
+
+> **Not the `vertical.kara` that `kara B-2026-09-14-28` is about.** That
+> row's subject is
+> `1-100/14-longest-common-prefix/bench/vertical.kara`; a 2026-09-14 session
+> measured *this* kata's `bench/vertical.c`-shaped lane by mistake and had to
+> retract the conclusion. The two files share a name and nothing else. This
+> lane is a plain default build — the SSO rail is off unless `KARAC_SSO=1` is
+> set, and nothing here measures it.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. **These numbers are noisy** — the shared container has σ of 4–6%
 and this run put unchecked `rustc -O` (431 ms) *above* the overflow-checked build
