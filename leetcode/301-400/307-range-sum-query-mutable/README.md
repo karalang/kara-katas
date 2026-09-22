@@ -151,6 +151,33 @@ deterministic and identical in every mirror, and it keeps per-pass allocation
 out of the measurement entirely — unlike [#305](../305-number-of-islands-ii/),
 where a destructive union-find forced a rebuild.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| rust (`-O -C overflow-checks=on`, equal safety) | 232.0 ms | 0.97× |
+| rust (`-O`) | 235.0 ms | 0.98× |
+| c (`-O3`) | 236.4 ms | 0.99× |
+| **kara** (codegen, seq) | **238.7 ms** | **1.00×** |
+| go | 278.6 ms | 1.17× |
+| python | 9.186 s | 38.5× |
+
+Four compiled languages inside 3%, with Kāra 1.01× behind `clang -O3` and
+1.03× behind equal-safety Rust — a clear improvement on x86's 1.10× and 1.07×
+respectively, and one of the two tightest lanes in the M5 batch alongside
+[#303](../303-range-sum-query-immutable/). A Fenwick tree's update and query
+are both short dependent-load chains, so the arithmetic checks have slack to
+hide in.
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
 
