@@ -150,6 +150,42 @@ chosen from the running checksum with a letter chosen the same way, runs the
 five mirrors work on the byte buffer (bytes in, bytes out) and agree on
 `checksum 993478848`.
 
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart — and the
+> x86-64 Linux cloud container snapshot is
+> [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts; only the
+> **within-file cross-language ratios** are.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+
+| | mean | vs kara |
+|---|---:|---:|
+| c (`-O3`) | 163.5 ms | 0.55× |
+| rust (`-O`) | 215.1 ms | 0.73× |
+| go | 246.5 ms | 0.83× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 246.6 ms | 0.83× |
+| **kara** (codegen, seq) | **296.3 ms** | **1.00×** |
+| python | 11.693 s | 39.5× |
+
+Kāra is last of the compiled four on both hosts, and the margins barely move:
+1.81× behind `clang -O3` here against 2.02× on the container, 1.20× behind
+equal-safety Rust against 1.13×. A stable cross-host gap like this belongs to
+the monotone-stack scan itself rather than to the allocator or the ISA.
+
+**The mirrors do differ at two allocation sites, and it is worth nothing here.**
+`remove_duplicate_letters` builds `last` and `on_stack` as heap `Vec`s grown by
+`push`, where Rust uses stack arrays (`[-1i64; 26]`, `[false; 26]`) and C
+uses `long long last[26]`. Rewriting them as `Array[i64, 26]` / `Array[bool,
+26]` and reserving `text` with `Vec.with_capacity(LEN)` measures **299.9 ms
+against 290.7** — no change, because the function runs `PASSES = 100` times
+against a 4,000,000-letter scan, so 200 small allocations are lost in the
+noise. Left as written. (The same asymmetry cost
+[#306](../306-additive-number/) 1.81×, where it sat in the inner loop — which
+is the whole difference.)
+
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each, box otherwise idle. σ is 7–10% on every lane, so read the
 Rust/Go/Kāra lanes as one band — canonical Apple-silicon numbers await an
