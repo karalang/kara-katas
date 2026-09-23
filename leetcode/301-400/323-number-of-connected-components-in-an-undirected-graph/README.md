@@ -234,7 +234,7 @@ is 22× clang's and 11× smaller than rustc's. Raw numbers are in
 
 ## Compiler findings
 
-**Three fixed in kara `a4ce83d04`, three more filed open.** The first one hit
+**Six found, all fixed.** Three were fixed in kara `a4ce83d04`, and three more in `a8ad4239a` and `c7b9cbdbf`. The first one hit
 the ★ arm as written: its `for (a, b) in edges` loop did not type-check. The
 rest came from probing other ways to write the same problem, fourteen
 spellings in all, each run on all four surfaces. Nothing in this directory had
@@ -263,24 +263,32 @@ to be changed to dodge one.
   unlowered-source error on every compiled surface, as did its `.iter()` and
   `.iter().enumerate()` forms and `v[a..b].iter().enumerate()`.
 
-Filed open. The first two are drop-and-ownership bugs, which are being worked
-on as a family elsewhere in the compiler:
+Fixed next, in kara `a8ad4239a` and `c7b9cbdbf`:
 
 - **[`B-2026-09-23-31`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (high): a heap field copied out of a borrowed tuple
-  or `ref v[i]` binding is freed twice.** `let p = ref ps[1]; let name =
+  or `ref v[i]` binding was freed twice.** `let p = ref ps[1]; let name =
   p.0;` over `Vec[(String, i64)]`, the same through `for p in ps.iter()`, and
-  `let q = ref qs[0]; let m = q.name;` over a struct all abort with a double
-  free on every compiled surface. `--interp` prints the right output. The
-  same read through a `ref P` parameter is clean and warns
-  `borrow_projection_copy`; these three spellings do not warn.
+  `let q = ref qs[0]; let m = q.name;` over a struct all aborted with a double
+  free on every compiled surface. `--interp` printed the right output. Those
+  roots now get the copy that a `ref P` parameter already got. They still do
+  not warn `borrow_projection_copy` the way the parameter does.
 - **[`B-2026-09-23-32`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): `enumerate().map(..).collect()` over heap tuples
-  double-frees.** `names.iter().enumerate().map(|q| q.0 + q.1.1).collect()`
+  double-freed.** `names.iter().enumerate().map(|q| q.0 + q.1.1).collect()`
   over `Vec[(String, i64)]` reads only an index and an integer, and still
-  aborts with a double free on every compiled surface.
-- **[`B-2026-09-23-33`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (test infra): an ASAN fixture with a parse error passes.**
-  Found while writing this fix's own fixtures. One used `&&`, which Kāra spells
-  `and`, and the harness printed `setup failed — skipping` and reported `ok`.
-  Typecheck and codegen failures already fail the harness; a parse failure
-  still skips.
+  aborted with a double free on every compiled surface. `enumerate()` put the
+  loop element whole into a tuple that then owned it too.
+- **[`B-2026-09-23-33`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (test infra): an ASAN fixture with a parse error passed.**
+  Found while writing the fixtures for this kata's fixes. One used `&&`, which
+  Kāra spells `and`, and the harness printed `setup failed — skipping` and
+  reported `ok`. A parse failure now fails the fixture. That exposed six
+  existing fixtures that had never parsed. Five were repaired. The sixth was
+  hiding a real double free when a `String` is moved out of a `Map.get` enum
+  payload (`B-2026-09-23-40`), which was fixed in the same commit.
+
+Two older faults turned up along the way and are filed open:
+[`B-2026-09-23-38`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (a nested tuple member read in place,
+`println(v[0].1.0)`, leaks one copy per read) and
+[`B-2026-09-23-39`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (a `String` moved out of a
+`Vec.get` enum payload reads back empty on the compiled surfaces).
 
 No `KARAC_AUTO_PAR=0`-only pass, and nothing contorted.
