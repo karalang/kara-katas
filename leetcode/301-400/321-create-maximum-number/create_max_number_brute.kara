@@ -24,21 +24,23 @@ fn greater(a: ref Vec[i64], b: ref Vec[i64]) -> bool {
 // Every interleaving of a[i..] and b[j..] appended to `cur`; the largest
 // complete one is kept in `best`.
 fn interleave(a: ref Vec[i64], i: i64, b: ref Vec[i64], j: i64,
-        cur: mut ref Vec[i64], best: mut ref Vec[i64]) {
+        cur: mut ref Vec[i64], best: mut ref Vec[i64], have: mut ref bool) {
     if i == a.len() and j == b.len() {
-        if greater(cur, best) {
-            for x in 0..cur.len() { best[x] = cur[x]; }
+        if not have or greater(cur, best) {
+            best.clear();
+            for x in 0..cur.len() { best.push(cur[x]); }
+            have = true;
         }
         return;
     }
     if i < a.len() {
         cur.push(a[i]);
-        interleave(a, i + 1, b, j, cur, best);
+        interleave(a, i + 1, b, j, cur, best, have);
         cur.pop();
     }
     if j < b.len() {
         cur.push(b[j]);
-        interleave(a, i, b, j + 1, cur, best);
+        interleave(a, i, b, j + 1, cur, best, have);
         cur.pop();
     }
 }
@@ -61,10 +63,8 @@ fn subsequences(nums: ref Vec[i64], from: i64, want: i64, cur: mut ref Vec[i64],
 }
 
 fn max_number(nums1: ref Vec[i64], nums2: ref Vec[i64], k: i64) -> Vec[i64] {
-    // The running maximum starts below every candidate: k copies of -1,
-    // which any sequence of digits beats at its first position.
     let mut best: Vec[i64] = Vec.new();
-    for x in 0..k { best.push(-1); }
+    let mut have = false;
     for i in 0..(k + 1) {
         if i <= nums1.len() and k - i <= nums2.len() {
             let mut lefts: Vec[Vec[i64]] = Vec.new();
@@ -75,7 +75,7 @@ fn max_number(nums1: ref Vec[i64], nums2: ref Vec[i64], k: i64) -> Vec[i64] {
             for x in 0..lefts.len() {
                 for y in 0..rights.len() {
                     let mut cur: Vec[i64] = Vec.new();
-                    interleave(lefts[x], 0, rights[y], 0, mut cur, mut best);
+                    interleave(lefts[x], 0, rights[y], 0, mut cur, mut best, mut have);
                 }
             }
         }

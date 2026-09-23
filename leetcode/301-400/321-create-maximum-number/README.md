@@ -275,26 +275,22 @@ clang's and 11× smaller than rustc's. Raw numbers are in
 
 ## Compiler findings
 
-**One filed: [`B-2026-09-23-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)
-— a `ref`/`mut ref` bool or numeric scalar is still refused as an `if` or
-`while` condition, as the operand of unary `not` or `-`, and as either operand
-of `and`/`or`.** The brute-force arm's first draft carried its running maximum
-through the recursive interleaving walk as
-`best: mut ref Vec[i64], have: mut ref bool`, and read
-`if not have or greater(cur, best)`. `karac check` refused it with
+**One filed and since fixed: [`B-2026-09-23-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl)
+— a `ref`/`mut ref` bool or numeric scalar was refused as an `if` or `while`
+condition, as the operand of unary `not` or `-`, and as either operand of
+`and`/`or`.** The brute-force arm carries its running maximum through the
+recursive interleaving walk as `best: mut ref Vec[i64], have: mut ref bool`,
+and reads `if not have or greater(cur, best)`. `karac check` refused it with
 `E0209 unary 'not' requires 'bool', found 'mut ref bool'`. Probing every
-position showed the same scalar is accepted in `==`, arithmetic, casts,
-annotated lets and arguments, and refused in exactly the five positions
-above. So `if flag == true` compiles and `if flag` does not. kara `42a9f2c`
-made ref scalars "read as their value type in every value position", and these
-five were missed. All surfaces refuse alike, so nothing diverges.
+position showed the same scalar was accepted in `==`, arithmetic, casts,
+annotated lets and arguments, and refused in exactly the five positions above,
+so `if flag == true` compiled and `if flag` did not. kara `42a9f2c` had made
+ref scalars "read as their value type in every value position", and these five
+were missed. All surfaces refused alike, so nothing diverged.
 
-**The brute arm ships in a different shape because of it.** Its running
-maximum starts below every candidate (`k` copies of `-1`, which any digit
-sequence beats at its first position) instead of carrying a `have` flag. That
-is a standard way to seed a running maximum, but it is not the form the arm
-was first written in. The `have`-flag form should come back here when the row
-closes.
+kara `6a9665a18` fixed it, along with the bitwise operators, unary `~` and match
+guards, which had the same gap. The brute arm has its `have` flag back. While
+the row was open it seeded the maximum with `k` copies of `-1` instead.
 
 The only other diagnostics were two `E0001`s in the benchmark kernel, and those
 are a language rule, not a gap: single-letter constants `M` and `N` are
