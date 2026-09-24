@@ -302,6 +302,6 @@ lost its type, so `t.len()` did not build) and
 [`B-2026-09-24-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (`v[0].1.0.s`, a field on a struct
 nested in a tuple in a `Vec` element, did not build; making it build also
 fixed a double free when a `match` moves an enum field out of `v[0].1.k`).
-Three neighbours of those remain open: `B-2026-09-24-6`, `-7` and `-8`.
+Their three neighbours `B-2026-09-24-6`, `-7` and `-8` were fixed in kara `889202e1c`; two narrower remainders stay open as `B-2026-09-24-17` (a nested enum pattern or `Option[Map]` payload over an element field) and `-18` (a spurious `borrow_projection_copy` warning).
 
 No `KARAC_AUTO_PAR=0`-only pass, and nothing contorted.
