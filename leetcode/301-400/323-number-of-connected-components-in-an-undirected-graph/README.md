@@ -296,10 +296,12 @@ Two older faults turned up along the way, and both are now fixed:
   a borrow, like the bare `Some(w)`: reads and `len` work everywhere, and moving
   it out is a type error (`.clone()` it instead).
 
-Two more gaps found next to those are filed open:
+Two more gaps found next to those are fixed too:
 [`B-2026-09-24-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (`let t = r;` over a borrowed `String`
-loses its type, so `t.len()` does not build) and
+lost its type, so `t.len()` did not build) and
 [`B-2026-09-24-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (`v[0].1.0.s`, a field on a struct
-nested in a tuple in a `Vec` element, does not build).
+nested in a tuple in a `Vec` element, did not build; making it build also
+fixed a double free when a `match` moves an enum field out of `v[0].1.k`).
+Three neighbours of those remain open: `B-2026-09-24-6`, `-7` and `-8`.
 
 No `KARAC_AUTO_PAR=0`-only pass, and nothing contorted.
