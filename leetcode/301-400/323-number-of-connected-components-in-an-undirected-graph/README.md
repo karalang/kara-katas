@@ -285,10 +285,21 @@ Fixed next, in kara `a8ad4239a` and `c7b9cbdbf`:
   hiding a real double free when a `String` is moved out of a `Map.get` enum
   payload (`B-2026-09-23-40`), which was fixed in the same commit.
 
-Two older faults turned up along the way and are filed open:
-[`B-2026-09-23-38`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (a nested tuple member read in place,
-`println(v[0].1.0)`, leaks one copy per read) and
-[`B-2026-09-23-39`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (a `String` moved out of a
-`Vec.get` enum payload reads back empty on the compiled surfaces).
+Two older faults turned up along the way, and both are now fixed:
+
+- **[`B-2026-09-23-38`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): a nested tuple member read leaked.**
+  `println(v[0].1.0)` over `Vec[(i64, (String, i64))]` leaked one copy of the
+  `String` per read. The read now copies only the leaf and frees it.
+- **[`B-2026-09-23-39`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): a borrowed payload field bound
+  without a type.** In `match v.get(0) { Some(B.S(w)) => ... }`, `w` had no
+  type, so a moved `w` read back empty and `w.len()` did not compile. `w` is now
+  a borrow, like the bare `Some(w)`: reads and `len` work everywhere, and moving
+  it out is a type error (`.clone()` it instead).
+
+Two more gaps found next to those are filed open:
+[`B-2026-09-24-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (`let t = r;` over a borrowed `String`
+loses its type, so `t.len()` does not build) and
+[`B-2026-09-24-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (`v[0].1.0.s`, a field on a struct
+nested in a tuple in a `Vec` element, does not build).
 
 No `KARAC_AUTO_PAR=0`-only pass, and nothing contorted.
