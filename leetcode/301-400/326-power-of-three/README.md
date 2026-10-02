@@ -171,23 +171,29 @@ Compile time (cold, 10 runs) and artefact size:
 
 **No correctness gaps.** All five programs were byte-identical on every
 surface from the first run. The interpreter was the problem: correct, but
-slow.
+slow. Two of the three findings are fixed.
 
-- **B-2026-10-02-40 (perf, medium): every call in `karac run --interp`
-  re-walked the callee's whole body through a dozen ownership predicates.**
-  A per-run memo of those predicates, keyed by the function's address,
-  brings the ★ arm under `--interp` from 102 s to 20.8 s, and a 2,000-call
-  loop into a 40-line function from 9.32 s to 0.55 s.
-- **B-2026-10-02-41 (perf, medium): the interpreter clones a function's
-  entire body every time it looks up the function's name.** After the memo,
-  a loop making one call to a one-line function still costs about 90,000
-  instructions per iteration, and about 40% of them copy and free the
-  callee's AST: a function value holds its `Block` by value, `Env::get`
-  returns a clone, and the profile counts five such copies per call. The
-  differential takes 60 s under `--interp` against 0.3 s under the JIT.
-- **B-2026-10-02-42 (missing-feature, low): `f"{d:+}"` is rejected**, as
-  "unsupported type `+`". The format-spec grammar has no sign flag, which
-  Rust and Python both have, and the message calls the flag a type.
+- **B-2026-10-02-40 (perf, medium, fixed in kara `74d4fa7d2` and
+  `c3ea28d83`): every call in `karac run --interp` re-walked the callee's
+  whole body through a dozen ownership predicates**, so a call cost time in
+  proportion to the callee's size: 4.6 ms a call for a forty-line function.
+  A per-run memo of those walks, keyed by the function's address, took a
+  2,000-call loop into a 40-line function from 9.32 s to 0.55 s.
+- **B-2026-10-02-41 (perf, medium, fixed in kara `fcd99fa94`): the
+  interpreter copied a function's entire body every time it looked up the
+  function's name.** A function value held its `Block` by value and
+  `Env::get` returns a clone; a profile of a loop calling a one-line
+  function counted five copies per call, 40% of its instructions with their
+  frees. The body is now shared.
+- **B-2026-10-02-42 (missing-feature, low, open): `f"{d:+}"` is rejected**,
+  as "unsupported type `+`". The format-spec grammar has no sign flag, which
+  Rust and Python both have, and the message calls the flag a type. The
+  differential spells that line `3^{k} + {d}` instead.
+
+Together the two fixes take the ★ arm under `--interp` from 102 s to 9.7 s
+and the differential from 60 s (with only the first fix) to 29 s. That is still far from
+the JIT's 0.3 s for the differential; the remaining per-call cost is
+recorded in B-2026-10-02-40's close.
 
 `karac check` reported six E0218 diagnostics on the differential, all the
 missing `mut` marker on a `mut ref` argument, and `karac fix` applied all
