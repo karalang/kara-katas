@@ -170,7 +170,7 @@ The benchmark kernel's sink matches all four language twins and Python
   instructions and from 498 ms to 399 ms, against 216 ms for Rust with
   overflow checks (2.31x to 1.85x, hyperfine, 30 runs, same session). The rest
   of the gap (the per-hash cost, a second hash in `remove`, the insert's probe)
-  is B-2026-10-04-64. The table above was measured before the fix.
+  is B-2026-10-04-79. The table above was measured before the fix.
 - **B-2026-10-04-54 (codegen gap, medium, open): `.clone()` on a tuple element reached
   through an index or a `ref` parameter does not build.** The differential's
   `cases[i].0.clone()` fails `karac build` with "Vec/String method 'clone' is
