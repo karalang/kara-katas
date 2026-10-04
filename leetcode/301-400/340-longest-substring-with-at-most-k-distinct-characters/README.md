@@ -122,7 +122,7 @@ shift deletion.
 | python 3 | 2044 ms ± 96 | 33.9× |
 
 Kāra is 2.2× equal-safety Rust here, and the reason is the map
-(B-2026-10-04-56). Kāra and Rust both hash with SipHash-1-3, but under
+(B-2026-10-04-56, since fixed: 1.85×, see Compiler findings). Kāra and Rust both hash with SipHash-1-3, but under
 callgrind Kāra's hash alone costs more instructions than Rust's whole run:
 26.5M hash calls at 92 instructions each, half of Kāra's total, against about
 18.5M hashes in Rust. The counting step `counts.insert(c, counts.get(c)
@@ -161,13 +161,16 @@ The benchmark kernel's sink matches all four language twins and Python
   edit, and a parenthesized swap is pointed at Kāra's `a, b = b, a`. The place
   form, `*counts.entry(c).or_insert(0) += 1`, was right on both backends all
   along.
-- **B-2026-10-04-56 (perf, medium, open): the ★ arm's `Map[char, i64]` runs 2.2x
+- **B-2026-10-04-56 (perf, medium): the ★ arm's `Map[char, i64]` ran 2.2x
   Rust's `HashMap` at equal hashing.** The counting step
-  `counts.insert(c, counts.get(c).unwrap_or(0) + 1)` hashes `c` twice where
-  Rust's `entry` hashes once, and the hash is half of all instructions. The
-  `entry` spelling cuts the hashes by 30% and is still 1.9x Rust, so the rest
-  is the per-hash cost and the map's own path. The kata keeps the
-  get-then-insert spelling as written.
+  `counts.insert(c, counts.get(c).unwrap_or(0) + 1)` hashed `c` twice where
+  Rust's `entry` hashes once, and the hash was half of all instructions. Fixed
+  in the kara repo: a mono `Map` operation now takes its key's hash at the call
+  site, so the two calls share one. The bench went from 4.68 G to 3.43 G
+  instructions and from 498 ms to 399 ms, against 216 ms for Rust with
+  overflow checks (2.31x to 1.85x, hyperfine, 30 runs, same session). The rest
+  of the gap (the per-hash cost, a second hash in `remove`, the insert's probe)
+  is B-2026-10-04-64. The table above was measured before the fix.
 - **B-2026-10-04-54 (codegen gap, medium, open): `.clone()` on a tuple element reached
   through an index or a `ref` parameter does not build.** The differential's
   `cases[i].0.clone()` fails `karac build` with "Vec/String method 'clone' is
