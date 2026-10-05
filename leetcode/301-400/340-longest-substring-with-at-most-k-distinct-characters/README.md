@@ -47,9 +47,10 @@ cases and 300 generated strings (0 to 40 letters from alphabets of 1 to 6,
 
 `308 cases checked (answers add up to 4276), 0 failures` under
 `karac run --interp`. The differential does not yet build: it copies
-`cases[i].0.clone()` out of a `Vec[(String, i64)]`, which codegen does not
-lower (B-2026-10-04-54, see Compiler findings). The five arms themselves build and run
-on every surface.
+`cases[i + 1].0.clone()` out of a `Vec[(String, i64)]`, and codegen lowers
+that clone only when the subscript is a name or a literal (B-2026-10-05-2,
+the remainder of B-2026-10-04-54; see Compiler findings). The five arms
+themselves build and run on every surface.
 
 ## Mutation testing
 
@@ -171,12 +172,12 @@ The benchmark kernel's sink matches all four language twins and Python
   overflow checks (2.31x to 1.85x, hyperfine, 30 runs, same session). The rest
   of the gap (the per-hash cost, a second hash in `remove`, the insert's probe)
   is B-2026-10-04-79. The table above was measured before the fix.
-- **B-2026-10-04-54 (codegen gap, medium, open): `.clone()` on a tuple element reached
-  through an index or a `ref` parameter does not build.** The differential's
-  `cases[i].0.clone()` fails `karac build` with "Vec/String method 'clone' is
-  not yet supported in codegen", while `v[i].name.clone()` on a struct field
-  builds. Filed for the codegen lowering work; the differential runs under
-  `--interp` until then.
+- **B-2026-10-04-54 (codegen gap, medium, fixed): `.clone()` on a tuple element reached
+  through an index or a `ref` parameter did not build.** Fixed for a name or
+  literal subscript (`cases[i].0.clone()` now builds). The differential's
+  `cases[i + 1].0.clone()` still fails `karac build` with "Vec/String method
+  'clone' is not yet supported in codegen", which is **B-2026-10-05-2 (codegen
+  gap, medium, open)**; the differential runs under `--interp` until then.
 - **B-2026-10-04-55 (miscompile, medium, open): an assignment through `*` of a user
   function's returned `mut ref` is dropped** on both backends: `*bump(mut x)
   += 5` leaves `x` unchanged. Found probing assignment targets for B-2026-10-04-61;
