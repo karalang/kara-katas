@@ -148,8 +148,8 @@ Compile time (cold, 10 runs) and artefact size:
 
 ## Compiler findings
 
-Writing this kata turned up three gaps in the tools around the language,
-none in the compiled code. All three are fixed in the kara repo.
+Writing this kata turned up four gaps in the tools around the language,
+none in the compiled code. All four are fixed in the kara repo.
 
 - **B-2026-10-05-46 (crash): a parse error in a file that also held
   a multi-assign crashed `karac check`, `check --output=json`, `run` and
@@ -171,6 +171,11 @@ none in the compiled code. All three are fixed in the kara repo.
   yet. The error now says so, and suggests `{x}`. The kata writes its quotes
   by hand, `"\"{text}\""`, which is what `{text:?}` would print here once it
   exists.
+- **B-2026-10-05-72 (diagnostics): `char.from_u32(n)` said only "no
+  associated function 'from_u32' on type 'char'".** The benchmark builds its
+  Greek letters from code points, and `from_u32` is the Rust spelling. Kāra
+  spells it `char.try_from(n)`, and the error now says so, as it does for
+  `i64.max_value()` (`i64.MAX`).
 
 The author already knows the language, so none of this counts toward the
 machine-fix rate.
