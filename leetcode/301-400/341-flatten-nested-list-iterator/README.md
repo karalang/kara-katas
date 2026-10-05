@@ -189,3 +189,9 @@ The benchmark kernel's sink matches all four language twins and Python
   wider than three words heap-allocates a box for the `Some` payload.**
   `Nested` is four words, and the stack arm pops about twice per node, so the
   bench makes about four times as many allocations as Rust's twin.
+- **B-2026-10-05-23 (perf, medium): `--interp` re-derived type-level `Drop` facts for
+  every value it matched, re-scanning the program's items each time.** The
+  arms take 30 s under `--interp`, against well under a second compiled, at
+  about 470,000 instructions per tree node. Fixed in the kara repo: those
+  answers are memoized and the enum lookups indexed, 14% fewer instructions
+  on the bench kernel. The rest of the cost is spread across the interpreter.
