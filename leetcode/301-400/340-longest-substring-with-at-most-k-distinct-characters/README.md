@@ -45,12 +45,12 @@ cases and 300 generated strings (0 to 40 letters from alphabets of 1 to 6,
 | P7 | renaming the characters one-to-one keeps the answer |
 | P8 | for `s + t` the answer is at least each part's and at most their sum |
 
-`308 cases checked (answers add up to 4276), 0 failures` under
-`karac run --interp`. The differential does not yet build: it copies
-`cases[i + 1].0.clone()` out of a `Vec[(String, i64)]`, and codegen lowers
-that clone only when the subscript is a name or a literal (B-2026-10-05-2,
-the remainder of B-2026-10-04-54; see Compiler findings). The five arms
-themselves build and run on every surface.
+`308 cases checked (answers add up to 4276), 0 failures`, byte-identical
+under `karac run`, `karac run --interp`, `karac build` with
+`KARAC_AUTO_PAR=0`, and the default `karac build`. The differential first ran
+under `--interp` only: it copies `cases[i + 1].0.clone()` out of a
+`Vec[(String, i64)]`, and codegen could not lower that clone at an expression
+subscript until B-2026-10-05-2 was fixed (see Compiler findings).
 
 ## Mutation testing
 
@@ -85,7 +85,7 @@ All five arms print the same standard output under `karac run` (LLJIT),
 auto-parallelising `karac build`, and that output is byte-identical to
 `longest_k_distinct.py`. At `-O0` with `KARAC_AUTO_PAR=0` and
 `KARAC_BUF_CACHE=0`, valgrind reports all five clean (`All heap blocks were
-freed`, no errors).
+freed`, no errors), and the differential as well since it began to build.
 
 The last-position arm walks its `Map` to find the oldest sighting, which is a
 walk in per-process hash order; it takes the minimum, so its output does not
@@ -175,9 +175,10 @@ The benchmark kernel's sink matches all four language twins and Python
 - **B-2026-10-04-54 (codegen gap, medium, fixed): `.clone()` on a tuple element reached
   through an index or a `ref` parameter did not build.** Fixed for a name or
   literal subscript (`cases[i].0.clone()` now builds). The differential's
-  `cases[i + 1].0.clone()` still fails `karac build` with "Vec/String method
-  'clone' is not yet supported in codegen", which is **B-2026-10-05-2 (codegen
-  gap, medium, open)**; the differential runs under `--interp` until then.
+  `cases[i + 1].0.clone()` still failed `karac build` with "Vec/String method
+  'clone' is not yet supported in codegen", which was **B-2026-10-05-2 (codegen
+  gap, medium, fixed in kara `36675934d`)**. The differential now builds and
+  matches the interpreter on every surface.
 - **B-2026-10-04-55 (miscompile, medium, open): an assignment through `*` of a user
   function's returned `mut ref` is dropped** on both backends: `*bump(mut x)
   += 5` leaves `x` unchanged. Found probing assignment targets for B-2026-10-04-61;
