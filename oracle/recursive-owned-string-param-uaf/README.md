@@ -42,3 +42,15 @@ Fixed in the sibling `kara` repo as ledger **B-2026-07-25-1**, with a permanent
 ASan regression test (`asan_owned_string_param_consumed_twice_no_uaf` in
 `tests/memory_sanitizer.rs`). See [`ablations/`](ablations/) for the
 one-ingredient-removed variants used during the hunt.
+
+## Under the v2 core
+
+The v2 core (`kara` `docs/core-semantics.md` §3.2) makes the triggering
+shape illegal: `airport` is moved into `cursor` and then used again, so
+`karac check repro.kara` (and `ablations/a1-local-binding-STILL-FAILS.kara`)
+now reports a use after move, and `karac fix` clones at the first move. The
+files are kept unmigrated on purpose. `karac build` and `karac run` still
+accept them until the v2 middle end replaces the legacy backend, and the
+legacy backend's handling of the double consume is exactly what this probe
+guards. The migrated form of the kata itself is
+[`leetcode/301-400/332-reconstruct-itinerary`](../../leetcode/301-400/332-reconstruct-itinerary/).

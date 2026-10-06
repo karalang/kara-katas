@@ -128,3 +128,9 @@ for f in ablations/*.kara; do
         "$(karac check "$f" >/dev/null 2>&1 && echo pass || echo FAIL)"
 done
 ```
+
+## Under the v2 core
+
+`borrows.kara` and `rejected.kara` are still rejected, now under the v2
+core's use-after-move rule (`kara` `docs/core-semantics.md` §3.2). That they
+fail `karac check` remains the regression test.
