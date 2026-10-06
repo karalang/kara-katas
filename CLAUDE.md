@@ -62,10 +62,13 @@ kara repo at `examples/mend/TASK_FORMAT.md`.
 - **A/B run == build.** Every kata must produce **identical output under
   `karac run` and `karac build`.** A run/build divergence is a compiler bug, not
   a kata quirk.
-- **Auto-par is a third surface.** Verify under the **default** build (which
-  auto-parallelizes) *and* `KARAC_AUTO_PAR=0` — effect-analysis bugs diverge only
-  under auto-par. So the full A/B set is: `run` vs `build` vs default-auto-par
-  `build`, all byte-identical to the reference-language output.
+- **Auto-par is opt-in now.** Since the 2026-10-06 v2 redesign (kara commit
+  `1de29e940`), `karac build` is sequential unless `KARAC_AUTO_PAR=1`; statement
+  auto-par is being deleted and loop auto-par returns later as proven-safe only.
+  The A/B set is `run` vs `build`, both byte-identical to the reference-language
+  output. A `KARAC_AUTO_PAR=1` build is still worth a look where a kata's speed
+  depends on it, but under the v2 freeze a divergence there is a legacy bug: note
+  it, do not file it.
 - **A `Map`/`Set` walk is not a stable surface — and a divergence there is NOT a
   compiler bug.** Iteration order is the per-process hash order (SipHash-1-3
   under a random key; see the kara repo's CLAUDE.md), so a kata whose output
