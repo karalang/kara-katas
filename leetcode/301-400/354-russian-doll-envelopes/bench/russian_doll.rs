@@ -1,0 +1,46 @@
+// Bench for LeetCode #354 -- Rust mirror of russian_doll.kara: sort by width
+// ascending and height descending, then a patience-sorting LIS over heights.
+
+const ROUNDS: i64 = 20;
+const COUNT: i64 = 200000;
+
+fn max_envelopes(envelopes: &[(i64, i64)]) -> i64 {
+    let mut order = envelopes.to_vec();
+    order.sort_by(|a, b| if a.0 != b.0 { a.0.cmp(&b.0) } else { b.1.cmp(&a.1) });
+    let mut tails: Vec<i64> = Vec::new();
+    for &(_, h) in order.iter() {
+        let mut lo = 0;
+        let mut hi = tails.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if tails[mid] < h {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo == tails.len() {
+            tails.push(h);
+        } else {
+            tails[lo] = h;
+        }
+    }
+    tails.len() as i64
+}
+
+fn main() {
+    let mut sink: i64 = 0;
+    for round in 0..ROUNDS {
+        let mut seed = 354 + round;
+        let mut envelopes: Vec<(i64, i64)> = Vec::new();
+        for _ in 0..COUNT {
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let w = seed % 100000 + 1;
+            seed = (seed * 1103515245 + 12345) % 2147483648;
+            let h = seed % 100000 + 1;
+            envelopes.push((w, h));
+        }
+        sink = (sink * 31 + max_envelopes(&envelopes) + round) % 1000000007;
+    }
+    println!("{}", sink);
+}
