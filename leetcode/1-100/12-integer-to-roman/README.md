@@ -201,3 +201,10 @@ Karac peaks at **14.7 MiB** vs rustc's **28.0 MiB** (1.9× lower) and clang's **
 ### Numbers published here are reference data
 
 The CI gate's source-of-truth aggregate lives in [`karac-rust/bench/compile_speed/`](../../../../karac-rust/bench/compile_speed/) (different corpus: curated subset + synthetic 10K-LOC stress program).
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-85** — `s.chars().rev()` is refused by `karac build`; it blocks the roman-numeral round-trip differential, which is not checked in until it builds.
+- `const` `Array` index / `len` / `for` under `karac build` is the already-open **B-2026-10-06-43** (found again independently).

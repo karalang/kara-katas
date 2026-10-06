@@ -158,3 +158,10 @@ Kāra's compile-memory footprint is ~5.5× clang's and ~2.4× below rustc's — 
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap — and on linked-list katas the Rust mirror's `Rc<RefCell<ListNode>>` reference semantics is the apples-to-apples comparator for Kāra's `shared struct` (katas 2 / 19 / 21 precedent). C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-87** — comparing an indexed tuple element is refused by `karac build`, and `PriorityQueue[(..)]` cannot be built through the stdlib's `outranks`.
+- The kata-2 tuple-literal `match` leak (B-2026-10-06-78) was hit again by the merge-two-lists step.

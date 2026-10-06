@@ -257,3 +257,11 @@ size and peak RSS are single deterministic samples.
 Kāra also wins the toolchain envelope: it **compiles ~1.8× faster than `rustc -O`**, emits a binary
 **~38% smaller than Rust** (and ~8× smaller than Go), and peaks at **2.0 MiB RSS** — line-ball with
 Rust, ~4× under Go and Python.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara) with a Python mirror: 4000 random words grouped through `entry().or_insert(..)`, checksummed (clean everywhere). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-92** — `Vec[i64]` is not `Ord` to the typechecker, so a `SortedMap` keyed by the count vector is refused, though design.md declares `impl[T: Ord] Ord for Vec[T]`.
+- **B-2026-10-06-93** — `SortedMap` / `SortedSet` with a tuple, `Array` or unit-enum key is refused by `karac build`.
+- A `const` prime table indexed in the prime-product key is the already-open **B-2026-10-06-43**.

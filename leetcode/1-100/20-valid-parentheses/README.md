@@ -155,3 +155,10 @@ Kāra's compile-memory footprint is ~4.1× clang's and ~2.6× lower than rustc's
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware, same LLVM backend), so the headline ratio is the codegen-vs-Rust gap on the seq lane. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. The auto-par regime is reported separately and never headlined against the single-threaded rows, per BENCH.md's two-lane discipline.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara) with a Python mirror: the stack check against pair deletion over 3000 random bracket strings (clean everywhere). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-86** — a value enum carrying a unit-only enum payload is refused (`E_ENUM_NESTED_ENUM_PAYLOAD`).
+- The kata-3 `chars()` chain row (B-2026-10-06-80) and the kata-1 predicate row (B-2026-10-06-74) were hit again.

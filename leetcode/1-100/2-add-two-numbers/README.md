@@ -142,3 +142,10 @@ Kāra now sits at **parity with C and Rust** on peak RSS — down from 1.6 MiB p
 ### Why this kata is in the harness
 
 Add Two Numbers is the canonical "small-object allocator and reference-semantics" entry: a tight inner loop that walks one heap chain, builds another, and drops it. This is where `shared struct` vs `Rc<RefCell<>>` vs raw `malloc` vs GC actually show up — not in tight numeric kernels (where they all compile to the same instructions) but in workloads where heap discipline dominates. The seq lane here is the load-bearing reference-semantics measurement; the C row is what the same algorithm costs without RC at all.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-77** — a `let` bound to an `if` / `match` that chooses between two `ref` params is refused by `karac build`.
+- **B-2026-10-06-78** — a `match` on a tuple literal of moved `shared` / heap-struct values leaks compiled (kata 23's merge-two-lists hit it again).

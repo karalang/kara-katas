@@ -180,3 +180,12 @@ Kāra, Rust, and C all sit at the same per-workload memory floor (~1 MiB for bru
 ### Why this kata is in the harness
 
 Two-sum is the canonical "small, dual-algorithm" entry: the same problem expressed as O(n²) array scan and O(n) hashmap lookup, so it exercises two distinct codegen paths (tight inner loop with bounds-check elision; generic runtime collection) on a workload small enough to surface compile-pipeline overhead. The brute-force row is what the autovectorizer can do when the loop is clean; the hash_map row is what the runtime collection costs over a hand-rolled probing table.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara): a hash map and a two-pointer existence check against a brute-force oracle over 3000 random arrays, duplicates and negatives included (clean everywhere). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-73** — `(vec![], 5)` against a `(Vec[i64], i64)` slot was refused at check time (fixed).
+- **B-2026-10-06-74** — a `find` / `filter` predicate written over the element by value is refused, where design.md gives the parameter as `ref Self.Item`.
+- **B-2026-10-06-75** — `find` / `find_map` over a tuple or unit-only-enum element is refused by `karac build`.
+- **B-2026-10-06-76** — a non-empty `Set[..]` literal anywhere, and an empty `Map[]` / `Set[]` outside a `let`, have no codegen lowering.

@@ -168,3 +168,10 @@ Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../1-two
 - **C** is the codegen calibration point — same LLVM backend as Kāra and Rust, no language runtime overhead. Kāra's gap to C is the cost of using `Map[K, V]` as a generic abstraction (allocator round-trip per call, capacity not proven static); Rust pays the same cost. The Kāra-vs-Rust ratio is the meaningful one *within* the abstraction level both pick.
 - **Go** is the cross-runtime data point — GC + scheduler + statically-linked runtime, but a thoroughly-tuned native compiler. Standing baseline since 2026-05-21 (BENCH.md update). The 2.59× Kāra-over-Go gap this kata used to show was the FxHash-vs-Go-memhash + per-call map-header alloc combination; with FxHash retired in `59c8d30cd` the hash half of that is gone and Kāra now reads **1.47× slower** than Go. The map-header alloc difference is unchanged and still real — it is simply no longer enough on its own.
 - **Python** is the ergonomic foil — the "is the perf cliff worth the syntax?" framing. Gated behind `KARA_BENCH_INCLUDE_PY=1` in the sink check; always run in its own hyperfine batch so it doesn't slow feedback on the compiled lane.
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara) with a Python mirror: a last-seen map and a `Set` sliding window against brute force over random strings (clean everywhere). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-79** — `s[a..b].to_string()` / `.clone()` on a `ref String` param is refused by `karac build`.
+- **B-2026-10-06-80** — `for (i, c) in s.chars().enumerate()` and other method-rooted chains are refused by `karac build`, with a misleading hint.

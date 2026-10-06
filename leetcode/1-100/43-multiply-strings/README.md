@@ -158,3 +158,9 @@ small-alloc residual shows) maps exactly where Kāra's codegen still has road le
 shares **`B-2026-06-13-15`** with #67/#415 (the `karac run` type-leniency footgun
 on the `byte as char` digit emit) — already fixed (`b59eb070`). See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara) with a Python mirror: schoolbook against add-shift multiplication over 400 random digit strings (clean everywhere). Gap found, in the kara bug ledger:
+
+- **B-2026-10-06-91** — `.iter().rev()` on a struct field (`self.limbs.iter().rev()` in a bignum's `Display`) is refused by `karac build`.

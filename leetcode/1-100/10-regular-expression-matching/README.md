@@ -170,3 +170,12 @@ Karac peaks at **13.9 MiB** vs rustc's **26.9 MiB** (1.9× lower) and clang's **
 ### Numbers published here are reference data
 
 The CI gate's source-of-truth aggregate lives in [`karac-rust/bench/compile_speed/`](../../../../karac-rust/bench/compile_speed/) (different corpus: curated subset + synthetic 10K-LOC stress program).
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-81** — `--interp` built every slot of `vec![row; n]` over one shared buffer, so the bottom-up DP table answered `"aa" ~ "a": true`. A fix is in flight.
+- **B-2026-10-06-82** — `--interp` built a non-empty `Set[..]` literal as a `Vec`, so an NFA arm's `out.insert(q)` ran `Vec.insert(index)`. A fix is in flight.
+- **B-2026-10-06-83** — `vec![row; 3]` with a NAMED row double-frees compiled.
+- **B-2026-10-06-84** — a named `Set` / `Map` by-value param that is returned segfaults compiled.

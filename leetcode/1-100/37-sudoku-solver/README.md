@@ -265,3 +265,12 @@ unroller off drops back onto Kāra/C. The fix emits `llvm.loop.unroll.full` on s
 constant-trip counted loops, which takes Kāra **1.03× ahead of Rust** here (and 2.88× on
 [#36](../36-valid-sudoku/)). See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
+
+## Calibration re-probe (2026-10-06)
+
+Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Gaps found, in the kara bug ledger:
+
+- **B-2026-10-06-88** — `let bit: u16 = 1 << (d as u16);` and every operator tree of bare literals were refused in a narrow type context. A fix is in flight.
+- **B-2026-10-06-89** — `.iter()` on an indexed element of a struct field (`g.rows[i].iter()`) is refused by `karac build`.
+- **B-2026-10-06-90** — a repeat literal into a narrow `Array[u16, N]` field of a multi-field struct fails LLVM module verification.
+- The kata-10 repeat-literal aliasing (B-2026-10-06-81) and the kata-3 chain row (B-2026-10-06-80) were hit again.
