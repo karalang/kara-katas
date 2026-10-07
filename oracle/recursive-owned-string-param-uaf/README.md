@@ -48,8 +48,12 @@ one-ingredient-removed variants used during the hunt.
 The v2 core (`kara` `docs/core-semantics.md` §3.2) makes the triggering
 shape illegal: `airport` is moved into `cursor` and then used again, so
 `karac check repro.kara` (and `ablations/a1-local-binding-STILL-FAILS.kara`)
-now reports a use after move, and `karac fix` clones at the first move. The
-files are kept unmigrated on purpose. `karac build` and `karac run` still
+now reports a use after move, and `karac fix` clones at the first move.
+`Some(d) => d` on the result of `adj.get(...)` is rejected too: `get`
+returns a reference into the map, so `d` borrows and cannot become the owned
+`Vec` (§3.7). That rule also rejects
+`ablations/a4-plain-map-derived-drop-PASSES.kara`. The files are kept
+unmigrated on purpose. `karac build` and `karac run` still
 accept them until the v2 middle end replaces the legacy backend, and the
 legacy backend's handling of the double consume is exactly what this probe
 guards. The migrated form of the kata itself is
