@@ -81,9 +81,9 @@ The map and bucket arms print the same output as `logger.py` under
 `karac run --interp` and `karac __mir-run` (the v2 MIR interpreter). The
 bucket arm is also byte-identical under LLJIT, `karac build` and
 `KARAC_AUTO_PAR=1 karac build`. The map arm is not: see below. The window
-arm printed the same output with `window.get(0)` in place of
-`window.front()`, but as committed it waits for `front` to pass
-`karac check`.
+arm passes `karac check` since kara `5bb4b9d3dd` and matches the others
+under the MIR interpreter; the frozen legacy interpreter does not implement
+`VecDeque.front`.
 
 The bench program prints `558265 of 1000000 calls printed, checksum 467012428`
 under `karac __mir-run`, as do its C, Rust, Go and Python mirrors.
@@ -103,9 +103,9 @@ and Python mirrors are written and agree on the checksum.
   the same method called with string literals runs correctly. Legacy codegen
   is frozen for the v2 rewrite (kara, 2026-10-06), so this is noted here and
   not filed.
-- **`VecDeque.front` is refused by `karac check`**, as in kata 358. The
-  window arm keeps `match self.window.front() { ... }`. Handed to the stdlib
-  thread.
+- **`VecDeque.front` was refused by `karac check`**, as in kata 358. The
+  window arm keeps `match self.window.front() { ... }`. Fixed in kara
+  `5bb4b9d3dd`.
 - **MIR builder: `if w` on a borrowed bool.** In the differential,
   `for w in want.iter() { if w { ... } }` passes `karac check`, but
   `karac __mir-run` refuses it with
@@ -114,5 +114,5 @@ and Python mirrors are written and agree on the checksum.
 - **The D5 migrator misses a key moved by index-assign.**
   `KARAC_D5_MIGRATE=1 karac fix` adds `own` to a parameter moved by
   `m.insert(k, v)`, but not to one moved by `m[k] = v`, which inserts on a
-  missing key. The `own` here was written by hand. Handed to the stdlib
-  thread.
+  missing key. The `own` here was written by hand. Fixed in kara
+  `2491750a04`.

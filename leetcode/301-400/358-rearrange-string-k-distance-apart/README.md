@@ -93,7 +93,10 @@ three arms match `rearrange.py` byte for byte. The bench program prints
 `116 of 200 strings can be arranged, checksum 934979344` under `karac build`,
 as do its C, Rust, Go and Python mirrors.
 
-`rearrange_ready_at.kara` does not pass `karac check` yet; see below.
+`rearrange_ready_at.kara` passes `karac check` since kara `5bb4b9d3dd` and
+matches the others under the MIR interpreter. The legacy tree-walk
+interpreter and the legacy native build do not implement `VecDeque.front`,
+and they are frozen for the v2 rewrite.
 
 ## Benchmarks
 
@@ -107,8 +110,8 @@ when they are.
 - **`VecDeque.front` is refused by `karac check`** ("no method 'front' on type
   'VecDeque'"), although `docs/library/collections.md` lists `front` and
   `back` and the MIR interpreter implements both. `rearrange_ready_at.kara`
-  keeps the natural `match cooling.front() { ... }` and waits for the fix
-  (kara main at `63d8e870ed`; handed to the stdlib thread).
+  keeps the natural `match cooling.front() { ... }`. Fixed in kara
+  `5bb4b9d3dd`.
 - **The MIR interpreter prints nothing on a panic.** Mutant M1 indexes with
   `-2`. Under `karac run --interp` it reports
   `runtime error: index ... out of bounds` with the line. Under
