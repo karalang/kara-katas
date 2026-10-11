@@ -77,8 +77,8 @@ and `KARAC_AUTO_PAR=1 karac build`.
 The bench program answers 20,000 random arrays of 1,000 values, the
 problem's largest, with the ★ arm, and folds the answers into a
 checksum. The Kāra build and the C, Rust, Go and Python mirrors all
-print `checksum 191500899`, and so does `karac __mir-llvm-run`. Timings are not taken yet; they need a
-quiet machine.
+print `checksum 191500899`, and so does `karac __mir-llvm-run`. Timings
+are not taken yet; they need a quiet machine.
 
 ## Compiler findings
 
