@@ -95,13 +95,16 @@ it with. The Kāra build and the C, Rust, Go and Python mirrors all print
 
 ## Compiler findings
 
-- **`SortedSet.range` is specified but missing.** `docs/library/collections.md`
-  lists `range(from, to) -> impl Iterator[Item = ref T]` for `SortedSet`, and
-  `karac check` refuses it with `no method 'range' on type 'SortedSet'`. It
-  is the only spec'd way to ask a sorted set for the least element at or
-  above a bound. Handed to the stdlib thread.
-- **`range` bounds: the spec and the compiler disagree.** The spec says
-  `SortedMap.range` and `SortedSet.range` cover `[from, to)`. Every backend
-  implements `SortedMap.range` as `[from, to]`, and kata 327 depends on the
-  closed form. The ★ arm's upper bound is `i64.MAX`, which no prefix
-  reaches, so it gives the same answer either way. Handed to the spec owner.
+- **`SortedSet.range` returns a `Vec`, not the spec's iterator.**
+  `docs/library/collections.md` gives `range(from, to) -> impl Iterator[Item
+  = ref T]`. Since kara `2d33c06c0c` the method exists, but it returns a
+  `Vec` of clones, so the ★ arm's `seen.range(prefix - k, i64.MAX).next()` is
+  refused: `no method 'next' on type 'Vec'`. The stdlib thread has the
+  iterator typing scheduled after its slice work. Before `2d33c06c0c`,
+  `karac check` refused the method itself.
+- **`range` bounds: the spec and the compiler disagreed.** The spec says
+  `range` covers `[from, to)`, and every backend implemented
+  `SortedMap.range` as `[from, to]`. The spec stands (kara `a697568335`):
+  `range` is now half-open in the MIR interpreter, `range_inclusive` is the
+  closed form, and kata 327 moved to it. The ★ arm's upper bound is
+  `i64.MAX`, which no prefix reaches, so it gives the same answer either way.
