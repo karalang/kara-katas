@@ -19,7 +19,7 @@ sum `S(i, j)` is `p[j+1] - p[i]`, so the answer counts the pairs `a < b` with
 |---|---|---|
 | `count_range_sum.kara` ★ | merge sort the prefix sums; before each merge, count the cross pairs with two pointers over the right half | `O(n log n)` time, `O(n)` space |
 | `count_range_sum_bit.kara` | walk the prefix sums in order; a Fenwick tree over their ranks counts the earlier ones in `[p - upper, p - lower]` | `O(n log n)` time, `O(n)` space |
-| `count_range_sum_sorted.kara` | walk the prefix sums in order; a `SortedMap` of those seen answers the same question with one `range` call | `O(n log n)` to `O(n^2)` time, `O(n)` space |
+| `count_range_sum_sorted.kara` | walk the prefix sums in order; a `SortedMap` of those seen answers the same question with one `range_inclusive` call | `O(n log n)` to `O(n^2)` time, `O(n)` space |
 | `count_range_sum_brute.kara` | every start, every end | `O(n^2)` time, `O(1)` space |
 | `differential.kara` | the four arms on 607 inputs, seven properties | — |
 | `bench/count_range_sum.kara` | 20 re-counts of a 100,000-value array by the ★ arm | — |
@@ -47,7 +47,9 @@ sorted in place, through `tmp`.
 The `SortedMap` arm reads more naturally and is the slowest on a wide interval.
 `range` hands back every key in the interval, so when the interval covers most
 of the prefix sums seen so far, each step costs time in proportion to their
-number. It is here for the ordered-map surface, not for speed.
+number. It is here for the ordered-map surface, not for speed. The call is
+`range_inclusive` because the interval is closed at both ends; `range` is
+half-open, like `from..to` (kara `a697568335`).
 
 ## Differential
 
@@ -86,7 +88,7 @@ Twelve edits to the copies inside `differential.kara`, each built and run.
 | M9 | Fenwick: add `p[b]` before counting | **killed** | P1, P5, from the empty array |
 | M10 | `SortedMap`: record `p[b]` before querying | **killed** | P1, P7 |
 | M11 | `SortedMap`: no entry for the empty prefix `p[0] = 0` | **killed** | P1, P7 |
-| M12 | `SortedMap`: `range(p - lower, p - upper)`, the bounds swapped | **killed** | P1, P7, from the first example |
+| M12 | `SortedMap`: `range_inclusive(p - lower, p - upper)`, the bounds swapped | **killed** | P1, P7, from the first example |
 
 The three survivors are equivalent. M3 gives the same counts in `O(n^2)` time:
 restarting the window gives up the speed of the monotone pointers but not
