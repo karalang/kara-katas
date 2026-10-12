@@ -57,10 +57,9 @@ to all five.
 | P5 | the numbers handed out and not released are distinct and in range |
 
 It prints `1000 directories, 1839908 checks, 0 failures` under
-`karac __mir-run` and `karac run --interp`. `karac __mir-llvm-run`
-cannot run it yet, because `SortedSet.min` is not lowered there; LLJIT
-and `karac build` stop with an index out of bounds in the heap copy, see
-Compiler findings.
+`karac __mir-run`. `karac __mir-llvm-run` cannot run it yet, because
+`SortedSet.min` is not lowered there, and the legacy backends refuse
+the `*n` in the set copy; see Verification and Compiler findings.
 
 ## Mutation testing
 
@@ -81,12 +80,18 @@ Eight edits to the copies inside `differential.kara`, each run under
 ## Verification
 
 All four arms print the same output as `phone_directory.py` under
-`karac __mir-run` (the v2 MIR interpreter), `karac run --interp`, LLJIT,
-`karac build` and `KARAC_AUTO_PAR=1 karac build`. Under
-`karac __mir-llvm-run` (the same MIR compiled to LLVM) the heap, bitset
-and tree arms match too, and the ★ arm stops with `native
-SortedSet[i64].min is not lowered yet`; mir-llvm is still being built
-out, so that is a missing native, not filed.
+`karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
+every file. Under `karac __mir-llvm-run` (the same MIR compiled to
+LLVM) the heap, bitset and tree arms match too, and the ★ arm stops
+with `native SortedSet[i64].min is not lowered yet`; mir-llvm is still
+being built out, so that is a missing native, not filed.
+
+The heap, bitset and tree arms also match under the legacy backends
+(`karac run --interp`, LLJIT, `karac build` and
+`KARAC_AUTO_PAR=1 karac build`). The ★ arm matched there too until it
+gained `let n = *n;` (see Compiler findings): the legacy typechecker
+still types `SortedSet.min()` by value and refuses the `*`. The legacy
+backends are frozen, so that is not filed.
 
 ## Benchmarks
 
@@ -111,17 +116,23 @@ backends, which are frozen, so it is not filed:
   use `not` instead, and `karac fix` rewrites both sites to `not`, which
   then fails with `unary 'not' requires 'bool', found 'i64'` and no
   fix. The bitwise complement in Kāra is `~`, which the arm now uses.
-  Filed as B-2026-10-12-1.
-- **`SortedSet.min()` gives an `i64` where the library reference says
-  `Option[ref T]`.** `let n = *n;` on the result is refused with
+  Filed as B-2026-10-12-1 and fixed: a second `karac fix` now turns
+  `not word` into `~ word`.
+- **`SortedSet.min()` gave an `i64` where the library reference says
+  `Option[ref T]`.** `let n = *n;` on the result was refused with
   `unary '*' requires 'ref T' ... found 'i64'`, while the same `*x` is
   accepted on `Vec.iter()`, `Map.get`, `Vec.first()` and
-  `SortedSet.iter()`. The ★ arm uses the binding without `*`.
-  Filed as B-2026-10-12-2.
+  `SortedSet.iter()`. Filed as B-2026-10-12-2 and fixed in the check
+  and on the MIR path. The ★ arm now copies the number out with
+  `let n = *n;` before `remove`: without it, `n` still lends from the
+  set while `remove` changes it, which the MIR borrow checker refuses
+  (`karac check` does not report it yet).
 - **Legacy codegen panics in the differential's heap copy.** LLJIT,
   `karac build` and `KARAC_AUTO_PAR=1 karac build` stop at
   `self.used[n] = true` in `HeapDir.get` with `vec index out of bounds`,
   while the heap arm on its own runs correctly on all three, and the
-  differential passes under `karac run --interp` and `karac __mir-run`.
+  differential passed under `karac run --interp` and `karac __mir-run`.
   The copy differs from the arm only in being reached through a `match`
-  on an enum of directories (`AnyDir`). Not narrowed further.
+  on an enum of directories (`AnyDir`). Not narrowed further. This was
+  measured before the set copy gained `let n = *n;`, which the legacy
+  typechecker now refuses outright.
