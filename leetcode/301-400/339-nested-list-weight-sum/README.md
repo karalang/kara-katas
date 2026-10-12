@@ -187,3 +187,11 @@ The benchmark kernel's sink matches all four language twins and Python
   -23, found while checking whether the compiled fix could change when a
   `Drop` body runs. `Nested` has no `Drop` body, so the kata's output is not
   affected.
+- **B-2026-10-12-32 (MIR front end, open): the differential does not run on
+  the v2 MIR backends.** Its parsers build each token with
+  `let token: String = cs[p..end].iter().collect();`, and the MIR front end
+  collects a slice's iterator (or an `into_iter()`) into a `Vec[char]` even
+  where a `String` is asked for, refusing the program with "expected
+  'String', found 'Vec[char]'". `karac check` passes it, and
+  `cs.iter().collect()` into a `String` works. The five arms and the bench
+  run on both MIR backends. The differential keeps the form as written.
