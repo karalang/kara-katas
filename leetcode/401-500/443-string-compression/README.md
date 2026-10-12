@@ -140,5 +140,6 @@ Two new findings, filed as kara B-2026-10-12-24 and B-2026-10-12-25.
   accepted and runs. The arm swaps the digits with two indexes; revert
   it to the one call when the row is fixed.
 - **B-2026-10-12-25.** Trying `split_at_mut` for the same reversal:
-  `karac check` accepts it, but `karac __mir-run` has no such function
-  and `karac __mir-llvm-run` has not lowered it.
+  `karac check` accepts it, but `karac __mir-run` has no such function.
+  (The row first said `karac __mir-llvm-run` lacked it too; that was a
+  binary built before kara 010499d0d5, which already lowers it.)
