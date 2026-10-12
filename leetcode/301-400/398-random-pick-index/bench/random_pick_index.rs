@@ -1,0 +1,50 @@
+// Benchmark for #398: mirror of random_pick_index.kara (reservoir sampling).
+
+struct Solution {
+    nums: Vec<i64>,
+    seed: i64,
+}
+
+impl Solution {
+    fn new(nums: Vec<i64>) -> Solution {
+        Solution { nums, seed: 398 }
+    }
+
+    fn below(&mut self, n: i64) -> i64 {
+        self.seed = (self.seed * 1103515245 + 12345) % 2147483648;
+        (self.seed / 65536) % n
+    }
+
+    fn pick(&mut self, target: i64) -> i64 {
+        let mut kept = -1;
+        let mut seen = 0;
+        for i in 0..self.nums.len() {
+            if self.nums[i] == target {
+                seen += 1;
+                if self.below(seen) == 0 {
+                    kept = i as i64;
+                }
+            }
+        }
+        kept
+    }
+}
+
+fn main() {
+    let picks = 10000;
+    let mut seed: i64 = 3980;
+    let mut nums: Vec<i64> = Vec::new();
+    for _ in 0..20000 {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        nums.push((seed / 65536) % 10);
+    }
+    let mut s = Solution::new(nums);
+    let mut total: i64 = 0;
+    let mut checksum: i64 = 0;
+    for p in 0..picks {
+        let r = s.pick(p % 10);
+        total += r;
+        checksum = (checksum * 31 + r) % 1000000007;
+    }
+    println!("{} picks: total {}, checksum {}", picks, total, checksum);
+}
