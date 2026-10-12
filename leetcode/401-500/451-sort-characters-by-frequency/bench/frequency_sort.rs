@@ -1,0 +1,62 @@
+// Benchmark for #451: mirror of frequency_sort.kara (count, then sort
+// the distinct characters) on 20 random strings of 200,000 characters,
+// built once, then each sorted 5 times.
+use std::collections::HashMap;
+
+fn frequency_sort(s: &str) -> String {
+    let mut counts: HashMap<char, i64> = HashMap::new();
+    for c in s.chars() {
+        *counts.entry(c).or_insert(0) += 1;
+    }
+    let mut order: Vec<(i64, char)> = counts.into_iter().map(|(c, n)| (-n, c)).collect();
+    order.sort();
+    let mut out = String::new();
+    for (negative, c) in order {
+        for _ in 0..-negative {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let alphabet: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        .chars()
+        .collect();
+    let count = 20;
+    let n = 200000;
+    let rounds = 5;
+    let mut seed: i64 = 451;
+    let mut strings: Vec<String> = Vec::new();
+    for i in 0..count {
+        // From the first 3, 10, 30 or all 62 characters, in turn.
+        let k = [3, 10, 30, 62][i % 4];
+        let mut s = String::new();
+        for _ in 0..n {
+            s.push(alphabet[(next_random(&mut seed) % k) as usize]);
+        }
+        strings.push(s);
+    }
+    let mut characters: i64 = 0;
+    let mut checksum: i64 = 0;
+    for _ in 0..rounds {
+        for s in &strings {
+            let out = frequency_sort(s);
+            let bytes = out.as_bytes();
+            let len = out.len() as i64;
+            characters += len;
+            let sample = bytes[0] as i64 * 65536
+                + bytes[out.len() / 2] as i64 * 256
+                + bytes[out.len() - 1] as i64;
+            checksum = (checksum * 31 + len + sample) % 1000000007;
+        }
+    }
+    println!(
+        "{rounds} rounds on {count} strings of {n}: {characters} characters, checksum {checksum}"
+    );
+}
