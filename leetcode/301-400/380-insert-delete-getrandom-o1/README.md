@@ -103,7 +103,9 @@ a quiet machine. `karac build` (the legacy backend) prints the right
 checksum but slows down much faster than the work grows: 0.7 s at
 20,000 operations, 4.1 s at 40,000 and 23.6 s at 80,000, against
 0.41 s, 0.41 s and 0.46 s under `karac __mir-llvm-run`. The full run
-was stopped after 10 minutes.
+was stopped after 10 minutes. `karac __mir-llvm-run` JITs the IR without LLVM's optimization
+passes, through a debug-built runner, so its times show that the new
+backend runs the program, not how fast it will be.
 
 ## Compiler findings
 

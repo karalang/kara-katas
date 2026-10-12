@@ -107,7 +107,10 @@ five mirrors, `karac __mir-llvm-run` and the legacy `karac build` print
 `checksum 480076171`. Spot timings on a shared 4-core container: C
 0.79 s, Rust 0.73 s, Go 1.0 s, Python 49 s, the legacy `karac build`
 0.49 s, and `karac __mir-llvm-run` 5.0 s with a debug-built `karac`'s
-compile included. `bench.sh` timings need a quiet machine.
+compile included. `karac __mir-llvm-run` JITs the IR without LLVM's optimization
+passes, through a debug-built runner, so its times show that the new
+backend runs the program, not how fast it will be. `bench.sh` timings need a quiet
+machine.
 
 ## Compiler findings
 

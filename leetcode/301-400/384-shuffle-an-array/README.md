@@ -129,6 +129,10 @@ shared 4-core container (`bench.sh` timings need a quiet machine):
 | Kāra, `karac __mir-llvm-run` (includes compiling with a debug `karac`) | 4.9 s |
 | Python | 84 s |
 
+`karac __mir-llvm-run` JITs the IR without LLVM's optimization
+passes, through a debug-built runner, so its times show that the new
+backend runs the program, not how fast it will be.
+
 ## Compiler findings
 
 None. Every arm, the differential and the bench program work on every
