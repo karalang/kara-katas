@@ -501,3 +501,15 @@ The fix also resolved a constraint the row flagged as possibly needing a
 `#[cfg(test)]` path, without one: `resolve_pool_workers()` stays uncached as the
 *policy* function the unit tests drive, and the memoization lives in a
 `pool_workers()` wrapper that the hot path calls.
+
+### 2026-10-12: `SortedSet.min` lends its element
+
+`docs/library/collections.md` gives `fn min(self) -> Option[ref T]`, and
+since kara `b2194a848c` the checker types it that way. The `_frontier` arm
+and its copy in `differential.kara` held the lent `x` across
+`frontier.remove(x)`, which the v2 MIR borrow checker rightly refuses
+(`mutable borrow of _11 while it is borrowed`). Both now copy the value out
+first, `Some(m) => { let x = *m; frontier.remove(x); .. }`, and print the
+same output as before under `karac __mir-run`. The frozen legacy
+typechecker still types `min` as `Option[i64]` and refuses the `*m`, so
+the legacy backends no longer run these two files; not filed.
