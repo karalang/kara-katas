@@ -29,15 +29,16 @@ and for 3,000 random pairs (s of 0 to 60 letters) how many answers are
 right, with a checksum. `find_the_difference.py` mirrors the ★ arm and
 its output is byte-identical.
 
-The map arm walks the map with `for (c, n) in count`. It was first
-written `for (c, n) in count.iter() { if *n > 0 { return *c; } }`, as
-the library's iteration table types the items (`(ref K, ref V)`).
-`karac check` accepts that, but `karac __mir-run` refuses the `*n`
-(kara `B-2026-10-12-9`). The next try, `count.into_iter()`, stops
-`karac __mir-run` at `a for loop over a collection is not lowered yet`.
-The MIR builder lowers a by-value `for` over a `Map` or `Set` only when
-it is written without `.into_iter()`; that gap is noted for the MIR
-builder's owner and not filed.
+The map arm walks the map with
+`for (c, n) in count.iter() { if *n > 0 { return *c; } }`, as the
+library's iteration table types the items (`(ref K, ref V)`). Until
+kara 6c7e55c2f3, `karac __mir-run` refused the `*n` (kara
+`B-2026-10-12-9`) and the arm walked the map by value; it is back in
+the spec form. A by-value `count.into_iter()` stopped `karac __mir-run`
+at `a for loop over a collection is not lowered yet`; the MIR builder
+lowered a by-value `for` over a `Map` or `Set` only when it was written
+without `.into_iter()`, a gap noted for the MIR builder's owner and not
+filed.
 
 ## Differential
 
@@ -118,9 +119,10 @@ benchmark.
 
 ## Compiler findings
 
-- **`Map`/`SortedMap` `iter()` items are typed as values** (kara
+- **`Map`/`SortedMap` `iter()` items were typed as values** (kara
   `B-2026-10-12-9`). The library gives them as `(ref K, ref V)`.
-  `for (c, n) in m.iter() { if *n > 0 { .. } }` passes `karac check`,
-  but `karac __mir-run` refuses the `*n`, with no location in the
-  message; `*p.0` on an undestructured item is refused by `karac check`
-  as well.
+  `for (c, n) in m.iter() { if *n > 0 { .. } }` passed `karac check`,
+  but `karac __mir-run` refused the `*n`, with no location in the
+  message. Kara 6c7e55c2f3 fixed the `__mir-run` side and the map arm
+  uses the spec form again; the row stays open for what remains, such
+  as `karac check` refusing `*p.0` on an undestructured item.

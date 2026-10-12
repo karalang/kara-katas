@@ -33,11 +33,11 @@ crossed and a checksum of which. `frog_jump.py` mirrors the ★ arm and
 its output is byte-identical.
 
 The ★ arm copies a stone's jump sizes into a `Vec` before using them,
-with `for k in jumps[*s].iter() { sizes.push(k); }`. The items of
-`Set.iter()` are references, so the spec form is `sizes.push(*k)`.
-`karac check` accepts that, but `karac __mir-run` refuses it as `found
-'i64'` (kara `B-2026-10-12-9`, extended by this kata). Revert to `*k`
-once it is fixed.
+with `for k in jumps[*s].iter() { sizes.push(*k); }`, as the items of
+`Set.iter()` are references. Until kara 6c7e55c2f3, `karac __mir-run`
+refused the `*k` as `found 'i64'` (kara `B-2026-10-12-9`, extended by
+this kata) and the arms wrote `sizes.push(k)`; they are back in the
+spec form.
 
 ## Differential
 
@@ -116,8 +116,9 @@ as above.
 
 ## Compiler findings
 
-- **`Set.iter()` items are values under `karac __mir-run`** (kara
-  `B-2026-10-12-9`, extended): `for k in s.iter() { t += *k; }` passes
-  `karac check` and is refused by the MIR builder as `found 'i64'`. The
-  row covered destructured tuple items of `Vec` and `Map`; a plain
-  `Set[i64]` item has the same split.
+- **`Set.iter()` items were values under `karac __mir-run`** (kara
+  `B-2026-10-12-9`, extended): `for k in s.iter() { t += *k; }` passed
+  `karac check` and was refused by the MIR builder as `found 'i64'`.
+  The row covered destructured tuple items of `Vec` and `Map`; a plain
+  `Set[i64]` item had the same split. Fixed on the `__mir-run` side by
+  kara 6c7e55c2f3; the arms use `*k` again.
