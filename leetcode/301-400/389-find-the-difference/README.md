@@ -124,5 +124,5 @@ benchmark.
   `for (c, n) in m.iter() { if *n > 0 { .. } }` passed `karac check`,
   but `karac __mir-run` refused the `*n`, with no location in the
   message. Kara 6c7e55c2f3 fixed the `__mir-run` side and the map arm
-  uses the spec form again; the row stays open for what remains, such
-  as `karac check` refusing `*p.0` on an undestructured item.
+  uses the spec form again; the rest of the row was fixed by
+  1309ed92e0 and 09efbb8db0, and it is closed.

@@ -162,23 +162,23 @@ benchmark. Dropping the queries does not shorten it, so the time is in
 
 ## Compiler findings
 
-One new finding, filed as kara B-2026-10-12-20, and two known gaps.
+One new finding, filed as kara B-2026-10-12-20, and two known gaps; the
+finding and the first gap are fixed.
 
-- **B-2026-10-12-20.** The ★ arm's `link_after(at: Bucket, count)`
-  first stored `at` in the new bucket's `weak` `prev` field and then
-  linked `at.next` to the new bucket. `karac check` refuses that as a
-  use after move: storing a parameter in a `weak` field counts as
-  moving it, whether the parameter is bare, `ref` or `own`. The same
-  two statements on local bindings check clean, as does a strong store
-  of the parameter, and `karac __mir-run` runs the refused program
-  correctly. The help offered with it says the parameter has no
-  `.clone()` because that exists only on reference-counted types, but
-  `Bucket` is one. The arm now makes the `weak` store last.
-- **B-2026-10-12-9.** The harness and the scan arm walk a count map
-  with `for (_, c) in counts`. The library's iteration table gives `c`
-  the type `ref i64`, and `karac check` accepts `*c`, but
-  `karac __mir-run` refuses it ("found 'i64'"). Both accept `c` used
-  bare in a comparison or a sum, which the files now do.
+- **B-2026-10-12-20 (fixed).** The ★ arm's `link_after(at: Bucket,
+  count)` first stores `at` in the new bucket's `weak` `prev` field and
+  then links `at.next` to the new bucket. `karac check` refused that as
+  a use after move: storing a parameter in a `weak` field counted as
+  moving it, whether the parameter was bare, `ref` or `own`. The same
+  two statements on local bindings checked clean, as did a strong store
+  of the parameter, and `karac __mir-run` ran the refused program
+  correctly. The arm made the `weak` store last until kara f70fec32cd
+  fixed it; it is back in its first order.
+- **B-2026-10-12-9 (fixed).** The harness and the scan arm walk a count
+  map with `for (_, c) in counts`. The library's iteration table gives
+  `c` the type `ref i64`, and `karac check` accepted `*c`, but
+  `karac __mir-run` refused it ("found 'i64'"), so the files used `c`
+  bare. Kara 09efbb8db0 fixed it and the files read `*c` again.
 - **The MIR borrow checker is not part of `karac check` yet.** The ★
   arm's `dec` first held the bucket it got from
   `self.bucket_of.get(key)` while removing the key from that map.

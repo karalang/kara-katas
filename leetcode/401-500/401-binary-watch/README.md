@@ -30,12 +30,11 @@ and a hash of the list. `binary_watch.py` mirrors the ★ arm and its
 output is byte-identical.
 
 The three arms that collect `(hour, minute)` pairs format them with
-`for (h, m) in found.iter() { times.push(f"{h}:{m:02}"); }`. The items
-of `Vec.iter()` are references, so the spec form is `{*h}` and
-`{*m:02}`. `karac check` accepts that, but `karac __mir-run` refuses
-it as `found 'i64'` (kara `B-2026-10-12-9`, the destructured `Vec`
-tuple item that kata 399 added to the row). Revert to `*h` and `*m`
-once it is fixed.
+`for (h, m) in found.iter() { times.push(f"{*h}:{*m:02}"); }`, as the
+items of `Vec.iter()` are references. Until the fixes that closed kara
+`B-2026-10-12-9` (the destructured `Vec` tuple item that kata 399 added
+to the row), `karac __mir-run` refused the `*` as `found 'i64'` and the
+arms wrote `{h}` and `{m:02}`.
 
 ## Differential
 
@@ -120,7 +119,7 @@ IR without optimization passes, so it is not a benchmark. The
 
 ## Compiler findings
 
-No new findings. The arms run into the `Vec` tuple-item gap that kata
-399 added to kara `B-2026-10-12-9`. The differential ran into the
+No new findings. The arms ran into the `Vec` tuple-item gap that kata
+399 added to kara `B-2026-10-12-9`, since fixed. The differential ran into the
 missing `String.as_str` native on `karac __mir-llvm-run`, which
 compiler commit 62f5f6de04 has since added.

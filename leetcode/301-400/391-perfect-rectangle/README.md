@@ -39,11 +39,10 @@ tiling with two extra copies of one piece, since the copies' corners
 pair up with each other. The differential's P2 covers the second case,
 and mutation M1 shows it is needed.
 
-The sweep arm reads the `floor` entry with `if reach > bottom`. The
-library gives `floor` as `Option[(ref K, ref V)]`, so the spec form is
-`if *reach > bottom`, but `karac check` refuses the `*`: the items are
-typed as values (kara `B-2026-10-12-9`). Revert to `*reach` once that is
-fixed. The grid arm collects the sorted coordinates with a `for` loop
+The sweep arm reads the `floor` entry with `if *reach > bottom`, as
+the library gives `floor` as `Option[(ref K, ref V)]`. Until kara
+1309ed92e0, `karac check` refused the `*` (kara `B-2026-10-12-9`, now
+closed) and the arm wrote `reach`. The grid arm collects the sorted coordinates with a `for` loop
 and `push`. `xs.iter().cloned().collect()` on the `SortedSet` passes
 `karac check`, but `karac __mir-run` stops at `an iterator value is not
 lowered yet`. That gap is noted for the MIR builder's owner and not
@@ -145,8 +144,9 @@ of an index, where under the v2 rules a bare parameter borrows.
 
 ## Compiler findings
 
-- **`SortedMap.floor` and `ceiling` items are typed as values** (kara
+- **`SortedMap.floor` and `ceiling` items were typed as values** (kara
   `B-2026-10-12-9`, extended by this kata). The library gives them as
-  `Option[(ref K, ref V)]`; `karac check` refuses `*v` on their items
-  and accepts `let a: i64 = k;`. The row was filed by kata 389 for
-  `Map.iter()`, which has the same shape.
+  `Option[(ref K, ref V)]`; `karac check` refused `*v` on their items
+  and accepted `let a: i64 = k;`. The row was filed by kata 389 for
+  `Map.iter()`, which had the same shape. Fixed by kara 1309ed92e0; the
+  sweep arm uses `*reach` again.

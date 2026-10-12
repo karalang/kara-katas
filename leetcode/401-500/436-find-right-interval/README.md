@@ -134,8 +134,8 @@ not a benchmark.
 
 ## Compiler findings
 
-No new findings. The sorted-map arm reads `ceiling`'s value as `j`
-where the library types it as a reference and the spec form is `*j`:
-`karac check` and `karac __mir-run` both refuse `*j`, as they type the
-items of `floor` and `ceiling` as values (kara `B-2026-10-12-9`, as in
-kata 391). Revert to `*j` once it is fixed.
+No new findings. The sorted-map arm reads `ceiling`'s value as `*j`,
+as the library types it as a reference. Until kara 1309ed92e0,
+`karac check` and `karac __mir-run` both refused `*j`, typing the items
+of `floor` and `ceiling` as values (kara `B-2026-10-12-9`, as in kata
+391, now closed), and the arm read `j`.

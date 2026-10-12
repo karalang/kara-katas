@@ -134,12 +134,11 @@ IR without optimization passes, so it is not a benchmark.
 
 No new findings; one extension of an open row.
 
-- **A bare `for` over a borrowed `Vec` types its items as values under
+- **A bare `for` over a borrowed `Vec` typed its items as values under
   `karac __mir-run`** (kara `B-2026-10-12-9`, extended by this kata).
-  The differential's `mapped` helper first read
+  The differential's `mapped` helper reads
   `for v in vals { ... *v * factor ... }` over a borrowed
   `vals: Vec[i64]`. core-semantics.md §4.6 gives a bare `for` over a
-  collection `ref T` items, so `*v` is right; `karac check` accepts it
-  and `karac __mir-run` refuses it as `found 'i64'`. The helper writes
-  `v`, which §5.10 allows for a `Copy` item, so nothing is routed
-  around.
+  collection `ref T` items, so `*v` is right; `karac check` accepted
+  it and `karac __mir-run` refused it as `found 'i64'`, so the helper
+  wrote `v` until kara 09efbb8db0 fixed it.

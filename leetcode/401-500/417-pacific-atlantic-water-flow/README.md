@@ -97,7 +97,7 @@ The ★ arm marks its start cells with `for (r, c) in queue.iter() {
 seen[r][c] = true; }`. The items are `ref (i64, i64)`, and a
 destructured `Copy` part copies, so `r` and `c` are `i64` and take no
 `*`. `karac check` also accepts `seen[*r][*c]`, which `karac __mir-run`
-refuses: that split is already open as kara `B-2026-10-12-9`.
+refused until the fixes that closed kara `B-2026-10-12-9`.
 
 ## Benchmarks
 
@@ -136,4 +136,5 @@ backend.
 
 ## Compiler findings
 
-No new findings. The `*` split above is kara `B-2026-10-12-9`.
+No new findings. The `*` split above was kara `B-2026-10-12-9`, now
+closed.

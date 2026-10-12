@@ -131,14 +131,15 @@ IR without optimization passes, so it is not a benchmark.
 
 Two new findings, filed as kara B-2026-10-12-24 and B-2026-10-12-25.
 
-- **B-2026-10-12-24.** The anchor arm first reversed its digits with
+- **B-2026-10-12-24 (fixed).** The anchor arm reverses its digits with
   `chars[first..write].reverse()`. `karac check` and both MIR backends
-  refuse it: `Slice.reverse() requires a mutable slice`, on a
+  refused it: `Slice.reverse() requires a mutable slice`, on a
   `mut ref Vec[char]` parameter and on a `let mut` local alike.
   design.md says `v[a..b]` is a `mut Slice[T]` where a mutable view is
-  needed, and passing `mut v[a..b]` to a `mut Slice[T]` parameter is
-  accepted and runs. The arm swaps the digits with two indexes; revert
-  it to the one call when the row is fixed.
+  needed, and passing `mut v[a..b]` to a `mut Slice[T]` parameter was
+  accepted and ran. The arm swapped the digits with two indexes until
+  kara 7cd5dfe673 fixed it; it is back to the one call, and mutants M3
+  and M4, rerun on it, fail the same counts as before.
 - **B-2026-10-12-25.** Trying `split_at_mut` for the same reversal:
   `karac check` accepts it, but `karac __mir-run` has no such function.
   (The row first said `karac __mir-llvm-run` lacked it too; that was a

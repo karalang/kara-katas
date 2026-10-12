@@ -55,11 +55,11 @@ to the first form once it is fixed:
   `(Some(i), Some(j))` and read `*i`, the spec form, since `Map.get`
   gives `Option[ref V]`; `karac check` refuses the `*` through a tuple
   pattern (kara `B-2026-10-12-16`).
-- The graph arms multiply by `w`, not `*w`, in
-  `for (next, w) in graph[at].iter()`. The items of `Vec.iter()` are
-  references, so `*w` is the spec form; `karac check` accepts it but
-  `karac __mir-run` refuses it as `found 'f64'` (kara `B-2026-10-12-9`,
-  extended by this kata).
+- The graph arms multiply by `*w` in
+  `for (next, w) in graph[at].iter()`, as the items of `Vec.iter()` are
+  references. Until the fixes that closed kara `B-2026-10-12-9`
+  (extended by this kata), `karac __mir-run` refused the `*` as
+  `found 'f64'` and the arms wrote `w`.
 
 ## Differential
 
@@ -161,6 +161,6 @@ as above.
 - **A tuple pattern drops the `ref` from `Map.get`'s option in
   `karac check`** (kara `B-2026-10-12-16`); `if let` on one `get` keeps
   it.
-- **Destructured `Vec` tuple items are values under `karac __mir-run`**
+- **Destructured `Vec` tuple items were values under `karac __mir-run`**
   (kara `B-2026-10-12-9`, extended): the row said the shape was specific
-  to `Map`, and it is not.
+  to `Map`, and it was not. The row is closed and the arms use `*w`.
