@@ -1,0 +1,41 @@
+# Benchmark for #397: mirror of integer_replacement.kara (greedy on the last two bits).
+import sys
+
+
+def integer_replacement(n):
+    v = n
+    ops = 0
+    while v != 1:
+        if v % 2 == 0:
+            v = v // 2
+        elif v == 3 or v % 4 == 1:
+            v -= 1
+        else:
+            v += 1
+        ops += 1
+    return ops
+
+
+seed = 397
+
+
+def step():
+    global seed
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed // 65536
+
+
+def main():
+    calls = int(sys.argv[1]) if len(sys.argv) > 1 else 5000000
+    total = 0
+    checksum = 0
+    for _ in range(calls):
+        hi = step()
+        n = 1 + (hi * 32768 + step()) % 2147483647
+        r = integer_replacement(n)
+        total += r
+        checksum = (checksum * 31 + r) % 1000000007
+    print(f"{calls} calls: total {total}, checksum {checksum}")
+
+
+main()
