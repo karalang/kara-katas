@@ -80,21 +80,23 @@ and was replaced.
 ## Verification
 
 All four arms print the same output as `valid_word_abbreviation.py`
-under `karac run --interp`, and `karac check` passes on every file. The
-pointers, expand and recursive arms also match under `karac __mir-run`
-(the v2 MIR interpreter) and `karac __mir-llvm-run`. The differential
-prints `60000 checks, 0 failures` under `karac run --interp`.
+under `karac run --interp`, `karac __mir-run` (the v2 MIR interpreter)
+and `karac __mir-llvm-run`, and `karac check` passes on every file. The
+differential prints `60000 checks, 0 failures` under all three. The four
+arms and the differential also run clean under `karac __mir-llvm-asan`
+(AddressSanitizer and LeakSanitizer): output identical, no error, no
+leak.
 
-The tokens arm, and with it the differential, stops before running
-under `karac __mir-run` and `karac __mir-llvm-run`: its `Token.Skip`
-variant is refused as `'Skip' is already defined in this scope`,
-because the MIR pipeline puts the iterator library's `struct Skip` in
-the program's own top-level scope (kara `B-2026-10-12-17`). The arm is
-written as it should be, so nothing in it changes when that is fixed.
+Until kara e44d71929c the tokens arm, and with it the differential,
+stopped before running on the MIR backends: its `Token.Skip` variant
+was refused as `'Skip' is already defined in this scope`, because the
+MIR pipeline put the iterator library's `struct Skip` in the program's
+own top-level scope (kara `B-2026-10-12-17`). The arm was written as it
+should be and did not change.
 
-The other three arms run under `karac __mir-llvm-run` since compiler
-commit 62f5f6de04 added the `String.as_str` native: every arm takes a
-`Str` and is passed a string literal or a `String`. The frozen legacy
+`karac __mir-llvm-run` needs compiler commit 62f5f6de04, which added
+the `String.as_str` native: every arm takes a `Str` and is passed a
+string literal or a `String`. The frozen legacy
 codegen has no `bytes()` on a `Str` parameter, which stops LLJIT,
 `karac build` and `KARAC_AUTO_PAR=1 karac build` on every arm. That is
 not filed.
@@ -128,9 +130,11 @@ passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- **A user type named like an iterator adaptor is refused on the MIR
-  pipeline** (kara `B-2026-10-12-17`, filed with this kata): the tokens
-  arm's `enum Token { Letter(u8), Skip(i64) }` passes `karac check` and
-  runs under `karac run --interp`, and `karac __mir-run` refuses it as
-  `'Skip' is already defined in this scope`, pointing into the library's
-  `iter.kara`.
+- **A user type named like an iterator adaptor was refused on the MIR
+  pipeline** (kara `B-2026-10-12-17`, filed with this kata, fixed by
+  e44d71929c): the tokens arm's `enum Token { Letter(u8), Skip(i64) }`
+  passed `karac check` and ran under `karac run --interp`, and
+  `karac __mir-run` refused it as `'Skip' is already defined in this
+  scope`, pointing into the library's `iter.kara`. The fix renamed the
+  library's adaptor structs; `Peekable` keeps its name and still clashes
+  (kara `B-2026-10-12-21`).
