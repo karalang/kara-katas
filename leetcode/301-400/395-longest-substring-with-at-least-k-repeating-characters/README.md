@@ -83,9 +83,9 @@ All four arms print the same output as `longest_substring.py` under
 `karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
 every file. The divide, window and stack arms also match under
 `karac run --interp`; the legacy interpreter has no `Option.cloned`,
-which the brute-force arm uses. Under `karac __mir-llvm-run` every file
-stops at the missing `String.as_str` native, as in katas 383, 385, 388,
-389, 391 and 392; not filed. The legacy native backends stop in codegen
+which the brute-force arm uses. Every file also prints the same output
+under `karac __mir-llvm-run`, since compiler commit 62f5f6de04 added the
+`String.as_str` native. The legacy native backends stop in codegen
 with `no handler for method 'bytes'` (or `'len'`) on a `Str` parameter,
 as in kata 388, and the legacy typechecker refuses the differential's
 `*c` on `Vec[char]` iterator items, as in katas 382 to 389. They are
@@ -112,10 +112,11 @@ program cut the same way. Spot timings on a shared 4-core container
 | Rust (`rustc -O -C overflow-checks=on`) | 0.55 s |
 | Python | 25 s |
 
-The Kāra program cannot run the full workload natively yet:
-`karac __mir-llvm-run` stops at `String.as_str`, and the legacy
-`karac build` has no `bytes` on a `Str` parameter. The MIR interpreter
-takes 3.1 s for the 40-call cut.
+The legacy `karac build` of the Kāra program has no `bytes` on a `Str`
+parameter. The MIR interpreter takes 3.1 s for the 40-call cut. The
+full Kāra program prints the same line under `karac __mir-llvm-run` in
+2.5 s, compile included; that JITs the MIR's IR without optimization
+passes, so it is not a benchmark.
 
 ## Compiler findings
 

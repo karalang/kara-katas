@@ -82,8 +82,8 @@ and was replaced.
 All four arms print the same output as `valid_word_abbreviation.py`
 under `karac run --interp`, and `karac check` passes on every file. The
 pointers, expand and recursive arms also match under `karac __mir-run`
-(the v2 MIR interpreter). The differential prints `60000 checks, 0
-failures` under `karac run --interp`.
+(the v2 MIR interpreter) and `karac __mir-llvm-run`. The differential
+prints `60000 checks, 0 failures` under `karac run --interp`.
 
 The tokens arm, and with it the differential, stops before running
 under `karac __mir-run` and `karac __mir-llvm-run`: its `Token.Skip`
@@ -92,11 +92,12 @@ because the MIR pipeline puts the iterator library's `struct Skip` in
 the program's own top-level scope (kara `B-2026-10-12-17`). The arm is
 written as it should be, so nothing in it changes when that is fixed.
 
-Under `karac __mir-llvm-run` the other three arms stop at the missing
-`String.as_str` native: every arm takes a `Str` and is passed a string
-literal or a `String`, as in katas 383 to 407. The frozen legacy codegen
-has no `bytes()` on a `Str` parameter, which stops LLJIT, `karac build`
-and `KARAC_AUTO_PAR=1 karac build` on every arm. Neither is filed.
+The other three arms run under `karac __mir-llvm-run` since compiler
+commit 62f5f6de04 added the `String.as_str` native: every arm takes a
+`Str` and is passed a string literal or a `String`. The frozen legacy
+codegen has no `bytes()` on a `Str` parameter, which stops LLJIT,
+`karac build` and `KARAC_AUTO_PAR=1 karac build` on every arm. That is
+not filed.
 
 ## Benchmarks
 
@@ -119,10 +120,11 @@ container (`bench.sh` timings need a quiet machine):
 | Go | 0.77 s |
 | Python | 12 s |
 
-No Kāra time: the program stops under `karac __mir-llvm-run` at the
-missing `String.as_str` native, and the legacy `karac build` refuses
-`words[i]` as an argument to a bare parameter, since it predates bare
-parameters borrowing. Not filed.
+The legacy `karac build` refuses `words[i]` as an argument to a bare
+parameter, since it predates bare parameters borrowing; not filed. The
+Kāra program prints the same line under `karac __mir-llvm-run` in
+2.3 s, compile included; that JITs the MIR's IR without optimization
+passes, so it is not a benchmark.
 
 ## Compiler findings
 

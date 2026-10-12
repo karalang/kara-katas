@@ -85,10 +85,11 @@ file. M5 and M6 are one mistake in two arms and give the same counts.
 
 All four arms print the same output as `length_longest_path.py` under
 `karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
-every file. The by-depth, splitting and map arms also match under
-`karac run --interp`. Under `karac __mir-llvm-run` every file stops at
-the missing `String.as_str` native, as in katas 383 and 385; not filed.
-The legacy backends fail as Compiler findings describes.
+every file. Every file also prints the same output under
+`karac __mir-llvm-run`, since compiler commit 62f5f6de04 added the
+`String.as_str` native. The by-depth, splitting and map arms also match
+under `karac run --interp`. The legacy backends fail as Compiler
+findings describes.
 
 ## Benchmarks
 
@@ -108,11 +109,12 @@ C program cut the same way. Spot timings on a shared 4-core container
 | Go | 0.80 s |
 | Python | 24 s |
 
-The Kāra program cannot finish anywhere yet. `karac __mir-run` was
-killed for memory after 2 min 10 s at 8.6 GB, because every `bytes()`
-call keeps a copy of the string (kara `B-2026-10-12-8`);
-`karac __mir-llvm-run` stops at `String.as_str`; and the legacy native
-build stops in codegen.
+`karac __mir-run` was killed for memory after 2 min 10 s at 8.6 GB,
+because every `bytes()` call keeps a copy of the string (kara
+`B-2026-10-12-8`), and the legacy native build stops in codegen. The
+Kāra program prints the same line under `karac __mir-llvm-run` in
+2.4 s, compile included; that JITs the MIR's IR without optimization
+passes, so it is not a benchmark.
 
 ## Compiler findings
 

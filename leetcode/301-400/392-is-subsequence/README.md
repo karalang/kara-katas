@@ -82,14 +82,14 @@ P2's `z` exposes.
 ## Verification
 
 All four arms print the same output as `is_subsequence.py` under
-`karac __mir-run` (the v2 MIR interpreter) and `karac run --interp`, and
-`karac check` passes on every file. Under `karac __mir-llvm-run` every
-file stops at the missing `String.as_str` native, as in katas 383, 385, 388,
-389 and 391; not filed. The legacy native backends (LLJIT, `karac build`,
-`KARAC_AUTO_PAR=1 karac build`) stop in codegen: `no handler for method
-'bytes'` on a `Str` parameter (as in kata 388), and the search arm
-panics in `src/codegen/control_flow_for.rs`. They are frozen, so not
-filed.
+`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run` and
+`karac run --interp`, and `karac check` passes on every file. Every
+file runs under `karac __mir-llvm-run` since compiler commit 62f5f6de04
+added the `String.as_str` native. The legacy native backends (LLJIT,
+`karac build`, `KARAC_AUTO_PAR=1 karac build`) stop in codegen: `no
+handler for method 'bytes'` on a `Str` parameter (as in kata 388), and
+the search arm panics in `src/codegen/control_flow_for.rs`. They are
+frozen, so not filed.
 
 ## Benchmarks
 
@@ -112,15 +112,18 @@ shared 4-core container (`bench.sh` timings need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 0.17 s |
 | Python | 2.7 s |
 
-The Kāra program cannot run the full workload yet. `karac __mir-run`
-keeps every `bytes()` copy until exit (kara `B-2026-10-12-8`): the
-300-pair cut peaks at 120 MB, so the full run would need several GB.
-`karac __mir-llvm-run` stops at `String.as_str`, and the legacy
-`karac build` has no `bytes` on a `Str` parameter.
+`karac __mir-run` cannot run the full workload: it keeps every
+`bytes()` copy until exit (kara `B-2026-10-12-8`), and the 300-pair cut
+peaks at 120 MB, so the full run would need several GB. The legacy
+`karac build` has no `bytes` on a `Str` parameter. The full Kāra
+program prints the same line under `karac __mir-llvm-run` in 0.8 s,
+compile included; that JITs the MIR's IR without optimization passes,
+so it is not a benchmark.
 
 ## Compiler findings
 
 No new findings. The gaps this kata runs into are already known: the
-MIR interpreter's `bytes()` copies (kara `B-2026-10-12-8`), the
-`String.as_str` native on `karac __mir-llvm-run`, and the frozen legacy
-backends.
+MIR interpreter's `bytes()` copies (kara `B-2026-10-12-8`) and the
+frozen legacy backends. It also ran into the missing `String.as_str`
+native on `karac __mir-llvm-run`, which compiler commit 62f5f6de04 has
+since added.

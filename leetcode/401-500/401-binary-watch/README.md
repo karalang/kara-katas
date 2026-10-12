@@ -84,12 +84,12 @@ All four arms print the same output as `binary_watch.py` under
 and `karac check` passes on every file. The ★, backtracking and mask
 arms also match under `karac run --interp`, LLJIT, `karac build` and
 `KARAC_AUTO_PAR=1 karac build`. The differential prints `12136 checks,
-0 failures` under `karac __mir-run`. Under `karac __mir-llvm-run` it
-stops at the missing `String.as_str` native, because `parse` takes a
-`Str` and is passed a `String`, as in katas 383 to 392. The frozen
-legacy typechecker refuses `*h` on the items of `hours[k].iter()` in
-the split arm and the differential, as in katas 382 to 398. Neither is
-filed.
+0 failures` under `karac __mir-run` and `karac __mir-llvm-run`; the
+latter runs it since compiler commit 62f5f6de04 added the
+`String.as_str` native that `parse`, which takes a `Str` and is passed
+a `String`, needs. The frozen legacy typechecker refuses `*h` on the
+items of `hours[k].iter()` in the split arm and the differential, as in
+katas 382 to 398; not filed.
 
 ## Benchmarks
 
@@ -121,5 +121,6 @@ IR without optimization passes, so it is not a benchmark. The
 ## Compiler findings
 
 No new findings. The arms run into the `Vec` tuple-item gap that kata
-399 added to kara `B-2026-10-12-9`, and the differential into the
-missing `String.as_str` native on `karac __mir-llvm-run`.
+399 added to kara `B-2026-10-12-9`. The differential ran into the
+missing `String.as_str` native on `karac __mir-llvm-run`, which
+compiler commit 62f5f6de04 has since added.

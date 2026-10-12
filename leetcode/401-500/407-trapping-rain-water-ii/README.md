@@ -73,16 +73,18 @@ turns the missing direction into a different one.
 
 ## Verification
 
-All four arms print the same output as `trapping_rain_water_ii.py`
-under `karac __mir-run` (the v2 MIR interpreter), and `karac check`
-passes on every file. The differential prints `40000 checks, 0
-failures` under `karac __mir-run` and `karac __mir-llvm-run`. The heap,
-relaxation and layers arms also match under `karac run --interp`.
+All four arms print the same output as `trapping_rain_water_ii.py` under
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
+and `karac check` passes on every file. The differential prints
+`40000 checks, 0 failures` under `karac __mir-run` and
+`karac __mir-llvm-run`. The heap, relaxation and layers arms also match
+under `karac run --interp`.
 
-Under `karac __mir-llvm-run` the arms stop at the missing `String.as_str`
-native: the harness's `show(name: Str, ...)` is passed string literals,
-which the MIR types as `String` and converts with `String.as_str`, as
-in katas 383 to 402. The frozen legacy backends refuse the rest. Its typechecker refuses
+The arms run under `karac __mir-llvm-run` since compiler commit
+62f5f6de04 added the `String.as_str` native: the harness's
+`show(name: Str, ...)` is passed string literals, which the MIR types
+as `String` and converts with `String.as_str`. The frozen legacy
+backends refuse the rest. Its typechecker refuses
 `*t` on `SortedSet.min`'s result in the sorted arm and the differential;
 its codegen passes a literal where `show` takes a `Str` with the wrong
 layout (LLVM module verification fails), and has no chained indexed

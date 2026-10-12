@@ -82,18 +82,18 @@ edge (M2, M4).
 ## Verification
 
 All four arms print the same output as `battleships.py` under
-`karac __mir-run` (the v2 MIR interpreter) and `karac run --interp`,
-and `karac check` passes on every file. The differential prints
-`40000 checks, 0 failures` on every backend: `karac __mir-run`,
-`karac __mir-llvm-run`, `karac run --interp`, LLJIT, `karac build` and
-`KARAC_AUTO_PAR=1 karac build`.
+`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run` and
+`karac run --interp`, and `karac check` passes on every file. The
+differential prints `40000 checks, 0 failures` on every backend:
+`karac __mir-run`, `karac __mir-llvm-run`, `karac run --interp`, LLJIT,
+`karac build` and `KARAC_AUTO_PAR=1 karac build`.
 
-The arms' harness stops on the other four. Under
-`karac __mir-llvm-run` it stops at the missing `String.as_str` native:
-`show(text: Str)` is passed a string literal, as in katas 383 to 418.
-The frozen legacy codegen has no `split` on that `Str` parameter,
-which stops LLJIT, `karac build` and `KARAC_AUTO_PAR=1 karac build`.
-Neither is filed. The differential and the bench program pass no
+The arms' harness runs under `karac __mir-llvm-run` since compiler
+commit 62f5f6de04 added the `String.as_str` native: `show(text: Str)`
+is passed a string literal. It still stops on the other three, as the
+frozen legacy codegen has no `split` on that `Str` parameter, which stops
+LLJIT, `karac build` and `KARAC_AUTO_PAR=1 karac build`. That is not
+filed. The differential and the bench program pass no
 `Str`, and both run on every backend.
 
 ## Benchmarks

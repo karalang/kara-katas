@@ -85,12 +85,11 @@ has one.
 
 All four arms print the same output as `mini_parser.py` under
 `karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
-every file. The descent, stack and tokens arms also match under
-`karac run --interp`. Under `karac __mir-llvm-run` (the same MIR
-compiled to LLVM) every file stops with `native String.as_str is not
-lowered yet`, as kata 383 did; mir-llvm is still being built out, so
-that is a missing native, not filed. The legacy backends fail as
-Compiler findings describes.
+every file. Every file also prints the same output under
+`karac __mir-llvm-run` (the same MIR compiled to LLVM), since compiler
+commit 62f5f6de04 added the `String.as_str` native. The descent, stack
+and tokens arms also match under `karac run --interp`. The legacy
+backends fail as Compiler findings describes.
 
 ## Benchmarks
 
@@ -111,9 +110,10 @@ shared 4-core container (`bench.sh` timings need a quiet machine):
 | Python | 23 s |
 | Kāra, `karac __mir-run` (the MIR interpreter) | 3 min 22 s |
 
-The Kāra program cannot run natively yet: `karac __mir-llvm-run` stops
-at the missing `String.as_str` native, and the legacy native build
-stops in codegen.
+The Kāra program also prints the same line under
+`karac __mir-llvm-run` in 4.0 s, compile included; that JITs the MIR's
+IR without optimization passes, so it is not a benchmark. The legacy
+native build stops in codegen.
 
 ## Compiler findings
 

@@ -71,14 +71,15 @@ All four arms print the same output as `fizz_buzz.py` on every backend:
 `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
 `karac run --interp`, LLJIT, `karac build` and `KARAC_AUTO_PAR=1 karac
 build`. `karac check` passes on every file. The differential prints
-`20000 checks, 0 failures` under `karac __mir-run` and
-`karac run --interp`.
+`20000 checks, 0 failures` under `karac __mir-run`,
+`karac __mir-llvm-run` and `karac run --interp`.
 
-Under `karac __mir-llvm-run` the differential stops at the missing
-`String.as_str` native: its `read_number(entry: Str)` is passed a
-`String`, as in katas 383 to 411. The frozen legacy codegen has no
-`bytes()` on that `Str` parameter, which stops LLJIT, `karac build` and
-`KARAC_AUTO_PAR=1 karac build` on it. Neither is filed.
+The differential runs under `karac __mir-llvm-run` since compiler
+commit 62f5f6de04 added the `String.as_str` native: its
+`read_number(entry: Str)` is passed a `String`. The frozen legacy
+codegen has no `bytes()` on that `Str` parameter, which stops LLJIT,
+`karac build` and `KARAC_AUTO_PAR=1 karac build` on it. That is not
+filed.
 
 ## Benchmarks
 

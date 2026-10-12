@@ -92,18 +92,18 @@ so in the same 321 cases. P5 sees only M5, and rarely.
 ## Verification
 
 All four arms print the same output as `min_abbreviation.py` under
-`karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
-every file. The differential prints `30000 checks, 0 failures` under
-`karac __mir-run`.
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
+and `karac check` passes on every file. The differential prints `30000
+checks, 0 failures` under both.
 
-Under `karac __mir-llvm-run` every arm and the differential stop at the
-missing `String.as_str` native: every arm takes a `Str` and the harness
-passes it string literals and `String`s, as in katas 383 to 410. The
-frozen legacy typechecker refuses every file, which stops
+Every arm and the differential run under `karac __mir-llvm-run` since
+compiler commit 62f5f6de04 added the `String.as_str` native: every arm
+takes a `Str` and the harness passes it string literals and `String`s.
+The frozen legacy typechecker refuses every file, which stops
 `karac run --interp`, LLJIT, `karac build` and `KARAC_AUTO_PAR=1 karac
 build`: it refuses `dictionary[d]` as an argument to a bare `Str`
 parameter as a move out of an index expression, since it predates bare
-parameters borrowing. Neither is filed.
+parameters borrowing. That is not filed.
 
 ## Benchmarks
 
@@ -128,10 +128,10 @@ timings need a quiet machine):
 The hot loop is the length of each mask, a shift by a variable amount
 per letter. Checked Rust tests each shift for overflow, and Go checks a
 shift by a variable for its range, which is likely where their extra
-time goes; that is inferred, not profiled.
-No Kāra time: the program stops under `karac __mir-llvm-run` at the
-missing `String.as_str` native, and the legacy `karac build` refuses
-it, as above.
+time goes; that is inferred, not profiled. The legacy `karac build`
+refuses the Kāra program, as above. The Kāra program prints the same
+line under `karac __mir-llvm-run` in 5.1 s, compile included; that JITs
+the MIR's IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 

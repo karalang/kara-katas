@@ -93,19 +93,19 @@ earlier rectangle of a touching pair is never the one on the right, and
 ## Verification
 
 All four arms print the same output as `perfect_rectangle.py` under
-`karac __mir-run` (the v2 MIR interpreter) and `karac run --interp`, and
-`karac check` passes on every file. The differential prints `60000
-checks, 0 failures` on every backend: `karac __mir-run`,
-`karac __mir-llvm-run`, `karac run --interp`, LLJIT, `karac build` and
-`KARAC_AUTO_PAR=1 karac build`.
+`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run` and
+`karac run --interp`, and `karac check` passes on every file. The
+differential prints `60000 checks, 0 failures` on every backend:
+`karac __mir-run`, `karac __mir-llvm-run`, `karac run --interp`, LLJIT,
+`karac build` and `KARAC_AUTO_PAR=1 karac build`.
 
-The arms do not run on the compiled backends. `karac __mir-llvm-run`
-stops at the missing `String.as_str` native, because the harness's
-`show` takes a `Str`, as in katas 383, 385, 388 and 389; not filed. LLJIT and both
-`karac build` modes fail LLVM module verification at the same `show`
-calls, which pass a string literal where `show`'s signature does not
-expect that layout. That is the frozen legacy codegen, so it is noted
-and not filed.
+The arms run under `karac __mir-llvm-run` since compiler commit
+62f5f6de04 added the `String.as_str` native that the harness's `show`,
+which takes a `Str`, needs. They do not run on the legacy compiled
+backends: LLJIT and both `karac build` modes fail LLVM module
+verification at the `show` calls, which pass a string literal where
+`show`'s signature does not expect that layout. That is the frozen
+legacy codegen, so it is noted and not filed.
 
 ## Benchmarks
 
@@ -137,7 +137,9 @@ interpreter, and the second JITs the MIR's IR without optimization
 passes. Both predate kara `989568b252`, which made `Map.remove`
 O(log n) (`B-2026-10-12-4`). This workload removes a corner for nearly
 every one it inserts; whether that commit speeds up its `Set.remove` is
-not measured here. The legacy `karac build` refuses the program: its
+not measured here. At kara `62f5f6de04`, which includes that commit,
+`karac __mir-llvm-run` prints the same line in 43.0 s, compile
+included. The legacy `karac build` refuses the program: its
 frozen typechecker reads `is_rectangle_cover(tilings[t])` as a move out
 of an index, where under the v2 rules a bare parameter borrows.
 

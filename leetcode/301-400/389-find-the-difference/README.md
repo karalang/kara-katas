@@ -79,11 +79,12 @@ which is why its count is low.
 
 All five arms print the same output as `find_the_difference.py` under
 `karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
-every file. Under `karac __mir-llvm-run` every file stops at the
-missing `String.as_str` native, as in katas 383, 385 and 388; not
-filed. The legacy interpreter, LLJIT and `karac build` refuse every arm
-at the harness's `*c` on the items of a `Vec[char]` iterator, the
-frozen legacy typechecker gap of katas 382 to 388; not filed.
+every file. Every file also prints the same output under
+`karac __mir-llvm-run`, since compiler commit 62f5f6de04 added the
+`String.as_str` native. The legacy interpreter, LLJIT and
+`karac build` refuse every arm at the harness's `*c` on the items of a
+`Vec[char]` iterator, the frozen legacy typechecker gap of katas 382 to
+388; not filed.
 
 ## Benchmarks
 
@@ -108,10 +109,12 @@ C program cut the same way. Spot timings on a shared 4-core container
 | Go | 4.3 s |
 | Python | 183 s |
 
-The Kāra program cannot run the full workload natively yet:
-`karac __mir-llvm-run` stops at `String.as_str`, and the legacy
-`karac build` panics in codegen on the `for` over `Str.bytes()`, as in
-kata 383. The MIR interpreter takes 16 s for the 30,000-pair cut.
+The legacy `karac build` of the Kāra program panics in codegen on the
+`for` over `Str.bytes()`, as in kata 383. The MIR interpreter takes
+16 s for the 30,000-pair cut. The full Kāra program prints the same
+line under `karac __mir-llvm-run` in 20.7 s, compile included; that
+JITs the MIR's IR without optimization passes, so it is not a
+benchmark.
 
 ## Compiler findings
 

@@ -80,14 +80,14 @@ none seen, the odd arm answers the whole length anyway.
 ## Verification
 
 All four arms print the same output as `longest_palindrome.py` under
-`karac __mir-run` (the v2 MIR interpreter) and `karac run --interp`,
-and `karac check` passes on every file. The differential prints `60000
-checks, 0 failures` under both.
+`karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run` and
+`karac run --interp`, and `karac check` passes on every file. The
+differential prints `60000 checks, 0 failures` under all three.
 
-Under `karac __mir-llvm-run` every arm and the differential stop at the
-missing `String.as_str` native: every arm takes a `Str` and the
-harness passes it string literals and `String`s, as in katas 383 to
-408. The frozen legacy codegen panics in `control_flow_for.rs` on
+Every arm and the differential run under `karac __mir-llvm-run` since
+compiler commit 62f5f6de04 added the `String.as_str` native: every arm
+takes a `Str` and the harness passes it string literals and `String`s.
+The frozen legacy codegen panics in `control_flow_for.rs` on
 `for b in s.bytes()` over a `Str` parameter in three arms, and reports
 no `len()` on a `Str` parameter in the sort arm, which stops LLJIT,
 `karac build` and `KARAC_AUTO_PAR=1 karac build`. Neither is filed.
@@ -114,10 +114,10 @@ container (`bench.sh` timings need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 0.33 to 0.70 s |
 | Python | 16 to 18 s |
 
-The bench passes `text[start..start + len]`, a `Str` view of a `String`,
-so it does not reach the missing `String.as_str` native, and prints the
-same line under `karac __mir-llvm-run` in 3.2 s, compile included; that
-JITs the MIR's IR without optimization passes, so it is not a benchmark.
+The bench passes `text[start..start + len]`, a `Str` view of a
+`String`. The Kāra program also prints the same line under
+`karac __mir-llvm-run` in 2.9 s, compile included; that JITs the MIR's
+IR without optimization passes, so it is not a benchmark.
 The legacy `karac build` panics on it, as above.
 
 ## Compiler findings

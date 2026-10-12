@@ -74,15 +74,16 @@ the smallest.
 ## Verification
 
 All four arms print the same output as `remove_k_digits.py` under
-`karac __mir-run` (the v2 MIR interpreter), and `karac check` passes on
-every file. The differential prints `60000 checks, 0 failures` under
-`karac __mir-run`. The greedy, window and table arms also match under
-`karac run --interp`.
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
+and `karac check` passes on every file. The differential prints `60000
+checks, 0 failures` under `karac __mir-run` and
+`karac __mir-llvm-run`. The greedy, window and table arms also match
+under `karac run --interp`.
 
-Nothing runs compiled yet. Under `karac __mir-llvm-run` every arm and
-the differential stop at the missing `String.as_str` native, because
-`remove_kdigits` takes a `Str` and the random cases pass it a `String`,
-as in katas 383 to 401. The frozen legacy backends refuse the rest: its
+The arms and the differential run under `karac __mir-llvm-run` since
+compiler commit 62f5f6de04 added the `String.as_str` native, which
+`remove_kdigits` needs because it takes a `Str` and the random cases
+pass it a `String`. The frozen legacy backends refuse the rest: its
 typechecker refuses `*c` on the items of `stack.iter()` in the ★ arm
 and the differential, as in katas 382 to 401, and its codegen has no
 `bytes()` or `len()` on a `Str` parameter, which stops LLJIT,
@@ -108,12 +109,14 @@ need a quiet machine):
 | Go | 0.71 s |
 | Python | 9.4 s |
 
-No Kāra time: the program stops under `karac __mir-llvm-run` at the
-missing `String.as_str` native and is refused by the legacy
-`karac build`, as above.
+The legacy `karac build` refuses the Kāra program, as above. The
+Kāra program prints the same line under `karac __mir-llvm-run` in
+5.5 s, compile included; that JITs the MIR's IR without optimization
+passes, so it is not a benchmark.
 
 ## Compiler findings
 
-No new findings. The kata runs into the missing `String.as_str` native
+No new findings. The kata ran into the missing `String.as_str` native
 on `karac __mir-llvm-run`, which every kata since 383 that passes a
-`String` to a `Str` parameter has hit.
+`String` to a `Str` parameter hit, and which compiler commit 62f5f6de04
+has since added.
