@@ -70,7 +70,8 @@ its answers are one too large, still within the bounds. M8 answers for
 `k - 1` pieces, and is wrong the same way on the reversed and tripled
 arrays, so P5 cannot see it. M6 makes two (start, pieces) pairs share
 a memo slot whenever they add up alike, so it is wrong only on some
-arrays; no property sees it on more than a third of the cases.
+arrays, and each property sees it on at most about a third of the
+cases.
 
 ## Verification
 
