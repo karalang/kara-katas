@@ -112,10 +112,10 @@ The frozen legacy backends agree on the ★, memo and doubling arms:
 arm and the differential as written: since the fix the type check
 passes, and `karac run --interp` stops at run time ("method 'powi' not
 found on type 'f64'"), LLJIT and legacy `karac build` at codegen ("no
-handler for method 'powi'"). On the copies, LLJIT, legacy `karac build` and a `KARAC_AUTO_PAR=1` build
-print the Binet arm's output right, and the differential prints `30000
-checks, 0 failures` under `karac run --interp` and legacy `karac
-build`.
+handler for method 'powi'"). On the copies, LLJIT, legacy `karac
+build` and a `KARAC_AUTO_PAR=1` build print the Binet arm's output
+right, and the differential prints `30000 checks, 0 failures` under
+`karac run --interp` and legacy `karac build`.
 
 ## Benchmarks
 
@@ -152,12 +152,12 @@ not a benchmark.
 ## Compiler findings
 
 kara B-2026-10-13-22 (missing-feature, fixed in kara `95778e966b`):
-`f64.powi` did not exist. design.md's example of a destructured parameter computes a
-distance with `(x2 - x1).powi(2)`, the only place the spec names a
-power method on a float, and the library docs list no float math
-methods at all. The Binet arm's `phi.powi(n as i32)` was refused by
-`karac check`, the v2 backends and the legacy ones alike: "no method
-'powi' on type 'f64'". What the implementation had was `pow`, with an
-`f64` exponent, and `phi.pow(n as f64)` passed everywhere. Since the
-fix the arm and the differential pass `karac check` and run right on
-both v2 backends as written.
+`f64.powi` did not exist. design.md's example of a destructured
+parameter computes a distance with `(x2 - x1).powi(2)`, the only place
+the spec names a power method on a float, and the library docs list no
+float math methods at all. The Binet arm's `phi.powi(n as i32)` was
+refused by `karac check`, the v2 backends and the legacy ones alike:
+"no method 'powi' on type 'f64'". What the implementation had was
+`pow`, with an `f64` exponent, and `phi.pow(n as f64)` passed
+everywhere. Since the fix the arm and the differential pass `karac
+check` and run right on both v2 backends as written.
