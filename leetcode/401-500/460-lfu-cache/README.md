@@ -133,13 +133,16 @@ timings need a quiet machine):
 | Go | 0.81 to 0.89 s |
 | Python | 16.7 to 17.2 s |
 | Kāra (legacy `karac build`) | 1.07 to 1.21 s |
-| Kāra (`karac build --mir`) | 1.85 to 2.04 s |
+| Kāra (`karac build --mir`) | 1.04 to 1.18 s |
 
 The hash maps carry the work in every language, and C's is the
 cheapest hash of the lot. Under `karac build --mir`, callgrind on a
 500,000-call run puts 70% of the instructions under
 `karac_mir_map_find`, the hashed `Map`'s lookup, which hashes each key
-more than once (B-2026-10-12-29, filed from kata 454). Under
+more than once (B-2026-10-12-29, filed from kata 454). That took the
+run to 1.85 to 2.04 s; the row above is re-timed at kara `5f01de4c5c`,
+after the fix in `8acdc0bdb5`, and the callgrind share was measured
+before it. Under
 `karac __mir-llvm-run` the program prints the same line in 20 s,
 compile included; that JITs the MIR's IR without optimization passes,
 so it is not a benchmark.

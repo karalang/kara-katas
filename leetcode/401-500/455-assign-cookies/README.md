@@ -113,19 +113,22 @@ timings need a quiet machine):
 | Go | 2.1 to 2.3 s |
 | Python | 8.6 to 10.5 s |
 | Kāra (legacy `karac build`) | 0.47 to 0.48 s |
-| Kāra (`karac build --mir`) | 5.2 to 5.7 s |
+| Kāra (`karac build --mir`) | 0.43 to 0.51 s |
 
 The two sorts are nearly all the work. C's `qsort` calls its comparison
 through a function pointer for every step. The v2 compiled backend's
-sort is about 12 times slower than legacy's on the same program
-(B-2026-10-12-30, below); `bench.sh` still uses the default
+sort took 5.2 to 5.7 s, about 12 times legacy's, until B-2026-10-12-30
+(below) was fixed; the row above is re-timed at kara `5f01de4c5c`, and
+is now level with legacy. `bench.sh` still uses the default
 `karac build`, which is legacy. Under `karac __mir-llvm-run` the
 program prints the same line in 19 s, compile included; that JITs the
 MIR's IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-12-30** (MIR runtime, open, performance): `Vec.sort` on
+- **B-2026-10-12-30** (MIR runtime, performance; fixed in kara
+  `8acdc0bdb5`, which merges the elements in place with one scratch
+  buffer): `Vec.sort` on
   the compiled MIR backend sorts an array of indices with a bottom-up
   merge sort, allocating each pass and calling the comparison through
   a function pointer; a probe sorting 1,000,000 numbers 10 times takes

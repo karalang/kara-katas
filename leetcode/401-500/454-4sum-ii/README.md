@@ -116,17 +116,20 @@ timings on a shared 4-core container, three runs each (two for Python;
 | Rust (`rustc -O -C overflow-checks=on`) | 0.50 to 0.58 s |
 | Go | 0.60 to 0.67 s |
 | Python | 3.9 s |
-| Kāra (`karac build --mir`) | 3.7 to 4.6 s |
+| Kāra (`karac build --mir`) | 1.05 to 1.13 s |
 
-Kāra is 7 to 9 times slower than Rust here, and the cost is in the
-compiled backend's map (B-2026-10-12-29, below). Under
+Kāra is about twice as slow as Rust here. It took 3.7 to 4.6 s, 7 to 9
+times Rust, until the compiled backend's map was fixed (B-2026-10-12-29,
+below); the row above is re-timed at kara `5f01de4c5c`. Under
 `karac __mir-llvm-run` the program prints the same line in 17 s,
 compile included; that JITs the MIR's IR without optimization passes,
 so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-12-29** (MIR runtime, open, performance): a hashed `Map`
+- **B-2026-10-12-29** (MIR runtime, performance; fixed in kara
+  `8acdc0bdb5`, which made the table's index an open-addressing table
+  of slot numbers): a hashed `Map`
   on the compiled MIR backend costs about 9 times a Rust `HashMap` per
   lookup. The runtime's table indexes its entries with a std
   `HashMap<u64, Vec<usize>>` keyed by the key's hash, so each key is

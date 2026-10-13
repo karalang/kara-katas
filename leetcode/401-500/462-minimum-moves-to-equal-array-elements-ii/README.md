@@ -114,16 +114,17 @@ quiet machine):
 | Go | 1.05 to 1.13 s |
 | Python | 4.2 to 4.3 s |
 | Kāra (legacy `karac build`) | 0.20 to 0.25 s |
-| Kāra (`karac build --mir`) | 2.42 to 2.58 s |
+| Kāra (`karac build --mir`) | 0.22 to 0.25 s |
 
 `bench.sh` builds with legacy `karac build`, which accepts this
-program. The v2 compiled backend is about ten times slower here because
-its `Vec.sort` sorts an index permutation through a function pointer
-and copies the result back, which B-2026-10-12-30 (filed from kata 455)
-already records; nothing new is filed. Under `karac __mir-llvm-run` the
+program. The v2 compiled backend first took 2.42 to 2.58 s, about ten
+times legacy, because its `Vec.sort` sorted an index permutation
+through a function pointer and copied the result back
+(B-2026-10-12-30, filed from kata 455). That was fixed in kara
+`8acdc0bdb5`, and the row above is re-timed at `5f01de4c5c`. Under `karac __mir-llvm-run` the
 program prints the same line in 9.6 s, compile included; that JITs the
 MIR's IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-No new findings. The bench measures B-2026-10-12-30 again.
+No new findings. The bench measured B-2026-10-12-30 again before it was fixed.
