@@ -67,9 +67,8 @@ build_kara() {
     local out="target/${stem}_kara"
     # `--mir`: the legacy `karac build` rejects this program (its type
     # checker types `iter()` items by value, so `*c` does not type
-    # check). The v2 build refuses it too until kara B-2026-10-13-26
-    # (`chars()` on a `Str`) is fixed. Hand-edited from the
-    # scripts/new-bench.sh output; drop `--mir` once it is the default.
+    # check). Hand-edited from the scripts/new-bench.sh output; drop
+    # `--mir` once it is the default.
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling $src (seq, KARAC_AUTO_PAR=0) ..." >&2
         KARAC_AUTO_PAR=0 karac build --mir "$src" >/dev/null

@@ -54,11 +54,11 @@ the harness draws them.
 | P5 | only the cases matter: every capital an `A` and every lower-case letter an `a` gives the same answer |
 
 It prints `2000 words, 4 arms, 40000 checks, 0 failures` under `karac
-__mir-run`, on a copy (see Verification and Compiler findings).
+__mir-run`.
 
 ## Mutation testing
 
-Twelve edits to that copy of `differential.kara`, two to each arm that
+Twelve edits to `differential.kara`, two to each arm that
 change its answers, and four that do not, each run under `karac
 __mir-run`. All eight that change answers are killed.
 
@@ -85,23 +85,19 @@ none: no edit here looks at which letter a letter is, only at its case.
 
 ## Verification
 
-The case, second and states arms print the same output as
-`detect_capital_use.py` under `karac __mir-run` (the v2 MIR
-interpreter) and `karac __mir-llvm-run`, and run clean under `karac
-__mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output
-identical, no error, no leak. `karac check` passes on every arm, the
-differential and the bench program.
+Every arm prints the same output as `detect_capital_use.py` under
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
+and runs clean under `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer): output identical, no error, no leak. The differential
+prints `40000 checks, 0 failures` on the first two and runs clean
+under the third. `karac check` passes on every arm, the differential
+and the bench program.
 
-The ★ arm, and with it the differential and the bench program, are
-refused at build on both v2 backends: `error[mir]: build: ... an
-iterator value is not lowered yet`, at `word.chars().filter(..)`
-(B-2026-10-13-26, below). The files here keep the natural spelling.
-On a copy that writes `word.to_string().chars()` for the ★ arm's two
-calls, the ★ arm matches the mirror on `__mir-run`, `__mir-llvm-run`
-and `__mir-llvm-asan`, and the differential prints `40000 checks, 0
-failures` on the first two and runs clean under the third. That copy
-is how the differential and the mutants were run; the files should
-pass as they stand once the row is fixed.
+The ★ arm, and with it the differential and the bench program, ran as
+written only from kara `2ef9b2ad96`, which fixed B-2026-10-13-26
+(below). Before it, the differential and the mutants were run on a
+copy that wrote `word.to_string().chars()`; on the files as written
+the mutants fail the same checks, case for case.
 
 The frozen legacy backends refuse every file at type checking: legacy
 types the items of a `Vec`'s `iter()` by value, so it refuses the
@@ -117,11 +113,9 @@ The bench program uses the ★ arm. It makes 20,000 random words of 1 to
 word in each of 200 rounds. Every implementation prints `20000 words,
 200 rounds: 2459000 right, checksum 559196731`.
 
-No Kāra build of the bench program as written exists yet: both v2
-backends refuse it at the ★ arm's `chars()` (B-2026-10-13-26), and the
-legacy `karac build` refuses it at the harness's `*c`. So `bench.sh`
-builds it with `karac build --mir`, the v2 compiled backend, and will
-time it once the row is fixed; that edit is by hand, on top of the
+The legacy `karac build` refuses the bench program at the harness's
+`*c`. So `bench.sh` builds it with `karac build --mir`, the v2
+compiled backend; that edit is by hand, on top of the
 `scripts/new-bench.sh` output.
 
 Spot timings on a shared 4-core container, three runs each (two for
@@ -134,25 +128,33 @@ Python; `bench.sh` timings need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 0.24 to 0.28 s |
 | Go | 0.26 s |
 | Python | 7.1 to 7.4 s |
-| Kāra (`karac build --mir`), the `to_string()` copy | 2.17 to 2.30 s |
+| Kāra (`karac build --mir`) | 1.99 to 2.15 s |
 
-The Kāra row times the copy from Verification, at kara `df61cbfff6`,
-and is not the ★ arm's cost: the copy makes a fresh `String` of the
-word on every call (twice when it has one capital), which none of the
-mirrors does. Under `karac
-__mir-run` the copy prints the same line in 422 s, and under `karac
-__mir-llvm-run` in 24 s, compile included; that JITs the MIR's IR
-without optimization passes, so it is not a benchmark.
+The Kāra row is timed at kara `5fa208779d`. It is about 9 times Rust,
+and a large part of that is the walk over the word's chars: on the v2
+compiled backend a `Str`'s `chars()` costs about 3.6 ns a char against
+1.0 for its `bytes()`, and `is_ascii_uppercase` is a call into the
+runtime that finds the method by name (kara B-2026-10-13-31, below).
+Under `karac __mir-run` the program prints the same line in 428 s, and
+under `karac __mir-llvm-run` in 23.8 s, compile included; that JITs the
+MIR's IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-26** (open): on both v2 backends, `chars()` on a
-  `Str` is not an iterator value. `.filter(..)`, `.count()`, `.next()`,
-  `.rev()`, `.all(..)` and `.enumerate()` are all refused at build, and
-  `.map(..).collect()` into a `String` is typed as a `Vec[char]`,
-  though `karac check` accepts every one of them and
-  `docs/library/strings.md` gives `chars()` to `Str` and `String`
-  alike. The same
-  calls run right on a `String`; on a `Str` only a plain `for c in
-  w.chars()` and a `collect()` into a `Vec[char]` work. Found here in
-  the ★ arm, whose `word` is a `Str`.
+- **B-2026-10-13-26** (fixed in kara `2ef9b2ad96`): on both v2
+  backends, `chars()` on a `Str` was not an iterator value.
+  `.filter(..)`, `.count()`, `.next()`, `.rev()`, `.all(..)` and
+  `.enumerate()` were all refused at build, and `.map(..).collect()`
+  into a `String` was typed as a `Vec[char]`, though `karac check`
+  accepted every one of them and `docs/library/strings.md` gives
+  `chars()` to `Str` and `String` alike. Found here in the ★ arm,
+  whose `word` is a `Str`; the arm now runs as written.
+- **B-2026-10-13-31** (perf, open), filed from this kata's bench: a
+  walk over a `Str`'s `chars()` on the v2 compiled backend costs about
+  3.6 times one over its `bytes()`, and the char predicates are runtime
+  calls that match the method's name. The bench runs about 9 times
+  Rust.
+- **B-2026-10-13-32** (low, open), found while timing the bench: the
+  v2 front end takes `*c` on a `filter` closure's `char` over
+  `chars()`, which `karac check` refuses, as `docs/library/iterators.md`
+  says it should.
