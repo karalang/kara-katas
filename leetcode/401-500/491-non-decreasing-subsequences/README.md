@@ -54,9 +54,10 @@ subsequence of the turned array, one for one.
 
 It prints `1500 cases, 4 arms, 30000 checks, 0 failures` under
 `karac __mir-run` in 7 s, and a count for each property when anything
-fails, but only on a copy whose masks arm takes `for s in found` and
-pushes `s.clone()`: as written, with `found.into_iter()`, the v2
-backends refuse the whole program (B-2026-10-13-14, below).
+fails. Until kara B-2026-10-13-14 was fixed the v2 backends refused
+the whole program as written, at the masks arm's `found.into_iter()`
+(see Compiler findings); the mutants below were run then, on a copy
+whose masks arm takes `for s in found` and pushes `s.clone()`.
 
 ## Mutation testing
 
@@ -90,16 +91,14 @@ __mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output
 identical, no error, no leak. `karac check` passes on every file, the
 bench program included.
 
-The masks arm and the differential do not build on the v2 backends:
-`error[mir]: build: ... a `for` loop over a collection is not lowered
-yet`, at `for s in found.into_iter()` (B-2026-10-13-14). With that loop
-written as `for s in found { out.push(s.clone()); }` the masks arm
-matches the mirror on `__mir-run`, `__mir-llvm-run` and
-`__mir-llvm-asan`, and the differential prints `30000 checks, 0
-failures` on the first two and runs clean under the third. That copy
-is how the differential and the mutants were run; the files here keep
-the natural spelling, and should pass as they stand once the row is
-fixed.
+The masks arm and the differential were rechecked as written at kara
+`df61cbfff6`, after the fix for B-2026-10-13-14 (see Compiler
+findings): the masks arm matches the mirror on `__mir-run`,
+`__mir-llvm-run` and `__mir-llvm-asan`, and the differential prints
+`30000 checks, 0 failures` on the first two and runs clean under the
+third. Before the fix both were refused at build, at `for s in
+found.into_iter()`, and were verified on a copy that wrote the loop
+as `for s in found { out.push(s.clone()); }`.
 
 The frozen legacy backends agree on the ★, grow and since arms: `karac
 run --interp`, LLJIT, legacy `karac build` and a `KARAC_AUTO_PAR=1`
@@ -149,12 +148,13 @@ so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-14** (open): the MIR builder refuses `for x in
-  c.into_iter()` over a `Set`, `VecDeque`, `Map` or `SortedMap` whose
-  elements are not `Copy`, at "a `for` loop over a collection is not
-  lowered yet", though `karac check` accepts it and the diagnostic for
-  moving out of a bare `for` recommends that very spelling. Found here
-  in the masks arm, which moves its `Set[Vec[i64]]` out at the end.
+- **B-2026-10-13-14** (fixed in kara `4e8c04ce62`): the MIR builder
+  refused `for x in c.into_iter()` over a `Set`, `VecDeque`, `Map` or
+  `SortedMap` whose elements are not `Copy`, at "a `for` loop over a
+  collection is not lowered yet", though `karac check` accepted it and
+  the diagnostic for moving out of a bare `for` recommended that very
+  spelling. Found here in the masks arm, which moves its
+  `Set[Vec[i64]]` out at the end.
 
 `karac fix` answers the bare `for s in found { out.push(s); }` with
 `out.push(s.clone())`, a copy per answer, rather than `.into_iter()`;
