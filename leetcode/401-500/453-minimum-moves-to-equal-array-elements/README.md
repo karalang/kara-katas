@@ -125,11 +125,9 @@ building the arrays, 20 million calls to the random number generator.
 
 ## Compiler findings
 
-- **B-2026-10-12-28** (MIR front end, open): a `SortedMap.floor` entry
-  taken out with `.expect(...)`, as in
+- **B-2026-10-12-28** (MIR front end, fixed in kara `b47c3c85e5`): a
+  `SortedMap.floor` entry taken out with `.expect(...)`, as in
   `let (top, _) = levels.floor(i64.MAX).expect("a top level");` then
-  `let top = *top;`, loses its `ref`s on the MIR backends, and `*top`
-  is rejected with "found 'i64'". The same entry taken out with
-  `let Some((top, _)) = ... else { ... }` keeps them. The levels arm uses
-  the let-else form for now; it goes back to `.expect(...)` once the row
-  is fixed.
+  `let top = *top;`, lost its `ref`s on the MIR backends, and `*top`
+  was rejected with "found 'i64'". The levels arm used a let-else form
+  until the fix and is back to `.expect(...)`.

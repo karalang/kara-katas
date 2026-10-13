@@ -153,13 +153,13 @@ so it is not a benchmark.
   `v: Vec[String]` fails to build on the MIR backends ("the method call
   `.collect` with no resolved callee is not lowered yet"). Found while
   measuring B-2026-10-12-33; the kata does not use the form.
-- **B-2026-10-12-35** (library spec, open, a question): `s.chars().rev()`
-  is refused on the MIR backends, whose `chars()` follows the spec in
-  not being double-ended, while `karac check` accepts it. The
-  differential's P4 reverses through `let mut cs: Vec[char] =
-  s.chars().collect(); cs.reverse();`, which is in the spec; if `chars()`
-  becomes double-ended it can go back to
-  `let reversed: String = s.chars().rev().collect();`.
+- **B-2026-10-12-35** (library spec, fixed in kara `a9bce361cd`):
+  `s.chars().rev()` was refused on the MIR backends, whose `chars()`
+  followed the spec in not being double-ended, while `karac check`
+  accepted it. `chars()` is now double-ended in the spec and on both
+  MIR backends, and the differential's P4 is back to
+  `let reversed: String = s.chars().rev().collect();` (it reversed a
+  `Vec[char]` until then).
 - **B-2026-10-12-36** (MIR compiled backend, open, performance):
   `Vec.push` is an out-of-line runtime call with a `memcpy` per element.
   A loop pushing 1,000,000 numbers 40 times takes 0.19 s under
