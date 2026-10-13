@@ -138,14 +138,16 @@ quiet machine):
 The `--mir` row is timed at kara `6a0744358e`. Under
 `karac __mir-llvm-run` the program prints the same line in 6.5 s,
 compile included; that JITs the MIR's IR without optimization passes,
-so it is not a benchmark. Under `karac __mir-run` it takes 484 s,
-because the MIR interpreter copies the whole string on every
+so it is not a benchmark. Under `karac __mir-run` it took 484 s,
+because the MIR interpreter copied the whole string on every
 `String.len()`, which the library's `chars()` calls at every step
-(B-2026-10-13-2, below).
+(B-2026-10-13-2, below); since that fix it takes 198 s, at kara
+`a47100457f`.
 
 ## Compiler findings
 
-- **B-2026-10-13-2** (`karac __mir-run`, open): `String.len()` and
-  `is_empty()` copy the whole text, so every `chars()` loop is
-  quadratic in the MIR interpreter: the bench takes 484 s there, against
-  14 s for Python. The compiled backends are not affected.
+- **B-2026-10-13-2** (`karac __mir-run`, fixed in kara `0349222a33`):
+  `String.len()` and `is_empty()` copied the whole text, so every
+  `chars()` loop was quadratic in the MIR interpreter: the bench took
+  484 s there, against 14 s for Python, and takes 198 s since the fix.
+  The compiled backends were not affected.
