@@ -95,7 +95,8 @@ binary search finds the first heater after the house, not at it" (the
 heater at the house is then the one before, at distance 0 all the same)
 and "the floor is taken one position left of the house" (the heater at
 the house is then the ceiling). A third draft, which compared `need ==
-i64.MAX` in an `if`, did not parse; that is B-2026-10-13-8.
+i64.MAX` in an `if`, did not parse when the kata was written; that
+was B-2026-10-13-8.
 
 ## Verification
 
@@ -155,11 +156,12 @@ MIR's IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-8** (parser, open): a primitive's associated constant
-  right before a block is misparsed. `if need == i64.MAX { .. }`,
-  `while x < i64.MAX { .. }`, `match x == i64.MAX { .. }` and `for i in
-  0..i64.MAX { .. }` are refused with "no associated function 'MAX' on
-  type 'i64'" by `karac check`, the legacy interpreter and both MIR
-  backends, while `let b = need == i64.MAX;` and `if (need ==
-  i64.MAX) { .. }` work. Met in mutant M7; the arms write `let mut
-  nearest = i64.MAX;` and compare against a bound value, which parses.
+- **B-2026-10-13-8** (parser, fixed in kara `3ac940fe84`): a
+  primitive's associated constant right before a block was misparsed.
+  `if need == i64.MAX { .. }`, `while x < i64.MAX { .. }`, `match x ==
+  i64.MAX { .. }` and `for i in 0..i64.MAX { .. }` were refused with
+  "no associated function 'MAX' on type 'i64'" by `karac check`, the
+  legacy interpreter and both MIR backends, while `let b = need ==
+  i64.MAX;` and `if (need == i64.MAX) { .. }` worked. Met in mutant M7;
+  the arms write `let mut nearest = i64.MAX;` and compare against a
+  bound value, which always parsed.
