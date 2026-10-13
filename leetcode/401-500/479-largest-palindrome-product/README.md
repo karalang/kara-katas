@@ -84,9 +84,9 @@ problem, and one did not run.
 - text, the factor search started at `palindrome / upper` rounded down
   rather than up: on these eight inputs the one extra factor it can try
   never changes the answer.
-- text, collecting the left half's chars unreversed did not run: `let
-  right: String = left.chars().collect();` is refused by both MIR
-  backends, which is B-2026-10-13-10, below.
+- text, collecting the left half's chars unreversed did not run when
+  the kata was written: `let right: String = left.chars().collect();`
+  was refused by both MIR backends, which was B-2026-10-13-10, below.
 
 ## Verification
 
@@ -143,11 +143,11 @@ so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-10** (open): on the MIR backends,
-  `let s: String = text.chars().collect();` stops with "collecting
+- **B-2026-10-13-10** (fixed in kara `5a562a4b64`): on the MIR backends,
+  `let s: String = text.chars().collect();` stopped with "collecting
   chars into this type is not lowered yet", while `karac check` and the
-  legacy interpreter accept it, and the same collect after `.rev()`,
-  `.filter(..)`, `.skip(..)`, `.take(..)` or `.map(..)` runs. The MIR
-  builder special-cases a bare `chars().collect()` and handles only a
+  legacy interpreter accepted it, and the same collect after `.rev()`,
+  `.filter(..)`, `.skip(..)`, `.take(..)` or `.map(..)` ran. The MIR
+  builder special-cased a bare `chars().collect()` and handled only a
   `Vec[char]` destination. Met in a draft of mutant M7; the text arm
   itself collects after `.rev()` and runs.
