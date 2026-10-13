@@ -65,14 +65,16 @@ trees: their coin flips start from the same seed.
 P4 is there for the Morris arm, which rewrites links as it goes and
 must leave the tree as it found it.
 
-As written, the map arm and the Morris arm are refused by the v2
-backends (see Compiler findings), and so is the differential, which
-holds copies of them. It was run on a copy that writes the map arm's
-largest count as `counts.iter().map(|(_, c)| *c).max().unwrap()` and
-gives each node an `id` field, compared with `r.id == n.id` in place of
-`r.ref_eq(n)`. That copy prints `1500 cases, 4 arms, 30000 checks, 0
-failures` under `karac __mir-run`. The files here keep the spec's
-spellings, and should pass as they stand once the rows are fixed.
+As written, the map arm is refused by the v2 backends (see Compiler
+findings), and so is the differential, which holds a copy of it. It
+is run on a copy that writes the map arm's largest count as
+`counts.iter().map(|(_, c)| *c).max().unwrap()`, the only change. That
+copy prints `1500 cases, 4 arms, 30000 checks, 0 failures` under
+`karac __mir-run`. The files here keep the spec's spelling, and should
+pass as they stand once the row is fixed. When this kata was written
+the Morris arm's `r.ref_eq(n)` ran on no v2 backend either, and the
+copy also gave each node an `id` field to compare in its place; since
+kara `32540012cd` the Morris arm runs as written.
 
 ## Mutation testing
 
@@ -116,19 +118,24 @@ a `Map` walk is random, not sorted.
 The ★ and stack arms print the same output as `find_mode.py` under
 `karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
 and run clean under `karac __mir-llvm-asan` (AddressSanitizer and
-LeakSanitizer): output identical, no error, no leak. So do the map and
-Morris arms in the copies described under Differential, and so does
-that copy of the differential. `karac check` passes on the ★ and stack
-arms and the bench program, and refuses the map arm, the Morris arm and
-the differential (see Compiler findings).
+LeakSanitizer): output identical, no error, no leak, and so does the
+Morris arm as written, at kara `32540012cd`. So does the map arm in
+the copy described under Differential, and so does that copy of the
+differential, run again at `32540012cd` with the Morris arm as written.
+`karac check` passes on the ★, stack and Morris arms and the bench
+program, and refuses the map arm and the differential (see Compiler
+findings).
 
 On the frozen legacy backends, `karac run --interp` prints the same
 output for the ★ and stack arms, but LLJIT and legacy `karac build`
 fail on both at codegen: "Module verification failed: Call parameter
 type does not match function signature!", at the harness's calls to
 `show`, whose first parameter is a `Str` given a string literal. The
-map and Morris arms and the differential are refused on legacy as on
-v2. Legacy `karac build` builds the bench program, which has no such
+map arm and the differential are refused on legacy as on v2. The
+Morris arm passes the type checker since kara `32540012cd` and fails
+later on legacy: `karac run --interp` at "method 'ref_eq' not found on
+type 'TreeNode'", and legacy `karac build` at codegen, "no handler for
+method 'ref_eq'". Legacy `karac build` builds the bench program, which has no such
 call. Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
@@ -168,14 +175,16 @@ not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-17 (missing-feature, open): `ref_eq` has no v2 form.
-The spec gives identity on a `shared` handle as a method, `a.ref_eq(b)`
-(design.md § Equality), and `karac check` refuses it: "no method
-'ref_eq' on type 'TreeNode'". The older free function `ref_eq(a, b)`
-passes `karac check`, but `karac __mir-run` stops at "call of unknown
-function ref_eq" and `karac __mir-llvm-run` at "native `ref_eq` is not
-lowered yet". So the Morris arm, which must tell its thread from a real
-right child holding the same value, runs on no v2 backend.
+kara B-2026-10-13-17 (missing-feature, fixed in kara `32540012cd`):
+`ref_eq` had no v2 form. The spec gives identity on a `shared` handle
+as a method, `a.ref_eq(b)` (design.md § Equality), and `karac check`
+refused it: "no method 'ref_eq' on type 'TreeNode'". The older free
+function `ref_eq(a, b)` passed `karac check`, but `karac __mir-run`
+stopped at "call of unknown function ref_eq" and `karac
+__mir-llvm-run` at "native `ref_eq` is not lowered yet". So the Morris
+arm, which must tell its thread from a real right child holding the
+same value, ran on no v2 backend. Since the fix it runs as written on
+all three.
 
 kara B-2026-10-13-1 (open; this kata adds a second data point to it):
 `Map.values()` returns an eager `Vec` where the spec gives an
