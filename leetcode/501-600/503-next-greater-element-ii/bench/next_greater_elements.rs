@@ -1,0 +1,71 @@
+// Benchmark for #503 in Rust: the ★ arm (a stack of indices, twice
+// around); see ../next_greater_elements.kara. The answer and the stack
+// are fresh Vecs on every call, as the Kāra arm's are.
+
+fn next_greater_elements(nums: &[i64]) -> Vec<i64> {
+    let n = nums.len();
+    let mut answer = vec![-1; n];
+    let mut waiting: Vec<usize> = Vec::new();
+    for i in 0..2 * n {
+        let x = nums[i % n];
+        while let Some(&top) = waiting.last() {
+            if nums[top] >= x {
+                break;
+            }
+            answer[top] = x;
+            waiting.pop();
+        }
+        if i < n {
+            waiting.push(i);
+        }
+    }
+    answer
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 120 arrays of 10,000 numbers (the problem's most), from 0 to 9,
+    // from the whole range -10^9 to 10^9, or falling, in turn; built
+    // once. Then each array is solved 100 times, the sum of its answers
+    // folded into a checksum.
+    let arrays = 120;
+    let rounds = 100;
+    let n: i64 = 10000;
+    let mut seed: i64 = 503;
+    let mut all: Vec<Vec<i64>> = Vec::new();
+    for c in 0..arrays {
+        let mut nums: Vec<i64> = Vec::new();
+        for i in 0..n {
+            if c % 3 == 0 {
+                nums.push(next_random(&mut seed) % 10);
+            } else if c % 3 == 1 {
+                let hi = next_random(&mut seed);
+                let lo = next_random(&mut seed);
+                nums.push((hi * 65536 + lo) % 2000000001 - 1000000000);
+            } else {
+                nums.push(1000000000 - i * 200000 - next_random(&mut seed) % 100000);
+            }
+        }
+        all.push(nums);
+    }
+    let mut found: i64 = 0;
+    let mut checksum: i64 = 0;
+    for c in 0..arrays {
+        for _ in 0..rounds {
+            let answer = next_greater_elements(&all[c]);
+            let mut sum: i64 = 0;
+            for a in answer {
+                sum += a;
+                if a != -1 {
+                    found += 1;
+                }
+            }
+            checksum = (checksum * 31 + sum % 1000000007 + 1000000007) % 1000000007;
+        }
+    }
+    println!("{arrays} arrays of {n} numbers, {rounds} times each: {found} with a greater one, checksum {checksum}");
+}
