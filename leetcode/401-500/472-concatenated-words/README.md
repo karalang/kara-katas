@@ -64,9 +64,10 @@ concatenated word out cannot make another word lose its split.
 It prints `1500 cases, 4 arms, 30000 checks, 0 failures` under
 `karac __mir-run`, in 17 s, and a count for each property when
 anything fails. Each reversed word is bound with its type before it is
-pushed, because `v.push(w.chars().rev().collect())` is refused
-(B-2026-10-12-33 in `karac check`, B-2026-10-12-34 on the MIR
-backends).
+pushed, because `karac check` refuses
+`v.push(w.chars().rev().collect())` (B-2026-10-12-33). The MIR backends
+refused it too when the kata was written (B-2026-10-12-34) and run it
+since kara `b9967ff0e0`.
 
 ## Mutation testing
 
@@ -149,14 +150,17 @@ so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-3** (MIR, open): a `Slice[T]`'s `iter()` drives a
-  `for` loop on the MIR backends but no adaptor or terminal:
-  `word.bytes().iter().collect()`, `.count()`, `.position(..)` and
-  `v[0..3].iter().map(..).sum()` stop with "an iterator value is not
-  lowered yet", and a closure written with the spec's `*b` is refused
-  before that ("found 'u8'"), while `karac check` accepts every form.
-  `karac check` itself recommends `word.bytes().iter().collect()` when
-  given `word.bytes().collect()`, which is how the trie arm met it. The
-  arm uses `word.bytes().to_vec()`, which the spec also lists for
-  `Slice[T]`.
-- B-2026-10-12-33 and B-2026-10-12-34 (open, see Differential).
+- **B-2026-10-13-3** (MIR, fixed in kara `0e8113c3ec`): a `Slice[T]`'s
+  `iter()` drove a `for` loop on the MIR backends but no adaptor or
+  terminal. `word.bytes().iter().collect()`, `.count()`, `.position(..)`
+  and `v[0..3].iter().map(..).sum()` stopped with "an iterator value is
+  not lowered yet", and a closure written with the spec's `*b` was
+  refused before that ("found 'u8'"), while `karac check` accepted every
+  form. `karac check` itself recommends `word.bytes().iter().collect()`
+  when given `word.bytes().collect()`, which is how the trie arm met it.
+  The row was measured on a build from before the fix and filed after
+  the fix had already reached `main`; every form runs on both MIR
+  backends now. The arm keeps `word.bytes().to_vec()`, which the spec
+  also lists for `Slice[T]`.
+- B-2026-10-12-33 (open) and B-2026-10-12-34 (fixed in kara
+  `b9967ff0e0`), see Differential.
