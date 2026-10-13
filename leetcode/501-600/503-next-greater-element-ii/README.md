@@ -50,13 +50,12 @@ from the whole range -10^9 to 10^9, in turn.
 | P4 | doubling every number doubles every answer |
 | P5 | the array written twice answers twice |
 
-As written, the doubled arm is refused by `karac check` and every
-backend (see Compiler findings), and so is the differential, which
-holds a copy of it. It was run on a copy that writes the doubled arm's
-second half as `doubled.extend(nums.clone())`. That copy prints `1500
-cases, 4 arms, 30000 checks, 0 failures` under `karac __mir-run`. The
-files here keep the spec's spelling, and should pass as they stand once
-the row is fixed.
+It prints `1500 cases, 4 arms, 30000 checks, 0 failures` under `karac
+__mir-run`. Until kara B-2026-10-13-19 was fixed the doubled arm, and
+the differential with its copy of it, ran on no backend as written
+(see Compiler findings); the mutants below were run then, on a copy
+that wrote the doubled arm's second half as
+`doubled.extend(nums.clone())`.
 
 ## Mutation testing
 
@@ -96,14 +95,15 @@ reject in every case.
 
 ## Verification
 
-The ★, brute and backward arms print the same output as
-`next_greater_elements.py` under `karac __mir-run` (the v2 MIR
-interpreter) and `karac __mir-llvm-run`, and run clean under `karac
-__mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output
-identical, no error, no leak. So do the copies of the doubled arm and
-the differential described under Differential. `karac check` passes on
-the ★, brute and backward arms and the bench program, and refuses the
-doubled arm and the differential (see Compiler findings).
+Every arm prints the same output as `next_greater_elements.py` under
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
+and runs clean under `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer): output identical, no error, no leak. The differential
+prints `30000 checks, 0 failures` on the first two and runs clean
+under the third. `karac check` passes on every arm, the differential
+and the bench program. The doubled arm and the differential were
+rechecked as written at kara `e85c10e377`, after the fix for
+B-2026-10-13-19 (see Compiler findings).
 
 On the frozen legacy backends, `karac run --interp` prints the same
 output for the ★, brute and backward arms, but LLJIT and legacy `karac
@@ -111,7 +111,8 @@ build` fail on all three at codegen: "Module verification failed: Call
 parameter type does not match function signature!", at the harness's
 calls to `show`, whose first parameter is a `Str` given a string
 literal (as in katas 501 and 502). The doubled arm and the differential
-are refused on legacy as on v2. Legacy is frozen, so this is noted, not
+are refused on legacy: `karac run --interp` has no `cloned` ("method
+'cloned' not found on type 'unknown'"). Legacy is frozen, so this is noted, not
 filed.
 
 ## Benchmarks
@@ -151,7 +152,7 @@ optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-19 (missing-feature, open): `Vec.extend` accepts only
+kara B-2026-10-13-19 (missing-feature, fixed in kara `36fc6a0f92`): `Vec.extend` accepts only
 a `Vec`, `Slice` or `Array`. The spec gives `fn extend[I:
 IntoIterator[Item = T]](mut ref self, items: own I)`
 (docs/library/collections.md), and `cloned` is the spec's way to get
@@ -161,4 +162,5 @@ run --interp` and both v2 backends refuse it with "no method 'extend'
 on type 'Vec'", which names the method as missing where the refusal is
 the argument's type. `doubled.extend(nums.clone())` passes and runs, at
 the cost of copying the whole `Vec` first. So the doubled arm, and the
-differential with it, runs on no backend as written.
+differential with it, ran on no backend as written. Since the fix both
+pass `karac check` and run right on both v2 backends as written.

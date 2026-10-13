@@ -170,7 +170,8 @@ builds the Kāra program with `karac build --mir`, the v2 compiled
 backend. That edit is by hand, on top of the `scripts/new-bench.sh`
 output. The `--mir` row is timed at kara `e85c10e377`. Under `karac
 __mir-llvm-run` the program prints the same line in 2.2 s, compile
-included; that JITs the MIR's IR without optimization passes, so it is not a benchmark.
+included; that JITs the MIR's IR without optimization passes, so it
+is not a benchmark.
 
 ## Compiler findings
 

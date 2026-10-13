@@ -47,13 +47,13 @@ output is byte-identical.
 
 The harness reads each character's code as `let code: i64 = ch as
 i32;`, the spec's form (a `char` casts to `i32`, and widening to `i64`
-is implicit at a binding). The v2 backends never widen that cast (kara
-B-2026-10-13-21, below): `karac __mir-run` refuses every arm as
-written, and `karac __mir-llvm-run` prints the right output only
-because the upper half of the slot happens to hold zeros. So every
-check below on the v2 backends was run on copies whose harness writes
-`let code = ch as i32 as i64;`, the only change. The files here keep the
-spec's form, and should pass as they stand once the row is fixed.
+is implicit at a binding). Until kara B-2026-10-13-21 was fixed
+(below), the v2 backends never widened that cast: `karac __mir-run`
+refused every arm as written, and `karac __mir-llvm-run` printed the
+right output only because the upper half of the slot happened to hold
+zeros. The differential and mutants below were run then, on copies
+whose harness wrote `let code = ch as i32 as i64;`. Every arm was
+rechecked as written at kara `e85c10e377`, after the fix.
 
 ## Differential
 
@@ -121,8 +121,8 @@ All four arms print the same output as `find_relative_ranks.py` under
 `karac __mir-run` (the v2 MIR interpreter) and `karac
 __mir-llvm-run`, and run clean under `karac __mir-llvm-asan`
 (AddressSanitizer and LeakSanitizer): output identical, no error, no
-leak; each run on the copy described under Approaches. The copy of the
-differential prints `30000 checks, 0 failures` on both and runs clean
+leak, as written. The copy of the differential described under
+Differential prints `30000 checks, 0 failures` on both and runs clean
 under the third. `karac check` passes on the ★, heap and count arms
 and the bench program. On the buckets arm it passes with
 `KARAC_CHECK_LIBRARY=1`, and default `karac check` refuses
@@ -186,17 +186,19 @@ optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-21 (miscompile, open): an `as` cast to a narrower
-integer that lands in a wider binding or return slot is never widened.
-The harness's `let code: i64 = ch as i32;` makes `karac __mir-run`
-stop at "invalid MIR: assigning i32 to _106 of type i64". On `karac
-__mir-llvm-run` the four bytes of the `i32` go into an 8-byte slot
-whose other four hold whatever was there. In this program that is zero
-and the output comes out right (five runs of the ★ arm as written, all
-right), but in the row's three-line program the same cast printed
-94505382909996 for 44. `karac check` passes it, and `karac run
---interp` gets it right. The same cast as an argument, a `Vec` element
-or a field is right on both v2 backends.
+kara B-2026-10-13-21 (miscompile, fixed in kara `64dbf3323c`): an
+`as` cast to a narrower integer that lands in a wider binding or
+return slot was never widened. The harness's `let code: i64 = ch as
+i32;` made `karac __mir-run` stop at "invalid MIR: assigning i32 to
+_106 of type i64". On `karac __mir-llvm-run` the four bytes of the
+`i32` went into an 8-byte slot whose other four held whatever was
+there. In this program that was zero and the output came out right
+(five runs of the ★ arm as written, all right), but in the row's
+three-line program the same cast printed 94505382909996 for 44. `karac
+check` passed it, and `karac run --interp` got it right. The same cast
+as an argument, a `Vec` element or a field was right on both v2
+backends. Since the fix every arm runs right as written on both v2
+backends.
 
 Two existing rows show up here too.
 
