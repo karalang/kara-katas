@@ -29,7 +29,7 @@ mean a smaller base, so each arm looks for the most 1s that work.
 | `smallest_good_base_binary.kara` | for each `m` from 62 down, a binary search over `k` from 2 to `n - 1`; the sum is taken with `checked_mul` and `checked_add`, and an overflow counts as larger than `n` |
 | `smallest_good_base_newton.kara` | the same roots as the ★ arm, but in integers: Newton's method from a power of two above the root, with `n / x^(d-1)` taken one division at a time so nothing overflows; then `n`'s digits in that base are read |
 | `smallest_good_base_scan.kara` | four or more 1s need `k^3 < n`, so every such base is at most `10^6`: try them in order, reading `n`'s digits. Past that, three 1s can only be in base `isqrt(n)` (`k^2 < k^2 + k + 1 < (k+1)^2`), and otherwise the answer is `n - 1` |
-| `differential.kara` | the four arms on every `n` from 3 to 2,000 and 1,500 random values, three properties |
+| `differential.kara` | the four arms on every `n` from 3 to 1,000 and 1,000 random values, three properties |
 
 Every arm prints the same 11 lines: the three LeetCode examples, the
 smallest `n` (3, base 2), 15 (1111 in base 2), 21 (111 in base 4), `10^6`
@@ -42,11 +42,12 @@ byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the four arms and runs them on 1,500
+`differential.kara` holds copies of the four arms and runs them on 1,000
 random values, one in three from 3 to 5,000, one in three built as 3 to
 12 1s in a random base (from 2 to 2,000, or to 1,000,000 one time in
-ten, the value at most `10^18`), and one in three random up to `10^12`
-(to `10^18` one time in twenty), and then on every `n` from 3 to 2,000.
+twenty, the value at most `10^18`), and one in three random up to
+`10^12` (to `10^18` one time in forty), and then on every `n` from 3 to
+1,000.
 
 | | property |
 |---|---|
@@ -54,13 +55,16 @@ ten, the value at most `10^18`), and one in three random up to `10^12`
 | P2 | for `n` up to 5,000, it is the smallest such base, found by trying every base from 2 up |
 | P3 | for `n` built as three or more 1s in base `k`, the base returned is at most `k` |
 
-It prints `n = 3 to 2000 and 1500 random cases, 4 arms, 25996 checks, 0
-failures` under `karac __mir-run`, in 71 s, and a count for each
+It prints `n = 3 to 1000 and 1000 random cases, 4 arms, 14656 checks, 0
+failures` under `karac __mir-run`, in 33 s, and a count for each
 property when anything fails.
 
-The sweep of every `n` up to 2,000 was added after the first round of
+The sweep of every small `n` was added after the first round of
 mutants: two of them (M4 and M7 below) are wrong on exactly one input
-each, 31 and 3, which 500 random draws from 3 to 5,000 had missed.
+each, 31 and 3, which 500 random draws from 3 to 5,000 had missed. The
+first version (1,500 random values, a sweep to 2,000, and more of the
+largest values) took 71 s, past the corpus runner's 60 s limit, and was
+cut down to this one; the mutants were run again on it.
 
 ## Mutation testing
 
@@ -69,17 +73,17 @@ Eight edits to `differential.kara`, two to each arm, each run under
 
 | # | mutation | failures by property |
 |---|---|---|
-| M1 | ★: three 1s are never tried | P2 57, P3 56 |
-| M2 | ★: the counts start at 8 1s, not 63 | P2 2, P3 13 |
-| M3 | binary: a sum too small moves the low end two past the middle | P2 31, P3 194 |
+| M1 | ★: three 1s are never tried | P2 35, P3 41 |
+| M2 | ★: the counts start at 8 1s, not 63 | P2 1, P3 12 |
+| M3 | binary: a sum too small moves the low end two past the middle | P2 20, P3 135 |
 | M4 | binary: the counts are tried from 3 up | P2 1 |
-| M5 | newton: Newton's method may start below the root | P2 38, P3 349 |
-| M6 | newton: the step divides by `x` one time too few | P2 76, P3 499 |
+| M5 | newton: Newton's method may start below the root | P2 16, P3 227 |
+| M6 | newton: the step divides by `x` one time too few | P2 48, P3 332 |
 | M7 | scan: base 1 is allowed for three 1s | P1 1, P2 1 |
-| M8 | scan: a digit 0 is taken as a 1 | P1 3485, P2 2488 |
+| M8 | scan: a digit 0 is taken as a 1 | P1 1986, P2 1321 |
 
 M4 finds the largest base with three or more 1s rather than the
-smallest, which differs only when `n` has two such bases. Below 2,000
+smallest, which differs only when `n` has two such bases. Up to 5,000
 that is 31 alone (11111 in base 2, 111 in base 5), the one failure. M7
 is wrong only for `n = 3`, where `isqrt(3) = 1` and `1 + 1 + 1 = 3`.
 
@@ -108,7 +112,7 @@ Five first drafts survived and were replaced:
 All four arms print the same output as `smallest_good_base.py` under
 `karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
 and `karac check` passes on every file, the bench program included. The
-differential prints `25996 checks, 0 failures` on both. The four arms
+differential prints `14656 checks, 0 failures` on both. The four arms
 and the differential also run clean under `karac __mir-llvm-asan`
 (AddressSanitizer and LeakSanitizer): output identical, no error, no
 leak.
@@ -117,9 +121,10 @@ The frozen legacy backends agree on every arm: LLJIT, legacy `karac
 build` and a `KARAC_AUTO_PAR=1` build print the same output, and so
 does the differential's legacy build. `karac run --interp` agrees on
 the ★, binary and newton arms; on the scan arm it prints the ten fixed
-lines and does not reach the random cases within 300 s, and on the
-differential it does not finish within 900 s (the tree-walking
-interpreter is slow on the scan arm's million-step loops). The
+lines and does not reach the random cases within 300 s, and the
+first, larger version of the differential did not finish on it within
+900 s (the tree-walking interpreter is slow on the scan arm's
+million-step loops; the final version was not run there). The
 `KARAC_AUTO_PAR=1` build of the binary arm also writes "Error return
 trace: unavailable — the `?` chain was split across parallel tasks" to
 stderr, though nothing fails: its `?` only turns an overflow into
