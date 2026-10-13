@@ -42,15 +42,16 @@ letters, half of them taken from `s`. `find_longest_word.py` mirrors
 the ★ arm and its output is byte-identical.
 
 The waiting arm empties a bucket with `mem.replace(mut waiting[c],
-Vec.new())`. That is the spelling core-semantics.md §3.7 gives, and no
-checker or backend resolves it (kara B-2026-10-13-25, below). Its
-first spelling, `take(mut waiting[c])`, is refused for another reason:
-`take` needs `T: Default`, and no `Vec` has one (kara B-2026-10-13-27,
-below). So every check of that arm and of the differential below was
-run on copies that write the bare `replace(...)` that the
-implementation has, the only change. The files here keep
-`mem.replace`, and should pass as they stand once B-2026-10-13-25 is
-fixed.
+Vec.new())`, the spelling core-semantics.md §3.7 gives. Until kara
+B-2026-10-13-25 (below) was fixed, no checker or backend resolved it.
+Its first spelling, `take(mut waiting[c])`, was refused for another
+reason: `take` needs `T: Default`, and no `Vec` had one (kara
+B-2026-10-13-27, below, since fixed). So the checks of that arm and of
+the differential below were first run on copies that wrote the bare
+`replace(...)`, the only change. Rechecked at kara `2b8238c108`: the
+files as they stand pass `karac check`, print the same as before under
+`karac __mir-run` and `karac __mir-llvm-run`, and run clean under `karac
+__mir-llvm-asan`.
 
 ## Differential
 
@@ -164,15 +165,16 @@ optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- **B-2026-10-13-25** (open, filed from kata 516): `mem.swap`,
-  `mem.replace` and `mem.take`, the spelling core-semantics.md §3.7
-  and design.md give, do not resolve ("undefined name 'mem'"); only
-  the bare prelude `swap`, `replace` and `take` work. Met here in the
-  waiting arm's `mem.replace` and in the differential's copy of it.
-- **B-2026-10-13-27** (open, filed from this kata): no standard type
-  has a usable `Default`. `String.default()`, `i64.default()`,
-  `Vec.default()` and `Map.default()` do not resolve;
-  `#[derive(Default)]` on a struct with a `Vec` field is refused; and
-  `take(place)` accepts a `String` or `i64` place but refuses a `Vec`
-  one as not `Default`. Found here when the waiting arm was first
-  written with `take(mut waiting[c])`.
+- **B-2026-10-13-25** (fixed by kara `e02c3c14e2`, filed from kata
+  516): `mem.swap`, `mem.replace` and `mem.take`, the spelling
+  core-semantics.md §3.7 and design.md give, did not resolve
+  ("undefined name 'mem'"); only the bare prelude `swap`, `replace`
+  and `take` worked. Met here in the waiting arm's `mem.replace` and
+  in the differential's copy of it, which now pass as written.
+- **B-2026-10-13-27** (fixed by kara `2649217dc8`, filed from this
+  kata): no standard type had a usable `Default`. `String.default()`,
+  `i64.default()`, `Vec.default()` and `Map.default()` did not
+  resolve; `#[derive(Default)]` on a struct with a `Vec` field was
+  refused; and `take(place)` accepted a `String` or `i64` place but
+  refused a `Vec` one as not `Default`. Found here when the waiting
+  arm was first written with `take(mut waiting[c])`.

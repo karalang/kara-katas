@@ -37,12 +37,12 @@ byte-identical.
 
 The two-rows arm exchanges its rows with `mem.swap`, the spelling
 core-semantics.md §3.7 and design.md give. No checker or backend
-resolves it (kara B-2026-10-13-25, below): `karac check` and every
-backend refuse the arm, and the differential, which holds a copy of
-it. So every check of that arm and of the differential below was run
-on copies that write `swap(mut row, mut next)`, the bare name the
-implementation has, the only change. The files here keep `mem.swap`,
-and should pass as they stand once the row is fixed.
+resolved it until kara B-2026-10-13-25 (below) was fixed, so the
+checks of that arm and of the differential below were first run on
+copies that wrote the bare `swap(mut row, mut next)`, the only change.
+Rechecked at kara `2b8238c108`: the files as they stand pass `karac
+check`, print the same as before under `karac __mir-run` and `karac
+__mir-llvm-run`, and run clean under `karac __mir-llvm-asan`.
 
 ## Differential
 
@@ -148,11 +148,11 @@ optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-25 (missing-feature, open): `mem.swap(a, b)`,
-`mem.replace(d, v)` and `mem.take(d)`, the spelling core-semantics.md
-§3.7 and design.md give for moving values out of places, do not
-resolve: `karac check` and every backend stop at "undefined name
-'mem'". The implementation has them only as the bare prelude
-functions `swap`, `replace` and `take`, and `import std.mem` is an
-unknown module. With the prefix dropped the two-rows arm and the
-differential pass `karac check` and run right on both v2 backends.
+kara B-2026-10-13-25 (missing-feature, fixed by kara `e02c3c14e2`):
+`mem.swap(a, b)`, `mem.replace(d, v)` and `mem.take(d)`, the spelling
+core-semantics.md §3.7 and design.md give for moving values out of
+places, did not resolve: `karac check` and every backend stopped at
+"undefined name 'mem'", and only the bare prelude functions `swap`,
+`replace` and `take` worked. The fix rewrites the qualified call into
+the bare one before resolution; the two-rows arm and the differential
+now pass as written.
