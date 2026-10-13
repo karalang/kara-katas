@@ -42,13 +42,13 @@ again with `k = 4`, one number, two of `2^31 - 1` (whose sum passes
 (1 to 40 numbers from -50 to 50, or from `-2^31` to `2^31 - 1` for one
 case in five, with `k` from 1 to the length) the number of windows and
 a checksum of twice each median. `sliding_window_median.py` mirrors the
-★ arm.
+★ arm and its output is byte-identical.
 
-Its output differs from the Kāra arms' in the seven lines with a
-whole-number median: Kāra prints `1`, `-1`, `2147483647` where the v1
-spec (kara `docs/library/core-types.md` § Printing) and Python print
-`1.0`, `-1.0`, `2147483647.0`. That is kara B-2026-10-13-9, open. The
-other two lines, the random checksum among them, are byte-identical.
+When the kata was written, its output differed from the Kāra arms' in
+the seven lines with a whole-number median: Kāra printed `1`, `-1`,
+`2147483647` where the v1 spec (kara `docs/library/core-types.md` §
+Printing) and Python print `1.0`, `-1.0`, `2147483647.0`. That was kara
+B-2026-10-13-9, since fixed.
 
 ## Differential
 
@@ -110,8 +110,9 @@ That is the language working as specified, not a finding.
 
 ## Verification
 
-All four arms print the same output under `karac __mir-run` (the v2
-MIR interpreter) and `karac __mir-llvm-run`, and `karac check` passes
+All four arms print the same output as `sliding_window_median.py` under
+`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`
+(rechecked at kara `d9a7136c58`, after B-2026-10-13-9's fix), and `karac check` passes
 on every file, the bench program included. The differential prints
 `30000 checks, 0 failures` on both. The four arms and the differential
 also run clean under `karac __mir-llvm-asan` (AddressSanitizer and
@@ -170,5 +171,5 @@ so it is not a benchmark.
   refused by `karac check` and both MIR backends. The ★ arm writes
   `Some(x) => x` and `self.low.peek().unwrap()`, which are accepted;
   they go back to `*` when the row is fixed.
-- B-2026-10-13-9 (open), see Approaches: whole-number floats print
-  without `.0`.
+- B-2026-10-13-9 (fixed in kara `1fcd413b13`), see Approaches:
+  whole-number floats printed without `.0` on the MIR backends.
