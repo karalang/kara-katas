@@ -105,13 +105,14 @@ and walk arms and prints the nine example lines right, but its random
 line reads `1006 with none, checksum 779130698`: it draws other words
 from the same seed. The likely cause, not checked further, is that it
 evaluates `random_word(mut seed, 1 + next_random(mut seed) % 100,
-letters)` in another order than v2 and the mirrors do. LLJIT and legacy `karac build` fail on those three at
-codegen, "no handler for method 'len' on variable 'a'", a `Str`
-parameter. The count arm, the differential and the bench program are
-refused at type checking: legacy types the items of a slice's `iter()`
-by value, so it refuses `*c` ("unary '*' requires 'ref T' ... found
-'u8'"), and the bench program's `firsts[i]` is "cannot move out of an
-index expression". Legacy is frozen, so this is noted, not filed.
+letters)` in another order than v2 and the mirrors do. LLJIT and
+legacy `karac build` fail on those three at codegen, "no handler for
+method 'len' on variable 'a'", a `Str` parameter. The count arm, the
+differential and the bench program are refused at type checking:
+legacy types the items of a slice's `iter()` by value, so it refuses
+`*c` ("unary '*' requires 'ref T' ... found 'u8'"), and the bench
+program's `firsts[i]` is "cannot move out of an index expression".
+Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
 
