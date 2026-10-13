@@ -56,23 +56,25 @@ and a checksum of the lengths in order. `encode_string.py` mirrors the
 
 `differential.kara` holds copies of the four arms and runs them on
 1,500 random strings over 1 to 3 letters, built as in the harness: a
-third cut to up to 24 letters, a third to up to 8, and a third to up to
-8 and then followed by a run of 8 to 12 `a`s and up to 8 more letters,
-where a count goes from one digit to two.
+third cut to up to 10 letters, a third to up to 8, and a third made of
+two to four copies of a unit of up to 3 letters ending in `a`, then a
+run of 8 to 12 `a`s and up to 4 more letters. In that last kind a
+count goes from one digit to two, and the unit's last `a` can be
+counted with either the copies or the run.
 
 | | property |
 |---|---|
 | P1 | the encoding decodes back to the string, and is the string itself unless it is shorter |
 | P2 | its length is the reference's: the recurrence written straight from the grammar, with units checked by `repeat` and lengths remembered by the string itself |
-| P3 | up to 4 letters of the string, written `k` times (2 to 12), encode no longer than `k[e]` for the arm's encoding `e` of those letters |
+| P3 | up to 4 letters of the string, written `k` times (2 to 4), encode no longer than `k[e]` for the arm's encoding `e` of those letters |
 | P4 | the string encodes no longer than its two sides of a cut, each encoded |
-| P5 | renaming the letters by a turn of the alphabet, and reversing the string, keep the length |
+| P5 | renaming the letters by a turn of the alphabet (even cases) or reversing the string (odd cases) keeps the length |
 
 It prints `1500 cases, 4 arms, 30000 checks, 0 failures` under
 `karac __mir-run`, and a count for each property when anything fails.
-The reversal is made by reversing a `Vec[char]`, because
-`s.chars().rev()` is refused on the MIR backends (B-2026-10-12-35);
-switch to it once that is fixed.
+It is sized to finish in about 30 s there, inside the corpus runner's
+60 s limit: the memo arm, which copies an encoding out of its map at
+every cut, takes about as long as the other three together.
 
 ## Mutation testing
 
@@ -81,36 +83,34 @@ Eight edits to `differential.kara`, two to each arm, each run under
 
 | # | mutation | failures by property |
 |---|---|---|
-| M1 | ★: a unit is used when it is no shorter | P1 45 |
-| M2 | ★: the last cut is not tried | P2 49, P4 4, P5 123 |
-| M3 | memo: a unit length need not divide the length | P1 203, P2 161, P5 43 |
-| M4 | memo: no cut after the first letter | P2 87, P4 10, P5 123 |
-| M5 | lengths: a unit is checked against its second copy only | P1 480, P2 477, P5 343 |
-| M6 | lengths: every count costs one digit in the length table | P2 2, P5 2 |
-| M7 | kmp: a mismatch falls back to nothing | P2 3, P3 47, P5 4 |
-| M8 | kmp: the shortest period counts as a unit even when it does not divide the length | P1 203, P2 161, P5 43 |
+| M1 | ★: a unit is used when it is no shorter | P1 56 |
+| M2 | ★: the last cut is not tried | P2 45, P4 2, P5 39 |
+| M3 | memo: a unit length need not divide the length | P1 192, P2 59, P5 5 |
+| M4 | memo: no cut after the first letter | P2 28, P4 4, P5 39 |
+| M5 | lengths: a unit is checked against its second copy only | P1 437, P2 436, P5 179 |
+| M6 | lengths: every count costs one digit in the length table | P2 2 |
+| M7 | kmp: a mismatch falls back to nothing | P2 2, P3 87, P5 1 |
+| M8 | kmp: the shortest period counts as a unit even when it does not divide the length | P1 192, P2 59, P5 5 |
 
 M1 changes no length, so only P1's rule that a string no encoding can
 shorten comes back unchanged sees it (`aaaa` becomes `4[a]`). M3 and M8
 are the same mistake in two arms and fail the same cases. M7 is nearly
 invisible on the case strings, where borders are short and the
-fallback is rarely needed; P3's strings of 2 to 12 copies are where it
-shows.
+fallback is rarely needed; P3's copies are where it shows.
 
 M6 is the faint one, and it survived the first version of the
-differential, whose strings were all random pieces of up to 24
-letters. Its table thinks a count of 10 or more costs one letter less
-than it does, which changes the answer only where an encoding with
-such a count ties, in the table's eyes, with a shorter one without it:
-`cacacaaaaaaaaaacbbbbb` is `3[ca]9[a]c5[b]` (15 letters), and the
-mutant's `cacac10[a]c5[b]` is 16. Random pieces almost never make one.
-Measured on strings of 150 letters built as in the bench, it changes
-the length of 4 of 400; on random strings of up to 60 letters, about
-one in 1,400. The third kind of case, with a run of 8 to 12 `a`s where
-a count goes from one digit to two, was added for it, and now kills it
-on 2 strings in P2 and the same 2 in P5. A first M6, which cut the
-right side of a cut one letter late, was killed only by a panic (an
-index out of bounds) and was replaced.
+differential, whose strings were all random pieces. Its table thinks a
+count of 10 or more costs one letter less than it does, which changes
+the answer only where an encoding with such a count ties, in the
+table's eyes, with a shorter one without it: `cacacaaaaaaaaaacbbbbb` is
+`3[ca]9[a]c5[b]` (15 letters), and the mutant's `cacac10[a]c5[b]` is
+16. Random pieces almost never make one: measured, it changes the
+length of about one random string in 1,400 of up to 60 letters, and 4
+of the bench's 400 strings of 150. The third kind of case was added for
+it, copies of a unit ending in `a` against a run of `a`s at the digit
+boundary, and kills it on 2 cases. A first M6, which cut the right side
+of a cut one letter late, was killed only by a panic (an index out of
+bounds) and was replaced.
 
 ## Verification
 
@@ -171,5 +171,6 @@ optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-No new findings. The differential works around B-2026-10-12-35 (see
-above).
+No new findings. `s.chars().rev()`, which P5 uses, became available on
+the MIR backends while this kata was written (B-2026-10-12-35, fixed in
+kara `a9bce361cd`); a first version reversed a `Vec[char]` instead.

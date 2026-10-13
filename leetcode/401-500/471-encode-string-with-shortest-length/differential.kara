@@ -1,20 +1,21 @@
 // Differential test for LeetCode #471: Encode String with Shortest Length.
 //
 // Copies of the four arms, on 1,500 random strings over 1 to 3 letters:
-// a third up to 24 letters long, a third up to 8, and a third up to 8
-// followed by a run of 8 to 12 a's and up to 8 more. The arms may pick
+// a third up to 10 letters long, a third up to 8, and a third two to
+// four copies of a unit of up to 3 letters ending in a, then a run of
+// 8 to 12 a's and up to 4 more letters. The arms may pick
 // different encodings of the same length, so each is held to
 // properties of its own answer. Properties:
 //   P1  the encoding decodes back to the string, and is the string
 //       itself unless it is shorter
 //   P2  its length is the reference's: the grammar's recurrence,
 //       remembered by the string itself, with units checked by `repeat`
-//   P3  up to 4 letters of the string written k times (2 to 12) encode
+//   P3  up to 4 letters of the string written k times (2 to 4) encode
 //       no longer than k[e] for the encoding e of those letters
 //   P4  the string encodes no longer than its two parts on either side
 //       of a cut, each encoded
-//   P5  renaming the letters by a turn of the alphabet, and reversing
-//       the string, keep the length
+//   P5  renaming the letters by a turn of the alphabet (even cases) or
+//       reversing the string (odd cases) keeps the length
 
 // ---- dp: encode_string.kara
 
@@ -328,35 +329,38 @@ fn main() {
     for case in 0..1500 {
         let letters = 1 + next_random(mut seed) % 3;
         let full = random_string(mut seed, letters, 2);
-        let limit = if case % 3 == 0 { 24 } else { 8 };
+        let limit = if case % 3 == 0 { 10 } else { 8 };
         let cut = 1 + next_random(mut seed) % limit;
         let mut s = if full.len() > cut { full[..cut].to_string() } else { full };
         if case % 3 == 2 {
-            // A run of 8 to 12 a's, where a count goes from one digit to
-            // two, then up to 8 more letters.
+            // Two to four copies of a unit of up to 2 letters and an a,
+            // a run of 8 to 12 a's, where a count goes from one digit to
+            // two and the unit's last a can go to either side, then up to
+            // 4 more letters.
+            let start = random_string(mut seed, letters, 0);
+            let mut unit = if start.len() > 2 { start[..2].to_string() } else { start };
+            unit.push('a');
+            s = unit.repeat(2 + next_random(mut seed) % 3);
             s.push_str("a".repeat(8 + next_random(mut seed) % 5).as_str());
             let more = random_string(mut seed, letters, 1);
-            s.push_str(if more.len() > 8 { more[..8].to_string() } else { more }.as_str());
+            s.push_str(if more.len() > 4 { more[..4].to_string() } else { more }.as_str());
         }
         let n = s.len();
         let shortest = reference(s.clone(), mut memo);
-        // P3: up to 4 letters of it, written 2 to 12 times.
+        // P3: up to 4 letters of it, written 2 to 4 times.
         let unit = s[..if n < 4 { n } else { 4 }].to_string();
-        let copies = 2 + next_random(mut seed) % 11;
+        let copies = 2 + next_random(mut seed) % 3;
         let repeated = unit.repeat(copies);
         // P4: a cut into two nonempty parts (none for one letter).
         let at = if n > 1 { 1 + next_random(mut seed) % (n - 1) } else { 0 };
-        // P5: the letters renamed by a turn of the alphabet, and reversed.
+        // P5: the letters renamed by a turn of the alphabet, or reversed.
         let turn = 1 + next_random(mut seed) % 25;
         let mut renamed = String.new();
         for c in s.chars() {
             renamed.push(char.try_from((97 + ((c as u32) as i64 - 97 + turn) % 26) as u32).unwrap());
         }
-        // Written with a reversed Vec while `s.chars().rev()` is refused
-        // on the MIR backends (B-2026-10-12-35).
-        let mut letters_back: Vec[char] = s.chars().collect();
-        letters_back.reverse();
-        let reversed: String = letters_back.iter().collect();
+        let reversed: String = s.chars().rev().collect();
+        let changed = if case % 2 == 0 { renamed } else { reversed };
         for arm in 0..4 {
             checks += 5;
             let e = encoded(arm, s.clone());
@@ -366,7 +370,7 @@ fn main() {
             report(3, arm, case, encoded(arm, repeated.clone()).len() <= bound, mut failures);
             let split_ok = at == 0 or e.len() <= encoded(arm, s[..at].to_string()).len() + encoded(arm, s[at..].to_string()).len();
             report(4, arm, case, split_ok, mut failures);
-            report(5, arm, case, encoded(arm, renamed.clone()).len() == e.len() and encoded(arm, reversed.clone()).len() == e.len(), mut failures);
+            report(5, arm, case, encoded(arm, changed.clone()).len() == e.len(), mut failures);
         }
     }
     println(f"1500 cases, 4 arms, {checks} checks, {failures[0]} failures");
