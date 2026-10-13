@@ -119,25 +119,27 @@ runs each (two for Python; `bench.sh` timings need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 0.31 to 0.37 s |
 | Go | 0.67 to 0.70 s |
 | Python | 3.8 to 4.2 s |
-| Kāra (legacy `karac build`) | 0.35 to 0.46 s |
+| Kāra (legacy `karac build`) | 0.34 to 0.37 s |
+| Kāra (`karac build --mir`) | 0.61 to 0.68 s |
 
-The legacy build here is the bench program with its `.clone()`
-workaround, on the frozen legacy compiler. The Kāra program prints the
+Both Kāra rows are timed at kara `c37bfb78dc`, on the bench program
+without the `.clone()` it carried until B-2026-10-12-26 was fixed
+(below). The Kāra program prints the
 same line under `karac __mir-llvm-run` in 2.4 s, compile included; that
 JITs the MIR's IR without optimization passes, so it is not a
 benchmark.
 
 ## Compiler findings
 
-One new finding, filed as kara B-2026-10-12-26.
+One finding, filed as kara B-2026-10-12-26 and since fixed.
 
-- **B-2026-10-12-26.** The bench program first added
+- **B-2026-10-12-26** (fixed in kara `5631f323f5`). The bench program first added
   `add_two_numbers(numbers[i], numbers[(i + 1) % count])` over a
   `Vec[Option[ListNode]]`. `karac check` and both MIR backends refuse
   it with `E_INDEX_MOVE_NON_COPY`, as a move out of the vector, though
   a bare parameter borrows. The same index of a `Vec[Vec[T]]`,
   `Vec[String]` or `Vec[ListNode]` is accepted: D5 passes an `Option`
   of a `shared` type as a counted handle, and the index rule's
-  exemption for handles covers the bare `shared` type only. The bench
-  passes `numbers[i].clone()`; revert it to the plain index when the
-  row is fixed.
+  exemption for handles covered the bare `shared` type only. The bench
+  passed `numbers[i].clone()` until the fix; it is back to the plain
+  index.

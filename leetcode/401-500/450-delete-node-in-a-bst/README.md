@@ -136,10 +136,10 @@ IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-- B-2026-10-12-27 (open): `karac check` refuses
+- B-2026-10-12-27 (fixed in kara `c07dbf5094`): `karac check` refused
   `let (successor, rest) = take_smallest(right); successor.left = node.left;`
   ("cannot assign through `successor` — declared without `mut`"),
   though a `mut` field of a shared value is writable through any
   handle. `delete_node_relink.kara` (and its copy in the differential)
-  writes `let mut (successor, rest)`, the form `karac fix` gives; revert
-  it to `let (successor, rest)` once the row is fixed.
+  wrote `let mut (successor, rest)`, the form `karac fix` gives, until
+  the fix; both are back to `let (successor, rest)`.
