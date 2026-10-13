@@ -36,12 +36,12 @@ to F(30), and for 300 random n from 0 to 30 the total and a checksum.
 `fib.py` mirrors the ★ arm and its output is byte-identical.
 
 The Binet arm writes phi^n as `phi.powi(n as i32)`, the method
-design.md's own example uses on an `f64`. No backend has it (kara
-B-2026-10-13-22, below): `karac check` and every backend refuse the
-arm and the differential, which holds a copy of it. So every check of
-the Binet arm and the differential below was run on copies that write
-`phi.pow(n as f64)` instead, the only change. The files here keep
-`powi`, and should pass as they stand once the row is fixed.
+design.md's own example uses on an `f64`. Until kara B-2026-10-13-22
+was fixed (below), `karac check` and every backend refused the arm and
+the differential, which holds a copy of it. The differential and the
+mutants below were run then, on copies that wrote `phi.pow(n as f64)`
+instead. Both files were rechecked as written at kara `0736eef763`,
+after the fix.
 
 ## Differential
 
@@ -56,8 +56,8 @@ the Binet arm and the differential below was run on copies that write
 | P4 | gcd(F(n), F(m)) = F(gcd(n, m)) |
 | P5 | F(2k) = F(k) (2 F(k + 1) - F(k)), with k = n % 16 |
 
-The copy described under Approaches prints `1500 cases, 4 arms, 30000
-checks, 0 failures` under `karac __mir-run`.
+It prints `1500 cases, 4 arms, 30000 checks, 0 failures` under `karac
+__mir-run`, as written and on the copy described under Approaches.
 
 ## Mutation testing
 
@@ -98,21 +98,21 @@ and even n, sees it in every case.
 
 ## Verification
 
-The ★, memo and doubling arms print the same output as `fib.py` under
-`karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
-and run clean under `karac __mir-llvm-asan` (AddressSanitizer and
-LeakSanitizer): output identical, no error, no leak. So does the Binet
-arm in the copy described under Approaches, and so does that copy of
-the differential, which prints `30000 checks, 0 failures` on the first
-two and runs clean under the third. `karac check` passes on the ★,
-memo and doubling arms and the bench program, and refuses the Binet
-arm and the differential (see Compiler findings).
+Every arm prints the same output as `fib.py` under `karac __mir-run`
+(the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs clean
+under `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer):
+output identical, no error, no leak. The differential prints `30000
+checks, 0 failures` on the first two and runs clean under the third.
+`karac check` passes on every arm, the differential and the bench
+program.
 
 The frozen legacy backends agree on the ★, memo and doubling arms:
 `karac run --interp`, LLJIT, legacy `karac build` and a
 `KARAC_AUTO_PAR=1` build print the same output. They refuse the Binet
-arm and the differential as written, at the same type check. On the
-copies, LLJIT, legacy `karac build` and a `KARAC_AUTO_PAR=1` build
+arm and the differential as written: since the fix the type check
+passes, and `karac run --interp` stops at run time ("method 'powi' not
+found on type 'f64'"), LLJIT and legacy `karac build` at codegen ("no
+handler for method 'powi'"). On the copies, LLJIT, legacy `karac build` and a `KARAC_AUTO_PAR=1` build
 print the Binet arm's output right, and the differential prints `30000
 checks, 0 failures` under `karac run --interp` and legacy `karac
 build`.
@@ -151,11 +151,13 @@ not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-22 (missing-feature, open): `f64.powi` does not
-exist. design.md's example of a destructured parameter computes a
+kara B-2026-10-13-22 (missing-feature, fixed in kara `95778e966b`):
+`f64.powi` did not exist. design.md's example of a destructured parameter computes a
 distance with `(x2 - x1).powi(2)`, the only place the spec names a
 power method on a float, and the library docs list no float math
-methods at all. The Binet arm's `phi.powi(n as i32)` is refused by
+methods at all. The Binet arm's `phi.powi(n as i32)` was refused by
 `karac check`, the v2 backends and the legacy ones alike: "no method
-'powi' on type 'f64'". What the implementation has is `pow`, with an
-`f64` exponent, and `phi.pow(n as f64)` passes everywhere.
+'powi' on type 'f64'". What the implementation had was `pow`, with an
+`f64` exponent, and `phi.pow(n as f64)` passed everywhere. Since the
+fix the arm and the differential pass `karac check` and run right on
+both v2 backends as written.
