@@ -150,12 +150,13 @@ passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-16 (diagnostics, open): `karac fix` turns `!x` into
-`not x` whatever `x` is. The masks arm was first written Rust-style,
-`m & !row == 0`; one `karac fix` gave `m & not row == 0`, a type error
-("unary 'not' requires 'bool', found 'i64'; the bitwise complement of
-an integer is `~`"), and a second gave `m & ~ row == 0`. The arm reads
-`m & ~row == 0`.
+kara B-2026-10-13-16 (diagnostics, fixed by kara `56a1b16034`):
+`karac fix` turned `!x` into `not x` whatever `x` was. The masks arm
+was first written Rust-style, `m & !row == 0`; one `karac fix` gave
+`m & not row == 0`, a type error ("unary 'not' requires 'bool', found
+'i64'; the bitwise complement of an integer is `~`"), and a second gave
+`m & ~ row == 0`. Since the fix one pass writes `m & ~row == 0`, which
+is what the arm reads.
 
 P4 builds each reversed word as `let back: String =
 w.chars().rev().collect();` and then pushes it, where
