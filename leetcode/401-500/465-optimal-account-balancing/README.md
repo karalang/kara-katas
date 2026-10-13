@@ -32,7 +32,7 @@ disjoint zero-sum groups the people split into.
 
 Every arm prints the same 10 lines: the two LeetCode examples, one
 transfer, a transfer and its reverse, a chain, three separate pairs, a
-fan into one person, five transactions that split into two groups, a
+fan out of one person, five transactions that split into two groups, a
 loop of 100 beside four pairs of 1, and for 300 random ledgers of 1 to 8
 transactions among people 0 to 11 (amounts up to 3, 10 or 100) the
 total of the answers and a checksum. `min_transfers.py` mirrors the ★
