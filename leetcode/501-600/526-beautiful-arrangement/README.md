@@ -122,7 +122,9 @@ checksum 116453033`, the Kāra program under `karac __mir-run` included
 legacy `karac build` still compiles this program and runs it right, so
 that is what it times. The `--mir` row is the v2 compiled backend,
 built by hand at kara `df61cbfff6`; it is about 30% slower here than
-the legacy build. Under `karac __mir-llvm-run` the
+the legacy build. Re-timed at kara `21ffa33dff`, three runs each taken
+in turn, the legacy build ran in 1.18 to 1.29 s and the `--mir` build
+in 1.46 to 1.50 s, about 20% slower. Under `karac __mir-llvm-run` the
 program prints the same line in 3.1 s, compile included; that JITs the
 MIR's IR without optimization passes, so it is not a benchmark.
 
