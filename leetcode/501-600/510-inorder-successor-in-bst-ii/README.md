@@ -118,7 +118,8 @@ them. One returns a fresh copy of the walk's answer, and fails P2 1306
 and P3 1411, so P2 does see what it is for. The other rewrote the
 node's parent link during the ★ arm's climb (`node.parent =
 p.parent;`) so that P5 would fire, and found kara B-2026-10-13-23
-instead (below): `karac __mir-run` refuses it as invalid MIR.
+instead (below): `karac __mir-run` refused it as invalid MIR. Since
+that fix it runs, and fails P5 1419 and nothing else.
 
 ## Verification
 
@@ -179,16 +180,20 @@ not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-23 (leak, open), found by the second extra edit
-under Mutation testing, not by the kata's own files, which store only locals into `parent` and
-run clean: a strong handle stored into a `weak` field is downgraded
-only when it is a plain local. Stored from a call (`c.parent =
-get(a)`, `c.parent = b.parent.expect(...)`, or in a struct literal),
-`karac __mir-run` prints the output and then stops at the drop with "a
-weak-typed place holds no handle", and `karac __mir-llvm-run` prints
-it right but leaks the object, which only the AddressSanitizer lane
-sees. Stored from another `weak` field (`c.parent = b.parent`),
-`karac __mir-run` refuses it as invalid MIR ("move out of ... which is
-inside a shared value") and the compiled backend leaks the same way.
-`karac check` passes all of them, and the legacy backends run them
-right.
+kara B-2026-10-13-23 (leak, fixed at kara `2cc5465a11`), found by the
+second extra edit under Mutation testing, not by the kata's own files,
+which store only locals into `parent` and run clean: a strong handle
+stored into a `weak` field was downgraded only when it was a plain
+local. Stored from a call (`c.parent = get(a)`, `c.parent =
+b.parent.expect(...)`, or in a struct literal), `karac __mir-run`
+printed the output and then stopped at the drop with "a weak-typed
+place holds no handle", and `karac __mir-llvm-run` printed it right
+but leaked the object, which only the AddressSanitizer lane saw.
+Stored from another `weak` field (`c.parent = b.parent`), `karac
+__mir-run` refused it as invalid MIR ("move out of ... which is inside
+a shared value") and the compiled backend leaked the same way. `karac
+check` passes all of them, and the legacy backends run them right.
+
+Rechecked at kara `21ffa33dff`: with that edit the differential runs
+under `karac __mir-run` and runs clean under `karac __mir-llvm-asan`,
+failing P5 1419 and nothing else on both.
