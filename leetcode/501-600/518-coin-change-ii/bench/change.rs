@@ -1,0 +1,42 @@
+// Benchmark for #518: Rust mirror of the ★ arm (one row, coins on the
+// outside); see change.kara.
+
+fn change(amount: i64, coins: &[i64]) -> i64 {
+    let mut ways: Vec<i64> = vec![0; (amount + 1) as usize];
+    ways[0] = 1;
+    for c in coins.iter() {
+        for a in *c..=amount {
+            ways[a as usize] += ways[(a - *c) as usize];
+        }
+    }
+    ways[amount as usize]
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 3,000 random sets of 100 different coins from 500 to 5,000, each
+    // with an amount from 4,000 to 5,000 (the problem's most), solved
+    // once each. Coins of at least 500 keep every count well inside an
+    // i64.
+    let mut seed: i64 = 518;
+    let sets = 3000;
+    let mut checksum: i64 = 0;
+    for _ in 0..sets {
+        let amount = 4000 + next_random(&mut seed) % 1001;
+        let mut coins: Vec<i64> = Vec::new();
+        let mut taken: Vec<bool> = vec![false; 5001];
+        while coins.len() < 100 {
+            let c = 500 + next_random(&mut seed) % 4501;
+            if !taken[c as usize] {
+                taken[c as usize] = true;
+                coins.push(c);
+            }
+        }
+        checksum = (checksum * 31 + change(amount, &coins) % 1000000007) % 1000000007;
+    }
+    println!("{} sets of 100 coins: checksum {}", sets, checksum);
+}
