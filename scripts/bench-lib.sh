@@ -271,13 +271,15 @@ _isa_applies() {
 
 ISA_LEVEL="${ISA_LEVEL:-x86-64-v3}"
 
+# Arguments after the source go to the link line (`isa_build_c x.c -lm`).
 isa_build_c() {
     _isa_applies || return 0
     local src="$1"
+    shift
     local out="target/$(basename "$src" .c)_c_v3"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ]; then
         echo "compiling $src (-march=$ISA_LEVEL, matched-ISA) ..." >&2
-        clang -O3 -march="$ISA_LEVEL" "$src" -o "$out"
+        clang -O3 -march="$ISA_LEVEL" "$src" -o "$out" "$@"
     fi
 }
 
