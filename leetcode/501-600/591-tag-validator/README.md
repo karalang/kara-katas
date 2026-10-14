@@ -67,10 +67,6 @@ longest: tags nested 38 deep, and 25 tags side by side with a cdata
 section in each. `tag_validator.py` mirrors the ★ arm and its output is
 byte-identical.
 
-The harness picks its random names and text from `Vec[Str]` lists with
-`let name = names[..]`, which `karac check` refuses; see Compiler
-findings. The arms themselves are not affected.
-
 ## Differential
 
 `differential.kara` holds copies of the four arms and the definition,
@@ -136,11 +132,9 @@ Every arm prints the same output as `tag_validator.py` under `karac
 __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
 clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak; so does the
-differential. `karac check` refuses every arm, the differential and the
-bench program, each only in the harness's two reads from a `Vec[Str]`
-(kara B-2026-10-12-14); the arms' own code passes. `karac check` and
-`karac __mir-run` at kara `7adae1f0aa`, the compiled MIR backend at
-`555c29b44e`.
+differential. `karac check` passes every arm, the differential and the
+bench program. `karac check` and `karac __mir-run` at kara
+`2b8e2b9f00`, the compiled MIR backend at `555c29b44e`.
 
 The frozen legacy backends refuse every arm, the differential and the
 bench program under `karac run --interp`, `karac run` and `karac build`,
@@ -197,9 +191,9 @@ by changing the program.
 
 ## Compiler findings
 
-None new. The harness, the differential and the bench program pick
-random names and text with `let name = names[..]` from a `Vec[Str]`, and
-`karac check` refuses that as a move out of a collection element, though
-design.md § Strings says `Str` "is `Copy`"; that is kara
-B-2026-10-12-14 (open). Both MIR backends run it. The legacy failures
-above are not filed because legacy is frozen.
+None new. Until kara B-2026-10-12-14 was fixed (0f8c3e2524), `karac
+check` refused the harness, the differential and the bench program,
+which pick random names and text with `let name = names[..]` from a
+`Vec[Str]`, as a move out of a collection element, though design.md §
+Strings says `Str` "is `Copy`"; rechecked at kara `2b8e2b9f00`, all
+pass. The legacy failures above are not filed because legacy is frozen.
