@@ -1,0 +1,3 @@
+module binary_tree_longest_consecutive_sequence_ii_bench
+
+go 1.24
