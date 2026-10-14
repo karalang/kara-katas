@@ -158,6 +158,14 @@ def main():
                 break
         return False
 
+    def in_app(p):
+        """apps/<kind>/<name>/ (an app.toml beside it) is a real-I/O app: its
+        oracle is the Python mirror, and it is run on the v2 surfaces by the
+        kara repo's corpus runner after scripts/corpus/extract.py copies it.
+        Its drafts (<name>.orig.kara, <name>.fixed.kara) do not compile by
+        design."""
+        return any((d / "app.toml").exists() for d in p.parents if d != repo and repo in d.parents)
+
     def has_main(p):
         """A file with no `fn main` is a library target — apps/prism and
         apps/veil are WASM modules built by their own build.sh — and asking
@@ -171,6 +179,7 @@ def main():
     files = sorted(p for p in repo.rglob("*.kara")
                    if (args.include_bench or "/bench/" not in str(p))
                    and not in_package(p)
+                   and not in_app(p)
                    and has_main(p)
                    and (not args.filter or args.filter in str(p)))
     print(f"sweeping {len(files)} programs on {args.jobs} jobs "
