@@ -185,7 +185,7 @@ quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 2.96 to 3.33 s |
 | Go | 3.93 to 4.33 s |
 | Python | 9.2 to 9.5 s |
-| Kāra (`karac build --mir`) | 6.54 to 7.93 s |
+| Kāra (`karac build --mir`) | 5.55 to 5.69 s |
 
 So `bench.sh` builds the Kāra program with `karac build --mir`, the
 v2 compiled backend; that edit is by hand, on top of the
@@ -193,7 +193,15 @@ v2 compiled backend; that edit is by hand, on top of the
 prints the same line in 24.7 s, compile included; that JITs the MIR's IR
 without optimization passes, so it is not a benchmark.
 
-The Kāra row is about twice Rust's and 1.7 times Go's. Where the gap
+Re-timed on 2026-10-14 at kara `2d241d9b05`. The row first published
+here, 6.54 to 7.93 s, was taken with a runtime archive older than kara
+`8969be0434`, which runs `main` on a second thread, and once a process
+has two threads glibc's `malloc` and `free` take a lock on every call.
+Linked against that older runtime and against the current one by the
+same compiler, three runs each, the program takes 6.49 to 6.53 and
+5.83 to 6.09 s: the older runtime alone costs this program about 8%.
+
+The Kāra row is about 1.8 times Rust's and 1.4 times Go's. Where the gap
 comes from is not measured.
 
 ## Compiler findings

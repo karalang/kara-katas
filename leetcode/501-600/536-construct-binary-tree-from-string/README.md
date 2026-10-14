@@ -137,17 +137,25 @@ timings on a shared 4-core container, three runs each (two for Python;
 | Rust (`rustc -O -C overflow-checks=on`) | 0.80 to 0.84 s |
 | Go | 0.79 to 0.82 s |
 | Python | 12.6 to 13.1 s |
-| Kāra (`karac build --mir`) | 0.89 to 1.01 s |
+| Kāra (`karac build --mir`) | 0.75 to 0.78 s |
 
 The legacy `karac build` refuses this program (see Verification). So
-`bench.sh` builds the Kāra program with `karac build --mir`, the v2
-compiled backend. That edit is by hand, on top of the
+`bench.sh` builds the Kāra program with `karac build --mir`, the
+v2 compiled backend. That edit is by hand, on top of the
 `scripts/new-bench.sh` output. The `--mir` row is timed at kara
-`5fa208779d`.
+`2d241d9b05`.
 
-Under `karac __mir-llvm-run` the program prints the same line in
-2.9 s, compile included; that JITs the MIR's IR without optimization
-passes, so it is not a benchmark.
+Re-timed on 2026-10-14 at kara `2d241d9b05`. The row first published
+here, 0.89 to 1.01 s, was taken with a runtime archive older than kara
+`8969be0434`, which runs `main` on a second thread, and once a process
+has two threads glibc's `malloc` and `free` take a lock on every call.
+Linked against that older runtime and against the current one by the
+same compiler, three runs each, the program takes 0.93 to 1.06 and
+0.71 to 0.92 s: the older runtime alone costs this program about 28%.
+
+Under `karac __mir-llvm-run` the program prints the same line in 2.9 s,
+compile included; that JITs the MIR's IR without optimization passes, so
+it is not a benchmark.
 
 ## Compiler findings
 

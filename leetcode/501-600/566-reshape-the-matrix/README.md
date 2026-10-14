@@ -137,16 +137,24 @@ need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 1.66 to 1.93 s |
 | Go | 3.80 to 3.90 s |
 | Python | 13.8 to 15.2 s |
-| Kāra (`karac build --mir`) | 1.81 to 1.96 s |
+| Kāra (`karac build --mir`) | 1.45 to 1.70 s |
 
 The legacy `karac build` refuses this program, since it moves
 `mats[(round * 7 + g) % count]` out of the index where v2 borrows it. So
 `bench.sh` builds the Kāra program with `karac build --mir`, the
 v2 compiled backend; that edit is by hand, on top of the
 `scripts/new-bench.sh` output. The `--mir` row is timed at kara
-`585af34765`. Under `karac __mir-llvm-run` the program prints the same
+`2d241d9b05`. Under `karac __mir-llvm-run` the program prints the same
 line in 4.3 s, compile included; that JITs the MIR's IR without
 optimization passes, so it is not a benchmark.
+
+Re-timed on 2026-10-14 at kara `2d241d9b05`. The row first published
+here, 1.81 to 1.96 s, was taken with a runtime archive older than kara
+`8969be0434`, which runs `main` on a second thread, and once a process
+has two threads glibc's `malloc` and `free` take a lock on every call.
+Linked against that older runtime and against the current one by the
+same compiler, three runs each, the program takes 2.00 to 2.23 and
+1.51 to 1.79 s: the older runtime alone costs this program about 21%.
 
 The Kāra row is level with Rust's. C allocates each new row at its final
 size where the others grow theirs by pushing, the likeliest reason it is
