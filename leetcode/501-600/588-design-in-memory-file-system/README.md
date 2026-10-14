@@ -91,12 +91,15 @@ over two or three names, up to three deep.
 
 Since the owned arm does not build, the differential does not either.
 Its definition also reads `*path` in three comparisons, twice `h.0 ==
-*path` and once `*path == "/"`, which `karac check` refuses (kara
-B-2026-10-14-27) and both MIR backends run. A copy outside this
-directory that holds the owned arm's workaround copy prints `1000 cases,
-4 arms, 20000 checks, 0 failures` under `karac __mir-run` and `karac
-__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`; `karac
-check` still refuses it on the `*path`.
+*path` and once `*path == "/"`, as the spec spells a comparison through
+a reference; `karac check` refused those until kara B-2026-10-14-27 was
+fixed (`1be6eb5497`), while both MIR backends always ran them. A copy
+outside this directory that holds the owned arm's workaround copy prints
+`1000 cases, 4 arms, 20000 checks, 0 failures` under `karac __mir-run`
+and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`. Rechecked at kara `7adae1f0aa`: that copy now passes
+`karac check`, and the differential as written is refused only in its
+copy of the owned arm.
 
 ## Mutation testing
 
@@ -214,9 +217,10 @@ spelling everywhere.
 
 The differential's definition compares with `*path`, a `ref String` from
 matching a borrowed `Op`, as design.md § `*` and `ref` in expressions
-prescribes; `karac check` refuses it with `borrow_projection_copy` and
-accepts the unstarred form the spec calls a type error, while both MIR
-backends run it (B-2026-10-14-27, filed from this kata).
+prescribes. `karac check` refused it with `borrow_projection_copy` and
+accepted the unstarred form the spec calls a type error, while both MIR
+backends ran it (B-2026-10-14-27, filed from this kata, fixed in kara
+`1be6eb5497`; rechecked at `7adae1f0aa`).
 
 Not filed: the ★, owned and arena arms index a directory's
 `SortedMap[String, ..]` with a name from `split`. Today that name is a
