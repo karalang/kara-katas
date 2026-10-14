@@ -66,13 +66,12 @@ leaning left with chance 50, 80 or 95 in 100 in turn.
 | P5 | between them come exactly the leaves, left to right |
 
 The survey records each node's depth by its value, `depths[n.val] =
-depth`, and `karac check` refuses that line on every backend (kara
-B-2026-10-14-1, below), so the file here does not run. Every result in
-this section and the next is from a copy that reads the value into a
-local first, `let v = n.val; depths[v] = depth;`, the only change. The
-file keeps the natural spelling, and should run as it stands once the
-row is fixed. The copy prints `1000 cases, 4 arms, 20000 checks,
-0 failures` under `karac __mir-run`.
+depth`. `karac check` refused that line on every backend until kara
+B-2026-10-14-1 was fixed (`56b330ae8b`, below); the mutation results in
+the next section are from a copy that read the value into a local first,
+`let v = n.val; depths[v] = depth;`, the only change. Rechecked at kara
+`a87257d083`, the file here runs as written and prints `1000 cases,
+4 arms, 20000 checks, 0 failures` under `karac __mir-run`.
 
 ## Mutation testing
 
@@ -113,10 +112,10 @@ Every arm prints the same output as `boundary_of_binary_tree.py` under
 `karac __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`,
 and runs clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. `karac check`
-passes on every arm and the bench program. The differential is refused
-by `karac check` and by every backend (kara B-2026-10-14-1); the copy
-described above prints `20000 checks, 0 failures` under `__mir-run` and
-`__mir-llvm-run` and runs clean under `__mir-llvm-asan`.
+passes on every arm, the differential and the bench program. The
+differential prints `20000 checks, 0 failures` under `__mir-run` and
+`__mir-llvm-run` and runs clean under `__mir-llvm-asan` (rechecked at
+kara `a87257d083`, after B-2026-10-14-1 was fixed).
 
 The frozen legacy backends: `karac run --interp`, `karac run` and `karac
 build` stop every arm, the differential and the bench program at type
@@ -162,10 +161,11 @@ with Rust's.
 
 ## Compiler findings
 
-kara B-2026-10-14-1 (open), filed from this kata: `v[n.val] = x` is
-refused with "shared struct field 'Node.val' is not declared mut" when
-the index reads a non-`mut` field of a `shared struct`. The flag that
-marks the target of an assignment reaches the index expression, so a
-read of `n.val` is checked as a write to it. `v[n.val] += x`, `let i =
-n.val; v[i] = x` and a plain struct's field as the index all pass. Met
-here in the differential's `depths[n.val] = depth`.
+kara B-2026-10-14-1, filed from this kata and fixed in kara
+`56b330ae8b`: `v[n.val] = x` was refused with "shared struct field
+'Node.val' is not declared mut" when the index reads a non-`mut` field
+of a `shared struct`. The flag that marks the target of an assignment
+reached the index expression, so a read of `n.val` was checked as a
+write to it. `v[n.val] += x`, `let i = n.val; v[i] = x` and a plain
+struct's field as the index all passed. Met here in the differential's
+`depths[n.val] = depth`, which now runs as written.
