@@ -155,11 +155,14 @@ time when measured alone (1.08 s against 0.36 s for 30,000 collects).
 ## Compiler findings
 
 One filed, found while measuring the bench rather than in the kata:
-**B-2026-10-14-19**. A `collect()` written as an element of a tuple
-literal, as in `pairs.push((s.chars().collect(), 1))` or `let t:
-(Vec[char], i64) = (s.chars().collect(), 1);`, does not build on either
-MIR backend ("an expression whose type does not lower",
-`UnsolvedParam("C")`), though `karac check` passes it. The bench keeps
-each pair as two `String`s, as the problem gives them, so it does not
-meet this; the probe that did collected outside the tuple. The legacy
-failures above are not filed because legacy is frozen.
+**B-2026-10-14-19**, fixed in kara `2260a980ea`. A `collect()` written
+as an element of a tuple literal, as in
+`pairs.push((s.chars().collect(), 1))` or `let t: (Vec[char], i64) =
+(s.chars().collect(), 1);`, did not build on either MIR backend ("an
+expression whose type does not lower", `UnsolvedParam("C")`), though
+`karac check` passed it. Both now build and print the expected values
+under `karac __mir-run` and `karac __mir-llvm-run`, rechecked at kara
+`555c29b44e`. The bench keeps each pair as two `String`s, as the problem
+gives them, so it never met this; the probe that did collected outside
+the tuple. The legacy failures above are not filed because legacy is
+frozen.
