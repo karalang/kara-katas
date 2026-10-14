@@ -44,11 +44,6 @@ and checksum over 1,000 random expressions of 1 to 10 fractions.
 `fraction_addition.py` mirrors the ★ arm and its output is
 byte-identical.
 
-The rational arm does not build today; see Compiler findings. It is kept
-as written. A copy outside this directory that makes `add` an ordinary
-method of `Fraction` and calls it as `sum.add(...)`, the only change,
-prints the same output.
-
 ## Differential
 
 `differential.kara` holds copies of the four arms and the definition,
@@ -69,19 +64,20 @@ fourth draws them from 1/1, 1/2, 1/3, 2/1 and 2/3, so that terms repeat.
 | P4 | the fractions in the opposite order give the same answer |
 | P5 | every sign turned over turns the answer's over |
 
-Both MIR backends stop at the differential's copy of the rational arm,
-as `karac check` does, and behind it at its `Ok` and `Err` patterns on
-`i64.parse`; see Compiler findings. A copy outside this directory with
-the workaround copy of that arm and `Some` and `None` for the patterns,
-the only changes, prints `1000 cases (4 zero, 58 other whole), 4 arms,
+Both MIR backends stop at the differential's `Ok` and `Err` patterns on
+`i64.parse`, as `karac check` does; see Compiler findings. A copy
+outside this directory with `Some` and `None` for the patterns, the only
+change, prints `1000 cases (4 zero, 58 other whole), 4 arms,
 20000 checks, 0 failures` under `karac __mir-run` and `karac
 __mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`.
 
 ## Mutation testing
 
-Twelve edits to that copy, two to each arm that change its answers and
-one to each that does not, each run under `karac __mir-run`. All eight
-that change answers are killed.
+Twelve edits to a copy made before kara B-2026-10-14-30 was fixed, which
+also had the rational arm's `add` as an ordinary method called as
+`sum.add(...)`: two to each arm that change its answers and one to each
+that does not, each run under `karac __mir-run`. All eight that change
+answers are killed.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -113,16 +109,14 @@ E3 because `start` is 0 until the first cut and behind `i` after it.
 
 ## Verification
 
-The ★, common and split arms print the same output as
-`fraction_addition.py` under `karac __mir-run` (the v2 MIR interpreter)
-and `karac __mir-llvm-run`, and run clean under `karac __mir-llvm-asan`
-(AddressSanitizer and LeakSanitizer): output identical, no error, no
-leak. `karac check` passes them and the bench program. The rational arm
-and the differential are refused by `karac check` and by both MIR
-backends at name resolution (see Compiler findings); the workaround copy
-of the rational arm passes all three like the others. `karac check` and
-`karac __mir-run` at kara `5ff30e5f1c`, the compiled MIR backend at
-`555c29b44e`.
+Every arm prints the same output as `fraction_addition.py` under `karac
+__mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
+clean under `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer): output identical, no error, no leak. `karac check`
+passes every arm and the bench program; it refuses the differential (see
+Compiler findings). `karac check` and `karac __mir-run` at kara
+`5ff30e5f1c`, the compiled MIR backend at `555c29b44e`; the rational arm
+at `2d241d9b05`, after kara B-2026-10-14-30 was fixed.
 
 On the frozen legacy backends, `karac run --interp` prints the same
 output for the ★, common and split arms. `karac run` and `karac build`
@@ -131,10 +125,11 @@ build none of them: the ★ arm stops in codegen at
 'expression'"), the common arm's `for c in expression.chars()` panics
 the compiler's for-loop lowering, and the split arm's `for (i, c) in
 expression.chars().enumerate()` is "not yet lowered". The rational arm
-and the differential are refused at resolve as on v2, and `karac build`
-refuses the bench program at type checking, reading `expressions[..]` as
-a move out of an index (E_INDEX_MOVE_NON_COPY). Legacy is frozen, so
-this is noted, not filed.
+and the differential are still refused at resolve, since the fix for
+B-2026-10-14-30 is on v2 only, and `karac build` refuses the bench
+program at type checking, reading `expressions[..]` as a move out of an
+index (E_INDEX_MOVE_NON_COPY). Legacy is frozen, so this is noted, not
+filed.
 
 ## Benchmarks
 
@@ -183,20 +178,17 @@ profile; it is not measured by changing the program.
 
 ## Compiler findings
 
-**kara B-2026-10-14-30** (new, open; found by this kata). A user type
-cannot implement `Add`: the rational arm's `impl Add for Fraction`,
-which design.md § Operator traits allows (`a + b` becomes `Add.add(a,
-b)` "for `i32`, `String` or a user type alike", and § Default generic
-arguments shows `impl Add for Money`), is refused at name resolution by
-`karac check` and both MIR backends, with "operator traits are
-stdlib-only". Only `Eq`, `Ord` and `Display` are let through; `Sub`,
-`Mul`, `Neg`, `Index` and `BitAnd` are refused alike. The differential
-copies the arm, so it is refused too.
+**kara B-2026-10-14-30** (found by this kata; fixed in `d02338bc95`). A
+user type could not implement `Add`: the rational arm's `impl Add for
+Fraction`, which design.md § Operator traits allows, was refused at name
+resolution by `karac check` and both MIR backends, with "operator traits
+are stdlib-only". It builds and runs on v2 now; legacy, frozen, still
+refuses it.
 
 **kara B-2026-10-12-6** (open). The differential's `lowest_terms`
 matches `i64.parse` with `Ok` and `Err`, as library/core-types.md §
 Parsing gives `fn parse(s: Str) -> Result[Self, ParseError]`; the
-compiler still returns an `Option`, so with the rational arm out of the
-way `karac check` and `karac __mir-run` refuse those four patterns. The
+compiler still returns an `Option`, so `karac check` and `karac
+__mir-run` refuse those four patterns. The
 arms call `i64.parse(...).unwrap()`, which is spelled the same either
 way.
