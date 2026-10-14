@@ -58,15 +58,12 @@ Each arm is held to the properties below on 1,000 random records of 1 to
 | P5 | a present day and an absence added at the end give a fine record only if it was fine with no absence, and three lates added at the end never do |
 
 The harness builds each record from a `Vec[char]` of days with `for c in
-days.iter() { s.push(c); }`. `karac check` passes it, and the MIR
-backends refuse it with `'push' expects a Char argument, found 'ref
-char'` (kara B-2026-10-14-2, below), so the file here does not run.
-Every result in this section and the next is from a copy that writes
-`s.push(*c)`, the only change. The file keeps the spelling `karac check`
-accepts, and should run as it stands once the row is fixed. The copy
-prints `1000 cases (534 fine), 4 arms, 20000 checks, 0 failures` under
-`karac __mir-run` and `karac __mir-llvm-run`, and runs clean under
-`karac __mir-llvm-asan`.
+days.iter() { s.push(c); }`. It prints `1000 cases (534 fine), 4 arms,
+20000 checks, 0 failures` under `karac __mir-run` and `karac
+__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`. Until
+kara B-2026-10-14-2 was fixed (kara 4979cb27c2) the MIR backends refused
+that line; the mutation testing below was run then, on a copy that wrote
+`s.push(*c)`, the only change, and the copy printed the same line.
 
 ## Mutation testing
 
@@ -107,9 +104,9 @@ Every arm prints the same output as `student_attendance_record_i.py`
 under `karac __mir-run` (the v2 MIR interpreter) and `karac
 __mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`
 (AddressSanitizer and LeakSanitizer): output identical, no error, no
-leak. `karac check` passes on every arm, the differential and the bench
-program; the differential is refused by the MIR backends (kara
-B-2026-10-14-2), and its copy is clean as described above.
+leak. So does the differential, as described above. `karac check` passes
+on every arm, the differential and the bench program. Checked at kara
+5b82548ad6.
 
 The frozen legacy backends: `karac run --interp` prints the same output
 for every arm, and stops the differential with an error at its first
@@ -156,11 +153,10 @@ looked into.
 
 ## Compiler findings
 
-kara B-2026-10-14-2 (open), filed from this kata: `s.push(c)`,
-`s.find(c)` and `s.split(c)` with `c` a `ref char` from
-`Vec[char].iter()` pass `karac check` but are refused by the MIR
-pipeline's typecheck, which types the program with the Kāra library
-linked, so `iter()` yields `ref char`, and the builtin String methods
-want exactly a `char`. A user function taking a `char` and
-`Vec[char].push(c)` both accept the same `c`. Met here in the
-differential's record builder.
+kara B-2026-10-14-2, filed from this kata and fixed in kara
+4979cb27c2: `s.push(c)`, `s.find(c)` and `s.split(c)` with `c` a `ref
+char` from `Vec[char].iter()` passed `karac check` but were refused by
+the MIR pipeline's typecheck, which types the program with the Kāra
+library linked, so `iter()` yields `ref char`, and the builtin String
+methods wanted exactly a `char`. Met here in the differential's record
+builder, which now runs as written.
