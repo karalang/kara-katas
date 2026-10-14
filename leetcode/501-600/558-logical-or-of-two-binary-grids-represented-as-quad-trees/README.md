@@ -146,7 +146,7 @@ runs each (two for Python; `bench.sh` timings need a quiet machine):
 | Rust (`rustc -O -C overflow-checks=on`) | 1.75 to 1.83 s |
 | Go | 2.09 to 2.27 s |
 | Python | 9.9 to 10.1 s |
-| Kāra (`karac build`, legacy) | The frozen legacy backends: no arm finishes. Under `karac run --interp` the ★, pair, node and grid arms print the first seven lines and are still on the 64 by 64 case when stopped at 300 s; `--interp` copies a `shared enum` on every alias (kara B-2026-10-02-58). `karac run` and `karac build` of the ★, pair and node arms do not finish within 300 s, `karac build` while still compiling, and both stop the grid arm and the differential at `level[2 * r][2 * c].clone()` ("chained indexed receivers ... are deferred to v1.x"). The bench program, which has no harness, builds and runs under the legacy `karac build` (see Benchmarks). Legacy is frozen, so this is noted, not filed. |
+| Kāra (`karac build`, legacy) | 2.38 to 2.48 s |
 | Kāra (`karac build --mir`) | 2.62 to 2.87 s |
 
 The legacy `karac build` builds the bench program and prints the same
