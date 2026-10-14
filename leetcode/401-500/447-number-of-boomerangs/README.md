@@ -130,10 +130,10 @@ passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-14-3 (open), filed from this kata by another session
-after it was written: the row reports that the every-triple arm,
-`number_of_boomerangs_brute.kara`, took 87 s under `karac __mir-run`,
-past the corpus runner's 60 s cap, with its output correct. The cost is
-in how the MIR interpreter calls a small function with checked
-arithmetic, `squared_distance` here, about 77M times. That time is the
-row's measurement, not one taken for this README.
+kara B-2026-10-14-3, filed from this kata by another session after it
+was written and fixed in kara 605f5270da: the row reports that the
+every-triple arm, `number_of_boomerangs_brute.kara`, took 87 s under
+`karac __mir-run`, past the corpus runner's 60 s cap, with its output
+correct. The cost was in how the MIR interpreter calls a small function
+with checked arithmetic, `squared_distance` here, about 77M times. Those
+times are the row's measurements, not ones taken for this README.
