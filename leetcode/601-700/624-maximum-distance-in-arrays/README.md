@@ -1,8 +1,8 @@
 # 624. Maximum Distance in Arrays
 
-Given `m` arrays, each sorted in ascending order, pick two integers from
-two different arrays, one from each, and return the largest distance `|a
-- b|` between such a pair.
+Given `m` arrays, each sorted in ascending order, pick two integers `a`
+and `b` from two different arrays and return the largest distance
+between them, `|a - b|`.
 
 ```
 arrays = [[1,2,3],[4,5],[1,2,3]]  ->  4    (1 from the first, 5 from the second)
