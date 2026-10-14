@@ -36,10 +36,10 @@ last child, and the depths of 300 random trees of 0 to 60 nodes.
 The levels and stack arms hold references to the tree's nodes in a
 `Vec`, which the spec allows (`Vec[ref T]` is a view, design.md §
 Views), and the chain arm uses `Option.as_ref`, which
-docs/library/core-types.md lists. Three of the arms do not get through
-today; see Verification and Compiler findings. They are kept as written;
-where a result below comes from a copy outside this directory with one
-change, it says so.
+docs/library/core-types.md lists. Three of the arms do not pass `karac
+check` today; see Verification and Compiler findings. They are kept as
+written; where a result below comes from a copy outside this directory
+with one change, it says so.
 
 ## Differential
 
@@ -58,11 +58,14 @@ large one a bushy tree.
 | P4 | one more leaf under the root gives the larger of the answer and 2 |
 | P5 | the answer is one more than the deepest child subtree's |
 
-As written it does not run, for the levels arm's reasons below. A copy
-whose levels arm walks each level with `while let Some(node) =
-level.pop()` in place of `for node in level` prints `1000 cases, 4 arms,
-20000 checks, 0 failures` under `karac __mir-run` and `karac
-__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`.
+It prints `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac
+__mir-run` and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`; `karac check` refuses it, for the chain, levels and
+stack arms' reasons below. Until kara B-2026-10-14-11 was fixed
+(`188b79d9a4`) it did not run on the MIR backends either, and the copy
+the mutants below were run on walks each level with `while let
+Some(node) = level.pop()` in place of `for node in level`. Rechecked at
+kara `680733538b`.
 
 ## Mutation testing
 
@@ -105,14 +108,18 @@ LeakSanitizer):
 |---|---|---|
 | ★ | passes | same output as the mirror, clean |
 | chain | refuses `as_ref` (B-2026-10-14-12) | same output, clean |
-| levels | refuses `next.push(child)` (B-2026-10-14-10) | `__mir-run` refuses `for node in level` as invalid MIR; `__mir-llvm-run` exits 101 with no message, and ASan finds a stack-buffer-overflow (B-2026-10-14-11) |
+| levels | refuses `next.push(child)` (B-2026-10-14-10) | same output, clean, since B-2026-10-14-11 was fixed |
 | stack | refuses the `(ref Node, i64)` pushes (B-2026-10-14-10) | same output, clean |
 
-The copy of the levels arm with `while let Some(node) = level.pop()`
-prints the same output and is clean on both MIR backends; `karac check`
-still refuses its `next.push(child)`. A copy of the chain arm whose
-`max_depth` matches on the root passes `karac check` and prints the same
-output. `karac check` passes on the bench program.
+Before B-2026-10-14-11 was fixed, `__mir-run` refused the levels arm's
+`for node in level` as invalid MIR, and `__mir-llvm-run` exited 101 with
+no message, where ASan found a stack-buffer-overflow; a copy with `while
+let Some(node) = level.pop()` printed the same output. Rechecked at kara
+`680733538b`: the arm as written prints the same output on both MIR
+backends and runs clean under ASan. `karac check` still refuses its
+`next.push(child)`. A copy of the chain arm whose `max_depth` matches on
+the root passes `karac check` and prints the same output. `karac check`
+passes on the bench program.
 
 The frozen legacy backends: `karac run --interp` prints the same output
 for the ★ and levels arms. `karac run` and `karac build` stop the ★ arm
@@ -168,7 +175,7 @@ from these timings, not profiled. As written, the Kāra row is about
 
 ## Compiler findings
 
-Five filed from this kata, all open:
+Five filed from this kata, four open:
 
 - **B-2026-10-14-10.** `karac check` does not treat the elements of a
   `Vec[ref T]` as the `Copy` references the spec makes them. Pushing a
@@ -177,10 +184,11 @@ Five filed from this kata, all open:
   '(ref Node, i64)', found '(Node, i64)'", and `let a = v[0];` is
   refused as a move out of an index. The MIR backends run the pushes.
   The levels and stack arms.
-- **B-2026-10-14-11.** `for n in v` over a `Vec[ref Node]` is lowered as
-  if the elements were `Node`s: `__mir-run` stops at MIR validation, and
-  the compiled backend runs it anyway, copying 32 bytes into an 8-byte
-  slot, which ASan reports as a stack-buffer-overflow. The levels arm.
+- **B-2026-10-14-11**, fixed in kara `188b79d9a4`. `for n in v` over a
+  `Vec[ref Node]` was lowered as if the elements were `Node`s:
+  `__mir-run` stopped at MIR validation, and the compiled backend ran it
+  anyway, copying 32 bytes into an 8-byte slot, which ASan reported as
+  a stack-buffer-overflow. The levels arm now runs as written.
 - **B-2026-10-14-12.** `karac check` has no `Option.as_ref`, which the
   library spec lists and both MIR backends run. The chain arm, where it
   is the way to `map` over the borrowed root.
