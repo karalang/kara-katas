@@ -164,8 +164,8 @@ result or sits inside a closure's body, and all three now fixed:
 - **B-2026-10-14-7**, fixed in kara `86f1298387`. `karac check` refused
   `let words: Vec[String] = s.split(" ").iter().map(|w| w.chars().rev().collect()).collect();`
   with "expected 'Vec[String]', found 'Vec[Vec[char]]'": the inner
-  `collect()` was not given the closure's expected result type, so it fell
-  back to a `Vec`. A sibling of B-2026-10-12-33.
+  `collect()` was not given the closure's expected result type, so it
+  fell back to a `Vec`. A sibling of B-2026-10-12-33.
 - **B-2026-10-14-6**, fixed in kara `0c4bec8fa5`. On the MIR backends
   the same line did not build: "an expression whose type does not lower
   (UnknownParam C)", with or without a type on the binding.
