@@ -168,12 +168,13 @@ result or sits inside a closure's body:
 - **B-2026-10-14-6.** On the MIR backends the same line does not build:
   "an expression whose type does not lower (UnknownParam C)", with or
   without a type on the binding.
-- **B-2026-10-14-8.** `karac check` refuses any `collect()` into a
-  non-`Vec` target inside a closure body,
+- **B-2026-10-14-8**, fixed in kara `d0d9435e8a`. `karac check` refused
+  any `collect()` into a non-`Vec` target inside a closure body,
   `|w| { let s: String = w.chars().collect(); s.len() }`, with an
   ownership error about a binding the user never wrote,
-  `__karac_collect_dst_N`, "moved inside a loop". `karac __mir-run` runs
-  it.
+  `__karac_collect_dst_N`, "moved inside a loop". Rechecked at kara
+  `e17ae2b58d`: it passes and `karac __mir-run` prints `[2, 3]` for two
+  words. The chain arm still stops on B-2026-10-14-7.
 
 The chain arm writes `s.split(" ").iter()` because `split` returns a
 `Vec` today; the spec's `split` is an iterator and would take the `map`
