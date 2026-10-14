@@ -122,19 +122,21 @@ The bench program uses the ★ arm. It builds 100 random search trees of
 once, listing each tree's nodes; then 50 times over every tree has its
 values put back from the list and is converted. Every implementation
 prints `100 trees of 10000 values, 50 times each: total 82384464850,
-checksum 951458667`, and so does the Kāra copy described below, under
-`karac __mir-run` too (in 141 s).
+checksum 951458667`, the Kāra program under `karac __mir-run` included
+(in 141 s).
 
 The bench program puts the values back with `nodes[i].val = values[i]`,
 `nodes` being `ref lists[t]`. A `mut` field of a shared value is
-writable through any handle (`docs/core-semantics.md` §5.9), and `karac
-check` passes it, but the MIR borrow checker refuses it (kara
-B-2026-10-13-33, below), so no v2 command builds the program as written,
-and the legacy `karac build`'s binary crashes (see Verification). A copy
-that takes the node out first, `let node = nodes[i]; node.val =
-values[i];`, runs right. `bench.sh` builds the program with `karac build
---mir`, the v2 compiled backend, and will time it once the row is fixed;
-that edit is by hand, on top of the `scripts/new-bench.sh` output.
+writable through any handle (`docs/core-semantics.md` §5.9). The MIR
+borrow checker refused that write until kara B-2026-10-13-33 was fixed
+(in kara `554093e8e5`); the program as written now runs under every
+v2 command. The legacy `karac build` still builds a binary that crashes
+(see Verification), so `bench.sh` builds the Kāra program with `karac
+build --mir`, the v2 compiled backend; that edit is by hand, on top of
+the `scripts/new-bench.sh` output. The Kāra row used to time a copy that
+took the node out first, `let node = nodes[i]; node.val = values[i];`;
+it times the program as written now, which runs clean under `karac
+__mir-llvm-asan` too.
 
 The Rust mirror's tree is `Rc<RefCell<TreeNode>>`, the closest match to
 a `shared struct`; C and Go use plain pointers and never free. Spot
@@ -148,20 +150,21 @@ timings on a shared 4-core container, three runs each (two for Python;
 | Rust (`rustc -O -C overflow-checks=on`) | 1.68 to 1.70 s |
 | Go | 1.06 to 1.07 s |
 | Python | 11.6 to 11.7 s |
-| Kāra (`karac build --mir`), the copy | 1.74 to 1.77 s |
+| Kāra (`karac build --mir`) | 1.55 to 1.58 s |
 
-The Kāra row times the copy, at kara `2649217dc8`. Under `karac
-__mir-llvm-run` the copy prints the same line in 3.0 s, compile
-included; that JITs the MIR's IR without optimization passes, so it is
-not a benchmark.
+The Kāra row is timed at kara `af2123abc5`, two commits after the fix.
+Under `karac __mir-llvm-run` the program prints the same line in 3.1 s,
+compile included; that JITs the MIR's IR without optimization passes, so
+it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-13-33 (open), filed from this kata: a field write through
-an element of a borrowed `Vec` of shared values, `nodes[i].val = v` with
-`nodes` a `ref Vec[TreeNode]` or a bare `Vec[TreeNode]` parameter, is
-refused by the MIR borrow checker ("mutable borrow of ... through a
-shared reference [E0517]") under `__mir-run`, `__mir-llvm-run` and
-`build --mir`, while `karac check` passes it. The same write through an
-owned `Vec`, through `for n in nodes.iter()`, or through
-`nodes.first().unwrap()` runs right. It blocks the bench program.
+kara B-2026-10-13-33, filed from this kata and fixed in kara
+`554093e8e5`: a field write through an element of a borrowed `Vec` of
+shared values, `nodes[i].val = v` with `nodes` a `ref Vec[TreeNode]` or
+a bare `Vec[TreeNode]` parameter, was refused by the MIR borrow checker
+("mutable borrow of ... through a shared reference [E0517]") under
+`__mir-run`, `__mir-llvm-run` and `build --mir`, while `karac check`
+passed it. The same write through an owned `Vec`, through `for n in
+nodes.iter()`, or through `nodes.first().unwrap()` ran right. It blocked
+the bench program, which now runs as written.

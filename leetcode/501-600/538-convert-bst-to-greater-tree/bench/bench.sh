@@ -66,11 +66,9 @@ build_kara() {
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
     # `--mir`: the legacy `karac build` builds this program, but the
-    # binary dies with a segmentation fault. The v2 borrow checker still
-    # refuses its `nodes[i].val = values[i]` through a borrowed `Vec`
-    # (kara B-2026-10-13-33); `--mir` is the backend that will run it
-    # once the row is fixed. Hand-edited from the scripts/new-bench.sh
-    # output; drop `--mir` once it is the default.
+    # binary dies with a segmentation fault; the v2 compiled backend runs
+    # it (since kara B-2026-10-13-33 was fixed). Hand-edited from the
+    # scripts/new-bench.sh output; drop `--mir` once it is the default.
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling $src (seq, KARAC_AUTO_PAR=0) ..." >&2
         KARAC_AUTO_PAR=0 karac build --mir "$src" >/dev/null
