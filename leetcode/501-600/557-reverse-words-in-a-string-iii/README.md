@@ -32,10 +32,9 @@ word and 49,999 as 25,000 words of one letter.
 `reverse_words_in_a_string_iii.py` mirrors the ★ arm and its output is
 byte-identical.
 
-The chain arm does not build today; see Compiler findings. It is kept as
-written. A copy outside this directory with the inner `collect()` moved
-into a named function, `fn reversed(w: String) -> String`, prints the
-same output.
+The chain arm did not build when the kata was written; see Compiler
+findings. It was kept as written, and since both of its findings were
+fixed it builds and prints the same output as the others.
 
 ## Differential
 
@@ -55,18 +54,18 @@ characters, in turn.
 | P4 | answering the answer gives the text back |
 | P5 | the answer has the same characters as the text |
 
-Since the chain arm does not build, the differential does not either:
-`karac check` and the MIR backends stop at its copy of that arm. The
-copy outside this directory with the workaround in both places prints
-`1000 cases, 4 arms, 20000 checks, 0 failures` under `karac __mir-run`
-and `karac __mir-llvm-run`, and runs clean under `karac
-__mir-llvm-asan`.
+It prints `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac
+__mir-run` and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`. While the chain arm did not build, neither did the
+differential, and the measurements below were taken on a copy outside
+this directory with the chain arm's inner `collect()` moved into a named
+function.
 
 ## Mutation testing
 
-Twelve edits to the workaround copy of the differential, two to each arm
-that change its answers and one to each that does not, each run under
-`karac __mir-run`. All eight that change answers are killed.
+Twelve edits to that workaround copy of the differential, two to each
+arm that change its answers and one to each that does not, each run
+under `karac __mir-run`. All eight that change answers are killed.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -94,16 +93,18 @@ text is the space.
 
 ## Verification
 
-The ★, bytes and stack arms print the same output as
+The four arms print the same output as
 `reverse_words_in_a_string_iii.py` under `karac __mir-run` (the v2 MIR
 interpreter) and `karac __mir-llvm-run`, and run clean under `karac
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output identical,
-no error, no leak. `karac check` passes on those three and the bench
-program; it refuses the chain arm and the differential (B-2026-10-14-7).
+no error, no leak. `karac check` passes on every arm, the differential
+and the bench program. The chain arm and the differential were rechecked
+at kara `f6052c659c`, after B-2026-10-14-7 and B-2026-10-14-6 were
+fixed; before that `karac check` and both MIR backends refused them.
 
 The frozen legacy backends refuse every arm and the differential under
-`karac run --interp`, `karac run` and `karac build`. The three arms that
-build on MIR stop at ownership checking in the harness, at `{got[..10]}`
+`karac run --interp`, `karac run` and `karac build`. The ★, bytes and
+stack arms stop at ownership checking in the harness, at `{got[..10]}`
 and `{checksum(got)}` in one f-string ("cannot move `got` while a slice
 borrow into it is still live"); under v2 `checksum` borrows its
 argument. Legacy refuses the bench program too (see Benchmarks). Legacy
@@ -158,23 +159,24 @@ each char walked backwards is an out-of-line runtime call,
 ## Compiler findings
 
 Three filed from the chain arm, all on a `collect()` that is a closure's
-result or sits inside a closure's body:
+result or sits inside a closure's body, and all three now fixed:
 
-- **B-2026-10-14-7.** `karac check` refuses
+- **B-2026-10-14-7**, fixed in kara `86f1298387`. `karac check` refused
   `let words: Vec[String] = s.split(" ").iter().map(|w| w.chars().rev().collect()).collect();`
   with "expected 'Vec[String]', found 'Vec[Vec[char]]'": the inner
-  `collect()` is not given the closure's expected result type, so it
-  falls back to a `Vec`. A sibling of B-2026-10-12-33.
-- **B-2026-10-14-6.** On the MIR backends the same line does not build:
-  "an expression whose type does not lower (UnknownParam C)", with or
-  without a type on the binding.
+  `collect()` was not given the closure's expected result type, so it fell
+  back to a `Vec`. A sibling of B-2026-10-12-33.
+- **B-2026-10-14-6**, fixed in kara `0c4bec8fa5`. On the MIR backends
+  the same line did not build: "an expression whose type does not lower
+  (UnknownParam C)", with or without a type on the binding.
 - **B-2026-10-14-8**, fixed in kara `d0d9435e8a`. `karac check` refused
-  any `collect()` into a non-`Vec` target inside a closure body,
-  `|w| { let s: String = w.chars().collect(); s.len() }`, with an
-  ownership error about a binding the user never wrote,
-  `__karac_collect_dst_N`, "moved inside a loop". Rechecked at kara
-  `e17ae2b58d`: it passes and `karac __mir-run` prints `[2, 3]` for two
-  words. The chain arm still stops on B-2026-10-14-7.
+  any `collect()` into a non-`Vec` target inside a closure body, `|w| {
+  let s: String = w.chars().collect(); s.len() }`, with an ownership
+  error about a binding the user never wrote, `__karac_collect_dst_N`,
+  "moved inside a loop".
+
+Rechecked at kara `f6052c659c`: the chain arm runs as written on both
+MIR backends and passes `karac check`.
 
 The chain arm writes `s.split(" ").iter()` because `split` returns a
 `Vec` today; the spec's `split` is an iterator and would take the `map`
