@@ -1,0 +1,61 @@
+// Benchmark for #556: Rust mirror of the ★ arm (the next permutation of
+// the digits); see next_greater_element_iii.kara.
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn next_greater_element(n: i64) -> i64 {
+    let mut d: Vec<i64> = Vec::new();
+    let mut x = n;
+    while x > 0 {
+        d.push(x % 10);
+        x /= 10;
+    }
+    d.reverse();
+    let len = d.len() as i64;
+    let mut i = len - 2;
+    while i >= 0 && d[i as usize] >= d[i as usize + 1] {
+        i -= 1;
+    }
+    if i < 0 {
+        return -1;
+    }
+    let i = i as usize;
+    let mut j = len as usize - 1;
+    while d[j] <= d[i] {
+        j -= 1;
+    }
+    d.swap(i, j);
+    d[i + 1..].reverse();
+    let mut out = 0;
+    for v in d.iter() {
+        out = out * 10 + *v;
+    }
+    if out > 2147483647 { -1 } else { out }
+}
+
+fn main() {
+    let count = 500000;
+    let mut seed: i64 = 556;
+    let mut numbers: Vec<i64> = Vec::new();
+    for t in 0..count {
+        let top = if t % 3 == 0 { 1000 } else if t % 3 == 1 { 10000000 } else { 2147483647 };
+        let a = next_random(&mut seed);
+        let b = next_random(&mut seed);
+        numbers.push(1 + (a * 65536 + b) % top);
+    }
+    let mut found = 0;
+    let mut checksum: i64 = 0;
+    for round in 0..20 {
+        for g in 0..count {
+            let got = next_greater_element(numbers[(round * 7 + g) % count]);
+            if got > 0 {
+                found += 1;
+            }
+            checksum = (checksum * 31 + got + 1) % 1000000007;
+        }
+    }
+    println!("{} numbers, 20 rounds each: {} have a next, checksum {}", count, found, checksum);
+}
