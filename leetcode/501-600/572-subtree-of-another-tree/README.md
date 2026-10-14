@@ -45,11 +45,11 @@ value changed, that copy with a leaf added, or a random tree of 1 to
 byte-identical.
 
 The test harness keeps one of a tree's nodes while walking them with
-`for n in nodes.iter()`, and writes `best = n` and `Some(n)` where `*n`
-reads more naturally: `karac check` refuses `*n` on a reference to a
-`shared` handle (kara B-2026-10-14-22), and dropping the `*` is the fix
-its message gives. The fields are `mut` because the harness changes a
-value in a copied tree.
+`for n in nodes.iter()`, and writes `best = *n` and `Some(*n)`. `karac
+check` refused `*n` on a reference to a `shared` handle when the kata
+was written (kara B-2026-10-14-22), so the harness first wrote `n`; that
+row is fixed (kara `5391da32d4`) and the harness is back to `*n`. The
+fields are `mut` because the harness changes a value in a copied tree.
 
 ## Differential
 
@@ -118,14 +118,16 @@ clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. `karac check`
 passes on every arm, the differential and the bench program.
 
-The frozen legacy backends: `karac run --interp` prints the right output
-for the text and hash arms, and on the ★ and stack arms had printed only
-the first lines, all right, when stopped at a 60-second limit; it did
-not finish the differential in that time either. `karac run` and `karac
-build` stop every arm at module verification on the harness's `show`
-call ("Call parameter type does not match function signature"). `karac
-build` builds the differential, which prints the same line, and the
-bench program. Legacy is frozen, so this is noted, not filed.
+The frozen legacy backends refuse every arm under `karac run --interp`,
+`karac run` and `karac build`, at type checking: legacy gives the
+elements of `iter()` as values, so the harness's `*n` does not check
+("unary '*' requires 'ref T' ... found 'TreeNode'"). Before the harness
+went back to `*n`, `karac run --interp` printed the right output for the
+text and hash arms, and `karac run` and `karac build` stopped every arm
+at module verification on the harness's `show` call. `karac run
+--interp` did not finish the differential within a 60-second limit;
+`karac build` builds the differential, which prints the same line, and
+the bench program. Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
 
@@ -165,10 +167,13 @@ backend's on the same program. The cause is not measured.
 
 ## Compiler findings
 
-One filed: **B-2026-10-14-22**. `karac check` refuses `*n` where `n` is
-a `ref` to a `shared struct` handle, as in `for n in nodes.iter() { best
-= *n; }`, with `borrow_projection_copy` ("cannot move a non-`Copy` value
-out of a borrow with `*`"), though the spec copies a handle on every use
-and both MIR backends run it. The harness writes `n` instead, the
-spelling the message suggests (see Approaches). The legacy failures
-above are not filed because legacy is frozen.
+One filed: **B-2026-10-14-22**, now fixed (kara `5391da32d4`). `karac
+check` refused `*n` where `n` is a `ref` to a `shared struct` handle, as
+in `for n in nodes.iter() { best = *n; }`, with `borrow_projection_copy`
+("cannot move a non-`Copy` value out of a borrow with `*`"), though the
+spec copies a handle on every use and both MIR backends ran it. The
+harness wrote `n` until the fix and writes `*n` again: the four arms
+pass `karac check` at kara `a7d3ce0b8e`, where the compiler before the
+fix still refuses them, and print the same output under `karac
+__mir-run`, `karac __mir-llvm-run` and `karac __mir-llvm-asan`. The
+legacy failures above are not filed because legacy is frozen.
