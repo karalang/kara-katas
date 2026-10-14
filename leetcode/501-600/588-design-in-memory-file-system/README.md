@@ -64,12 +64,12 @@ its output is byte-identical.
 
 The owned arm does not build today; see Compiler findings. It is kept as
 written. A copy outside this directory prints the same output; it
-differs from the arm in four places: the recursion's argument passed
-without its `mut` marker; the path's names kept as `String`s, cloned
-from `split`, in place of `Str`s; `keys().iter().cloned()` in place of
-`keys().cloned()`; and, in place of `find`, which walks a `ref` local
-down the tree and returns it, two recursions, one for `ls` and one for
-`read`, each answering at the node it reaches.
+differs from the arm in two places: the path's names kept as `String`s,
+cloned from `split`, in place of `Str`s, and `keys().iter().cloned()` in
+place of `keys().cloned()`. Until kara `ea2a2da2be` the copy also had to
+drop the recursion's `mut` marker and replace `find`, which walks a
+`ref` local down the tree and returns it, with two recursions; both rows
+behind those are now fixed on the MIR backends.
 
 ## Differential
 
@@ -94,12 +94,10 @@ Its definition also reads `*path` in three comparisons, twice `h.0 ==
 *path` and once `*path == "/"`, as the spec spells a comparison through
 a reference; `karac check` refused those until kara B-2026-10-14-27 was
 fixed (`1be6eb5497`), while both MIR backends always ran them. A copy
-outside this directory that holds the owned arm's workaround copy prints
+outside this directory that holds the owned arm's copy prints
 `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac __mir-run`
 and `karac __mir-llvm-run`, and runs clean under `karac
-__mir-llvm-asan`. Rechecked at kara `7adae1f0aa`: that copy now passes
-`karac check`, and the differential as written is refused only in its
-copy of the owned arm.
+__mir-llvm-asan`, at kara `ea2a2da2be`.
 
 ## Mutation testing
 
@@ -153,9 +151,10 @@ which reads each byte of `as_bytes()` as `*b` where legacy gives the
 byte itself ("unary '*' requires 'ref T' ... found 'u8'"); the flat arm
 stops comparing a slice of a path with `"/"` ("cannot compare
 'StringSlice' and 'String'"); the owned arm and the differential stop at
-the `mut` marker, as on every backend; and the bench program passes type
-checking but legacy codegen has no handler for `split` on a path. Legacy
-is frozen, so this is noted, not filed.
+the `mut` marker, which legacy still refuses, and at the same `split`;
+and the bench program passes type checking but legacy codegen has no
+handler for `split` on a path. Legacy is frozen, so this is noted, not
+filed.
 
 ## Benchmarks
 
@@ -206,22 +205,24 @@ comes from is not measured.
 
 ## Compiler findings
 
-The owned arm meets four open kara rows. Its recursion `make(mut child,
-names[1..], content)`, where `child` is the `mut ref` that
-`entry(..).or_insert(..)` returns, is refused by `karac check` and both
-MIR backends with "this argument is already a mut-ref; drop the `mut`
-marker", though design.md § Call-site `mut` markers requires the marker
-whatever the argument's root (B-2026-10-14-25, filed from this kata).
-Its `find` walks a `ref` local down from `ref self.root` and returns it,
-which `karac check` refuses with "returned borrow does not originate
-from a `ref` parameter" and the MIR backends cannot lower, since `ref`
-on a field is not built (B-2026-10-14-26, filed from this kata). It
-keeps a path's names as `Str`s, and `split` gives `String`s, not the
-`Str` slices the spec gives (B-2026-10-12-7), so `names.push(name)` is
-refused with "expected 'StringSlice', found 'String'". And
+The owned arm met four open kara rows, and two still block it. Its
+recursion `make(mut child, names[1..], content)`, where `child` is the
+`mut ref` that `entry(..).or_insert(..)` returns, was refused with "this
+argument is already a mut-ref; drop the `mut` marker", though design.md
+§ Call-site `mut` markers requires the marker whatever the argument's
+root (B-2026-10-14-25, filed from this kata, fixed in kara
+`d8c605558f`). Its `find` walks a `ref` local down from `ref self.root`
+and returns it, which the MIR backends could not lower, since `ref` on a
+field was not built (B-2026-10-14-26, filed from this kata, fixed for
+MIR in `f2b50d13aa`); `karac check` still refuses that return with
+"returned borrow does not originate from a `ref` parameter"
+(B-2026-10-14-38, open). Still open and still blocking every backend:
+the arm keeps a path's names as `Str`s, and `split` gives `String`s, not
+the `Str` slices the spec gives (B-2026-10-12-7), so `names.push(name)`
+is refused with "expected 'StringSlice', found 'String'"; and
 `node.children.keys().cloned()` is refused because `keys()` gives a
-`Vec`, not an iterator (B-2026-10-13-1). The arm keeps the spec's
-spelling everywhere.
+`Vec`, not an iterator (B-2026-10-13-1). Rechecked at kara `ea2a2da2be`.
+The arm keeps the spec's spelling everywhere.
 
 The differential's definition compares with `*path`, a `ref String` from
 matching a borrowed `Op`, as design.md § `*` and `ref` in expressions
