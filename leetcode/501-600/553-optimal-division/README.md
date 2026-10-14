@@ -39,12 +39,9 @@ edges (one number, two numbers, ten numbers rising and ten falling), and
 a checksum over 300 random arrays. `optimal_division.py` mirrors the ★
 arm and its output is byte-identical.
 
-The join arm stops at type checking on every backend, legacy and
-v2: `join` is not found on the `Slice[String]` that `parts[1..]` is
-(kara B-2026-10-14-4). The arm keeps that spelling. A copy with
-`parts[1..].to_vec().join("/")` prints the same output as the ★ arm
-under `karac __mir-run` and `karac __mir-llvm-run`, and runs clean under
-`karac __mir-llvm-asan`.
+The join arm writes `parts[1..].join("/")`, a `join` on the
+`Slice[String]` that `parts[1..]` is. Until kara `04bc26e13e` that
+stopped at type checking (B-2026-10-14-4); it now runs as written.
 
 ## Differential
 
@@ -65,15 +62,14 @@ fractions leaves `i64`.
 | P4 | there are n - 1 slashes |
 | P5 | the value is at least that of the divisions left to right with no brackets |
 
-Its copy of the join arm keeps `parts[1..].join("/")`, so it stops at
-type checking on B-2026-10-14-4 as the arm does. A copy with `.to_vec()`
-before the `join` prints `1000 cases, 4 arms, 20000 checks, 0 failures`
-under `karac __mir-run` and `karac __mir-llvm-run`, and runs clean under
-`karac __mir-llvm-asan`.
+It prints `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac
+__mir-run` and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`, checked at kara `136e218505`.
 
 ## Mutation testing
 
-Thirteen edits to that copy of the differential, two to each arm that
+Thirteen edits to a copy of the differential with `.to_vec()` before
+the `join`, made while B-2026-10-14-4 was open, two to each arm that
 change its answers, one that changes the work but not the answer, and
 four that change nothing, each run under `karac __mir-run`. All eight
 that change answers are killed.
@@ -110,13 +106,13 @@ division, so there are no ties.
 
 ## Verification
 
-The ★, table and memo arms print the same output as
-`optimal_division.py` under `karac __mir-run` (the v2 MIR interpreter)
-and `karac __mir-llvm-run`, and run clean under `karac __mir-llvm-asan`
-(AddressSanitizer and LeakSanitizer): output identical, no error, no
-leak. `karac check` passes on those arms and the bench program. The join
-arm and the differential stop at type checking on B-2026-10-14-4; their
-`.to_vec()` copies pass all of the above.
+Every arm prints the same output as `optimal_division.py` under `karac
+__mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
+clean under `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer): output identical, no error, no leak. `karac check`
+passes on every arm, the differential and the bench program. The join
+arm and the differential were rechecked at kara `136e218505`, after
+B-2026-10-14-4 was fixed.
 
 The frozen legacy backends: the ★ and table arms print the same output
 under `karac run --interp`, `karac run` and `karac build`, and under
@@ -124,9 +120,11 @@ under `karac run --interp`, `karac run` and `karac build`, and under
 --interp`; under `karac run` the JIT's module verification fails
 ("Function return type does not match operand type of return inst"), and
 `karac build` exits 1 after an ownership warning that `nums` is moved
-and used again. The differential also stops on `*b` over the bytes of a
-`Vec[u8]` ("unary '*' requires 'ref T' ... found 'u8'"). Legacy is
-frozen, so these are noted, not filed.
+and used again. The join arm prints it under `karac run --interp`;
+`karac run` and `karac build` stop in codegen at `parts[1..]` ("no
+handler for expression kind Range"). The differential also stops on `*b`
+over the bytes of a `Vec[u8]` ("unary '*' requires 'ref T' ... found
+'u8'"). Legacy is frozen, so these are noted, not filed.
 
 ## Benchmarks
 
@@ -166,4 +164,4 @@ optimization passes, so it is not a benchmark. The Kāra row is about
 
 | id | status | what |
 |---|---|---|
-| B-2026-10-14-4 | open | `join` and `concat` on a `Slice[String]` (`parts[1..].join("/")`) fail type checking: the method is looked up only on a `Vec` or `VecDeque` receiver. The join arm and the differential keep the natural spelling; `.to_vec()` first passes. Recheck both once it is fixed. |
+| B-2026-10-14-4 | fixed (`04bc26e13e`) | `join` and `concat` on a `Slice[String]` (`parts[1..].join("/")`) failed type checking: the method was looked up only on a `Vec` or `VecDeque` receiver. The join arm and the differential kept the natural spelling and run as written since the fix. |
