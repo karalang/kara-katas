@@ -1,0 +1,3 @@
+module number_of_longest_increasing_subsequence_bench
+
+go 1.24
