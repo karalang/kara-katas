@@ -1,0 +1,3 @@
+module second_minimum_node_in_a_binary_tree_bench
+
+go 1.24
