@@ -104,7 +104,9 @@ under all three. `karac check` passes all four arms, the differential
 and the bench program. All with the compiler at kara `8d40e1a762` for
 the debug build and `057e29e74f` for the release build that runs `check`
 and `__mir-run`, with runtime archives newer than the last `runtime/src`
-change.
+change. The scan arm is quadratic in the open sequences, so its 10,000
+copies of one number take about 110 s under the release `__mir-run`,
+over the corpus's 60 s budget; the corpus records it as a timeout.
 
 The frozen legacy backends do less well. Their `karac build` and JIT
 crash with a segmentation fault on the heaps arm, a `Map` of
