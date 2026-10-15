@@ -144,41 +144,44 @@ three parts: `format!` in Rust, `+` in Go and Python, and in C a
 `malloc`'d buffer filled with three `memcpy`s, then compared with the
 best so far and kept or freed. Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
-quiet machine):
+quiet machine). The compiled rows were timed again together, with the
+compiler at kara `7609de871d`, once B-2026-10-14-5 was fixed; Python's
+is the first timing:
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 0.24 to 0.28 s |
-| Rust (`rustc -O`) | 1.28 to 1.38 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.20 to 1.27 s |
-| Go | 2.69 to 2.71 s |
+| C (`clang -O3`) | 0.21 to 0.24 s |
+| Rust (`rustc -O`) | 1.21 to 1.26 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.05 to 1.21 s |
+| Go | 2.84 to 3.01 s |
 | Python | 2.37 to 2.44 s |
-| Kāra (`karac build --mir`) | 5.18 to 5.96 s |
+| Kāra (`karac build --mir`) | 0.52 to 0.63 s |
 
 The legacy `karac build` refuses this program: it moves `lists[(round *
 7 + g) % count]` out of the index (E_INDEX_MOVE_NON_COPY) where
 v2 borrows it. So `bench.sh` builds the Kāra program with `karac build
 --mir`, the v2 compiled backend; that edit is by hand, on top of the
-`scripts/new-bench.sh` output. The `--mir` row is timed at kara
-`af2123abc5`. Under `karac __mir-llvm-run` the program prints the same
-line in 12.0 s, compile included; that JITs the MIR's IR without
-optimization passes, so it is not a benchmark.
+`scripts/new-bench.sh` output. Under `karac __mir-llvm-run` the program
+prints the same line in 12.0 s, compile included; that JITs the MIR's IR
+without optimization passes, so it is not a benchmark.
 
-The Kāra row is about 4x Rust's, and the f-string is why (kara
-B-2026-10-14-5, filed from this kata). Built instead with three
-`push_str` into a `String.new()`, the same program runs in 0.97 to
-1.10 s, ahead of Rust's `format!`. The v2 backend's f-string checks each
-`String` hole as UTF-8 again and copies the whole result twice, where
-`push_str` copies it once. The bench keeps the f-string, the natural
-spelling, so the Kāra row will move once B-2026-10-14-5 is fixed.
+The Kāra row was about 4x Rust's at first (5.18 to 5.96 s at kara
+`af2123abc5`), and the f-string was why (kara B-2026-10-14-5, filed
+from this kata): the v2 backend's f-string checked each `String` hole as
+UTF-8 again and copied the whole result twice. Built instead with three
+`push_str` into a `String.new()`, the same program ran in 0.97 to
+1.10 s. The bench kept the f-string, the natural spelling. Since the
+fix (kara `fdb1d5fc22` and `5a4a35bb58`), an f-string made only of text
+is summed, allocated once and copied into, so the Kāra row is now about
+half of Rust's `format!` and two and a half times C's.
 
 ## Compiler findings
 
 | id | status | what |
 |---|---|---|
-| B-2026-10-14-5 | open, filed from this kata | an f-string with `String` holes is about 5x three `push_str` on `karac build --mir`; the bench program's Kāra row |
+| B-2026-10-14-5 | fixed (`fdb1d5fc22`, `5a4a35bb58`), filed from this kata | an f-string with `String` holes was about 5x three `push_str` on `karac build --mir`; the bench program's Kāra row, re-timed above |
 | B-2026-10-06-92 | open | `>` on two `Vec`s is refused at type checking though design.md declares `Ord` for `Vec[T]`; the bytes and chain arms and the differential |
 | B-2026-10-12-33 | open | `karac check` refuses `v.push(cs.iter().collect())` into a `Vec[String]`; the differential |
 
-Recheck the bench row, the bytes and chain arms and the differential
-once these are fixed.
+Recheck the bytes and chain arms and the differential once the two open
+rows are fixed.
