@@ -1,0 +1,46 @@
+	pods.json	.items | length
+-r	pods.json	.items[] | "\(.metadata.namespace)/\(.metadata.name) \(.status.phase)"
+-c	pods.json	[.items[] | select(.status.phase != "Running") | .metadata.name]
+	pods.json	.items | group_by(.metadata.namespace) | map({ns: .[0].metadata.namespace, pods: length, restarts: (map(.status.containerStatuses[].restartCount) | add)})
+-r	pods.json	.items[] | .metadata.name as $pod | .status.containerStatuses[]? | [$pod, .name, .image, .restartCount, .ready] | @tsv
+-c	pods.json	[.items[].metadata.labels.app] | unique, (map(select(startswith("a") or endswith("e"))) | sort)
+-c	pods.json	.items | map(select(.metadata.labels.tier? == "web")) | sort_by(.metadata.name) | map(.metadata.name)
+	pods.json	.items | max_by(.status.containerStatuses | map(.restartCount) | add // 0) | .metadata.name
+-r	pods.json	.items[] | select(.status.startTime) | "\(.metadata.name)\t\(1760140800 - (.status.startTime | fromdateiso8601)) s\t\(.status.startTime | fromdateiso8601 | todate)"
+-c	pods.json	[.items[] | try (.status.containerStatuses[0].restartCount | if . > 3 then error("too many restarts: \(.)") else . end) catch .]
+--argjson n 3 -c	pods.json	[limit($n; .items[].metadata.name)], [.items[] | .metadata.labels | to_entries | length], (.items | first(.[] | select(.status.phase == "Failed")) | .metadata.name)
+	releases.json	[.[] | select(.prerelease | not)] | first | .tag_name
+-r	releases.json	.[] | "\(.tag_name): \([.assets[].download_count] | add // 0) downloads"
+-c	releases.json	[.[] | .assets[] | select(.name | endswith(".tar.gz"))] | map({name, mb: (.size / 1048576 * 10 | floor / 10)})
+-c	releases.json	map(.tag_name | ltrimstr("v") | split("-")[0] | split(".") | map(tonumber)) | sort, (sort | last | map(tostring) | join("."))
+-r	releases.json	.[] | [.tag_name, (.published_at | fromdateiso8601 | . / 86400 | floor), .prerelease] | @csv
+-c	events.ndjson	select(.level == "error") | {ts, svc, msg}
+-s	events.ndjson	group_by(.svc) | map({svc: .[0].svc, n: length, levels: (map(.level) | unique), max: (map(.latency_ms | numbers) | max)})
+-s -r	events.ndjson	map(.level) | reduce .[] as $l ({}; .[$l] += 1) | to_entries[] | "\(.key)=\(.value)"
+	events.ndjson	.latency_ms / 1000
+-n	events.ndjson	[inputs | .latency_ms | numbers] | add / length
+-n -c	events.ndjson	foreach inputs as $e ({n: 0, slow: 0}; .n += 1 | .slow += (if ($e.latency_ms | type) == "number" and $e.latency_ms > 100 then 1 else 0 end); [.n, .slow])
+	config.json	.services.api.replicas += 2 | .services.api
+-c	config.json	del(.services.legacy, .tags[0]) | [(.services | keys), .tags]
+-c	config.json	[paths(type == "number")]
+-c	config.json	to_entries | map(select(.key | startswith("feature_"))) | from_entries
+	config.json	. * {"services": {"api": {"image": "api:2.0", "env": {"LOG_LEVEL": "debug"}}}} | .services.api
+-c	config.json	walk(if type == "string" then ascii_upcase else . end) | .services.worker, .limits
+-c	config.json	[.. | objects | select(has("port")) | .port], [.. | numbers] , (.limits | map_values(. * 2))
+-r	config.json	.services | to_entries[] | "\(.key)\t\(.value.port // "-")\t\(.value.env | keys | join(","))"
+-c	config.json	getpath(["services","api","env"]), setpath(["limits","ratio"]; 0.25).limits, (delpaths([["services"],["environments"]]) | keys_unsorted)
+--arg env prod	config.json	.environments[$env].url, (.environments | to_entries | map(.value.replicas) | add)
+-c -S	config.json	.limits, {z: 1, a: {y: 2, b: 3}}
+-c	config.json	def fact: if . <= 1 then 1 else . * (. - 1 | fact) end; def twice(f): f | f; [range(1;8) | fact], (5 | twice(. * 3)), ([.tags[] | ascii_downcase] | unique)
+-c	config.json	.tags as [$first, $second] | {$first, $second, rest: .tags[2:], count: (.tags | length), idx: (.tags | index("red"))}
+	config.json	.limits.ratio + .limits.burst, .limits.ratio * 3, .version / 4, -.limits.max_conns, 10 % 3, (.tags | length) * 1e17
+-r	config.json	.owner | @base64, @uri, @html, ("a b <c>" | @sh), ([1, "x,y", null] | @csv), (. | @json), ("\(.)" | ascii_upcase)
+	config.json	.services.api + 1
+	config.json	.tags[] | .name
+-c	config.json	([.services[] | .port] | sort), ([.services[].replicas] | add), ([.tags[] | length] | min, max), (.version | tostring | length)
+	config.json	.version as $v | $nope
+	config.json	.name | upcase
+	config.json	.services | keys | +
+	config.json	.a ++ 1
+-c	config.json	path(.services.api.env[]), [paths(type == "boolean")], ([path(..)] | length)
+-c	config.json	[1, null, true, "a", [2], {"k": 0}, false, -1.5] | sort, (map(type) | unique)
