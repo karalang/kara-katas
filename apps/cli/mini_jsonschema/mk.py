@@ -2,6 +2,8 @@
 # the instance documents they validate, some valid, some not, some not JSON.
 import json, os, shutil
 
+# data/jobs.txt is written by hand; keep it across the rebuild.
+JOBS = open("data/jobs.txt").read()
 if os.path.isdir("data"):
     shutil.rmtree("data")
 os.makedirs("data/schemas")
@@ -627,4 +629,4 @@ doc("broken-colon.json", """{"workers" 4}
 doc("broken-literal.json", """{"debug": True}
 """)
 
-shutil.copy("jobs.txt", "data/jobs.txt")
+open("data/jobs.txt", "w").write(JOBS)

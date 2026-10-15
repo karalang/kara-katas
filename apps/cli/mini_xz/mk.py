@@ -1,6 +1,8 @@
 # Builds data/: files and archives made by XZ Utils 5.4.5, with several
 # checks, filters, blocks and streams, plus damaged ones, for mini_xz.
 import os, random, shutil, struct, subprocess
+# data/jobs.txt is written by hand; keep it across the rebuild.
+JOBS = open("data/jobs.txt").read()
 if os.path.isdir("data"):
     shutil.rmtree("data")
 os.makedirs("data")
@@ -45,4 +47,4 @@ b = bytearray(notes); b[-1] ^= 0xff
 open("data/badfooter.xz", "wb").write(b)
 open("data/plain.xz", "w").write("this was never compressed\n")
 open("data/tiny.xz", "wb").write(b"\xfd7z")
-shutil.copy("jobs.txt", "data/jobs.txt")
+open("data/jobs.txt", "w").write(JOBS)

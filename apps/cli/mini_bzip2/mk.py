@@ -1,6 +1,8 @@
 # Builds data/: text and binary inputs and archives made by bzip2 1.0.8,
 # plus damaged ones, for mini_bzip2.
 import os, random, shutil, subprocess
+# data/jobs.txt is written by hand; keep it across the rebuild.
+JOBS = open("data/jobs.txt").read()
 if os.path.isdir("data"):
     shutil.rmtree("data")
 os.makedirs("data")
@@ -37,4 +39,4 @@ bad[len(bad) // 3] ^= 0x10
 open("data/flipped.bz2", "wb").write(bad)
 open("data/trailing.bz2", "wb").write(acc + b"garbage after the stream\n")
 open("data/notes.bz2", "w").write("not compressed at all\n")
-shutil.copy("jobs.txt", "data/jobs.txt")
+open("data/jobs.txt", "w").write(JOBS)

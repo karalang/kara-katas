@@ -1,6 +1,8 @@
 # Builds data/: a small release directory and checksum files made with
 # GNU coreutils 9.4, some of them damaged, for mini_hashsum.
 import os, random, shutil, subprocess
+# data/jobs.txt is written by hand; keep it across the rebuild.
+JOBS = open("data/jobs.txt").read()
 if os.path.isdir("data"):
     shutil.rmtree("data")
 os.makedirs("data/release")
@@ -36,4 +38,4 @@ sh("cksum -a sha512 README > CHECKSUMS && cksum -a sha256 --base64 LICENSE >> CH
 # change the SHA384 digest's first digit
 c = open("data/CHECKSUMS").read().replace("SHA384 (README) = 5", "SHA384 (README) = 6")
 open("data/CHECKSUMS", "w").write(c + "MD5 (release/notes.md) = deadbeef\n")
-shutil.copy("jobs.txt", "data/jobs.txt")
+open("data/jobs.txt", "w").write(JOBS)
