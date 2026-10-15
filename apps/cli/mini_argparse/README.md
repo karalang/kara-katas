@@ -73,10 +73,11 @@ Two edits are for existing rows:
   called a use after move (B-2026-10-15-32). The match is now on
   `v.clone()`.
 
-The rest were author errors: seven `Option[String]` parameters that
-are stored needed `own`.
+The rest were author errors: the `Option[String]` parameters that are
+stored needed `own`.
 
-After that, `karac check` passed, and the program matched expected.out
-on the first run on all three MIR surfaces.
+After that, `karac check` passed. The output matched expected.out on
+the first run on all three MIR surfaces; only the leak report above
+needed the rename.
 
 Written 2026-10-15 by the real-world apps thread; karac at 5c299f966b.
