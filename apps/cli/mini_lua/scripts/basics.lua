@@ -1,0 +1,21 @@
+-- numbers, strings and the conversions between them
+print(1 + 2, 7 - 10, 6 * 7, 7 / 2, 7 // 2, 7 % 3)
+print(-7 // 2, -7 % 3, 7 // -2, 7 % -3, 7.5 // 2, -7.5 % 2)
+print(2 ^ 10, 10 / 2, 3 * 1.0, 1e3, 0.1 + 0.2, 1 / 3)
+print(100 / 3, 2 ^ 53, 1e100, -0.0, 123456789012, 5 // 0.0)
+print(math.floor(3.7), math.floor(-3.2), math.max(3, 9, 4), math.min(2.5, 1), math.abs(-4))
+print("10" + 5, "3.5" * 2, 10 .. "", 1.5 .. "x", "a" .. "b" .. "c")
+print(#"hello", #"", ("x"):rep(3), ("abc"):upper(), ("MiXeD"):lower())
+print(1 == 1.0, "1" == 1, 2 < 3, "a" < "b", "abc" < "abd", 3 >= 3.0)
+print(tostring(12), tostring(1.25), tostring(nil), tostring(true), tonumber("42"), tonumber("0x1F"))
+print(tonumber("  7  "), tonumber("3.0"), tonumber("abc"), tonumber("12", 8), tonumber("ff", 16))
+print(type(1), type(1.5), type("s"), type({}), type(print), type(nil), type(false))
+print(math.type(1), math.type(1.0), math.type("1"))
+print(nil and 1, false or "dflt", 1 and 2, nil or false, not nil, not 0)
+local s = "The quick brown fox"
+print(s:sub(5, 9), s:sub(-3), s:sub(-9, -5), s:len(), s:byte(1), string.char(72, 105))
+print(string.format("%d|%5d|%-5d|%05d", 42, 42, 42, 42))
+print(string.format("%s|%10s|%-10s|%s", "hi", "right", "left", 12))
+print(string.format("%.2f|%8.3f|%x|%X|%%|%g|%g", 3.14159, 2.5, 255, 255, 0.5, 100))
+local big = 9007199254740993
+print(big, big + 1, math.maxinteger, math.mininteger, math.maxinteger + 1 == math.mininteger)

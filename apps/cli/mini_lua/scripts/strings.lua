@@ -1,0 +1,31 @@
+-- Lua patterns
+print(("hello world"):find("wor"), ("hello"):find("l"), ("hello"):find("xyz"))
+print(("a.b.c"):find(".", 1, true), ("a.b.c"):find("%."), ("abc"):find("b", 3))
+print(("key = value"):match("(%w+)%s*=%s*(%w+)"))
+print(("2026-10-15"):match("(%d+)-(%d+)-(%d+)"))
+print(("  padded  "):match("^%s*(.-)%s*$") .. "|")
+print(("[tag]"):match("%[(.*)%]"), ("x=1, y=22, z=333"):match("y=(%d+)"))
+print(("hello"):match(".-(l+)(.*)"))
+local parts = {}
+for k, v in ("a=1, b=2, c=3"):gmatch("(%w+)=(%w+)") do parts[#parts + 1] = k .. ":" .. v end
+print(table.concat(parts, " "))
+local words = {}
+for w in ("The rain in Spain stays mainly"):gmatch("%a+") do words[#words + 1] = w:lower() end
+print(#words, table.concat(words, ","))
+print(("hello world"):gsub("o", "0"))
+print(("hello world"):gsub("(%w+)", "<%1>"))
+print(("hello world"):gsub("%w+", function(w) return w:upper() end, 1))
+print(("$name is $age"):gsub("%$(%w+)", {name = "Ada", age = 36}))
+print(("abc"):gsub("", "-"))
+print(("one two  three"):gsub("%s+", " "))
+print(("x1y22z333"):gsub("%d+", function(d) return "[" .. #d .. "]" end))
+print(("CamelCaseString"):gsub("(%u)", " %1"))
+print(("trim me   "):gsub("%s+$", ""))
+print(("a,b,,c"):find(",,"), ("%d"):gsub("%%", "pct"))
+print(string.rep("ab", 3, "-"), ("abc"):reverse(), ("x"):byte(), ("ABC"):byte(2))
+print(("hello"):sub(2), ("hello"):sub(10), ("hello"):sub(0), ("hello"):sub(-100, 2))
+print(("f(a,b)"):match("^(%w+)%((.-)%)$"))
+print(("192.168.1.20"):match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$"))
+print(("path/to/file.txt"):match("([^/]+)$"), ("path/to/file.txt"):match("^(.*)/"))
+print(("file.tar.gz"):match("^(.-)%.(.*)$"))
+print(("  x  "):len(), ("%5.1f"):format(3.14159), ("<%s>"):format("fmt"))
