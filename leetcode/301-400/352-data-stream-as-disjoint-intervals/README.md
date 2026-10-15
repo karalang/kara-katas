@@ -162,15 +162,23 @@ in the documented `SortedMap` / `SortedSet` surface, filed there.
   their storage as `Map` and `Set` already did, and the ★ arm takes 1.2 s,
   the fastest of the four.
 - **B-2026-10-06-67 (open): `SortedSet.range` is documented but missing.** The
-  design document lists it, and every surface rejects it.
+  design document lists it, and every surface rejects it. Corrected on
+  2026-10-15: v2 now has `SortedSet.range`, but it returns a `Vec` where
+  the spec gives an iterator; the frozen legacy backend still lacks it.
 - **B-2026-10-06-68 (open): the `SortedMap` table in the design document does
   not match the implementation.** It calls `range(from, to)` half-open, while
   both backends return the inclusive `[from, to]`, and it leaves out `floor`
-  and `ceiling`, the two methods this kata is built on.
+  and `ceiling`, the two methods this kata is built on. Narrowed on
+  2026-10-15 (kara `7609de871d`): `range` is half-open on both MIR
+  backends, and docs/library/collections.md now lists `range_inclusive`,
+  `floor` and `ceiling`. What is left does not touch this kata: `range`
+  returns a `Vec` rather than an iterator, and `min`, `max`, `get_or` and
+  `entries` are still missing from the table.
 
-Writing a test for the interpreter fix also turned up B-2026-10-06-69 (open,
-codegen): a `Set` copied through a struct field gets the wrong value size,
-and a later `remove` on it overwrites the stack. None of the arms do this.
+Writing a test for the interpreter fix also turned up B-2026-10-06-69
+(codegen, since fixed in kara `9f6a4205f`): a `Set` copied through a
+struct field got the wrong value size, and a later `remove` on it
+overwrote the stack. None of the arms do this.
 
 The author already knows the language, so none of this counts toward the
 machine-fix rate.

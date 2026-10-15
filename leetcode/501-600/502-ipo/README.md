@@ -186,15 +186,17 @@ The sorted arm's `ready.iter().rev().next()` gives `(ref K, ref V)`, so
 the arm reads `*p` and `*count`. That runs on both v2 backends and
 passes `karac check` with `KARAC_CHECK_LIBRARY=1`; default `karac check`
 types the items by value and refuses the `*`. As for kata 495, default
-`karac check` does not see the Kāra library's iterator types, and
-checking with the library is the opt-in that kara B-2026-10-12-23 is
-measuring.
+`karac check` does not see the Kāra library's iterator types. Kara
+B-2026-10-12-23 was closed in `7609de871d` for serde programs only,
+which now check with the library; default check still refuses this arm
+at that commit.
 
-kara B-2026-10-06-68 (open, from kata 352): `SortedMap.entry`, `min` and
-`max` are implemented but not in the spec's `SortedMap` table
+kara B-2026-10-06-68 (open, from kata 352; narrowed on 2026-10-15 to the
+`Vec` that `range` returns and the methods below): `SortedMap.entry`,
+`min` and `max` are implemented but not in the spec's `SortedMap` table
 (docs/library/collections.md). The sorted arm counts profits with
 `*ready.entry(p).or_insert(0) += 1`, which the implementation accepts
-and the table does not list. It takes the largest entry from the back
-of `iter()`, which is in the spec, rather than `max()`; the
+and the table does not list. It takes the largest entry from the back of
+`iter()`, which is in the spec, rather than `max()`; the
 implementation's `max()` gives the entry by value, where the spec's
 `floor` and `ceiling` give `(ref K, ref V)`.

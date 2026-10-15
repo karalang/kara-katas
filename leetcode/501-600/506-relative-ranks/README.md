@@ -211,5 +211,6 @@ The buckets arm sizes its `Vec` with `*score.iter().max().unwrap()`:
 the spec gives `v.iter().max()` as an `Option[ref i64]`. It runs on
 both v2 backends and passes `karac check` with `KARAC_CHECK_LIBRARY=1`,
 but default `karac check` types the item by value and refuses the `*`.
-As for katas 495 and 502, checking with the library is the opt-in that
-kara B-2026-10-12-23 is measuring.
+As for katas 495 and 502, default `karac check` does not see the Kāra
+library's iterator types; kara B-2026-10-12-23 was closed in
+`7609de871d` for serde programs only.

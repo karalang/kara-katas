@@ -148,6 +148,7 @@ of `iter()` are borrows. That form runs right on `karac __mir-run`
 and passes `karac check` with `KARAC_CHECK_LIBRARY=1`, but default
 `karac check` refuses it: "unary '*' requires 'ref T' ... found 'i64'".
 Default `karac check` does not yet see the Kāra library's iterator
-types; checking with the library is the opt-in that kara B-2026-10-12-23
-is measuring, so this is a data point for that row rather than a new
-one. `(b - a)` passes everywhere and is what the arm uses.
+types. Kara B-2026-10-12-23, the row this was a data point for, was
+closed in `7609de871d` for serde programs only, and default check still
+refuses the `*` here at that commit. `(b - a)` passes everywhere and
+is what the arm uses.

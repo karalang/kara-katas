@@ -138,7 +138,7 @@ IR without optimization passes, so it is not a benchmark.
 
 ## Compiler findings
 
-One, filed as kara B-2026-10-12-19. The ★ arm was first written with
+One, filed as kara B-2026-10-12-19, now fixed. The ★ arm was first written with
 bare loops, `for node in level` and `for child in node.children`, and
 both moves out are refused. `karac fix` rewrote the first to
 `level.into_iter()`, as the diagnostic suggests. For the second, a loop
@@ -147,4 +147,6 @@ over a field of the now-owned `node`, it instead added
 `next.push(child.clone())`: the program then checks clean but copies
 every subtree once per level.
 `node.children.into_iter()`, written by hand, is accepted and is what
-the arm uses.
+the arm uses. Fixed in kara `03d398b991`: `karac fix` now writes
+`node.children.into_iter()` for the second loop too, so the arm is what
+the fixer gives.

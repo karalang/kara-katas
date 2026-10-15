@@ -121,35 +121,39 @@ Python; `bench.sh` timings need a quiet machine):
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 0.10 to 0.13 s |
-| Rust (`rustc -O`) | 0.66 to 0.69 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.52 to 0.58 s |
-| Go | 1.66 to 1.82 s |
+| C (`clang -O3`) | 0.11 to 0.15 s |
+| Rust (`rustc -O`) | 0.71 to 0.80 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.53 to 0.58 s |
+| Go | 1.82 to 1.98 s |
 | Python | 4.9 to 5.0 s |
-| Kāra (`karac build --mir`) | 1.99 to 2.08 s |
+| Kāra (`karac build --mir`) | 0.94 to 1.06 s |
 
 The legacy `karac build` refuses this program (see Verification). So
 `bench.sh` builds the Kāra program with `karac build --mir`, the
 v2 compiled backend; that edit is by hand, on top of the
-`scripts/new-bench.sh` output. The `--mir` row is timed at kara
-`2649217dc8`. Under `karac __mir-llvm-run` the program prints the same
-line in 14.9 s, compile included; that JITs the MIR's IR without
-optimization passes, so it is not a benchmark.
+`scripts/new-bench.sh` output. The table was re-timed at kara
+`7609de871d`, after B-2026-10-13-35 was fixed; the Python row is from
+the first timing, at kara `2649217dc8`. Under `karac __mir-llvm-run`
+the program prints the same line in 14.9 s, compile included; that
+JITs the MIR's IR without optimization passes, so it is not a
+benchmark.
 
-The Kāra row is about three times Rust's, and the reversal itself costs
-nothing measurable: with the swaps taken out the program still takes
-2.02 s. About 0.7 s of it is `chars()` collected into the `Vec[char]`,
-the cost of walking `chars()` (kara B-2026-10-13-31), and about 1.25 s
-is collecting the chars back into a `String` (kara B-2026-10-13-35,
-below). The bytes arm, timed on the same bench, takes 0.06 s.
+The Kāra row was about three times Rust's at first, 1.99 to 2.08 s,
+and the reversal itself cost nothing measurable: with the swaps taken
+out the program still took 2.02 s. About 0.7 s of it was `chars()`
+collected into the `Vec[char]`, the cost of walking `chars()` (kara
+B-2026-10-13-31, still open), and about 1.25 s was collecting the chars
+back into a `String` (kara B-2026-10-13-35, below, now fixed). The
+bytes arm, timed on the same bench, takes 0.06 s.
 
 ## Compiler findings
 
-kara B-2026-10-13-35 (open), filed from this kata: collecting chars into
-a `String` on the v2 compiled backend is a chain of three runtime calls
-per char (`karac_mir_string_push_char`, `string_push_str`,
-`vec_reserve`), with nothing reserved up front, about 6 ns a char. It is
-most of the ★ arm's time in the bench.
+kara B-2026-10-13-35, filed from this kata and fixed in kara
+`16cbe03472`: collecting chars into a `String` on the v2 compiled
+backend was a chain of three runtime calls per char
+(`karac_mir_string_push_char`, `string_push_str`, `vec_reserve`), with
+nothing reserved up front, about 6 ns a char. It was most of the ★
+arm's time in the bench, which halved with the fix.
 
 kara B-2026-10-13-31 (open, filed from kata 520) is the other part:
 walking a `Str`'s `chars()` costs about 3.5 ns a char against 1 for its

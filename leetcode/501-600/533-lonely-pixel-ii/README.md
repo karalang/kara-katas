@@ -156,26 +156,27 @@ timings need a quiet machine):
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 0.43 to 0.49 s |
-| Rust (`rustc -O`) | 1.46 to 1.61 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.75 to 1.92 s |
-| Go | 3.50 to 4.10 s |
+| C (`clang -O3`) | 0.38 to 0.39 s |
+| Rust (`rustc -O`) | 1.29 to 1.53 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.39 to 1.62 s |
+| Go | 3.44 to 3.59 s |
 | Python | 29.6 to 30.0 s |
-| Kāra (`karac build --mir`) | 3.78 to 3.90 s |
+| Kāra (`karac build --mir`) | 1.44 to 1.60 s |
 
 The legacy `karac build` refuses this program (see Verification). So
 `bench.sh` builds the Kāra program with `karac build --mir`, the v2
 compiled backend. That edit is by hand, on top of the
-`scripts/new-bench.sh` output. The `--mir` row is timed at kara
-`21ffa33dff`.
+`scripts/new-bench.sh` output. The table was re-timed at kara
+`7609de871d`, after B-2026-10-13-30 was fixed; the Python row is from
+the first timing, at kara `21ffa33dff`.
 
-Most of the gap to Rust is the keys. Pushing a `char` onto a `String`
-is a call into the runtime for every char on the v2 compiled backend,
-where `Vec.push` has an inline path. A loop that builds 2,000,000 keys
-of 200 chars and nothing else takes 2.78 s under `karac build --mir`
-against 0.77 s for Rust with overflow checks, while counting
-ready-made keys in a `Map` is close to Rust's (0.44 against 0.36 s).
-Filed as kara B-2026-10-13-30.
+The Kāra row is now level with Rust with overflow checks. It was 3.78
+to 3.90 s at first, and most of that gap was the keys: pushing a `char`
+onto a `String` was a call into the runtime for every char on the v2
+compiled backend. A loop that builds 2,000,000 keys of 200 chars and
+nothing else took 2.78 s under `karac build --mir` against 0.77 s for
+Rust with overflow checks. Filed as kara B-2026-10-13-30, and fixed in
+kara `16cbe03472`, which gives an ASCII `String.push` an inline path.
 
 Under `karac __mir-llvm-run` the program prints the same line in
 33.9 s, compile included; that JITs the MIR's IR without optimization
@@ -190,8 +191,9 @@ though design.md declares `impl[T: Ord] Ord for Vec[T]`, so
 differential under every `karac` command; the copies that sort the
 rows' `String`s instead run right.
 
-kara B-2026-10-13-30 (perf, open), filed from this kata: on the v2
-compiled backend `String.push(c)` is an out-of-line runtime call per
-char, through `karac_mir_string_push_char`, `push_str` and
-`vec_reserve`, so a loop that builds keys a `char` at a time runs 3.6
-times slower than Rust's (see Benchmarks).
+kara B-2026-10-13-30 (perf), filed from this kata and fixed in kara
+`16cbe03472`: on the v2 compiled backend `String.push(c)` was an
+out-of-line runtime call per char, through
+`karac_mir_string_push_char`, `push_str` and `vec_reserve`, so a loop
+that builds keys a `char` at a time ran 3.6 times slower than Rust's.
+The bench now runs level with Rust's (see Benchmarks).

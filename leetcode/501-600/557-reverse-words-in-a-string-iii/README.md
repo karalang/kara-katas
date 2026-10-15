@@ -127,34 +127,37 @@ machine):
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 1.82 to 2.00 s |
-| Rust (`rustc -O`) | 3.23 to 3.37 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 3.14 to 3.30 s |
-| Go | 3.67 to 3.79 s |
+| C (`clang -O3`) | 2.01 to 2.18 s |
+| Rust (`rustc -O`) | 3.23 to 3.68 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 3.26 to 3.79 s |
+| Go | 4.62 to 4.66 s |
 | Python | 5.19 to 5.28 s |
-| Kāra (`karac build --mir`) | 6.30 to 6.95 s |
+| Kāra (`karac build --mir`) | 5.41 to 5.58 s |
 
 The legacy `karac build` refuses this program: it moves `texts[(round *
 7 + g) % count]` out of the index where v2 borrows it. So `bench.sh`
 builds the Kāra program with `karac build --mir`, the v2 compiled
 backend; that edit is by hand, on top of the `scripts/new-bench.sh`
-output. The `--mir` row is timed at kara `af2123abc5`. Under `karac
-__mir-llvm-run` the program prints the same line in 30.6 s, compile
-included; that JITs the MIR's IR without optimization passes, so it is
-not a benchmark.
+output. The table was re-timed at kara `7609de871d`, after
+B-2026-10-13-30 and B-2026-10-13-35 were fixed; the Python row is from
+the first timing, at kara `af2123abc5`, when the Kāra row was 6.30 to
+6.95 s. Under `karac __mir-llvm-run` the program prints the same line
+in 30.6 s, compile included; that JITs the MIR's IR without
+optimization passes, so it is not a benchmark.
 
-The Kāra row is about twice Rust's. Most of the gap is `split`.
+The Kāra row is about 1.6 times Rust's. Most of the gap is `split`.
 With the reversing and joining taken out, splitting the texts alone
 takes 2.37 s against Rust's 0.57: Kāra's `split` builds a `Vec[String]`,
 a fresh allocation and copy for every word, where Rust's yields views
 into the text. The language's own spec has `split` return an iterator
 (kara B-2026-10-12-7), and B-2026-10-03-10 records its allocation per
-word. Reversing a 6-character word ten million times costs 0.86 s
-against Rust's 0.44, the rest of the gap: on the compiled MIR backend
-each char walked backwards is an out-of-line runtime call,
-`karac_mir_char_before_byte`, and each char pushed is another,
-`karac_mir_string_push_char`
-(B-2026-10-13-30, B-2026-10-13-31, B-2026-10-13-35).
+word. At the first timing, reversing a 6-character word ten million
+times cost 0.86 s against Rust's 0.44, the rest of the gap: on the
+compiled MIR backend each char walked backwards is an out-of-line
+runtime call, `karac_mir_char_before_byte` (B-2026-10-13-31, open), and
+each char pushed was another, `karac_mir_string_push_char`
+(B-2026-10-13-30 and B-2026-10-13-35, fixed in kara `16cbe03472`,
+which gives an ASCII push an inline path).
 
 ## Compiler findings
 

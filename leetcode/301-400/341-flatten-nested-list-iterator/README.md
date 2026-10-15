@@ -173,6 +173,10 @@ The benchmark kernel's sink matches all four language twins and Python
   available on a user `Iterator`.** `NestedIter.new(items).collect()` and
   `.sum()` fail `no method 'collect' on type 'NestedIter'`, where design.md
   defines them on every `Iterator`. The trait arm collects with a `for` loop.
+  Narrowed on 2026-10-15 (kara `7609de871d`): both MIR backends now run
+  `collect` and `sum` on a user `Iterator`, and so does `karac check` with
+  `KARAC_CHECK_LIBRARY=1`; the default `karac check` still refuses them,
+  so the `for` loop stays until that is fixed too.
 - **B-2026-10-05-14 (perf, medium): `--interp` copied the whole `String` on every
   `push`.** The arms' input generator builds a 450 KB text one character at a
   time, and the ★ arm took 42 s under `--interp`. Fixed in the kara repo: a
