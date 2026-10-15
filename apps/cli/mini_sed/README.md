@@ -2,7 +2,7 @@
 
 A stream editor for a subset of GNU sed 4.9, run the way deploy scripts
 and log pipelines run sed. The run writes eight input files into `data/`
-and a `jobs.tsv` of 71 sed invocations (one per line, tab-separated
+and a `jobs.tsv` of 68 sed invocations (one per line, tab-separated
 arguments). It then runs each job and prints what sed prints: a `$ sed
 ...` line, stdout, then stderr, and `[exit N]` when the status is not 0.
 A job `@cat FILE` shows a file an earlier job wrote with `w` or `-i`.
