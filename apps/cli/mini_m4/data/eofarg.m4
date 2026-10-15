@@ -1,0 +1,2 @@
+before
+define(`broken', `x'
