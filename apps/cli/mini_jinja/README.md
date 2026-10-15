@@ -59,15 +59,15 @@ Author errors (the diagnostics were right):
   binding.
 
 Compiler gaps, worked around and cited in the source:
-- B-2026-10-15-36 (new): `karac check` reads a method call on a
+- B-2026-10-15-37 (new): `karac check` reads a method call on a
   parameter named `ast` (or `compiler`) as a call into the comptime
   module of that name. The syntax-tree parameter is `tree`.
-- B-2026-10-15-37 (new): `karac check` takes `f64.parse(t.text)` as a
+- B-2026-10-15-38 (new): `karac check` takes `f64.parse(t.text)` as a
   move of the field `t.text`. The lexer parses the number from a local.
-- B-2026-10-15-38 (new): `karac check` reports a loop-local `name`, read
+- B-2026-10-15-39 (new): `karac check` reports a loop-local `name`, read
   in an `if` and then moved into an enum constructor inside a call, as
   moved on the previous iteration. The parser clones the name.
-- B-2026-10-15-39 (new): on MIR, a user enum variant named `None` takes
+- B-2026-10-15-40 (new): on MIR, a user enum variant named `None` takes
   over every bare `None` of an `Option` ("invalid MIR: Option takes 1
   fields, got 0"). Python's None is `Val.Nil`.
 
