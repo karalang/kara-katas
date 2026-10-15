@@ -1,0 +1,168 @@
+# shop-api: a web service's logging from startup to shutdown.
+# Fields are separated by ' | '. Message arguments are s: (str),
+# i: (int) and f: (float); x:key=value is an `extra` field.
+
+# Nothing is configured yet, so only the last-resort handler runs.
+log app | INFO | starting shop-api %s | s:2.4.1
+log app | WARNING | config file %r not found, using defaults | s:/etc/shop/shop.toml
+tick 250
+basic | level=INFO
+log app | INFO | listening on port %d | i:8080
+log app.http | DEBUG | not shown: the root logger is at INFO
+basic | level=DEBUG | stream=stdout | format=%(levelname)s %(message)s
+log app.http | DEBUG | not shown either: the second basicConfig did nothing
+tick 1000
+basic | force | level=DEBUG | stream=stdout | format=%(asctime)s %(levelname)-8s %(name)s %(message)s
+log app.http | DEBUG | shown: force replaced the handler
+getlogger app.cache.redis
+log app.cache.redis | INFO | connected to %s:%d | s:10.0.0.7 | i:6379
+log urllib3.connectionpool | DEBUG | Starting new HTTPS connection (%d): %s:%s | i:1 | s:payments.example | i:443
+log app | INFO | %-6s|%6s|%06.2f|%+d|%x|%X|%o|%5.1f%% | s:ab | s:cd | f:3.14159 | i:42 | i:255 | i:48879 | i:8 | f:99.5
+log app | INFO | %r %r %r %.3s | s:it's | s:say "hi" | i:-7 | s:truncated
+tree
+
+tick 1500
+config | data/config/base.json
+tree
+enabled app.db
+enabled app.http.access
+enabled app
+tick 137
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/products | i:200 | i:5123 | f:12.34 | x:request_id=r-1001
+tick 274
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/products/42 | i:200 | i:811 | f:3.07 | x:request_id=r-1002
+tick 411
+log app.http.access | INFO | %s %s %d %dB %sms | s:POST | s:/api/cart | i:201 | i:96 | f:18.91 | x:request_id=r-1003
+tick 548
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/cart | i:200 | i:412 | f:4.2 | x:request_id=r-1004
+log app.db | DEBUG | SELECT * FROM products WHERE id = %d | i:42
+log app.db.pool | DEBUG | checked out connection %d of %d | i:3 | i:10
+log app.db | INFO | migration %s applied | s:0042_add_index
+tick 685
+log app.http.access | INFO | %s %s %d %dB %sms | s:DELETE | s:/api/cart/7 | i:204 | i:0 | f:6.66 | x:request_id=r-1005
+tick 822
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/favicon.ico | i:404 | i:9 | f:0.31
+tick 959
+log app.http.access | INFO | %s %s %d %dB %sms | s:POST | s:/api/checkout | i:502 | i:37 | f:1504.88 | x:request_id=r-1007
+log app.db | ERROR | deadlock detected, retrying (%d/%d) | i:1 | i:3
+log app.db | DEBUG | ROLLBACK
+tick 1096
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/products?page=2 | i:200 | i:4980 | f:11.1 | x:request_id=r-1008
+tick 1233
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/health | i:200 | i:17 | f:0.38
+tick 1370
+log app.http.access | INFO | %s %s %d %dB %sms | s:PUT | s:/api/profile | i:200 | i:233 | f:27.02 | x:request_id=r-1010
+tick 1507
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/api/orders | i:200 | i:2048 | f:15.51 | x:request_id=r-1011
+tick 1644
+log app.http.access | INFO | %s %s %d %dB %sms | s:GET | s:/robots.txt | i:200 | i:24 | f:0.29 | x:request_id=r-1012
+log app.http.access | INFO | %s %s | s:GET | x:name=oops
+log app.http.access | INFO | %s %s | s:GET | x:message=oops
+log urllib3.connectionpool | WARNING | Retrying (%s) after connection broken | s:Retry(total=2)
+log app | WARNING | low disk space: %d%% free | i:7
+log app.cache.redis | WARNING | evicted %d keys | i:1200
+log stripe.http | WARNING | slow response from %s | s:api.stripe.example
+log stripe.http | ERROR | charge %s failed: card_declined | s:ch_3P
+log app.payments | WARNING | charge %s declined, asking the customer | s:ch_3P
+
+level app.db | WARNING
+enabled app.db.pool
+log app.db.pool | INFO | pool resized to %d | i:20
+log app.db | WARNING | replica lag %d s | i:12
+level app.db | DEBUG
+disable | WARNING
+log app.payments | WARNING | not shown: logging.disable(WARNING)
+log app.payments | ERROR | refund %s failed | s:re_9
+disable | NOTSET
+addlevel | 25 | NOTICE
+log app.payments | NOTICE | payout %s scheduled | s:po_77
+log app.payments | 15 | not shown: level 15 is below the root's INFO
+level app.payments | 15
+log app.payments | 15 | shown? the logger allows it, but console is at INFO
+log app.payments | 35 | level 35 has no name
+tree
+
+tick 2000
+config | data/config/verbose.json
+tree
+log app | DEBUG | app is enabled again
+log app.http | INFO | %s requests in the last minute | i:12
+log app.http.access | INFO | %s %s %d | s:GET | s:/api/after-reload | i:200 | x:request_id=r-2001
+log app.db | INFO | vacuum finished in %.2f s | f:4.567
+log app.db.pool | WARNING | connection %d reset | i:4
+log stripe | ERROR | not shown: stripe goes to a NullHandler
+log app.payments | 15 | reset by the reload, so INFO is the effective level
+log app.payments | NOTICE | NOTICE survives the reload
+
+# Reloads that fail part way.
+tick 100
+config | data/config/broken/no_version.json
+log app.db | WARNING | after no_version
+log app | WARNING | after no_version
+tick 100
+config | data/config/broken/version_two.json
+log app.db | WARNING | after version_two
+log app | WARNING | after version_two
+tick 100
+config | data/config/broken/percent_brace.json
+log app.db | WARNING | after percent_brace
+log app | WARNING | after percent_brace
+tick 100
+config | data/config/broken/bad_style.json
+log app.db | WARNING | after bad_style
+log app | WARNING | after bad_style
+tick 100
+config | data/config/broken/dollar_no_fields.json
+log app.db | WARNING | after dollar_no_fields
+log app | WARNING | after dollar_no_fields
+tick 100
+config | data/config/broken/brace_conversion.json
+log app.db | WARNING | after brace_conversion
+log app | WARNING | after brace_conversion
+tick 100
+config | data/config/broken/brace_spec.json
+log app.db | WARNING | after brace_spec
+log app | WARNING | after brace_spec
+tick 100
+config | data/config/broken/bare_dollar.json
+log app.db | WARNING | after bare_dollar
+log app | WARNING | after bare_dollar
+tick 100
+config | data/config/broken/bad_level.json
+log app.db | WARNING | after bad_level
+log app | WARNING | after bad_level
+tick 100
+config | data/config/broken/bad_class.json
+log app.db | WARNING | after bad_class
+log app | WARNING | after bad_class
+tick 100
+config | data/config/broken/bad_kwarg.json
+log app.db | WARNING | after bad_kwarg
+log app | WARNING | after bad_kwarg
+tick 100
+config | data/config/broken/bad_target.json
+log app.db | WARNING | after bad_target
+log app | WARNING | after bad_target
+tick 100
+config | data/config/broken/bad_flush_level.json
+log app.db | WARNING | after bad_flush_level
+log app | WARNING | after bad_flush_level
+tick 100
+config | data/config/broken/bad_formatter_ref.json
+log app.db | WARNING | after bad_formatter_ref
+log app | WARNING | after bad_formatter_ref
+tick 100
+config | data/config/broken/bad_ref.json
+log app.db | WARNING | after bad_ref
+log app | WARNING | after bad_ref
+tree
+
+tick 3000
+config | data/config/final.json
+log app.http | INFO | buffered %d | i:1
+log app | WARNING | not buffered
+log app.http | ERROR | buffered %d, and ERROR is the default flush level | i:2
+log app.http | INFO | buffered %d, still in the buffer at exit | i:3
+tree
+shutdown
+files

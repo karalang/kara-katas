@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "formatters": {
+    "plain": {
+      "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+    },
+    "access": {
+      "format": "{asctime} {request_id} {message}",
+      "style": "{",
+      "datefmt": "%d/%b/%Y:%H:%M:%S",
+      "defaults": {
+        "request_id": "-"
+      }
+    },
+    "json": {
+      "format": "{\"t\": \"$asctime\", \"lvl\": \"$levelname\", \"logger\": \"${name}\", \"msg\": \"$message\"}",
+      "style": "$"
+    },
+    "db": {
+      "format": "%(relativeCreated)8d ms %(levelname).1s %(name)-12s|%(message)s"
+    }
+  },
+  "filters": {
+    "app_only": {
+      "name": "app"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "INFO",
+      "formatter": "plain",
+      "filters": [
+        "app_only"
+      ],
+      "stream": "ext://sys.stdout"
+    },
+    "errors": {
+      "class": "logging.StreamHandler",
+      "level": "ERROR",
+      "formatter": "json",
+      "stream": "ext://sys.stderr"
+    },
+    "access_file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "filename": "data/logs/access.log",
+      "maxBytes": 400,
+      "backupCount": 2,
+      "formatter": "access",
+      "encoding": "utf-8"
+    },
+    "db_file": {
+      "class": "logging.FileHandler",
+      "filename": "data/logs/db.log",
+      "mode": "w",
+      "formatter": "db",
+      "encoding": "utf-8"
+    },
+    "buffer": {
+      "class": "logging.handlers.MemoryHandler",
+      "capacity": 3,
+      "flushLevel": "ERROR",
+      "target": "db_file"
+    }
+  },
+  "loggers": {
+    "app.http.access": {
+      "handlers": [
+        "access_file"
+      ],
+      "level": "INFO",
+      "propagate": false
+    },
+    "app.db": {
+      "handlers": [
+        "buffer"
+      ],
+      "level": "DEBUG"
+    }
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": [
+      "console",
+      "errors"
+    ]
+  }
+}
