@@ -115,16 +115,20 @@ __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
 clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. The differential
 prints its line under all three. `karac check` passes every arm, the
-differential and the bench program. All at kara `d6111aa22a`, with the
-runtime archives rebuilt from that tree.
+differential and the bench program. All at kara `d6111aa22a` for the
+debug build, with the runtime archives rebuilt from that tree, and
+`14acd67779` for the release build that runs `check` and `__mir-run`.
 
-The frozen legacy backends run every arm under `karac run`, `karac run
---interp` and `karac build`, sequential and with `KARAC_AUTO_PAR=1`, and
-the differential under `karac run --interp` and `karac build`; all print
-the same output, with ownership warnings only, since legacy still treats
-a bare parameter as owned. The table arm takes 193 s under `--interp`,
-which prices every one of the last case's 23,760 needs. Legacy refuses
-the bench program; see below.
+The frozen legacy backends refuse every arm and the differential at
+type checking. design.md asks for a `mut` marker on every argument to a
+`mut ref` parameter, a `mut ref` binding handed on included, as in
+`cheapest(price, special, rest, mut memo)` and `next_random(mut seed)`;
+legacy rejects that marker, saying the argument is already a mut-ref.
+An earlier version of this kata left those markers out, which v2 also
+accepts (B-2026-10-14-35, open); then legacy ran every arm under `karac
+run`, `karac run --interp` and `karac build`, sequential and with
+`KARAC_AUTO_PAR=1`, and printed the same output, the table arm taking
+193 s under `--interp`. Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
 
@@ -154,14 +158,15 @@ shops:
 | Python | 6.01 to 6.02 s |
 | Kāra (`karac build --mir`) | 0.55 to 0.56 s |
 
-`bench.sh` builds the Kāra program with `karac build --mir`, the
-v2 compiled backend, since the legacy `karac build` refuses the bench
+`bench.sh` builds the Kāra program with `karac build --mir`, the v2
+compiled backend, since the legacy `karac build` refuses the bench
 program: handing `prices[s]` to `shopping_offers` moves an element out
-of a `Vec` while parameters are owned. That edit is by hand, on top of
-the `scripts/new-bench.sh` output. A copy outside the kata that adds
-`.clone()` to the three arguments builds under legacy and takes 0.26 to
-0.28 s. Under `karac __mir-llvm-run` the program prints the same line in
-3.8 s, compile included; that JITs the MIR's IR without optimization
+of a `Vec` while parameters are owned, and it rejects the `mut` markers
+above. That edit is by hand, on top of the `scripts/new-bench.sh`
+output. A copy outside the kata that adds `.clone()` to the three
+arguments and leaves out the markers builds under legacy and takes 0.26
+to 0.28 s. Under `karac __mir-llvm-run` the program prints the same line
+in 3.8 s, compile included; that JITs the MIR's IR without optimization
 passes, so it is not a benchmark.
 
 So the v2 build takes about twice legacy's time, over the M2 bar of
@@ -180,5 +185,7 @@ B-2026-10-14-69 (open): a short `Vec` grown by `push` allocates twice on
 the MIR compiled backend, where legacy allocates once; this kata's bench
 is 2.0x legacy, against an M2 bar of 1.5x.
 
-The legacy refusal of the bench program above is not filed, because
-legacy is frozen.
+B-2026-10-14-35 (open): v2 accepts a `mut ref` binding handed on to a
+`mut ref` parameter without the `mut` marker design.md asks for.
+
+The legacy refusals above are not filed, because legacy is frozen.

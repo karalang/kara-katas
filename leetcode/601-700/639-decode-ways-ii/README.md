@@ -109,16 +109,21 @@ __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
 clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. The differential
 prints its line under all three. `karac check` passes every arm, the
-differential and the bench program. All at kara `d6111aa22a`, with the
-runtime archives rebuilt from that tree.
+differential and the bench program. All at kara `d6111aa22a` for the
+debug build, with the runtime archives rebuilt from that tree, and
+`14acd67779` for the release build that runs `check` and `__mir-run`.
 
-The frozen legacy backends do less. `karac run --interp` prints the same
-output for the ★, table and backward arms; `karac run` and `karac build`
-panic in code generation on those three
-(`src/codegen/assoc_call.rs:2826`, an integer where a struct was
-expected). The states arm and the differential stop at type checking,
-because legacy types the items of `bytes().iter()` by value, so `*c` is
-an error. Legacy is frozen, so these are noted, not filed.
+The frozen legacy backends refuse every arm and the differential at
+type checking. The ★, table and backward arms hand `seed`, already a
+`mut ref` parameter, on to `next_random(mut seed)` with the `mut` marker
+design.md asks for, and legacy rejects that marker; the states arm and
+the differential stop earlier, because legacy types the items of
+`bytes().iter()` by value, so `*c` is an error. With the markers left
+out, as an earlier version of this kata did, `karac run --interp`
+printed the same output for the three arms and `karac run` and `karac
+build` panicked in code generation (`src/codegen/assoc_call.rs:2826`, an
+integer where a struct was expected). Legacy is frozen, so these are
+noted, not filed.
 
 ## Benchmarks
 
@@ -147,16 +152,17 @@ timings need a quiet machine), each including making the strings:
 | Python | 13.1 to 13.4 s |
 | Kāra (`karac build --mir`) | 0.39 to 0.42 s |
 
-`bench.sh` builds the Kāra program with `karac build --mir`, the
-v2 compiled backend, since the legacy `karac build` refuses the bench
+`bench.sh` builds the Kāra program with `karac build --mir`, the v2
+compiled backend, since the legacy `karac build` refuses the bench
 program: handing `texts[round % 20]` to `num_decodings` moves an element
-out of a `Vec` while parameters are owned. That edit is by hand, on top
-of the `scripts/new-bench.sh` output. A copy outside the kata that adds
-`.clone()` to the argument, copying a string of 100,000 bytes every
-round, builds under legacy and takes 0.40 to 0.42 s. Under `karac
-__mir-llvm-run` the program prints the same line in 2.3 s, compile
-included; that JITs the MIR's IR without optimization passes, so it is
-not a benchmark.
+out of a `Vec` while parameters are owned, and it rejects the `mut`
+markers above. That edit is by hand, on top of the
+`scripts/new-bench.sh` output. A copy outside the kata that adds
+`.clone()` to the argument and leaves out the markers, copying a string
+of 100,000 bytes every round, builds under legacy and takes 0.40 to 0.42
+s. Under `karac __mir-llvm-run` the program prints the same line in 2.3
+s, compile included; that JITs the MIR's IR without optimization passes,
+so it is not a benchmark.
 
 The Kāra build runs level with C and Rust and ahead of Go: each
 character costs a few compares and one division for the modulus, in

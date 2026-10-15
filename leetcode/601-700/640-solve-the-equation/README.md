@@ -108,16 +108,20 @@ LeakSanitizer): output identical, no error, no leak. The differential
 prints its line under all three. `karac check` passes every arm, the
 differential and the bench program. All at kara `d6111aa22a` for the
 debug build, with the runtime archives rebuilt from that tree, and
-`4d950671f7` for the release build that runs `check` and `__mir-run`.
+`14acd67779` for the release build that runs `check` and `__mir-run`.
 
-The frozen legacy backends do less. `karac run --interp` prints the same
-output for the ★, once and terms arms; `karac run` and `karac build`
-panic in code generation on those three
-(`src/codegen/assoc_call.rs:2826`, an integer where a struct was
-expected, the same panic kata 639 meets). The split arm and the
-differential stop at type checking: their parameters are still owned
+The frozen legacy backends refuse every arm and the differential at
+type checking. The ★, once and terms arms hand `seed`, already a
+`mut ref` parameter, on to `next_random(mut seed)` with the `mut` marker
+design.md asks for, and legacy rejects that marker. The split arm and
+the differential also stop because their parameters are still owned
 under legacy, so handing `sides[0]` to `side` moves an element out of a
-`Vec`. Legacy is frozen, so these are noted, not filed.
+`Vec`. With the markers left out, as an earlier version of this kata
+did, `karac run --interp` printed the same output for the three arms and
+`karac run` and `karac build` panicked in code generation
+(`src/codegen/assoc_call.rs:2826`, an integer where a struct was
+expected, the same panic kata 639 meets). Legacy is frozen, so these are
+noted, not filed.
 
 ## Benchmarks
 
@@ -145,16 +149,17 @@ machine), each including making the equations:
 | Python | 21.5 to 22.3 s |
 | Kāra (`karac build --mir`) | 0.33 s |
 
-`bench.sh` builds the Kāra program with `karac build --mir`, the
-v2 compiled backend, since the legacy `karac build` refuses the bench
+`bench.sh` builds the Kāra program with `karac build --mir`, the v2
+compiled backend, since the legacy `karac build` refuses the bench
 program: handing `equations[round % 20]` to `solve_equation` moves an
-element out of a `Vec` while parameters are owned. That edit is by hand,
-on top of the `scripts/new-bench.sh` output. A copy outside the kata
-that adds `.clone()` to the argument, copying an equation every round,
-builds under legacy and takes 0.63 to 0.67 s. Under `karac
-__mir-llvm-run` the program prints the same line in 3.0 s, compile
-included; that JITs the MIR's IR without optimization passes, so it is
-not a benchmark.
+element out of a `Vec` while parameters are owned, and it rejects the
+`mut` markers above. That edit is by hand, on top of the
+`scripts/new-bench.sh` output. A copy outside the kata that adds
+`.clone()` to the argument and leaves out the markers, copying an
+equation every round, builds under legacy and takes 0.63 to 0.67 s.
+Under `karac __mir-llvm-run` the program prints the same line in 3.0 s,
+compile included; that JITs the MIR's IR without optimization passes, so
+it is not a benchmark.
 
 The Kāra build, with its overflow checks on, sits between Rust without
 them and Rust with them, and ahead of C, Go and Python. That Rust's
