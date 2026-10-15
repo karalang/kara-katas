@@ -64,8 +64,8 @@ are byte-identical to the ones `mk.py` writes.
 ## Edits from mini_yaml.orig.kara to mini_yaml.kara
 
 Author errors (the diagnostics were right):
-- Six functions passed a bare `Mark` parameter on into a struct, and the
-  scanner used one token's `start` twice. `Mark` is four integers, so it
+- Three functions stored bare `Mark` parameters in a struct, and the
+  scanner and parser read a token's `start` again after moving it. `Mark` is four integers, so it
   derives `Copy, Clone`, as the diagnostic suggested.
 - `let files = ["deploy.yaml", ...]` is an array of `String` (a string
   literal is a `String` by default), so `files[i]` could not move out.
