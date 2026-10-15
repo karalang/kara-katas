@@ -1,0 +1,40 @@
+version: "3.8"
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "3"}
+
+services:
+  web:
+    <<: *common
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+      - 443:443
+    depends_on: [api]
+  api:
+    <<: *common
+    build: ./api
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://shop@db/shop
+      - WORKERS=4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      retries: 3
+  db:
+    image: postgres:16
+    ports:
+      - 5432:5432
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  ssh:
+    image: linuxserver/openssh-server
+    ports:
+      - 22:22
+
+volumes:
+  db-data:

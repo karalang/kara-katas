@@ -1,0 +1,67 @@
+# shop API: deployment, service and config
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-api
+  namespace: shop
+  labels: &labels
+    app: shop-api
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels: *labels
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: api
+          image: registry.example.com/shop/api:1.9.0
+          args: ["--port=8000", "--workers", "4"]
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DEBUG
+              value: "false"
+            - name: CACHE_TTL
+              value: '300'
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits:
+              cpu: "1"
+              memory: 512Mi
+        - name: log-shipper
+          image: registry.example.com/infra/vector:0.41
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-api
+  namespace: shop
+spec:
+  type: ClusterIP
+  selector:
+    app: shop-api
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-api-config
+data:
+  app.ini: |
+    [server]
+    port = 8000
+
+    [cache]
+    ttl = 300
+  motd: >
+    Welcome to the shop API.
+    Deploys happen on Tuesdays.
+
+    Ask in #shop-ops.
+  empty.txt: ""

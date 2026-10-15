@@ -1,0 +1,22 @@
+- hosts: web
+  become: yes
+  vars:
+    http_port: 80
+    max_clients: 200
+  tasks:
+    - name: install nginx
+      apt: name=nginx state=present update_cache=yes
+    - name: write config
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: 0644
+      notify: restart nginx
+    - name: config dir
+      file: {path: /etc/nginx/conf.d, state: directory, mode: "0755"}
+    - name: open firewall
+      ufw: rule=allow port={{ http_port }}
+      when: ansible_os_family == "Debian" and firewall_enabled
+  handlers:
+    - name: restart nginx
+      service: name=nginx state=restarted
