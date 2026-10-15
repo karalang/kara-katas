@@ -1,0 +1,69 @@
+{ print $1 }	access.log
+-F:	$3 >= 1000 && $7 !~ /nologin/ { print $1, $6 }	passwd
+END { print NR, "requests" }	access.log
+{ s += $10 } END { print s, "bytes,", s / NR, "average" }	access.log
+$9 >= 500	access.log
+-F:	-v	OFS=:	$7 == "/bin/bash" { $7 = "/bin/zsh"; print }	passwd
+{ print NR ": " $NF "s " $(NF-2) }	access.log
+NR % 3 == 1	passwd
+NR == 2, NR == 4 { print FNR, FILENAME, $1 }	passwd
+/ERROR/, /^$/	app.log
+length($0) > 100 { print NR, length($0) }	access.log
+{ print length }	a.txt	b.txt
+FNR == 1 { print "--", FILENAME } { print FNR, NR, $0 }	a.txt	b.txt
+{ c[$1]++ } END { for (ip in c) n++; print n, "distinct clients" }	access.log
+!seen[$9]++ { print $9 }	access.log
+-f	report.awk	access.log
+{ t[$1] += $NF } END { for (k in t) if (t[k] > 1) print k, t[k] }	access.log
+-F\t	NR == FNR { name[$1] = $2; next } { print $1, ($2 in name ? name[$2] : "unknown(" $2 ")"), $3 }	users.tsv	orders.tsv
+-F\t	-v	OFS=\t	NR == FNR { role[$1] = $3; next } $2 in role { sum[role[$2]] += $3 } END { print "dev", sum["dev"]; print "admin", sum["admin"]; print "ops", sum["ops"] + 0 }	users.tsv	orders.tsv
+BEGIN { a[1,2] = "x"; a["k"] = 1; if ((1,2) in a) print "pair"; for (k in a) if (index(k, SUBSEP)) { split(k, p, SUBSEP); print p[1], p[2] }; delete a[1,2]; print length(a); delete a; print length(a) }
+function isort(keys, vals, n,   i, j, k) {    for (i = 2; i <= n; i++) {        k = keys[i]        for (j = i - 1; j >= 1 && vals[keys[j]] < vals[k]; j--) keys[j + 1] = keys[j]        keys[j + 1] = k    }}{ if (!($1 in hits)) ips[++n] = $1; hits[$1]++ }END { isort(ips, hits, n); for (i = 1; i <= n && i <= 3; i++) printf "%-14s %d\n", ips[i], hits[ips[i]] }	access.log
+-F,	NR > 1 { rev[$2] += $4 * $5; if (!($2 in seen)) { seen[$2]; r[++n] = $2 } } END { for (i = 1; i <= n; i++) printf "%-6s %9.2f\n", r[i], rev[r[i]]; }	sales.csv
+-F,	NR > 1 && $3 == "" { print "line " NR ": no product" }	sales.csv
+-F,	NR > 1 { printf "%s %-9s %5.1f%%\n", $1, $3, 100 * $4 / 169 }	sales.csv
+NR > 1 && $3 > 10 { printf "%-8s %5d %5.1f%% ", $1, $2, $3; for (i = 11; i <= NF; i++) printf "%s%s", $i, (i < NF ? " " : "\n") }	ps.txt
+NR > 1 { mem[$1] += $6 } END { print "postgres", mem["postgres"] " KiB"; print "www-data", mem["www-data"] / 1024 " MiB" }	ps.txt
+NR > 1 { sub(/%/, "", $5); if ($5 + 0 >= 90) print "ALERT", $6, $5 "%", int($4 / 1024) " MiB free" }	df.txt
+NR > 1 { u += $3; t += $2 } END { printf "%.1f%% of %.2f GiB used\n", 100 * u / t, t / 1048576 }	df.txt
+BEGIN { RS = ""; FS = "\n" } { printf "%s <%s> %d lines\n", $1, $2, NF }	contacts.txt
+BEGIN { RS = ";" } { split($0, kv, "="); printf "%-8s %s\n", kv[1], kv[2] }	env.conf
+-F[:,]	NR <= 4 { print NF, $5, $6 }	passwd
+{ n = split($4, t, /[\/:\[]/); print n, t[2], t[3], t[4] ":" t[5] }	access.log
+{ $3 = ""; print; print NF }	a.txt
+{ NF = 2; print } END { $0 = "p   q  r"; print NF, $3; $5 = "e"; print; print NF }	nums.txt
+-v	OFS=-	{ $1 = $1; print }	nums.txt
+BEGIN { FS = "," } { print NF ": " $2 "|" $3 }	sales.csv
+{ gsub(/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/, "x.x.x.x"); print $1, $NF }	access.log
+match($0, /took [0-9]+ms/) { print substr($0, RSTART + 5, RLENGTH - 7), "ms at", substr($1, 12, 8) }	app.log
+BEGIN { s = "aaa"; n = gsub(/a*/, "-", s); print n, s; t = "hello"; gsub(//, "-", t); print t; u = "banana"; gsub(/ana/, "[&]", u); print u; v = "a.b.c"; sub(/\./, "\\&", v); print v; w = "x"; print gsub(/y/, "z", w), w }
+BEGIN { print index("hello", "ll"), index("hello", "z"), toupper("mixed Case 1"), tolower("ABC"); print substr("hello", 0), substr("hello", 5, 1), substr("hello", 2, 100), substr("hello", 3), "[" substr("hello", 9) substr("hello", 2, 0) "]" }
+BEGIN { n = split("a b  c", p); print n, p[3]; n = split("a,,b", q, ","); print n, "[" q[2] "]"; n = split("", r); print n; n = split("2026-10-14", d, "-"); print d[1] + 0, d[2] * 2 }
+{ if (match($0, / (INFO|WARN|ERROR) /)) { lvl = substr($0, RSTART + 1, RLENGTH - 2); c[lvl]++ } } END { print "INFO", c["INFO"], "WARN", c["WARN"], "ERROR", c["ERROR"] }	app.log
+$2 ~ "^" lvl { print }	lvl=ERR	app.log
+{ print x, $0 }	x=1	a.txt	x=2	b.txt
+BEGIN { printf "%s|%c|%c|%5s|%-5s|%.2s\n", "str", 65, "hello", "ab", "ab", "abc" }
+BEGIN { print 0.1 + 0.2, 1e6, 1e16, 1e20, 100000 * 100000, 1 / 3, -0, 2 ^ 53 + 1, 3.0, "3.0" + 0, "1e3" + 0, " 12abc" + 0, ".5" + 0, 2 ^ 3 ^ 2, -2 ^ 2, 7 % 3, -7 % 3, 2.5 % 1 }
+BEGIN { printf "%5d|%-5d|%05d|%+d|%x|%o|%e|%.3e|%g|%G|%10.4f|%%|%i|%X|% d|%.0f|%.0f|%#o|%#x\n", 42, 42, 42, 42, 255, 8, 1234.5678, 0.000123456, 0.0001234, 1e-10, 3.14159265, -7.9, 255, 5, 0.5, 1.5, 8, 255 }
+BEGIN { printf "%d %d %d %s %s %g %g %g %.10g\n", "3abc", 2147483648 * 4, -2.7, 1e6, 1234567.5, 100000, 1000000, 123456789, 2/3; printf "%*d|%-*d|%.*f\n", 5, 1, 4, 2, 2, 3.14159 }
+BEGIN { x = 0.1; y = x ""; CONVFMT = "%.2f"; z = 3.14159 ""; a[3.14159] = 1; for (k in a) print y, z, k; OFMT = "%.3f"; print 3.14159, 17, 1e3, 2 / 3 "" }
+{ print ($1 < $2), ($1 == $2), ($1 "" < $2 "") }	nums.txt
+BEGIN { print 1 == 1.0, "10" < "9", 10 < 9, "abc" < 1, x == 0, x == "", length(x) }
+BEGIN { print int(-3.7), int("4.9x"), sqrt(2), exp(1), log(10), atan2(0, -1), sin(0), cos(0) }
+function fib(n) { return n < 2 ? n : fib(n - 1) + fib(n - 2) }function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) }BEGIN {    for (i = 0; i <= 10; i++) printf "%d%s", fib(i), (i < 10 ? " " : "\n")    print fact(20), fact(25)    i = 0    while (1) { if (++i > 5) break; if (i % 2) continue; printf "even %d\n", i }    do { i-- } while (i > 3)    print "i", i, i++ + ++i, i--, -i, !i, !!i}
+function add(arr, k, v) { arr[k] = v; n2++ } function count(arr,   c, k) { for (k in arr) c++; return c } BEGIN { add(m, "a", 1); add(m, "b", 2); print count(m), n2, m["b"] }
+NR == 3 { exit 3 } { print } END { print "end at", NR }	passwd
+BEGIN { while ((getline line < "passwd") > 0) n++; print n, "users"; close("passwd"); getline line < "passwd"; split(line, f, ":"); print f[1]; print (getline x < "missing") }
+NR == 1 { getline; print "after getline:", NR, $1; getline tmp; print "into var:", NR, tmp, $1 }	a.txt	b.txt
+{ print $1 > ($9 ".txt") } END { close("200.txt"); print "more" >> "200.txt"; print "wrote", NR }	access.log
+@cat	200.txt
+@cat	404.txt
+BEGIN { printf "to stderr\n" > "/dev/stderr"; print "to stdout"; ORS = "|"; print "a"; print "b"; ORS = "\n"; print ""; print "tab\there", "q\"uote", "back\\slash" }
+BEGIN { OFS = "\t"; print "a", "b"; $0 = "x y z"; $1 = $1; print }
+BEGIN { for (i = 1; i < ARGC; i++) print i, ARGV[i]; print ARGC }	access.log	x=1	passwd
+BEGIN { if ("aa" ~ /a{2}/) print "interval"; if ("ab" ~ /^[[:alpha:]]+$/) print "class"; if ("a+b" ~ /a\+b/) print "escape"; if ("/x/" ~ /\/x\//) print "slash"; r = "^[0-9]+$"; if ("123" ~ r) print "dynamic" }
+BEGIN { x = 1 +* 2 }
+{ print $1
+BEGIN { foo(1) }
+{ print }	nofile	a.txt
+BEGIN { print ("a" ~ /(/) }
