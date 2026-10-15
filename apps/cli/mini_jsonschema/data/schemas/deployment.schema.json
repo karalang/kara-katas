@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Deployment (apps/v1, subset)",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "apps/v1"
+    },
+    "kind": {
+      "const": "Deployment"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/dnsName"
+        },
+        "namespace": {
+          "$ref": "#/$defs/dnsName"
+        },
+        "labels": {
+          "type": "object",
+          "propertyNames": {
+            "maxLength": 63,
+            "pattern": "^[a-z0-9A-Z]([-a-z0-9A-Z_./]*[a-z0-9A-Z])?$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 63
+          }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": [
+        "selector",
+        "template"
+      ],
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selector": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "template": {
+          "type": "object",
+          "properties": {
+            "spec": {
+              "type": "object",
+              "required": [
+                "containers"
+              ],
+              "properties": {
+                "containers": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/container"
+                  },
+                  "contains": {
+                    "properties": {
+                      "name": {
+                        "const": "app"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  },
+                  "maxContains": 1
+                },
+                "restartPolicy": {
+                  "enum": [
+                    "Always",
+                    "OnFailure",
+                    "Never"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "strategy": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "RollingUpdate",
+                "Recreate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "properties": {
+                "maxSurge": {
+                  "$ref": "#/$defs/intOrPercent"
+                },
+                "maxUnavailable": {
+                  "$ref": "#/$defs/intOrPercent"
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Recreate"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "rollingUpdate"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dnsName": {
+      "type": "string",
+      "maxLength": 63,
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    },
+    "intOrPercent": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d+%$"
+        }
+      ]
+    },
+    "container": {
+      "type": "object",
+      "required": [
+        "name",
+        "image"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/dnsName"
+        },
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "containerPort"
+            ],
+            "properties": {
+              "containerPort": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "protocol": {
+                "enum": [
+                  "TCP",
+                  "UDP",
+                  "SCTP"
+                ]
+              }
+            }
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "value"
+                ]
+              },
+              {
+                "required": [
+                  "valueFrom"
+                ]
+              }
+            ]
+          }
+        },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "limits": {
+              "$ref": "#/$defs/quantities"
+            },
+            "requests": {
+              "$ref": "#/$defs/quantities"
+            }
+          }
+        }
+      }
+    },
+    "quantities": {
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "pattern": "^\\d+(\\.\\d+)?m?$"
+        },
+        "memory": {
+          "type": "string",
+          "pattern": "^\\d+(Ki|Mi|Gi|K|M|G)?$"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

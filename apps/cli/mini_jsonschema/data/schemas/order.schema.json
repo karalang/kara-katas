@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shop.example/schemas/order.json",
+  "title": "Order",
+  "type": "object",
+  "required": [
+    "id",
+    "customer",
+    "items",
+    "currency"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^ord_[0-9a-f]{8}$"
+    },
+    "customer": {
+      "$ref": "#/$defs/customer"
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/line"
+      }
+    },
+    "currency": {
+      "enum": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
+    },
+    "coupon": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 12,
+      "pattern": "^[A-Z0-9]+$"
+    },
+    "giftWrap": {
+      "type": "boolean"
+    },
+    "giftMessage": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "shipping": {
+      "$ref": "#/$defs/address"
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "dependentRequired": {
+    "giftWrap": [
+      "giftMessage"
+    ]
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "customer": {
+      "type": "object",
+      "required": [
+        "email",
+        "name"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vip": {
+          "type": "boolean"
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "required": [
+        "sku",
+        "qty",
+        "price"
+      ],
+      "properties": {
+        "sku": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}-\\d{4}$"
+        },
+        "qty": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "price": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "multipleOf": 0.01
+        },
+        "discount": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "address": {
+      "type": "object",
+      "required": [
+        "country",
+        "line1"
+      ],
+      "properties": {
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "line1": {
+          "type": "string"
+        },
+        "postcode": {
+          "type": "string"
+        }
+      },
+      "if": {
+        "properties": {
+          "country": {
+            "const": "US"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "postcode"
+        ],
+        "properties": {
+          "postcode": {
+            "pattern": "^\\d{5}(-\\d{4})?$"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "postcode": {
+            "maxLength": 10
+          }
+        }
+      }
+    }
+  }
+}
