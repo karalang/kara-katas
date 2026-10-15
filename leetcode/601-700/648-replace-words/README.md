@@ -39,7 +39,7 @@ root given twice; and one word), each with its answer; a count and a
 checksum of the characters of the answers to 300 random cases of 1 to
 10 roots of 1 to 4 letters and 1 to 10 words of 1 to 8, all from the
 first 3 letters of the alphabet; and two cases of 1,000 roots of 3 to
-6 letters and 20,000 words, from the first 4 letters, where most words
+6 letters and 5,000 words, from the first 4 letters, where most words
 have a root, and from all 26, where few do. `replace_words.py` mirrors
 the ★ arm and its output is byte-identical.
 

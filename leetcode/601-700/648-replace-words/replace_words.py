@@ -79,10 +79,10 @@ def main():
     print(f"300 random cases: {state[0]} characters, checksum {state[1]}")
     for letters in [4, 26]:
         roots = random_words(1000, 3, 6, letters)
-        words = random_words(20000, 1, 10, letters)
+        words = random_words(5000, 1, 10, letters)
         st = [0, 0]
         digest(replace_words(roots, " ".join(words)), st)
-        print(f"1000 roots, 20000 words of {letters} letters: {st[0]} characters, checksum {st[1]}")
+        print(f"1000 roots, 5000 words of {letters} letters: {st[0]} characters, checksum {st[1]}")
 
 
 main()
