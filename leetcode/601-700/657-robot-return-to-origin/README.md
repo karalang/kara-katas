@@ -95,7 +95,7 @@ and runs clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. The differential
 prints its line under all three. `karac check` passes all four arms, the
 differential and the bench program. All with the compiler at kara
-`8d40e1a762` for the debug build and `abbdbaf131` for the release build
+`8d40e1a762` for the debug build and `057e29e74f` for the release build
 that runs `check` and `__mir-run`, with runtime archives newer than the
 last `runtime/src` change.
 

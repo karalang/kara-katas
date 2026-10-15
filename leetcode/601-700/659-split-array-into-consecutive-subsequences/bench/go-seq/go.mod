@@ -1,0 +1,3 @@
+module split_array_into_consecutive_subsequences_bench
+
+go 1.24
