@@ -50,7 +50,7 @@ output is byte-identical to `expected.out`.
 ## Edits from mini_hashsum.orig.kara to mini_hashsum.kara
 
 Compiler gaps:
-- B-2026-10-15-62: `u32.rotate_left` and `u64.rotate_right` pass
+- B-2026-10-15-67: `u32.rotate_left` and `u64.rotate_right` pass
   `karac check`, but `__mir-run` stops with "call of unknown function
   u32.rotate_left" and `__mir-llvm-run` with "native `u64.rotate_right`
   is not lowered yet". The 16 rotations in MD5, SHA-1, the SHA-2 family
