@@ -1,0 +1,25 @@
+{# a plain-text weekly digest: autoescape is off for .txt #}
+{{ site.name }} digest
+{{ "=" * (site.name|length + 7) }}
+{% set ns = namespace(total=0, hot=[]) %}
+{% for post in posts|rejectattr("draft") %}
+{% set ns.total = ns.total + post.views %}
+{% if post.views > 10000 %}
+{% set ns.hot = ns.hot + [post.title] %}
+{% endif %}
+{{ "%2d"|format(loop.index) }}. {{ post.title|replace('"', "'")|title }} ({{ post.tags|length }} tag{{ "s" if post.tags|length != 1 }})
+    {{ post.views }} views, {{ (post.views / 1000)|round(1) }}k{% if post.views >= 1000 %} *{% endif %}
+
+{% endfor %}
+Total views: {{ ns.total }} over {{ posts|rejectattr("draft")|list|length }} posts
+Hot: {{ ns.hot|join("; ") or "none" }}
+Drafts: {{ posts|selectattr("draft")|map(attribute="slug")|join(", ") }}
+
+Authors:
+{% for key, a in authors|dictsort %}
+  {{ "%-14s"|format(a.name) }} {{ a.posts }} post{{ "" if a.posts == 1 else "s" }}, {{ a.email or "no email" }}
+{% endfor %}
+{% raw %}
+Template syntax looks like {{ this }} and {% this %}.
+{% endraw %}
+Built from {{ build.commit }}{{ " (debug)" if build.debug }}; {{ posts|map(attribute="rating")|sum / posts|length }} average rating.
