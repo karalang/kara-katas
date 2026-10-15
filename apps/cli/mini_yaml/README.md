@@ -65,8 +65,9 @@ are byte-identical to the ones `mk.py` writes.
 
 Author errors (the diagnostics were right):
 - Three functions stored bare `Mark` parameters in a struct, and the
-  scanner and parser read a token's `start` again after moving it. `Mark` is four integers, so it
-  derives `Copy, Clone`, as the diagnostic suggested.
+  scanner and parser read a token's `start` again after moving it.
+  `Mark` is three integers, so it derives `Copy, Clone`, as the
+  diagnostic suggested.
 - `let files = ["deploy.yaml", ...]` is an array of `String` (a string
   literal is a `String` by default), so `files[i]` could not move out.
   It is `Array[Str, 12]`.
