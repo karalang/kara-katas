@@ -96,15 +96,17 @@ Every arm prints the same output as `max_average.py` under `karac
 __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
 clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. The differential
-prints its line under all three. `karac check` passes the ★, prefix and
-queue arms and the bench program, and refuses the zipped arm and the
-differential (which holds a copy of it) with two errors each: `check`
-types the items of `nums.iter().zip(nums[k..].iter())` by value, so
-`*arriving - *out` is rejected, though design.md writes the same shape
-in its own `Vec` equality (B-2026-10-15-1, open). The zipped arm is kept
-as written. All at kara `d6111aa22a` for the debug build, with the
-runtime archives rebuilt from that tree, and `51eb3cb129` for the
-release build that runs `check` and `__mir-run`.
+prints its line under all three. `karac check` passes every arm, the
+differential and the bench program. All at kara `d6111aa22a` for the
+debug build, with the runtime archives rebuilt from that tree, and
+`51eb3cb129` for the release build that runs `check` and `__mir-run`,
+except `check` on the zipped arm and the differential: it refused them
+at first with two errors each, typing the items of
+`nums.iter().zip(nums[k..].iter())` by value, so `*arriving - *out` was
+rejected, though design.md writes the same shape in its own `Vec`
+equality (B-2026-10-15-1). The zipped arm was kept as written, and
+`check` passes it since kara `078a101ad6` (checked at `f75dd289bc`,
+with the same output on `__mir-run`).
 
 The frozen legacy backends refuse every arm and the differential at type
 checking. The prefix, queue and zipped arms read `*x` from
@@ -156,7 +158,8 @@ comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
-B-2026-10-15-1 (open, found by this kata): `karac check` types the items
-of a `zip` (and a `chain`) by value, so `*x` on them is rejected; both
-v2 backends accept and run the zipped arm. The legacy refusals above are
-not filed because legacy is frozen.
+B-2026-10-15-1 (found by this kata, fixed in kara `078a101ad6`):
+`karac check` typed the items of a `zip` (and a `chain`) by value, so
+`*x` on them was rejected; both v2 backends accepted and ran the zipped
+arm. The legacy refusals above are not filed because legacy is
+frozen.

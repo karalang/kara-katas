@@ -95,14 +95,15 @@ leak.
 
 The frozen legacy backends agree on the ★ and merge arms: `karac run
 --interp`, LLJIT, legacy `karac build` and a `KARAC_AUTO_PAR=1` build
-print the same output. They refuse the other two. On the fold arm all
-three refuse `*t` at type checking ("unary '*' requires 'ref T' ...
-found 'i64'"), reading the fold's item as a value where v2 reads it as
-a borrow; the differential carries a copy of that arm and is refused
-the same way. On the zip arm `karac run --interp` prints the right
-output, and LLJIT and legacy `karac build` fail in codegen: "no
-handler for method 'sum' on non-identifier receiver". Legacy is
-frozen, so these are noted, not filed.
+print the same output. They refuse the other two. On the fold and zip
+arms they refuse `*t` and `*b - *a` at type checking ("unary '*'
+requires 'ref T' ... found 'i64'"), reading the items as values where
+v2 reads them as borrows; the differential carries copies of those arms
+and is refused the same way. (Before the zip arm went back to `*b -
+*a`, `karac run --interp` printed its right output, and LLJIT and legacy
+`karac build` failed in codegen: "no handler for method 'sum' on
+non-identifier receiver".) Legacy is frozen, so these are noted, not
+filed.
 
 ## Benchmarks
 
@@ -143,12 +144,11 @@ without optimization passes, so it is not a benchmark.
 kara B-2026-10-13-15 (perf, open): `karac build --mir` runs the bench
 3.6 times slower than C, Rust and legacy `karac build`; see Benchmarks.
 
-The zip arm was first written `(*b - *a)`, since the items
-of `iter()` are borrows. That form runs right on `karac __mir-run`
-and passes `karac check` with `KARAC_CHECK_LIBRARY=1`, but default
-`karac check` refuses it: "unary '*' requires 'ref T' ... found 'i64'".
-Default `karac check` does not yet see the Kāra library's iterator
-types. Kara B-2026-10-12-23, the row this was a data point for, was
-closed in `7609de871d` for serde programs only, and default check still
-refuses the `*` here at that commit. `(b - a)` passes everywhere and
-is what the arm uses.
+The zip arm was first written `(*b - *a)`, since the items of `iter()`
+are borrows. That form ran right on `karac __mir-run` and passed `karac
+check` with `KARAC_CHECK_LIBRARY=1`, but default `karac check` refused
+it ("unary '*' requires 'ref T' ... found 'i64'"), so the arm used `(b
+- a)` for a while. Kata 643 filed the same refusal as kara
+B-2026-10-15-1 (`check` typed the items of a `zip` by value), fixed in
+kara `078a101ad6`. The arm and the differential are back to `(*b -
+*a)`, which default `karac check` passes at kara `f75dd289bc`.
