@@ -194,12 +194,12 @@ fn write_json(v: ref JsonValue, out: mut ref String) {
         JsonValue.Null => out.push_str("null"),
         JsonValue.Bool(b) => out.push_str(if b { "true" } else { "false" }),
         JsonValue.Num(text) => out.push_str(text),
-        JsonValue.Str(s) => write_string(s, out),
+        JsonValue.Str(s) => write_string(s, mut out),
         JsonValue.Arr(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
                 if i > 0 { out.push(','); }
-                write_json(item, out);
+                write_json(item, mut out);
             }
             out.push(']');
         }
@@ -209,9 +209,9 @@ fn write_json(v: ref JsonValue, out: mut ref String) {
             for (k, item) in fields {
                 if not first { out.push(','); }
                 first = false;
-                write_string(k, out);
+                write_string(k, mut out);
                 out.push(':');
-                write_json(item, out);
+                write_json(item, mut out);
             }
             out.push('}');
         }
@@ -257,13 +257,13 @@ fn optional_string(obj: ref SortedMap[String, JsonValue], key: String, errors: m
 
 // v1 "street, city, postcode[, country]" -> v2 nested address object.
 fn split_address(raw: ref String) -> Result[JsonValue, String] {
-    let parts = raw.split(",");
+    let parts: Vec[Str] = raw.split(",").collect();
     if parts.len() < 3 or parts.len() > 4 {
         return Err(f"field 'addr' must have 3 or 4 comma-separated parts, got {parts.len()}");
     }
     let mut addr: SortedMap[String, JsonValue] = SortedMap.new();
-    addr.insert("street", JsonValue.Str(parts[0].trim()));
-    addr.insert("city", JsonValue.Str(parts[1].trim()));
+    addr.insert("street", JsonValue.Str(parts[0].trim().to_string()));
+    addr.insert("city", JsonValue.Str(parts[1].trim().to_string()));
     addr.insert("postcode", JsonValue.Str(parts[2].trim().to_uppercase()));
     let country = if parts.len() == 4 { parts[3].trim().to_uppercase() } else { "GB".to_string() };
     addr.insert("country", JsonValue.Str(country));
@@ -283,7 +283,7 @@ fn transform(obj: ref SortedMap[String, JsonValue]) -> Result[JsonValue, Vec[Str
     let mut out: SortedMap[String, JsonValue] = SortedMap.new();
     out.insert("schema", JsonValue.Num("2"));
     match obj.get("id") {
-        Some(JsonValue.Num(text)) => match i64.parse(text) {
+        Some(JsonValue.Num(text)) => match i64.parse(text).ok() {
             Some(n) if n > 0 => { out.insert("user_id", JsonValue.Num(n.to_string())); }
             _ => errors.push("field 'id' must be a positive integer".to_string()),
         },
@@ -291,7 +291,7 @@ fn transform(obj: ref SortedMap[String, JsonValue]) -> Result[JsonValue, Vec[Str
         None => errors.push("missing required field 'id'".to_string()),
     }
     match obj.get("full_name") {
-        Some(JsonValue.Str(name)) if name.trim().len() > 0 => { out.insert("display_name", JsonValue.Str(name.trim())); }
+        Some(JsonValue.Str(name)) if name.trim().len() > 0 => { out.insert("display_name", JsonValue.Str(name.trim().to_string())); }
         Some(_) => errors.push("field 'full_name' must be a non-empty string".to_string()),
         None => errors.push("missing required field 'full_name'".to_string()),
     }
@@ -334,7 +334,7 @@ fn transform(obj: ref SortedMap[String, JsonValue]) -> Result[JsonValue, Vec[Str
     out.insert("tags", JsonValue.Arr(tag_values));
     match obj.get("age") {
         None | Some(JsonValue.Null) => { out.insert("age", JsonValue.Null); }
-        Some(JsonValue.Num(text)) => match i64.parse(text) {
+        Some(JsonValue.Num(text)) => match i64.parse(text).ok() {
             Some(n) if n >= 0 and n <= 150 => { out.insert("age", JsonValue.Num(n.to_string())); }
             _ => errors.push(f"field 'age' must be an integer in 0..150, got {text}"),
         },

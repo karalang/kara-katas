@@ -4,11 +4,6 @@
 // writes a whole request batch, the kernel buffers it, then the server
 // accepts, reads to end of input, answers every request it parsed, and
 // closes. Bodies are JSON, through the derived Serialize/Deserialize.
-//
-// Workarounds for v2 gaps, each to revert once its row is fixed:
-//   B-2026-10-12-6   i64.parse returns Option, not Result[i64, ParseError]
-//   B-2026-10-12-7   split() is an eager Vec[String]: `.iter()` before map,
-//                    and a split piece is copied out with `.to_string()`
 
 #[derive(Serialize, Deserialize)]
 struct PutBody { value: String, tags: Vec[String] }
@@ -81,7 +76,7 @@ fn parse_requests(raw: Str) -> Result[Vec[Request], String] {
         for l in head.split("\r\n") {
             lines.push(l.to_string());
         }
-        let first: Vec[String] = lines[0].split(" ").iter().map(|p| p.to_string()).collect();
+        let first: Vec[String] = lines[0].split(" ").map(|p| p.to_string()).collect();
         if first.len() != 3 or not first[2].starts_with("HTTP/1.") {
             return Err(f"bad request line [{lines[0]}]");
         }
@@ -107,8 +102,8 @@ fn parse_requests(raw: Str) -> Result[Vec[Request], String] {
         let body_start = head_end + 4;
         let len = match header_value(req, "content-length") {
             Some(v) => match i64.parse(v) {
-                Some(n) => n,
-                None => return Err(f"bad content-length [{v}]"),
+                Ok(n) => n,
+                Err(_) => return Err(f"bad content-length [{v}]"),
             },
             None => 0,
         };
@@ -268,7 +263,7 @@ fn exchange(listener: ref TcpListener, addr: Str, store: mut ref Store, label: S
                 Ok(raw) => match parse_requests(raw) {
                     Ok(reqs) => {
                         for r in reqs.iter() {
-                            out.push_str(render(handle(store, r)));
+                            out.push_str(render(handle(mut store, r)));
                         }
                     }
                     Err(e) => out.push_str(render(error_reply(400, e))),

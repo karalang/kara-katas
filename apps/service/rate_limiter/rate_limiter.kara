@@ -179,7 +179,7 @@ impl Limiter {
         Ok(decision)
     }
 
-    fn decide(mut ref self, req: ref Request, policy: own Policy) -> Decision {
+    fn decide(mut ref self, req: ref Request, policy: Policy) -> Decision {
         let blocked_until = match self.clients.get(req.client) {
             Some(stats) => stats.blocked_until,
             None => -1,
@@ -309,19 +309,19 @@ fn describe(decision: ref Decision) -> String {
 }
 
 fn parse_num(text: ref String, field: own String) -> Result[i64, ParseError] {
-    match i64.parse(text) {
+    match i64.parse(text).ok() {
         Some(n) => Ok(n),
         None => Err(ParseError.BadNumber { field, text: text.clone() }),
     }
 }
 
 fn parse_line(line: ref String, number: i64) -> Result[Request, ParseError] {
-    let parts = line.trim().split(" ");
+    let parts: Vec[Str] = line.trim().split(" ").collect();
     if parts.len() != 4 {
         return Err(ParseError.FieldCount(parts.len()));
     }
-    let time = parse_num(parts[0], "time")?;
-    let cost = parse_num(parts[3], "cost")?;
+    let time = parse_num(parts[0].to_string(), "time")?;
+    let cost = parse_num(parts[3].to_string(), "cost")?;
     if cost <= 0 {
         return Err(ParseError.NonPositiveCost(cost));
     }
@@ -362,7 +362,7 @@ fn build_log() -> String {
 
 fn main() -> Result[(), IoError] {
     let log = build_log();
-    fs.write(LOG_PATH.clone(), log)?;
+    fs.write(LOG_PATH, log)?;
     let text = fs.read_to_string(LOG_PATH)?;
     let mut requests: Vec[Request] = Vec.new();
     let mut line_no = 0;
@@ -372,7 +372,7 @@ fn main() -> Result[(), IoError] {
         if line.trim().is_empty() {
             continue;
         }
-        match parse_line(line, requests.len() + 1) {
+        match parse_line(line.to_string(), requests.len() + 1) {
             Ok(req) => requests.push(req),
             Err(e) => {
                 malformed += 1;

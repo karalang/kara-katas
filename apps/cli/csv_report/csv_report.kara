@@ -152,21 +152,21 @@ fn parse_month(date: ref String) -> Option[String] {
     if date.len() != 10 or date.char_at(4) != Some('-') or date.char_at(7) != Some('-') {
         return None;
     }
-    let year = i64.parse(date.substring(0, 4))?;
-    let month = i64.parse(date.substring(5, 7))?;
-    let day = i64.parse(date.substring(8, 10))?;
+    let year = i64.parse(date.substring(0, 4)).ok()?;
+    let month = i64.parse(date.substring(5, 7)).ok()?;
+    let day = i64.parse(date.substring(8, 10)).ok()?;
     if year < 2000 or month < 1 or month > 12 or day < 1 or day > 31 { return None; }
     Some(date.substring(0, 7))
 }
 
 fn parse_price(text: ref String) -> Option[i64] {
     let cleaned = text.replace(",", "");
-    let parts = cleaned.split(".");
-    let dollars = i64.parse(parts[0])?;
+    let parts: Vec[Str] = cleaned.split(".").collect();
+    let dollars = i64.parse(parts[0]).ok()?;
     if dollars < 0 { return None; }
     if parts.len() == 1 { return Some(dollars * 100); }
     if parts.len() != 2 or parts[1].len() != 2 { return None; }
-    let cents = i64.parse(parts[1])?;
+    let cents = i64.parse(parts[1]).ok()?;
     if cents < 0 { return None; }
     Some(dollars * 100 + cents)
 }
@@ -176,26 +176,26 @@ fn parse_sale(rec: ref RawRecord) -> Result[Sale, RowError] {
         return Err(FieldCount { line: rec.line, got: rec.fields.len() });
     }
     let date = rec.fields[0].trim();
-    let month = match parse_month(date) {
+    let month = match parse_month(date.to_string()) {
         Some(m) => m,
-        None => return Err(BadDate { line: rec.line, text: date }),
+        None => return Err(BadDate { line: rec.line, text: date.to_string() }),
     };
     let region = rec.fields[1].trim();
     if region.is_empty() { return Err(EmptyRegion { line: rec.line }); }
     let qty_text = rec.fields[3].trim();
-    let quantity = match i64.parse(qty_text) {
+    let quantity = match i64.parse(qty_text).ok() {
         Some(q) if q > 0 => q,
-        _ => return Err(BadQuantity { line: rec.line, text: qty_text }),
+        _ => return Err(BadQuantity { line: rec.line, text: qty_text.to_string() }),
     };
     let price_text = rec.fields[4].trim();
-    let price_cents = match parse_price(price_text) {
+    let price_cents = match parse_price(price_text.to_string()) {
         Some(p) => p,
-        None => return Err(BadPrice { line: rec.line, text: price_text }),
+        None => return Err(BadPrice { line: rec.line, text: price_text.to_string() }),
     };
     Ok(Sale {
-        region: region,
+        region: region.to_string(),
         month: month,
-        product: rec.fields[2].trim(),
+        product: rec.fields[2].trim().to_string(),
         quantity: quantity,
         price_cents: price_cents,
     })
@@ -257,7 +257,7 @@ fn format_money(cents: i64) -> String {
 }
 
 fn month_label(key: ref String) -> String {
-    let name = match i64.parse(key.substring(5, 7)) {
+    let name = match i64.parse(key.substring(5, 7)).ok() {
         Some(1) => "Jan", Some(2) => "Feb", Some(3) => "Mar", Some(4) => "Apr",
         Some(5) => "May", Some(6) => "Jun", Some(7) => "Jul", Some(8) => "Aug",
         Some(9) => "Sep", Some(10) => "Oct", Some(11) => "Nov", Some(12) => "Dec",
@@ -368,7 +368,7 @@ fn validate_upload(name: ref String, text: ref String) {
 
 fn main() -> Result[(), IoError] {
     let path = "sales.csv";
-    fs.write(path.clone(), embedded_csv())?;
+    fs.write(path, embedded_csv())?;
     let text = fs.read_to_string(path)?;
 
     let (sales, rejected) = match load_sales(text) {
