@@ -1,0 +1,3 @@
+module minimum_ascii_delete_sum_for_two_strings_bench
+
+go 1.24
