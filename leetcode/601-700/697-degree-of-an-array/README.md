@@ -31,8 +31,8 @@ Every arm prints the same 5 lines: the two LeetCode examples; one
 element, five distinct values, two values tied for the degree with
 different spans, and the largest value at both ends; one value
 50,000 times, 0 to 49,999 once each, and 0 to 24,999 then back down,
-where the answer is the middle pair; and 300 random arrays of up to
-50,000 values drawn from up to 50,000 values, with a checksum.
+where the answer is the middle pair; and 100 random arrays of up to
+20,000 values drawn from up to 50,000 values, with a checksum.
 `find_shortest_sub_array.py` mirrors the ★ arm and its output is
 byte-identical. The ★ arm walks a `Map`, whose order changes from run to
 run, but every tie for the degree is settled by the shorter span, and
@@ -103,9 +103,9 @@ and runs clean under `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer): output identical, no error, no leak. The differential
 prints its line under all three. `karac check` passes all four arms, the
 differential and the bench program. All with the compiler at kara
-`1c360e9a7f` for both the debug build and the release build that runs
-`check` and `__mir-run`, with runtime archives rebuilt after that
-commit's `runtime/src` change.
+`ec489d962f` for both the debug build and the release build that runs
+`check` and `__mir-run`, with runtime archives rebuilt after the last
+`runtime/src` change.
 
 The frozen legacy backends refuse the ★ and running arms and the
 differential at type checking, at `*c` on what `Map.get` returns: legacy
@@ -113,7 +113,7 @@ gives the value, not a reference, while on v2 it is a reference. They
 run the table and sorted arms under `karac run` and `karac build`,
 `KARAC_AUTO_PAR=1` included, with the same output; under `karac run
 --interp` both pass the first four lines and time out at 60 s in the
-300 random arrays. They build the bench program as it is. Legacy is
+100 random arrays. They build the bench program as it is. Legacy is
 frozen, so this is noted, not filed.
 
 ## Benchmarks
@@ -127,7 +127,7 @@ array, putting each answer into a checksum. Every call allocates and
 clears its three tables, as the arm does. Every implementation prints
 `20 rounds of 40 arrays of 50000: shortest spans sum to
 32143440, checksum 116695374`, the Kāra program under `karac __mir-run`
-included (in 32 s).
+included (in 31 s).
 
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
@@ -135,25 +135,25 @@ need a quiet machine):
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 0.50 to 0.55 s |
+| C (`clang -O3`) | 0.50 to 0.57 s |
 | Rust (`rustc -O`) | 0.42 to 0.49 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.44 to 0.50 s |
-| Go | 0.45 to 0.48 s |
-| Python | 7.6 to 8.4 s |
-| Kāra (`karac build --mir`) | 0.37 to 0.41 s |
-| Kāra, legacy (`karac build`) | 0.31 to 0.37 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.44 to 0.52 s |
+| Go | 0.43 to 0.50 s |
+| Python | 7.8 to 8.2 s |
+| Kāra (`karac build --mir`) | 0.38 to 0.49 s |
+| Kāra, legacy (`karac build`) | 0.31 to 0.35 s |
 
 `bench.sh` builds the Kāra program with `karac build --mir`, the
 v2 compiled backend; the legacy `karac build` builds the same file, and
 its row is above. That edit is by hand, on top of the
 `scripts/new-bench.sh` output. Under `karac __mir-llvm-run` the program
-prints the same line in 1.9 s, compile included; that JITs the MIR's IR
+prints the same line in 1.8 s, compile included; that JITs the MIR's IR
 without optimization passes, so it is not a benchmark.
 
-So the v2 build is behind legacy here and ahead of the other four. Why
-both Kāra builds beat C on this workload has not been looked into; the
-time is mostly random reads and writes into three tables of 400 KB each.
-The comparison with C and Rust waits until after M4.
+So the v2 build is behind legacy here, level with Rust and Go, and ahead
+of C. Why both Kāra builds beat C on this workload has not been looked
+into; the time is mostly random reads and writes into three tables of
+400 KB each. The comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 

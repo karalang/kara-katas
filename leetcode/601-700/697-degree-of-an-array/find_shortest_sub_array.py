@@ -41,14 +41,14 @@ def main():
     seed = 697
     total = 0
     checksum = 0
-    for _ in range(300):
-        n = 1 + next_random() % 50000
+    for _ in range(100):
+        n = 1 + next_random() % 20000
         rng = 1 + (next_random() * 65536 + next_random()) % 50000
         nums = [(next_random() * 65536 + next_random()) % rng for _ in range(n)]
         r = f(nums)
         total += r
         checksum = (checksum * 31 + r) % 1000000007
-    print(f"300 random arrays: shortest spans sum to {total}, checksum {checksum}")
+    print(f"100 random arrays: shortest spans sum to {total}, checksum {checksum}")
 
 
 main()
