@@ -84,4 +84,4 @@ Thread A's a0ca700228 and acd593fc77 changed the library to match docs/library: 
 
 ## Workarounds dropped, 2026-10-18
 
-`U64_MAX` is the literal again (B-2026-10-18-2 is fixed), `joined` is moved without a clone (B-2026-10-15-20), and `set_exptime` uses `get_mut` (B-2026-10-12-3). `get_mut` still needs `key.to_string()`, because it takes no `Str` key (B-2026-10-18-38). It matches expected.out on all four MIR backends (karac at 4ea06e27b9).
+`U64_MAX` is the literal again (B-2026-10-18-2 is fixed), `joined` is moved without a clone (B-2026-10-15-20), and `set_exptime` uses `get_mut` (B-2026-10-12-3). `get_mut` still needs `key.to_string()`, because it takes no `Str` key (B-2026-10-18-39). It matches expected.out on all four MIR backends (karac at 4ea06e27b9).
