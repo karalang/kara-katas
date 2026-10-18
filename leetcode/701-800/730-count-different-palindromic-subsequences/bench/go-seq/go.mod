@@ -1,0 +1,3 @@
+module count_different_palindromic_subsequences_bench
+
+go 1.24
