@@ -2,7 +2,7 @@
 # PKWARE's APPNOTE, RFC 1951 and Info-ZIP's output formats. It runs the
 # commands in data/jobs.txt; each job's stdout comes first, then its
 # stderr, as real.py captures them.
-import os, sys
+import os, sys, time
 
 CRC_TABLE = []
 for n in range(256):
@@ -703,6 +703,27 @@ def safe_name(job, name):
     return "/".join(kept)
 
 
+def days_from_civil(y, m, d):
+    y -= m <= 2
+    era = (y if y >= 0 else y - 399) // 400
+    yoe = y - era * 400
+    doy = (153 * (m + (-3 if m > 2 else 9)) + 2) // 5 + d - 1
+    doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+    return era * 146097 + doe - 719468
+
+
+def restore_attrs(path, e):
+    """Info-ZIP's restore on Unix: the DOS time (read as UTC, since the
+    runs use TZ=UTC), then, for an entry made on Unix, its permission
+    bits without setuid, setgid and sticky. Time first: changing it opens
+    the file."""
+    y, m, d = ymd(e)
+    secs = days_from_civil(y, m, d) * 86400 + (e.time >> 11) * 3600 + ((e.time >> 5) & 63) * 60 + (e.time & 31) * 2
+    os.utime(path, ns=(os.stat(path).st_atime_ns, secs * 1000000000))
+    if e.made_by >> 8 == 3:
+        os.chmod(path, (e.external >> 16) & 0o777)
+
+
 def make_parents(path):
     parts = path.split("/")
     for i in range(1, len(parts)):
@@ -761,6 +782,7 @@ def extract_cmd(job, args, password, dest):
         make_parents(path)
         with open(path, "wb") as f:
             f.write(bytes(data))
+        restore_attrs(path, e)
         if st == "ok":
             job.out += "\n"
         elif st == "crc":
@@ -773,11 +795,8 @@ def extract_cmd(job, args, password, dest):
         job.out += "finishing deferred symbolic links:\n"
         for shown, path, target in links:
             job.out += f"  {shown} -> {target}\n"
-            # no symlinks here: the link is written as a file holding
-            # its target, as Info-ZIP does where links are unsupported
             make_parents(path)
-            with open(path, "wb") as f:
-                f.write(target.encode())
+            os.symlink(target, path)
     for p in unmatched:
         job.err += f"caution: filename not matched:  {p}\n"
         job.status = 11
@@ -823,12 +842,16 @@ def tree(job, root):
         for n in sorted(os.listdir(d)):
             p = f"{d}/{n}"
             r = n if rel == "" else f"{rel}/{n}"
-            if os.path.isdir(p):
-                rows.append((r + "/", f"     dir            {r}/\n"))
+            if os.path.islink(p):
+                rows.append((r, f"l{' ' * 24}  {r} -> {os.readlink(p)}\n"))
+            elif os.path.isdir(p):
+                rows.append((r + "/", f"d{' ' * 24}       dir            {r}/\n"))
                 walk(p, r)
             else:
                 data = open(p, "rb").read()
-                rows.append((r, f"{len(data):8}  {crc32(data):08x}  {r}\n"))
+                st = os.stat(p)
+                when = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(st.st_mtime))
+                rows.append((r, f"-{st.st_mode & 0o7777:04o} {when}  {len(data):8}  {crc32(data):08x}  {r}\n"))
     walk(base, "")
     rows.sort()
     for _, line in rows:

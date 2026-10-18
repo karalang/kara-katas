@@ -7,6 +7,18 @@ if os.path.isdir(work):
     shutil.rmtree(work)
 shutil.copytree(src, work)
 env = dict(os.environ, TZ="UTC", LC_ALL="C.UTF-8")
+def stamp(p):
+    """A file's mode bits and modification time, in UTC. Directories and
+    links show only their kind: a directory unzip makes on its own way
+    to a file gets the current time and the umask's mode."""
+    import stat, time
+    st = os.lstat(p)
+    kind = "l" if stat.S_ISLNK(st.st_mode) else ("d" if stat.S_ISDIR(st.st_mode) else "-")
+    if kind != "-":
+        return kind + " " * 24
+    return "%s%04o %s" % (kind, st.st_mode & 0o7777, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(st.st_mtime)))
+
+
 def tree(root, rootname):
     out = []
     if not os.path.isdir(root):
@@ -17,11 +29,14 @@ def tree(root, rootname):
         for n in sorted(fns):
             p = os.path.join(dp, n)
             r = n if rel == "." else f"{rel}/{n}"
-            data = os.readlink(p).encode() if os.path.islink(p) else open(p, "rb").read()
-            out.append((r, f"{len(data):8}  {zlib.crc32(data):08x}  {r}\n"))
+            if os.path.islink(p):
+                out.append((r, f"{stamp(p)}  {r} -> {os.readlink(p)}\n"))
+                continue
+            data = open(p, "rb").read()
+            out.append((r, f"{stamp(p)}  {len(data):8}  {zlib.crc32(data):08x}  {r}\n"))
         for n in dns:
             r = (n if rel == "." else f"{rel}/{n}") + "/"
-            out.append((r, f"     dir            {r}\n"))
+            out.append((r, f"{stamp(os.path.join(dp, n))}       dir            {r}\n"))
     return "".join(l for _, l in sorted(out))
 for line in open(os.path.join(src, "jobs.txt")).read().splitlines():
     if not line or line.startswith("#"):
