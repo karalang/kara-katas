@@ -1,0 +1,47 @@
+// LeetCode 757 — Set Intersection Size At Least Two: benchmark, the ★ arm in Rust.
+
+fn intersection_size_two(intervals: &Vec<Vec<i64>>) -> i64 {
+    let mut order = intervals.clone();
+    order.sort_by(|x, y| if x[1] != y[1] { x[1].cmp(&y[1]) } else { y[0].cmp(&x[0]) });
+    let mut count = 0;
+    let mut second = -1;
+    let mut largest = -1;
+    for interval in &order {
+        let start = interval[0];
+        let end = interval[1];
+        if start > largest {
+            count += 2;
+            second = end - 1;
+            largest = end;
+        } else if start > second {
+            count += 1;
+            second = largest;
+            largest = end;
+        }
+    }
+    count
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let rounds = 2000;
+    let mut seed = 757;
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for _ in 0..rounds {
+        let mut intervals: Vec<Vec<i64>> = Vec::new();
+        for _ in 0..3000 {
+            let width = 1 + next_random(&mut seed) % 100000;
+            let a = next_random(&mut seed) * 32768 % (100000000 - width + 1);
+            intervals.push(vec![a, a + width]);
+        }
+        let answer = intersection_size_two(&intervals);
+        total += answer;
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println!("{rounds} sets of 3000 intervals: {total} points in all, checksum {check}");
+}
