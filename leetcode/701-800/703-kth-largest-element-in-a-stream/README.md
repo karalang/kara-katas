@@ -58,24 +58,17 @@ zero, so in most streams values repeat.
 | P3 | after each add, fewer than k values seen are above the answer and at least k are at or above it |
 | P4 | every value moved by the same random amount from -50 to 50, every answer moved by it |
 
-As committed it does not pass, and should not: the ★ arm's copy is
-miscompiled by kara B-2026-10-18-19 (see Verification), so `karac
-__mir-run` stops with "Eq on Ref(..) and Int(4)" at the first comparison
-of its answers, and `karac __mir-llvm-run` and `karac __mir-llvm-asan`
-print `P1: 3000 failures | P3: 3000 failures | P4: 3000 failures | ...`,
-every stream of the ★ arm and nothing from the other three. A scratch
-copy, not committed, with only the ★ arm's last line bound first (`let
-least = self.top.peek().unwrap(); least`) prints `3000 streams
-(1714 with values bound to repeat), 4 arms, 48000 checks, 0 failures`
-under all three.
+It prints `3000 streams (1714 with values bound to repeat), 4 arms,
+48000 checks, 0 failures` under `karac __mir-run` and `karac
+__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`.
 
 ## Mutation testing
 
-Ten edits to that scratch copy of the differential, two or three to each
-arm, each run under `karac __mir-run`. All ten are killed: six by the
-properties and four that stop the run at the arm's own `unwrap()` on an
-empty queue or map. Four more edits, E1 to E4, change nothing that can
-be seen, and the differential rightly reports no failure for them.
+Ten edits to the differential, two or three to each arm, each run under
+`karac __mir-run`. All ten are killed: six by the properties and four
+that stop the run at the arm's own `unwrap()` on an empty queue or map.
+Four more edits, E1 to E4, change nothing that can be seen, and the
+differential rightly reports no failure for them.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -107,20 +100,17 @@ the counted total also does at k.
 
 ## Verification
 
-The heap, sorted and multiset arms print the same output as
-`kth_largest_element_in_a_stream.py` under `karac __mir-run` (the v2 MIR
-interpreter) and `karac __mir-llvm-run`, and run clean under `karac
-__mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output identical,
-no error, no leak. The ★ arm does not, on any v2 surface: `__mir-run`
-stops with "use of a2 after it was freed", and `__mir-llvm-run` and
-`__mir-llvm-asan` print heap addresses for every answer (kara
-B-2026-10-18-19, below). `karac check` passes the ★, heap and sorted
-arms and the bench program; it warns on the ★ arm's `self.top.pop();`
-(B-2026-10-18-16) and refuses the multiset arm and the differential
-(B-2026-10-14-24). All with the compiler at kara `83fab1e1e8` for the
-debug build and `f5c72b653e` for the release build that runs `check` and
-`__mir-run`, which differ in no `src` or `runtime` file, with runtime
-archives rebuilt after the last `runtime/src` change.
+Every arm prints the same output as `kth_largest_element_in_a_stream.py`
+under `karac __mir-run` (the v2 MIR interpreter) and `karac
+__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`
+(AddressSanitizer and LeakSanitizer): output identical, no error, no
+leak. The differential prints its line under all three. `karac check`
+passes the ★, heap and sorted arms and the bench program; it warns on
+the ★ arm's `self.top.pop();` (B-2026-10-18-16) and refuses the multiset
+arm and the differential (B-2026-10-14-24). All with the compiler at
+kara `79a6c2eb9a` for both the debug build and the release build that
+runs `check` and `__mir-run`, with runtime archives rebuilt after the
+last `runtime/src` change.
 
 The frozen legacy backends refuse all four arms and the differential at
 type checking, at `s.add(*x)` over `nums.iter()` in `new`, since legacy
@@ -137,7 +127,7 @@ k from 50 to 500 and is fed 200,000 more, every answer folded into a
 checksum, and the whole runs five rounds. Every implementation prints
 `5 rounds of 10 streams of 200000 prices: answer changed 9091273 times,
 checksum 314600129`, the Kāra program under `karac __mir-run` included
-(in 94 s).
+(in 92 s).
 
 Every implementation keeps the heap in a growable array, `Vec`, slice or
 list, and C in one `malloc`'d block of k; Rust swaps with `Vec::swap`,
@@ -149,12 +139,12 @@ Python (`bench.sh` timings need a quiet machine):
 | | time |
 |---|---|
 | C (`clang -O3`) | 0.50 to 0.54 s |
-| Rust (`rustc -O`) | 0.56 to 0.62 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.56 to 0.63 s |
-| Go | 0.61 to 0.66 s |
-| Python | 14.7 s |
-| Kāra (`karac build --mir`) | 0.65 to 0.72 s |
-| Kāra, legacy (`karac build`), a copy | 0.62 to 0.71 s |
+| Rust (`rustc -O`) | 0.57 to 0.62 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.56 to 0.61 s |
+| Go | 0.62 to 0.67 s |
+| Python | 14.5 to 14.7 s |
+| Kāra (`karac build --mir`) | 0.68 to 0.75 s |
+| Kāra, legacy (`karac build`), a copy | 0.64 to 0.68 s |
 
 `bench.sh` builds the Kāra program with `karac build --mir`, the
 v2 compiled backend. The legacy `karac build` refuses it at `s.add(*x)`
@@ -165,24 +155,23 @@ output. Under `karac __mir-llvm-run` the program prints the same line in
 2.9 s, compile included; that JITs the MIR's IR without optimization
 passes, so it is not a benchmark.
 
-So the v2 build is about 5% behind the legacy copy by median, 10% behind
+So the v2 build is about 7% behind the legacy copy by median, 10% behind
 Go, 20% behind Rust either way and a third behind C. The comparison with
 C and Rust waits until after M4.
 
 ## Compiler findings
 
-kara **B-2026-10-18-19** (open, high): a function declared `->
-i64` whose tail is a `ref i64` from a call, here the ★ arm's
-`self.top.peek().unwrap()`, hands the reference itself back as the
+kara **B-2026-10-18-19** (fixed by `a2fbdd9c11`): a function declared
+`-> i64` whose tail is a `ref i64` from a call, here the ★ arm's
+`self.top.peek().unwrap()`, handed the reference itself back as the
 `i64`. The harness keeps each answer in a `Vec[i64]` after the queue is
-gone, so `karac __mir-run` stops with "use of a2 after it was freed",
-and the compiled surfaces print the reference's address. `karac check`
-passes it. It is the sibling of B-2026-10-18-4, which covers the case
-where the referent outlives the use and only the compiled surfaces are
-wrong; here the interpreter fails too. Binding the value first, `let
-least = self.top.peek().unwrap(); least`, is correct everywhere, which
-is how the differential's scratch copy was checked. The ★ arm keeps the
-natural tail until the fix.
+gone, so `karac __mir-run` stopped with "use of a2 after it was freed"
+and the compiled surfaces printed the reference's address, while `karac
+check` passed it. It was the sibling of B-2026-10-18-4, where the
+referent outlives the use and only the compiled surfaces were wrong. The
+fix for that row reads the value through the reference in the built MIR,
+which fixed both; the kata was written against the broken compiler and
+needed no change.
 
 kara **B-2026-10-18-16** (open, low): `karac check` warns `discarded
 Option value` on the ★ arm's `self.top.pop();`, though design.md exempts
