@@ -262,6 +262,6 @@ Rust, ~4× under Go and Python.
 
 Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a ten-kata calibration batch (katas 1-49, against kata 352's probing). Added [`differential.kara`](differential.kara) with a Python mirror: 4000 random words grouped through `entry().or_insert(..)`, checksummed (clean everywhere). Gaps found, in the kara bug ledger:
 
-- **B-2026-10-06-92** — `Vec[i64]` is not `Ord` to the typechecker, so a `SortedMap` keyed by the count vector is refused, though design.md declares `impl[T: Ord] Ord for Vec[T]`.
+- **B-2026-10-06-92** — `Vec[i64]` was not `Ord` to the typechecker, so a `SortedMap` keyed by the count vector was refused, though design.md declares `impl[T: Ord] Ord for Vec[T]`. Fixed in kara `d3f7020d95` on the v2 pipelines: a `SortedMap[Vec[i64], Vec[String]]` keyed by the count vector passes `karac check` and groups the LeetCode example in key order under `karac __mir-llvm-run` (checked at kara `83fab1e1e8`).
 - **B-2026-10-06-93** — `SortedMap` / `SortedSet` with a tuple, `Array` or unit-enum key is refused by `karac build`.
 - A `const` prime table indexed in the prime-product key is the already-open **B-2026-10-06-43**.

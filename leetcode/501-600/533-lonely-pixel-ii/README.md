@@ -38,10 +38,10 @@ column is lonely, all `target` of them are.
 | `differential.kara` | the four arms against a definition by sets, five properties |
 
 The ids arm sorts with `picture[a].cmp(picture[b])`, which design.md
-allows (`impl[T: Ord] Ord for Vec[T]`) and `karac check` refuses ("no
-method 'cmp' on type 'Vec'"): kara B-2026-10-06-92, open. The arm and
-the differential keep that spelling. A copy that sorts the rows'
-`String`s instead was checked as described under Verification.
+allows (`impl[T: Ord] Ord for Vec[T]`). `karac check` refused it ("no
+method 'cmp' on type 'Vec'") until kara B-2026-10-06-92 was fixed in
+`d3f7020d95`; the arm and the differential kept that spelling, and both
+now run as written.
 
 Every arm prints the same 9 lines: both examples, one black and one
 white pixel, two different rows that share a column, two equal rows,
@@ -76,14 +76,16 @@ and one copy in three has a black pixel moved to another column.
 | P5 | one more white row and one more white column give the same answer |
 
 It prints `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac
-__mir-run` on the copy that sorts `String`s.
+__mir-run` and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`.
 
 ## Mutation testing
 
-Twelve edits to the copy of `differential.kara` that sorts `String`s,
-two to each arm that change its answers, and four that do not, each
-run under `karac __mir-run`. All eight that change answers are
-killed.
+Twelve edits to `differential.kara`, two to each arm that change its
+answers, and four that do not, each run under `karac __mir-run`. All
+eight that change answers are killed. They were first run on a copy that
+sorts the rows' `String`s, while B-2026-10-06-92 was open, and run again
+on the differential as written once it was fixed, with the same counts.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -113,26 +115,28 @@ sides, and none of these edits does.
 
 ## Verification
 
-Every arm but the ids arm prints the same output as
-`find_black_pixel.py` under `karac __mir-run` (the v2 MIR
-interpreter) and `karac __mir-llvm-run`, and runs clean under `karac
-__mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output
-identical, no error, no leak. The ids arm and the differential stop
-at type checking on all three (B-2026-10-06-92, above). The copies
-that sort the rows' `String`s instead print the same output as the
-mirror on the same three backends, the copy of the differential
-`20000 checks, 0 failures`, and both run clean under the sanitizers.
-`karac check` passes on every other arm and on the bench program.
+Every arm prints the same output as `find_black_pixel.py` under `karac
+__mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and runs
+clean under `karac __mir-llvm-asan` (AddressSanitizer and
+LeakSanitizer): output identical, no error, no leak. The differential
+prints its line under all three. `karac check` passes all four arms, the
+differential and the bench program. The ids arm and the differential
+were rechecked at kara `83fab1e1e8` (debug build) and `f5c72b653e`
+(release build, for `check` and `__mir-run`), which differ in no `src`
+or `runtime` file, after B-2026-10-06-92 was fixed; until then they
+stopped at type checking, and copies that sorted the rows' `String`s
+were checked instead.
 
-On the frozen legacy backends, `karac run --interp` runs the brute
-and columns arms and prints the mirror's output. LLJIT and legacy
-`karac build` fail on those two at codegen, "no handler for method
-'len' on variable 'row' in `parse`", a `Str` in a slice's `iter()`.
-The ★ arm, the bench program and the differential are refused at
-type checking: legacy types the items of a `Map`'s and a slice's
-`iter()` by value, so it refuses `*count` and `*ch` ("unary '*'
-requires 'ref T' ... found 'i64'"). Legacy is frozen, so this is
-noted, not filed.
+On the frozen legacy backends, `karac run --interp` runs the brute and
+columns arms and prints the mirror's output. LLJIT and legacy `karac
+build` fail on those two at codegen, "no handler for method 'len' on
+variable 'row' in `parse`", a `Str` in a slice's `iter()`. The ★ arm,
+the bench program and the differential are refused at type checking:
+legacy types the items of a `Map`'s and a slice's `iter()` by value, so
+it refuses `*count` and `*ch` ("unary '*' requires 'ref T' ... found
+'i64'"). The ids arm is refused there at `picture[a].cmp(picture[b])`
+("no method 'cmp' on type 'Vec'"): the fix for B-2026-10-06-92 is on the
+v2 pipelines only. Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
 
@@ -184,12 +188,12 @@ passes, so it is not a benchmark.
 
 ## Compiler findings
 
-kara B-2026-10-06-92 (false-positive, open), filed from kata 49 and
-met again here: `Vec[T: Ord]` is not `Ord` to the type checker,
-though design.md declares `impl[T: Ord] Ord for Vec[T]`, so
-`picture[a].cmp(picture[b])` is refused. It blocks the ids arm and the
-differential under every `karac` command; the copies that sort the
-rows' `String`s instead run right.
+kara B-2026-10-06-92 (false-positive), filed from kata 49 and met again
+here, fixed in kara `d3f7020d95`: `Vec[T: Ord]` was not `Ord` to the
+type checker, though design.md declares `impl[T: Ord] Ord for Vec[T]`,
+so `picture[a].cmp(picture[b])` was refused. It blocked the ids arm and
+the differential under every `karac` command; both now run as written
+(see Verification).
 
 kara B-2026-10-13-30 (perf), filed from this kata and fixed in kara
 `16cbe03472`: on the v2 compiled backend `String.push(c)` was an

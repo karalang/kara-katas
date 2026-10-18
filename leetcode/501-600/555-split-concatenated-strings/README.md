@@ -48,12 +48,10 @@ problem's most: 1,000 strings of one letter, one string of 1,000, and
 mirrors the ★ arm and its output is byte-identical.
 
 The bytes and chain arms compare two vectors with `>`, which design.md
-allows (`impl[T: Ord] Ord for Vec[T]`) and every backend refuses at type
-checking: "type 'Vec[u8]' does not implement PartialOrd" (kara
-B-2026-10-06-92, open). The arms keep that spelling. Copies that compare
-through a hand-written function instead print the same output as the ★
-arm under `karac __mir-run` and `karac __mir-llvm-run`, and run clean
-under `karac __mir-llvm-asan`.
+allows (`impl[T: Ord] Ord for Vec[T]`). Every backend refused it at type
+checking ("type 'Vec[u8]' does not implement PartialOrd") until kara
+B-2026-10-06-92 was fixed in `d3f7020d95`; the arms kept that spelling,
+and now run as written.
 
 ## Differential
 
@@ -71,20 +69,25 @@ of 1 to 4 letters, from the first 2, 3 or 26 letters in turn.
 | P4 | the list started one string later gives the same answer |
 | P5 | every string read backwards gives the same answer |
 
-Its copies of the bytes and chain arms keep `>` on vectors, so it stops
-at type checking on B-2026-10-06-92 as those arms do. It also builds the
-reversed list with `flipped.push(s.chars().rev().collect())`, which
-`karac __mir-run` takes and `karac check` refuses ("expected 'String',
-found 'Vec[char]'", kara B-2026-10-12-33, open). A copy whose bytes and
-chain arms compare through a function prints `1000 cases, 4 arms,
-20000 checks, 0 failures` under `karac __mir-run` and `karac
-__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`.
+It prints `1000 cases, 4 arms, 20000 checks, 0 failures` under `karac
+__mir-run` and `karac __mir-llvm-run`, and runs clean under `karac
+__mir-llvm-asan`. It builds the reversed list with
+`flipped.push(s.chars().rev().collect())`, which those three take and
+`karac check` refuses ("expected 'String', found 'Vec[char]'", kara
+B-2026-10-12-33, open). Until B-2026-10-06-92 was fixed, its copies of
+the bytes and chain arms' `>` on vectors stopped it at type checking
+everywhere, and a copy comparing through a hand-written function was
+checked instead.
 
 ## Mutation testing
 
-Twelve edits to that copy of the differential, two to each arm that
-change its answers and four that do not, each run under `karac
-__mir-run`. All eight that change answers are killed.
+Twelve edits to the differential, two to each arm that change its
+answers and four that do not, each run under `karac __mir-run`. All
+eight that change answers are killed. They were first run on the copy
+that compares through a function, while B-2026-10-06-92 was open, and
+run again on the differential as written once it was fixed, with the
+same counts; E2, which edited the copy's function, now turns the bytes
+arm's own `candidate > answer` into `>=`.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -113,21 +116,27 @@ kept, or how a chain is grouped.
 
 ## Verification
 
-The ★ and peak arms print the same output as
-`split_concatenated_strings.py` under `karac __mir-run` (the v2 MIR
-interpreter) and `karac __mir-llvm-run`, and run clean under `karac
-__mir-llvm-asan` (AddressSanitizer and LeakSanitizer): output identical,
-no error, no leak. `karac check` passes on those arms and the bench
-program. The bytes and chain arms and the differential stop at type
-checking on B-2026-10-06-92; their copies pass all of the above.
+Every arm prints the same output as `split_concatenated_strings.py`
+under `karac __mir-run` (the v2 MIR interpreter) and `karac
+__mir-llvm-run`, and runs clean under `karac __mir-llvm-asan`
+(AddressSanitizer and LeakSanitizer): output identical, no error, no
+leak. The differential prints its line under all three. `karac check`
+passes all four arms and the bench program, and refuses the differential
+on B-2026-10-12-33 (above). The bytes and chain arms and the
+differential were rechecked at kara `83fab1e1e8` (debug build) and
+`f5c72b653e` (release build, for `check` and `__mir-run`), which differ
+in no `src` or `runtime` file, after B-2026-10-06-92 was fixed; until
+then they stopped at type checking, and copies comparing through a
+function were checked instead.
 
 The frozen legacy backends: the ★ and peak arms print the same output
 under `karac run --interp`, and fail under `karac run` and `karac
 build`, whose codegen does not take `s.chars().rev().collect()`
 ("`Iterator.rev()` is not yet supported ... for this chain shape"). The
-bytes and chain arms stop at type checking there too, the chain arm also
-on `*c` over a `Vec[char]`'s `iter()`. Legacy is frozen, so these are
-noted, not filed.
+bytes and chain arms stop at type checking there, at `>` on two vectors
+(the fix for B-2026-10-06-92 is on the v2 pipelines only), the chain arm
+also on `*c` over a `Vec[char]`'s `iter()`. Legacy is frozen, so these
+are noted, not filed.
 
 ## Benchmarks
 
@@ -180,8 +189,8 @@ half of Rust's `format!` and two and a half times C's.
 | id | status | what |
 |---|---|---|
 | B-2026-10-14-5 | fixed (`fdb1d5fc22`, `5a4a35bb58`), filed from this kata | an f-string with `String` holes was about 5x three `push_str` on `karac build --mir`; the bench program's Kāra row, re-timed above |
-| B-2026-10-06-92 | open | `>` on two `Vec`s is refused at type checking though design.md declares `Ord` for `Vec[T]`; the bytes and chain arms and the differential |
+| B-2026-10-06-92 | fixed (`d3f7020d95`) | `>` on two `Vec`s was refused at type checking though design.md declares `Ord` for `Vec[T]`; the bytes and chain arms and the differential now run as written |
 | B-2026-10-12-33 | open | `karac check` refuses `v.push(cs.iter().collect())` into a `Vec[String]`; the differential |
 
-Recheck the bytes and chain arms and the differential once the two open
-rows are fixed.
+Recheck the differential under `karac check` once B-2026-10-12-33 is
+fixed.
