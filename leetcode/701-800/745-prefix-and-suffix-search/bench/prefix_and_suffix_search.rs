@@ -1,0 +1,74 @@
+// LeetCode 745 — Prefix and Suffix Search, bench: the ★ arm (every
+// prefix-suffix pair of every word in a map) on filters of 10000
+// words, each asked 10000 queries. Mirrors prefix_and_suffix_search.kara.
+use std::collections::HashMap;
+
+struct WordFilter {
+    keys: HashMap<String, i64>,
+}
+
+impl WordFilter {
+    fn new(words: &[String]) -> WordFilter {
+        let mut keys: HashMap<String, i64> = HashMap::new();
+        for (i, w) in words.iter().enumerate() {
+            let n = w.len();
+            for p in 0..n + 1 {
+                for s in 0..n + 1 {
+                    let mut key = String::from(&w[0..p]);
+                    key.push('{');
+                    key.push_str(&w[s..n]);
+                    keys.insert(key, i as i64);
+                }
+            }
+        }
+        WordFilter { keys }
+    }
+
+    fn f(&self, pref: &str, suff: &str) -> i64 {
+        let mut key = pref.to_string();
+        key.push('{');
+        key.push_str(suff);
+        match self.keys.get(&key) {
+            Some(&i) => i,
+            None => -1,
+        }
+    }
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(seed: &mut i64, longest: i64, letters: i64) -> String {
+    let mut s = String::new();
+    let n = 1 + next_random(seed) % longest;
+    for _ in 0..n {
+        s.push((97 + next_random(seed) % letters) as u8 as char);
+    }
+    s
+}
+
+fn main() {
+    let rounds = 5;
+    let mut seed = 745;
+    let mut found = 0;
+    let mut total = 0;
+    for _ in 0..rounds {
+        let mut words: Vec<String> = Vec::new();
+        for _ in 0..10000 {
+            words.push(random_word(&mut seed, 7, 5));
+        }
+        let filter = WordFilter::new(&words);
+        for _ in 0..10000 {
+            let pref = random_word(&mut seed, 4, 5);
+            let suff = random_word(&mut seed, 4, 5);
+            let got = filter.f(&pref, &suff);
+            if got != -1 {
+                found += 1;
+                total += got;
+            }
+        }
+    }
+    println!("{} rounds of 10000 words and 10000 queries: {} found, indices sum to {}", rounds, found, total);
+}
