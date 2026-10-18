@@ -59,10 +59,20 @@ def ulit(s):
 
 
 print()
+# One function per 250 names: under mir-llvm-asan a function's build time
+# grows with the square of its length (B-2026-10-18-29).
+names = sorted(html5)
+parts = [names[k:k + 250] for k in range(0, len(names), 250)]
 print("// html.entities.html5: each name (with or without its ';') and its text.")
 print("fn html5_entities() -> Map[String, String] {")
 print("    let mut m: Map[String, String] = Map.new();")
-for name in sorted(html5):
-    print("    m.insert(%s.to_string(), %s.to_string());" % (ulit(name), ulit(html5[name])))
+for k in range(len(parts)):
+    print("    add_entities_%d(mut m);" % k)
 print("    m")
 print("}")
+for k, part in enumerate(parts):
+    print()
+    print("fn add_entities_%d(m: mut ref Map[String, String]) {" % k)
+    for name in part:
+        print("    m.insert(%s.to_string(), %s.to_string());" % (ulit(name), ulit(html5[name])))
+    print("}")

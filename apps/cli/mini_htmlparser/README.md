@@ -79,6 +79,11 @@ Compiler gaps:
   `let u = f"{t}{s}"; title = Some(u);`.
 - B-2026-10-18-28: the `ref h` that `karac fix` wrote for the table of
   contents fails check; it should have been `mut ref h`.
+- B-2026-10-18-29: with the table as one function of 2231 `insert`
+  lines, mir-llvm-asan took 168 s to build and run the program (mir-llvm
+  took 16 s), because its build time grows with the square of a
+  function's length. `gen_kara.py` now writes the table as nine
+  functions of 250 names, and the asan run takes 27 s.
 
 After those edits the program matched expected.out on both MIR surfaces.
 
