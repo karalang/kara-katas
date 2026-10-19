@@ -53,8 +53,8 @@ fn ser_into(t: Option[TreeNode], out: mut ref Vec[String]) {
         }
         Some(n) => {
             out.push(n.val.to_string());
-            ser_into(n.left, out);
-            ser_into(n.right, out);
+            ser_into(n.left, mut out);
+            ser_into(n.right, mut out);
         }
     }
 }
@@ -76,12 +76,12 @@ fn de_at(tokens: ref Vec[String], i: mut ref i64) -> Option[TreeNode] {
     if tok == "#" {
         return None;
     }
-    let v = match i64.parse(tok) {
+    let v = match i64.parse(tok).ok() {
         Some(x) => x,
         None => 0,
     };
-    let l = de_at(tokens, i);
-    let r = de_at(tokens, i);
+    let l = de_at(tokens, mut i);
+    let r = de_at(tokens, mut i);
     return node(v, l, r);
 }
 
@@ -89,7 +89,7 @@ fn deserialize(s: ref String) -> Option[TreeNode] {
     if s.len() == 0 {
         return None;
     }
-    let tokens = s.split(",");
+    let tokens: Vec[String] = s.split(",").map(|p| p.to_string()).collect();
     let mut i = 0;
     return de_at(tokens, mut i);
 }
@@ -140,11 +140,11 @@ fn deserialize_level(s: ref String) -> Option[TreeNode] {
     if s.len() == 0 {
         return None;
     }
-    let tokens = s.split(",");
+    let tokens: Vec[Str] = s.split(",").collect();
     if tokens.len() == 0 or tokens[0] == "#" {
         return None;
     }
-    let root_val = match i64.parse(tokens[0]) {
+    let root_val = match i64.parse(tokens[0]).ok() {
         Some(x) => x,
         None => 0,
     };
@@ -161,7 +161,7 @@ fn deserialize_level(s: ref String) -> Option[TreeNode] {
                     let tok = ref tokens[i];
                     i = i + 1;
                     if tok != "#" {
-                        let v = match i64.parse(tok) { Some(x) => x, None => 0 };
+                        let v = match i64.parse(tok).ok() { Some(x) => x, None => 0 };
                         let child = TreeNode { val: v, left: None, right: None };
                         parent.left = Some(child);
                         q.push_back(child);
@@ -171,7 +171,7 @@ fn deserialize_level(s: ref String) -> Option[TreeNode] {
                     let tok = ref tokens[i];
                     i = i + 1;
                     if tok != "#" {
-                        let v = match i64.parse(tok) { Some(x) => x, None => 0 };
+                        let v = match i64.parse(tok).ok() { Some(x) => x, None => 0 };
                         let child = TreeNode { val: v, left: None, right: None };
                         parent.right = Some(child);
                         q.push_back(child);
@@ -248,7 +248,7 @@ fn de_paren_range(b: ref Slice[u8], lo: i64, hi: i64) -> Option[TreeNode] {
         digits.push(b[k] as char);
         k = k + 1;
     }
-    let v = match i64.parse(digits) { Some(x) => x, None => 0 };
+    let v = match i64.parse(digits).ok() { Some(x) => x, None => 0 };
 
     let mut l: Option[TreeNode] = None;
     let mut r: Option[TreeNode] = None;
@@ -280,8 +280,8 @@ fn fingerprint_into(t: Option[TreeNode], out: mut ref Vec[String]) {
         None => { out.push("#"); }
         Some(n) => {
             out.push(n.val.to_string());
-            fingerprint_into(n.left, out);
-            fingerprint_into(n.right, out);
+            fingerprint_into(n.left, mut out);
+            fingerprint_into(n.right, mut out);
         }
     }
 }
@@ -317,9 +317,9 @@ fn inorder_into(t: Option[TreeNode], out: mut ref Vec[String]) {
     match t {
         None => {}
         Some(n) => {
-            inorder_into(n.left, out);
+            inorder_into(n.left, mut out);
             out.push(n.val.to_string());
-            inorder_into(n.right, out);
+            inorder_into(n.right, mut out);
         }
     }
 }
@@ -343,8 +343,8 @@ fn grow(n: i64, spread: i64, seed: mut ref i64) -> Option[TreeNode] {
     // spine, an even one makes a bush.
     let left_n = if n <= 1 { 0 } else { seed % n };
     let right_n = n - 1 - left_n;
-    let l = grow(left_n, spread, seed);
-    let r = grow(right_n, spread, seed);
+    let l = grow(left_n, spread, mut seed);
+    let r = grow(right_n, spread, mut seed);
     return node(v, l, r);
 }
 

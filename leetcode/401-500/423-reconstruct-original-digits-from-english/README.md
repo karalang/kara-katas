@@ -126,3 +126,16 @@ benchmark.
   fails as "type 'i64' is not callable". A callee suggestion should
   offer only names that can be called, and here the useful one is the
   method. The arm uses `a.abs()`.
+
+### Migrated to the v2 checker
+
+At kara `5656fc5a1c` `karac check` refused the differential:
+`split_whitespace` returns an iterator now, and `mut` markers were
+missing. `karac fix` offers the right edits but applies none of them: an
+ownership fix-it that follows from the uncollected iterator suggests
+`#[derive(Clone)]` on the stdlib's `StrWords`, at an offset into the
+stdlib's source, so the fix aborts with "fix would write past end of
+file" (kara B-2026-10-19-17; kata 425's differential hits the same).
+The other edits, taken from `karac check --output=json`, were applied by
+script, and the differential prints the same output as its corpus
+`expected.out`.

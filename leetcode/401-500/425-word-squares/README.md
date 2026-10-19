@@ -141,3 +141,12 @@ No new findings. The ★ arm first wrote the index with `Map.get_mut`,
 which `docs/library/collections.md` documents but `karac check`
 refuses (B-2026-10-12-3, open); `Map.entry(..).or_insert(..)`, the
 form the same document uses for grouping, is what the arm uses now.
+
+### Migrated to the v2 checker
+
+At kara `5656fc5a1c` `karac check` refused the differential, for
+iterators returned by `split` and `split_whitespace` and for missing
+`mut` markers. `karac fix` aborted on it as on kata 423's differential
+(kara B-2026-10-19-17), so its own edits, taken from `karac check
+--output=json`, were applied by script; the differential prints the same
+output as its corpus `expected.out`.

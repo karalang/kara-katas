@@ -257,3 +257,17 @@ which is exactly what it did to the mutant here.
   works and a consuming `for (n, c) in vec` works. The arms use the consuming
   `for` form; the residual is the `let` half of kara `B-2026-08-11-11`, still
   open.
+
+### Migrated to the v2 checker
+
+At kara `5656fc5a1c` `karac check` refused every file here for missing
+`mut` markers, which `karac fix` added; every arm's output still matches
+its corpus `expected.out`. The differential then passed `karac check`
+and stopped at `__mir-run`'s borrow check, in `perfect`, which wrote
+`counter = counter + 1; let v = counter;` on a `mut ref i64`. It now
+writes `*counter += 1; let v = *counter;`, the spec's spelling, and
+prints `DIFFERENTIAL OK` and the same lines as legacy did. Two gaps
+behind the old spelling are filed: `karac check` passes `let v = r` on a
+`mut ref i64`, which every MIR surface refuses (kara B-2026-10-19-15),
+and plain `=` to a `mut ref i64` writes through on every surface where
+design.md says it does not (kara B-2026-10-19-16).
