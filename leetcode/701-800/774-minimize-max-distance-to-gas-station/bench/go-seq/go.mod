@@ -1,0 +1,3 @@
+module minimize_max_distance_to_gas_station_bench
+
+go 1.24
