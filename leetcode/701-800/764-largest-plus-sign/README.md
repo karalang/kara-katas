@@ -100,8 +100,17 @@ differential prints its line under all three. `karac check` passes all
 four arms, the differential and the bench program. The debug build that
 runs `__mir-llvm-run`, `__mir-llvm-asan` and `build --mir` and the
 release build that runs `check` and `__mir-run` are both at kara
-`a62eacd307`, whose last compiler change is `7d736aae75`. The runtime
-archives were built after the last runtime change, `b09cd37112`.
+`a62eacd307`, whose last compiler change is `7d736aae75`. This paragraph
+said the runtime archives were built after the last runtime change,
+`b09cd37112`; in fact they predated a later one, `176f59738b`, which
+changed only the order in which the runtime's merge sort makes its
+merges, so it could not change any result here. Every arm and the
+differential were checked again at kara `8a2af7d554`, whose last
+compiler change is `60d9973e03`, with the archives rebuilt after
+`176f59738b`: each prints the same under `karac __mir-llvm-run` and
+`karac __mir-llvm-asan` with no error, and the bench program built by
+`karac build --mir` prints the same line. The timings below are from the
+earlier build.
 
 Since kara `3c8e763161` (B-2026-10-18-31) the sanitizer lane sees leaks
 itself. The leak check also copied each arm's and the differential's
