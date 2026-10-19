@@ -1,13 +1,13 @@
 # 636. Exclusive Time of Functions
 
-On a single-threaded CPU, a program runs `n` functions with ids 0 to `n
-- 1`. Calls are tracked on a stack: a call pushes the function's id, and
-the function on top of the stack is the one running. The logs are given
-in timestamp order, each `"{id}:start:{t}"` or `"{id}:end:{t}"`: a start
-at `t` begins at the beginning of unit `t`, and an end at `t` finishes
-at the end of unit `t`. A function's exclusive time is the number of
-units it ran, across all its calls, not counting the time its callees
-ran. Return the exclusive times by id.
+On a single-threaded CPU, a program runs `n` functions with ids 0 to
+`n - 1`. Calls are tracked on a stack: a call pushes the function's id,
+and the function on top of the stack is the one running. The logs are
+given in timestamp order, each `"{id}:start:{t}"` or `"{id}:end:{t}"`: a
+start at `t` begins at the beginning of unit `t`, and an end at `t`
+finishes at the end of unit `t`. A function's exclusive time is the
+number of units it ran, across all its calls, not counting the time its
+callees ran. Return the exclusive times by id.
 
 ```
 n = 2, ["0:start:0","1:start:2","1:end:5","0:end:6"]                          ->  [3, 4]
