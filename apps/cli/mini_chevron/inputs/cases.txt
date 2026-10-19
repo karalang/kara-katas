@@ -1,0 +1,493 @@
+# Mustache cases: each runs chevron.render(template, data, partials_dict,
+# partials_path=None, warn=True). A block is the lines up to the next
+# marker, joined with newlines; an empty last line gives a final newline.
+=== interpolation: no tags
+~~~ template
+Hello from {Mustache}!
+~~~ data
+{}
+=== interpolation: basic
+~~~ template
+Hello, {{subject}}!
+~~~ data
+{"subject": "world"}
+=== interpolation: escaping
+~~~ template
+These characters should be HTML escaped: {{forbidden}}
+~~~ data
+{"forbidden": "& \" < > '"}
+=== interpolation: triple mustache and ampersand
+~~~ template
+{{{forbidden}}} | {{&forbidden}} | {{& forbidden }}
+~~~ data
+{"forbidden": "& \" < > '"}
+=== interpolation: numbers, booleans and null
+~~~ template
+int {{i}}, float {{f}}, big {{big}}, exp {{e}}, true {{t}}, false {{no}}, zero {{zero}}, fzero {{fz}}, negzero {{nz}}, null [{{nil}}]
+~~~ data
+{"i": 85, "f": 1.21, "big": 12345678901234567, "e": 1e3, "t": true, "no": false, "zero": 0, "fz": 0.0, "nz": -0.0, "nil": null}
+=== interpolation: lists and dicts print as Python values
+~~~ template
+{{list}} / {{dict}} / {{{dict}}}
+~~~ data
+{"list": [1, "two", 3.5, null, true, ["it's"], {"q": "\"x\""}], "dict": {"a": 1, "b": [], "c": "line\nbreak"}}
+=== interpolation: empty values
+~~~ template
+[{{empty}}] [{{list}}] [{{dict}}]
+~~~ data
+{"empty": "", "list": [], "dict": {}}
+=== interpolation: missing key warns
+~~~ template
+I ({{cannot}}) be seen! {{nested.missing}}
+~~~ data
+{"nested": {}}
+=== interpolation: dotted names
+~~~ template
+"{{person.name}}" == "{{#person}}{{name}}{{/person}}" / {{a.b.c.d.e.name}}
+~~~ data
+{"person": {"name": "Joe"}, "a": {"b": {"c": {"d": {"e": {"name": "Phil"}}}}}}
+=== interpolation: a dotted name that breaks part way tries the next scope
+~~~ template
+{{#a}}{{b.c}}{{/a}}
+~~~ data
+{"a": {"b": {}}, "b": {"c": "ERROR"}}
+=== interpolation: list indexes and string indexes
+~~~ template
+{{items.0}} {{items.-1}} {{items.+1}} {{word.0}}{{word.-1}} [{{items.9}}] [{{items.x}}]
+~~~ data
+{"items": ["first", "second", "last"], "word": "kara"}
+=== interpolation: attributes of numbers
+~~~ template
+{{n.real}} {{n.imag}} {{n.numerator}} {{n.denominator}} {{x.real}} {{x.imag}} {{yes.real}}
+~~~ data
+{"n": 7, "x": 2.5, "yes": true}
+=== interpolation: whitespace around the key
+~~~ template
+|{{ string }}|{{{ string }}}|{{&  string  }}|
+~~~ data
+{"string": "---"}
+=== interpolation: standalone tags are not trimmed
+~~~ template
+  {{string}}
+  {{{string}}}
+
+~~~ data
+{"string": "---"}
+=== interpolation: the implicit iterator at the top
+~~~ template
+{{.}}
+~~~ data
+{"a": 1}
+=== sections: truthy and falsy
+~~~ template
+"{{#t}}This should be rendered.{{/t}}" "{{#f}}This should not be rendered.{{/f}}" "{{#z}}zero{{/z}}" "{{#s}}empty string{{/s}}" "{{#n}}null{{/n}}"
+~~~ data
+{"t": true, "f": false, "z": 0, "s": "", "n": null}
+=== sections: a context
+~~~ template
+"{{#context}}Hi {{name}}.{{/context}}"
+~~~ data
+{"context": {"name": "Joe"}}
+=== sections: parent contexts
+~~~ template
+"{{#sec}}{{a}}, {{b}}, {{c.d}}{{/sec}}"
+~~~ data
+{"a": "foo", "b": "wrong", "sec": {"b": "bar"}, "c": {"d": "baz"}}
+=== sections: deeply nested contexts
+~~~ template
+{{#a}}
+{{one}}
+{{#b}}
+{{one}}{{two}}{{one}}
+{{#c}}
+{{one}}{{two}}{{three}}{{two}}{{one}}
+{{/c}}
+{{/b}}
+{{/a}}
+
+~~~ data
+{"a": {"one": 1}, "b": {"two": 2}, "c": {"three": 3}}
+=== sections: lists
+~~~ template
+"{{#list}}{{item}}{{/list}}"
+~~~ data
+{"list": [{"item": 1}, {"item": 2}, {"item": 3}]}
+=== sections: the implicit iterator
+~~~ template
+"{{#list}}({{.}}){{/list}}" "{{#nested}}({{#.}}{{.}}{{/.}}){{/nested}}"
+~~~ data
+{"list": ["a", 1, 2.5, true, "&"], "nested": [[1, 2], [3]]}
+=== sections: falsy list items are skipped
+~~~ template
+{{#nums}}{{.}},{{/nums}} {{#mixed}}[{{.}}]{{/mixed}}
+~~~ data
+{"nums": [1, 0, 2, 0.0, 3], "mixed": ["", null, false, [], {}, "x"]}
+=== sections: an empty list
+~~~ template
+"{{#list}}Yay lists!{{/list}}"
+~~~ data
+{"list": []}
+=== sections: doubled
+~~~ template
+{{#bool}}
+* first
+{{/bool}}
+* {{two}}
+{{#bool}}
+* third
+{{/bool}}
+
+~~~ data
+{"bool": true, "two": "second"}
+=== sections: nested sections with the same name
+~~~ template
+{{#list}}<{{#list}}{{.}}{{/list}}>{{/list}}
+~~~ data
+{"list": [{"list": ["a", "b"]}, {"list": []}]}
+=== sections: a string is a scope, not a list
+~~~ template
+{{#name}}[{{.}}] {{0}}{{/name}}
+~~~ data
+{"name": "Kara"}
+=== sections: dotted names
+~~~ template
+"{{#a.b.c}}Here{{/a.b.c}}" == "Here" / "{{#a.b.x}}Here{{/a.b.x}}" == ""
+~~~ data
+{"a": {"b": {"c": true}}}
+=== sections: standalone lines
+~~~ template
+| This Is
+{{#boolean}}
+|
+{{/boolean}}
+| A Line
+
+~~~ data
+{"boolean": true}
+=== sections: indented standalone lines
+~~~ template
+| This Is
+  {{#boolean}}
+|
+  {{/boolean}}
+| A Line
+
+~~~ data
+{"boolean": true}
+=== sections: standalone with a tab before and after
+~~~ template
+| A
+	{{#b}}	
+| B
+	{{/b}}	
+| C
+~~~ data
+{"b": true}
+=== sections: standalone at the end without a newline
+~~~ template
+#{{#boolean}}
+/
+  {{/boolean}}  
+~~~ data
+{"boolean": true}
+=== sections: not standalone when text follows
+~~~ template
+ {{#boolean}}YES{{/boolean}}
+ {{#boolean}}GOOD{{/boolean}}
+
+~~~ data
+{"boolean": true}
+=== sections: CRLF line ends
+~~~ template
+|
+{{#boolean}}
+{{/boolean}}
+|
+~~~ data
+{"boolean": true}
+=== inverted: falsy values
+~~~ template
+"{{^f}}This should be rendered.{{/f}}" "{{^t}}no{{/t}}" "{{^z}}zero{{/z}}" "{{^s}}empty{{/s}}" "{{^n}}null{{/n}}" "{{^missing}}missing{{/missing}}"
+~~~ data
+{"t": true, "f": false, "z": 0, "s": "", "n": null}
+=== inverted: lists
+~~~ template
+"{{^list}}{{n}}{{/list}}" "{{^empty}}Yay lists!{{/empty}}"
+~~~ data
+{"list": [{"n": 1}, {"n": 2}], "empty": []}
+=== inverted: the implicit iterator inside reads the parent
+~~~ template
+{{#items}}{{^flag}}<{{name}} {{.}}>{{/flag}}{{/items}}
+~~~ data
+{"items": [{"name": "a", "flag": true}, {"name": "b"}]}
+=== inverted: dotted names and context
+~~~ template
+"{{^a.b.c}}Not Here{{/a.b.c}}" "{{^a.b.x}}Not Here{{/a.b.x}}" "{{^ctx}}{{name}}{{/ctx}}"
+~~~ data
+{"a": {"b": {"c": true}}, "name": "outer"}
+=== inverted: standalone lines
+~~~ template
+| This Is
+{{^boolean}}
+|
+{{/boolean}}
+| A Line
+
+~~~ data
+{"boolean": false}
+=== comments: inline and standalone
+~~~ template
+12345{{! Comment Block! }}67890
+Begin.
+{{! Comment Block! }}
+End.
+  {{! Indented Comment Block! }}
+Middle.
+{{!
+  Something's going on here...
+}}
+Done.
+
+~~~ data
+{}
+=== comments: not standalone with text around
+~~~ template
+  12 {{! 34 }}
+ 12345 {{! Comment Block! }} 67890
+~~~ data
+{}
+=== delimiters: pair behavior
+~~~ template
+{{=<% %>=}}(<%text%>) {{text}} <%={{ }}=%>({{text}})
+~~~ data
+{"text": "Hey!"}
+=== delimiters: special characters and spaces
+~~~ template
+({{=[   ]=}}[text]) ({{=| |=}}|text|)
+~~~ data
+{"text": "It worked!"}
+=== delimiters: sections and inverted sections
+~~~ template
+[
+{{#section}}
+  {{data}}
+  |data|
+{{/section}}
+{{= | | =}}
+|#section|
+  {{data}}
+  |data|
+|/section|
+|^nope|
+  |data|
+|/nope|
+]
+~~~ data
+{"section": true, "data": "I got interpolated.", "nope": false}
+=== delimiters: standalone set-delimiter tags
+~~~ template
+Begin.
+{{=@ @=}}
+End @x@.
+  @={{ }}=@
+Back {{x}}.
+
+~~~ data
+{"x": "!"}
+=== delimiters: the triple mustache only works with braces
+~~~ template
+{{=<% %>=}}<%{a}%>|<%&a%>|<%a%>
+~~~ data
+{"a": "<b>"}
+=== delimiters: chosen by the caller
+~~~ delimiters
+<% %>
+~~~ template
+{{ kept }} <%name%> <%#list%>[<%.%>]<%/list%>
+~~~ data
+{"name": "Ada", "list": [1, 2]}
+=== partials: basic and missing
+~~~ template
+"{{>text}}" "{{>missing}}"
+~~~ partial text
+from partial
+~~~ data
+{}
+=== partials: context and recursion
+~~~ template
+{{>node}}
+~~~ partial node
+{{content}}<{{#nodes}}{{>node}}{{/nodes}}>
+~~~ data
+{"content": "X", "nodes": [{"content": "Y", "nodes": []}, {"content": "Z", "nodes": [{"content": "W", "nodes": []}]}]}
+=== partials: standalone indentation
+~~~ template
+\
+ {{>partial}}
+/
+
+~~~ partial partial
+|
+{{{content}}}
+|
+
+~~~ data
+{"content": "<\n->"}
+=== partials: inline partials are not indented
+~~~ template
+  {{data}}  {{> partial}}
+
+~~~ partial partial
+>
+>
+~~~ data
+{"data": "|"}
+=== partials: the partial's own delimiters reset
+~~~ template
+{{=| |=}}|>p| |text|
+~~~ partial p
+{{text}}|text|
+~~~ data
+{"text": "T"}
+=== partials: indentation inside a list
+~~~ template
+items:
+{{#items}}
+  {{>item}}
+{{/items}}
+~~~ partial item
+- name: {{name}}
+  qty: {{qty}}
+
+~~~ data
+{"items": [{"name": "bolt", "qty": 4}, {"name": "nut", "qty": 0}]}
+=== partials: a tab before a standalone partial
+~~~ template
+>
+	{{>p}}
+<
+~~~ partial p
+a
+b
+
+~~~ data
+{}
+=== quirks: a lone opening delimiter at the end vanishes
+~~~ template
+price: 10{{
+~~~ data
+{}
+=== quirks: an empty tag
+~~~ template
+before {{}} after
+~~~ data
+{}
+=== quirks: a triple mustache that is not closed by three braces
+~~~ template
+[{{{a}}] [{{{ a }}}]
+~~~ data
+{"a": "x"}
+=== quirks: a falsy section skips the rest of a scope
+~~~ template
+{{#outer}}A{{#zero}}B{{/zero}}C{{/outer}}
+~~~ data
+{"outer": {"zero": 0}}
+=== quirks: a number that is subscripted
+~~~ template
+{{#n}}{{0}}{{/n}}
+~~~ data
+{"n": 5}
+=== quirks: a null that is subscripted
+~~~ template
+{{#items}}{{1}}{{/items}}
+~~~ data
+{"items": [null, {"1": "found"}]}
+=== quirks: the implicit iterator on true at the top
+~~~ template
+{{#t}}{{.}}{{/t}}
+~~~ data
+{"t": true}
+=== quirks: set delimiter with no right delimiter
+~~~ template
+{{=<%=}}<%x
+~~~ data
+{"x": 1}
+=== quirks: an empty left delimiter
+~~~ template
+a{{= =}}b {{x}}
+~~~ data
+{"x": 1}
+=== errors: unclosed tag
+~~~ template
+line one
+line two {{name
+~~~ data
+{}
+=== errors: unclosed set delimiter
+~~~ template
+one
+two
+{{=<% %>}}
+~~~ data
+{}
+=== errors: closing a section that was not opened
+~~~ template
+a
+{{#a}}b{{/a}}
+{{/b}}
+~~~ data
+{"a": 1}
+=== errors: closing the wrong section
+~~~ template
+{{#a}}
+  {{#b}}
+  {{/a}}
+{{/b}}
+~~~ data
+{}
+=== errors: a section never closed
+~~~ template
+{{#a}}
+{{#b}}{{/b}}
+text
+~~~ data
+{"a": true}
+=== errors: the warnings before an error stay
+~~~ template
+{{missing1}} {{missing2}}
+{{/x}}
+~~~ data
+{}
+=== errors: a partial resets the line count
+~~~ template
+one
+two
+{{>p}}
+four
+{{/x}}
+~~~ partial p
+just one line
+~~~ data
+{}
+=== errors: an error inside a partial
+~~~ template
+before {{>p}} after
+~~~ partial p
+{{#open}}
+~~~ data
+{}
+=== quirks: an inverted section with the same name ends a list early
+~~~ template
+{{#list}}{{^list}}x{{/list}}{{/list}}after
+~~~ data
+{"list": [1]}
+=== quirks: duplicate keys keep the first place and the last value
+~~~ template
+{{.}} {{a}}
+~~~ data
+{"a": 1, "b": 2, "a": 3}
+=== interpolation: JSON escapes and non-ASCII
+~~~ template
+{{s}} | {{.}}
+~~~ data
+{"s": "tab\there \u00e9\u4e2d\ud83d\ude00 \\ \/ \u0007", "k\u00e9y": "\u2028"}

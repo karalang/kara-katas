@@ -1,0 +1,44 @@
+{{! Generated for {{env}} -- do not edit by hand }}
+# {{env}}: {{sites.length}} sites
+user  {{user}};
+worker_processes  {{workers}};
+
+events {
+    worker_connections  {{connections}};
+}
+
+http {
+    include       mime.types;
+    sendfile      on;
+{{#gzip}}
+    gzip          on;
+    gzip_types    {{types}};
+{{/gzip}}
+{{^gzip}}
+    # gzip is off
+{{/gzip}}
+
+{{#upstreams}}
+    upstream {{name}} {
+{{#servers}}
+        server {{host}}:{{port}}{{#weight}} weight={{weight}}{{/weight}}{{#backup}} backup{{/backup}};
+{{/servers}}
+    }
+
+{{/upstreams}}
+{{#sites}}
+    server {
+        listen       {{port}}{{#tls}} ssl{{/tls}};
+        server_name  {{names}};
+{{#tls}}
+        ssl_certificate      /etc/ssl/{{cert}}.pem;
+        ssl_certificate_key  /etc/ssl/{{cert}}.key;
+{{/tls}}
+{{#locations}}
+        {{> location}}
+{{/locations}}
+        {{>error_pages}}
+    }
+
+{{/sites}}
+}
