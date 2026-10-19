@@ -115,9 +115,21 @@ under all three. `karac check` passes every arm, the differential and
 the bench program. All at kara `ea2a2da2be` for the debug build and
 `9575b48af3` for the release build that runs `check` and `__mir-run`.
 
-The frozen legacy backends refuse every file at type checking. They take
-a bare parameter by value, so passing `ends[0]`, a `String` in a `Vec`,
-to `position` is "cannot move out of an index expression"; and they type
+All six files were repaired at kara `5656fc5a1c`, whose last compiler
+change is `ecb1a0322e`. `split` returns a lazy iterator of `Str` views
+since kara `acd593fc77` (B-2026-10-12-7), so each range name's ends are
+collected, `let ends: Vec[Str] = range.split(":").collect();`, which
+`karac fix` wrote; and `position`, which is only ever handed one of
+those ends, takes `name: Str` where it took a `String`, by hand. Every
+arm prints the same output as `excel.py` under `karac __mir-run` again,
+the differential prints its line, the bench prints its line under
+`karac build --mir`, and `karac check` passes every file.
+
+The frozen legacy backends refuse every file at type checking. Legacy's
+`split` still returns a `Vec`, so the `collect()` straight after it is
+an error. Before the repair they stopped later: they take a bare
+parameter by value, so passing `ends[0]`, a `String` in a `Vec`, to
+`position` was "cannot move out of an index expression"; and they type
 the items of a `Vec`'s `iter()` by value, so the harness's `*name` and
 the differential's `*r` are errors. Legacy is frozen, so these are
 noted, not filed.
@@ -162,7 +174,11 @@ the same line in 3.8 s, compile included; that JITs the MIR's IR without
 optimization passes, so it is not a benchmark.
 
 The Kāra build is about 1.4 times the Rust build and 1.7 times the C
-build, and ahead of Go. That gap is not profiled.
+build, and ahead of Go. That gap is not profiled. Re-timed after the
+repair, five interleaved runs at kara `5656fc5a1c`: Kāra 0.73 to 0.81 s,
+Rust 0.45 to 0.56 s (0.46 to 0.76 s under overflow checks), C 0.37 to
+0.60 s and Go 0.91 to 1.05 s, no change beyond the container's noise.
+The legacy timing above is of a copy made before the repair.
 
 ## Compiler findings
 

@@ -21,7 +21,7 @@ Every arm is `fn reverse_words(s: String) -> String`.
 | `reverse_words_in_a_string_iii.kara` ★ | `split(" ")`, each word's `chars().rev()` collected into a `String`, the words joined with single spaces; O(length) |
 | `reverse_words_in_a_string_iii_bytes.kara` | the text copied once into a `Vec[u8]`, each word found by scanning for the next space and reversed in place by swapping its ends inwards, read back with `String.from_utf8` |
 | `reverse_words_in_a_string_iii_stack.kara` | one pass over the chars: letters pushed onto a stack, popped empty into the output at each space and at the end |
-| `reverse_words_in_a_string_iii_chain.kara` | one iterator chain: `split(" ").iter().map(\|w\| w.chars().rev().collect()).collect()` into a `Vec[String]`, then joined |
+| `reverse_words_in_a_string_iii_chain.kara` | one iterator chain: `split(" ").map(\|w\| w.chars().rev().collect()).collect()` into a `Vec[String]`, then joined |
 | `differential.kara` | the four arms against the definition, five properties |
 
 Every arm prints the same 9 lines: six texts at the edges (the two
@@ -102,8 +102,19 @@ and the bench program. The chain arm and the differential were rechecked
 at kara `f6052c659c`, after B-2026-10-14-7 and B-2026-10-14-6 were
 fixed; before that `karac check` and both MIR backends refused them.
 
+All five files were repaired at kara `5656fc5a1c`, whose last compiler
+change is `ecb1a0322e`, by `karac fix` alone. `split` returns a lazy
+iterator of views since kara `acd593fc77` (B-2026-10-12-7), so the chain
+arm and the differential drop their `.iter()`; and `karac check` now
+wants a `mut` marker on every argument to a `mut ref` parameter, so the
+harness writes `next_random(mut seed)`. The four arms print the same
+output as the mirror under `karac __mir-run` again, the differential
+prints its line, and `karac check` passes every file.
+
 The frozen legacy backends refuse every arm and the differential under
-`karac run --interp`, `karac run` and `karac build`. The ★, bytes and
+`karac run --interp`, `karac run` and `karac build`. Legacy's `split`
+still returns a `Vec`, so the chain arm and the differential stop at
+type checking, at the `map` straight after `split`. The ★, bytes and
 stack arms stop at ownership checking in the harness, at `{got[..10]}`
 and `{checksum(got)}` in one f-string ("cannot move `got` while a slice
 borrow into it is still live"); under v2 `checksum` borrows its
@@ -121,43 +132,41 @@ program under `karac __mir-run` included (611 s).
 Rust splits with `split(' ')` and collects each word's `chars().rev()`
 into a `String` as the Kāra arm does; Go reverses each word as a
 `[]rune`, C copies each word backwards into its own `malloc`'d string,
-and Python uses `w[::-1]`. Spot timings on a shared 4-core container,
-three runs each (two for Python; `bench.sh` timings need a quiet
-machine):
+and Python uses `w[::-1]`. Spot timings on a shared 4-core container at
+kara `5656fc5a1c`, five interleaved runs of each compiled program, three
+more of Kāra and Rust interleaved with Go and Python (`bench.sh` timings
+need a quiet machine):
 
 | | time |
 |---|---|
-| C (`clang -O3`) | 2.01 to 2.18 s |
-| Rust (`rustc -O`) | 3.23 to 3.68 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 3.26 to 3.79 s |
-| Go | 4.62 to 4.66 s |
-| Python | 5.19 to 5.28 s |
-| Kāra (`karac build --mir`) | 5.41 to 5.58 s |
+| C (`clang -O3`) | 2.08 to 2.53 s |
+| Rust (`rustc -O`) | 3.28 to 3.99 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 3.49 to 3.93 s |
+| Go | 4.35 to 4.74 s |
+| Python | 5.80 to 6.25 s |
+| Kāra (`karac build --mir`) | 4.17 to 4.78 s |
 
 The legacy `karac build` refuses this program: it moves `texts[(round *
 7 + g) % count]` out of the index where v2 borrows it. So `bench.sh`
 builds the Kāra program with `karac build --mir`, the v2 compiled
 backend; that edit is by hand, on top of the `scripts/new-bench.sh`
-output. The table was re-timed at kara `7609de871d`, after
-B-2026-10-13-30 and B-2026-10-13-35 were fixed; the Python row is from
-the first timing, at kara `af2123abc5`, when the Kāra row was 6.30 to
-6.95 s. Under `karac __mir-llvm-run` the program prints the same line
+output. Under `karac __mir-llvm-run` the program prints the same line
 in 30.6 s, compile included; that JITs the MIR's IR without
 optimization passes, so it is not a benchmark.
 
-The Kāra row is about 1.6 times Rust's. Most of the gap is `split`.
-With the reversing and joining taken out, splitting the texts alone
-takes 2.37 s against Rust's 0.57: Kāra's `split` builds a `Vec[String]`,
-a fresh allocation and copy for every word, where Rust's yields views
-into the text. The language's own spec has `split` return an iterator
-(kara B-2026-10-12-7), and B-2026-10-03-10 records its allocation per
-word. At the first timing, reversing a 6-character word ten million
-times cost 0.86 s against Rust's 0.44, the rest of the gap: on the
-compiled MIR backend each char walked backwards is an out-of-line
-runtime call, `karac_mir_char_before_byte` (B-2026-10-13-31, open), and
-each char pushed was another, `karac_mir_string_push_char`
-(B-2026-10-13-30 and B-2026-10-13-35, fixed in kara `16cbe03472`,
-which gives an ASCII push an inline path).
+At the medians of the five interleaved runs the Kāra build takes 4.51 s
+against Rust's 3.69, 1.2 times. Earlier timings, of the same program
+when `split` built a `Vec[String]`, put Kāra at 1.6 times Rust, and
+splitting alone, with the reversing and joining taken out, at 2.37 s
+against Rust's 0.57. `split` now yields views into the text, and the
+same split-only programs, timed with the table, take 1.51 to 1.69 s in
+Kāra against 0.62 to 0.69 s in Rust, so splitting is still about
+2.4 times Rust's but no longer allocates a word at a time. The earlier
+timings came before kara `16cbe03472`, which gives an ASCII
+`push` an inline path (B-2026-10-13-30 and B-2026-10-13-35); walking a
+word's chars backwards on the compiled MIR backend is still an
+out-of-line runtime call, `karac_mir_char_before_byte`
+(B-2026-10-13-31).
 
 ## Compiler findings
 
@@ -181,7 +190,8 @@ result or sits inside a closure's body, and all three now fixed:
 Rechecked at kara `f6052c659c`: the chain arm runs as written on both
 MIR backends and passes `karac check`.
 
-The chain arm writes `s.split(" ").iter()` because `split` returns a
-`Vec` today; the spec's `split` is an iterator and would take the `map`
-directly (B-2026-10-12-7). The legacy failures above are not filed
+The chain arm wrote `s.split(" ").iter()` while `split` returned a
+`Vec`; since kara `acd593fc77` (B-2026-10-12-7) `split` is the spec's
+iterator and takes the `map` directly, which the chain arm now does. The
+legacy failures above are not filed
 because legacy is frozen.
