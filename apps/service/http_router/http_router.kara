@@ -123,7 +123,7 @@ impl Router {
 
     fn call_at(ref self, index: i64, ctx: own RouteCtx, store: mut ref UserStore) -> Result[Reply, ApiError] {
         let route = ref self.routes[index];
-        (route.handler)(ctx, store)
+        (route.handler)(ctx, mut store)
     }
 
     fn lookup(ref self, method: Method, path: ref String) -> RouteResult {
@@ -148,18 +148,18 @@ fn parse_form(body: ref String) -> Result[Map[String, String], ApiError] {
     let mut fields: Map[String, String] = Map.new();
     if body.trim().is_empty() { return Ok(fields); }
     for pair in body.split("&") {
-        let kv = pair.split("=");
+        let kv: Vec[Str] = pair.split("=").collect();
         if kv.len() != 2 or kv[0].trim().is_empty() {
             return Err(ApiError.BadRequest(f"malformed field '{pair}'"));
         }
-        fields.insert(kv[0].trim(), kv[1].trim());
+        fields.insert(kv[0].trim().to_string(), kv[1].trim().to_string());
     }
     Ok(fields)
 }
 
 fn param_id(ctx: ref RouteCtx, key: String) -> Result[i64, ApiError] {
     let raw = ctx.params.get(key).unwrap_or("");
-    match i64.parse(raw) {
+    match i64.parse(raw).ok() {
         Some(id) => Ok(id),
         None => Err(ApiError.BadRequest(f"invalid id '{raw}'")),
     }
