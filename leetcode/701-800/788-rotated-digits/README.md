@@ -114,17 +114,17 @@ answers sum to 55432377, checksum 328266109`, the Kāra program under
 
 The bench measures integer division by 10 and a chain of comparisons on
 each digit, whose branches depend on the digits and are hard to predict.
-Spot timings on a shared 4-core container, five interleaved runs of each
-compiled program, three more of Kāra, and two of Python (`bench.sh`
+Spot timings on a shared 4-core container, eight runs of each compiled
+program, five of them interleaved, and four of Python (`bench.sh`
 timings need a quiet machine):
 
 | | time |
 |---|---|
 | C (`clang -O3`) | 0.90 to 1.16 s |
 | Rust (`rustc -O`) | 0.87 to 1.35 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 1.16 to 1.25 s |
-| Go | 2.29 to 2.33 s |
-| Python | 50.63 to 56.23 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.12 to 1.27 s |
+| Go | 2.24 to 2.42 s |
+| Python | 50.63 to 57.10 s |
 | Kāra (`karac build --mir`) | 1.08 to 1.42 s |
 
 `bench.sh` builds the Kāra program with `karac build --mir`, the v2
@@ -139,7 +139,7 @@ against C's 1.08, Rust's 1.15 (1.20 under overflow checks) and Go's
 2.32. Under valgrind's cachegrind v2 runs 13.4 billion instructions and
 1.80 billion branches, of which it mispredicts 205 million, against C's
 14.6 billion, 2.09 billion and 398 million and Rust's 10.6 billion, 2.14
-billion and 326 million. The legacy build ran 0.96 to 1.10 s, a median
+billion and 326 million. The legacy build ran 0.94 to 1.52 s, a median
 of 1.02 s in the interleaved runs, so v2 takes 1.14 times legacy. The
 comparison with C and Rust waits until after M4.
 
