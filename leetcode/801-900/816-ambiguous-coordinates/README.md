@@ -130,9 +130,10 @@ digits, LeetCode's longest, a 0 one time in four, are drawn once. Each
 of 400,000 rounds sets one digit of the next string afresh and lists its
 coordinates, folding the length of each into a checksum, so the work is
 building strings: every number of every part and every coordinate is a
-fresh string, 55 on average per round. Every implementation prints
-`400000 rounds of 10 digits: 22013630 coordinates, checksum 649696706`,
-the Kāra program under `karac __mir-run` included, in 178 s.
+fresh string, with 55 coordinates a round on average. Every
+implementation prints `400000 rounds of 10 digits: 22013630 coordinates,
+checksum 649696706`, the Kāra program under `karac __mir-run` included,
+in 178 s.
 
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
@@ -157,16 +158,16 @@ At the medians of the interleaved runs the v2 build takes 2.30 s,
 against C's 2.29, Rust's 3.47 (3.46 under overflow checks) and Go's
 7.25. Under valgrind's cachegrind v2 runs 24.0 billion instructions, C
 27.6 billion and Rust 41.2 billion. C writes each coordinate with
-`snprintf`, whose format parsing costs it more than v2's f-string spends
-copying the same bytes; Rust's `format!` goes through its formatting
-machinery too, with 7% of its indirect branches mispredicted. Built for
-`x86-64-v3`, the target `karac build` uses, C (`clang -O3
--march=x86-64-v3`) takes 1.97 to 2.16 s and runs the same 27.6 billion
-instructions, and Rust with overflow checks (`-C target-cpu=x86-64-v3`)
-3.19 to 3.30 s, against v2's 2.03 to 2.23 s in the same five interleaved
-runs. Legacy refuses the bench program (see Verification), so there is
-no legacy timing to set v2 against. The comparison with C and Rust waits
-until after M4.
+`snprintf` and Rust with `format!`, both through a general formatting
+routine, which most likely accounts for their extra instructions over
+v2's f-string (not traced); 7% of Rust's indirect branches are
+mispredicted, against under 1% of v2's. Built for `x86-64-v3`, the
+target `karac build` uses, C (`clang -O3 -march=x86-64-v3`) takes 1.97
+to 2.16 s and runs the same 27.6 billion instructions, and Rust with
+overflow checks (`-C target-cpu=x86-64-v3`) 3.19 to 3.30 s, against v2's
+2.03 to 2.23 s in the same five interleaved runs. Legacy refuses the
+bench program (see Verification), so there is no legacy timing to set v2
+against. The comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
