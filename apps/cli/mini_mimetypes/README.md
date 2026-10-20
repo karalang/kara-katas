@@ -65,4 +65,4 @@ The quirks are kept. Some examples:
 It matched on every backend with no workaround in the port. One parser
 gap changed how the tables are declared: a Rust array type `[Str; 16]`
 gets only "Expected type, found LeftBracket", with no pointer to
-`Array[Str, 16]` (B-2026-10-20-26).
+`Array[Str, 16]` (B-2026-10-20-27).
