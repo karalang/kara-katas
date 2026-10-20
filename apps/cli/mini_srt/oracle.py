@@ -4,7 +4,8 @@
 #
 # A `tool` job runs the srt_tools script itself, with its own argument
 # parser, on files in data/, writing to data/out.srt; the job prints what
-# the script wrote. The other jobs call the library.
+# the script wrote. The other jobs call the library. A CR in what a job
+# writes prints as <CR>.
 import datetime
 import importlib.machinery
 import logging
@@ -35,6 +36,8 @@ root.setLevel(logging.INFO)
 
 
 def raw(text):
+    # CR shows as <CR>, so expected.out stays a plain LF text file.
+    text = text.replace("\r", "<CR>")
     OUT.append(text)
     if text and not text.endswith("\n"):
         OUT.append("\n\\ no newline at end\n")
