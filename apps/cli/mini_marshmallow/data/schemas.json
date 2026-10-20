@@ -1,0 +1,1620 @@
+{
+ "enums": {
+  "OrderStatus": [
+   [
+    "PENDING",
+    "pending"
+   ],
+   [
+    "PAID",
+    "paid"
+   ],
+   [
+    "SHIPPED",
+    "shipped"
+   ],
+   [
+    "CANCELLED",
+    "cancelled"
+   ]
+  ],
+  "Category": [
+   [
+    "NEWS",
+    1
+   ],
+   [
+    "TECH",
+    2
+   ],
+   [
+    "LIFE",
+    3
+   ]
+  ],
+  "Visibility": [
+   [
+    "PUBLIC",
+    "public"
+   ],
+   [
+    "PRIVATE",
+    "private"
+   ],
+   [
+    "DRAFT",
+    0
+   ]
+  ],
+  "Level": [
+   [
+    "DEBUG",
+    10
+   ],
+   [
+    "INFO",
+    20
+   ],
+   [
+    "WARNING",
+    30
+   ],
+   [
+    "ERROR",
+    40
+   ]
+  ]
+ },
+ "schemas": [
+  {
+   "name": "AddressSchema",
+   "fields": [
+    [
+     "street",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       [
+        "Length",
+        {
+         "min": 1
+        }
+       ]
+      ],
+      "pre_load": [
+       "strip"
+      ]
+     }
+    ],
+    [
+     "city",
+     {
+      "type": "String",
+      "required": true
+     }
+    ],
+    [
+     "postcode",
+     {
+      "type": "String",
+      "validate": [
+       [
+        "Regexp",
+        {
+         "regex": "^\\d{5}(-\\d{4})?$",
+         "error": "Not a US ZIP code: {input}."
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "country",
+     {
+      "type": "String",
+      "load_default": "US",
+      "validate": [
+       [
+        "Length",
+        {
+         "equal": 2
+        }
+       ],
+       [
+        "OneOf",
+        {
+         "choices": [
+          "US",
+          "CA",
+          "GB",
+          "DE",
+          "FR"
+         ]
+        }
+       ]
+      ],
+      "pre_load": [
+       "upper"
+      ]
+     }
+    ]
+   ]
+  },
+  {
+   "name": "UserSchema",
+   "fields": [
+    [
+     "id",
+     {
+      "type": "Integer",
+      "dump_only": true
+     }
+    ],
+    [
+     "username",
+     {
+      "type": "String",
+      "required": true,
+      "pre_load": [
+       "strip",
+       "lower"
+      ],
+      "validate": [
+       [
+        "Length",
+        {
+         "min": 3,
+         "max": 20
+        }
+       ],
+       [
+        "Regexp",
+        {
+         "regex": "^[a-z0-9_]+$",
+         "error": "Only lowercase letters, digits and underscores."
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "email",
+     {
+      "type": "Email",
+      "required": true,
+      "error_messages": {
+       "required": "An email address is required."
+      }
+     }
+    ],
+    [
+     "password",
+     {
+      "type": "String",
+      "load_only": true,
+      "validate": [
+       [
+        "Length",
+        {
+         "min": 8
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "age",
+     {
+      "type": "Integer",
+      "allow_none": true,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 13,
+         "max": 130
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "role",
+     {
+      "type": "String",
+      "load_default": "member",
+      "dump_default": "member",
+      "validate": [
+       [
+        "OneOf",
+        {
+         "choices": [
+          "admin",
+          "member",
+          "guest"
+         ],
+         "labels": [
+          "Administrator",
+          "Member",
+          "Guest"
+         ],
+         "error": "{input} is not one of {choices} ({labels})."
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "signup",
+     {
+      "type": "DateTime",
+      "data_key": "signedUpAt"
+     }
+    ],
+    [
+     "address",
+     {
+      "type": "Nested",
+      "nested": "AddressSchema"
+     }
+    ],
+    [
+     "tags",
+     {
+      "type": "List",
+      "inner": {
+       "type": "String",
+       "validate": [
+        [
+         "Length",
+         {
+          "max": 10
+         }
+        ]
+       ]
+      },
+      "load_default": {
+       "$fn": "new_list"
+      }
+     }
+    ],
+    [
+     "website",
+     {
+      "type": "Url",
+      "allow_none": true
+     }
+    ],
+    [
+     "display",
+     {
+      "type": "Method",
+      "serialize": "display_name"
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "validates",
+     "fn": "check_username",
+     "field_names": [
+      "username"
+     ]
+    },
+    {
+     "tag": "pre_load",
+     "fn": "unwrap"
+    },
+    {
+     "tag": "post_dump",
+     "fn": "drop_none"
+    }
+   ]
+  },
+  {
+   "name": "SignupSchema",
+   "fields": [
+    [
+     "confirm",
+     {
+      "type": "String",
+      "load_only": true,
+      "required": true,
+      "data_key": "confirmPassword"
+     }
+    ],
+    [
+     "terms",
+     {
+      "type": "Boolean",
+      "required": true,
+      "load_only": true,
+      "validate": [
+       [
+        "Equal",
+        {
+         "comparable": true,
+         "error": "You must accept the terms."
+        }
+       ]
+      ]
+     }
+    ]
+   ],
+   "base": "UserSchema",
+   "hooks": [
+    {
+     "tag": "validates_schema",
+     "fn": "passwords_match"
+    },
+    {
+     "tag": "validates_schema",
+     "fn": "adult_admin",
+     "skip_on_field_errors": false
+    }
+   ]
+  },
+  {
+   "name": "OrderItemSchema",
+   "fields": [
+    [
+     "sku",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       [
+        "Regexp",
+        {
+         "regex": "[A-Z]{3}-\\d{4}$"
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "qty",
+     {
+      "type": "Integer",
+      "strict": true,
+      "load_default": 1,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 1,
+         "max": 99
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "price",
+     {
+      "type": "Float",
+      "required": true,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 0,
+         "min_inclusive": false
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "gift",
+     {
+      "type": "Boolean",
+      "load_default": false
+     }
+    ]
+   ]
+  },
+  {
+   "name": "OrderSchema",
+   "fields": [
+    [
+     "id",
+     {
+      "type": "UUID",
+      "required": true
+     }
+    ],
+    [
+     "customer",
+     {
+      "type": "Pluck",
+      "nested": "UserSchema",
+      "field_name": "username"
+     }
+    ],
+    [
+     "watchers",
+     {
+      "type": "Pluck",
+      "nested": "UserSchema",
+      "field_name": "username",
+      "many": true
+     }
+    ],
+    [
+     "billing",
+     {
+      "type": "Nested",
+      "nested": "AddressSchema",
+      "unknown": "exclude"
+     }
+    ],
+    [
+     "items",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Nested",
+       "nested": "OrderItemSchema"
+      },
+      "required": true,
+      "validate": [
+       [
+        "Length",
+        {
+         "min": 1,
+         "max": 5
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "status",
+     {
+      "type": "Enum",
+      "enum": "OrderStatus",
+      "load_default": "PENDING"
+     }
+    ],
+    [
+     "placed",
+     {
+      "type": "DateTime",
+      "required": true
+     }
+    ],
+    [
+     "ship_by",
+     {
+      "type": "Date"
+     }
+    ],
+    [
+     "notes",
+     {
+      "type": "String",
+      "allow_none": true,
+      "load_default": null
+     }
+    ],
+    [
+     "total",
+     {
+      "type": "Float",
+      "dump_only": true
+     }
+    ],
+    [
+     "coupon",
+     {
+      "type": "String",
+      "validate": [
+       [
+        "NoneOf",
+        {
+         "iterable": [
+          "EXPIRED",
+          "TEST"
+         ],
+         "error": "Coupon {input} cannot be used."
+        }
+       ]
+      ]
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "validates_schema",
+     "fn": "ship_after_placed"
+    },
+    {
+     "tag": "post_load",
+     "fn": "compute_total"
+    },
+    {
+     "tag": "post_dump",
+     "fn": "add_links",
+     "pass_original": true
+    }
+   ]
+  },
+  {
+   "name": "EventSchema",
+   "fields": [
+    [
+     "name",
+     {
+      "type": "String",
+      "required": true
+     }
+    ],
+    [
+     "starts",
+     {
+      "type": "AwareDateTime",
+      "required": true,
+      "default_timezone": 0
+     }
+    ],
+    [
+     "ends",
+     {
+      "type": "AwareDateTime"
+     }
+    ],
+    [
+     "local",
+     {
+      "type": "NaiveDateTime",
+      "timezone": 0
+     }
+    ],
+    [
+     "alarm",
+     {
+      "type": "Time"
+     }
+    ],
+    [
+     "day",
+     {
+      "type": "Date"
+     }
+    ],
+    [
+     "length",
+     {
+      "type": "TimeDelta",
+      "precision": "minutes"
+     }
+    ],
+    [
+     "timeout",
+     {
+      "type": "TimeDelta",
+      "precision": "milliseconds"
+     }
+    ],
+    [
+     "every",
+     {
+      "type": "TimeDelta",
+      "precision": "weeks"
+     }
+    ],
+    [
+     "level",
+     {
+      "type": "Enum",
+      "enum": "Level",
+      "by_value": {
+       "type": "Integer"
+      },
+      "load_default": 20
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "validates_schema",
+     "fn": "date_order",
+     "skip_on_field_errors": false
+    }
+   ]
+  },
+  {
+   "name": "MetricSchema",
+   "fields": [
+    [
+     "name",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       [
+        "Regexp",
+        {
+         "regex": "[a-z][a-z0-9_.]*$",
+         "flags": 0
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "value",
+     {
+      "type": "Float",
+      "allow_nan": true
+     }
+    ],
+    [
+     "count",
+     {
+      "type": "Integer",
+      "as_string": true
+     }
+    ],
+    [
+     "ratio",
+     {
+      "type": "Float",
+      "as_string": true,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 0,
+         "max": 1
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "ts",
+     {
+      "type": "DateTime",
+      "format": "timestamp"
+     }
+    ],
+    [
+     "ts_ms",
+     {
+      "type": "DateTime",
+      "format": "timestamp_ms"
+     }
+    ],
+    [
+     "labels",
+     {
+      "type": "Dict",
+      "keys": {
+       "type": "String",
+       "validate": [
+        [
+         "Regexp",
+         {
+          "regex": "[a-z_]+$"
+         }
+        ]
+       ]
+      },
+      "values": {
+       "type": "String",
+       "validate": [
+        [
+         "Length",
+         {
+          "max": 12
+         }
+        ]
+       ]
+      }
+     }
+    ],
+    [
+     "enabled",
+     {
+      "type": "Boolean"
+     }
+    ],
+    [
+     "flags",
+     {
+      "type": "Dict",
+      "values": {
+       "type": "Boolean",
+       "truthy": [
+        "on",
+        "enabled"
+       ],
+       "falsy": [
+        "off",
+        "disabled"
+       ]
+      }
+     }
+    ],
+    [
+     "host",
+     {
+      "type": "Raw"
+     }
+    ],
+    [
+     "buckets",
+     {
+      "type": "Dict",
+      "keys": {
+       "type": "Integer"
+      },
+      "values": {
+       "type": "Integer"
+      }
+     }
+    ]
+   ]
+  },
+  {
+   "name": "ConfigSchema",
+   "fields": [
+    [
+     "host",
+     {
+      "type": "String",
+      "load_default": "localhost"
+     }
+    ],
+    [
+     "port",
+     {
+      "type": "Integer",
+      "load_default": 8080,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 1,
+         "max": 65535,
+         "error": "Port {input} is outside {min}..{max}."
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "debug",
+     {
+      "type": "Boolean",
+      "load_default": false
+     }
+    ],
+    [
+     "mode",
+     {
+      "type": "Constant",
+      "constant": "production"
+     }
+    ],
+    [
+     "servers",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Tuple",
+       "tuple_fields": [
+        {
+         "type": "String"
+        },
+        {
+         "type": "Integer",
+         "validate": [
+          [
+           "Range",
+           {
+            "min": 1
+           }
+          ]
+         ]
+        }
+       ]
+      }
+     }
+    ],
+    [
+     "limits",
+     {
+      "type": "Dict",
+      "keys": {
+       "type": "String",
+       "validate": [
+        [
+         "OneOf",
+         {
+          "choices": [
+           "cpu",
+           "mem",
+           "disk"
+          ]
+         }
+        ]
+       ]
+      },
+      "values": {
+       "type": "Integer",
+       "validate": [
+        [
+         "Range",
+         {
+          "min": 0
+         }
+        ]
+       ]
+      }
+     }
+    ],
+    [
+     "retry",
+     {
+      "type": "Nested",
+      "nested": {
+       "times": {
+        "type": "Integer",
+        "load_default": 3,
+        "validate": [
+         [
+          "Range",
+          {
+           "min": 0,
+           "max": 10
+          }
+         ]
+        ]
+       },
+       "backoff": {
+        "type": "Float",
+        "load_default": 0.5
+       }
+      }
+     }
+    ],
+    [
+     "root",
+     {
+      "type": "String",
+      "attribute": "paths.root",
+      "data_key": "root_dir"
+     }
+    ],
+    [
+     "logs",
+     {
+      "type": "String",
+      "attribute": "paths.logs",
+      "data_key": "log_dir"
+     }
+    ],
+    [
+     "workers",
+     {
+      "type": "Integer",
+      "validate": [
+       "even"
+      ]
+     }
+    ]
+   ],
+   "meta": {
+    "unknown": "include"
+   }
+  },
+  {
+   "name": "CommentSchema",
+   "fields": [
+    [
+     "id",
+     {
+      "type": "Integer"
+     }
+    ],
+    [
+     "text",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       "not_blank",
+       [
+        "Length",
+        {
+         "max": 40
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "author",
+     {
+      "type": "Pluck",
+      "nested": "UserSchema",
+      "field_name": "username",
+      "required": true
+     }
+    ],
+    [
+     "replies",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Nested",
+       "nested": "CommentSchema",
+       "exclude": [
+        "id"
+       ]
+      }
+     }
+    ]
+   ]
+  },
+  {
+   "name": "ArticleSchema",
+   "fields": [
+    [
+     "title",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       [
+        "Length",
+        {
+         "min": 3,
+         "max": 60
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "body",
+     {
+      "type": "String",
+      "load_default": ""
+     }
+    ],
+    [
+     "author",
+     {
+      "type": "Nested",
+      "nested": "UserSchema",
+      "only": [
+       "username",
+       "email"
+      ],
+      "required": true
+     }
+    ],
+    [
+     "published",
+     {
+      "type": "Date",
+      "format": "%d/%m/%Y"
+     }
+    ],
+    [
+     "updated",
+     {
+      "type": "DateTime",
+      "format": "%Y-%m-%d %H:%M"
+     }
+    ],
+    [
+     "category",
+     {
+      "type": "Enum",
+      "enum": "Category",
+      "by_value": true
+     }
+    ],
+    [
+     "visibility",
+     {
+      "type": "Enum",
+      "enum": "Visibility",
+      "by_value": true,
+      "load_default": "public"
+     }
+    ],
+    [
+     "coauthors",
+     {
+      "type": "Nested",
+      "nested": "UserSchema",
+      "many": true,
+      "only": [
+       "username"
+      ]
+     }
+    ],
+    [
+     "comments",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Nested",
+       "nested": "CommentSchema"
+      }
+     }
+    ],
+    [
+     "extra",
+     {
+      "type": "Raw"
+     }
+    ],
+    [
+     "slug",
+     {
+      "type": "String",
+      "dump_only": true
+     }
+    ],
+    [
+     "words",
+     {
+      "type": "Function",
+      "serialize": "word_count"
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "post_load",
+     "fn": "add_slug"
+    },
+    {
+     "tag": "pre_dump",
+     "fn": "default_title"
+    },
+    {
+     "tag": "validates",
+     "fn": "check_title",
+     "field_names": [
+      "title"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "TreeSchema",
+   "fields": [
+    [
+     "name",
+     {
+      "type": "String",
+      "required": true
+     }
+    ],
+    [
+     "size",
+     {
+      "type": "Integer",
+      "load_default": 0
+     }
+    ],
+    [
+     "children",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Nested",
+       "nested": "TreeSchema"
+      },
+      "load_default": {
+       "$fn": "new_list"
+      }
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "post_dump",
+     "fn": "total_size"
+    }
+   ]
+  },
+  {
+   "name": "ProductSchema",
+   "fields": [
+    [
+     "sku",
+     {
+      "type": "String",
+      "required": true
+     }
+    ],
+    [
+     "name",
+     {
+      "type": "String",
+      "required": true,
+      "validate": [
+       [
+        "NoneOf",
+        {
+         "iterable": [
+          "test",
+          "sample"
+         ]
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "price",
+     {
+      "type": "Float",
+      "required": true,
+      "validate": [
+       [
+        "Range",
+        {
+         "min": 0
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "stock",
+     {
+      "type": "Integer",
+      "load_default": 0
+     }
+    ],
+    [
+     "tags",
+     {
+      "type": "List",
+      "inner": {
+       "type": "String"
+      },
+      "validate": [
+       [
+        "ContainsOnly",
+        {
+         "choices": [
+          "new",
+          "sale",
+          "eco",
+          "limited"
+         ]
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "avoid",
+     {
+      "type": "List",
+      "inner": {
+       "type": "String"
+      },
+      "validate": [
+       [
+        "ContainsNoneOf",
+        {
+         "iterable": [
+          "lead",
+          "bpa"
+         ]
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "cents",
+     {
+      "type": "Function",
+      "serialize": "price_cents",
+      "deserialize": "to_cents",
+      "attribute": "price_cents"
+     }
+    ]
+   ],
+   "meta": {
+    "many": true,
+    "unknown": "exclude"
+   },
+   "hooks": [
+    {
+     "tag": "validates_schema",
+     "fn": "unique_skus",
+     "pass_collection": true
+    },
+    {
+     "tag": "validates_schema",
+     "fn": "sale_needs_stock"
+    },
+    {
+     "tag": "post_dump",
+     "fn": "envelope",
+     "pass_collection": true
+    }
+   ]
+  },
+  {
+   "name": "ContactSchema",
+   "fields": [
+    [
+     "email",
+     {
+      "type": "Email"
+     }
+    ],
+    [
+     "homepage",
+     {
+      "type": "Url"
+     }
+    ],
+    [
+     "avatar",
+     {
+      "type": "Url",
+      "relative": true
+     }
+    ],
+    [
+     "mirror",
+     {
+      "type": "Url",
+      "schemes": [
+       "ftp",
+       "sftp"
+      ]
+     }
+    ],
+    [
+     "intranet",
+     {
+      "type": "Url",
+      "require_tld": false
+     }
+    ],
+    [
+     "path",
+     {
+      "type": "Url",
+      "relative": true,
+      "absolute": false
+     }
+    ],
+    [
+     "phone",
+     {
+      "type": "String",
+      "validate": [
+       [
+        "Regexp",
+        {
+         "regex": "\\+?[0-9 ()-]{7,20}",
+         "flags": 0
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "code",
+     {
+      "type": "String",
+      "validate": [
+       [
+        "Equal",
+        {
+         "comparable": "XYZ"
+        }
+       ]
+      ]
+     }
+    ],
+    [
+     "id",
+     {
+      "type": "UUID"
+     }
+    ],
+    [
+     "kind",
+     {
+      "type": "String",
+      "validate": [
+       [
+        "OneOf",
+        {
+         "choices": [
+          "person",
+          "company",
+          3
+         ]
+        }
+       ]
+      ]
+     }
+    ]
+   ]
+  },
+  {
+   "name": "LegacySchema",
+   "fields": [
+    [
+     "first",
+     {
+      "type": "String",
+      "data_key": "firstName",
+      "required": true
+     }
+    ],
+    [
+     "last",
+     {
+      "type": "String",
+      "data_key": "lastName"
+     }
+    ],
+    [
+     "full",
+     {
+      "type": "Method",
+      "serialize": "full_name",
+      "deserialize": "split_name",
+      "data_key": "fullName"
+     }
+    ],
+    [
+     "born",
+     {
+      "type": "Date"
+     }
+    ],
+    [
+     "shout",
+     {
+      "type": "Function",
+      "serialize": "upper_first"
+     }
+    ],
+    [
+     "code",
+     {
+      "type": "String",
+      "attribute": "legacy_code",
+      "data_key": "CODE",
+      "post_load": [
+       "upper"
+      ]
+     }
+    ],
+    [
+     "tags",
+     {
+      "type": "String",
+      "data_key": "tagList",
+      "post_load": [
+       "split_commas"
+      ]
+     }
+    ],
+    [
+     "price",
+     {
+      "type": "Float",
+      "post_load": [
+       "cents"
+      ],
+      "attribute": "price_cents"
+     }
+    ],
+    [
+     "note",
+     {
+      "type": "String",
+      "dump_default": "(none)"
+     }
+    ]
+   ],
+   "meta": {
+    "datetimeformat": "%Y/%m/%d %H:%M:%S",
+    "dateformat": "%Y%m%d"
+   },
+   "hooks": [
+    {
+     "tag": "pre_load",
+     "fn": "lower_keys"
+    },
+    {
+     "tag": "post_load",
+     "fn": "stamp",
+     "pass_original": true
+    }
+   ]
+  },
+  {
+   "name": "StrictSchema",
+   "fields": [
+    [
+     "a",
+     {
+      "type": "Integer"
+     }
+    ],
+    [
+     "b",
+     {
+      "type": "String"
+     }
+    ],
+    [
+     "c",
+     {
+      "type": "Float"
+     }
+    ],
+    [
+     "secret",
+     {
+      "type": "String"
+     }
+    ],
+    [
+     "when",
+     {
+      "type": "DateTime"
+     }
+    ],
+    [
+     "nums",
+     {
+      "type": "List",
+      "inner": {
+       "type": "Integer"
+      }
+     }
+    ]
+   ],
+   "meta": {
+    "fields": [
+     "a",
+     "b",
+     "c",
+     "secret",
+     "when",
+     "nums"
+    ],
+    "exclude": [
+     "c"
+    ],
+    "load_only": [
+     "secret"
+    ],
+    "index_errors": false,
+    "datetimeformat": "%d.%m.%Y"
+   },
+   "error_messages": {
+    "unknown": "Field {0} is not allowed.",
+    "type": "Expected an object."
+   }
+  },
+  {
+   "name": "EnvelopeSchema",
+   "fields": [
+    [
+     "id",
+     {
+      "type": "Integer",
+      "required": true
+     }
+    ],
+    [
+     "kind",
+     {
+      "type": "String",
+      "load_default": "note"
+     }
+    ]
+   ],
+   "hooks": [
+    {
+     "tag": "pre_load",
+     "fn": "unwrap_many",
+     "pass_collection": true
+    },
+    {
+     "tag": "pre_load",
+     "fn": "unwrap"
+    },
+    {
+     "tag": "post_load",
+     "fn": "number_items",
+     "pass_collection": true
+    },
+    {
+     "tag": "post_load",
+     "fn": "fail_banned"
+    }
+   ]
+  },
+  {
+   "name": "CollidingKeys",
+   "fields": [
+    [
+     "a",
+     {
+      "type": "String",
+      "data_key": "x"
+     }
+    ],
+    [
+     "b",
+     {
+      "type": "String",
+      "data_key": "x"
+     }
+    ]
+   ]
+  },
+  {
+   "name": "CollidingAttrs",
+   "fields": [
+    [
+     "a",
+     {
+      "type": "String",
+      "attribute": "z"
+     }
+    ],
+    [
+     "b",
+     {
+      "type": "String",
+      "attribute": "z"
+     }
+    ]
+   ]
+  },
+  {
+   "name": "RequiredDefault",
+   "fields": [
+    [
+     "a",
+     {
+      "type": "String",
+      "required": true,
+      "load_default": "x"
+     }
+    ]
+   ]
+  },
+  {
+   "name": "BadPrecision",
+   "fields": [
+    [
+     "a",
+     {
+      "type": "TimeDelta",
+      "precision": "fortnights"
+     }
+    ]
+   ]
+  }
+ ]
+}
