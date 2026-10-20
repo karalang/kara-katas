@@ -124,7 +124,7 @@ fi
 echo
 
 bench_begin id=810 slug=chalkboard-xor-game group=801-900 \
-    title="Expressive Words" \
+    title="Chalkboard XOR Game" \
     workload="10000000 rounds of 999 numbers" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
