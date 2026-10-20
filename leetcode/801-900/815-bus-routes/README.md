@@ -136,12 +136,12 @@ bus routes, each of 1 to 200 distinct stops among 20,000, are drawn
 once. Each of 4,000 rounds asks the next city for the fewest buses
 between two stops, each on a random route or, one time in eight, any of
 the 20,000. The search indexes the city's buses by stop afresh each
-round, about 10,000 stops, so most of the time goes to the map from stop
-to buses. C has no hash map, so its mirror carries an open-addressing
-table with a short integer mix for a hash; Kāra's `Map` and Rust's
-`HashMap` hash with SipHash-1-3, and Go uses its built-in map. Every
-implementation prints `4000 rounds of 100 routes: total 7458, checksum
-142368072`, the Kāra program under `karac __mir-run` included, in 179 s.
+round, a map of about 10,000 stops. C has no hash map, so its mirror
+carries an open-addressing table with a short integer mix for a hash;
+Kāra's `Map` and Rust's `HashMap` hash with SipHash-1-3, and Go uses its
+built-in map. Every implementation prints `4000 rounds of 100 routes:
+total 7458, checksum 142368072`, the Kāra program under `karac
+__mir-run` included, in 179 s.
 
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
@@ -171,11 +171,10 @@ against C's few multiplies (not traced). Built for `x86-64-v3`, the
 target `karac build` uses, C (`clang -O3 -march=x86-64-v3`) takes 2.59
 to 2.76 s and runs the same 21.4 billion instructions, and Rust with
 overflow checks (`-C target-cpu=x86-64-v3`) 4.07 to 5.48 s, against v2's
-3.88 to 4.24 s in the same five interleaved runs. Python takes 9.2 s,
-little more than twice v2's time, as its dicts and sets do the same
-hashing in C. Legacy refuses the bench program (see Verification), so
-there is no legacy timing to set v2 against. The comparison with C and
-Rust waits until after M4.
+3.88 to 4.24 s in the same five interleaved runs. Python takes 9.2 s, a
+little more than twice v2's time. Legacy refuses the bench program (see
+Verification), so there is no legacy timing to set v2 against. The
+comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
