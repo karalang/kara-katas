@@ -1899,7 +1899,7 @@ fn new_con(w: mut ref W, kind: i64, vals: own Vec[P], subs: own Vec[i64]) -> i64
 }
 
 fn new_inter(w: mut ref W, subs: own Vec[i64]) -> i64 {
-    new_con(w, C_INTER, Vec.new(), subs)
+    new_con(mut w, C_INTER, Vec.new(), subs)
 }
 
 fn new_nv(w: mut ref W, names: own Vec[String], nums: own Vec[i64]) -> i64 {
@@ -1944,7 +1944,7 @@ fn utag(id: i64) -> Tag {
 }
 
 fn builtin(w: mut ref W, name: Str, tid: i64, tags: own TagSet, sub: i64, named: i64, enc: Str, ctype: i64, size: i64) -> i64 {
-    add_class(w, Cls { name: name.to_string(), tid: tid, tags: tags, sub: sub, named: named, enc: enc.to_string(), ctype: ctype, size: size })
+    add_class(mut w, Cls { name: name.to_string(), tid: tid, tags: tags, sub: sub, named: named, enc: enc.to_string(), ctype: ctype, size: size })
 }
 
 // univ, char and useful, as pyasn1 defines them.
@@ -2237,7 +2237,7 @@ fn con_add(w: mut ref W, a: i64, b: i64) -> i64 {
     let k = w.cons[a].kind;
     let mut subs = w.cons[a].subs.clone();
     subs.push(b);
-    new_con(w, k, Vec.new(), subs)
+    new_con(mut w, k, Vec.new(), subs)
 }
 
 fn vce(msg: own String) -> Exc {
@@ -2434,7 +2434,7 @@ fn con_value_map(w: ref W, c: i64, out: mut ref Vec[i64]) {
     for s in w.cons[c].subs.iter() {
         if con_truthy(w, *s) {
             out.push(*s);
-            con_value_map(w, *s, out);
+            con_value_map(w, *s, mut out);
         }
     }
 }
@@ -2525,7 +2525,7 @@ fn nv_add(w: mut ref W, a: i64, b: i64) -> Result[i64, Exc] {
         nums.push(num);
         i += 1;
     }
-    Ok(new_nv(w, names, nums))
+    Ok(new_nv(mut w, names, nums))
 }
 
 // -------------------------------------------------------------- values
@@ -3336,7 +3336,7 @@ fn simple_new(w: mut ref W, cls: i64, init: ref Init, v: ref Option[P]) -> Resul
             return Err(at_class(w, e, cname));
         }
     }
-    Ok(push_obj(w, cls, init, val, false))
+    Ok(push_obj(mut w, cls, init, val, false))
 }
 
 // clone(value): with no value the object itself
@@ -3345,7 +3345,7 @@ fn simple_clone(w: mut ref W, o: i64, v: ref Option[P]) -> Result[i64, Exc] {
         None => Ok(o),
         Some(_) => {
             let init = obj_init(w, o);
-            simple_new(w, w.objs[o].cls, init, v)
+            simple_new(mut w, w.objs[o].cls, init, v)
         }
     }
 }
@@ -3353,7 +3353,7 @@ fn simple_clone(w: mut ref W, o: i64, v: ref Option[P]) -> Result[i64, Exc] {
 // clone(**kwargs): the value goes through prettyIn again
 fn simple_clone_kw(w: mut ref W, o: i64, init: ref Init) -> Result[i64, Exc] {
     let v = if is_novalue(w.objs[o].val) { None } else { Some(val_p(w.objs[o].val)) };
-    simple_new(w, w.objs[o].cls, init, v)
+    simple_new(mut w, w.objs[o].cls, init, v)
 }
 
 // a constructed object, sizeSpec moved into subtypeSpec as pyasn1 does
@@ -3363,7 +3363,7 @@ fn cons_new(w: mut ref W, cls: i64, tags: ref TagSet, sub: i64, ctype: i64, size
         if con_truthy(w, s) {
             s = size_kw;
         } else {
-            s = con_add(w, s, size_kw);
+            s = con_add(mut w, s, size_kw);
         }
     }
     let tid = w.classes[cls].tid;
@@ -3372,15 +3372,15 @@ fn cons_new(w: mut ref W, cls: i64, tags: ref TagSet, sub: i64, ctype: i64, size
     if is_record(tid) and ctype >= 0 and w.nts[ctype].items.len() > 0 {
         has = true;
     }
-    push_obj(w, cls, init, Val.NoValue, has)
+    push_obj(mut w, cls, init, Val.NoValue, has)
 }
 
 fn cls_new(w: mut ref W, cls: i64) -> Result[i64, Exc] {
     let init = cls_init(w, cls);
     if is_constructed(w.classes[cls].tid) {
-        return Ok(cons_new(w, cls, init.tags, init.sub, init.ctype, init.size));
+        return Ok(cons_new(mut w, cls, init.tags, init.sub, init.ctype, init.size));
     }
-    simple_new(w, cls, init, None)
+    simple_new(mut w, cls, init, None)
 }
 
 // clone(cloneValueFlag=flag)
@@ -3389,9 +3389,9 @@ fn obj_clone(w: mut ref W, o: i64, flag: bool) -> Result[i64, Exc] {
         return Ok(o);
     }
     let tags = w.objs[o].tags.clone();
-    let n = cons_new(w, w.objs[o].cls, tags, w.objs[o].sub, w.objs[o].ctype, w.objs[o].size);
+    let n = cons_new(mut w, w.objs[o].cls, tags, w.objs[o].sub, w.objs[o].ctype, w.objs[o].size);
     if flag {
-        clone_components(w, o, n)?;
+        clone_components(mut w, o, n)?;
     }
     Ok(n)
 }
@@ -3407,16 +3407,16 @@ fn clone_components(w: mut ref W, o: i64, n: i64) -> Result[(), Exc] {
             return Ok(());
         }
         let c = w.objs[o].comps[cur];
-        let cc = obj_clone(w, c, true)?;
-        set_component(w, n, cur, Some(cc), false)?;
+        let cc = obj_clone(mut w, c, true)?;
+        set_component(mut w, n, cur, Some(cc), false)?;
         return Ok(());
     }
     let comps = w.objs[o].comps.clone();
     let mut i = 0;
     while i < comps.len() {
         if comps[i] >= 0 {
-            let cc = obj_clone(w, comps[i], true)?;
-            set_component(w, n, i, Some(cc), true)?;
+            let cc = obj_clone(mut w, comps[i], true)?;
+            set_component(mut w, n, i, Some(cc), true)?;
         }
         i += 1;
     }
@@ -3461,7 +3461,7 @@ fn set_component(w: mut ref W, o: i64, idx: i64, value: Option[i64], checks: boo
                 if ct < 0 {
                     return Err(perr("Component type not defined".to_string()));
                 }
-                obj_clone(w, ct, false)?
+                obj_clone(mut w, ct, false)?
             }
             Some(x) => {
                 if checks and ct >= 0 and not is_super_type(w, ct, x) and w.objs[ct].tid != T_ANY {
@@ -3499,7 +3499,7 @@ fn set_component(w: mut ref W, o: i64, idx: i64, value: Option[i64], checks: boo
             if n > 0 {
                 let item = w.nts[nt].items[idx].clone();
                 if is_constructed(w.objs[item.obj].tid) {
-                    obj_clone(w, item.obj, item.dflt)?
+                    obj_clone(mut w, item.obj, item.dflt)?
                 } else {
                     item.obj
                 }
@@ -3548,7 +3548,7 @@ fn get_component(w: mut ref W, o: i64, idx: i64) -> Result[i64, Exc] {
         if w.objs[o].has and i < w.objs[o].comps.len() and w.objs[o].comps[i] >= 0 {
             return Ok(w.objs[o].comps[i]);
         }
-        set_component(w, o, i, None, true)?;
+        set_component(mut w, o, i, None, true)?;
         return Ok(w.objs[o].comps[i]);
     }
     if t == T_CHOICE and w.objs[o].cur >= 0 and w.objs[o].cur == idx {
@@ -3559,7 +3559,7 @@ fn get_component(w: mut ref W, o: i64, idx: i64) -> Result[i64, Exc] {
         c = w.objs[o].comps[idx];
     }
     if c < 0 {
-        set_component(w, o, idx, None, true)?;
+        set_component(mut w, o, idx, None, true)?;
     }
     Ok(w.objs[o].comps[idx])
 }
@@ -3606,17 +3606,17 @@ fn field_pos(w: ref W, o: i64, name: ref String) -> Result[i64, Exc] {
 // value[name]
 fn get_field(w: mut ref W, o: i64, name: Str) -> Result[i64, Exc] {
     let i = field_pos(w, o, name.to_string())?;
-    get_component(w, o, i)
+    get_component(mut w, o, i)
 }
 
 fn set_field(w: mut ref W, o: i64, name: Str, v: i64) -> Result[(), Exc] {
     let i = field_pos(w, o, name.to_string())?;
-    set_component(w, o, i, Some(v), true)
+    set_component(mut w, o, i, Some(v), true)
 }
 
 fn append(w: mut ref W, o: i64, v: i64) -> Result[(), Exc] {
     let n = if w.objs[o].has { w.objs[o].comps.len() } else { 0 };
-    set_component(w, o, n, Some(v), true)
+    set_component(mut w, o, n, Some(v), true)
 }
 
 // getComponent() of a Choice
@@ -3836,7 +3836,7 @@ fn nts_min_tagset(w: ref W, nt: i64) -> TagSet {
 fn set_by_type(w: mut ref W, o: i64, ts: ref TagSet, v: i64) -> Result[(), Exc] {
     let nt = w.objs[o].ctype;
     let idx = nts_tag_to_pos(w, nt, 0, w.nts[nt].items.len(), ts)?;
-    set_component(w, o, idx, Some(v), false)
+    set_component(mut w, o, idx, Some(v), false)
 }
 
 // --------------------------------------------------------- consistency
@@ -4239,18 +4239,18 @@ fn bound(j: ref J) -> P {
 fn build_con(w: mut ref W, c: ref J) -> i64 {
     if let Some(r) = j_get(c, "range") {
         let xs = j_arr(r);
-        return new_con(w, C_RANGE, vec![bound(xs[0]), bound(xs[1])], Vec.new());
+        return new_con(mut w, C_RANGE, vec![bound(xs[0]), bound(xs[1])], Vec.new());
     }
     if let Some(r) = j_get(c, "size") {
         let xs = j_arr(r);
-        return new_con(w, C_SIZE, vec![bound(xs[0]), bound(xs[1])], Vec.new());
+        return new_con(mut w, C_SIZE, vec![bound(xs[0]), bound(xs[1])], Vec.new());
     }
     if let Some(r) = j_get(c, "single") {
         let mut vals: Vec[P] = Vec.new();
         for x in j_arr(r).iter() {
             vals.push(pyval(x));
         }
-        return new_con(w, C_SINGLE, vals, Vec.new());
+        return new_con(mut w, C_SINGLE, vals, Vec.new());
     }
     if let Some(r) = j_get(c, "alpha") {
         let mut vals: Vec[P] = Vec.new();
@@ -4262,20 +4262,20 @@ fn build_con(w: mut ref W, c: ref J) -> i64 {
         for x in j_arr(r).iter() {
             vals.push(pyval(x));
         }
-        return new_con(w, C_ALPHA, vals, Vec.new());
+        return new_con(mut w, C_ALPHA, vals, Vec.new());
     }
     let kind = if j_has(c, "union") { C_UNION } else if j_has(c, "inter") { C_INTER } else { C_EXCL };
     let key = if kind == C_UNION { "union" } else if kind == C_INTER { "inter" } else { "excl" };
     let inner = j_get(c, key).unwrap();
     let mut subs: Vec[i64] = Vec.new();
     if kind == C_EXCL {
-        subs.push(build_con(w, inner));
+        subs.push(build_con(mut w, inner));
     } else {
         for x in j_arr(inner).iter() {
-            subs.push(build_con(w, x));
+            subs.push(build_con(mut w, x));
         }
     }
-    new_con(w, kind, Vec.new(), subs)
+    new_con(mut w, kind, Vec.new(), subs)
 }
 
 fn tag_class(s: ref String) -> i64 {
@@ -4303,13 +4303,13 @@ fn build_nv(w: mut ref W, named: ref J) -> i64 {
         names.push(j_str(pair[0]));
         nums.push(j_int(pair[1]));
     }
-    new_nv(w, names, nums)
+    new_nv(mut w, names, nums)
 }
 
 fn named_types(w: mut ref W, fields: ref J) -> Result[i64, Exc] {
     let mut items: Vec[Nt] = Vec.new();
     for f in j_arr(fields).iter() {
-        let t = build(w, j_get(f, "t").unwrap())?;
+        let t = build(mut w, j_get(f, "t").unwrap())?;
         let mut open = -1;
         if let Some(o) = j_get(f, "open") {
             let parts = j_arr(o);
@@ -4318,11 +4318,11 @@ fn named_types(w: mut ref W, fields: ref J) -> Result[i64, Exc] {
             for kv in j_arr(parts[1]).iter() {
                 let pair = j_arr(kv);
                 let key = match pair[0] {
-                    J.Str(s) => simple_new(w, cls_id(w, "ObjectIdentifier"), cls_init(w, cls_id(w, "ObjectIdentifier")), Some(P.Str(s.clone())))?,
-                    _ => simple_new(w, cls_id(w, "Integer"), cls_init(w, cls_id(w, "Integer")), Some(pyval(pair[0])))?,
+                    J.Str(s) => simple_new(mut w, cls_id(w, "ObjectIdentifier"), cls_init(w, cls_id(w, "ObjectIdentifier")), Some(P.Str(s.clone())))?,
+                    _ => simple_new(mut w, cls_id(w, "Integer"), cls_init(w, cls_id(w, "Integer")), Some(pyval(pair[0])))?,
                 };
                 keys.push(key);
-                vals.push(build(w, pair[1])?);
+                vals.push(build(mut w, pair[1])?);
             }
             w.ots.push(Ot { gov: j_str(parts[0]), keys: keys, vals: vals });
             open = w.ots.len() - 1;
@@ -4337,7 +4337,7 @@ fn named_types(w: mut ref W, fields: ref J) -> Result[i64, Exc] {
         };
         items.push(Nt { name: j_str(j_get(f, "n").unwrap()), obj: t, opt: opt, dflt: not opt and dflt, open: open });
     }
-    Ok(new_nts(w, items))
+    Ok(new_nts(mut w, items))
 }
 
 // subtype(**kwargs)
@@ -4351,34 +4351,34 @@ fn subtype(w: mut ref W, o: i64, impl_tag: Option[Tag], expl_tag: Option[Tag], s
         init.tags = ts_explicit(base, t)?;
     }
     if sub >= 0 {
-        init.sub = con_add(w, init.sub, sub);
+        init.sub = con_add(mut w, init.sub, sub);
     }
     if named >= 0 {
-        init.named = nv_add(w, init.named, named)?;
+        init.named = nv_add(mut w, init.named, named)?;
     }
     if is_constructed(w.objs[o].tid) {
-        let sz = if size >= 0 { con_add(w, w.objs[o].size, size) } else { w.objs[o].size };
-        return Ok(cons_new(w, w.objs[o].cls, init.tags, init.sub, init.ctype, sz));
+        let sz = if size >= 0 { con_add(mut w, w.objs[o].size, size) } else { w.objs[o].size };
+        return Ok(cons_new(mut w, w.objs[o].cls, init.tags, init.sub, init.ctype, sz));
     }
-    simple_clone_kw(w, o, init)
+    simple_clone_kw(mut w, o, init)
 }
 
 fn build(w: mut ref W, t: ref J) -> Result[i64, Exc] {
     if let J.Str(name) = t {
-        return cls_new(w, cls_id(w, name.as_str()));
+        return cls_new(mut w, cls_id(w, name.as_str()));
     }
     let cls = cls_id(w, j_str(j_get(t, "t").unwrap()).as_str());
     let mut obj = -1;
     if let Some(of) = j_get(t, "of") {
-        let ct = build(w, of)?;
+        let ct = build(mut w, of)?;
         let init = cls_init(w, cls);
-        obj = cons_new(w, cls, init.tags, init.sub, ct, init.size);
+        obj = cons_new(mut w, cls, init.tags, init.sub, ct, init.size);
     } else if let Some(fields) = j_get(t, "fields") {
-        let nt = named_types(w, fields)?;
+        let nt = named_types(mut w, fields)?;
         let init = cls_init(w, cls);
-        obj = cons_new(w, cls, init.tags, init.sub, nt, init.size);
+        obj = cons_new(mut w, cls, init.tags, init.sub, nt, init.size);
     } else {
-        obj = cls_new(w, cls)?;
+        obj = cls_new(mut w, cls)?;
     }
     let impl_tag = match j_get(t, "impl") {
         Some(x) => Some(mktag(x)),
@@ -4392,28 +4392,28 @@ fn build(w: mut ref W, t: ref J) -> Result[i64, Exc] {
     if let Some(s) = j_get(t, "sub") {
         let mut subs: Vec[i64] = Vec.new();
         for x in j_arr(s).iter() {
-            subs.push(build_con(w, x));
+            subs.push(build_con(mut w, x));
         }
-        sub = new_inter(w, subs);
+        sub = new_inter(mut w, subs);
     }
     let mut size = -1;
     if let Some(s) = j_get(t, "size") {
         let mut subs: Vec[i64] = Vec.new();
         for x in j_arr(s).iter() {
-            subs.push(build_con(w, x));
+            subs.push(build_con(mut w, x));
         }
-        size = new_inter(w, subs);
+        size = new_inter(mut w, subs);
     }
     let mut named = -1;
     if let Some(n) = j_get(t, "named") {
-        named = build_nv(w, n);
+        named = build_nv(mut w, n);
     }
     let any_sub = impl_tag.is_some() or expl_tag.is_some() or sub >= 0 or size >= 0 or named >= 0;
     if any_sub {
-        obj = subtype(w, obj, impl_tag, expl_tag, sub, size, named)?;
+        obj = subtype(mut w, obj, impl_tag, expl_tag, sub, size, named)?;
     }
     if let Some(v) = j_get(t, "value") {
-        obj = simple_clone(w, obj, Some(pyval(v)))?;
+        obj = simple_clone(mut w, obj, Some(pyval(v)))?;
     }
     Ok(obj)
 }
@@ -4430,28 +4430,28 @@ fn define(w: mut ref W, d: ref J) -> Result[(), Exc] {
         }
     }
     if let Some(n) = j_get(d, "named") {
-        c.named = build_nv(w, n);
+        c.named = build_nv(mut w, n);
     }
     if let Some(cs) = j_get(d, "cons") {
         let mut spec = c.sub;
         for x in j_arr(cs).iter() {
-            let k = build_con(w, x);
-            spec = con_add(w, spec, k);
+            let k = build_con(mut w, x);
+            spec = con_add(mut w, spec, k);
         }
         c.sub = spec;
     }
     if let Some(of) = j_get(d, "of") {
-        c.ctype = build(w, of)?;
+        c.ctype = build(mut w, of)?;
     }
     if let Some(fields) = j_get(d, "fields") {
-        c.ctype = named_types(w, fields)?;
+        c.ctype = named_types(mut w, fields)?;
     }
     if let Some(ss) = j_get(d, "sizeSpec") {
         for x in j_arr(ss).iter() {
-            c.size = build_con(w, x);
+            c.size = build_con(mut w, x);
         }
     }
-    add_class(w, c);
+    add_class(mut w, c);
     Ok(())
 }
 
@@ -4475,12 +4475,12 @@ fn nat_dec(w: mut ref W, p: ref P, spec: i64) -> Result[i64, Exc] {
         };
         let v = bits_from_bin("BitString".to_string(), text)?;
         let pv = val_p(v);
-        return simple_clone(w, spec, Some(pv));
+        return simple_clone(mut w, spec, Some(pv));
     }
     if not is_constructed(t) {
-        return simple_clone(w, spec, Some(p.clone()));
+        return simple_clone(mut w, spec, Some(p.clone()));
     }
-    let v = obj_clone(w, spec, false)?;
+    let v = obj_clone(mut w, spec, false)?;
     if is_seqof(t) {
         let items: Vec[P] = match p {
             P.List(xs) => xs.clone(),
@@ -4503,8 +4503,8 @@ fn nat_dec(w: mut ref W, p: ref P, spec: i64) -> Result[i64, Exc] {
         };
         let ct = w.objs[spec].ctype;
         for x in items.iter() {
-            let c = nat_dec(w, x, ct)?;
-            if let Err(e) = append(w, v, c) {
+            let c = nat_dec(mut w, x, ct)?;
+            if let Err(e) = append(mut w, v, c) {
                 return Err(exc("IndexError", exc_repr(e)));
             }
         }
@@ -4530,8 +4530,8 @@ fn nat_dec(w: mut ref W, p: ref P, spec: i64) -> Result[i64, Exc] {
                 while i < n {
                     if w.nts[nt].items[i].name == *name {
                         let sub = w.nts[nt].items[i].obj;
-                        let c = nat_dec(w, dict_get(p, name).unwrap(), sub)?;
-                        if let Err(e) = set_component(w, v, i, Some(c), true) {
+                        let c = nat_dec(mut w, dict_get(p, name).unwrap(), sub)?;
+                        if let Err(e) = set_component(mut w, v, i, Some(c), true) {
                             return Err(exc("KeyError", exc_repr(e)));
                         }
                         return Ok(v);
@@ -4548,8 +4548,8 @@ fn nat_dec(w: mut ref W, p: ref P, spec: i64) -> Result[i64, Exc] {
         match p {
             P.Dict(_) => {
                 if let Some(x) = dict_get(p, item.name) {
-                    let c = nat_dec(w, x, item.obj)?;
-                    if let Err(e) = set_component(w, v, i, Some(c), true) {
+                    let c = nat_dec(mut w, x, item.obj)?;
+                    if let Err(e) = set_component(mut w, v, i, Some(c), true) {
                         return Err(exc("KeyError", exc_repr(e)));
                     }
                 }
@@ -4628,8 +4628,8 @@ fn nat_enc(w: mut ref W, o: i64) -> Result[P, Exc] {
         let n = if w.objs[o].has { w.objs[o].comps.len() } else { 0 };
         let mut i = 0;
         while i < n {
-            let c = get_component(w, o, i)?;
-            out.push(nat_enc(w, c)?);
+            let c = get_component(mut w, o, i)?;
+            out.push(nat_enc(mut w, c)?);
             i += 1;
         }
         return Ok(P.List(out));
@@ -4651,20 +4651,20 @@ fn nat_enc(w: mut ref W, o: i64) -> Result[P, Exc] {
     let mut k = 0;
     while k < positions.len() {
         let i = positions[k];
-        let c = get_component(w, o, i)?;
+        let c = get_component(mut w, o, i)?;
         let key = field_name(w, o, i);
         let mut skip = false;
         if nf > 0 {
             let opt = w.nts[w.objs[o].ctype].items[k].opt;
             if opt {
-                let again = get_component(w, o, k)?;
+                let again = get_component(mut w, o, k)?;
                 if not obj_is_value(w, again) {
                     skip = true;
                 }
             }
         }
         if not skip {
-            let pv = nat_enc(w, c)?;
+            let pv = nat_enc(mut w, c)?;
             items.push(PItem { key: P.Str(key), val: pv });
         }
         k += 1;
@@ -4677,11 +4677,11 @@ fn nat_enc(w: mut ref W, o: i64) -> Result[P, Exc] {
 // --------------------------------------------------------------- jobs
 
 fn make(w: mut ref W, t: ref J, v: ref J) -> Result[i64, Exc] {
-    let spec = build(w, t)?;
+    let spec = build(mut w, t)?;
     if let Some(c) = j_get(v, "ctor") {
-        return simple_clone(w, spec, Some(pyval(c)));
+        return simple_clone(mut w, spec, Some(pyval(c)));
     }
-    nat_dec(w, pyval(v), spec)
+    nat_dec(mut w, pyval(v), spec)
 }
 
 fn show(w: mut ref W, o: i64) {
@@ -4689,15 +4689,15 @@ fn show(w: mut ref W, o: i64) {
         println(f"repr: {obj_repr(w, o)}");
     }
     println(f"pretty: {pp(w, o)}");
-    match nat_enc(w, o) {
+    match nat_enc(mut w, o) {
         Ok(p) => println(f"native: {p_repr(w, p)}"),
         Err(e) => println(f"native: {failure(e)}"),
     }
 }
 
 fn job_make(w: mut ref W, j: ref J) {
-    match make(w, j_get(j, "t").unwrap(), j_get(j, "v").unwrap()) {
-        Ok(o) => show(w, o),
+    match make(mut w, j_get(j, "t").unwrap(), j_get(j, "v").unwrap()) {
+        Ok(o) => show(mut w, o),
         Err(e) => println(failure(e)),
     }
 }
@@ -4705,8 +4705,8 @@ fn job_make(w: mut ref W, j: ref J) {
 fn job_repr(w: mut ref W, j: ref J) {
     let t = j_get(j, "t").unwrap();
     let r = match j_get(j, "v") {
-        Some(v) => make(w, t, v),
-        None => build(w, t),
+        Some(v) => make(mut w, t, v),
+        None => build(mut w, t),
     };
     match r {
         Ok(o) => println(obj_repr(w, o)),
@@ -4715,7 +4715,7 @@ fn job_repr(w: mut ref W, j: ref J) {
 }
 
 fn job_ptype(w: mut ref W, j: ref J) {
-    match build(w, j_get(j, "t").unwrap()) {
+    match build(mut w, j_get(j, "t").unwrap()) {
         Ok(o) => println(pretty_type(w, o, 0)),
         Err(e) => println(failure(e)),
     }
@@ -4729,7 +4729,7 @@ fn bits_val(w: ref W, o: i64) -> (Big, i64) {
 }
 
 fn bits_clone(w: mut ref W, o: i64, b: own Big, n: i64) -> Result[i64, Exc] {
-    simple_clone(w, o, Some(P.Bits(b, n)))
+    simple_clone(mut w, o, Some(P.Bits(b, n)))
 }
 
 fn bit_at(b: ref Big, n: i64, i: i64) -> i64 {
@@ -4746,7 +4746,7 @@ fn bits_of_p(w: ref W, o: i64, p: ref P) -> Result[(Big, i64), Exc] {
 }
 
 fn job_bits(w: mut ref W, j: ref J) {
-    if let Err(e) = job_bits_r(w, j) {
+    if let Err(e) = job_bits_r(mut w, j) {
         println(failure(e));
     }
 }
@@ -4758,7 +4758,7 @@ fn job_bits_r(w: mut ref W, j: ref J) -> Result[(), Exc] {
     };
     let mut ctor: Vec[Member] = Vec.new();
     ctor.push(Member { key: "ctor".to_string(), val: j_get(j, "v").unwrap() });
-    let o = make(w, t, J.Obj(ctor))?;
+    let o = make(mut w, t, J.Obj(ctor))?;
     let (b, n) = bits_val(w, o);
     let octets = obj_octets(w, o)?;
     let mut bits: Vec[String] = Vec.new();
@@ -4772,14 +4772,14 @@ fn job_bits_r(w: mut ref W, j: ref J) -> Result[(), Exc] {
         let mut part: Vec[P] = Vec.new();
         part.push(p_int(bit_at(b, n, 1)));
         part.push(p_int(bit_at(b, n, 2)));
-        let s = simple_clone(w, o, Some(P.List(part)))?;
+        let s = simple_clone(mut w, o, Some(P.List(part)))?;
         println(f"b[0]={bit_at(b, n, 0)} b[-1]? {bit_at(b, n, n - 1)} b[1:3]={obj_str(w, s)}");
     }
-    let l = bits_clone(w, o, big_shl(b, 2), n + 2)?;
-    let r = bits_clone(w, o, big_shr(b, 1), if n - 1 < 0 { 0 } else { n - 1 })?;
+    let l = bits_clone(mut w, o, big_shl(b, 2), n + 2)?;
+    let r = bits_clone(mut w, o, big_shr(b, 1), if n - 1 < 0 { 0 } else { n - 1 })?;
     println(f"shifted: {obj_str(w, l)} {obj_str(w, r)}");
     let (pb, pn) = bits_of_p(w, o, P.Str("11".to_string()))?;
-    let plus = bits_clone(w, o, big_or(big_shl(b, pn), pb), n + pn)?;
+    let plus = bits_clone(mut w, o, big_or(big_shl(b, pn), pb), n + pn)?;
     println(f"plus: {obj_str(w, plus)}");
     let (eb, en) = bits_of_p(w, o, P.Str("1011001".to_string()))?;
     let eq = big_eq(b, eb) and n == en;
@@ -4830,12 +4830,12 @@ fn vb_slice(v: ref Vec[Big], lo: i64, hi: i64) -> Vec[Big] {
 
 fn new_oid(w: mut ref W, p: ref P) -> Result[i64, Exc] {
     let c = cls_id(w, "ObjectIdentifier");
-    simple_new(w, c, cls_init(w, c), Some(p.clone()))
+    simple_new(mut w, c, cls_init(w, c), Some(p.clone()))
 }
 
 fn job_oid(w: mut ref W, j: ref J) -> Result[(), Exc] {
-    let a = new_oid(w, pyval(j_get(j, "a").unwrap()))?;
-    let b = new_oid(w, pyval(j_get(j, "b").unwrap()))?;
+    let a = new_oid(mut w, pyval(j_get(j, "a").unwrap()))?;
+    let b = new_oid(mut w, pyval(j_get(j, "b").unwrap()))?;
     let x = oid_arcs(w, a);
     let y = oid_arcs(w, b);
     let prefix = x.len() <= y.len() and arcs_eq(x, vb_slice(y, 0, x.len()));
@@ -4843,8 +4843,8 @@ fn job_oid(w: mut ref W, j: ref J) -> Result[(), Exc] {
     for v in y.iter() {
         sum.push(v.clone());
     }
-    let s = simple_clone(w, a, Some(arcs_p(sum)))?;
-    let tail = simple_clone(w, a, Some(arcs_p(vb_slice(x, 1, x.len()))))?;
+    let s = simple_clone(mut w, a, Some(arcs_p(sum)))?;
+    let tail = simple_clone(mut w, a, Some(arcs_p(vb_slice(x, 1, x.len()))))?;
     println(f"a={obj_str(w, a)} b={obj_str(w, b)} len={x.len()} prefix={bool_str(prefix)} eq={bool_str(arcs_eq(x, y))} a+b={obj_str(w, s)} a[1:]={obj_str(w, tail)}");
     Ok(())
 }
@@ -4927,7 +4927,7 @@ fn strp_match(fields: ref Vec[char], fi: i64, cs: ref Vec[char], pos: i64, out: 
         }
         let text = from_chars(cs, pos, pos + n);
         out.push(big_small(parse_int_text(py_strip(text), 10).unwrap_or(big_zero())));
-        let end = strp_match(fields, fi + 1, cs, pos + n, out);
+        let end = strp_match(fields, fi + 1, cs, pos + n, mut out);
         if end >= 0 {
             return end;
         }
@@ -5035,7 +5035,7 @@ fn isoformat(d: ref Dt) -> String {
 
 fn job_time(w: mut ref W, j: ref J) {
     let c = cls_id(w, j_str(j_get(j, "t").unwrap()).as_str());
-    let r = simple_new(w, c, cls_init(w, c), Some(pyval(j_get(j, "v").unwrap())));
+    let r = simple_new(mut w, c, cls_init(w, c), Some(pyval(j_get(j, "v").unwrap())));
     let out = match r {
         Ok(o) => match as_datetime(w, o) {
             Ok(d) => isoformat(d),
@@ -5053,23 +5053,23 @@ fn run_jobs(w: mut ref W) -> Result[(), Exc] {
         let op = j_str(j_get(j, "op").unwrap());
         println(f"== {op} {j_str(j_get(j, "id").unwrap())}");
         if op == "make" {
-            job_make(w, j);
+            job_make(mut w, j);
         } else if op == "repr" {
-            job_repr(w, j);
+            job_repr(mut w, j);
         } else if op == "ptype" {
-            job_ptype(w, j);
+            job_ptype(mut w, j);
         } else if op == "bits" {
-            job_bits(w, j);
+            job_bits(mut w, j);
         } else if op == "oid" {
-            job_oid(w, j)?;
+            job_oid(mut w, j)?;
         } else if op == "time" {
-            job_time(w, j);
+            job_time(mut w, j);
         } else if op == "enc" {
-            job_enc(w, j);
+            job_enc(mut w, j);
         } else if op == "dec" {
-            job_dec(w, j);
+            job_dec(mut w, j);
         } else if op == "rt" {
-            job_rt(w, j)?;
+            job_rt(mut w, j)?;
         }
     }
     Ok(())
@@ -5214,7 +5214,7 @@ fn enc_obj(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[Vec[u8
     let tid = if spec >= 0 { w.objs[spec].tid } else { w.objs[v].tid };
     let ts = if spec >= 0 { w.objs[spec].tags.clone() } else { w.objs[v].tags.clone() };
     if ts.tags.len() == 0 {
-        let (s, _) = enc_value(w, c, tid, v, spec, o)?;
+        let (s, _) = enc_value(mut w, c, tid, v, spec, o)?;
         return Ok(s);
     }
     let ok = indef_ok(tid);
@@ -5224,7 +5224,7 @@ fn enc_obj(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[Vec[u8
     while i < ts.tags.len() {
         let mut dm = o.def_mode;
         if i == 0 {
-            match enc_value(w, c, tid, v, spec, o) {
+            match enc_value(mut w, c, tid, v, spec, o) {
                 Ok((s, k)) => {
                     sub = s;
                     cons = k;
@@ -5282,39 +5282,39 @@ fn enc_value(w: mut ref W, c: i64, tid: i64, v: i64, spec: i64, o: ref Eo) -> Re
         };
     }
     if tid == T_BITS {
-        return enc_bits(w, c, v, spec, o);
+        return enc_bits(mut w, c, v, spec, o);
     }
     if tid == T_OID or tid == T_RELOID {
-        return enc_oid(w, tid, v, spec);
+        return enc_oid(mut w, tid, v, spec);
     }
     if tid == T_REAL {
-        return enc_real(w, v, spec);
+        return enc_real(mut w, v, spec);
     }
     if tid == T_ANY {
         let b = if spec < 0 {
             obj_octets(w, v)?
         } else {
-            let x = simple_clone(w, spec, Some(P.Obj(v)))?;
+            let x = simple_clone(mut w, spec, Some(P.Obj(v)))?;
             obj_octets(w, x)?
         };
         return Ok((b, not o.def_mode));
     }
     if is_time(tid) and c != BER {
-        return enc_time(w, c, tid, v, spec, o);
+        return enc_time(mut w, c, tid, v, spec, o);
     }
     if is_octet_family(tid) {
-        return enc_octets(w, c, v, spec, o);
+        return enc_octets(mut w, c, v, spec, o);
     }
     if tid == T_CHOICE {
-        return enc_choice(w, c, v, spec, o);
+        return enc_choice(mut w, c, v, spec, o);
     }
     if is_seqof(tid) {
-        return enc_seqof(w, c, tid, v, spec, o);
+        return enc_seqof(mut w, c, tid, v, spec, o);
     }
     if tid == T_SET and c != BER {
-        return enc_cer_set(w, c, v, spec, o);
+        return enc_cer_set(mut w, c, v, spec, o);
     }
-    enc_seq(w, c, v, spec, o)
+    enc_seq(mut w, c, v, spec, o)
 }
 
 fn bits_len(w: ref W, o: i64) -> Result[i64, Exc] {
@@ -5325,13 +5325,13 @@ fn bits_len(w: ref W, o: i64) -> Result[i64, Exc] {
 }
 
 fn enc_bits(w: mut ref W, c: i64, v0: i64, spec: i64, o: ref Eo) -> Result[(Vec[u8], bool), Exc] {
-    let v = if spec >= 0 { simple_clone(w, spec, Some(P.Obj(v0)))? } else { v0 };
+    let v = if spec >= 0 { simple_clone(mut w, spec, Some(P.Obj(v0)))? } else { v0 };
     let n = bits_len(w, v)?;
     let (b, _) = bits_val(w, v);
     let mut al = v;
     if n % 8 != 0 {
         let k = 8 - n % 8;
-        al = bits_clone(w, v, big_shl(b, k), n + k)?;
+        al = bits_clone(mut w, v, big_shl(b, k), n + k)?;
     }
     let alen = bits_len(w, al)?;
     if o.chunk == 0 or alen <= o.chunk * 8 {
@@ -5343,7 +5343,7 @@ fn enc_bits(w: mut ref W, c: i64, v0: i64, spec: i64, o: ref Eo) -> Result[(Vec[
     let base = w.objs[v].tags.base.clone();
     let mut init = obj_init(w, al);
     init.tags = if base.len() > 0 { TagSet { base: base.clone(), tags: base } } else { untagged() };
-    let al2 = simple_clone_kw(w, al, init)?;
+    let al2 = simple_clone_kw(mut w, al, init)?;
     let (ab, _) = bits_val(w, al2);
     let mut out: Vec[u8] = Vec.new();
     let mut stop = 0;
@@ -5351,8 +5351,8 @@ fn enc_bits(w: mut ref W, c: i64, v0: i64, spec: i64, o: ref Eo) -> Result[(Vec[
         let start = stop;
         stop = if start + o.chunk * 8 < n { start + o.chunk * 8 } else { n };
         let (_, low) = big_divmod(big_shr(ab, alen - stop), big_pow2(stop - start));
-        let piece = simple_clone(w, al2, Some(P.Bits(low, stop - start)))?;
-        push_all(mut out, enc_obj(w, c, piece, spec, o)?);
+        let piece = simple_clone(mut w, al2, Some(P.Bits(low, stop - start)))?;
+        push_all(mut out, enc_obj(mut w, c, piece, spec, o)?);
     }
     Ok((out, true))
 }
@@ -5361,7 +5361,7 @@ fn enc_octets(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec
     let b = if spec < 0 {
         obj_octets(w, v)?
     } else {
-        let x = simple_clone(w, spec, Some(P.Obj(v)))?;
+        let x = simple_clone(mut w, spec, Some(P.Obj(v)))?;
         obj_octets(w, x)?
     };
     if o.chunk == 0 or b.len() <= o.chunk {
@@ -5371,7 +5371,7 @@ fn enc_octets(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec
     let base = w.objs[src].tags.base.clone();
     let mut init = obj_init(w, src);
     init.tags = if base.len() > 0 { TagSet { base: base.clone(), tags: base } } else { untagged() };
-    let cspec = simple_clone_kw(w, src, init)?;
+    let cspec = simple_clone_kw(mut w, src, init)?;
     let mut out: Vec[u8] = Vec.new();
     let mut pos = 0;
     loop {
@@ -5392,8 +5392,8 @@ fn enc_octets(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec
             }
             _ => break,
         };
-        let x = simple_clone(w, v, Some(piece))?;
-        push_all(mut out, enc_obj(w, c, x, cspec, o)?);
+        let x = simple_clone(mut w, v, Some(piece))?;
+        push_all(mut out, enc_obj(mut w, c, x, cspec, o)?);
         pos += o.chunk;
     }
     Ok((out, true))
@@ -5401,7 +5401,7 @@ fn enc_octets(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec
 
 // the CER and DER time encoders
 fn enc_time(w: mut ref W, c: i64, tid: i64, v0: i64, spec: i64, o: ref Eo) -> Result[(Vec[u8], bool), Exc] {
-    let mut v = if spec >= 0 { simple_clone(w, spec, Some(P.Obj(v0)))? } else { v0 };
+    let mut v = if spec >= 0 { simple_clone(mut w, spec, Some(P.Obj(v0)))? } else { v0 };
     let mut nums = obj_octets(w, v)?;
     let plus = 43 as u8;
     let minus = 45 as u8;
@@ -5444,7 +5444,7 @@ fn enc_time(w: mut ref W, c: i64, tid: i64, v0: i64, spec: i64, o: ref Eo) -> Re
             for x in nums.iter() {
                 xs.push(p_int(*x as i64));
             }
-            v = simple_clone(w, v, Some(P.List(xs)))?;
+            v = simple_clone(mut w, v, Some(P.List(xs)))?;
         }
     }
     let (lo, hi) = if tid == T_GENTIME { (12, 20) } else { (10, 14) };
@@ -5453,11 +5453,11 @@ fn enc_time(w: mut ref W, c: i64, tid: i64, v0: i64, spec: i64, o: ref Eo) -> Re
     }
     let mut o2 = o.clone();
     o2.chunk = 1000;
-    enc_octets(w, c, v, spec, o2)
+    enc_octets(mut w, c, v, spec, o2)
 }
 
 fn enc_oid(w: mut ref W, tid: i64, v0: i64, spec: i64) -> Result[(Vec[u8], bool), Exc] {
-    let v = if spec >= 0 { simple_clone(w, spec, Some(P.Obj(v0)))? } else { v0 };
+    let v = if spec >= 0 { simple_clone(mut w, spec, Some(P.Obj(v0)))? } else { v0 };
     let arcs = match w.objs[v].val.clone() {
         Val.Oid(a) => a,
         _ => return Err(novalue_op("__getitem__")),
@@ -5521,7 +5521,7 @@ fn drop_fp(m: ref Num, e0: i64) -> (i64, Big, i64) {
 }
 
 fn enc_real(w: mut ref W, v0: i64, spec: i64) -> Result[(Vec[u8], bool), Exc] {
-    let v = if spec >= 0 { simple_clone(w, spec, Some(P.Obj(v0)))? } else { v0 };
+    let v = if spec >= 0 { simple_clone(mut w, spec, Some(P.Obj(v0)))? } else { v0 };
     let (m, b, e0) = match w.objs[v].val.clone() {
         Val.Inf(plus) => return Ok((vec![if plus { 0x40 as u8 } else { 0x41 as u8 }], false)),
         Val.Real(m, b, e) => (m, b, e),
@@ -5609,7 +5609,7 @@ fn obj_contains(w: ref W, o: i64, name: ref String) -> bool {
 
 // value[name] in the encoders, a KeyError turned PyAsn1Error
 fn enc_field(w: mut ref W, v: i64, name: ref String) -> Result[i64, Exc] {
-    match get_field(w, v, name.as_str()) {
+    match get_field(mut w, v, name.as_str()) {
         Ok(x) => Ok(x),
         Err(_) => Err(perr(f"Component name \"{name}\" not found in {obj_repr(w, v)}")),
     }
@@ -5637,7 +5637,7 @@ fn enc_seq(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(Vec[u
         let count = n_values(w, v);
         let mut idx = 0;
         while idx < count {
-            let comp = get_component(w, v, idx)?;
+            let comp = get_component(mut w, v, idx)?;
             if n > 0 {
                 let item = w.nts[nt].items[idx].clone();
                 if item.opt and not obj_is_value(w, comp) {
@@ -5652,7 +5652,7 @@ fn enc_seq(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(Vec[u
                     o.if_not_empty = item.opt;
                 }
             }
-            push_all(mut out, enc_obj(w, c, comp, -1, o)?);
+            push_all(mut out, enc_obj(mut w, c, comp, -1, o)?);
             idx += 1;
         }
         return Ok((out, true));
@@ -5660,7 +5660,7 @@ fn enc_seq(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(Vec[u
     let nt = w.objs[spec].ctype;
     let items = w.nts[nt].items.clone();
     for item in items.iter() {
-        let comp = enc_field(w, v, item.name)?;
+        let comp = enc_field(mut w, v, item.name)?;
         if item.opt and not obj_contains(w, v, item.name) {
             continue;
         }
@@ -5670,7 +5670,7 @@ fn enc_seq(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(Vec[u
         if omit {
             o.if_not_empty = item.opt;
         }
-        push_all(mut out, enc_obj(w, c, comp, item.obj, o)?);
+        push_all(mut out, enc_obj(mut w, c, comp, item.obj, o)?);
     }
     Ok((out, true))
 }
@@ -5695,7 +5695,7 @@ fn enc_cer_set(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(V
         let count = n_values(w, v);
         let mut idx = 0;
         while idx < count {
-            let comp = get_component(w, v, idx)?;
+            let comp = get_component(mut w, v, idx)?;
             let mut it = -1;
             if n > 0 {
                 let item = w.nts[nt].items[idx].clone();
@@ -5718,7 +5718,7 @@ fn enc_cer_set(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(V
         let mut idx = 0;
         while idx < items.len() {
             let item = items[idx].clone();
-            let comp = enc_field(w, v, item.name)?;
+            let comp = enc_field(mut w, v, item.name)?;
             if item.opt and not obj_contains(w, v, item.name) {
                 idx += 1;
                 continue;
@@ -5727,7 +5727,7 @@ fn enc_cer_set(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(V
                 idx += 1;
                 continue;
             }
-            let ct = get_component(w, spec, idx)?;
+            let ct = get_component(mut w, spec, idx)?;
             comps.push(SetComp { comp: comp, ctype: ct, item: idx, key: untagged() });
             idx += 1;
         }
@@ -5735,7 +5735,7 @@ fn enc_cer_set(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(V
     let mut k = 0;
     while k < comps.len() {
         let sc = comps[k].clone();
-        comps[k].key = set_sort_key(w, c, sc.comp, sc.ctype)?;
+        comps[k].key = set_sort_key(mut w, c, sc.comp, sc.ctype)?;
         k += 1;
     }
     // a stable insertion sort, as sorted() is
@@ -5756,7 +5756,7 @@ fn enc_cer_set(w: mut ref W, c: i64, v: i64, spec: i64, o0: ref Eo) -> Result[(V
         if sc.item >= 0 {
             o.if_not_empty = w.nts[ntv].items[sc.item].opt;
         }
-        push_all(mut out, enc_obj(w, c, sc.comp, sc.ctype, o)?);
+        push_all(mut out, enc_obj(mut w, c, sc.comp, sc.ctype, o)?);
     }
     Ok((out, true))
 }
@@ -5777,7 +5777,7 @@ fn set_sort_key(w: mut ref W, c: i64, comp: i64, ct: i64) -> Result[TagSet, Exc]
         return Err(perr(f"None components for Choice at {obj_repr(w, comp)}"));
     }
     let name = field_name(w, comp, w.objs[comp].cur);
-    let x = get_field(w, ct, name.as_str())?;
+    let x = get_field(mut w, ct, name.as_str())?;
     Ok(w.objs[x].tags.clone())
 }
 
@@ -5795,8 +5795,8 @@ fn enc_seqof(w: mut ref W, c: i64, tid: i64, v: i64, spec: i64, o: ref Eo) -> Re
     let mut chunks: Vec[Vec[u8]] = Vec.new();
     let mut idx = 0;
     while idx < count {
-        let comp = get_component(w, v, idx)?;
-        chunks.push(enc_obj(w, c, comp, ct, o)?);
+        let comp = get_component(mut w, v, idx)?;
+        chunks.push(enc_obj(mut w, c, comp, ct, o)?);
         idx += 1;
     }
     if c != BER and tid == T_SETOF and chunks.len() > 1 {
@@ -5850,7 +5850,7 @@ fn bytes_lt(a: ref Vec[u8], b: ref Vec[u8]) -> bool {
 fn enc_choice(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec[u8], bool), Exc] {
     if spec < 0 {
         let comp = chosen(w, v)?;
-        return Ok((enc_obj(w, c, comp, -1, o)?, true));
+        return Ok((enc_obj(mut w, c, comp, -1, o)?, true));
     }
     let nt = w.objs[spec].ctype;
     let mut names: Vec[String] = Vec.new();
@@ -5863,14 +5863,14 @@ fn enc_choice(w: mut ref W, c: i64, v: i64, spec: i64, o: ref Eo) -> Result[(Vec
         let what = if names.len() > 0 { "Multiple " } else { "None " };
         return Err(perr(f"{what}components for Choice at {obj_repr(w, v)}"));
     }
-    let comp = enc_field(w, v, names[0])?;
-    let cs = get_field(w, spec, names[0].as_str())?;
-    Ok((enc_obj(w, c, comp, cs, o)?, true))
+    let comp = enc_field(mut w, v, names[0])?;
+    let cs = get_field(mut w, spec, names[0].as_str())?;
+    Ok((enc_obj(mut w, c, comp, cs, o)?, true))
 }
 
 fn job_enc(w: mut ref W, j: ref J) {
     let t = j_get(j, "t").unwrap();
-    let v = match make(w, t, j_get(j, "v").unwrap()) {
+    let v = match make(mut w, t, j_get(j, "v").unwrap()) {
         Ok(v) => v,
         Err(e) => {
             println(f"make: {failure(e)}");
@@ -5892,11 +5892,11 @@ fn job_enc(w: mut ref W, j: ref J) {
     let mut spec = -1;
     if let Some(s) = j_get(j, "spec") {
         if j_truthy(s) {
-            spec = build(w, t).unwrap();
+            spec = build(mut w, t).unwrap();
         }
     }
     let c = codec_of(j_str(j_get(j, "codec").unwrap()));
-    match enc_obj(w, c, v, spec, o) {
+    match enc_obj(mut w, c, v, spec, o) {
         Ok(b) => println(hexs(b)),
         Err(e) => println(failure(e)),
     }
@@ -6099,7 +6099,7 @@ fn proto(w: mut ref W, d: ref Dk) -> Result[i64, Exc] {
     let c = d.cls;
     let t = w.classes[c].tid;
     if is_constructed(t) {
-        return cls_new(w, c);
+        return cls_new(mut w, c);
     }
     let v = if t == T_BITS or t == T_OID or t == T_RELOID {
         Some(P.Tuple(Vec.new()))
@@ -6111,17 +6111,17 @@ fn proto(w: mut ref W, d: ref Dk) -> Result[i64, Exc] {
         None
     };
     let init = cls_init(w, c);
-    simple_new(w, c, init, v)
+    simple_new(mut w, c, init, v)
 }
 
 // _createComponent
 fn create(w: mut ref W, d: ref Dk, spec: ref Spec, ts: ref TagSet, v: own P) -> Result[i64, Exc] {
     match spec {
-        Spec.O(s) => simple_clone(w, *s, Some(v)),
+        Spec.O(s) => simple_clone(mut w, *s, Some(v)),
         _ => {
             let mut init = cls_init(w, d.cls);
             init.tags = ts.clone();
-            simple_new(w, d.cls, init, Some(v))
+            simple_new(mut w, d.cls, init, Some(v))
         }
     }
 }
@@ -6144,7 +6144,7 @@ fn dv_obj(v: ref Dv) -> Result[i64, Exc] {
 // SingleItemDecoder.__call__
 fn dec_item(w: mut ref W, st: mut ref St, spec: ref Spec, ts_in: ref Option[TagSet], len_in: i64, at_value: bool, sfun: bool, allow_eoo: bool) -> Result[Dv, Exc] {
     if allow_eoo and st.codec != DER {
-        let b = st_read(st, 2)?;
+        let b = st_read(mut st, 2)?;
         if b[0] == 0 and b[1] == 0 {
             return Ok(Dv.Eoo);
         }
@@ -6157,14 +6157,14 @@ fn dec_item(w: mut ref W, st: mut ref St, spec: ref Spec, ts_in: ref Option[TagS
     };
     let mut len = len_in;
     if not at_value {
-        let first = st_read(st, 1)?[0] as i64;
+        let first = st_read(mut st, 1)?[0] as i64;
         let cls = first & 0xc0;
         let fmt = first & 0x20;
         let mut id = first & 0x1f;
         if id == 0x1f {
             id = 0;
             loop {
-                let b = st_read(st, 1)?[0] as i64;
+                let b = st_read(mut st, 1)?[0] as i64;
                 id = (id << 7) | (b & 0x7f);
                 if (b & 0x80) == 0 {
                     break;
@@ -6176,12 +6176,12 @@ fn dec_item(w: mut ref W, st: mut ref St, spec: ref Spec, ts_in: ref Option[TagS
             Some(t) => ts_prepend(tag, t),
             None => TagSet { base: Vec.new(), tags: vec![tag] },
         };
-        let f = st_read(st, 1)?[0] as i64;
+        let f = st_read(mut st, 1)?[0] as i64;
         if f < 128 {
             len = f;
         } else if f > 128 {
             let size = f & 0x7f;
-            let enc = st_read(st, size)?;
+            let enc = st_read(mut st, size)?;
             len = 0;
             for x in enc.iter() {
                 len = (len << 8) | (*x as i64);
@@ -6230,9 +6230,9 @@ fn dec_item(w: mut ref W, st: mut ref St, spec: ref Spec, ts_in: ref Option[TagS
     };
     let start = st.pos;
     if len == -1 {
-        return dec_indef(w, st, dk, use_spec, ts, sfun);
+        return dec_indef(mut w, mut st, dk, use_spec, ts, sfun);
     }
-    let v = dec_value(w, st, dk, use_spec, ts, len, sfun)?;
+    let v = dec_value(mut w, mut st, dk, use_spec, ts, len, sfun)?;
     let got = st.pos - start;
     if not sfun and got != len {
         return Err(perr(f"Read {got} bytes instead of expected {len}."));
@@ -6254,16 +6254,16 @@ fn dec_value(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
     let k = d.kind;
     if k == K_INT or (k == K_BOOL and not d.strict) {
         simple_fmt(ts)?;
-        let chunk = st_read(st, len)?;
+        let chunk = st_read(mut st, len)?;
         let v = big_from_signed_bytes(chunk);
         let p = if k == K_BOOL { p_int(if big_is_zero(v) { 0 } else { 1 }) } else { P.Int(v) };
-        return Ok(Dv.Obj(create(w, d, spec, ts, p)?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, p)?));
     }
     if k == K_BOOL {
         if len != 1 {
             return Err(perr("Not single-octet Boolean payload".to_string()));
         }
-        let b = st_read(st, 1)?[0] as i64;
+        let b = st_read(mut st, 1)?[0] as i64;
         let v = if b == 0xff {
             1
         } else if b == 0 {
@@ -6271,18 +6271,18 @@ fn dec_value(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
         } else {
             return Err(perr(f"Unexpected Boolean payload: {b}"));
         };
-        return Ok(Dv.Obj(create(w, d, spec, ts, p_int(v))?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, p_int(v))?));
     }
     if k == K_BITS {
-        return dec_bits(w, st, d, spec, ts, len, sfun);
+        return dec_bits(mut w, mut st, d, spec, ts, len, sfun);
     }
     if k == K_OCT {
-        return dec_octets(w, st, d, spec, ts, len, sfun);
+        return dec_octets(mut w, mut st, d, spec, ts, len, sfun);
     }
     if k == K_NULL {
         simple_fmt(ts)?;
-        let chunk = st_read(st, len)?;
-        let o = create(w, d, spec, ts, P.Str("".to_string()))?;
+        let chunk = st_read(mut st, len)?;
+        let o = create(mut w, d, spec, ts, P.Str("".to_string()))?;
         if chunk.len() > 0 {
             return Err(perr(f"Unexpected {len}-octet substrate for Null"));
         }
@@ -6290,20 +6290,20 @@ fn dec_value(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
     }
     if k == K_OID or k == K_RELOID {
         simple_fmt(ts)?;
-        let chunk = st_read(st, len)?;
-        return Ok(Dv.Obj(dec_oid(w, d, spec, ts, chunk, k == K_OID)?));
+        let chunk = st_read(mut st, len)?;
+        return Ok(Dv.Obj(dec_oid(mut w, d, spec, ts, chunk, k == K_OID)?));
     }
     if k == K_REAL {
         simple_fmt(ts)?;
-        let chunk = st_read(st, len)?;
+        let chunk = st_read(mut st, len)?;
         let p = real_payload(chunk)?;
-        return Ok(Dv.Obj(create(w, d, spec, ts, p)?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, p)?));
     }
     if k == K_CONS {
-        return dec_cons(w, st, d, spec, ts, len, sfun);
+        return dec_cons(mut w, mut st, d, spec, ts, len, sfun);
     }
     if k == K_CHOICE {
-        return dec_choice(w, st, d, spec, ts, len, sfun);
+        return dec_choice(mut w, mut st, d, spec, ts, len, sfun);
     }
     if k == K_ANY {
         let untag = match spec {
@@ -6317,29 +6317,29 @@ fn dec_value(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
             st.pos = st.mark;
             n += cur - st.mark;
         }
-        let chunk = st_read(st, n)?;
+        let chunk = st_read(mut st, n)?;
         if sfun {
             return Ok(Dv.Raw(chunk));
         }
-        return Ok(Dv.Obj(create(w, d, spec, ts, P.Bytes(chunk))?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bytes(chunk))?));
     }
     // the raw decoder of an explicit tag
     if sfun {
-        return Ok(Dv.Raw(st_read(st, len)?));
+        return Ok(Dv.Raw(st_read(mut st, len)?));
     }
-    dec_item(w, st, spec, Some(ts.clone()), len, false, false, false)
+    dec_item(mut w, mut st, spec, Some(ts.clone()), len, false, false, false)
 }
 
 fn dec_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref TagSet, sfun: bool) -> Result[Dv, Exc] {
     let k = d.kind;
     if k == K_BITS {
         if sfun {
-            return Ok(Dv.Raw(st_read(st, -1)?));
+            return Ok(Dv.Raw(st_read(mut st, -1)?));
         }
-        let bp = proto(w, d)?;
+        let bp = proto(mut w, d)?;
         let mut acc = (big_zero(), 0);
         loop {
-            let c = dec_item(w, st, Spec.O(bp), None, -2, false, true, true)?;
+            let c = dec_item(mut w, mut st, Spec.O(bp), None, -2, false, true, true)?;
             if let Dv.Eoo = c {
                 break;
             }
@@ -6347,25 +6347,25 @@ fn dec_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
             acc = bits_append(acc, b)?;
         }
         let (v, n) = acc;
-        return Ok(Dv.Obj(create(w, d, spec, ts, P.Bits(v, n))?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bits(v, n))?));
     }
     if k == K_OCT {
-        let op = proto(w, d)?;
+        let op = proto(mut w, d)?;
         let mut header: Vec[u8] = Vec.new();
         loop {
-            let c = dec_item(w, st, Spec.O(op), None, -2, false, true, true)?;
+            let c = dec_item(mut w, mut st, Spec.O(op), None, -2, false, true, true)?;
             if let Dv.Eoo = c {
                 break;
             }
             push_all(mut header, dv_bytes(w, c)?);
         }
-        return Ok(Dv.Obj(create(w, d, spec, ts, P.Bytes(header))?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bytes(header))?));
     }
     if k == K_CONS {
-        return dec_cons_indef(w, st, d, spec, ts, sfun);
+        return dec_cons_indef(mut w, mut st, d, spec, ts, sfun);
     }
     if k == K_CHOICE {
-        return dec_choice_indef(w, st, d, spec, ts, sfun);
+        return dec_choice_indef(mut w, mut st, d, spec, ts, sfun);
     }
     if k == K_ANY {
         let tagged = match spec {
@@ -6377,12 +6377,12 @@ fn dec_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
         if not tagged {
             let cur = st.pos;
             st.pos = st.mark;
-            chunk = st_read(st, cur - st.mark)?;
+            chunk = st_read(mut st, cur - st.mark)?;
         }
         let ad = dk(w, K_ANY, "Any");
-        let ap = proto(w, ad)?;
+        let ap = proto(mut w, ad)?;
         loop {
-            let c = dec_item(w, st, Spec.O(ap), None, -2, false, true, true)?;
+            let c = dec_item(mut w, mut st, Spec.O(ap), None, -2, false, true, true)?;
             if let Dv.Eoo = c {
                 break;
             }
@@ -6393,11 +6393,11 @@ fn dec_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Ta
     }
     if k == K_RAW {
         if sfun {
-            return Ok(Dv.Raw(st_read(st, -1)?));
+            return Ok(Dv.Raw(st_read(mut st, -1)?));
         }
         let mut last = Dv.Nothing;
         loop {
-            let v = dec_item(w, st, spec, Some(ts.clone()), -1, false, false, true)?;
+            let v = dec_item(mut w, mut st, spec, Some(ts.clone()), -1, false, false, true)?;
             if let Dv.Eoo = v {
                 break;
             }
@@ -6429,55 +6429,55 @@ fn bits_append(acc: (Big, i64), b: ref Vec[u8]) -> Result[(Big, i64), Exc] {
 
 fn dec_bits(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref TagSet, len: i64, sfun: bool) -> Result[Dv, Exc] {
     if sfun {
-        return Ok(Dv.Raw(st_read(st, len)?));
+        return Ok(Dv.Raw(st_read(mut st, len)?));
     }
     if len == 0 or st.pos >= st.data.len() {
         return Err(perr("Empty BIT STRING substrate".to_string()));
     }
     if ts.tags[0].fmt == 0 {
-        let tb = st_read(st, 1)?[0] as i64;
+        let tb = st_read(mut st, 1)?[0] as i64;
         if tb > 7 {
             return Err(perr(f"Trailing bits overflow {tb}"));
         }
-        let chunk = st_read(st, len - 1)?;
+        let chunk = st_read(mut st, len - 1)?;
         let n = chunk.len() * 8 - tb;
         let v = big_shr(big_from_bytes(chunk), tb);
-        return Ok(Dv.Obj(create(w, d, spec, ts, P.Bits(v, n))?));
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bits(v, n))?));
     }
     if not d.cons_ok {
         return Err(perr("Constructed encoding form prohibited at BitStringPayloadDecoder".to_string()));
     }
-    let bp = proto(w, d)?;
+    let bp = proto(mut w, d)?;
     let mut acc = (big_zero(), 0);
     let cur = st.pos;
     while st.pos - cur < len {
-        let c = dec_item(w, st, Spec.O(bp), None, -2, false, true, false)?;
+        let c = dec_item(mut w, mut st, Spec.O(bp), None, -2, false, true, false)?;
         let b = dv_bytes(w, c)?;
         acc = bits_append(acc, b)?;
     }
     let (v, n) = acc;
-    Ok(Dv.Obj(create(w, d, spec, ts, P.Bits(v, n))?))
+    Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bits(v, n))?))
 }
 
 fn dec_octets(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref TagSet, len: i64, sfun: bool) -> Result[Dv, Exc] {
     if sfun {
-        return Ok(Dv.Raw(st_read(st, len)?));
+        return Ok(Dv.Raw(st_read(mut st, len)?));
     }
     if ts.tags[0].fmt == 0 {
-        let chunk = st_read(st, len)?;
-        return Ok(Dv.Obj(create(w, d, spec, ts, P.Bytes(chunk))?));
+        let chunk = st_read(mut st, len)?;
+        return Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bytes(chunk))?));
     }
     if not d.cons_ok {
         return Err(perr("Constructed encoding form prohibited at OctetStringPayloadDecoder".to_string()));
     }
-    let op = proto(w, d)?;
+    let op = proto(mut w, d)?;
     let mut header: Vec[u8] = Vec.new();
     let cur = st.pos;
     while st.pos - cur < len {
-        let c = dec_item(w, st, Spec.O(op), None, -2, false, true, false)?;
+        let c = dec_item(mut w, mut st, Spec.O(op), None, -2, false, true, false)?;
         push_all(mut header, dv_bytes(w, c)?);
     }
-    Ok(Dv.Obj(create(w, d, spec, ts, P.Bytes(header))?))
+    Ok(Dv.Obj(create(mut w, d, spec, ts, P.Bytes(header))?))
 }
 
 fn arcs_repr(xs: ref Vec[Big]) -> String {
@@ -6545,7 +6545,7 @@ fn dec_oid(w: mut ref W, d: ref Dk, spec: ref Spec, ts: ref TagSet, chunk: ref V
     for a in arcs.iter() {
         ps.push(P.Int(a.clone()));
     }
-    create(w, d, spec, ts, P.Tuple(ps))
+    create(mut w, d, spec, ts, P.Tuple(ps))
 }
 
 fn real_payload(chunk0: ref Vec[u8]) -> Result[P, Exc] {
@@ -6620,7 +6620,7 @@ fn schemaless(w: mut ref W, st: mut ref St, d: ref Dk, ts: ref TagSet, len: i64)
     let mut obj = -1;
     let orig = st.pos;
     while len == -1 or st.pos < orig + len {
-        let c = dec_item(w, st, Spec.Nil, None, -2, false, false, len == -1)?;
+        let c = dec_item(mut w, mut st, Spec.Nil, None, -2, false, false, len == -1)?;
         if len == -1 {
             if let Dv.Eoo = c {
                 break;
@@ -6636,14 +6636,14 @@ fn schemaless(w: mut ref W, st: mut ref St, d: ref Dk, ts: ref TagSet, len: i64)
         let pt = w.classes[cls].tags.clone();
         let tags = TagSet { base: pt.base.clone(), tags: ts.tags.clone() };
         let init = cls_init(w, cls);
-        obj = cons_new(w, cls, tags, init.sub, init.ctype, init.size);
+        obj = cons_new(mut w, cls, tags, init.sub, init.ctype, init.size);
     }
     if obj < 0 {
         return Ok(Dv.Nothing);
     }
     let mut i = 0;
     while i < comps.len() {
-        set_component(w, obj, i, Some(comps[i]), false)?;
+        set_component(mut w, obj, i, Some(comps[i]), false)?;
         i += 1;
     }
     Ok(Dv.Obj(obj))
@@ -6725,7 +6725,7 @@ fn place(w: mut ref W, obj: i64, comp: i64, idx0: i64, is_set: bool, det: bool) 
             }
         }
     }
-    set_component(w, obj, idx, Some(comp), false)?;
+    set_component(mut w, obj, idx, Some(comp), false)?;
     Ok(idx)
 }
 
@@ -6748,7 +6748,7 @@ fn check_record(w: mut ref W, st: ref St, obj: i64, seen: ref Vec[i64], indef: b
     }
     if has_open(w, nt) {
         if st.open {
-            decode_open_types(w, st, obj)?;
+            decode_open_types(mut w, st, obj)?;
         }
     } else if indef and is_inconsistent(w, obj)? {
         return Err(perr(f"ASN.1 object {cls_name(w, obj)} is inconsistent"));
@@ -6767,14 +6767,14 @@ fn decode_open_types(w: mut ref W, st: ref St, obj: i64) -> Result[(), Exc] {
             continue;
         }
         if it.opt {
-            let c = get_component(w, obj, idx)?;
+            let c = get_component(mut w, obj, idx)?;
             if not obj_is_value(w, c) {
                 idx += 1;
                 continue;
             }
         }
         let ot = w.ots[it.open].clone();
-        let gov = get_field(w, obj, ot.gov.as_str())?;
+        let gov = get_field(mut w, obj, ot.gov.as_str())?;
         if is_novalue(w.objs[gov].val) {
             return Err(novalue_op("__hash__"));
         }
@@ -6792,17 +6792,17 @@ fn decode_open_types(w: mut ref W, st: ref St, obj: i64) -> Result[(), Exc] {
             idx += 1;
             continue;
         }
-        let cont = get_component(w, obj, idx)?;
+        let cont = get_component(mut w, obj, idx)?;
         if is_seqof(w.objs[cont].tid) {
             let m = comp_len(w, cont);
             let mut pos = 0;
             while pos < m {
-                let el = get_component(w, cont, pos)?;
+                let el = get_component(mut w, cont, pos)?;
                 let data = obj_octets(w, el)?;
                 let mut s2 = St { data: data, pos: 0, mark: 0, codec: st.codec, open: st.open };
-                let c = dec_item(w, mut s2, Spec.O(found), None, -2, false, false, false)?;
+                let c = dec_item(mut w, mut s2, Spec.O(found), None, -2, false, false, false)?;
                 let co = dv_obj(c)?;
-                if let Err(e) = set_component(w, cont, pos, Some(co), true) {
+                if let Err(e) = set_component(mut w, cont, pos, Some(co), true) {
                     return Err(exc("IndexError", e.msg));
                 }
                 pos += 1;
@@ -6810,9 +6810,9 @@ fn decode_open_types(w: mut ref W, st: ref St, obj: i64) -> Result[(), Exc] {
         } else {
             let data = obj_octets(w, cont)?;
             let mut s2 = St { data: data, pos: 0, mark: 0, codec: st.codec, open: st.open };
-            let c = dec_item(w, mut s2, Spec.O(found), None, -2, false, false, false)?;
+            let c = dec_item(mut w, mut s2, Spec.O(found), None, -2, false, false, false)?;
             let co = dv_obj(c)?;
-            set_component(w, obj, idx, Some(co), true)?;
+            set_component(mut w, obj, idx, Some(co), true)?;
         }
         idx += 1;
     }
@@ -6821,10 +6821,10 @@ fn decode_open_types(w: mut ref W, st: ref St, obj: i64) -> Result[(), Exc] {
 
 fn cons_clone(w: mut ref W, d: ref Dk, spec: ref Spec, ts: ref TagSet) -> Result[i64, Exc] {
     match spec {
-        Spec.O(s) => obj_clone(w, *s, false),
+        Spec.O(s) => obj_clone(mut w, *s, false),
         _ => {
             let init = cls_init(w, d.cls);
-            Ok(cons_new(w, d.cls, ts, init.sub, init.ctype, init.size))
+            Ok(cons_new(mut w, d.cls, ts, init.sub, init.ctype, init.size))
         }
     }
 }
@@ -6835,13 +6835,13 @@ fn dec_cons(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Tag
     }
     let orig = st.pos;
     if sfun {
-        return Ok(Dv.Raw(st_read(st, len)?));
+        return Ok(Dv.Raw(st_read(mut st, len)?));
     }
     let s = match spec {
         Spec.O(s) => *s,
-        _ => return schemaless(w, st, d, ts, len),
+        _ => return schemaless(mut w, mut st, d, ts, len),
     };
-    let obj = obj_clone(w, s, false)?;
+    let obj = obj_clone(mut w, s, false)?;
     let t = w.objs[s].tid;
     if t == T_SEQ or t == T_SET {
         let nt = w.objs[s].ctype;
@@ -6851,21 +6851,21 @@ fn dec_cons(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref Tag
         let mut idx = 0;
         while st.pos - orig < len {
             let cs = comp_spec(w, s, idx, is_set, det)?;
-            let c = dec_item(w, st, cs, None, -2, false, false, false)?;
+            let c = dec_item(mut w, mut st, cs, None, -2, false, false, false)?;
             let co = dv_obj(c)?;
-            idx = place(w, obj, co, idx, is_set, det)?;
+            idx = place(mut w, obj, co, idx, is_set, det)?;
             seen.push(idx);
             idx += 1;
         }
-        check_record(w, st, obj, seen, false)?;
+        check_record(mut w, st, obj, seen, false)?;
     } else {
         let ct = w.objs[s].ctype;
         let cs = if ct >= 0 { Spec.O(ct) } else { Spec.Nil };
         let mut idx = 0;
         while st.pos - orig < len {
-            let c = dec_item(w, st, cs, None, -2, false, false, false)?;
+            let c = dec_item(mut w, mut st, cs, None, -2, false, false, false)?;
             let co = dv_obj(c)?;
-            set_component(w, obj, idx, Some(co), false)?;
+            set_component(mut w, obj, idx, Some(co), false)?;
             idx += 1;
         }
     }
@@ -6877,13 +6877,13 @@ fn dec_cons_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: r
         return Err(perr("Constructed tag format expected".to_string()));
     }
     if sfun {
-        return Ok(Dv.Raw(st_read(st, -1)?));
+        return Ok(Dv.Raw(st_read(mut st, -1)?));
     }
     let s = match spec {
         Spec.O(s) => *s,
-        _ => return schemaless(w, st, d, ts, -1),
+        _ => return schemaless(mut w, mut st, d, ts, -1),
     };
-    let obj = obj_clone(w, s, false)?;
+    let obj = obj_clone(mut w, s, false)?;
     let t = w.objs[s].tid;
     if t == T_SEQ or t == T_SET {
         let nt = w.objs[s].ctype;
@@ -6894,27 +6894,27 @@ fn dec_cons_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: r
         let mut idx = 0;
         loop {
             let cs = if n <= idx { Spec.Nil } else { comp_spec(w, s, idx, is_set, det)? };
-            let c = dec_item(w, st, cs, None, -2, false, false, true)?;
+            let c = dec_item(mut w, mut st, cs, None, -2, false, false, true)?;
             if let Dv.Eoo = c {
                 break;
             }
             let co = dv_obj(c)?;
-            idx = place(w, obj, co, idx, is_set, det)?;
+            idx = place(mut w, obj, co, idx, is_set, det)?;
             seen.push(idx);
             idx += 1;
         }
-        check_record(w, st, obj, seen, true)?;
+        check_record(mut w, st, obj, seen, true)?;
     } else {
         let ct = w.objs[s].ctype;
         let cs = if ct >= 0 { Spec.O(ct) } else { Spec.Nil };
         let mut idx = 0;
         loop {
-            let c = dec_item(w, st, cs, None, -2, false, false, true)?;
+            let c = dec_item(mut w, mut st, cs, None, -2, false, false, true)?;
             if let Dv.Eoo = c {
                 break;
             }
             let co = dv_obj(c)?;
-            set_component(w, obj, idx, Some(co), false)?;
+            set_component(mut w, obj, idx, Some(co), false)?;
             idx += 1;
         }
     }
@@ -6931,41 +6931,41 @@ fn choice_tagmap(w: ref W, obj: i64) -> Result[Tm, Exc] {
 }
 
 fn dec_choice(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref TagSet, len: i64, sfun: bool) -> Result[Dv, Exc] {
-    let obj = cons_clone(w, d, spec, ts)?;
+    let obj = cons_clone(mut w, d, spec, ts)?;
     if sfun {
-        return Ok(Dv.Raw(st_read(st, len)?));
+        return Ok(Dv.Raw(st_read(mut st, len)?));
     }
     let tm = choice_tagmap(w, obj)?;
     let c = if ts_eq(w.objs[obj].tags, ts) {
-        dec_item(w, st, Spec.M(tm), None, -2, false, false, false)?
+        dec_item(mut w, mut st, Spec.M(tm), None, -2, false, false, false)?
     } else {
-        dec_item(w, st, Spec.M(tm), Some(ts.clone()), len, true, false, false)?
+        dec_item(mut w, mut st, Spec.M(tm), Some(ts.clone()), len, true, false, false)?
     };
     let co = dv_obj(c)?;
     let eff = effective_tags(w, co)?;
-    set_by_type(w, obj, eff, co)?;
+    set_by_type(mut w, obj, eff, co)?;
     Ok(Dv.Obj(obj))
 }
 
 fn dec_choice_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts: ref TagSet, sfun: bool) -> Result[Dv, Exc] {
-    let obj = cons_clone(w, d, spec, ts)?;
+    let obj = cons_clone(mut w, d, spec, ts)?;
     if sfun {
-        return Ok(Dv.Raw(st_read(st, -1)?));
+        return Ok(Dv.Raw(st_read(mut st, -1)?));
     }
     let tagged = ts_eq(w.objs[obj].tags, ts);
     loop {
         let tm = choice_tagmap(w, obj)?;
         let c = if tagged {
-            dec_item(w, st, Spec.M(tm), None, -2, false, false, true)?
+            dec_item(mut w, mut st, Spec.M(tm), None, -2, false, false, true)?
         } else {
-            dec_item(w, st, Spec.M(tm), Some(ts.clone()), -1, true, false, true)?
+            dec_item(mut w, mut st, Spec.M(tm), Some(ts.clone()), -1, true, false, true)?
         };
         if let Dv.Eoo = c {
             break;
         }
         let co = dv_obj(c)?;
         let eff = effective_tags(w, co)?;
-        set_by_type(w, obj, eff, co)?;
+        set_by_type(mut w, obj, eff, co)?;
         if not tagged {
             break;
         }
@@ -6976,7 +6976,7 @@ fn dec_choice_indef(w: mut ref W, st: mut ref St, d: ref Dk, spec: ref Spec, ts:
 // Decoder.__call__: the object and the tail
 fn decode(w: mut ref W, codec: i64, data: ref Vec[u8], spec: ref Spec, open: bool) -> Result[(Dv, Vec[u8]), Exc] {
     let mut st = St { data: data.clone(), pos: 0, mark: 0, codec: codec, open: open };
-    match dec_item(w, mut st, spec, None, -2, false, false, false) {
+    match dec_item(mut w, mut st, spec, None, -2, false, false, false) {
         Ok(v) => {
             let tail = sub_bytes(st.data, st.pos, st.data.len());
             Ok((v, tail))
@@ -7000,12 +7000,12 @@ fn job_dec(w: mut ref W, j: ref J) {
     let mut spec = Spec.Nil;
     if let Some(t) = j_get(j, "t") {
         if j_truthy(t) {
-            spec = Spec.O(build(w, t).unwrap());
+            spec = Spec.O(build(mut w, t).unwrap());
         }
     }
     let data = unhex_str(j_str(j_get(j, "hex").unwrap()));
     let c = codec_of(j_str(j_get(j, "codec").unwrap()));
-    let (v, tail) = match decode(w, c, data, spec, open) {
+    let (v, tail) = match decode(mut w, c, data, spec, open) {
         Ok(x) => x,
         Err(e) => {
             println(failure(e));
@@ -7015,7 +7015,7 @@ fn job_dec(w: mut ref W, j: ref J) {
     match v {
         Dv.Obj(o) => {
             println(f"{cls_name(w, o)} {ts_repr(w.objs[o].tags)}");
-            show(w, o);
+            show(mut w, o);
         }
         Dv.Raw(b) => println(f"bytes {hexs(b)}"),
         _ => println("None"),
@@ -7027,19 +7027,19 @@ fn job_dec(w: mut ref W, j: ref J) {
 
 fn job_rt(w: mut ref W, j: ref J) -> Result[(), Exc] {
     let t = j_get(j, "t").unwrap();
-    let v = make(w, t, j_get(j, "v").unwrap())?;
-    let spec = build(w, t)?;
+    let v = make(mut w, t, j_get(j, "v").unwrap())?;
+    let spec = build(mut w, t)?;
     let names = vec!["ber", "cer", "der"];
     let mut last = -1;
     let mut c = 0;
     while c < 3 {
-        let b = enc_obj(w, c, v, -1, new_eo())?;
-        match decode(w, c, b, Spec.O(spec), false) {
+        let b = enc_obj(mut w, c, v, -1, new_eo())?;
+        match decode(mut w, c, b, Spec.O(spec), false) {
             Ok((dv, _)) => {
                 let o = dv_obj(dv)?;
                 last = o;
-                let x = enc_obj(w, DER, o, -1, new_eo())?;
-                let y = enc_obj(w, DER, v, -1, new_eo())?;
+                let x = enc_obj(mut w, DER, o, -1, new_eo())?;
+                let y = enc_obj(mut w, DER, v, -1, new_eo())?;
                 let same = if x == y { "same" } else { "differs" };
                 println(f"{names[c]} {hexs(b)} {same}");
             }
@@ -7193,7 +7193,7 @@ fn pem(der: ref Vec[u8], label: Str) -> String {
 }
 
 fn field(w: mut ref W, o: i64, name: Str) -> Result[i64, Exc] {
-    get_field(w, o, name)
+    get_field(mut w, o, name)
 }
 
 // the components of a SEQUENCE OF or SET OF, as iterating it gives them
@@ -7202,7 +7202,7 @@ fn items_of(w: mut ref W, o: i64) -> Result[Vec[i64], Exc] {
     let mut out: Vec[i64] = Vec.new();
     let mut i = 0;
     while i < n {
-        out.push(get_component(w, o, i)?);
+        out.push(get_component(mut w, o, i)?);
         i += 1;
     }
     Ok(out)
@@ -7228,16 +7228,16 @@ fn upper_hex(b: ref Vec[u8]) -> String {
 }
 
 fn der_of(w: mut ref W, o: i64) -> Result[Vec[u8], Exc] {
-    enc_obj(w, DER, o, -1, new_eo())
+    enc_obj(mut w, DER, o, -1, new_eo())
 }
 
 fn ber_of(w: mut ref W, o: i64) -> Result[Vec[u8], Exc] {
-    enc_obj(w, BER, o, -1, new_eo())
+    enc_obj(mut w, BER, o, -1, new_eo())
 }
 
 fn decode_as(w: mut ref W, codec: i64, b: ref Vec[u8], cname: Str, open: bool) -> Result[(i64, Vec[u8]), Exc] {
-    let spec = cls_new(w, cls_id(w, cname))?;
-    let (v, tail) = decode(w, codec, b, Spec.O(spec), open)?;
+    let spec = cls_new(mut w, cls_id(w, cname))?;
+    let (v, tail) = decode(mut w, codec, b, Spec.O(spec), open)?;
     Ok((dv_obj(v)?, tail))
 }
 
@@ -7253,14 +7253,14 @@ fn text_of(w: mut ref W, v0: i64) -> Result[String, Exc] {
 }
 
 fn dn(w: mut ref W, name: i64) -> Result[String, Exc] {
-    let seq = field(w, name, "rdnSequence")?;
+    let seq = field(mut w, name, "rdnSequence")?;
     let mut rdns: Vec[String] = Vec.new();
-    for rdn in items_of(w, seq)?.iter() {
+    for rdn in items_of(mut w, seq)?.iter() {
         let mut parts: Vec[String] = Vec.new();
-        for atv in items_of(w, *rdn)?.iter() {
-            let t = field(w, *atv, "type")?;
-            let v = field(w, *atv, "value")?;
-            parts.push(f"{oname_of(w, t)}={text_of(w, v)?}");
+        for atv in items_of(mut w, *rdn)?.iter() {
+            let t = field(mut w, *atv, "type")?;
+            let v = field(mut w, *atv, "value")?;
+            parts.push(f"{oname_of(w, t)}={text_of(mut w, v)?}");
         }
         rdns.push(join(parts, "+"));
     }
@@ -7271,7 +7271,7 @@ fn general_name(w: mut ref W, g: i64) -> Result[String, Exc] {
     let kind = chosen_name(w, g)?;
     let v = chosen(w, g)?;
     if kind == "directoryName" {
-        return Ok(f"DirName:{dn(w, v)?}");
+        return Ok(f"DirName:{dn(mut w, v)?}");
     }
     if kind == "iPAddress" {
         let mut parts: Vec[String] = Vec.new();
@@ -7284,7 +7284,7 @@ fn general_name(w: mut ref W, g: i64) -> Result[String, Exc] {
         return Ok(f"RID:{obj_str(w, v)}");
     }
     if kind == "otherName" {
-        let t = field(w, v, "type-id")?;
+        let t = field(mut w, v, "type-id")?;
         return Ok(f"othername:{obj_str(w, t)}");
     }
     let label = if kind == "rfc822Name" {
@@ -7325,12 +7325,12 @@ fn decode_ext(w: mut ref W, oid: ref String, raw: ref Vec[u8]) -> Result[Vec[Str
     if spec.len() == 0 {
         return Ok(vec![f"{raw.len()} bytes"]);
     }
-    let (v, _) = decode_as(w, DER, raw, spec.as_str(), true)?;
+    let (v, _) = decode_as(mut w, DER, raw, spec.as_str(), true)?;
     let mut out: Vec[String] = Vec.new();
     if spec == "BasicConstraints" {
-        let ca = field(w, v, "cA")?;
+        let ca = field(mut w, v, "cA")?;
         let mut s = f"CA:{if truthy(w, ca)? { "TRUE" } else { "FALSE" }}";
-        let pl = field(w, v, "pathLenConstraint")?;
+        let pl = field(mut w, v, "pathLenConstraint")?;
         if obj_is_value(w, pl) {
             s = f"{s}, pathlen:{big_str(obj_int(w, pl)?)}";
         }
@@ -7357,35 +7357,35 @@ fn decode_ext(w: mut ref W, oid: ref String, raw: ref Vec[u8]) -> Result[Vec[Str
         return Ok(out);
     }
     if spec == "AuthorityKeyIdentifier" {
-        let kid = field(w, v, "keyIdentifier")?;
+        let kid = field(mut w, v, "keyIdentifier")?;
         if obj_is_value(w, kid) {
             out.push(f"keyid:{upper_hex(obj_octets(w, kid)?)}");
         }
-        let iss = field(w, v, "authorityCertIssuer")?;
+        let iss = field(mut w, v, "authorityCertIssuer")?;
         if obj_is_value(w, iss) {
-            for g in items_of(w, iss)?.iter() {
-                out.push(general_name(w, *g)?);
+            for g in items_of(mut w, iss)?.iter() {
+                out.push(general_name(mut w, *g)?);
             }
         }
-        let sn = field(w, v, "authorityCertSerialNumber")?;
+        let sn = field(mut w, v, "authorityCertSerialNumber")?;
         if obj_is_value(w, sn) {
             out.push(f"serial:{hex_low(obj_int(w, sn)?)}");
         }
         return Ok(out);
     }
     if spec == "CertificatePolicies" {
-        for pi in items_of(w, v)?.iter() {
-            let pid = field(w, *pi, "policyIdentifier")?;
+        for pi in items_of(mut w, v)?.iter() {
+            let pid = field(mut w, *pi, "policyIdentifier")?;
             out.push(f"Policy: {oname_of(w, pid)}");
-            let qs = field(w, *pi, "policyQualifiers")?;
+            let qs = field(mut w, *pi, "policyQualifiers")?;
             if obj_is_value(w, qs) {
-                for q in items_of(w, qs)?.iter() {
-                    let _h1 = field(w, *q, "policyQualifierId")?;
+                for q in items_of(mut w, qs)?.iter() {
+                    let _h1 = field(mut w, *q, "policyQualifierId")?;
                     let qid = obj_str(w, _h1);
-                    let qual = field(w, *q, "qualifier")?;
+                    let qual = field(mut w, *q, "qualifier")?;
                     let qb = obj_octets(w, qual)?;
                     if qid == "1.3.6.1.5.5.7.2.1" {
-                        let (u, _) = decode_as(w, DER, qb, "IA5String", false)?;
+                        let (u, _) = decode_as(mut w, DER, qb, "IA5String", false)?;
                         out.push(f"  CPS: {obj_str_r(w, u)?}");
                     } else {
                         out.push(f"  {oname(qid)}: {qb.len()} bytes");
@@ -7396,20 +7396,20 @@ fn decode_ext(w: mut ref W, oid: ref String, raw: ref Vec[u8]) -> Result[Vec[Str
         return Ok(out);
     }
     if spec == "CRLDistributionPoints" {
-        for dp in items_of(w, v)?.iter() {
-            let dpn = field(w, *dp, "distributionPoint")?;
+        for dp in items_of(mut w, v)?.iter() {
+            let dpn = field(mut w, *dp, "distributionPoint")?;
             if obj_is_value(w, dpn) {
                 if chosen_name(w, dpn)? == "fullName" {
-                    let full = field(w, dpn, "fullName")?;
-                    for g in items_of(w, full)?.iter() {
-                        out.push(f"Full Name: {general_name(w, *g)?}");
+                    let full = field(mut w, dpn, "fullName")?;
+                    for g in items_of(mut w, full)?.iter() {
+                        out.push(f"Full Name: {general_name(mut w, *g)?}");
                     }
                 } else {
-                    let rel = field(w, dpn, "nameRelativeToCRLIssuer")?;
+                    let rel = field(mut w, dpn, "nameRelativeToCRLIssuer")?;
                     out.push(f"Relative Name: {comp_len(w, rel)} attributes");
                 }
             }
-            let rs = field(w, *dp, "reasons")?;
+            let rs = field(mut w, *dp, "reasons")?;
             if obj_is_value(w, rs) {
                 out.push(f"Reasons: {pp(w, rs)}");
             }
@@ -7417,24 +7417,24 @@ fn decode_ext(w: mut ref W, oid: ref String, raw: ref Vec[u8]) -> Result[Vec[Str
         return Ok(out);
     }
     if spec == "AuthorityInfoAccessSyntax" {
-        for ad in items_of(w, v)?.iter() {
-            let m = field(w, *ad, "accessMethod")?;
-            let loc = field(w, *ad, "accessLocation")?;
-            out.push(f"{oname_of(w, m)} - {general_name(w, loc)?}");
+        for ad in items_of(mut w, v)?.iter() {
+            let m = field(mut w, *ad, "accessMethod")?;
+            let loc = field(mut w, *ad, "accessLocation")?;
+            out.push(f"{oname_of(w, m)} - {general_name(mut w, loc)?}");
         }
         return Ok(out);
     }
     if spec == "GeneralNames" {
         let mut parts: Vec[String] = Vec.new();
-        for g in items_of(w, v)?.iter() {
-            parts.push(general_name(w, *g)?);
+        for g in items_of(mut w, v)?.iter() {
+            parts.push(general_name(mut w, *g)?);
         }
         out.push(join(parts, ", "));
         return Ok(out);
     }
     if spec == "ExtKeyUsageSyntax" {
         let mut parts: Vec[String] = Vec.new();
-        for k in items_of(w, v)?.iter() {
+        for k in items_of(mut w, v)?.iter() {
             parts.push(oname_of(w, *k));
         }
         out.push(join(parts, ", "));
@@ -7450,22 +7450,22 @@ fn when(w: mut ref W, t: i64) -> Result[String, Exc] {
 }
 
 fn key_info(w: mut ref W, spki: i64) -> Result[String, Exc] {
-    let alg = field(w, spki, "algorithm")?;
-    let bits = field(w, spki, "subjectPublicKey")?;
-    let _h2 = field(w, alg, "algorithm")?;
+    let alg = field(mut w, spki, "algorithm")?;
+    let bits = field(mut w, spki, "subjectPublicKey")?;
+    let _h2 = field(mut w, alg, "algorithm")?;
     let name = oname_of(w, _h2);
     if name == "rsaEncryption" {
-        let (rsa, _) = decode_as(w, DER, obj_octets(w, bits)?, "RSAPublicKey", false)?;
-        let _h3 = field(w, rsa, "modulus")?;
+        let (rsa, _) = decode_as(mut w, DER, obj_octets(w, bits)?, "RSAPublicKey", false)?;
+        let _h3 = field(mut w, rsa, "modulus")?;
         let n = obj_int(w, _h3)?;
-        let _h4 = field(w, rsa, "publicExponent")?;
+        let _h4 = field(mut w, rsa, "publicExponent")?;
         let e = obj_int(w, _h4)?;
         let h = chars(hex_low(n));
         return Ok(f"RSA {big_bit_length(n)} bit, exponent {big_str(e)}, modulus {from_chars(h, 0, 8)}...{from_chars(h, h.len() - 8, h.len())}");
     }
     if name == "ecPublicKey" {
-        let params = field(w, alg, "parameters")?;
-        let curve = field(w, params, "namedCurve")?;
+        let params = field(mut w, alg, "parameters")?;
+        let curve = field(mut w, params, "namedCurve")?;
         let (_, n) = bits_val(w, bits);
         let oct = obj_octets(w, bits)?;
         return Ok(f"EC {oname_of(w, curve)}, point {n / 8} bytes, first byte {oct[0] as i64:02x}");
@@ -7506,52 +7506,52 @@ fn prog_certinfo(w: mut ref W) -> Result[(), Exc] {
             smallest = f.clone();
         }
         let der = pem_body(text, "CERTIFICATE")?;
-        let (cert, tail) = decode_as(w, DER, der, "Certificate", true)?;
-        let tbs = field(w, cert, "tbsCertificate")?;
-        let _h5 = field(w, tbs, "version")?;
+        let (cert, tail) = decode_as(mut w, DER, der, "Certificate", true)?;
+        let tbs = field(mut w, cert, "tbsCertificate")?;
+        let _h5 = field(mut w, tbs, "version")?;
         println(f"version: {pp(w, _h5)}");
-        let _h6 = field(w, tbs, "serialNumber")?;
+        let _h6 = field(mut w, tbs, "serialNumber")?;
         println(f"serial: {hex_low(obj_int(w, _h6)?)}");
-        let sig = field(w, tbs, "signature")?;
-        let _h7 = field(w, sig, "algorithm")?;
+        let sig = field(mut w, tbs, "signature")?;
+        let _h7 = field(mut w, sig, "algorithm")?;
         println(f"signature: {oname_of(w, _h7)}");
-        let issuer = field(w, tbs, "issuer")?;
-        let subject = field(w, tbs, "subject")?;
-        println(f"issuer: {dn(w, issuer)?}");
-        println(f"subject: {dn(w, subject)?}");
-        let val = field(w, tbs, "validity")?;
-        let nb = field(w, val, "notBefore")?;
-        let na = field(w, val, "notAfter")?;
-        println(f"valid: {when(w, nb)?} .. {when(w, na)?} ({chosen_name(w, nb)?}, {chosen_name(w, na)?})");
-        let _h8 = field(w, tbs, "subjectPublicKeyInfo")?;
-        println(f"key: {key_info(w, _h8)?}");
-        let exts = field(w, tbs, "extensions")?;
+        let issuer = field(mut w, tbs, "issuer")?;
+        let subject = field(mut w, tbs, "subject")?;
+        println(f"issuer: {dn(mut w, issuer)?}");
+        println(f"subject: {dn(mut w, subject)?}");
+        let val = field(mut w, tbs, "validity")?;
+        let nb = field(mut w, val, "notBefore")?;
+        let na = field(mut w, val, "notAfter")?;
+        println(f"valid: {when(mut w, nb)?} .. {when(mut w, na)?} ({chosen_name(w, nb)?}, {chosen_name(w, na)?})");
+        let _h8 = field(mut w, tbs, "subjectPublicKeyInfo")?;
+        println(f"key: {key_info(mut w, _h8)?}");
+        let exts = field(mut w, tbs, "extensions")?;
         if obj_is_value(w, exts) {
-            for ext in items_of(w, exts)?.iter() {
-                let _h9 = field(w, *ext, "extnID")?;
+            for ext in items_of(mut w, exts)?.iter() {
+                let _h9 = field(mut w, *ext, "extnID")?;
                 let oid = obj_str(w, _h9);
-                let _h10 = field(w, *ext, "critical")?;
+                let _h10 = field(mut w, *ext, "critical")?;
                 let crit = if truthy(w, _h10)? { " critical" } else { "" };
                 println(f"ext {oname(oid)}{crit}:");
-                let _h11 = field(w, *ext, "extnValue")?;
+                let _h11 = field(mut w, *ext, "extnValue")?;
                 let raw = obj_octets(w, _h11)?;
-                for line in decode_ext(w, oid, raw)?.iter() {
+                for line in decode_ext(mut w, oid, raw)?.iter() {
                     println(f"    {line}");
                 }
             }
         }
-        let sbits = field(w, cert, "signature")?;
+        let sbits = field(mut w, cert, "signature")?;
         let (_, sn) = bits_val(w, sbits);
         println(f"signature bits: {sn}");
-        let same = der_of(w, issuer)? == der_of(w, subject)?;
+        let same = der_of(mut w, issuer)? == der_of(mut w, subject)?;
         println(f"self-signed name: {bool_str(same)}");
-        let back = der_of(w, cert)? == der;
+        let back = der_of(mut w, cert)? == der;
         println(f"DER round trip: {bool_str(back)}, {der.len()} bytes, tail {tail.len()}");
     }
     let text = read_text(f"data/certs/{smallest}")?;
     let der = pem_body(text, "CERTIFICATE")?;
     println(f"== certinfo schemaless {smallest}");
-    let (v, _) = decode(w, BER, der, Spec.Nil, false)?;
+    let (v, _) = decode(mut w, BER, der, Spec.Nil, false)?;
     println(pp(w, dv_obj(v)?));
     Ok(())
 }
@@ -7573,8 +7573,8 @@ fn item(key: Str, val: own P) -> PItem {
 }
 
 fn mk(w: mut ref W, cname: Str, p: ref P) -> Result[i64, Exc] {
-    let spec = cls_new(w, cls_id(w, cname))?;
-    nat_dec(w, p, spec)
+    let spec = cls_new(mut w, cls_id(w, cname))?;
+    nat_dec(mut w, p, spec)
 }
 
 // the open-type map of AttributeTypeAndValue: each OID's built type
@@ -7588,7 +7588,7 @@ fn rdn_types(w: mut ref W) -> Result[Vec[(String, i64)], Exc] {
             let open = j_arr(j_get(fields[1], "open").unwrap());
             for pair in j_arr(open[1]).iter() {
                 let kv = j_arr(pair);
-                let t = build(w, kv[1])?;
+                let t = build(mut w, kv[1])?;
                 let k = j_str(kv[0]);
                 let mut found = false;
                 for e in out.iter_mut() {
@@ -7624,27 +7624,27 @@ fn csr_build(w: mut ref W, req: ref J, types: ref Vec[(String, i64)]) -> Result[
         if w.objs[spec].tid == T_CHOICE {
             val = P.Dict(vec![item("utf8String", val)]);
         }
-        let o = nat_dec(w, val, spec)?;
-        let enc = der_of(w, o)?;
+        let o = nat_dec(mut w, val, spec)?;
+        let enc = der_of(mut w, o)?;
         rdns.push(P.List(vec![P.Dict(vec![item("type", P.Str(oid)), item("value", P.Bytes(enc))])]));
     }
     let modulus = parse_int_text(j_str(j_get(req, "modulus").unwrap()), 16).unwrap();
-    let key_obj = mk(w, "RSAPublicKey", P.Dict(vec![
+    let key_obj = mk(mut w, "RSAPublicKey", P.Dict(vec![
         item("modulus", P.Int(modulus)),
         item("publicExponent", pyval(j_get(req, "exponent").unwrap())),
     ]))?;
-    let key = der_of(w, key_obj)?;
+    let key = der_of(mut w, key_obj)?;
     let mut dns: Vec[P] = Vec.new();
     for d in j_arr(j_get(req, "dns").unwrap()).iter() {
         dns.push(P.Dict(vec![item("dNSName", pyval(d))]));
     }
-    let san_obj = mk(w, "GeneralNames", P.List(dns))?;
-    let san = der_of(w, san_obj)?;
-    let exts_obj = mk(w, "Extensions", P.List(vec![P.Dict(vec![
+    let san_obj = mk(mut w, "GeneralNames", P.List(dns))?;
+    let san = der_of(mut w, san_obj)?;
+    let exts_obj = mk(mut w, "Extensions", P.List(vec![P.Dict(vec![
         item("extnID", p_s("2.5.29.17")),
         item("extnValue", P.Bytes(san)),
     ])]))?;
-    let exts = der_of(w, exts_obj)?;
+    let exts = der_of(mut w, exts_obj)?;
     let null = P.Bytes(vec![5 as u8, 0 as u8]);
     let sig = unhex_str(j_str(j_get(req, "signature").unwrap()));
     let info = P.Dict(vec![
@@ -7659,23 +7659,23 @@ fn csr_build(w: mut ref W, req: ref J, types: ref Vec[(String, i64)]) -> Result[
             item("values", P.List(vec![P.Bytes(exts)])),
         ])])),
     ]);
-    let csr = mk(w, "CertificationRequest", P.Dict(vec![
+    let csr = mk(mut w, "CertificationRequest", P.Dict(vec![
         item("certificationRequestInfo", info),
         item("signatureAlgorithm", P.Dict(vec![item("algorithm", p_s("1.2.840.113549.1.1.11")), item("parameters", null)])),
         item("signature", P.Str(bits_of(sig))),
     ]))?;
-    der_of(w, csr)
+    der_of(mut w, csr)
 }
 
 fn prog_csr(w: mut ref W) -> Result[(), Exc] {
     if let Err(e) = fs.create_dir_all("data/out".to_string()) {
         return Err(exc("OSError", f"{e}"));
     }
-    let types = rdn_types(w)?;
+    let types = rdn_types(mut w)?;
     for f in listing("csr").iter() {
         println(f"== csr {f}");
         let req = loads_str(read_text(f"data/csr/{f}")?)?;
-        let der = match csr_build(w, req, types) {
+        let der = match csr_build(mut w, req, types) {
             Ok(d) => d,
             Err(e) => {
                 println(f"error: {failure(e)}");
@@ -7689,30 +7689,30 @@ fn prog_csr(w: mut ref W) -> Result[(), Exc] {
         println(f"wrote {out}, {der.len()} bytes DER");
         let text = read_text(out)?;
         print(text);
-        let (back, _) = decode_as(w, DER, pem_body(text, "CERTIFICATE REQUEST")?, "CertificationRequest", true)?;
-        let info = field(w, back, "certificationRequestInfo")?;
-        let _h12 = field(w, info, "subject")?;
-        println(f"subject: {dn(w, _h12)?}");
-        let _h13 = field(w, info, "subjectPKInfo")?;
-        println(f"key: {key_info(w, _h13)?}");
-        let attrs = field(w, info, "attributes")?;
-        for attr in items_of(w, attrs)?.iter() {
-            let t = field(w, *attr, "type")?;
-            let vals = field(w, *attr, "values")?;
+        let (back, _) = decode_as(mut w, DER, pem_body(text, "CERTIFICATE REQUEST")?, "CertificationRequest", true)?;
+        let info = field(mut w, back, "certificationRequestInfo")?;
+        let _h12 = field(mut w, info, "subject")?;
+        println(f"subject: {dn(mut w, _h12)?}");
+        let _h13 = field(mut w, info, "subjectPKInfo")?;
+        println(f"key: {key_info(mut w, _h13)?}");
+        let attrs = field(mut w, info, "attributes")?;
+        for attr in items_of(mut w, attrs)?.iter() {
+            let t = field(mut w, *attr, "type")?;
+            let vals = field(mut w, *attr, "values")?;
             println(f"attribute {oname_of(w, t)}, {comp_len(w, vals)} value(s)");
-            for raw in items_of(w, vals)?.iter() {
-                let (exts, _) = decode_as(w, DER, obj_octets(w, *raw)?, "Extensions", false)?;
-                for ext in items_of(w, exts)?.iter() {
-                    let _h14 = field(w, *ext, "extnID")?;
+            for raw in items_of(mut w, vals)?.iter() {
+                let (exts, _) = decode_as(mut w, DER, obj_octets(w, *raw)?, "Extensions", false)?;
+                for ext in items_of(mut w, exts)?.iter() {
+                    let _h14 = field(mut w, *ext, "extnID")?;
                     let oid = obj_str(w, _h14);
-                    let _h15 = field(w, *ext, "extnValue")?;
+                    let _h15 = field(mut w, *ext, "extnValue")?;
                     let rawv = obj_octets(w, _h15)?;
-                    let lines = decode_ext(w, oid, rawv)?;
+                    let lines = decode_ext(mut w, oid, rawv)?;
                     println(f"  {oname(oid)}: {join(lines, "; ")}");
                 }
             }
         }
-        println(f"same DER: {bool_str(der_of(w, back)? == der)}");
+        println(f"same DER: {bool_str(der_of(mut w, back)? == der)}");
     }
     Ok(())
 }
@@ -7879,7 +7879,7 @@ fn bind_text(w: mut ref W, bv: i64) -> Result[String, Exc] {
     if kind != "value" {
         return Ok(kind);
     }
-    let _h16 = field(w, bv, "value")?;
+    let _h16 = field(mut w, bv, "value")?;
     let syn = chosen(w, _h16)?;
     let inner = chosen(w, syn)?;
     let name = chosen_name(w, syn)?;
@@ -7899,7 +7899,7 @@ fn bind_text(w: mut ref W, bv: i64) -> Result[String, Exc] {
 }
 
 fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], hex: ref String) -> Result[(), Exc] {
-    let (msg, tail) = match decode_as(w, BER, unhex_str(hex), "Message", false) {
+    let (msg, tail) = match decode_as(mut w, BER, unhex_str(hex), "Message", false) {
         Ok(x) => x,
         Err(e) => {
             println(f"dropped: {failure(e)}");
@@ -7910,28 +7910,28 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
         println(f"dropped: {tail.len()} trailing bytes");
         return Ok(());
     }
-    let ver = field(w, msg, "version")?;
+    let ver = field(mut w, msg, "version")?;
     if int_of(w, ver)? != 1 {
         println(f"dropped: version {pp(w, ver)}");
         return Ok(());
     }
-    let _h17 = field(w, msg, "community")?;
+    let _h17 = field(mut w, msg, "community")?;
     let community = obj_octets(w, _h17)?;
     let is_private = community == bytes_of("private".to_string());
     if community != bytes_of("public".to_string()) and not is_private {
         println(f"dropped: unknown community {bytes_repr(community)}");
         return Ok(());
     }
-    let data = field(w, msg, "data")?;
+    let data = field(mut w, msg, "data")?;
     let kind = chosen_name(w, data)?;
     let pdu = chosen(w, data)?;
-    let _h18 = field(w, pdu, "request-id")?;
+    let _h18 = field(mut w, pdu, "request-id")?;
     let rid = obj_int(w, _h18)?;
-    let _h201 = field(w, pdu, "variable-bindings")?;
-    let vbs = items_of(w, _h201)?;
+    let _h201 = field(mut w, pdu, "variable-bindings")?;
+    let vbs = items_of(mut w, _h201)?;
     let mut names: Vec[String] = Vec.new();
     for b in vbs.iter() {
-        let _h19 = field(w, *b, "name")?;
+        let _h19 = field(mut w, *b, "name")?;
         names.push(obj_str(w, _h19));
     }
     let mut status = "noError".to_string();
@@ -7946,7 +7946,7 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
             binds.push(next_bind(mib, order, oid));
         }
     } else if kind == "get-bulk-request" {
-        let _h20 = field(w, pdu, "non-repeaters")?;
+        let _h20 = field(mut w, pdu, "non-repeaters")?;
         let nr0 = int_of(w, _h20)?;
         let nr = if nr0 < names.len() { nr0 } else { names.len() };
         let mut i = 0;
@@ -7960,7 +7960,7 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
             cur.push(names[k].clone());
             k += 1;
         }
-        let _h21 = field(w, pdu, "max-repetitions")?;
+        let _h21 = field(mut w, pdu, "max-repetitions")?;
         let reps = int_of(w, _h21)?;
         let mut r = 0;
         while r < reps {
@@ -7984,10 +7984,10 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
         }
     } else if kind == "set-request" {
         for b in vbs.iter() {
-            let _h22 = field(w, *b, "name")?;
+            let _h22 = field(mut w, *b, "name")?;
             let n = obj_str(w, _h22);
-            let _h23 = field(w, *b, "")?;
-            let v = nat_enc(w, _h23)?;
+            let _h23 = field(mut w, *b, "")?;
+            let v = nat_enc(mut w, _h23)?;
             binds.push(P.Dict(vec![item("name", P.Str(n)), item("", dictify(v))]));
         }
         if not is_private {
@@ -7996,7 +7996,7 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
         } else {
             let mut i = 0;
             while i < vbs.len() {
-                let _h24 = field(w, vbs[i], "name")?;
+                let _h24 = field(mut w, vbs[i], "name")?;
                 let oid = obj_str(w, _h24);
                 let mi = mib_find(mib, oid);
                 if mi < 0 {
@@ -8009,8 +8009,8 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
                     index = i + 1;
                     break;
                 }
-                let _h202 = field(w, vbs[i], "")?;
-                let _h101 = field(w, _h202, "value")?;
+                let _h202 = field(mut w, vbs[i], "")?;
+                let _h101 = field(mut w, _h202, "value")?;
                 let syn = chosen(w, _h101)?;
                 if mib[mi].kind != "string" or chosen_name(w, syn)? != "string-value" {
                     status = "wrongType".to_string();
@@ -8021,10 +8021,10 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
             }
             if status == "noError" {
                 for b in vbs.iter() {
-                    let _h25 = field(w, *b, "name")?;
+                    let _h25 = field(mut w, *b, "name")?;
                     let oid = obj_str(w, _h25);
-                    let _h203 = field(w, *b, "")?;
-                    let _h102 = field(w, _h203, "value")?;
+                    let _h203 = field(mut w, *b, "")?;
+                    let _h102 = field(mut w, _h203, "value")?;
                     let syn = chosen(w, _h102)?;
                     let s = obj_str_r(w, chosen(w, syn)?)?;
                     let mi = mib_find(mib, oid);
@@ -8036,7 +8036,7 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
         println(f"dropped: {kind} is not a request");
         return Ok(());
     }
-    let resp = mk(w, "Message", P.Dict(vec![
+    let resp = mk(mut w, "Message", P.Dict(vec![
         item("version", p_s("version-2c")),
         item("community", P.Bytes(community)),
         item("data", P.Dict(vec![item("response", P.Dict(vec![
@@ -8046,19 +8046,19 @@ fn snmp_one(w: mut ref W, mib: mut ref Vec[MibEntry], order: ref Vec[String], he
             item("variable-bindings", P.List(binds)),
         ]))])),
     ]))?;
-    let out = ber_of(w, resp)?;
+    let out = ber_of(mut w, resp)?;
     println(f"response {out.len()} bytes: {hexs(out)}");
-    let _h204 = field(w, resp, "data")?;
-    let rp = field(w, _h204, "response")?;
-    let es = field(w, rp, "error-status")?;
-    let ei = field(w, rp, "error-index")?;
+    let _h204 = field(mut w, resp, "data")?;
+    let rp = field(mut w, _h204, "response")?;
+    let es = field(mut w, rp, "error-status")?;
+    let ei = field(mut w, rp, "error-index")?;
     println(f"status {pp(w, es)} index {big_str(obj_int(w, ei)?)}");
-    let _h205 = field(w, rp, "variable-bindings")?;
-    for b in items_of(w, _h205)?.iter() {
-        let _h26 = field(w, *b, "name")?;
+    let _h205 = field(mut w, rp, "variable-bindings")?;
+    for b in items_of(mut w, _h205)?.iter() {
+        let _h26 = field(mut w, *b, "name")?;
         let n = obj_str(w, _h26);
-        let _h27 = field(w, *b, "")?;
-        let t = bind_text(w, _h27)?;
+        let _h27 = field(mut w, *b, "")?;
+        let t = bind_text(mut w, _h27)?;
         println(f"  {n} = {t}");
     }
     Ok(())
@@ -8096,7 +8096,7 @@ fn prog_snmp(w: mut ref W) -> Result[(), Exc] {
     let rj = loads_str(read_text("data/snmp/requests.json".to_string())?)?;
     for r in j_arr(rj).iter() {
         println(f"== snmp {j_str(j_get(r, "name").unwrap())}");
-        snmp_one(w, mut mib, order, j_str(j_get(r, "hex").unwrap()))?;
+        snmp_one(mut w, mut mib, order, j_str(j_get(r, "hex").unwrap()))?;
     }
     Ok(())
 }
@@ -8130,33 +8130,33 @@ fn ldap_match(w: mut ref W, entry: ref J, f: i64) -> Result[bool, Exc] {
     let kind = chosen_name(w, f)?;
     let v = chosen(w, f)?;
     if kind == "and" {
-        for x in items_of(w, v)?.iter() {
-            if not ldap_match(w, entry, *x)? {
+        for x in items_of(mut w, v)?.iter() {
+            if not ldap_match(mut w, entry, *x)? {
                 return Ok(false);
             }
         }
         return Ok(true);
     }
     if kind == "or" {
-        for x in items_of(w, v)?.iter() {
-            if ldap_match(w, entry, *x)? {
+        for x in items_of(mut w, v)?.iter() {
+            if ldap_match(mut w, entry, *x)? {
                 return Ok(true);
             }
         }
         return Ok(false);
     }
     if kind == "not" {
-        return Ok(not ldap_match(w, entry, v)?);
+        return Ok(not ldap_match(mut w, entry, v)?);
     }
     if kind == "present" {
         let name = obj_str_r(w, v)?;
         return Ok(name.to_lowercase() == "objectclass" or attr_get(entry, name).is_some());
     }
     if kind == "substrings" {
-        let _h28 = field(w, v, "type")?;
+        let _h28 = field(mut w, v, "type")?;
         let vals = attr_get(entry, obj_str_r(w, _h28)?).unwrap_or(Vec.new());
-        let _h206 = field(w, v, "substrings")?;
-        let parts = items_of(w, _h206)?;
+        let _h206 = field(mut w, v, "substrings")?;
+        let parts = items_of(mut w, _h206)?;
         for val in vals.iter() {
             let s = val.to_lowercase();
             let cs = chars(s);
@@ -8186,9 +8186,9 @@ fn ldap_match(w: mut ref W, entry: ref J, f: i64) -> Result[bool, Exc] {
         }
         return Ok(false);
     }
-    let _h29 = field(w, v, "attributeDesc")?;
+    let _h29 = field(mut w, v, "attributeDesc")?;
     let vals = attr_get(entry, obj_str_r(w, _h29)?).unwrap_or(Vec.new());
-    let _h30 = field(w, v, "assertionValue")?;
+    let _h30 = field(mut w, v, "assertionValue")?;
     let want = obj_str_r(w, _h30)?.to_lowercase();
     for x in vals.iter() {
         let l = x.to_lowercase();
@@ -8223,11 +8223,11 @@ fn find_from(s: ref Vec[char], p: ref Vec[char], start: i64) -> i64 {
 }
 
 fn ldap_reply(w: mut ref W, mid: ref Big, op: Str, body: own P) -> Result[(), Exc] {
-    let m = mk(w, "LDAPMessage", P.Dict(vec![
+    let m = mk(mut w, "LDAPMessage", P.Dict(vec![
         item("messageID", P.Int(mid.clone())),
         item("protocolOp", P.Dict(vec![item(op, body)])),
     ]))?;
-    let out = ber_of(w, m)?;
+    let out = ber_of(mut w, m)?;
     println(f"  -> {op} {hexs(out)}");
     Ok(())
 }
@@ -8243,7 +8243,7 @@ fn entry_dn(e: ref J) -> String {
 fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
     let mut bound: Option[String] = None;
     for raw in j_arr(j_get(sess, "msgs").unwrap()).iter() {
-        let (m, _) = match decode_as(w, BER, unhex_str(j_str(raw)), "LDAPMessage", false) {
+        let (m, _) = match decode_as(mut w, BER, unhex_str(j_str(raw)), "LDAPMessage", false) {
             Ok(x) => x,
             Err(e) => {
                 println(f"<- undecodable: {e.kind}");
@@ -8251,42 +8251,42 @@ fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
                 break;
             }
         };
-        let _h31 = field(w, m, "messageID")?;
+        let _h31 = field(mut w, m, "messageID")?;
         let mid = obj_int(w, _h31)?;
-        let po = field(w, m, "protocolOp")?;
+        let po = field(mut w, m, "protocolOp")?;
         let op = chosen_name(w, po)?;
         let body = chosen(w, po)?;
-        let ctl = field(w, m, "controls")?;
+        let ctl = field(mut w, m, "controls")?;
         if obj_is_value(w, ctl) {
-            for c in items_of(w, ctl)?.iter() {
-                let _h32 = field(w, *c, "controlType")?;
+            for c in items_of(mut w, ctl)?.iter() {
+                let _h32 = field(mut w, *c, "controlType")?;
                 let ct = obj_str_r(w, _h32)?;
-                let _h33 = field(w, *c, "criticality")?;
+                let _h33 = field(mut w, *c, "criticality")?;
                 let cr = truthy(w, _h33)?;
                 println(f"<- control {ct} critical={bool_str(cr)}");
             }
         }
         let none = "".to_string();
         if op == "bindRequest" {
-            let _h34 = field(w, body, "name")?;
+            let _h34 = field(mut w, body, "name")?;
             let name = obj_str_r(w, _h34)?;
-            let auth = field(w, body, "authentication")?;
+            let auth = field(mut w, body, "authentication")?;
             let an = chosen_name(w, auth)?;
             println(f"<- {big_str(mid)} bind {str_repr(name)} {an}");
-            let _h35 = field(w, body, "version")?;
+            let _h35 = field(mut w, body, "version")?;
             if int_of(w, _h35)? != 3 {
-                ldap_reply(w, mid, "bindResponse", result_p("protocolError", none, "only LDAPv3 is supported"))?;
+                ldap_reply(mut w, mid, "bindResponse", result_p("protocolError", none, "only LDAPv3 is supported"))?;
             } else if an != "simple" {
-                let _h207 = field(w, auth, "sasl")?;
-                let _h103 = field(w, _h207, "mechanism")?;
+                let _h207 = field(mut w, auth, "sasl")?;
+                let _h103 = field(mut w, _h207, "mechanism")?;
                 let mech = obj_str_r(w, _h103)?;
                 let msg = f"SASL {mech} is not supported";
-                ldap_reply(w, mid, "bindResponse", result_p("authMethodNotSupported", none, msg.as_str()))?;
+                ldap_reply(mut w, mid, "bindResponse", result_p("authMethodNotSupported", none, msg.as_str()))?;
             } else {
-                let simple = field(w, auth, "simple")?;
+                let simple = field(mut w, auth, "simple")?;
                 if name.len() == 0 and obj_octets(w, simple)?.len() == 0 {
                     bound = Some("".to_string());
-                    ldap_reply(w, mid, "bindResponse", result_p("success", none, ""))?;
+                    ldap_reply(mut w, mid, "bindResponse", result_p("success", none, ""))?;
                 } else {
                     let mut entry: Option[J] = None;
                     for e in dir.iter() {
@@ -8305,26 +8305,26 @@ fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
                     };
                     if ok {
                         bound = Some(entry_dn(entry.unwrap()));
-                        ldap_reply(w, mid, "bindResponse", result_p("success", none, ""))?;
+                        ldap_reply(mut w, mid, "bindResponse", result_p("success", none, ""))?;
                     } else {
-                        ldap_reply(w, mid, "bindResponse", result_p("invalidCredentials", none, ""))?;
+                        ldap_reply(mut w, mid, "bindResponse", result_p("invalidCredentials", none, ""))?;
                     }
                 }
             }
         } else if op == "searchRequest" {
-            let _h36 = field(w, body, "baseObject")?;
+            let _h36 = field(mut w, body, "baseObject")?;
             let bo = obj_str_r(w, _h36)?;
             let base = ldap_norm(bo);
-            let _h37 = field(w, body, "scope")?;
+            let _h37 = field(mut w, body, "scope")?;
             let scope = pp(w, _h37);
             let mut attrs: Vec[String] = Vec.new();
-            let _h208 = field(w, body, "attributes")?;
-            for a in items_of(w, _h208)?.iter() {
+            let _h208 = field(mut w, body, "attributes")?;
+            for a in items_of(mut w, _h208)?.iter() {
                 attrs.push(obj_str_r(w, *a)?);
             }
             println(f"<- {big_str(mid)} search {str_repr(bo)} {scope} attrs={join(attrs, ",")}");
             if bound.is_none() {
-                ldap_reply(w, mid, "searchResDone", result_p("operationsError", none, "bind first"))?;
+                ldap_reply(mut w, mid, "searchResDone", result_p("operationsError", none, "bind first"))?;
                 continue;
             }
             let mut exists = false;
@@ -8353,16 +8353,16 @@ fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
                         None => "".to_string(),
                     };
                 }
-                ldap_reply(w, mid, "searchResDone", result_p("noSuchObject", matched, ""))?;
+                ldap_reply(mut w, mid, "searchResDone", result_p("noSuchObject", matched, ""))?;
                 continue;
             }
             let mut sent = 0;
             let mut code = "success";
-            let _h38 = field(w, body, "sizeLimit")?;
+            let _h38 = field(mut w, body, "sizeLimit")?;
             let limit = int_of(w, _h38)?;
-            let _h39 = field(w, body, "typesOnly")?;
+            let _h39 = field(mut w, body, "typesOnly")?;
             let types_only = truthy(w, _h39)?;
-            let filt = field(w, body, "filter")?;
+            let filt = field(mut w, body, "filter")?;
             for e in dir.iter() {
                 let d = ldap_norm(entry_dn(e));
                 let inside = if scope == "baseObject" {
@@ -8375,7 +8375,7 @@ fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
                 } else {
                     d == base or d.ends_with(f",{base}".as_str())
                 };
-                if not inside or not ldap_match(w, e, filt)? {
+                if not inside or not ldap_match(mut w, e, filt)? {
                     continue;
                 }
                 if limit != 0 and sent == limit {
@@ -8403,16 +8403,16 @@ fn ldap_session(w: mut ref W, dir: ref Vec[J], sess: ref J) -> Result[(), Exc] {
                         pas.push(P.Dict(vec![item("type", P.Str(mm.key.clone())), item("vals", vals)]));
                     }
                 }
-                ldap_reply(w, mid, "searchResEntry", P.Dict(vec![item("objectName", P.Str(entry_dn(e))), item("attributes", P.List(pas))]))?;
+                ldap_reply(mut w, mid, "searchResEntry", P.Dict(vec![item("objectName", P.Str(entry_dn(e))), item("attributes", P.List(pas))]))?;
                 sent += 1;
             }
-            ldap_reply(w, mid, "searchResDone", result_p(code, none, ""))?;
+            ldap_reply(mut w, mid, "searchResDone", result_p(code, none, ""))?;
         } else if op == "unbindRequest" {
             println(f"<- {big_str(mid)} unbind");
             break;
         } else {
             println(f"<- {big_str(mid)} unexpected {op}");
-            ldap_reply(w, mid, "searchResDone", result_p("protocolError", none, ""))?;
+            ldap_reply(mut w, mid, "searchResDone", result_p("protocolError", none, ""))?;
         }
     }
     Ok(())
@@ -8423,7 +8423,7 @@ fn prog_ldap(w: mut ref W) -> Result[(), Exc] {
     let sessions = loads_str(read_text("data/ldap/sessions.json".to_string())?)?;
     for s in j_arr(sessions).iter() {
         println(f"== ldap {j_str(j_get(s, "name").unwrap())}");
-        ldap_session(w, dir, s)?;
+        ldap_session(mut w, dir, s)?;
     }
     Ok(())
 }
