@@ -89,8 +89,9 @@ fail the same cases, as are M7 and M10. M12 matches the answer only on
 an image of all ones, where `x - 1` and `1 - x` are both 0.
 
 A first M8, the reverse arm's first cell left uninverted by
-`row.iter_mut().skip(1)`, did not build on v2 (Compiler findings); the
-table uses another edit for it.
+`row.iter_mut().skip(1)`, did not build on v2 until kara `b1a1307f12`
+(Compiler findings), so the table uses another edit for it. It now
+builds and is killed, P1 1600, P2 1427 and P4 1600.
 
 ## Verification
 
@@ -174,9 +175,12 @@ B-2026-10-14-6. It is fixed in kara `d6d05f6a7a`, and the arm returns
 the chain itself again (rechecked at kara `13fdc32828`); until then it
 bound the chain to an annotated `let` and returned that.
 
-B-2026-10-21-51: `iter_mut()` on a `Vec` takes no adaptor on v2. `for x
-in row.iter_mut().skip(1)`, the first edit tried for M8, passes `karac
-check` and fails to build with `an iterator value is not lowered yet`,
-as do `take`, `rev`, `step_by` and an `iter_mut()` iterator bound to a
+B-2026-10-21-51: `iter_mut()` on a `Vec` took no adaptor on v2. `for x
+in row.iter_mut().skip(1)`, the first edit tried for M8, passed `karac
+check` and failed to build with `an iterator value is not lowered yet`,
+as did `take`, `rev`, `step_by` and an `iter_mut()` iterator bound to a
 name; only `for x in v.iter_mut()` and `for (i, x) in
-v.iter_mut().enumerate()` work. No arm needs an adaptor there.
+v.iter_mut().enumerate()` worked. No arm needs an adaptor there. It is
+fixed in kara `b1a1307f12`: rechecked at kara `4a744e1ec3`, that M8 and
+`skip`, `take`, `rev().step_by(2)` and a bound iterator under `while
+let` all run right on both v2 backends.
