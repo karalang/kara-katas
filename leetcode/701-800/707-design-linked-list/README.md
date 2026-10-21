@@ -50,20 +50,18 @@ Every arm prints the same 7 lines: the LeetCode example; calls on an
 empty list, an index one past the end, which appends, and two past it,
 which does nothing; deleting the first and the last; the problem's most,
 2,000 random calls, twice; 1,000 values added at the tail and every
-other one deleted from the front; and 300 random sequences of 1 to
-100 calls, each with a checksum. Random calls are a fifth of each kind,
-with values from 0 to 1,000 and indexes from 0 to two past the size, so
-some fall outside the list. `design_linked_list.py` mirrors the ★ arm
-and its output is byte-identical.
+other one deleted from the front; and 300 random sequences of 1 to 100
+calls, each with a checksum. Random calls are a fifth of each kind, with
+values from 0 to 1,000 and indexes from 0 to two past the size, so some
+fall outside the list. `design_linked_list.py` mirrors the ★ arm and its
+output is byte-identical.
 
 The persistent arm is written to design.md § Patterns, which binds the
 parts of a `shared enum` pattern as `ref`, so it reads them as `*v` and
-`*rest`. `karac check` accepts that, but every v2 surface binds them by
-value and refuses the `*`s (kara B-2026-10-18-30, below), so that arm
-and the differential, which holds a copy of it, do not run on v2 as
-written. A scratch copy of each with the `*`s removed prints the output
-above and the differential's line on every v2 surface; that copy is not
-committed.
+`*rest`. When this kata landed every v2 surface bound them by value and
+refused the `*`s (kara B-2026-10-18-30, below), so the arm and the
+differential ran only as scratch copies with the `*`s removed. Since
+kara 7e6ab6eed6 both run as written.
 
 ## Differential
 
@@ -83,19 +81,19 @@ outside.
 | P3 | the calls at positions outside the list left out, the same answers and list |
 | P4 | after the calls, `get(0)` and `delete_at_index(0)` until the list is empty read its values in order, then -1, with nothing left |
 
-Its line is `2000 sequences (6655 reads found), 4 arms, 32000 checks,
-0 failures`. As written it does not run on v2, because of the persistent
-arm's `*`s (B-2026-10-18-30); the scratch copy without them prints that
-line under `karac __mir-run` and `karac __mir-llvm-run` and runs clean
-under `karac __mir-llvm-asan`.
+Its line is `2000 sequences (6655 reads found), 4 arms, 32000 checks, 0
+failures`. It prints that line under `karac __mir-run` and `karac
+__mir-llvm-run` and runs clean under `karac __mir-llvm-asan`, as written
+since kara 7e6ab6eed6 and before that as a scratch copy without the
+persistent arm's `*`s.
 
 ## Mutation testing
 
 Eleven edits to the differential, two or three to each arm, each run
 under `karac __mir-run` on the scratch copy with the persistent arm's
-`*`s removed, the one that runs on v2. All eleven are killed. Three more
-edits, E1 to E3, change nothing that can be seen, and the differential
-rightly reports no failure for them.
+`*`s removed, the one that ran on v2 at the time. All eleven are killed.
+Three more edits, E1 to E3, change nothing that can be seen, and the
+differential rightly reports no failure for them.
 
 | # | mutation | failures by property |
 |---|---|---|
@@ -137,14 +135,16 @@ The ★, arena and vec arms print the same output as
 `design_linked_list.py` under `karac __mir-run` (the v2 MIR interpreter)
 and `karac __mir-llvm-run`, and run clean under `karac __mir-llvm-asan`
 (AddressSanitizer and LeakSanitizer): output identical, no error, no
-leak. The persistent arm and the differential stop at MIR type checking
-on `*v` (B-2026-10-18-30); the scratch copies without the `*`s pass all
-three surfaces the same way. `karac check` passes all four arms, the
-differential, both scratch copies and the bench program. All with the
-compiler at kara `2bfc20c2ad` for the debug build and `ffe92ee37c`, a
-ledger-only commit later, for the release build that runs `check` and
-`__mir-run`, with runtime archives rebuilt after the last `runtime/src`
-change.
+leak. The persistent arm and the differential first stopped at MIR type
+checking on `*v` (B-2026-10-18-30) and passed only as scratch copies
+without the `*`s; re-measured at kara 909d2c7a1f (release and debug
+builds, runtime archives rebuilt), both as written print the same output
+and line under all three surfaces, with no sanitizer report. `karac
+check` passes all four arms, the differential, both scratch copies and
+the bench program. All with the compiler at kara `2bfc20c2ad` for the
+debug build and `ffe92ee37c`, a ledger-only commit later, for the
+release build that runs `check` and `__mir-run`, with runtime archives
+rebuilt after the last `runtime/src` change.
 
 The frozen legacy backends refuse the ★, arena and vec arms at
 `next_random(mut seed)` inside the harness's `random_calls`, whose
@@ -164,8 +164,8 @@ so a list grows to about 2,400 values and every call but `add_at_head`
 walks a few hundred to a few thousand nodes; every `get` goes into a
 checksum and every final size into a count. Every implementation prints
 `5 rounds of 10 lists of 6000 calls: 119969 values left, checksum
-773058780`, the Kāra program under `karac __mir-run` included (in
-242 s).
+773058780`, the Kāra program under `karac __mir-run` included (in 242
+s).
 
 Every implementation allocates one node per value: C with `malloc` and
 `free`, Rust as `Option<Box<Node>>`, Go and Python as garbage-collected
@@ -184,9 +184,9 @@ timings need a quiet machine):
 | Kāra (`karac build --mir`) | 0.81 to 0.86 s |
 | Kāra, legacy (`karac build`) | 0.45 to 0.50 s |
 
-`bench.sh` builds the Kāra program with `karac build --mir`, the
-v2 compiled backend; the legacy `karac build` builds the same program,
-and its time is the last row. That edit is by hand, on top of the
+`bench.sh` builds the Kāra program with `karac build --mir`, the v2
+compiled backend; the legacy `karac build` builds the same program, and
+its time is the last row. That edit is by hand, on top of the
 `scripts/new-bench.sh` output. Under `karac __mir-llvm-run` the program
 prints the same line in 3.3 s, compile included; that JITs the MIR's IR
 without optimization passes, so it is not a benchmark.
@@ -194,22 +194,22 @@ without optimization passes, so it is not a benchmark.
 So the v2 build takes about 1.75 times as long as the legacy build by
 median, inside the M2 bar of 2 for any one kata, about 1.5 times C and
 Rust and 2.6 times Go. Under valgrind's cachegrind, the times follow
-simulated L1 data misses, not instructions: the v2 build runs
-2.57 billion instructions with 140 million misses, legacy 2.03 billion
-with 60 million, and C 0.30 billion with 76 million, which suggests
-every version spends its time waiting for the walk's next node. The
-v2 node is a 32-byte block, two counts, the value and the link, where
-C's is 16 bytes, and in the IR before optimization each step of the
-v2 walk also adds a count to the next node and takes one from the node
-it leaves. Why legacy misses less often than C was not established. The
-comparison with C and Rust waits until after M4.
+simulated L1 data misses, not instructions: the v2 build runs 2.57
+billion instructions with 140 million misses, legacy 2.03 billion with
+60 million, and C 0.30 billion with 76 million, which suggests every
+version spends its time waiting for the walk's next node. The v2 node is
+a 32-byte block, two counts, the value and the link, where C's is 16
+bytes, and in the IR before optimization each step of the v2 walk also
+adds a count to the next node and takes one from the node it leaves. Why
+legacy misses less often than C was not established. The comparison with
+C and Rust waits until after M4.
 
 ## Compiler findings
 
-kara **B-2026-10-18-30** (open, medium): every v2 surface binds the
-parts of a `shared enum` pattern by value, so the persistent arm's
-`List.Cons(v, rest) => ... *v ... *rest` is refused ("unary '*' requires
-'ref T' ... found 'i64'", and `List` for `*rest`). design.md § Patterns
-binds those parts as `ref`, and `karac check` follows it, accepting `*v`
-and also accepting `v`; the v2 surfaces accept only `v`. The arm and the
-differential keep the spelling the spec gives.
+kara **B-2026-10-18-30** (fixed in 7e6ab6eed6): every v2 surface bound
+the parts of a `shared enum` pattern by value, so the persistent arm's
+`List.Cons(v, rest) => ... *v ... *rest` was refused ("unary '*'
+requires 'ref T' ... found 'i64'", and `List` for `*rest`), while
+design.md § Patterns binds those parts as `ref` and `karac check`
+followed it. The arm and the differential kept the spelling the spec
+gives, and now run as written.
