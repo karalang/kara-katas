@@ -173,4 +173,7 @@ Two neighbours, found while probing that one, hold nothing in this kata.
 B-2026-10-21-47, `for i in 1.. { .. }` not parsing, is fixed in kara
 `510c9cf71d`: the loop parses now and stops where its parenthesised form
 did, at B-2026-10-21-48, the MIR builder refusing a `for` over an open
-range as a loop over a collection.
+range as a loop over a collection. That one is fixed in kara
+`3cd584acce`: both forms, left by a `break`, pass `karac check` and run
+under `karac __mir-run` and `karac __mir-llvm-run` (rechecked at kara
+`cd64cc58b3`).
