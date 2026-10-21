@@ -188,14 +188,16 @@ returns the entry's pairs as a `Vec`. `flat_map` takes a closure that
 returns an iterator (`U: Iterator`, docs/library/iterators.md), so the
 arm calls `.into_iter()` on the `Vec`, as the spec asks. But `karac
 check` says so poorly: five errors for the one missing call, the first
-listing all 29 `Iterator` implementors and suggesting nothing. That is
-filed as B-2026-10-20-33. Probing `IntoIterator` from there found that
-the trait is not the spec's: the prelude's has an `IntoIter` type and no
-`into_iter` method, so an impl written as design.md gives it is refused,
-a `C: IntoIterator` bound cannot call `.into_iter()`, and `v.extend(x)`
-on a type of one's own passes `karac check` and is then refused by the
-MIR builder. That is B-2026-10-20-32. Neither needed a change to the
-kata: `Vec.into_iter()` is a method of `Vec` itself.
+listing all 29 `Iterator` implementors and suggesting nothing. That was
+B-2026-10-20-33, fixed in kara 0ddbf56292: the missing call is now one
+error whose `.into_iter()` `karac fix` applies. Probing `IntoIterator`
+from there found that the trait is not the spec's: the prelude's has an
+`IntoIter` type and no `into_iter` method, so an impl written as
+design.md gives it is refused, a `C: IntoIterator` bound cannot call
+`.into_iter()`, and `v.extend(x)` on a type of one's own passes `karac
+check` and is then refused by the MIR builder. That is B-2026-10-20-32.
+Neither needed a change to the kata: `Vec.into_iter()` is a method of
+`Vec` itself.
 
 Every arm, the differential and the bench otherwise passed `karac check`
 and every v2 lane as first written.

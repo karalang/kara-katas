@@ -181,7 +181,8 @@ but it does so with two errors at the same span, the first listing all
 29 `Iterator` types, and no `.into_iter()` hint: the shape of
 B-2026-10-20-33, filed for a `flat_map` closure that returns a
 collection and widened by this kata to a collection passed as an
-argument. The arm now writes `.chain([..].into_iter())`. The same arm
-first subtracted `t.leading_zeros()`, a `u32`, from an `i64`, which
-`karac check` refuses as a mix of integer types, rightly; it casts with
-`as i64`.
+argument; fixed in kara 0ddbf56292, where it is one error per call with
+an `.into_iter()` that `karac fix` applies. The arm now writes
+`.chain([..].into_iter())`. The same arm first subtracted
+`t.leading_zeros()`, a `u32`, from an `i64`, which `karac check` refuses
+as a mix of integer types, rightly; it casts with `as i64`.
