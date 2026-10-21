@@ -170,10 +170,11 @@ B-2026-10-19-26. The comparison with C and Rust waits until after M4.
 
 - **B-2026-10-19-25.** On the MIR backends a bare `collect()` at the
   end of one branch of an un-annotated `let goal = if .. { .. } else {
-  .. }` does not lower when its target type comes only from the other
-  branch; `karac check` passes it. The differential's `goal` binding is
-  written `let goal: String` until it is fixed, with a comment citing
-  the row.
+  .. }` did not lower when its target type came only from the other
+  branch; `karac check` passed it. Fixed in kara `2aff63d314`: the
+  differential's `goal` binding is un-annotated again and prints its
+  line under `karac __mir-run`, `karac __mir-llvm-run` and `karac
+  __mir-llvm-asan` at kara `36a43d8e50`.
 - **B-2026-10-19-26.** `String.contains` on the v2 compiled backend is
   Rust's `str::contains`, whose two-way search sets itself up on every
   call; on the bench's 100-letter needles in 200-letter haystacks that
