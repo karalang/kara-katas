@@ -169,7 +169,8 @@ iterable and ended by `take` or the like. The arm uses `1..=n`, which
 `take_while` stops long before its end; restore `(1..)` when the row
 closes.
 
-Two neighbours, found while probing that one, hold nothing in this kata:
-B-2026-10-21-47, `for i in 1.. { .. }` does not parse, the loop body's
-`{` read as the range's end; and B-2026-10-21-48, `for i in (1..) { ..
-}` parses but the MIR builder refuses it as a loop over a collection.
+Two neighbours, found while probing that one, hold nothing in this kata.
+B-2026-10-21-47, `for i in 1.. { .. }` not parsing, is fixed in kara
+`510c9cf71d`: the loop parses now and stops where its parenthesised form
+did, at B-2026-10-21-48, the MIR builder refusing a `for` over an open
+range as a loop over a collection.
