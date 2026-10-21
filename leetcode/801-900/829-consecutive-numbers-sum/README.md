@@ -24,7 +24,7 @@ square root of `2n`.
 | `consecutive_numbers_sum.kara` ★ | each length `k` while `1 + 2 + ... + k` fits in `n`, counted when what is left after the triangle is a multiple of `k`. O(sqrt n) |
 | `consecutive_numbers_sum_odd.kara` | the odd divisors of `n`, which match the runs one for one: the number of divisors of `n` with its factors of 2 taken out, from its prime factors by trial division. O(sqrt n) |
 | `consecutive_numbers_sum_pairs.kara` | the ways to split `2n` into `k * m` with `k < m` and `k + m` odd, since a run of `k` from `a` has `2n = k * (2a + k - 1)`. O(sqrt n) |
-| `consecutive_numbers_sum_iter.kara` | the lengths `take_while` the triangle fits, `filter`ed by the remainder and `count`ed, over `1..=n` where the open range `1..` is refused for now (B-2026-10-21-46) |
+| `consecutive_numbers_sum_iter.kara` | the lengths `take_while` the triangle fits, `filter`ed by the remainder and `count`ed, over the open range `1..` |
 | `differential.kara` | the four arms against the statement read start by start, four properties |
 
 Every arm prints the same 15 lines: LeetCode's three examples; ten
@@ -102,7 +102,7 @@ that runs `check`, `__mir-run` and the mutation runs is at kara
 earlier, none of them in the runtime; the runtime archives match both.
 
 Under `karac __mir-run` the ★, odd-divisor and factor-pair arms take 0.2
-to 1.2 s and the iterator arm 12 s, with the same output; the
+to 1.2 s and the iterator arm 10.5 s, with the same output; the
 differential takes 1.3 s.
 
 The leak check copied each arm's and the differential's sanitizer lane
@@ -111,11 +111,10 @@ executable as it was linked and ran it with the preloaded shim from kata
 `main`: all five print their output and report no leak.
 
 The frozen legacy JIT (`karac run`), `karac build` and an auto-par build
-print the same output for all four arms and the differential, and the
-legacy interpreter (`karac run --interp`) for every arm but the iterator
-one: on 10^9 it builds the whole range `1..=n` before `take_while` reads
-it, asks for 128 GB and aborts. Legacy is frozen, so this is noted, not
-filed.
+print the same output for the other three arms, and the legacy
+interpreter (`karac run --interp`) as well. Every legacy backend refuses
+the iterator arm and the differential, finding no method `take_while` on
+`RangeFrom`. Legacy is frozen, so this is noted, not filed.
 
 ## Benchmarks
 
@@ -160,14 +159,14 @@ comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
-B-2026-10-21-46: an open range takes no iterator adaptor.
-`(1..).take(3)` and `(1..).take_while(..)` are refused as having no such
-method on `RangeFrom`, while `(1..).into_iter()` and `(1..).iter()` are
-refused as already being an iterator, so no spelling of the iterator
-arm's natural form is accepted. design.md § Ranges says `lo..` is
-iterable and ended by `take` or the like. The arm uses `1..=n`, which
-`take_while` stops long before its end; restore `(1..)` when the row
-closes.
+B-2026-10-21-46: an open range took no iterator adaptor. `(1..).take(3)`
+and `(1..).take_while(..)` were refused as having no such method on
+`RangeFrom`, while `(1..).into_iter()` and `(1..).iter()` were refused
+as already being an iterator, so no spelling of the iterator arm's
+natural form was accepted. design.md § Ranges says `lo..` is iterable
+and ended by `take` or the like. It is fixed in kara `2b42975210`, and
+the arm is back to `(1..)` (rechecked at kara `13fdc32828`); until then
+it used `1..=n`, which `take_while` stops long before its end.
 
 Two neighbours, found while probing that one, hold nothing in this kata.
 B-2026-10-21-47, `for i in 1.. { .. }` not parsing, is fixed in kara

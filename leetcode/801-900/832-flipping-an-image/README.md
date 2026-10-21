@@ -166,12 +166,13 @@ and Rust waits until after M4.
 ## Compiler findings
 
 B-2026-10-21-50: the iterator arm's natural form, the chain returned as
-the function's tail expression, passes `karac check` and is not lowered
+the function's tail expression, passed `karac check` and was not lowered
 by v2's MIR builder: the inner `collect()`, whose only type target is
-the function's return type, stops it with `an expression whose type does
-not lower (Type(UnknownParam("C")))`. It is a remainder of
-B-2026-10-14-6. The arm binds the chain to an annotated `let` and
-returns that; restore the tail expression when the row closes.
+the function's return type, stopped it with `an expression whose type
+does not lower (Type(UnknownParam("C")))`. It was a remainder of
+B-2026-10-14-6. It is fixed in kara `d6d05f6a7a`, and the arm returns
+the chain itself again (rechecked at kara `13fdc32828`); until then it
+bound the chain to an annotated `let` and returned that.
 
 B-2026-10-21-51: `iter_mut()` on a `Vec` takes no adaptor on v2. `for x
 in row.iter_mut().skip(1)`, the first edit tried for M8, passes `karac
