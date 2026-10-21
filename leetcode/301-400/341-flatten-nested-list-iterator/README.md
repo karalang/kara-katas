@@ -17,7 +17,7 @@ says whether one remains and `next()` returns it.
 | `flatten_iterator_eager.kara` | the constructor walks the tree once into a `Vec[i64]`; `next` reads it back through a cursor | `O(n)` to build, `O(1)` a call, `O(n)` |
 | `flatten_iterator_path.kara` | the iterator keeps the whole list and a path of indices from the root to the next member, and re-walks the path from the root on every step | `O(n d)` for depth `d`, `O(d)` beyond the list |
 | `flatten_iterator_peek.kara` | a one-integer lookahead: `has_next` checks it, `next` hands it out and finds the one after | `O(n)`, `O(n)` |
-| `flatten_iterator_trait.kara` | the ★ stack behind the standard `Iterator` trait, so the caller writes `for v in NestedIter.new(items)` | `O(n)`, `O(n)` |
+| `flatten_iterator_trait.kara` | the ★ stack behind the standard `Iterator` trait, so the caller writes `NestedIter.new(items).collect()` or a `for` loop over it | `O(n)`, `O(n)` |
 | `differential.kara` | the five arms, an oracle that reads the integers straight out of the text, and seven properties | — |
 | `bench/flatten_iterator.kara` | 80 nested lists of 20,000 top-level members built and drained by the ★ arm | — |
 
@@ -43,6 +43,14 @@ B-2026-10-05-16, fixed for this kata. Valgrind on the four compiled arms at
 at exit (5 to 6 MB) are the runtime's large-buffer recycling cache
 (`karac_free_buf`), which keeps a freed `Vec` buffer for reuse: a one-function
 program that fills a 200,000-element `Vec` shows the same single block.
+
+The table above records the trait arm as it was then, collecting with a
+`for` loop. Since B-2026-10-05-18 was fixed (2026-10-21), it calls
+`.collect()` on its iterator, in the arm and in the differential's copy.
+That version passes `karac check`, prints the same 12 lines under `karac
+__mir-run` and `karac __mir-llvm-run`, and the differential prints its line
+under both, on a karac built from kara `d3632749b0`'s tree. The frozen
+legacy backends were not re-run.
 
 ## Differential
 
@@ -169,14 +177,14 @@ The benchmark kernel's sink matches all four language twins and Python
   trait arm runs only under `--interp` until this is fixed; `while let
   Some(v) = it.next()` over the same value builds. Filed for the codegen
   thread.
-- **B-2026-10-05-18 (missing feature, medium, open): the iterator adaptors are not
+- **B-2026-10-05-18 (missing feature, medium, fixed): the iterator adaptors are not
   available on a user `Iterator`.** `NestedIter.new(items).collect()` and
   `.sum()` fail `no method 'collect' on type 'NestedIter'`, where design.md
-  defines them on every `Iterator`. The trait arm collects with a `for` loop.
-  Narrowed on 2026-10-15 (kara `7609de871d`): both MIR backends now run
-  `collect` and `sum` on a user `Iterator`, and so does `karac check` with
-  `KARAC_CHECK_LIBRARY=1`; the default `karac check` still refuses them,
-  so the `for` loop stays until that is fixed too.
+  defines them on every `Iterator`. The trait arm collected with a `for`
+  loop. Fixed: both MIR backends ran `collect` and `sum` on a user
+  `Iterator` by 2026-10-15, and the default `karac check` accepts them
+  since kara `25a5cd8776` made it check against the library. The arm
+  calls `.collect()` again.
 - **B-2026-10-05-14 (perf, medium): `--interp` copied the whole `String` on every
   `push`.** The arms' input generator builds a 450 KB text one character at a
   time, and the ★ arm took 42 s under `--interp`. Fixed in the kara repo: a
