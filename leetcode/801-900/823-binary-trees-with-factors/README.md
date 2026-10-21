@@ -148,15 +148,15 @@ legacy time. `bench.sh` builds the Kāra program with `karac build
 
 At the medians of the interleaved runs v2 takes 2.61 s, against C's
 1.92, Rust's 2.09 (2.07 under overflow checks) and Go's 3.05: 1.4 times
-C's time and 1.25 times Rust's. All five spend most of their time in the
-64-bit division of the trial divisions, which no compiler here can
-avoid, so they are closer together than in most katas. Under valgrind's
-cachegrind v2 runs 18.6 billion instructions, against Rust's 16.5
-billion and C's 7.8 billion. Built for `x86-64-v3`, the target `karac
-build` uses, C takes 1.86 to 1.90 s and Rust with overflow checks 2.10
-to 2.19 s, against v2's 2.47 to 2.63 s in the same five interleaved
-runs. Python takes 22 s, about 12 times C's time. The comparison with C
-and Rust waits until after M4.
+C's time and 1.25 times Rust's. Most likely all five spend most of their
+time on the 64-bit division of the trial divisions, which none of them
+can avoid, and so stand closer together than in most katas (not traced).
+Under valgrind's cachegrind v2 runs 18.6 billion instructions, against
+Rust's 16.5 billion and C's 7.8 billion. Built for `x86-64-v3`, the
+target `karac build` uses, C takes 1.86 to 1.90 s and Rust with overflow
+checks 2.10 to 2.19 s, against v2's 2.47 to 2.63 s in the same five
+interleaved runs. Python takes 22 s, about 12 times C's time. The
+comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
