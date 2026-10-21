@@ -125,7 +125,7 @@ echo
 
 bench_begin id=823 slug=binary-trees-with-factors group=801-900 \
     title="Binary Trees With Factors" \
-    workload="200000 rounds of 64 paragraphs" sink="$expected"
+    workload="1000 rounds of 64 sets of 7-smooth values" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

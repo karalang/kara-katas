@@ -125,7 +125,7 @@ echo
 
 bench_begin id=822 slug=card-flipping-game group=801-900 \
     title="Card Flipping Game" \
-    workload="200000 rounds of 64 paragraphs" sink="$expected"
+    workload="50000 rounds of 64 hands" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

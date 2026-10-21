@@ -125,7 +125,7 @@ echo
 
 bench_begin id=820 slug=short-encoding-of-words group=801-900 \
     title="Short Encoding of Words" \
-    workload="200000 rounds of 64 paragraphs" sink="$expected"
+    workload="12000 rounds of 64 lists of 2000 words" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

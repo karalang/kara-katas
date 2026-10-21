@@ -125,7 +125,7 @@ echo
 
 bench_begin id=821 slug=shortest-distance-to-a-character group=801-900 \
     title="Shortest Distance to a Character" \
-    workload="200000 rounds of 64 paragraphs" sink="$expected"
+    workload="50000 rounds of 64 strings" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
