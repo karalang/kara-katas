@@ -237,7 +237,27 @@ fn big_mul(a: ref Big, b: ref Big) -> Big {
     big_make(a.neg != b.neg, out)
 }
 
+// |d| * m + add, for 0 <= m, add < 2**48
+fn mag_mul_add(d: ref Vec[i64], m: i64, add: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut carry = add;
+    for x in d.iter() {
+        let t = *x * m + carry;
+        out.push(t % BASE);
+        carry = t / BASE;
+    }
+    while carry > 0 {
+        out.push(carry % BASE);
+        carry = carry / BASE;
+    }
+    trim(mut out);
+    out
+}
+
 fn big_mul_small(a: ref Big, m: i64) -> Big {
+    if m >= 0 and m < 281474976710656 {
+        return big_make(a.neg, mag_mul_add(a.d, m, 0));
+    }
     big_mul(a, big_from_i64(m))
 }
 
@@ -260,6 +280,10 @@ fn divmod_small(a: ref Vec[i64], m: i64) -> (Vec[i64], i64) {
 fn divmod_mag(a: ref Vec[i64], b: ref Vec[i64]) -> (Vec[i64], Vec[i64]) {
     if cmp_mag(a, b) < 0 {
         return (Vec.new(), a.clone());
+    }
+    if b.len() == 1 {
+        let (q, r) = divmod_small(a, b[0]);
+        return (q, if r == 0 { Vec.new() } else { vec![r] });
     }
     let bb = Big { neg: false, d: b.clone() };
     let mut q: Vec[i64] = Vec.filled(a.len(), 0);
@@ -375,10 +399,17 @@ fn big_from_bytes(b: ref Vec[u8]) -> Big {
 fn big_to_bytes(a: ref Big) -> Vec[u8] {
     let mut out: Vec[u8] = Vec.new();
     let mut d = a.d.clone();
+    // six bytes at a time: r * BASE stays below 2**63 for r < 2**48
     while d.len() > 0 {
-        let (q, r) = divmod_small(d, 256);
-        out.push(r as u8);
+        let (q, r) = divmod_small(d, 281474976710656);
         d = q;
+        let mut x = r;
+        let mut k = 0;
+        while k < 6 and (x > 0 or d.len() > 0) {
+            out.push((x % 256) as u8);
+            x = x / 256;
+            k += 1;
+        }
     }
     out.reverse();
     out
@@ -623,13 +654,23 @@ fn parse_int_text(t: ref String, base: i64) -> Option[Big] {
         return None;
     }
     let mut r = big_zero();
+    // digits are gathered into chunk (chunk_m = base ** count) before
+    // they go into r, so a long literal costs a few passes over r, not one per digit
+    let mut chunk = 0;
+    let mut chunk_m = 1;
     let mut prev_digit = false;
     let mut i = lo;
     while i < hi {
         let c = cs[i];
         let d = digit_value(c);
         if d >= 0 and d < base {
-            r = big_add(big_mul_small(r, base), big_from_i64(d));
+            chunk = chunk * base + d;
+            chunk_m = chunk_m * base;
+            if chunk_m >= 1099511627776 {
+                r = big_make(false, mag_mul_add(r.d, chunk_m, chunk));
+                chunk = 0;
+                chunk_m = 1;
+            }
             prev_digit = true;
         } else if c == '_' and (prev_digit or (after_prefix and i == lo)) and i + 1 < hi {
             prev_digit = false;
@@ -640,6 +681,9 @@ fn parse_int_text(t: ref String, base: i64) -> Option[Big] {
     }
     if not prev_digit {
         return None;
+    }
+    if chunk_m > 1 {
+        r = big_make(false, mag_mul_add(r.d, chunk_m, chunk));
     }
     if neg {
         r = big_neg(r);
@@ -754,7 +798,7 @@ fn big_fits(a: ref Big) -> bool {
 }
 
 fn big_pow2(k: i64) -> Big {
-    big_pow_small(2, k)
+    big_shl(big_from_i64(1), k)
 }
 
 // a << k
@@ -762,7 +806,14 @@ fn big_shl(a: ref Big, k: i64) -> Big {
     if k <= 0 {
         return a.clone();
     }
-    big_mul(a, big_pow2(k))
+    let mut d = a.d.clone();
+    let mut n = k;
+    while n > 0 {
+        let step = if n > 20 { 20 } else { n };
+        d = mag_mul_add(d, 1 << step, 0);
+        n -= step;
+    }
+    big_make(a.neg, d)
 }
 
 // a >> k, flooring as Python does
@@ -770,8 +821,19 @@ fn big_shr(a: ref Big, k: i64) -> Big {
     if k <= 0 {
         return a.clone();
     }
-    let (q, _) = big_divmod(a, big_pow2(k));
-    q
+    if a.neg {
+        let (q, _) = big_divmod(a, big_pow2(k));
+        return q;
+    }
+    let mut d = a.d.clone();
+    let mut n = k;
+    while n > 0 and d.len() > 0 {
+        let step = if n > 20 { 20 } else { n };
+        let (q, _) = divmod_small(d, 1 << step);
+        d = q;
+        n -= step;
+    }
+    big_make(false, d)
 }
 
 // int.bit_length()
