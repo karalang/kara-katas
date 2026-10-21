@@ -1,6 +1,7 @@
 # Prints the Kara functions that hold data/ (as mk.py writes it), for
 # mini_pyasn1.kara's data section: each file's path under data/
-# and its contents (hex for the binary ones). No function gets more than about 200 lines.
+# and its contents (hex for the binary ones). No function gets more than
+# about 200 lines; a longer file is filled in by helper functions.
 import os
 
 
@@ -42,20 +43,26 @@ for root, dirs, files in os.walk("data"):
 names.sort()
 
 chunks = [[]]
+helpers = []
 for n in names:
     b = open(os.path.join("data", n), "rb").read()
-    body = []
-    if is_text(b):
-        body.append("    let mut t = String.new();")
-        for line in b.decode("utf-8").splitlines(keepends=True):
-            body.append("    t.push_str(%s);" % lit(line))
-        body.append("    v.push(DataFile { path: %s.to_string(), hex: false, body: t });" % lit(n))
+    text = is_text(b)
+    if text:
+        pieces = b.decode("utf-8").splitlines(keepends=True)
     else:
         h = b.hex()
-        body.append("    let mut t = String.new();")
-        for i in range(0, len(h), 96):
-            body.append("    t.push_str(%s);" % lit(h[i:i + 96]))
-        body.append("    v.push(DataFile { path: %s.to_string(), hex: true, body: t });" % lit(n))
+        pieces = [h[i:i + 96] for i in range(0, len(h), 96)]
+    pushes = ["    t.push_str(%s);" % lit(x) for x in pieces]
+    body = ["    let mut t = String.new();"]
+    if len(pushes) > 190:
+        for i in range(0, len(pushes), 190):
+            k = len(helpers)
+            helpers.append(pushes[i:i + 190])
+            body.append("    data_text_%d(mut t);" % k)
+    else:
+        body.extend(pushes)
+    body.append("    v.push(DataFile { path: %s.to_string(), hex: %s, body: t });"
+                % (lit(n), "false" if text else "true"))
     if len(chunks[-1]) + len(body) > 200 and chunks[-1]:
         chunks.append([])
     chunks[-1].extend(body)
@@ -70,6 +77,12 @@ print("}")
 for k, body in enumerate(chunks):
     print()
     print("fn data_part_%d(v: mut ref Vec[DataFile]) {" % k)
+    for line in body:
+        print(line)
+    print("}")
+for k, body in enumerate(helpers):
+    print()
+    print("fn data_text_%d(t: mut ref String) {" % k)
     for line in body:
         print(line)
     print("}")
