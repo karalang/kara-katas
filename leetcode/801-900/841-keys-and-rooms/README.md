@@ -171,11 +171,10 @@ comparison with C and Rust waits until after M4.
 ## Compiler findings
 
 B-2026-10-21-82: an empty list literal `[]` in an `if` branch whose
-element type comes only from the other branch passes `karac check` and
-stops both v2 lanes with `a type that failed to check is not lowered
+element type comes only from the other branch passed `karac check` and
+stopped both v2 lanes with `a type that failed to check is not lowered
 yet`. The harness's natural `chain.push(if i < 999 { [i + 1] } else { []
-});` hits it, as do `let x = if true { [5] } else { [] };` and the same
-in a `match`; an annotated `let` or a function's return type makes it
-build. Until the row is fixed the harness binds the room to an annotated
-`let room: Vec[i64]` first, with the natural form in a comment beside
-it, to be put back when the row closes.
+});` hit it, so it bound the room to an annotated `let` first. The row
+was fixed in kara 14180cd414, and the harness is back to the natural
+form, which all four arms run right under `karac __mir-run`, `karac
+__mir-llvm-run` and `karac __mir-llvm-asan` at kara c8c0d4a166.
