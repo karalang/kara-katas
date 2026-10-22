@@ -1,5 +1,5 @@
 # Prints the Kara jobs_text() function that holds data/jobs.tsv, for
-# mini_semver.kara's data section. No other data files are used.
+# mini_pysemver.kara's data section. No other data files are used.
 def lit(s):
     out = []
     for ch in s:

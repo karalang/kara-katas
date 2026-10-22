@@ -1,51 +1,78 @@
 # mini_semver
 
-A port of python-semver 3.1.0 (BSD, Konstantine Rybnikov) — the semantic
-version library used across release automation, dependency tooling and the
-`pysemver` command line.
+npm's semver 7.7.2, the library every `package.json` range goes through,
+with its `semver` command-line tool and an `npm outdated`-style report on
+top. It is written from semver's source, regular expressions included:
+the program builds the same pattern sources as `internal/re.js` and runs
+them with a small backtracking matcher (capturing groups, unset groups
+told apart from empty ones, leftmost-first alternation), so every quirk
+of the patterns carries over.
 
-The port follows `semver.Version` method for method:
+What it covers:
+- versions, strict and loose (`=v 1.2.3`, `1.2.3beta`, leading zeros),
+  with the MAX_SAFE_INTEGER checks, numeric prerelease ids and build
+  metadata;
+- comparison and stable sorting, and `compareBuild`;
+- ranges: carets, tildes (`~>` too), x-ranges, hyphen ranges, `||`,
+  `<0.0.0-0` null sets, `*` swallowing the other sets, duplicate and
+  `>=0.0.0` removal, the prerelease rule and `includePrerelease`, and
+  loose mode dropping comparators it cannot read;
+- `inc` for every release type, with `--preid`, `-n 0|1|false` and the
+  identifier checks;
+- `coerce` left to right and right to left, with `includePrerelease`;
+- `diff`, `minVersion`, `intersects`, `maxSatisfying`, `minSatisfying`,
+  `validRange` and `simplifyRange`;
+- `bin/semver.js`, flag for flag, including `--flag=value` splitting
+  (which turns a version written `=1.2.4` into an empty word and
+  `1.2.4`), `-i` taking the next word only when it is a level, and the
+  exit status;
+- `outdated`, which reads a project's `package.json`, its
+  `package-lock.json` and a registry index, works out what npm would
+  want for each dependency (dist-tags, `latest` when it satisfies, then
+  the highest non-deprecated match), prints the table, and explains
+  each row: the kind of update, an installed version newer than the
+  range allows or outside it, a newer major out of range, a deprecated
+  install, a dist-tag that does not exist, a package missing from the
+  registry.
 
-- **`parse` / `is_valid`** — the strict semver.org grammar: `major.minor.patch`
-  with no leading zeros, an optional `-prerelease` of dot-separated identifiers
-  (numeric with no leading zero, or alphanumeric-with-hyphen), and an optional
-  `+build` of free alphanumeric-hyphen identifiers. Every rejection raises the
-  library's `"<v> is not valid SemVer string"`.
-- **`compare`** — the §11 precedence order: compare major/minor/patch, then the
-  prerelease by the library's natural comparison (numeric identifiers rank
-  below alphanumeric ones, a shorter identifier list ranks below a longer one),
-  and a version with a prerelease ranks below the same version without one.
-  Build metadata is ignored. The classic
-  `alpha < alpha.1 < alpha.beta < beta < beta.2 < beta.11 < rc.1 < (release)`
-  chain is reproduced exactly.
-- **`match`** — an `<op><version>` expression with `<`, `>`, `<=`, `>=`, `==`,
-  `!=`, or a bare version (`==`), with the library's exact error for a bad
-  operator.
-- **`bump_major` / `minor` / `patch` / `prerelease` / `build`** — including the
-  `_increment_prerelease` (bump a trailing dot-number else append `.0`) and
-  `_increment_string` (bump the last digit run, else append `.0`) helpers.
-- **`next_version`** — natural-order next version for a part, including the
-  "prerelease present, so a patch/minor/major bump just finalizes" rule and the
-  `rc`-token replacement, with the exact `Invalid part` error.
-- **`finalize_version`** — drop prerelease and build.
+The inputs in `data/` were made by `mk.py`: `registry.json`, sixteen
+packages with their versions, dist-tags and deprecation messages, and
+two projects, `web` and `cli`, each a `package.json` and the lock file
+npm writes for it (lockfileVersion 3). `jobs.txt`, written by hand, has
+131 jobs: `semver` runs the tool on the words that follow, `lib`
+calls one library function, and `outdated` reports on a project.
 
-A version is three integers plus a prerelease and a build string (an empty
-string stands for Python's `None`). All integer and string work; **no float is
-formed**.
+Not supported: `subset`, `outside`/`gtr`/`ltr`, `Range` and
+`Comparator` objects passed back in, and semver's LRU cache (which
+changes no output). The safe patterns' bounds on `\d` runs and on build
+identifiers (256 and 250) are left out, since they only differ past 250
+characters and no input comes near that; the bound that matters,
+`\s{0,1}` for `\s*`, is kept.
 
-**Jobs.** `data/jobs.tsv` holds one operation per line: `parse`, `valid`,
-`cmp A|B`, `match V|EXPR`, `bump WHICH|V`, `next PART|V` and `finalize`. The set
-covers the valid grammar, every rejection the grammar makes, the full
-precedence chain, each bump and `next_version` branch, and the operator and
-invalid-part errors.
+**Oracle.** `expected.out` is the output of `real.js`, which runs the
+jobs against the real semver 7.7.2 under node 22: the command-line jobs
+through its `bin/semver.js`, the library jobs through `require`
+(`npm install --prefix realnode semver@7.7.2` puts it where `real.js`
+looks). `oracle.py` is the same program as this one in Python, with
+semver's patterns run by Python's `re`, and its output is byte-identical.
 
-**Oracle.** `expected.out` is the output of `oracle.py`, which runs the same
-jobs through the copy of `semver` in `vendor/` (BSD, in `LICENSE-semver.txt`).
-`mk.py` writes `data/jobs.tsv`; `gen_kara.py` embeds the jobs as `jobs_text()`.
+## Edits from mini_semver.orig.kara to mini_semver.kara
 
-Written 2026-10-22 by the real-world apps thread. It compiled clean under
-`karac check` and matched `expected.out` byte for byte on `__mir-run`,
-`__mir-llvm-run`, `__mir-llvm-asan` and `build --mir` on the first run, with no
-new compiler gaps. The port carries its own single-separator `split` helper
-because the stdlib `split`/`lines` iterator surface was mid-change the day it
-was written.
+Compiler gaps:
+- B-2026-10-15-71: check accepts `search(if loose { rx.loose } else
+  { rx.full }, s)`, an `if` whose arms are fields of a borrowed struct,
+  as a `ref` argument; every v2 surface refuses it as a move out of a
+  borrowed place. The eight such calls write `ref rx.loose` in each arm.
+
+After that, the output matched `expected.out` on `__mir-run`,
+`__mir-llvm-run` and `__mir-llvm-asan` on the first run.
+
+Written 2026-10-15 by the real-world apps thread; karac at 530bac16ca.
+
+## Library migration, 2026-10-18
+
+Thread A's a0ca700228 and acd593fc77 changed the library to match docs/library: a number's `parse` returns `Result[T, ParseError]`, and `split`, `lines`, `split_whitespace` and `trim` give `Str` views (`split` and `lines` are now lazy iterators). Arguments forwarded to a `mut ref` parameter are now marked too. `karac fix` made the edits. The app matches expected.out on all four MIR backends again (karac at a4b0967495).
+
+## Back to the original, 2026-10-18
+
+The rows behind the edits above are fixed, so `mini_semver.kara` is now exactly what `karac fix` makes of `mini_semver.orig.kara`. It matches expected.out on all four MIR backends (karac at 4ea06e27b9).
