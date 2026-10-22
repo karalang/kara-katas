@@ -1,0 +1,692 @@
+"""Checksum algorithms for German Bank institutes.
+
+A description of the algorithms can be found on the website of the Bundesbank
+
+https://www.bundesbank.de/resource/blob/603320/16a80c739bbbae592ca575905975c2d0/mL/pruefzifferberechnungsmethoden-data.pdf
+"""
+
+from __future__ import annotations
+
+import string
+from dataclasses import dataclass
+from itertools import cycle
+from typing import ClassVar
+
+from schwifty import checksum
+from schwifty._compat import override
+from schwifty.domain import Component
+from schwifty.exceptions import InvalidAccountCode
+from schwifty.exceptions import InvalidBBANChecksum
+
+
+ACCOUNT_CODE_LENGTH = 10
+
+register = checksum.register("DE")
+
+
+@dataclass
+class Positions:
+    start: int
+    end: int
+    check_digit: int
+
+
+def digit_sum(number: int) -> int:
+    if number < 10:
+        return number
+    if number < 100:
+        return number // 10 + number % 10
+    return sum(int(d) for d in str(number))
+
+
+def validate_account_code(account_code: str) -> str:
+    """Return ``account_code`` if it has the length all German methods expect.
+
+    Methods that look at the account code themselves, before the shared check in
+    :meth:`WeightedModulus.get_digits` runs, have to call this first. Otherwise a
+    BBAN that is too short to carry an account code leaks a raw ``ValueError`` or
+    ``IndexError`` instead of :class:`~schwifty.exceptions.InvalidAccountCode`.
+    """
+    if len(account_code) != ACCOUNT_CODE_LENGTH:
+        raise InvalidAccountCode(
+            f"Account code must be {ACCOUNT_CODE_LENGTH} digits long, got {len(account_code)}"
+        )
+    return account_code
+
+
+class WeightedModulus(checksum.Algorithm):
+    accepts: ClassVar[list[Component]] = [Component.ACCOUNT_CODE]
+    minuend: ClassVar[int | None] = None
+    modulus: ClassVar[int]
+    positions: ClassVar[Positions]
+    reverse: ClassVar[bool] = True
+    weights: ClassVar[list[int]]
+
+    def __init__(self) -> None:
+        self.remainder: int = 0
+
+    @override
+    def compute(self, components: list[str]) -> str:
+        [account_code] = components
+        digits = self.get_digits(self.adjust_input(account_code))
+        self.remainder = self.compute_remainder(self.compute_weighted_sum(digits))
+        if self.minuend is None:  # noqa: SIM108
+            checksum = self.remainder
+        else:
+            checksum = self.minuend - self.remainder
+        return str(self.reconcile(checksum))
+
+    def adjust_input(self, account_code: str) -> str:
+        return account_code
+
+    def get_digits(self, account_code: str) -> str:
+        validate_account_code(account_code)
+        positions = self.get_positions(account_code)
+        # The positions are provided as in the specification, which starts counting at 1
+        start, end = positions.start - 1, positions.end
+
+        assert start >= 0 and start <= ACCOUNT_CODE_LENGTH  # noqa: PT018
+        assert end >= start and end <= ACCOUNT_CODE_LENGTH  # noqa: PT018
+
+        digits = account_code[start:end]
+        if self.reverse:
+            digits = digits[::-1]
+        return digits
+
+    def get_positions(self, account_code: str) -> Positions:
+        return self.positions
+
+    def compute_weighted_sum(self, digits: str) -> int:
+        return sum(self.compute_summand(int(d), w) for d, w in zip(digits, cycle(self.weights)))
+
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return digit * weight
+
+    def compute_remainder(self, number: int) -> int:
+        return number % self.modulus
+
+    def reconcile(self, checksum: int) -> int:
+        return 0 if checksum >= 10 else checksum
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = self.adjust_input(components[0])
+        check_digit = self.compute(components)
+        positions = self.get_positions(account_code)
+        return check_digit == account_code[positions.check_digit - 1]
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        # The check digit sits at a fixed position inside the 10-digit account
+        # code, so there is exactly one unknown to determine. Try every possible
+        # value at that position and keep the one the method accepts, using the
+        # existing ``validate`` as the oracle so per-method quirks (exception
+        # ranges, special-case reconciliations) are honoured without duplicating
+        # their logic. ``None`` signals that this random account body cannot be
+        # made valid (e.g. methods that reject a whole class of inputs).
+        account_code = validate_account_code(components[0])
+        index = self.get_positions(account_code).check_digit - 1
+        for digit in string.digits:
+            candidate = account_code[:index] + digit + account_code[index + 1 :]
+            try:
+                if self.validate([candidate], ""):
+                    return [candidate]
+            except InvalidBBANChecksum:
+                continue
+        return None
+
+
+class WeightedMod10(WeightedModulus):
+    modulus: ClassVar[int] = 10
+    minuend: ClassVar[int | None] = 10
+
+
+class WeightedMod11(WeightedModulus):
+    modulus: ClassVar[int] = 11
+    minuend: ClassVar[int | None] = 11
+
+
+@register
+class Algorithm00(WeightedMod10):
+    name: ClassVar[str] = "00"
+    positions: ClassVar[Positions] = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 1]
+
+    @override
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return digit_sum(super().compute_summand(digit, weight))
+
+
+@register
+class Algorithm01(WeightedMod10):
+    name: ClassVar[str] = "01"
+    positions: ClassVar[Positions] = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [3, 7, 1]
+
+
+@register
+class Algorithm02(WeightedMod11):
+    name: ClassVar[str] = "02"
+    positions: ClassVar[Positions] = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9]
+
+    @override
+    def reconcile(self, checksum: int) -> int:
+        if self.remainder == 0:
+            return 0
+        if self.remainder == 1:
+            raise InvalidBBANChecksum(f"Invalid remainder: {self.remainder}")
+        return checksum
+
+
+@register
+class Algorithm03(Algorithm01):
+    name = "03"
+    weights: ClassVar[list[int]] = [2, 1]
+
+
+@register
+class Algorithm04(Algorithm02):
+    name = "04"
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+
+@register
+class Algorithm05(Algorithm01):
+    name = "05"
+    weights: ClassVar[list[int]] = [7, 3, 1]
+
+
+@register
+class Algorithm06(WeightedMod11):
+    name = "06"
+    positions = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+
+@register
+class Algorithm07(Algorithm02):
+    name = "07"
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+
+@register
+class Algorithm08(Algorithm00):
+    name = "08"
+    min_account_code = 60000
+
+    @override
+    def compute(self, components: list[str]) -> str:
+        account_code = validate_account_code(components[0])
+        if int(account_code) < self.min_account_code:
+            return ""
+        return super().compute(components)
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = validate_account_code(components[0])
+        if int(account_code) < self.min_account_code:
+            return True
+        return super().validate(components, expected)
+
+
+@register
+class Algorithm09(checksum.Algorithm):
+    name = "09"
+    accepts: ClassVar[list[Component]] = [Component.ACCOUNT_CODE]
+
+    @override
+    def compute(self, components: list[str]) -> str:
+        return ""
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        return True
+
+
+@register
+class Algorithm10(Algorithm06):
+    name = "10"
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+
+@register
+class Algorithm11(Algorithm10):
+    name = "11"
+
+    @override
+    def reconcile(self, checksum: int) -> int:
+        if checksum == 10:
+            return 9
+        return super().reconcile(checksum)
+
+
+@register
+class Algorithm13(Algorithm00):
+    name = "13"
+    positions = Positions(start=2, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 1]
+
+
+@register
+class Algorithm14(Algorithm02):
+    name = "14"
+    positions = Positions(start=4, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+
+@register
+class Algorithm15(Algorithm06):
+    name = "15"
+    positions = Positions(start=6, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5]
+
+
+@register
+class Algorithm16(Algorithm06):
+    name = "16"
+    positions = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        [account_code] = components
+        check_digit = self.compute(components)
+        if self.remainder == 1 and account_code[8] == account_code[9]:
+            return True
+        return check_digit == account_code[self.positions.check_digit - 1]
+
+
+@register
+class Algorithm17(WeightedMod11):
+    name = "17"
+    minuend: ClassVar[int | None] = 10
+    positions = Positions(start=2, end=7, check_digit=8)
+    reverse: ClassVar[bool] = False
+    weights: ClassVar[list[int]] = [1, 2]
+
+    @override
+    def compute_weighted_sum(self, digits: str) -> int:
+        return super().compute_weighted_sum(digits) - 1
+
+    @override
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return digit_sum(super().compute_summand(digit, weight))
+
+
+@register
+class Algorithm18(Algorithm01):
+    name = "18"
+    weights: ClassVar[list[int]] = [3, 9, 7, 1]
+
+
+@register
+class Algorithm19(Algorithm06):
+    name = "19"
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9, 1]
+
+
+@register
+class Algorithm20(Algorithm06):
+    name = "20"
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9, 3]
+
+
+@register
+class Algorithm21(Algorithm00):
+    name = "21"
+    weights: ClassVar[list[int]] = [2, 1]
+
+    @override
+    def compute_remainder(self, number: int) -> int:
+        while number >= 10:
+            number = digit_sum(number)
+        return number
+
+
+@register
+class Algorithm22(Algorithm01):
+    name = "22"
+    weights: ClassVar[list[int]] = [3, 1]
+
+    @override
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return super().compute_summand(digit, weight) % 10
+
+
+@register
+class Algorithm23(Algorithm16):
+    name = "23"
+    positions = Positions(start=1, end=6, check_digit=7)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+
+@register
+class Algorithm24(WeightedMod10):
+    name = "24"
+    minuend = None
+    positions = Positions(start=1, end=9, check_digit=10)
+    reverse = False
+    weights: ClassVar[list[int]] = [1, 2, 3]
+
+    @override
+    def get_digits(self, account_code: str) -> str:
+        digits = super().get_digits(account_code)
+        if int(digits[0]) in {3, 4, 5, 6}:
+            digits = digits[1:]
+        elif int(digits[0]) == 9:
+            digits = digits[3:]
+        return digits.lstrip("0")
+
+    @override
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return (super().compute_summand(digit, weight) + weight) % 11
+
+
+@register
+class Algorithm25(WeightedMod11):
+    name = "25"
+    positions = Positions(start=2, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8, 9]
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        result = super().validate(components, expected)
+        [account_code] = components
+        if self.remainder == 1 and account_code[1] not in {"8", "9"}:
+            return False
+        return result
+
+
+@register
+class Algorithm26(Algorithm06):
+    name = "26"
+    positions = Positions(start=1, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+    @override
+    def adjust_input(self, account_code: str) -> str:
+        if account_code.startswith("00"):
+            account_code = account_code[2:] + "00"
+        return account_code
+
+
+@register
+class Algorithm28(Algorithm06):
+    name = "28"
+    positions = Positions(start=1, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8]
+
+
+@register
+class Algorithm32(Algorithm06):
+    name = "32"
+    positions = Positions(start=4, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+
+@register
+class Algorithm33(Algorithm06):
+    name = "33"
+    positions = Positions(start=5, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6]
+
+
+@register
+class Algorithm34(Algorithm06):
+    name = "34"
+    positions = Positions(start=1, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 4, 8, 5, 10, 9, 7]
+
+
+@register
+class Algorithm38(Algorithm06):
+    name = "38"
+    positions = Positions(start=4, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 4, 8, 5, 10, 9]
+
+
+@register
+class Algorithm60(Algorithm00):
+    name = "60"
+    positions = Positions(start=3, end=9, check_digit=10)
+
+
+@register
+class Algorithm61(Algorithm00):
+    name = "61"
+    positions = Positions(start=1, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 1]
+
+    @override
+    def get_digits(self, account_code: str) -> str:
+        digits = super().get_digits(account_code)
+        if account_code[8] == "8":
+            digits = account_code[:7:-1] + digits
+        return digits
+
+
+@register
+class Algorithm63(WeightedMod10):
+    name = "63"
+    positions = Positions(start=2, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 1]
+
+    @override
+    def compute_summand(self, digit: int, weight: int) -> int:
+        return digit_sum(super().compute_summand(digit, weight))
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = validate_account_code(components[0])
+        if account_code[0] != "0":
+            return False
+        if super().validate(components, expected):
+            return True
+        # The sub-account number "00" may be omitted and the account code padded with
+        # leading zeros instead. The check digit then sits at position 10, so shift the
+        # account code back into place and check it again.
+        if account_code.startswith("000"):
+            return super().validate([account_code[2:] + "00"], expected)
+        return False
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        # The method only accepts account codes with a leading zero, which the check
+        # digit alone cannot supply, so set it before solving for the check digit.
+        account_code = validate_account_code(components[0])
+        return super().solve(["0" + account_code[1:]])
+
+
+@register
+class Algorithm68(Algorithm00):
+    name = "68"
+    positions = Positions(start=1, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 1]
+
+    @override
+    def get_digits(self, account_code: str) -> str:
+        digits = super().get_digits(account_code)
+        # The digits are already reversed at this point. The algorithm counts the positions from
+        # right to left, so that the 7th position is at index 5, when we consider that the 1st
+        # position has already been excluded because it is the check digit.
+        digits = digits.rstrip("0")
+        if len(digits) == 9:
+            if digits[5] != "9":
+                raise InvalidBBANChecksum(
+                    "10 digit long acccount codes require the 7th digit to be set to 9"
+                )
+            digits = digits[:6]
+        return digits
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = validate_account_code(components[0])
+        if 400_000_000 <= int(account_code) <= 499_999_999:
+            return True
+        if super().validate(components, expected) is False:
+            # If the checksum calculation fails, the algorithm should be executed again, with the
+            # 7th and 8th position of the account code removed. Since the positions are counted from
+            # right to left, they translate into indices 2 and 3 counting from left.
+            check_digit = self.compute([account_code[:2] + "00" + account_code[4:]])
+            return check_digit == account_code[self.positions.check_digit - 1]
+        return True
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        # A 10-significant-digit account code (no leading zero) requires the 7th
+        # position -- index 3 -- to be 9, otherwise ``get_digits`` rejects it. Set it
+        # so the leading digit stays free, then solve for the check digit.
+        account_code = validate_account_code(components[0])
+        if account_code[0] != "0":
+            account_code = account_code[:3] + "9" + account_code[4:]
+        return super().solve([account_code])
+
+
+@register
+class Algorithm76(WeightedMod11):
+    name = "76"
+    minuend = None
+    positions = Positions(start=2, end=7, check_digit=8)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8]
+
+    @override
+    def get_digits(self, account_code: str) -> str:
+        digits = super().get_digits(account_code)
+        return digits.rstrip("0")
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = validate_account_code(components[0])
+        if int(account_code[0]) not in {0, 4, 6, 7, 8, 9}:
+            return False
+        return super().validate(components, expected)
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        # The method only accepts certain leading digits, which the check digit alone
+        # cannot supply, so coerce it into the allowed set before solving.
+        account_code = validate_account_code(components[0])
+        if int(account_code[0]) not in {0, 4, 6, 7, 8, 9}:
+            account_code = "0" + account_code[1:]
+        return super().solve([account_code])
+
+
+@register
+class Algorithm88(Algorithm06):
+    name = "88"
+    positions = Positions(start=4, end=9, check_digit=10)
+    weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7, 8]
+
+    @override
+    def get_positions(self, account_code: str) -> Positions:
+        if account_code[2] == "9":
+            return Positions(start=3, end=9, check_digit=10)
+        return super().get_positions(account_code)
+
+
+@register
+class Algorithm91(checksum.Algorithm):
+    name = "91"
+    accepts: ClassVar[list[Component]] = [Component.ACCOUNT_CODE]
+
+    class Variant1(Algorithm06):
+        positions = Positions(start=1, end=6, check_digit=7)
+        weights: ClassVar[list[int]] = [2, 3, 4, 5, 6, 7]
+
+    class Variant2(Variant1):
+        weights: ClassVar[list[int]] = [7, 6, 5, 4, 3, 2]
+
+    class Variant3(Variant1):
+        positions = Positions(start=1, end=10, check_digit=7)
+        weights: ClassVar[list[int]] = [2, 3, 4, 0, 5, 6, 7, 8, 9, 10]
+
+    class Variant4(Variant1):
+        weights: ClassVar[list[int]] = [2, 4, 8, 5, 10, 9]
+
+    @override
+    def compute(self, components: list[str]) -> str:
+        return self.Variant1().compute(components)
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        variants = (self.Variant1, self.Variant2, self.Variant3, self.Variant4)
+        return any(algo_cls().validate(components, expected) for algo_cls in variants)
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        for algo_cls in [self.Variant1, self.Variant2, self.Variant3, self.Variant4]:
+            solved = algo_cls().solve(components)
+            if solved is not None and self.validate(solved, ""):
+                return solved
+        return None
+
+
+@register
+class Algorithm95(Algorithm06):
+    name = "95"
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        [account_code] = components
+        if not account_code:
+            return False
+        number = int(account_code)
+        if (
+            1 <= number <= 1_999_999
+            or 9_000_000 <= number <= 25_999_999
+            or 396_000_000 <= number <= 499_999_999
+            or 700_000_000 <= number <= 799_999_999
+            or 910_000_000 <= number <= 989_999_999
+        ):
+            return True
+        return super().validate(components, expected)
+
+
+@register
+class Algorithm99(Algorithm06):
+    name = "99"
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        account_code = validate_account_code(components[0])
+        if 396_000_000 <= int(account_code) <= 499_999_999:
+            return True
+        return super().validate(components, expected)
+
+
+class FallbackVariants(checksum.Algorithm):
+    """Check the account code with the second variant if the first one rejects it."""
+
+    accepts: ClassVar[list[Component]] = [Component.ACCOUNT_CODE]
+    variants: ClassVar[tuple[type[WeightedModulus], type[WeightedModulus]]]
+
+    @override
+    def compute(self, components: list[str]) -> str:
+        return self.variants[0]().compute(components)
+
+    @override
+    def validate(self, components: list[str], expected: str) -> bool:
+        return any(algo_cls().validate(components, expected) for algo_cls in self.variants)
+
+    @override
+    def solve(self, components: list[str]) -> list[str] | None:
+        return self.variants[0]().solve(components)
+
+
+@register
+class AlgorithmA2(FallbackVariants):
+    name = "A2"
+    variants: ClassVar[tuple[type[WeightedModulus], type[WeightedModulus]]] = (
+        Algorithm00,
+        Algorithm04,
+    )
+
+
+@register
+class AlgorithmA3(FallbackVariants):
+    name = "A3"
+    variants: ClassVar[tuple[type[WeightedModulus], type[WeightedModulus]]] = (
+        Algorithm00,
+        Algorithm10,
+    )
