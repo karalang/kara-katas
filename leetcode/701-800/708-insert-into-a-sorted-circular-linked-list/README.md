@@ -20,6 +20,8 @@ head = [1],       insertVal = 0  ->  [1, 0]
 **Constraints:** the number of nodes in the list is in the range [0, 5 *
 10^4]; -10^6 <= `Node.val`, `insertVal` <= 10^6.
 
+> **Migrated to v2's borrow rules (2026-10-22).** The recursive and shared arms, and their copies in `differential.kara`, walked the ring with `let mut at = head;` and then `at = at.next.expect(...)`, where `head` is bound by `if let Some(head) = self.head` and so is a borrow. Since kara `d05a120ea5` (B-2026-10-19-13), `karac check` refuses that store: `at` is a `ref Node`, and the owned `Node` read out of `at.next` would be dropped at the end of the statement. The four walks now declare `let mut at = head.clone();`, as the diagnostic suggests: `Node` is a `shared struct`, so the copy is a retain of the same node. After the change all five Kāra files pass `karac check`; the two arms print the same output as `insert_into_a_sorted_circular_linked_list.py` under `karac __mir-run` and `karac __mir-llvm-run`, and under `karac __mir-llvm-asan` with no error, and the differential prints its `0 failures` line under all three. The legacy results below predate the change; legacy already refused these two arms at `*v`.
+
 ## Approaches
 
 Every arm walks from the given node to the first gap the value fits:
