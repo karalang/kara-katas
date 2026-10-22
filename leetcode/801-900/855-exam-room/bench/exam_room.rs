@@ -1,0 +1,82 @@
+// Benchmark for #855: Exam Room -- the sorted-vector arm, mirroring
+// exam_room.kara.
+
+struct ExamRoom {
+    n: i64,
+    taken: Vec<i64>,
+}
+
+impl ExamRoom {
+    fn new(n: i64) -> ExamRoom {
+        ExamRoom { n, taken: Vec::new() }
+    }
+
+    fn seat(&mut self) -> i64 {
+        if self.taken.is_empty() {
+            self.taken.push(0);
+            return 0;
+        }
+        let first = self.taken[0];
+        let mut best = first;
+        let mut best_seat = 0;
+        for w in self.taken.windows(2) {
+            let half = (w[1] - w[0]) / 2;
+            if half > best {
+                best = half;
+                best_seat = w[0] + half;
+            }
+        }
+        let last = self.taken[self.taken.len() - 1];
+        if self.n - 1 - last > best {
+            best_seat = self.n - 1;
+        }
+        let mut lo = 0;
+        let mut hi = self.taken.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if self.taken[mid] < best_seat {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        self.taken.insert(lo, best_seat);
+        best_seat
+    }
+
+    fn leave(&mut self, p: i64) {
+        let at = self.taken.binary_search(&p).unwrap();
+        self.taken.remove(at);
+    }
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let rounds = 300;
+    let calls = 4000;
+    let n: i64 = 1000000000;
+    let mut seed: i64 = 855;
+    let mut total: i64 = 0;
+    let mut checksum: i64 = 0;
+    for _ in 0..rounds {
+        let mut room = ExamRoom::new(n);
+        let mut seated: Vec<i64> = Vec::new();
+        for _ in 0..calls {
+            if seated.is_empty() || next_random(&mut seed) % 3 != 0 {
+                let p = room.seat();
+                seated.push(p);
+                total += p;
+                checksum = (checksum * 31 + p % 1000003) % 1000000007;
+            } else {
+                let i = (next_random(&mut seed) % seated.len() as i64) as usize;
+                let p = seated.swap_remove(i);
+                room.leave(p);
+            }
+        }
+    }
+    println!("{} rooms of 4000 calls: seats sum to {}, checksum {}", rounds, total, checksum);
+}
