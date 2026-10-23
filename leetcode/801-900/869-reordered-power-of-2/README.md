@@ -24,9 +24,9 @@ n = 10  ->  false
 | `differential.kara` | the five arms against the statement read literally, six properties |
 
 Every arm prints the same 21 lines: LeetCode's two examples; sixteen
-more (orders of 16, 64, 128 and 1024 and their neighbours that are not,
-125 = 2^7 reordered, 2^29 and 102,356,789, its digits in increasing
-order with the 1 in front, and 10^9 and 10^9 - 1, LeetCode's largest);
+more (orders of the digits of 16, 64, 128, 512 and 1024, and 24, which
+is none; 2^29 and 102,356,789, its digits in increasing order with the
+1 in front; and 10^9 and 10^9 - 1, LeetCode's largest);
 how many n from 1 to 100,000 are true, 376, with a checksum; how many of
 20,000 random n up to 10^9 are true, 7; and 600 shuffled powers of two,
 20 orders of each of 2^0 to 2^29, all true. `reordered_power_of_2.py`
