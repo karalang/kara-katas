@@ -120,8 +120,8 @@ five arms, the differential and the bench program, and `karac run` and a
 differential. The release build is at kara `e3f5faf572` and the runtime
 archives at `e903d5b111`, with no runtime change between them, except
 for the jump arm and the differential: `karac check` refused both until
-kara fixed a named default lent to `unwrap_or` (`bf21104041` and
-`581395be5d`), and they were checked, run and built with a release
+kara fixed a named default lent to `unwrap_or` (`B-2026-10-23-2`, fixed
+by `bf21104041` and `581395be5d`), and they were checked, run and built with a release
 build at `5502146bed`. Under `karac
 __mir-run` the arms take 2 to 4 s each and the differential 17 s.
 
