@@ -18,22 +18,22 @@ ellipses, while leaving code, scripts and styles alone.
 release notes with inline code, a recipe with accented text, a
 Dreamweaver-style page, a page with a script and a style, a page full of
 backslash escapes, broken HTML, plain text and an empty file) and a script
-of 4966 steps to `data/jobs.tsv`. `oracle.py` replays the script through
+of 2211 steps to `data/jobs.tsv`. `oracle.py` replays the script through
 the vendored library and `mini_smartypants.kara` replays it through the
 port. Strings print as `repr()` shows them, rendered posts line by line.
 
 - **The library's examples and tests**, as its docstrings and test suite
   give them.
-- **Every text with every attribute.** Some 3700 calls on `smartypants()`
-  with quotes next to punctuation, digits, tags, entities and non-ASCII
-  letters, dashes and dots of every length, and each attribute flag and
-  many combinations of them.
+- **Every text with each of seven attributes.** Some 900 calls on
+  `smartypants()` with quotes next to punctuation, digits, tags, entities
+  and non-ASCII letters, and dashes and dots of every length, under seven
+  attribute values that between them use each flag.
 - **Each converter on its own** (`convert_quotes`, the backtick, dash and
   ellipsis converters, `convert_entities` in its three modes,
   `process_escapes`, `_tokenize` and `_tags_to_skip_regex`).
 - **Changing `Attr.default` and `tags_to_skip`**, including an empty tag,
   which then skips every tag.
-- **The posts**, each rendered with the default and five other attributes.
+- **The posts**, each rendered with the default and two other attributes.
 - **The command line**, run in `data/`: `-a` with letters, numbers,
   unknown letters and `set1` (read as letters), `-s` lists, `--attr=` and
   `--skip=`, `-v`, `--`, several files, a missing file and missing or
@@ -53,7 +53,8 @@ port. Strings print as `repr()` shows them, rendered posts line by line.
   and `VERBOSE` (whose `#` comments make the `&#8211;` entity in one
   pattern a comment, as in Python). `_tags_to_skip_regex()` builds its
   pattern from the tag list on each call, so the port formats it the same
-  way and compiles it too.
+  way and compiles it too. A search only tries the positions where one of
+  the characters a match can begin with occurs.
 - **The Unicode classes come from Python.** `\w`, `\d` and `\s` and the
   printable test behind `repr()` use runs of code points read off
   `unicodedata` by `gen_kara.py`.

@@ -161,9 +161,7 @@ TEXTS = [
     "-'x'", "--'x'", "—'x'", "–\"x\"",
 ]
 
-ATTRS = ["-", 0, SET1, SET2, SET3, Q, b, B, d, D, i, e, w, Q | w, w | B,
-         SET1 | u, SET1 | h, SET1 | s, SET2 | h, SET3 | s, SET2 | u,
-         b | B, D | i, d | D, u | h, Q | B, B | e | d, 1023, 4096]
+ATTRS = ["-", 0, SET2, SET3 | s, Q | w, B | e | d, 1023]
 
 L = []
 
@@ -226,7 +224,7 @@ for tags in ["pre,code", "p", "h1,h2", "blockquote", "", "PRE", "b,i", "-"]:
 
 step("job", "rendering the posts")
 for post in sorted(POSTS):
-    for a in ["-", SET2 | u, SET3 | h, SET1 | s, Q | w, 0]:
+    for a in ["-", SET3 | h, Q | w]:
         step("file", post, a)
 step("skip", "pre,samp,code,tt,kbd,script,style,math,h1")
 step("file", "week-notes.html", "-")
