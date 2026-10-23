@@ -91,10 +91,10 @@ An exception prints as `error <Class>: <message>`, and the job goes on.
 
 ## Compiler gaps
 
-- **B-2026-10-23-6.** A `vec![..]` of integer literals inside a tuple is
+- **B-2026-10-23-7.** A `vec![..]` of integer literals inside a tuple is
   typed `Vec[i64]` even where `(String, Vec[u8])` is expected. The port
   binds each byte list with its type before building the tuple.
-- **B-2026-10-23-7.** `karac check` accepted `*o` on a String bound by
+- **B-2026-10-23-8.** `karac check` accepted `*o` on a String bound by
   `for (o, a) in option_strings()`, and the MIR front ends refused it. The
   port compares `o` without the `*`, which both accept.
 
