@@ -1,0 +1,67 @@
+// LeetCode #933: Number of Recent Calls -- bench: a queue of the recent
+// pings. Mirrors recent_counter.kara, .c, .py and go-seq/.
+
+use std::collections::VecDeque;
+
+struct RecentCounter {
+    pings: VecDeque<i64>,
+}
+
+impl RecentCounter {
+    fn new() -> RecentCounter {
+        RecentCounter {
+            pings: VecDeque::new(),
+        }
+    }
+
+    fn ping(&mut self, t: i64) -> i64 {
+        self.pings.push_back(t);
+        while *self.pings.front().unwrap() < t - 3000 {
+            self.pings.pop_front();
+        }
+        self.pings.len() as i64
+    }
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let rounds: i64 = 50;
+    let count: i64 = 100;
+    let len: i64 = 10000;
+    let mut seed: i64 = 933;
+    // count streams of len pings, each from 1 to gap after the one before,
+    // gap from 1 to 600 a stream, built once
+    let mut streams: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..count {
+        let gap = 1 + next_random(&mut seed) % 600;
+        let mut times: Vec<i64> = Vec::new();
+        let mut t: i64 = 0;
+        for _ in 0..len {
+            t += 1 + next_random(&mut seed) % gap;
+            times.push(t);
+        }
+        streams.push(times);
+    }
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        // each round plays every stream into a new counter, starting from
+        // a different one
+        for i in 0..count {
+            let mut counter = RecentCounter::new();
+            let mut last: i64 = 0;
+            for t in streams[((r + i) % count) as usize].iter() {
+                last = counter.ping(*t);
+                total += last;
+            }
+            check = (check * 1000003 + last) % 1000000007;
+        }
+    }
+    println!(
+        "{rounds} rounds over {count} streams of {len} pings: answers summing to {total}, checksum {check}"
+    );
+}
