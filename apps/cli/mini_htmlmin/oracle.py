@@ -7,7 +7,8 @@ one Minifier in pieces of a given size before finalize(). `attr_value`,
 runs the htmlmin command with the given arguments, and `site` is a build
 step that minifies the pages a manifest lists into an output tree and
 reports the bytes saved. A minified document prints one `|` line per
-line; a job that raises prints `error <class>: <message>`.
+line (with a carriage return shown as `\\r`); a job that raises
+prints `error <class>: <message>`.
 
 htmlmin imports the cgi module, which Python 3.13 removed, without using
 it, so an empty module stands in for it. Its log messages go to stdout
@@ -77,8 +78,9 @@ def options(fields):
 
 
 def show(html):
+    # a carriage return prints as \r, so the output has one kind of line end
     for line in html.split("\n"):
-        print("  | " + line)
+        print("  | " + line.replace("\r", "\\r"))
 
 
 def read_text(name):
