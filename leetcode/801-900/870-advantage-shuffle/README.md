@@ -111,12 +111,12 @@ differential and the bench program. `karac run` and a `karac build
 The release build and the runtime archives are at kara `e903d5b111`.
 
 Under `karac __mir-run` four arms print the same output in 3 to 17 s
-and the differential in 5 s, but the SortedMap arm runs past 300 s: the
-MIR interpreter copies and orders every key of the map on each
-`ceiling` call, so the 2 x 10^5 queries of the two largest cases are
-quadratic (kara `B-2026-10-23-1`, 16,000 queries take 37.5 s there and
-0.4 s compiled). The arm is left as written; its corpus entry will read
-`timeout` until that row is fixed.
+and the differential in 5 s. The SortedMap arm first ran past 300 s
+there: the MIR interpreter copied and ordered every key of the map on
+each `ceiling` call, so the 2 x 10^5 queries of the two largest cases
+were quadratic (kara `B-2026-10-23-1`, 16,000 queries took 37.5 s there
+and 0.4 s compiled). Kara `35709d0045` fixed that row, and on a release
+build at `fe44986b7e` the arm prints the same output in 17 s.
 
 The leak check copied each arm's and the differential's sanitizer lane
 executable as it was linked and ran it with the preloaded shim from kata

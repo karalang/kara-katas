@@ -105,15 +105,15 @@ differential. The release build is at kara `89d76e3ff2` and the runtime
 archives at `e903d5b111`, with no runtime change between them.
 
 Under `karac __mir-run` four arms take 1 to 3 s each and the
-differential 11 s, but the multiset arm takes 378 s: the MIR interpreter
-copies and orders every key of the map on each `floor` and `ceiling`
-call, so the some 450,000 calls of the ten largest cases are
+differential 11 s. The multiset arm first took 378 s there: the MIR
+interpreter copied and ordered every key of the map on each `floor` and
+`ceiling` call, so the some 450,000 calls of the ten largest cases were
 quadratic (kara `B-2026-10-23-1`, filed on kata 870; here 10,000 `floor`
-calls on a map of 10,000 keys take 8.5 s under `__mir-run` against 0.4
-s for as many `get` calls, and 20,000 take 36 s). Compiled, the same arm
-takes about a second. The arm is left as written; its corpus entry will
-read `timeout` until that row is fixed. The differential keeps its large
-cases to 2,000 people so that it runs in seconds there.
+calls on a map of 10,000 keys took 8.5 s under `__mir-run` against 0.4
+s for as many `get` calls, and 20,000 took 36 s). Kara `35709d0045`
+fixed that row, and on a release build at `fe44986b7e` the arm prints
+the same output in 7 s. The differential keeps its large cases to 2,000
+people so that it runs in seconds there.
 
 The leak check copied each arm's and the differential's sanitizer lane
 executable as it was linked and ran it with the preloaded shim from kata
