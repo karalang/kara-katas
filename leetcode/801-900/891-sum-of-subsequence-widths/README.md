@@ -132,7 +132,7 @@ Legacy is frozen, so this is not filed.
 The bench program uses the counting arm, the same algorithm in all five
 languages, where a sort would have measured each language's own
 library sort (C's `qsort`, with a comparison function called through a
-pointer, took 3.0 s on this workload against Rust's `sort` at 1.0 s). It
+pointer, took 3.0 s on 200 such arrays against Rust's `sort` at 1.0 s). It
 takes 400 random arrays of 100,000 numbers from 1 to 100,000,
 LeetCode's largest, and every implementation prints `400 arrays of
 100000 numbers: widths sum to 655369596, checksum 921255727`.
