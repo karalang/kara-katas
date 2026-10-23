@@ -67,7 +67,7 @@ Fifteen edits to the differential, three to each arm, each run under
 |---|---|---|
 | M1 | ★: the empty prefix never counted | P1 1952, P2 365, P3 1027, P4 773, P5 1805, P6 2148 |
 | M2 | ★: each prefix counted before it is looked up | P1 780, P2 387, P4 786, P6 786 |
-| M3 | ★: a prefix exactly `goal` behind skipped | P1 1952, P2 834, P3 972, P4 773, P5 2303, P6 2148 |
+| M3 | ★: no lookup when the running sum is exactly `goal` | P1 1952, P2 834, P3 972, P4 773, P5 2303, P6 2148 |
 | M4 | window: each window one start short | P1 780, P2 417, P4 786, P6 786 |
 | M5 | window: at most `goal` less at most `goal - 2` | P1 2129, P2 766, P4 2414, P5 1736, P6 2323 |
 | M6 | window: the first element never ending a window | P1 1678, P2 434, P3 768, P4 832, P5 2349, P6 1771 |
