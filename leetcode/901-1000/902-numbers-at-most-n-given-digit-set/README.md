@@ -119,7 +119,7 @@ differential prints its line under all three. `karac check` passes all
 five arms, the differential and the bench program. `karac run` and a
 `karac build --mir` binary print the same output for every arm and the
 differential. The release build and the runtime archives are both at
-kara `5502146bed`. Under `karac __mir-run` the arms take under 0.2 s
+kara `5502146bed`. Under `karac __mir-run` the arms take 0.3 to 0.4 s
 each and the differential 26 s, most of it the statement read
 literally.
 
