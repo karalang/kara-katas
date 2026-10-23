@@ -1,0 +1,72 @@
+// LeetCode #899 bench: the counts arm (rotations compared in place,
+// letters counted) on 1,000 strings of 1,000 letters, LeetCode's largest,
+// each a random piece of 1 to 4 letters written over and over with one
+// letter changed at a random place, so that rotations agree for long
+// stretches before they differ. Every string is asked with k = 1, and
+// with k = 2 as well. The same algorithm as orderly_queue.kara.
+
+fn orderly_queue(s: &str, k: i64) -> String {
+    let b = s.as_bytes();
+    let n = b.len();
+    let mut out = String::new();
+    if k == 1 {
+        let mut best = 0;
+        for i in 1..n {
+            let mut d = 0;
+            while d < n && b[(i + d) % n] == b[(best + d) % n] {
+                d += 1;
+            }
+            if d < n && b[(i + d) % n] < b[(best + d) % n] {
+                best = i;
+            }
+        }
+        for j in 0..n {
+            out.push(b[(best + j) % n] as char);
+        }
+        return out;
+    }
+    let mut count = [0i64; 26];
+    for &c in b.iter() {
+        count[(c - 97) as usize] += 1;
+    }
+    for letter in 0..26 {
+        for _ in 0..count[letter] {
+            out.push((97 + letter as u8) as char);
+        }
+    }
+    out
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn checksum(s: &str, check: i64) -> i64 {
+    let mut c = check;
+    for &b in s.as_bytes() {
+        c = (c * 131 + b as i64) % 1000000007;
+    }
+    c
+}
+
+fn main() {
+    let mut seed = 899;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let p = 1 + next_random(&mut seed) % 4;
+        let mut piece: Vec<u8> = Vec::new();
+        for _ in 0..p {
+            piece.push((97 + next_random(&mut seed) % 26) as u8);
+        }
+        let changed = next_random(&mut seed) % 1000;
+        let letter = (97 + next_random(&mut seed) % 26) as u8;
+        let mut s = String::new();
+        for i in 0..1000 {
+            s.push(if i == changed { letter } else { piece[(i % p) as usize] } as char);
+        }
+        check = checksum(&orderly_queue(&s, 1), check);
+        check = checksum(&orderly_queue(&s, 2), check);
+    }
+    println!("1000 strings of 1000 letters, k = 1 and 2: checksum {}", check);
+}
