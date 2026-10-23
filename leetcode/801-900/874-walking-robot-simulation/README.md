@@ -52,15 +52,6 @@ obstacles crowded within 150 to 650 squares of the origin or spread to 3
 x 10^4, with a checksum. `robot_sim.py` mirrors the ★ arm and its output
 is byte-identical.
 
-`robot_sim_jump.kara` looks up a line that may have no obstacles as
-`columns.get(x).unwrap_or(empty)`, `empty` an empty `Vec` declared before
-the command loop. `karac check` (and so `karac run`) refuses it, saying
-`empty` is moved inside the loop, while the MIR backends run it and
-leave `empty` usable; the same default written `?? empty` passes `karac
-check` and is refused by the MIR move check instead. This is kara
-`B-2026-10-23-2`. The arm and the differential, which holds a copy of
-it, are left as written.
-
 ## Differential
 
 `differential.kara` holds copies of the five arms and the statement read
@@ -123,13 +114,15 @@ reaches a square out of the robot's reach.
 Every arm prints the same output as `robot_sim.py` under `karac
 __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and
 under `karac __mir-llvm-asan` (AddressSanitizer) with no error; the
-differential prints its line under all three. `karac check` passes the
-★, pairs, facing and range arms and the bench program, and `karac run`
-and a `karac build --mir` binary print the same output for those four
-arms. `karac check` refuses the jump arm and the differential, and with
-it `karac run` and `karac build --mir` (above, `B-2026-10-23-2`). The
-release build is at kara `e3f5faf572` and the runtime archives at
-`e903d5b111`, with no runtime change between them. Under `karac
+differential prints its line under all three. `karac check` passes all
+five arms, the differential and the bench program, and `karac run` and a
+`karac build --mir` binary print the same output for every arm and the
+differential. The release build is at kara `e3f5faf572` and the runtime
+archives at `e903d5b111`, with no runtime change between them, except
+for the jump arm and the differential: `karac check` refused both until
+kara fixed a named default lent to `unwrap_or` (`bf21104041` and
+`581395be5d`), and they were checked, run and built with a release
+build at `5502146bed`. Under `karac
 __mir-run` the arms take 2 to 4 s each and the differential 17 s.
 
 The leak check copied each arm's and the differential's sanitizer lane
