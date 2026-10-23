@@ -203,7 +203,7 @@ def seg(marker, payload):
 JFIF = seg(0xE0, b"JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00")
 JFXX = seg(0xE0, b"JFXX\x00\x10" + bytes(4))
 ICC = seg(0xE2, b"ICC_PROFILE\x00\x01\x01" + bytes(24))
-DQT = seg(0xDB, b"\x00" + bytes(range(1, 65)))
+DQT = seg(0xDB, b"\x00" + bytes(range(0x30, 0x70)))
 SCAN = seg(0xDA, b"\x01\x01\x00\x00\x3f\x00") + b"\x12\x34\x56\x78" + b"\xff\xd9"
 
 
