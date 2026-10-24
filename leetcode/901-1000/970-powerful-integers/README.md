@@ -106,8 +106,8 @@ Three never finished and were not counted: sorted taking the powers of
 x for y never stops when x is 1, appending sums until the memory runs
 out; ordered taking the powers of y for x never stops when y is 1; and
 sorted adding x where it should multiply runs up to half a million
-rows for a bound of 10^6, which `karac __mir-llvm-run` finished (failing P1, P2,
-P3 and P6) and `karac __mir-run` did not within 200 s.
+rows for a bound of 10^6, which `karac __mir-llvm-run` finished
+(failing P1, P2, P3 and P6) and `karac __mir-run` did not within 200 s.
 
 ## Verification
 
