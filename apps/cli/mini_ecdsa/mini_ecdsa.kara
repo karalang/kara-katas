@@ -1,0 +1,3384 @@
+// mini_ecdsa: python-ecdsa 0.19.0, the pure-Python ECDSA implementation,
+// with:
+// - the library's curves (NIST P-192 to P-521, secp256k1, Brainpool),
+//   points in raw, uncompressed, compressed and hybrid encodings, and
+//   square roots mod p to decompress them;
+// - key generation, signing with a random k, a given k, or RFC 6979's
+//   deterministic k, verification, and public key recovery;
+// - keys in SEC1 and PKCS#8 DER and PEM, with named or explicit curve
+//   parameters, and signatures as r||s strings or DER;
+// - ECDH shared secrets;
+// - jobs over them: ES256 tokens issued and checked, and a ledger whose
+//   entries are accepted only when the recovered signer owns the account.
+//
+// Python's ints are big integers built on 64-bit limbs, and points are
+// added in Jacobian coordinates; os.urandom is the seeded generator
+// oracle.py installs, so every run draws the same numbers. The inputs are
+// data/jobs.txt and the files beside it, made by mk.py. expected.out is
+// the output of oracle.py, which runs the same jobs through ecdsa itself.
+// ------------------------------------------------------------ bytes and text
+
+fn byte_str(b: ref Vec[u8], from: i64, to: i64) -> String {
+    let mut v: Vec[u8] = Vec.new();
+    for i in from..to {
+        v.push(b[i]);
+    }
+    String.from_utf8(v).unwrap_or("?".to_string())
+}
+
+fn to_bytes(s: Str) -> Vec[u8] {
+    s.bytes().to_vec()
+}
+
+fn from_bytes(v: Vec[u8]) -> String {
+    String.from_utf8(v).unwrap_or("?".to_string())
+}
+
+fn is_digit(c: u8) -> bool {
+    c >= b'0' and c <= b'9'
+}
+
+fn is_alpha(c: u8) -> bool {
+    (c >= b'a' and c <= b'z') or (c >= b'A' and c <= b'Z')
+}
+
+fn is_alnum(c: u8) -> bool {
+    is_digit(c) or is_alpha(c)
+}
+
+// White space, as `\s` and str.strip see it.
+fn is_ws(c: u8) -> bool {
+    c == b' ' or c == b'\t' or c == b'\n' or c == b'\r' or c == 11 or c == 12
+}
+
+fn lower_byte(c: u8) -> u8 {
+    if c >= b'A' and c <= b'Z' { c + 32 } else { c }
+}
+
+fn lower(s: Str) -> String {
+    let b = to_bytes(s);
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..b.len() {
+        out.push(lower_byte(b[i]));
+    }
+    from_bytes(out)
+}
+
+fn strip(s: Str) -> String {
+    let b = to_bytes(s);
+    let mut i: i64 = 0;
+    let mut j = b.len();
+    while i < j and is_ws(b[i]) {
+        i += 1;
+    }
+    while j > i and is_ws(b[j - 1]) {
+        j -= 1;
+    }
+    byte_str(b, i, j)
+}
+
+fn split_ws(s: Str) -> Vec[String] {
+    let b = to_bytes(s);
+    let mut out: Vec[String] = Vec.new();
+    let mut i: i64 = 0;
+    while i < b.len() {
+        while i < b.len() and is_ws(b[i]) {
+            i += 1;
+        }
+        let st = i;
+        while i < b.len() and not is_ws(b[i]) {
+            i += 1;
+        }
+        if i > st {
+            out.push(byte_str(b, st, i));
+        }
+    }
+    out
+}
+
+fn split_on(s: Str, sep: u8) -> Vec[String] {
+    let b = to_bytes(s);
+    let mut out: Vec[String] = Vec.new();
+    let mut st: i64 = 0;
+    for i in 0..b.len() {
+        if b[i] == sep {
+            out.push(byte_str(b, st, i));
+            st = i + 1;
+        }
+    }
+    out.push(byte_str(b, st, b.len()));
+    out
+}
+
+fn join(parts: ref Vec[String], sep: Str) -> String {
+    let mut out = String.new();
+    for i in 0..parts.len() {
+        if i > 0 {
+            out.push_str(sep);
+        }
+        out.push_str(parts[i]);
+    }
+    out
+}
+
+// The lines of a file, without their newlines.
+fn lines_of(text: Str) -> Vec[String] {
+    let mut v = split_on(text, b'\n');
+    if v.len() > 0 and v[v.len() - 1].len() == 0 {
+        v.pop();
+    }
+    v
+}
+
+// Python's repr of a str.
+fn py_repr(s: Str) -> String {
+    let b = to_bytes(s);
+    let mut has_single = false;
+    let mut has_double = false;
+    for i in 0..b.len() {
+        if b[i] == b'\'' {
+            has_single = true;
+        }
+        if b[i] == b'"' {
+            has_double = true;
+        }
+    }
+    let q: u8 = if has_single and not has_double { b'"' } else { b'\'' };
+    let hex = to_bytes("0123456789abcdef");
+    let mut out: Vec[u8] = Vec.new();
+    out.push(q);
+    let mut skip = false;
+    for i in 0..b.len() {
+        let c = b[i];
+        if skip {
+            skip = false;
+            continue;
+        }
+        // U+0080 to U+00A0 and U+00AD are not printable either
+        let next: u8 = if i + 1 < b.len() { b[i + 1] } else { 0 };
+        if c == 0xC2 and next >= 0x80 and (next <= 0xA0 or next == 0xAD) {
+            out.push(b'\\');
+            out.push(b'x');
+            out.push(hex[(next / 16) as i64]);
+            out.push(hex[(next % 16) as i64]);
+            skip = true;
+        } else if c == q or c == b'\\' {
+            out.push(b'\\');
+            out.push(c);
+        } else if c == b'\n' {
+            out.push(b'\\');
+            out.push(b'n');
+        } else if c == b'\r' {
+            out.push(b'\\');
+            out.push(b'r');
+        } else if c == b'\t' {
+            out.push(b'\\');
+            out.push(b't');
+        } else if c < 32 or c == 127 {
+            out.push(b'\\');
+            out.push(b'x');
+            out.push(hex[(c / 16) as i64]);
+            out.push(hex[(c % 16) as i64]);
+        } else {
+            out.push(c);
+        }
+    }
+    out.push(q);
+    from_bytes(out)
+}
+
+fn upper(s: Str) -> String {
+    let b = to_bytes(s);
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..b.len() {
+        let c = b[i];
+        out.push(if c >= b'a' and c <= b'z' { c - 32 } else { c });
+    }
+    from_bytes(out)
+}
+
+// Whether `pat` occurs in `b` at `i`.
+fn starts_at(b: ref Vec[u8], i: i64, pat: Str) -> bool {
+    let p = to_bytes(pat);
+    if i < 0 or i + p.len() > b.len() {
+        return false;
+    }
+    for k in 0..p.len() {
+        if b[i + k] != p[k] {
+            return false;
+        }
+    }
+    true
+}
+
+fn starts_with(s: Str, pat: Str) -> bool {
+    starts_at(to_bytes(s), 0, pat)
+}
+
+fn find_str(s: Str, pat: Str) -> i64 {
+    let b = to_bytes(s);
+    for i in 0..b.len() + 1 {
+        if starts_at(b, i, pat) {
+            return i;
+        }
+    }
+    -1
+}
+
+fn first_byte(s: Str) -> u8 {
+    let b = to_bytes(s);
+    if b.len() > 0 { b[0] } else { 0 }
+}
+
+fn slice_from(s: Str, i: i64) -> String {
+    let b = to_bytes(s);
+    byte_str(b, i, b.len())
+}
+
+fn is_hex(c: u8) -> bool {
+    is_digit(c) or (c >= b'a' and c <= b'f') or (c >= b'A' and c <= b'F')
+}
+
+fn hex_val(c: u8) -> u8 {
+    if is_digit(c) {
+        c - b'0'
+    } else if c >= b'a' and c <= b'f' {
+        c - b'a' + 10
+    } else {
+        c - b'A' + 10
+    }
+}
+
+fn find_byte(s: Str, c: u8) -> i64 {
+    let b = to_bytes(s);
+    for i in 0..b.len() {
+        if b[i] == c {
+            return i;
+        }
+    }
+    -1
+}
+
+fn rfind_byte(s: Str, c: u8) -> i64 {
+    let b = to_bytes(s);
+    let mut i = b.len() - 1;
+    while i >= 0 {
+        if b[i] == c {
+            return i;
+        }
+        i -= 1;
+    }
+    -1
+}
+
+fn has_byte(s: Str, c: u8) -> bool {
+    find_byte(s, c) >= 0
+}
+
+fn slice(s: Str, from: i64, to: i64) -> String {
+    byte_str(to_bytes(s), from, to)
+}
+
+// str.partition and str.rpartition on one byte: (before, found, after).
+fn partition(s: Str, c: u8) -> (String, bool, String) {
+    let i = find_byte(s, c);
+    if i < 0 {
+        return (s.to_string(), false, String.new());
+    }
+    (slice(s, 0, i), true, slice_from(s, i + 1))
+}
+
+fn rpartition(s: Str, c: u8) -> (String, bool, String) {
+    let i = rfind_byte(s, c);
+    if i < 0 {
+        return (String.new(), false, s.to_string());
+    }
+    (slice(s, 0, i), true, slice_from(s, i + 1))
+}
+
+// Python's repr of a bytes object.
+fn bytes_repr(b: ref Vec[u8]) -> String {
+    let mut has_single = false;
+    let mut has_double = false;
+    for i in 0..b.len() {
+        if b[i] == b'\'' {
+            has_single = true;
+        }
+        if b[i] == b'"' {
+            has_double = true;
+        }
+    }
+    let q: u8 = if has_single and not has_double { b'"' } else { b'\'' };
+    let hex = to_bytes("0123456789abcdef");
+    let mut out: Vec[u8] = Vec.new();
+    out.push(b'b');
+    out.push(q);
+    for i in 0..b.len() {
+        let c = b[i];
+        if c == q or c == b'\\' {
+            out.push(b'\\');
+            out.push(c);
+        } else if c == b'\n' {
+            out.push(b'\\');
+            out.push(b'n');
+        } else if c == b'\r' {
+            out.push(b'\\');
+            out.push(b'r');
+        } else if c == b'\t' {
+            out.push(b'\\');
+            out.push(b't');
+        } else if c < 32 or c >= 127 {
+            out.push(b'\\');
+            out.push(b'x');
+            out.push(hex[(c / 16) as i64]);
+            out.push(hex[(c % 16) as i64]);
+        } else {
+            out.push(c);
+        }
+    }
+    out.push(q);
+    from_bytes(out)
+}
+
+fn is_ascii(s: Str) -> bool {
+    let b = to_bytes(s);
+    for i in 0..b.len() {
+        if b[i] >= 0x80 {
+            return false;
+        }
+    }
+    true
+}
+
+fn py_int(s: Str) -> Option[i64] {
+    let b = to_bytes(strip(s));
+    let mut i: i64 = 0;
+    let mut neg = false;
+    if i < b.len() and (b[i] == b'+' or b[i] == b'-') {
+        neg = b[i] == b'-';
+        i += 1;
+    }
+    if i >= b.len() {
+        return None;
+    }
+    let mut n: i64 = 0;
+    let mut prev_digit = false;
+    while i < b.len() {
+        let c = b[i];
+        if is_digit(c) {
+            n = n * 10 + (c - b'0') as i64;
+            prev_digit = true;
+        } else if c == b'_' and prev_digit and i + 1 < b.len() and is_digit(b[i + 1]) {
+            prev_digit = false;
+        } else {
+            return None;
+        }
+        i += 1;
+    }
+    if neg { Some(-n) } else { Some(n) }
+}
+
+// The code points of a string.
+fn code_points(s: Str) -> Vec[i64] {
+    let b = to_bytes(s);
+    let mut out: Vec[i64] = Vec.new();
+    let mut i: i64 = 0;
+    while i < b.len() {
+        let c = b[i] as i64;
+        if c < 0x80 {
+            out.push(c);
+            i += 1;
+        } else if c < 0xE0 {
+            out.push(((c & 0x1F) << 6) | (b[i + 1] as i64 & 0x3F));
+            i += 2;
+        } else if c < 0xF0 {
+            out.push(((c & 0x0F) << 12) | ((b[i + 1] as i64 & 0x3F) << 6) | (b[i + 2] as i64 & 0x3F));
+            i += 3;
+        } else {
+            out.push(((c & 0x07) << 18) | ((b[i + 1] as i64 & 0x3F) << 12) | ((b[i + 2] as i64 & 0x3F) << 6) | (b[i + 3] as i64 & 0x3F));
+            i += 4;
+        }
+    }
+    out
+}
+
+fn push_code_point(out: mut ref Vec[u8], cp: i64) {
+    if cp < 0x80 {
+        out.push(cp as u8);
+    } else if cp < 0x800 {
+        out.push(((cp >> 6) | 0xC0) as u8);
+        out.push(((cp & 0x3F) | 0x80) as u8);
+    } else if cp < 0x10000 {
+        out.push(((cp >> 12) | 0xE0) as u8);
+        out.push((((cp >> 6) & 0x3F) | 0x80) as u8);
+        out.push(((cp & 0x3F) | 0x80) as u8);
+    } else {
+        out.push(((cp >> 18) | 0xF0) as u8);
+        out.push((((cp >> 12) & 0x3F) | 0x80) as u8);
+        out.push((((cp >> 6) & 0x3F) | 0x80) as u8);
+        out.push(((cp & 0x3F) | 0x80) as u8);
+    }
+}
+
+fn ljust(s: Str, width: i64) -> String {
+    let mut out = s.to_string();
+    while out.len() < width {
+        out.push_str(" ");
+    }
+    out
+}
+
+fn rjust(s: Str, width: i64) -> String {
+    let mut out = String.new();
+    let mut n = s.len();
+    while n < width {
+        out.push_str(" ");
+        n += 1;
+    }
+    out.push_str(s);
+    out
+}
+
+fn plural(n: i64, one: Str, many: Str) -> String {
+    if n == 1 { one.to_string() } else { many.to_string() }
+}
+
+// ------------------------------------------------------------ MD5 (RFC 1321)
+
+const MD5_S: Array[i64, 64] = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+];
+
+const MD5_K: Array[u32, 64] = [
+    0xd76aa478u32, 0xe8c7b756u32, 0x242070dbu32, 0xc1bdceeeu32, 0xf57c0fafu32, 0x4787c62au32, 0xa8304613u32, 0xfd469501u32,
+    0x698098d8u32, 0x8b44f7afu32, 0xffff5bb1u32, 0x895cd7beu32, 0x6b901122u32, 0xfd987193u32, 0xa679438eu32, 0x49b40821u32,
+    0xf61e2562u32, 0xc040b340u32, 0x265e5a51u32, 0xe9b6c7aau32, 0xd62f105du32, 0x02441453u32, 0xd8a1e681u32, 0xe7d3fbc8u32,
+    0x21e1cde6u32, 0xc33707d6u32, 0xf4d50d87u32, 0x455a14edu32, 0xa9e3e905u32, 0xfcefa3f8u32, 0x676f02d9u32, 0x8d2a4c8au32,
+    0xfffa3942u32, 0x8771f681u32, 0x6d9d6122u32, 0xfde5380cu32, 0xa4beea44u32, 0x4bdecfa9u32, 0xf6bb4b60u32, 0xbebfbc70u32,
+    0x289b7ec6u32, 0xeaa127fau32, 0xd4ef3085u32, 0x04881d05u32, 0xd9d4d039u32, 0xe6db99e5u32, 0x1fa27cf8u32, 0xc4ac5665u32,
+    0xf4292244u32, 0x432aff97u32, 0xab9423a7u32, 0xfc93a039u32, 0x655b59c3u32, 0x8f0ccc92u32, 0xffeff47du32, 0x85845dd1u32,
+    0x6fa87e4fu32, 0xfe2ce6e0u32, 0xa3014314u32, 0x4e0811a1u32, 0xf7537e82u32, 0xbd3af235u32, 0x2ad7d2bbu32, 0xeb86d391u32,
+];
+
+// The message padded to whole 64- or 128-byte blocks, with its bit
+// length in `lenbytes` bytes, big- or little-endian.
+fn md_pad(msg: ref Vec[u8], block: i64, lenbytes: i64, big: bool) -> Vec[u8] {
+    let mut m = msg.clone();
+    let bits = msg.len() * 8;
+    m.push(0x80);
+    while m.len() % block != block - lenbytes {
+        m.push(0);
+    }
+    for k in 0..lenbytes {
+        let shift = if big { 8 * (lenbytes - 1 - k) } else { 8 * k };
+        let b = if shift >= 64 { 0 } else { (bits >> shift) & 0xFF };
+        m.push(b as u8);
+    }
+    m
+}
+
+fn le32(b: ref Vec[u8], i: i64) -> u32 {
+    (b[i] as u32) | ((b[i + 1] as u32) << 8) | ((b[i + 2] as u32) << 16) | ((b[i + 3] as u32) << 24)
+}
+
+fn be32(b: ref Vec[u8], i: i64) -> u32 {
+    ((b[i] as u32) << 24) | ((b[i + 1] as u32) << 16) | ((b[i + 2] as u32) << 8) | (b[i + 3] as u32)
+}
+
+fn be64(b: ref Vec[u8], i: i64) -> u64 {
+    let mut v: u64 = 0;
+    for k in 0..8 {
+        v = (v << 8) | (b[i + k] as u64);
+    }
+    v
+}
+
+fn le64(b: ref Vec[u8], i: i64) -> u64 {
+    let mut v: u64 = 0;
+    let mut k: i64 = 7;
+    while k >= 0 {
+        v = (v << 8) | (b[i + k] as u64);
+        k -= 1;
+    }
+    v
+}
+
+fn push_le32(out: mut ref Vec[u8], x: u32) {
+    for k in 0..4 {
+        out.push(((x >> ((8 * k) as u32)) & 0xFFu32) as u8);
+    }
+}
+
+fn push_be32(out: mut ref Vec[u8], x: u32) {
+    let mut k: i64 = 3;
+    while k >= 0 {
+        out.push(((x >> ((8 * k) as u32)) & 0xFFu32) as u8);
+        k -= 1;
+    }
+}
+
+fn push_be64(out: mut ref Vec[u8], x: u64) {
+    let mut k: i64 = 7;
+    while k >= 0 {
+        out.push(((x >> ((8 * k) as u64)) & 0xFFu64) as u8);
+        k -= 1;
+    }
+}
+
+fn md5(msg: ref Vec[u8]) -> Vec[u8] {
+    let m = md_pad(msg, 64, 8, false);
+    let mut h: Vec[u32] = Vec.new();
+    for x in [0x67452301u32, 0xefcdab89u32, 0x98badcfeu32, 0x10325476u32] {
+        h.push(x);
+    }
+    let mut blk: i64 = 0;
+    while blk < m.len() {
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        for i in 0..64 {
+            let mut f: u32 = 0;
+            let mut g: i64 = 0;
+            if i < 16 {
+                f = (b & c) | ((b ^ 0xFFFFFFFFu32) & d);
+                g = i;
+            } else if i < 32 {
+                f = (d & b) | ((d ^ 0xFFFFFFFFu32) & c);
+                g = (5 * i + 1) % 16;
+            } else if i < 48 {
+                f = b ^ c ^ d;
+                g = (3 * i + 5) % 16;
+            } else {
+                f = c ^ (b | (d ^ 0xFFFFFFFFu32));
+                g = (7 * i) % 16;
+            }
+            let x = a.wrapping_add(f).wrapping_add(MD5_K[i]).wrapping_add(le32(m, blk + 4 * g));
+            a = d;
+            d = c;
+            c = b;
+            b = b.wrapping_add(x.rotate_left(MD5_S[i] as u32));
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        blk += 64;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    for x in h {
+        push_le32(mut out, x);
+    }
+    out
+}
+
+// ------------------------------------------------------------ SHA-1 and SHA-2 (FIPS 180-4)
+
+fn sha1(msg: ref Vec[u8]) -> Vec[u8] {
+    let m = md_pad(msg, 64, 8, true);
+    let mut h: Vec[u32] = Vec.new();
+    for x in [0x67452301u32, 0xEFCDAB89u32, 0x98BADCFEu32, 0x10325476u32, 0xC3D2E1F0u32] {
+        h.push(x);
+    }
+    let mut w: Vec[u32] = Vec.new();
+    for _ in 0..80 {
+        w.push(0u32);
+    }
+    let mut blk: i64 = 0;
+    while blk < m.len() {
+        for t in 0..16 {
+            w[t] = be32(m, blk + 4 * t);
+        }
+        for t in 16..80 {
+            w[t] = (w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16]).rotate_left(1);
+        }
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        let mut e = h[4];
+        for t in 0..80 {
+            let mut f: u32 = 0;
+            let mut k: u32 = 0;
+            if t < 20 {
+                f = (b & c) | ((b ^ 0xFFFFFFFFu32) & d);
+                k = 0x5A827999u32;
+            } else if t < 40 {
+                f = b ^ c ^ d;
+                k = 0x6ED9EBA1u32;
+            } else if t < 60 {
+                f = (b & c) | (b & d) | (c & d);
+                k = 0x8F1BBCDCu32;
+            } else {
+                f = b ^ c ^ d;
+                k = 0xCA62C1D6u32;
+            }
+            let tmp = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(w[t]);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = tmp;
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e);
+        blk += 64;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    for x in h {
+        push_be32(mut out, x);
+    }
+    out
+}
+
+const SHA256_K: Array[u32, 64] = [
+    0x428a2f98u32, 0x71374491u32, 0xb5c0fbcfu32, 0xe9b5dba5u32, 0x3956c25bu32, 0x59f111f1u32, 0x923f82a4u32, 0xab1c5ed5u32,
+    0xd807aa98u32, 0x12835b01u32, 0x243185beu32, 0x550c7dc3u32, 0x72be5d74u32, 0x80deb1feu32, 0x9bdc06a7u32, 0xc19bf174u32,
+    0xe49b69c1u32, 0xefbe4786u32, 0x0fc19dc6u32, 0x240ca1ccu32, 0x2de92c6fu32, 0x4a7484aau32, 0x5cb0a9dcu32, 0x76f988dau32,
+    0x983e5152u32, 0xa831c66du32, 0xb00327c8u32, 0xbf597fc7u32, 0xc6e00bf3u32, 0xd5a79147u32, 0x06ca6351u32, 0x14292967u32,
+    0x27b70a85u32, 0x2e1b2138u32, 0x4d2c6dfcu32, 0x53380d13u32, 0x650a7354u32, 0x766a0abbu32, 0x81c2c92eu32, 0x92722c85u32,
+    0xa2bfe8a1u32, 0xa81a664bu32, 0xc24b8b70u32, 0xc76c51a3u32, 0xd192e819u32, 0xd6990624u32, 0xf40e3585u32, 0x106aa070u32,
+    0x19a4c116u32, 0x1e376c08u32, 0x2748774cu32, 0x34b0bcb5u32, 0x391c0cb3u32, 0x4ed8aa4au32, 0x5b9cca4fu32, 0x682e6ff3u32,
+    0x748f82eeu32, 0x78a5636fu32, 0x84c87814u32, 0x8cc70208u32, 0x90befffau32, 0xa4506cebu32, 0xbef9a3f7u32, 0xc67178f2u32,
+];
+
+// SHA-256, or SHA-224 with its own initial values and a shorter result.
+fn sha256_family(msg: ref Vec[u8], is224: bool) -> Vec[u8] {
+    let m = md_pad(msg, 64, 8, true);
+    let mut h: Vec[u32] = Vec.new();
+    if is224 {
+        for x in [0xc1059ed8u32, 0x367cd507u32, 0x3070dd17u32, 0xf70e5939u32, 0xffc00b31u32, 0x68581511u32, 0x64f98fa7u32, 0xbefa4fa4u32] {
+            h.push(x);
+        }
+    } else {
+        for x in [0x6a09e667u32, 0xbb67ae85u32, 0x3c6ef372u32, 0xa54ff53au32, 0x510e527fu32, 0x9b05688cu32, 0x1f83d9abu32, 0x5be0cd19u32] {
+            h.push(x);
+        }
+    }
+    let mut w: Vec[u32] = Vec.new();
+    for _ in 0..64 {
+        w.push(0u32);
+    }
+    let mut blk: i64 = 0;
+    while blk < m.len() {
+        for t in 0..16 {
+            w[t] = be32(m, blk + 4 * t);
+        }
+        for t in 16..64 {
+            let s0 = w[t - 15].rotate_right(7) ^ w[t - 15].rotate_right(18) ^ (w[t - 15] >> 3u32);
+            let s1 = w[t - 2].rotate_right(17) ^ w[t - 2].rotate_right(19) ^ (w[t - 2] >> 10u32);
+            w[t] = w[t - 16].wrapping_add(s0).wrapping_add(w[t - 7]).wrapping_add(s1);
+        }
+        let mut v: Vec[u32] = h.clone();
+        for t in 0..64 {
+            let e = v[4];
+            let a = v[0];
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & v[5]) ^ ((e ^ 0xFFFFFFFFu32) & v[6]);
+            let t1 = v[7].wrapping_add(s1).wrapping_add(ch).wrapping_add(SHA256_K[t]).wrapping_add(w[t]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & v[1]) ^ (a & v[2]) ^ (v[1] & v[2]);
+            let t2 = s0.wrapping_add(maj);
+            v[7] = v[6];
+            v[6] = v[5];
+            v[5] = v[4];
+            v[4] = v[3].wrapping_add(t1);
+            v[3] = v[2];
+            v[2] = v[1];
+            v[1] = v[0];
+            v[0] = t1.wrapping_add(t2);
+        }
+        for i in 0..8 {
+            h[i] = h[i].wrapping_add(v[i]);
+        }
+        blk += 64;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    let n = if is224 { 7 } else { 8 };
+    for i in 0..n {
+        push_be32(mut out, h[i]);
+    }
+    out
+}
+
+const SHA512_K: Array[u64, 80] = [
+    0x428a2f98d728ae22u64, 0x7137449123ef65cdu64, 0xb5c0fbcfec4d3b2fu64, 0xe9b5dba58189dbbcu64,
+    0x3956c25bf348b538u64, 0x59f111f1b605d019u64, 0x923f82a4af194f9bu64, 0xab1c5ed5da6d8118u64,
+    0xd807aa98a3030242u64, 0x12835b0145706fbeu64, 0x243185be4ee4b28cu64, 0x550c7dc3d5ffb4e2u64,
+    0x72be5d74f27b896fu64, 0x80deb1fe3b1696b1u64, 0x9bdc06a725c71235u64, 0xc19bf174cf692694u64,
+    0xe49b69c19ef14ad2u64, 0xefbe4786384f25e3u64, 0x0fc19dc68b8cd5b5u64, 0x240ca1cc77ac9c65u64,
+    0x2de92c6f592b0275u64, 0x4a7484aa6ea6e483u64, 0x5cb0a9dcbd41fbd4u64, 0x76f988da831153b5u64,
+    0x983e5152ee66dfabu64, 0xa831c66d2db43210u64, 0xb00327c898fb213fu64, 0xbf597fc7beef0ee4u64,
+    0xc6e00bf33da88fc2u64, 0xd5a79147930aa725u64, 0x06ca6351e003826fu64, 0x142929670a0e6e70u64,
+    0x27b70a8546d22ffcu64, 0x2e1b21385c26c926u64, 0x4d2c6dfc5ac42aedu64, 0x53380d139d95b3dfu64,
+    0x650a73548baf63deu64, 0x766a0abb3c77b2a8u64, 0x81c2c92e47edaee6u64, 0x92722c851482353bu64,
+    0xa2bfe8a14cf10364u64, 0xa81a664bbc423001u64, 0xc24b8b70d0f89791u64, 0xc76c51a30654be30u64,
+    0xd192e819d6ef5218u64, 0xd69906245565a910u64, 0xf40e35855771202au64, 0x106aa07032bbd1b8u64,
+    0x19a4c116b8d2d0c8u64, 0x1e376c085141ab53u64, 0x2748774cdf8eeb99u64, 0x34b0bcb5e19b48a8u64,
+    0x391c0cb3c5c95a63u64, 0x4ed8aa4ae3418acbu64, 0x5b9cca4f7763e373u64, 0x682e6ff3d6b2b8a3u64,
+    0x748f82ee5defb2fcu64, 0x78a5636f43172f60u64, 0x84c87814a1f0ab72u64, 0x8cc702081a6439ecu64,
+    0x90befffa23631e28u64, 0xa4506cebde82bde9u64, 0xbef9a3f7b2c67915u64, 0xc67178f2e372532bu64,
+    0xca273eceea26619cu64, 0xd186b8c721c0c207u64, 0xeada7dd6cde0eb1eu64, 0xf57d4f7fee6ed178u64,
+    0x06f067aa72176fbau64, 0x0a637dc5a2c898a6u64, 0x113f9804bef90daeu64, 0x1b710b35131c471bu64,
+    0x28db77f523047d84u64, 0x32caab7b40c72493u64, 0x3c9ebe0a15c9bebcu64, 0x431d67c49c100d4cu64,
+    0x4cc5d4becb3e42b6u64, 0x597f299cfc657e2au64, 0x5fcb6fab3ad6faecu64, 0x6c44198c4a475817u64,
+];
+
+const SHA512_IV: Array[u64, 8] = [
+    0x6a09e667f3bcc908u64, 0xbb67ae8584caa73bu64, 0x3c6ef372fe94f82bu64, 0xa54ff53a5f1d36f1u64,
+    0x510e527fade682d1u64, 0x9b05688c2b3e6c1fu64, 0x1f83d9abfb41bd6bu64, 0x5be0cd19137e2179u64,
+];
+
+const SHA384_IV: Array[u64, 8] = [
+    0xcbbb9d5dc1059ed8u64, 0x629a292a367cd507u64, 0x9159015a3070dd17u64, 0x152fecd8f70e5939u64,
+    0x67332667ffc00b31u64, 0x8eb44a8768581511u64, 0xdb0c2e0d64f98fa7u64, 0x47b5481dbefa4fa4u64,
+];
+
+// SHA-512, or SHA-384 with its own initial values and a shorter result.
+fn sha512_family(msg: ref Vec[u8], is384: bool) -> Vec[u8] {
+    let m = md_pad(msg, 128, 16, true);
+    let mut h: Vec[u64] = Vec.new();
+    for i in 0..8 {
+        h.push(if is384 { SHA384_IV[i] } else { SHA512_IV[i] });
+    }
+    let mut w: Vec[u64] = Vec.new();
+    for _ in 0..80 {
+        w.push(0u64);
+    }
+    let mut blk: i64 = 0;
+    while blk < m.len() {
+        for t in 0..16 {
+            w[t] = be64(m, blk + 8 * t);
+        }
+        for t in 16..80 {
+            let s0 = w[t - 15].rotate_right(1) ^ w[t - 15].rotate_right(8) ^ (w[t - 15] >> 7u64);
+            let s1 = w[t - 2].rotate_right(19) ^ w[t - 2].rotate_right(61) ^ (w[t - 2] >> 6u64);
+            w[t] = w[t - 16].wrapping_add(s0).wrapping_add(w[t - 7]).wrapping_add(s1);
+        }
+        let mut v: Vec[u64] = h.clone();
+        for t in 0..80 {
+            let e = v[4];
+            let a = v[0];
+            let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
+            let ch = (e & v[5]) ^ ((e ^ 0xFFFFFFFFFFFFFFFFu64) & v[6]);
+            let t1 = v[7].wrapping_add(s1).wrapping_add(ch).wrapping_add(SHA512_K[t]).wrapping_add(w[t]);
+            let s0 = a.rotate_right(28) ^ a.rotate_right(34) ^ a.rotate_right(39);
+            let maj = (a & v[1]) ^ (a & v[2]) ^ (v[1] & v[2]);
+            let t2 = s0.wrapping_add(maj);
+            v[7] = v[6];
+            v[6] = v[5];
+            v[5] = v[4];
+            v[4] = v[3].wrapping_add(t1);
+            v[3] = v[2];
+            v[2] = v[1];
+            v[1] = v[0];
+            v[0] = t1.wrapping_add(t2);
+        }
+        for i in 0..8 {
+            h[i] = h[i].wrapping_add(v[i]);
+        }
+        blk += 128;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    let n = if is384 { 6 } else { 8 };
+    for i in 0..n {
+        push_be64(mut out, h[i]);
+    }
+    out
+}
+
+// ------------------------------------------------------------ hex and base64
+
+fn hex_of(b: ref Vec[u8]) -> String {
+    let mut s = String.new();
+    for x in b {
+        s.push_str(f"{x:02x}");
+    }
+    s
+}
+
+const B64_ALPHABET: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn b64_encode(b: ref Vec[u8]) -> String {
+    let alpha = to_bytes(B64_ALPHABET);
+    let mut out: Vec[u8] = Vec.new();
+    let mut i: i64 = 0;
+    while i < b.len() {
+        let n = b.len() - i;
+        let x0 = b[i] as i64;
+        let x1 = if n > 1 { b[i + 1] as i64 } else { 0 };
+        let x2 = if n > 2 { b[i + 2] as i64 } else { 0 };
+        let v = (x0 << 16) | (x1 << 8) | x2;
+        out.push(alpha[(v >> 18) & 63]);
+        out.push(alpha[(v >> 12) & 63]);
+        out.push(if n > 1 { alpha[(v >> 6) & 63] } else { b'=' });
+        out.push(if n > 2 { alpha[v & 63] } else { b'=' });
+        i += 3;
+    }
+    from_bytes(out)
+}
+
+fn b64_value(c: u8) -> i64 {
+    if c >= b'A' and c <= b'Z' {
+        (c - b'A') as i64
+    } else if c >= b'a' and c <= b'z' {
+        (c - b'a') as i64 + 26
+    } else if c >= b'0' and c <= b'9' {
+        (c - b'0') as i64 + 52
+    } else if c == b'+' {
+        62
+    } else if c == b'/' {
+        63
+    } else {
+        -1
+    }
+}
+
+// A base64 digest of exactly nbytes, written canonically.
+fn b64_digest(s: Str, nbytes: i64) -> Option[Vec[u8]] {
+    let b = to_bytes(s);
+    if b.len() != (nbytes + 2) / 3 * 4 {
+        return None;
+    }
+    let mut out: Vec[u8] = Vec.new();
+    let mut i: i64 = 0;
+    while i < b.len() {
+        let mut v: i64 = 0;
+        let mut pads: i64 = 0;
+        for k in 0..4 {
+            let c = b[i + k];
+            if c == b'=' {
+                if i + 4 != b.len() {
+                    return None;
+                }
+                pads += 1;
+                v = v << 6;
+            } else {
+                let x = b64_value(c);
+                if x < 0 or pads > 0 {
+                    return None;
+                }
+                v = (v << 6) | x;
+            }
+        }
+        out.push(((v >> 16) & 0xFF) as u8);
+        if pads < 2 {
+            out.push(((v >> 8) & 0xFF) as u8);
+        }
+        if pads < 1 {
+            out.push((v & 0xFF) as u8);
+        }
+        i += 4;
+    }
+    if out.len() != nbytes or b64_encode(out) != s {
+        return None;
+    }
+    Some(out)
+}
+
+fn hex_decode(s: Str) -> Vec[u8] {
+    let b = to_bytes(s);
+    let mut out: Vec[u8] = Vec.new();
+    let mut i: i64 = 0;
+    while i + 1 < b.len() {
+        out.push(hex_val(b[i]) * 16 + hex_val(b[i + 1]));
+        i += 2;
+    }
+    out
+}
+
+fn split_c(s: ref String, sep: char) -> Vec[String] {
+    let mut out: Vec[String] = Vec.new();
+    let mut cur = String.new();
+    for c in s.chars() {
+        if c == sep {
+            out.push(cur);
+            cur = String.new();
+        } else {
+            cur.push(c);
+        }
+    }
+    out.push(cur);
+    out
+}
+fn hex_bytes(s: ref String) -> Vec[u8] {
+    let cs: Vec[char] = s.chars().collect();
+    let n = cs.len() as i64;
+    let mut out: Vec[u8] = Vec.new();
+    let mut k: i64 = 0;
+    while k < n {
+        if cs[k] == 'z' {
+            let mut j = k + 1;
+            let mut count: i64 = 0;
+            while cs[j] != '.' {
+                count = count * 10 + (cs[j] as i64 - 48);
+                j += 1;
+            }
+            let mut z: i64 = 0;
+            while z < count {
+                out.push(0);
+                z += 1;
+            }
+            k = j + 1;
+        } else {
+            out.push((hex_digit(cs[k]) * 16 + hex_digit(cs[k + 1])) as u8);
+            k += 2;
+        }
+    }
+    out
+}
+
+fn hex_string(s: ref String) -> String {
+    String.from_utf8(hex_bytes(s)).unwrap_or(String.new())
+}
+
+fn dirname_of(path: ref String) -> String {
+    let cs = chars_of(path);
+    let mut cut: i64 = -1;
+    let mut k: i64 = 0;
+    while k < cs.len() as i64 {
+        if cs[k] == '/' {
+            cut = k;
+        }
+        k += 1;
+    }
+    if cut < 0 { String.new() } else { chars_str(cs, 0, cut) }
+}
+
+fn write_inputs() -> Result[(), String] {
+    let _ = fs.create_dir_all("data".to_string());
+    for line in split_c(inputs_text(), '\n') {
+        if line.len() == 0 {
+            continue;
+        }
+        let f = split_c(line, ' ');
+        let path = f"data/{f[0]}";
+        let _ = fs.create_dir_all(dirname_of(path));
+        let bytes = if f.len() > 1 { hex_bytes(f[1]) } else { Vec.new() };
+        if let Err(e) = fs.write_bytes(path, bytes) {
+            return Err(f"cannot write {f[0]}: {e}");
+        }
+    }
+    Ok(())
+}
+
+fn hex_digit(c: char) -> i64 {
+    let n = c as i64;
+    if n >= 97 { n - 87 } else if n >= 65 { n - 55 } else { n - 48 }
+}
+fn chars_of(s: ref String) -> Vec[char] {
+    s.chars().collect()
+}
+fn chars_str(cs: ref Vec[char], a: i64, b: i64) -> String {
+    let mut out = String.new();
+    let mut k = a;
+    while k < b {
+        out.push(cs[k]);
+        k += 1;
+    }
+    out
+}
+// ------------------------------------------------------------ big integers
+
+// Python's int, for the non-negative values RSA works with: little-endian
+// 64-bit limbs with no zero limb on top, so zero is the empty vector.
+fn mask64() -> u128 {
+    0xFFFFFFFFFFFFFFFFu128
+}
+
+fn bn_norm(a: mut ref Vec[u64]) {
+    while a.len() > 0 and a[a.len() - 1] == 0u64 {
+        let _ = a.pop();
+    }
+}
+
+fn bn(v: i64) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    if v > 0 {
+        out.push(v as u64);
+    }
+    out
+}
+
+fn bn_is_zero(a: ref Vec[u64]) -> bool {
+    a.len() == 0
+}
+
+fn bn_is_odd(a: ref Vec[u64]) -> bool {
+    a.len() > 0 and (a[0] & 1u64) == 1u64
+}
+
+fn bn_cmp(a: ref Vec[u64], b: ref Vec[u64]) -> i64 {
+    if a.len() != b.len() {
+        return if a.len() < b.len() { -1 } else { 1 };
+    }
+    let mut i = a.len() - 1;
+    while i >= 0 {
+        if a[i] != b[i] {
+            return if a[i] < b[i] { -1 } else { 1 };
+        }
+        i -= 1;
+    }
+    0
+}
+
+fn bn_eq_small(a: ref Vec[u64], v: i64) -> bool {
+    bn_cmp(a, bn(v)) == 0
+}
+
+fn bn_add(a: ref Vec[u64], b: ref Vec[u64]) -> Vec[u64] {
+    let n = if a.len() > b.len() { a.len() } else { b.len() };
+    let mut out: Vec[u64] = Vec.new();
+    let mut carry = 0u128;
+    let mut i = 0;
+    while i < n {
+        let x = if i < a.len() { a[i] as u128 } else { 0u128 };
+        let y = if i < b.len() { b[i] as u128 } else { 0u128 };
+        let s = x + y + carry;
+        out.push((s & mask64()) as u64);
+        carry = s >> 64;
+        i += 1;
+    }
+    if carry > 0u128 {
+        out.push(carry as u64);
+    }
+    out
+}
+
+// a - b, for a >= b.
+fn bn_sub(a: ref Vec[u64], b: ref Vec[u64]) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    let mut borrow = 0u128;
+    let base = 1u128 << 64;
+    let mut i = 0;
+    while i < a.len() {
+        let y = if i < b.len() { b[i] as u128 } else { 0u128 };
+        let t = (a[i] as u128) + base - borrow - y;
+        out.push((t & mask64()) as u64);
+        borrow = if t < base { 1u128 } else { 0u128 };
+        i += 1;
+    }
+    bn_norm(mut out);
+    out
+}
+
+fn bn_mul(a: ref Vec[u64], b: ref Vec[u64]) -> Vec[u64] {
+    if a.len() == 0 or b.len() == 0 {
+        return Vec.new();
+    }
+    let mut out: Vec[u64] = Vec.new();
+    let mut k = 0;
+    while k < a.len() + b.len() {
+        out.push(0u64);
+        k += 1;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        let x = a[i] as u128;
+        let mut carry = 0u128;
+        let mut j = 0;
+        while j < b.len() {
+            let t = x * (b[j] as u128) + (out[i + j] as u128) + carry;
+            out[i + j] = (t & mask64()) as u64;
+            carry = t >> 64;
+            j += 1;
+        }
+        out[i + b.len()] = carry as u64;
+        i += 1;
+    }
+    bn_norm(mut out);
+    out
+}
+
+fn bn_mul_small(a: ref Vec[u64], v: u64) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    let mut carry = 0u128;
+    for x in a {
+        let t = (x as u128) * (v as u128) + carry;
+        out.push((t & mask64()) as u64);
+        carry = t >> 64;
+    }
+    if carry > 0u128 {
+        out.push(carry as u64);
+    }
+    bn_norm(mut out);
+    out
+}
+
+fn bn_shl(a: ref Vec[u64], bits: i64) -> Vec[u64] {
+    if a.len() == 0 {
+        return Vec.new();
+    }
+    let words = bits / 64;
+    let s = bits % 64;
+    let mut out: Vec[u64] = Vec.new();
+    let mut k = 0;
+    while k < words {
+        out.push(0u64);
+        k += 1;
+    }
+    if s == 0 {
+        for x in a {
+            out.push(x);
+        }
+        return out;
+    }
+    let mut carry = 0u64;
+    for x in a {
+        out.push((x << s) | carry);
+        carry = x >> (64 - s);
+    }
+    if carry != 0u64 {
+        out.push(carry);
+    }
+    out
+}
+
+fn bn_shr(a: ref Vec[u64], bits: i64) -> Vec[u64] {
+    let words = bits / 64;
+    let s = bits % 64;
+    let mut out: Vec[u64] = Vec.new();
+    let mut i = words;
+    while i < a.len() {
+        let lo = a[i] >> s;
+        let hi = if s > 0 and i + 1 < a.len() { a[i + 1] << (64 - s) } else { 0u64 };
+        out.push(lo | hi);
+        i += 1;
+    }
+    bn_norm(mut out);
+    out
+}
+
+// int.bit_length()
+fn bn_bits(a: ref Vec[u64]) -> i64 {
+    if a.len() == 0 {
+        return 0;
+    }
+    let mut top = a[a.len() - 1];
+    let mut n = 0;
+    while top != 0u64 {
+        top = top >> 1;
+        n += 1;
+    }
+    (a.len() - 1) * 64 + n
+}
+
+// The quotient and remainder of a by a one-limb divisor.
+fn bn_divmod_small(a: ref Vec[u64], d: u64) -> (Vec[u64], u64) {
+    let mut q: Vec[u64] = Vec.new();
+    let mut k = 0;
+    while k < a.len() {
+        q.push(0u64);
+        k += 1;
+    }
+    let mut r = 0u128;
+    let dd = d as u128;
+    let mut i = a.len() - 1;
+    while i >= 0 {
+        let cur = (r << 64) | (a[i] as u128);
+        q[i] = (cur / dd) as u64;
+        r = cur % dd;
+        i -= 1;
+    }
+    bn_norm(mut q);
+    (q, r as u64)
+}
+
+// divmod(a, b) for b > 0: Knuth's algorithm D on 64-bit limbs.
+fn bn_divmod(a: ref Vec[u64], b: ref Vec[u64]) -> (Vec[u64], Vec[u64]) {
+    if bn_cmp(a, b) < 0 {
+        return (Vec.new(), a.clone());
+    }
+    if b.len() == 1 {
+        let (q, r) = bn_divmod_small(a, b[0]);
+        let mut rv: Vec[u64] = Vec.new();
+        if r != 0u64 {
+            rv.push(r);
+        }
+        return (q, rv);
+    }
+    let n = b.len();
+    let mut top = b[n - 1];
+    let mut s = 0;
+    while (top & 0x8000000000000000u64) == 0u64 {
+        top = top << 1;
+        s += 1;
+    }
+    let v = bn_shl(b, s);
+    let mut u = bn_shl(a, s);
+    while u.len() <= a.len() {
+        u.push(0u64);
+    }
+    let m = u.len() - n - 1;
+    let mut q: Vec[u64] = Vec.new();
+    let mut k = 0;
+    while k <= m {
+        q.push(0u64);
+        k += 1;
+    }
+    let base = 1u128 << 64;
+    let vn1 = v[n - 1] as u128;
+    let vn2 = v[n - 2] as u128;
+    let mut j = m;
+    while j >= 0 {
+        let num = ((u[j + n] as u128) << 64) | (u[j + n - 1] as u128);
+        let mut qhat = num / vn1;
+        let mut rhat = num % vn1;
+        loop {
+            let too_big = if qhat >= base { true } else { qhat * vn2 > ((rhat << 64) | (u[j + n - 2] as u128)) };
+            if not too_big {
+                break;
+            }
+            qhat -= 1u128;
+            rhat += vn1;
+            if rhat >= base {
+                break;
+            }
+        }
+        // u[j..j+n] -= qhat * v
+        let mut borrow = 0u128;
+        let mut carry = 0u128;
+        let mut i = 0;
+        while i < n {
+            let p = qhat * (v[i] as u128) + carry;
+            carry = p >> 64;
+            let t = (u[i + j] as u128) + base - borrow - (p & mask64());
+            u[i + j] = (t & mask64()) as u64;
+            borrow = if t < base { 1u128 } else { 0u128 };
+            i += 1;
+        }
+        let t = (u[j + n] as u128) + base - borrow - carry;
+        u[j + n] = (t & mask64()) as u64;
+        if t < base {
+            // qhat was one too large: add v back
+            qhat -= 1u128;
+            let mut c = 0u128;
+            let mut i2 = 0;
+            while i2 < n {
+                let s2 = (u[i2 + j] as u128) + (v[i2] as u128) + c;
+                u[i2 + j] = (s2 & mask64()) as u64;
+                c = s2 >> 64;
+                i2 += 1;
+            }
+            u[j + n] = (((u[j + n] as u128) + c) & mask64()) as u64;
+        }
+        q[j] = qhat as u64;
+        j -= 1;
+    }
+    bn_norm(mut q);
+    let mut r: Vec[u64] = Vec.new();
+    let mut i = 0;
+    while i < n {
+        r.push(u[i]);
+        i += 1;
+    }
+    bn_norm(mut r);
+    (q, bn_shr(r, s))
+}
+
+fn bn_mod(a: ref Vec[u64], m: ref Vec[u64]) -> Vec[u64] {
+    bn_divmod(a, m).1
+}
+
+fn bn_div(a: ref Vec[u64], m: ref Vec[u64]) -> Vec[u64] {
+    bn_divmod(a, m).0
+}
+
+// pow(base, exp, m)
+fn bn_powmod(base: ref Vec[u64], exp: ref Vec[u64], m: ref Vec[u64]) -> Vec[u64] {
+    if bn_eq_small(m, 1) {
+        return Vec.new();
+    }
+    let mut result = bn(1);
+    let b = bn_mod(base, m);
+    let mut i = bn_bits(exp) - 1;
+    while i >= 0 {
+        result = bn_mod(bn_mul(result, result), m);
+        if ((exp[i / 64] >> (i % 64)) & 1u64) == 1u64 {
+            result = bn_mod(bn_mul(result, b), m);
+        }
+        i -= 1;
+    }
+    result
+}
+
+// int.from_bytes(b, 'big')
+fn bn_from_bytes(b: ref Vec[u8]) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    let mut end = b.len();
+    while end > 0 {
+        let start = if end >= 8 { end - 8 } else { 0 };
+        let mut w = 0u64;
+        let mut k = start;
+        while k < end {
+            w = (w << 8) | (b[k] as u64);
+            k += 1;
+        }
+        out.push(w);
+        end = start;
+    }
+    bn_norm(mut out);
+    out
+}
+
+// int.to_bytes(length, 'big'), for a value that fits.
+fn bn_to_bytes(a: ref Vec[u64], length: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    let mut k = length - 1;
+    while k >= 0 {
+        let limb = k / 8;
+        let byte = if limb < a.len() { ((a[limb] >> ((k % 8) * 8)) & 0xFFu64) as u8 } else { 0u8 };
+        out.push(byte);
+        k -= 1;
+    }
+    out
+}
+
+fn bn_to_i64(a: ref Vec[u64]) -> i64 {
+    if a.len() == 0 { 0 } else { a[0] as i64 }
+}
+
+// str(int)
+fn bn_str(a: ref Vec[u64]) -> String {
+    if a.len() == 0 {
+        return "0".to_string();
+    }
+    let mut chunks: Vec[u64] = Vec.new();
+    let mut cur = a.clone();
+    while cur.len() > 0 {
+        let (q, r) = bn_divmod_small(cur, 10000000000000000000u64);
+        chunks.push(r);
+        cur = q;
+    }
+    let mut s = f"{chunks[chunks.len() - 1]}";
+    let mut i = chunks.len() - 2;
+    while i >= 0 {
+        let part = f"{chunks[i]}";
+        let mut pad = 19 - part.len();
+        while pad > 0 {
+            s.push('0');
+            pad -= 1;
+        }
+        s.push_str(part);
+        i -= 1;
+    }
+    s
+}
+
+fn bn_parse(s: Str) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    for c in s.bytes() {
+        out = bn_add(bn_mul_small(out, 10u64), bn((c - 48u8) as i64));
+    }
+    out
+}
+
+// A signed value, for extended_gcd's coefficients.
+struct SBig {
+    neg: bool,
+    mag: Vec[u64],
+}
+
+fn s_of(a: ref Vec[u64]) -> SBig {
+    SBig { neg: false, mag: a.clone() }
+}
+
+// a - b
+fn s_sub(a: ref SBig, b: ref SBig) -> SBig {
+    if a.neg != b.neg {
+        return SBig { neg: a.neg, mag: bn_add(a.mag, b.mag) };
+    }
+    if bn_cmp(a.mag, b.mag) >= 0 {
+        let m = bn_sub(a.mag, b.mag);
+        SBig { neg: a.neg and m.len() > 0, mag: m }
+    } else {
+        SBig { neg: not a.neg, mag: bn_sub(b.mag, a.mag) }
+    }
+}
+
+fn s_mul(q: ref Vec[u64], x: ref SBig) -> SBig {
+    let m = bn_mul(q, x.mag);
+    SBig { neg: x.neg and m.len() > 0, mag: m }
+}
+
+// (s1 - s2) * c % p, with Python's non-negative %.
+fn bn_sub_mul_mod(s1: ref Vec[u64], s2: ref Vec[u64], c: ref Vec[u64], p: ref Vec[u64]) -> Vec[u64] {
+    if bn_cmp(s1, s2) >= 0 {
+        return bn_mod(bn_mul(bn_sub(s1, s2), c), p);
+    }
+    let r = bn_mod(bn_mul(bn_sub(s2, s1), c), p);
+    if r.len() == 0 { r } else { bn_sub(p, r) }
+}
+
+// ------------------------------------------------------------ the generator
+
+// os.urandom as oracle.py replaces it: splitmix64, each read taking whole
+// words and their little-endian bytes.
+struct Rng {
+    state: u64,
+}
+
+fn rng_word(r: mut ref Rng) -> u64 {
+    r.state = r.state.wrapping_add(0x9E3779B97F4A7C15u64);
+    let mut z = r.state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9u64);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EBu64);
+    z ^ (z >> 31)
+}
+
+fn urandom(r: mut ref Rng, n: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    while out.len() < n {
+        let w = rng_word(mut r);
+        for k in 0..8 {
+            out.push(((w >> (k * 8)) & 0xFFu64) as u8);
+        }
+    }
+    out.truncate(n);
+    out
+}
+
+// --------------------------------------------------------------- errors
+
+// An exception: its class name and message.
+struct Exc {
+    cls: String,
+    msg: String,
+}
+
+fn exc(cls: Str, msg: own String) -> Exc {
+    Exc { cls: cls.to_string(), msg: msg }
+}
+
+// repr() of an exception raised with one string argument.
+fn exc_repr(e: ref Exc) -> String {
+    f"{e.cls}({py_repr(e.msg)})"
+}
+
+// An exception raised with two arguments, the second an exception: str()
+// of it is the repr of the tuple.
+fn exc_wrap(cls: Str, msg: Str, inner: ref Exc) -> Exc {
+    exc(cls, f"({py_repr(msg)}, {exc_repr(inner)})")
+}
+
+// ------------------------------------------------------ more of Python's int
+
+// The extended Euclidean algorithm: (gcd, lx, ly), lx and ly made
+// non-negative.
+fn extended_gcd(a0: ref Vec[u64], b0: ref Vec[u64]) -> (Vec[u64], Vec[u64], Vec[u64]) {
+    let mut a = a0.clone();
+    let mut b = b0.clone();
+    let mut x = s_of(bn(0));
+    let mut y = s_of(bn(1));
+    let mut lx = s_of(bn(1));
+    let mut ly = s_of(bn(0));
+    while not bn_is_zero(b) {
+        let (q, r) = bn_divmod(a, b);
+        a = b;
+        b = r;
+        let nx = s_sub(lx, s_mul(q, x));
+        lx = x;
+        x = nx;
+        let ny = s_sub(ly, s_mul(q, y));
+        ly = y;
+        y = ny;
+    }
+    let lxv = if lx.neg { bn_sub(b0, lx.mag) } else { lx.mag.clone() };
+    let lyv = if ly.neg { bn_sub(a0, ly.mag) } else { ly.mag.clone() };
+    (a, lxv, lyv)
+}
+
+// numbertheory.inverse_mod: pow(a, -1, m), and 0 for 0.
+fn inverse_mod(a0: ref Vec[u64], m: ref Vec[u64]) -> Result[Vec[u64], Exc] {
+    let a = bn_mod(a0, m);
+    if bn_is_zero(a0) {
+        return Ok(Vec.new());
+    }
+    let (g, lx, _) = extended_gcd(a, m);
+    if not bn_eq_small(g, 1) {
+        return Err(exc("ValueError", "base is not invertible for the given modulus".to_string()));
+    }
+    Ok(bn_mod(lx, m))
+}
+
+// '%x' % n
+fn bn_hex(a: ref Vec[u64]) -> String {
+    if a.len() == 0 {
+        return "0".to_string();
+    }
+    let digits = to_bytes("0123456789abcdef");
+    let mut out: Vec[u8] = Vec.new();
+    let mut i = a.len() * 16 - 1;
+    let mut started = false;
+    while i >= 0 {
+        let d = ((a[i / 16] >> ((i % 16) * 4)) & 15u64) as i64;
+        if d != 0 or started {
+            out.push(digits[d]);
+            started = true;
+        }
+        i -= 1;
+    }
+    from_bytes(out)
+}
+
+// int(s, 16)
+fn bn_from_hex(s: Str) -> Vec[u64] {
+    let mut out: Vec[u64] = Vec.new();
+    for c in s.bytes() {
+        out = bn_add(bn_shl(out, 4), bn(hex_val(c) as i64));
+    }
+    out
+}
+
+fn bn_bit(a: ref Vec[u64], i: i64) -> bool {
+    i / 64 < a.len() and ((a[i / 64] >> (i % 64)) & 1u64) == 1u64
+}
+
+// x.bit_length() or 1
+fn bit_length(a: ref Vec[u64]) -> i64 {
+    let b = bn_bits(a);
+    if b == 0 { 1 } else { b }
+}
+
+// util.orderlen: the bytes of the order's hex digits.
+fn orderlen(order: ref Vec[u64]) -> i64 {
+    (1 + bn_hex(order).len()) / 2
+}
+
+// util.number_to_string: big-endian, orderlen(order) bytes.
+fn number_to_string(num: ref Vec[u64], order: ref Vec[u64]) -> Result[Vec[u8], Exc] {
+    let l = orderlen(order);
+    if (bn_bits(num) + 7) / 8 > l {
+        return Err(exc("AssertionError", f"({(bn_bits(num) + 7) / 8}, {l})"));
+    }
+    Ok(bn_to_bytes(num, l))
+}
+
+// --------------------------------------------------------- the prime field
+
+fn f_add(a: ref Vec[u64], b: ref Vec[u64], p: ref Vec[u64]) -> Vec[u64] {
+    let s = bn_add(a, b);
+    if bn_cmp(s, p) >= 0 { bn_sub(s, p) } else { s }
+}
+
+fn f_sub(a: ref Vec[u64], b: ref Vec[u64], p: ref Vec[u64]) -> Vec[u64] {
+    if bn_cmp(a, b) >= 0 { bn_sub(a, b) } else { bn_sub(bn_add(a, p), b) }
+}
+
+fn f_mul(a: ref Vec[u64], b: ref Vec[u64], p: ref Vec[u64]) -> Vec[u64] {
+    bn_mod(bn_mul(a, b), p)
+}
+
+fn f_neg(a: ref Vec[u64], p: ref Vec[u64]) -> Vec[u64] {
+    if bn_is_zero(a) { Vec.new() } else { bn_sub(p, a) }
+}
+
+// --------------------------------------------------------------- base64
+
+// base64.b64decode: characters outside the alphabet are dropped.
+fn b64_decode(s: ref Vec[u8]) -> Result[Vec[u8], Exc] {
+    let mut out: Vec[u8] = Vec.new();
+    let mut acc = 0;
+    let mut nbits = 0;
+    let mut count = 0;
+    let mut pad = 0;
+    for c in s {
+        if c == 61u8 {
+            pad += 1;
+            continue;
+        }
+        let v = b64_value(c);
+        if v < 0 {
+            continue;
+        }
+        acc = (acc << 6) | v;
+        nbits += 6;
+        count += 1;
+        if nbits >= 8 {
+            nbits -= 8;
+            out.push(((acc >> nbits) & 0xFF) as u8);
+            acc = acc & ((1 << nbits) - 1);
+        }
+    }
+    if (count + pad) % 4 != 0 {
+        return Err(exc("Error", "Incorrect padding".to_string()));
+    }
+    Ok(out)
+}
+
+// base64.urlsafe_b64encode, with the padding stripped.
+fn b64url_encode(b: ref Vec[u8]) -> String {
+    let mut out: Vec[u8] = Vec.new();
+    for c in b64_encode(b).bytes() {
+        if c == b'+' {
+            out.push(b'-');
+        } else if c == b'/' {
+            out.push(b'_');
+        } else if c != b'=' {
+            out.push(c);
+        }
+    }
+    from_bytes(out)
+}
+
+// base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+fn b64url_decode(s: Str) -> Result[Vec[u8], Exc] {
+    let mut b: Vec[u8] = Vec.new();
+    for c in s.bytes() {
+        if c == b'-' {
+            b.push(b'+');
+        } else if c == b'_' {
+            b.push(b'/');
+        } else {
+            b.push(c);
+        }
+    }
+    while b.len() % 4 != 0 {
+        b.push(b'=');
+    }
+    b64_decode(b)
+}
+
+// ------------------------------------------------------------------- der.py
+
+fn sub(b: ref Vec[u8], from: i64, to: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    let mut i = if from < 0 { 0 } else { from };
+    let end = if to > b.len() { b.len() } else { to };
+    while i < end {
+        out.push(b[i]);
+        i += 1;
+    }
+    out
+}
+
+fn tail(b: ref Vec[u8], from: i64) -> Vec[u8] {
+    sub(b, from, b.len())
+}
+
+fn cat(a: ref Vec[u8], b: ref Vec[u8]) -> Vec[u8] {
+    let mut out = a.clone();
+    for c in b {
+        out.push(c);
+    }
+    out
+}
+
+fn unexpected(msg: own String) -> Exc {
+    exc("UnexpectedDER", msg)
+}
+
+// binascii.hexlify(b), as %s prints it.
+fn hexlify_str(b: ref Vec[u8]) -> String {
+    f"b'{hex_of(b)}'"
+}
+
+fn hex2(c: u8) -> String {
+    let digits = to_bytes("0123456789abcdef");
+    let mut out: Vec[u8] = Vec.new();
+    out.push(digits[(c / 16u8) as i64]);
+    out.push(digits[(c % 16u8) as i64]);
+    from_bytes(out)
+}
+
+// A tuple of ints, as %s and {!r} print it.
+fn oid_tuple(oid: ref Vec[i64]) -> String {
+    let mut parts: Vec[String] = Vec.new();
+    for n in oid {
+        parts.push(f"{n}");
+    }
+    if parts.len() == 1 {
+        return f"({parts[0]},)";
+    }
+    f"({join(parts, ", ")})"
+}
+
+fn encode_length(l: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    if l < 128 {
+        out.push(l as u8);
+        return out;
+    }
+    let mut body: Vec[u8] = Vec.new();
+    let mut v = l;
+    while v > 0 {
+        body.insert(0, (v & 255) as u8);
+        v = v >> 8;
+    }
+    out.push(128u8 | (body.len() as u8));
+    cat(out, body)
+}
+
+fn tlv(tag: u8, body: ref Vec[u8]) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    out.push(tag);
+    cat(cat(out, encode_length(body.len())), body)
+}
+
+fn encode_constructed(tag: i64, value: ref Vec[u8]) -> Vec[u8] {
+    tlv((160 + tag) as u8, value)
+}
+
+fn encode_integer(r: ref Vec[u64]) -> Vec[u8] {
+    let mut s = bn_to_bytes(r, (bn_bits(r) + 7) / 8);
+    if s.len() == 0 {
+        s.push(0u8);
+    }
+    if s[0] > 127u8 {
+        s.insert(0, 0u8);
+    }
+    tlv(2u8, s)
+}
+
+fn encode_bitstring(s: ref Vec[u8]) -> Vec[u8] {
+    let mut body: Vec[u8] = Vec.new();
+    body.push(0u8);
+    tlv(3u8, cat(body, s))
+}
+
+fn encode_octet_string(s: ref Vec[u8]) -> Vec[u8] {
+    tlv(4u8, s)
+}
+
+fn encode_number(n0: i64) -> Vec[u8] {
+    let mut digits: Vec[u8] = Vec.new();
+    let mut n = n0;
+    while n > 0 {
+        digits.insert(0, ((n & 127) | 128) as u8);
+        n = n >> 7;
+    }
+    if digits.len() == 0 {
+        digits.push(0u8);
+    }
+    let last = digits.len() - 1;
+    digits[last] = digits[last] & 127u8;
+    digits
+}
+
+fn encode_oid(oid: ref Vec[i64]) -> Vec[u8] {
+    let mut body = encode_number(40 * oid[0] + oid[1]);
+    let mut i = 2;
+    while i < oid.len() {
+        body = cat(body, encode_number(oid[i]));
+        i += 1;
+    }
+    tlv(6u8, body)
+}
+
+fn encode_sequence(pieces: ref Vec[Vec[u8]]) -> Vec[u8] {
+    let mut body: Vec[u8] = Vec.new();
+    for p in pieces {
+        body = cat(body, p);
+    }
+    tlv(48u8, body)
+}
+
+fn is_sequence(s: ref Vec[u8]) -> bool {
+    s.len() > 0 and s[0] == 48u8
+}
+
+fn first_of(s: ref Vec[u8]) -> Result[u8, Exc] {
+    if s.len() == 0 {
+        return Err(exc("IndexError", "index out of range".to_string()));
+    }
+    Ok(s[0])
+}
+
+// read_length(string): (length, bytes it took)
+fn read_length(s: ref Vec[u8]) -> Result[(i64, i64), Exc] {
+    if s.len() == 0 {
+        return Err(unexpected("Empty string can't encode valid length value".to_string()));
+    }
+    let num = s[0] as i64;
+    if (num & 128) == 0 {
+        return Ok((num & 127, 1));
+    }
+    let llen = num & 127;
+    if llen == 0 {
+        return Err(unexpected("Invalid length encoding, length of length is 0".to_string()));
+    }
+    if llen > s.len() - 1 {
+        return Err(unexpected("Length of length longer than provided buffer".to_string()));
+    }
+    let msb = s[1] as i64;
+    if msb == 0 or (llen == 1 and msb < 128) {
+        return Err(unexpected("Not minimal encoding of length".to_string()));
+    }
+    let mut v = 0;
+    for k in 1..(1 + llen) {
+        v = (v << 8) | (s[k] as i64);
+    }
+    Ok((v, 1 + llen))
+}
+
+fn remove_constructed(s: ref Vec[u8]) -> Result[(i64, Vec[u8], Vec[u8]), Exc] {
+    let s0 = first_of(s)?;
+    if (s0 & 224u8) != 160u8 {
+        return Err(unexpected(f"wanted type 'constructed tag' (0xa0-0xbf), got 0x{hex2(s0)}"));
+    }
+    let tag = (s0 & 31u8) as i64;
+    let (length, llen) = read_length(tail(s, 1))?;
+    Ok((tag, sub(s, 1 + llen, 1 + llen + length), tail(s, 1 + llen + length)))
+}
+
+fn remove_sequence(s: ref Vec[u8]) -> Result[(Vec[u8], Vec[u8]), Exc] {
+    if s.len() == 0 {
+        return Err(unexpected("Empty string does not encode a sequence".to_string()));
+    }
+    if s[0] != 48u8 {
+        return Err(unexpected(f"wanted type 'sequence' (0x30), got 0x{hex2(s[0])}"));
+    }
+    let (length, llen) = read_length(tail(s, 1))?;
+    if length > s.len() - 1 - llen {
+        return Err(unexpected("Length longer than the provided buffer".to_string()));
+    }
+    let endseq = 1 + llen + length;
+    Ok((sub(s, 1 + llen, endseq), tail(s, endseq)))
+}
+
+fn remove_octet_string(s: ref Vec[u8]) -> Result[(Vec[u8], Vec[u8]), Exc] {
+    if s.len() == 0 or s[0] != 4u8 {
+        let n = first_of(s)?;
+        return Err(unexpected(f"wanted type 'octetstring' (0x04), got 0x{hex2(n)}"));
+    }
+    let (length, llen) = read_length(tail(s, 1))?;
+    Ok((sub(s, 1 + llen, 1 + llen + length), tail(s, 1 + llen + length)))
+}
+
+fn read_number(s: ref Vec[u8]) -> Result[(i64, i64), Exc] {
+    if first_of(s)? == 128u8 {
+        return Err(unexpected("Non minimal encoding of OID subidentifier".to_string()));
+    }
+    let mut number = 0;
+    let mut llen = 0;
+    loop {
+        if llen >= s.len() {
+            return Err(unexpected("ran out of length bytes".to_string()));
+        }
+        number = number << 7;
+        let d = s[llen] as i64;
+        number += d & 127;
+        llen += 1;
+        if (d & 128) == 0 {
+            break;
+        }
+    }
+    Ok((number, llen))
+}
+
+fn remove_object(s: ref Vec[u8]) -> Result[(Vec[i64], Vec[u8]), Exc] {
+    if s.len() == 0 {
+        return Err(unexpected("Empty string does not encode an object identifier".to_string()));
+    }
+    if s[0] != 6u8 {
+        return Err(unexpected(f"wanted type 'object' (0x06), got 0x{hex2(s[0])}"));
+    }
+    let (length, llen) = read_length(tail(s, 1))?;
+    let mut body = sub(s, 1 + llen, 1 + llen + length);
+    let rest = tail(s, 1 + llen + length);
+    if body.len() == 0 {
+        return Err(unexpected("Empty object identifier".to_string()));
+    }
+    if body.len() != length {
+        return Err(unexpected("Length of object identifier longer than the provided buffer".to_string()));
+    }
+    let mut numbers: Vec[i64] = Vec.new();
+    while body.len() > 0 {
+        let (n, ll) = read_number(body)?;
+        numbers.push(n);
+        body = tail(body, ll);
+    }
+    let n0 = numbers[0];
+    let first = if n0 < 80 { n0 / 40 } else { 2 };
+    let mut out: Vec[i64] = Vec.new();
+    out.push(first);
+    out.push(n0 - 40 * first);
+    let mut i = 1;
+    while i < numbers.len() {
+        out.push(numbers[i]);
+        i += 1;
+    }
+    Ok((out, rest))
+}
+
+fn remove_integer(s: ref Vec[u8]) -> Result[(Vec[u64], Vec[u8]), Exc] {
+    if s.len() == 0 {
+        return Err(unexpected("Empty string is an invalid encoding of an integer".to_string()));
+    }
+    if s[0] != 2u8 {
+        return Err(unexpected(f"wanted type 'integer' (0x02), got 0x{hex2(s[0])}"));
+    }
+    let (length, llen) = read_length(tail(s, 1))?;
+    if length > s.len() - 1 - llen {
+        return Err(unexpected("Length longer than provided buffer".to_string()));
+    }
+    if length == 0 {
+        return Err(unexpected("0-byte long encoding of integer".to_string()));
+    }
+    let numberbytes = sub(s, 1 + llen, 1 + llen + length);
+    let rest = tail(s, 1 + llen + length);
+    let msb = numberbytes[0];
+    if msb >= 128u8 {
+        return Err(unexpected("Negative integers are not supported".to_string()));
+    }
+    if length > 1 and msb == 0u8 and numberbytes[1] < 128u8 {
+        return Err(unexpected("Invalid encoding of integer, unnecessary zero padding bytes".to_string()));
+    }
+    Ok((bn_from_bytes(numberbytes), rest))
+}
+
+// remove_bitstring(string, 0)
+fn remove_bitstring(s: ref Vec[u8]) -> Result[(Vec[u8], Vec[u8]), Exc] {
+    if s.len() == 0 {
+        return Err(unexpected("Empty string does not encode a bitstring".to_string()));
+    }
+    if s[0] != 3u8 {
+        return Err(unexpected(f"wanted bitstring (0x03), got 0x{hex2(s[0])}"));
+    }
+    let (length, llen) = read_length(tail(s, 1))?;
+    if length == 0 {
+        return Err(unexpected("Invalid length of bit string, can't be 0".to_string()));
+    }
+    let body = sub(s, 1 + llen, 1 + llen + length);
+    let rest = tail(s, 1 + llen + length);
+    let unused = first_of(body)?;
+    if unused > 7u8 {
+        return Err(unexpected("Invalid encoding of unused bits".to_string()));
+    }
+    if unused != 0u8 {
+        return Err(unexpected("Unexpected number of unused bits".to_string()));
+    }
+    Ok((tail(body, 1), rest))
+}
+
+fn starts_with_bytes(b: ref Vec[u8], pat: Str) -> bool {
+    let p = to_bytes(pat);
+    if b.len() < p.len() {
+        return false;
+    }
+    for k in 0..p.len() {
+        if b[k] != p[k] {
+            return false;
+        }
+    }
+    true
+}
+
+// der.unpem: every line that is not a ----- marker, stripped, joined and
+// base64-decoded.
+fn unpem(pem: ref Vec[u8]) -> Result[Vec[u8], Exc] {
+    let mut d: Vec[u8] = Vec.new();
+    let mut cur: Vec[u8] = Vec.new();
+    let mut i = 0;
+    while i <= pem.len() {
+        if i == pem.len() or pem[i] == 10u8 {
+            if cur.len() > 0 and not starts_with_bytes(cur, "-----") {
+                d = cat(d, bytes_strip(cur));
+            }
+            cur = Vec.new();
+        } else {
+            cur.push(pem[i]);
+        }
+        i += 1;
+    }
+    b64_decode(d)
+}
+
+fn bytes_strip(b: ref Vec[u8]) -> Vec[u8] {
+    let mut s = 0;
+    let mut e = b.len();
+    while s < e and is_ws(b[s]) {
+        s += 1;
+    }
+    while e > s and is_ws(b[e - 1]) {
+        e -= 1;
+    }
+    sub(b, s, e)
+}
+
+fn topem(der: ref Vec[u8], name: Str) -> String {
+    let b64 = b64_encode(der);
+    let mut s = f"-----BEGIN {name}-----\n";
+    let mut i = 0;
+    while i < b64.len() {
+        let j = if i + 76 < b64.len() { i + 76 } else { b64.len() };
+        s.push_str(slice(b64, i, j));
+        s.push('\n');
+        i = j;
+    }
+    s.push_str(f"-----END {name}-----\n");
+    s
+}
+
+// bytes.find
+fn bytes_find(hay: ref Vec[u8], needle: Str) -> i64 {
+    let n = to_bytes(needle);
+    let mut i = 0;
+    while i + n.len() <= hay.len() {
+        let mut ok = true;
+        for k in 0..n.len() {
+            if hay[i + k] != n[k] {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return i;
+        }
+        i += 1;
+    }
+    -1
+}
+
+// --------------------------------------------------------------- curves.py
+
+// A curve: y^2 = x^3 + ax + b over GF(p), its generator (gx, gy) of order n,
+// and the cofactor when it has one (has_h). An Edwards curve keeps only its
+// name and OID: this port knows it exists but cannot compute on it.
+#[derive(Clone)]
+struct Curve {
+    name: String,
+    openssl: String,
+    oid: Vec[i64],
+    edwards: bool,
+    p: Vec[u64],
+    a: Vec[u64],
+    b: Vec[u64],
+    gx: Vec[u64],
+    gy: Vec[u64],
+    n: Vec[u64],
+    h: Vec[u64],
+    has_h: bool,
+    baselen: i64,
+    vk_len: i64,
+}
+
+fn parse_oid(s: Str) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for part in split_on(s, 46u8) {
+        out.push(py_int(part).unwrap());
+    }
+    out
+}
+
+fn make_curve(name: Str, openssl: Str, oid: own Vec[i64], p: own Vec[u64], a: own Vec[u64], b: own Vec[u64], gx: own Vec[u64], gy: own Vec[u64], n: own Vec[u64], h: own Vec[u64], has_h: bool) -> Curve {
+    let baselen = orderlen(n);
+    let vk_len = 2 * orderlen(p);
+    Curve { name: name.to_string(), openssl: openssl.to_string(), oid: oid, edwards: false, p: p, a: a, b: b, gx: gx, gy: gy, n: n, h: h, has_h: has_h, baselen: baselen, vk_len: vk_len }
+}
+
+// curves.curves, from the table gen_kara.py copies out of the library.
+fn load_curves() -> Vec[Curve] {
+    let mut out: Vec[Curve] = Vec.new();
+    for line in split_c(curves_text(), '\n') {
+        if line.len() == 0 {
+            continue;
+        }
+        let f = split_on(line, 32u8);
+        if f.len() == 4 {
+            out.push(Curve { name: f[0].clone(), openssl: String.new(), oid: parse_oid(f[2]), edwards: true, p: Vec.new(), a: Vec.new(), b: Vec.new(), gx: Vec.new(), gy: Vec.new(), n: Vec.new(), h: Vec.new(), has_h: false, baselen: 0, vk_len: 0 });
+            continue;
+        }
+        out.push(make_curve(f[0], f[1], parse_oid(f[2]), bn_from_hex(f[3]), bn_from_hex(f[4]), bn_from_hex(f[5]), bn_from_hex(f[6]), bn_from_hex(f[7]), bn_from_hex(f[8]), bn_from_hex(f[9]), true));
+    }
+    out
+}
+
+fn curve_names(cs: ref Vec[Curve]) -> String {
+    let mut parts: Vec[String] = Vec.new();
+    for c in cs {
+        parts.push(py_repr(c.name));
+    }
+    f"[{join(parts, ", ")}]"
+}
+
+fn curve_by_name(cs: ref Vec[Curve], name: Str) -> Result[Curve, Exc] {
+    for c in cs {
+        if c.name == name or (c.openssl.len() > 0 and c.openssl == name) {
+            return Ok(c.clone());
+        }
+    }
+    Err(exc("UnknownCurveError", f"Curve with name {py_repr(name)} unknown, only curves supported: {curve_names(cs)}"))
+}
+
+fn find_curve(cs: ref Vec[Curve], oid: ref Vec[i64]) -> Result[Curve, Exc] {
+    for c in cs {
+        if c.oid == *oid {
+            return Ok(c.clone());
+        }
+    }
+    Err(exc("UnknownCurveError", f"I don't know about the curve with oid {oid_tuple(oid)}.I only know about these: {curve_names(cs)}"))
+}
+
+fn not_ported(c: ref Curve) -> Result[(), Exc] {
+    if c.edwards {
+        return Err(exc("NotImplementedError", f"{c.name} keys are not ported"));
+    }
+    Ok(())
+}
+
+// Curve.__eq__: the same field and coefficients, and the same generator.
+fn curve_eq(x: ref Curve, y: ref Curve) -> bool {
+    if x.edwards or y.edwards {
+        return x.edwards and y.edwards and x.name == y.name;
+    }
+    x.p == y.p and bn_mod(x.a, x.p) == bn_mod(y.a, y.p) and bn_mod(x.b, x.p) == bn_mod(y.b, y.p) and x.gx == y.gx and x.gy == y.gy
+}
+
+fn contains_point(c: ref Curve, x: ref Vec[u64], y: ref Vec[u64]) -> bool {
+    let p = ref c.p;
+    let lhs = f_mul(bn_mod(y, p), bn_mod(y, p), p);
+    let xm = bn_mod(x, p);
+    let rhs = f_add(f_mul(f_add(f_mul(xm, xm, p), bn_mod(c.a, p), p), xm, p), bn_mod(c.b, p), p);
+    lhs == rhs
+}
+
+// ---------------------------------------------------------- numbertheory.py
+
+fn no_square_root(a: ref Vec[u64], p: ref Vec[u64]) -> Exc {
+    exc("SquareRootError", f"{bn_str(a)} has no square root modulo {bn_str(p)}")
+}
+
+// square_root_mod_prime(a, p). The library uses a polynomial method when
+// p % 8 == 1; this port uses Tonelli-Shanks there. Both find a root, and
+// every caller then picks the root by its parity, so the answers agree.
+fn square_root_mod_prime(a: ref Vec[u64], p: ref Vec[u64]) -> Result[Vec[u64], Exc] {
+    if bn_is_zero(a) {
+        return Ok(Vec.new());
+    }
+    if bn_eq_small(p, 2) {
+        return Ok(a.clone());
+    }
+    let one = bn(1);
+    let pm1 = bn_sub(p, one);
+    if bn_powmod(a, bn_shr(pm1, 1), p) == pm1 {
+        return Err(no_square_root(a, p));
+    }
+    let p8 = bn_divmod_small(p, 8u64).1;
+    if p8 % 4u64 == 3u64 {
+        return Ok(bn_powmod(a, bn_shr(bn_add(p, one), 2), p));
+    }
+    if p8 == 5u64 {
+        let d = bn_powmod(a, bn_shr(pm1, 2), p);
+        if bn_eq_small(d, 1) {
+            return Ok(bn_powmod(a, bn_shr(bn_add(p, bn(3)), 3), p));
+        }
+        let t = bn_powmod(bn_mul_small(a, 4u64), bn_shr(bn_sub(p, bn(5)), 3), p);
+        return Ok(bn_mod(bn_mul(bn_mul_small(a, 2u64), t), p));
+    }
+    let mut q = pm1.clone();
+    let mut s = 0;
+    while not bn_is_odd(q) {
+        q = bn_shr(q, 1);
+        s += 1;
+    }
+    let mut z = bn(2);
+    while bn_powmod(z, bn_shr(pm1, 1), p) != pm1 {
+        z = bn_add(z, one);
+    }
+    let mut m = s;
+    let mut c = bn_powmod(z, q, p);
+    let mut t = bn_powmod(a, q, p);
+    let mut r = bn_powmod(a, bn_shr(bn_add(q, one), 1), p);
+    while not bn_eq_small(t, 1) {
+        let mut i = 0;
+        let mut t2 = t.clone();
+        while not bn_eq_small(t2, 1) {
+            t2 = f_mul(t2, t2, p);
+            i += 1;
+        }
+        let mut bb = c.clone();
+        for _ in 0..(m - i - 1) {
+            bb = f_mul(bb, bb, p);
+        }
+        m = i;
+        c = f_mul(bb, bb, p);
+        t = f_mul(t, c, p);
+        r = f_mul(r, bb, p);
+    }
+    Ok(r)
+}
+
+// --------------------------------------------------------- ellipticcurve.py
+
+// An affine point; inf is the point at infinity.
+#[derive(Clone)]
+struct Pt {
+    x: Vec[u64],
+    y: Vec[u64],
+    inf: bool,
+}
+
+fn infinity() -> Pt {
+    Pt { x: Vec.new(), y: Vec.new(), inf: true }
+}
+
+fn pt(x: ref Vec[u64], y: ref Vec[u64]) -> Pt {
+    Pt { x: x.clone(), y: y.clone(), inf: false }
+}
+
+// Jacobian coordinates: (X/Z^2, Y/Z^3), Z = 0 at infinity.
+struct Jac {
+    x: Vec[u64],
+    y: Vec[u64],
+    z: Vec[u64],
+}
+
+fn jac_of(q: ref Pt, p: ref Vec[u64]) -> Jac {
+    if q.inf {
+        return Jac { x: Vec.new(), y: bn(1), z: Vec.new() };
+    }
+    Jac { x: bn_mod(q.x, p), y: bn_mod(q.y, p), z: bn(1) }
+}
+
+fn jac_inf(j: ref Jac) -> bool {
+    bn_is_zero(j.z) or bn_is_zero(j.y)
+}
+
+fn jac_double(j: ref Jac, p: ref Vec[u64], a: ref Vec[u64]) -> Jac {
+    if jac_inf(j) {
+        return Jac { x: Vec.new(), y: bn(1), z: Vec.new() };
+    }
+    let xx = f_mul(j.x, j.x, p);
+    let yy = f_mul(j.y, j.y, p);
+    let yyyy = f_mul(yy, yy, p);
+    let zz = f_mul(j.z, j.z, p);
+    let xyy = f_add(j.x, yy, p);
+    let s0 = f_sub(f_sub(f_mul(xyy, xyy, p), xx, p), yyyy, p);
+    let s = f_add(s0, s0, p);
+    let m = f_add(f_add(f_add(xx, xx, p), xx, p), f_mul(a, f_mul(zz, zz, p), p), p);
+    let t = f_sub(f_mul(m, m, p), f_add(s, s, p), p);
+    let y8 = bn_mod(bn_mul_small(yyyy, 8u64), p);
+    let y3 = f_sub(f_mul(m, f_sub(s, t, p), p), y8, p);
+    let yz = f_add(j.y, j.z, p);
+    let z3 = f_sub(f_sub(f_mul(yz, yz, p), yy, p), zz, p);
+    Jac { x: t, y: y3, z: z3 }
+}
+
+fn jac_add(j1: ref Jac, j2: ref Jac, p: ref Vec[u64], a: ref Vec[u64]) -> Jac {
+    if jac_inf(j1) {
+        return Jac { x: j2.x.clone(), y: j2.y.clone(), z: j2.z.clone() };
+    }
+    if jac_inf(j2) {
+        return Jac { x: j1.x.clone(), y: j1.y.clone(), z: j1.z.clone() };
+    }
+    let z1z1 = f_mul(j1.z, j1.z, p);
+    let z2z2 = f_mul(j2.z, j2.z, p);
+    let u1 = f_mul(j1.x, z2z2, p);
+    let u2 = f_mul(j2.x, z1z1, p);
+    let s1 = f_mul(f_mul(j1.y, j2.z, p), z2z2, p);
+    let s2 = f_mul(f_mul(j2.y, j1.z, p), z1z1, p);
+    let h = f_sub(u2, u1, p);
+    let r0 = f_sub(s2, s1, p);
+    if bn_is_zero(h) {
+        if bn_is_zero(r0) {
+            return jac_double(j1, p, a);
+        }
+        return Jac { x: Vec.new(), y: bn(1), z: Vec.new() };
+    }
+    let r = f_add(r0, r0, p);
+    let h2 = f_add(h, h, p);
+    let i = f_mul(h2, h2, p);
+    let jj = f_mul(h, i, p);
+    let v = f_mul(u1, i, p);
+    let x3 = f_sub(f_sub(f_mul(r, r, p), jj, p), f_add(v, v, p), p);
+    let s1j = f_mul(s1, jj, p);
+    let y3 = f_sub(f_mul(r, f_sub(v, x3, p), p), f_add(s1j, s1j, p), p);
+    let zs = f_add(j1.z, j2.z, p);
+    let z3 = f_mul(f_sub(f_sub(f_mul(zs, zs, p), z1z1, p), z2z2, p), h, p);
+    Jac { x: x3, y: y3, z: z3 }
+}
+
+fn to_affine(j: ref Jac, p: ref Vec[u64]) -> Result[Pt, Exc] {
+    if jac_inf(j) {
+        return Ok(infinity());
+    }
+    let zi = inverse_mod(j.z, p)?;
+    let zi2 = f_mul(zi, zi, p);
+    Ok(Pt { x: f_mul(j.x, zi2, p), y: f_mul(f_mul(j.y, zi2, p), zi, p), inf: false })
+}
+
+fn jac_mul(q: ref Pt, k: ref Vec[u64], c: ref Curve) -> Jac {
+    let p = ref c.p;
+    let base = jac_of(q, p);
+    let mut acc = Jac { x: Vec.new(), y: bn(1), z: Vec.new() };
+    if q.inf or bn_is_zero(q.y) or bn_is_zero(k) {
+        return acc;
+    }
+    let a = bn_mod(c.a, p);
+    let mut i = bn_bits(k) - 1;
+    while i >= 0 {
+        acc = jac_double(acc, p, a);
+        if bn_bit(k, i) {
+            acc = jac_add(acc, base, p, a);
+        }
+        i -= 1;
+    }
+    acc
+}
+
+// point * k
+fn pt_mul(q: ref Pt, k: ref Vec[u64], c: ref Curve) -> Result[Pt, Exc] {
+    to_affine(jac_mul(q, k, c), c.p)
+}
+
+// u1 * q1 + u2 * q2
+fn pt_mul_add(q1: ref Pt, u1: ref Vec[u64], q2: ref Pt, u2: ref Vec[u64], c: ref Curve) -> Result[Pt, Exc] {
+    let a = bn_mod(c.a, c.p);
+    to_affine(jac_add(jac_mul(q1, u1, c), jac_mul(q2, u2, c), c.p, a), c.p)
+}
+
+fn generator(c: ref Curve) -> Pt {
+    pt(c.gx, c.gy)
+}
+
+fn pt_eq(x: ref Pt, y: ref Pt) -> bool {
+    if x.inf or y.inf {
+        return x.inf and y.inf;
+    }
+    x.x == y.x and x.y == y.y
+}
+
+// AbstractPoint.to_bytes
+fn point_to_bytes(q: ref Pt, c: ref Curve, encoding: Str) -> Result[Vec[u8], Exc] {
+    let raw = cat(number_to_string(q.x, c.p)?, number_to_string(q.y, c.p)?);
+    let odd = bn_is_odd(q.y);
+    let mut out: Vec[u8] = Vec.new();
+    if encoding == "raw" {
+        return Ok(raw);
+    } else if encoding == "uncompressed" {
+        out.push(4u8);
+        return Ok(cat(out, raw));
+    } else if encoding == "hybrid" {
+        out.push(if odd { 7u8 } else { 6u8 });
+        return Ok(cat(out, raw));
+    }
+    out.push(if odd { 3u8 } else { 2u8 });
+    Ok(cat(out, number_to_string(q.x, c.p)?))
+}
+
+fn malformed(msg: own String) -> Exc {
+    exc("MalformedPointError", msg)
+}
+
+fn has_enc(valid: ref Vec[String], name: Str) -> bool {
+    for v in valid {
+        if v == name {
+            return true;
+        }
+    }
+    false
+}
+
+fn from_compressed(data: ref Vec[u8], c: ref Curve) -> Result[Pt, Exc] {
+    if data[0] != 2u8 and data[0] != 3u8 {
+        return Err(malformed("Malformed compressed point encoding".to_string()));
+    }
+    let is_even = data[0] == 2u8;
+    let x = bn_from_bytes(tail(data, 1));
+    let p = ref c.p;
+    let xm = bn_mod(x, p);
+    let alpha = f_add(f_mul(f_add(f_mul(xm, xm, p), bn_mod(c.a, p), p), xm, p), bn_mod(c.b, p), p);
+    let beta = match square_root_mod_prime(alpha, p) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(exc_wrap("MalformedPointError", "Encoding does not correspond to a point on curve", e));
+        }
+    };
+    let y = if is_even == bn_is_odd(beta) { bn_sub(p, beta) } else { beta };
+    Ok(Pt { x: x, y: y, inf: false })
+}
+
+// AbstractPoint.from_bytes: the coordinates, not yet checked against the
+// curve.
+fn point_from_bytes(c: ref Curve, data: ref Vec[u8], validate_encoding: bool, valid: ref Vec[String]) -> Result[Pt, Exc] {
+    let key_len = data.len();
+    let raw_len = c.vk_len;
+    if key_len == raw_len and has_enc(valid, "raw") {
+        return Ok(Pt { x: bn_from_bytes(sub(data, 0, raw_len / 2)), y: bn_from_bytes(tail(data, raw_len / 2)), inf: false });
+    }
+    if key_len == raw_len + 1 and (has_enc(valid, "hybrid") or has_enc(valid, "uncompressed")) {
+        let x = bn_from_bytes(sub(data, 1, 1 + raw_len / 2));
+        let y = bn_from_bytes(tail(data, 1 + raw_len / 2));
+        if (data[0] == 6u8 or data[0] == 7u8) and has_enc(valid, "hybrid") {
+            let odd = bn_is_odd(y);
+            if validate_encoding and ((odd and data[0] != 7u8) or (not odd and data[0] != 6u8)) {
+                return Err(malformed("Inconsistent hybrid point encoding".to_string()));
+            }
+            return Ok(Pt { x: x, y: y, inf: false });
+        }
+        if data[0] == 4u8 and has_enc(valid, "uncompressed") {
+            return Ok(Pt { x: x, y: y, inf: false });
+        }
+        return Err(malformed("Invalid X9.62 encoding of the public point".to_string()));
+    }
+    if key_len == raw_len / 2 + 1 and has_enc(valid, "compressed") {
+        return from_compressed(data, c);
+    }
+    Err(malformed(f"Length of string does not match lengths of any of the enabled ({join(valid, ", ")}) encodings of the curve."))
+}
+
+fn encodings(names: Str) -> Vec[String] {
+    split_on(names, 44u8)
+}
+
+// Curve.to_der(encoding, point_encoding)
+fn curve_to_der(c: ref Curve, encoding0: Str, point_encoding: Str) -> Result[Vec[u8], Exc] {
+    let encoding = if encoding0.len() > 0 { encoding0.to_string() } else if c.oid.len() > 0 { "named_curve".to_string() } else { "explicit".to_string() };
+    if encoding != "named_curve" and encoding != "explicit" {
+        return Err(exc("ValueError", "Only 'named_curve' and 'explicit' encodings supported".to_string()));
+    }
+    if encoding == "named_curve" {
+        if c.oid.len() == 0 {
+            return Err(exc("UnknownCurveError", "Can't encode curve using named_curve encoding without associated curve OID".to_string()));
+        }
+        return Ok(encode_oid(c.oid));
+    }
+    not_ported(c)?;
+    let p = ref c.p;
+    let mut field: Vec[Vec[u8]] = Vec.new();
+    field.push(encode_oid([1, 2, 840, 10045, 1, 1].to_vec()));
+    field.push(encode_integer(p));
+    let mut coeffs: Vec[Vec[u8]] = Vec.new();
+    coeffs.push(encode_octet_string(number_to_string(bn_mod(c.a, p), p)?));
+    coeffs.push(encode_octet_string(number_to_string(bn_mod(c.b, p), p)?));
+    let mut seq: Vec[Vec[u8]] = Vec.new();
+    seq.push(encode_integer(bn(1)));
+    seq.push(encode_sequence(field));
+    seq.push(encode_sequence(coeffs));
+    seq.push(encode_octet_string(point_to_bytes(generator(c), c, point_encoding)?));
+    seq.push(encode_integer(c.n));
+    if c.has_h and not bn_is_zero(c.h) {
+        seq.push(encode_integer(c.h));
+    }
+    Ok(encode_sequence(seq))
+}
+
+// Curve.from_der: a named curve's OID, or explicit parameters, matched
+// against the known curves.
+fn curve_from_der(cs: ref Vec[Curve], data: ref Vec[u8]) -> Result[Curve, Exc] {
+    if not is_sequence(data) {
+        let (oid, empty) = remove_object(data)?;
+        if empty.len() > 0 {
+            return Err(unexpected("Unexpected data after OID".to_string()));
+        }
+        return find_curve(cs, oid);
+    }
+    let (seq, empty) = remove_sequence(data)?;
+    if empty.len() > 0 {
+        return Err(unexpected("Unexpected data after ECParameters structure".to_string()));
+    }
+    let (version, rest1) = remove_integer(seq)?;
+    if not bn_eq_small(version, 1) {
+        return Err(unexpected("Unknown parameter encoding format".to_string()));
+    }
+    let (field_id, rest2) = remove_sequence(rest1)?;
+    let (curve, rest3) = remove_sequence(rest2)?;
+    let (base_bytes, rest4) = remove_octet_string(rest3)?;
+    let (order, rest5) = remove_integer(rest4)?;
+    let mut cofactor: Vec[u64] = Vec.new();
+    let mut has_h = false;
+    if rest5.len() > 0 {
+        cofactor = remove_integer(rest5)?.0;
+        has_h = true;
+    }
+    let (field_type, rest6) = remove_object(field_id)?;
+    if field_type == [1, 2, 840, 10045, 1, 2].to_vec() {
+        return Err(exc("UnknownCurveError", "Characteristic 2 curves unsupported".to_string()));
+    }
+    if field_type != [1, 2, 840, 10045, 1, 1].to_vec() {
+        return Err(exc("UnknownCurveError", f"Unknown field type: {oid_tuple(field_type)}"));
+    }
+    let (prime, empty2) = remove_integer(rest6)?;
+    if empty2.len() > 0 {
+        return Err(unexpected("Unexpected data after ECParameters.fieldID.Prime-p element".to_string()));
+    }
+    let (a_bytes, rest7) = remove_octet_string(curve)?;
+    let (b_bytes, _) = remove_octet_string(rest7)?;
+    let shell = make_curve("unknown", "", Vec.new(), prime, bn_from_bytes(a_bytes), bn_from_bytes(b_bytes), Vec.new(), Vec.new(), order, cofactor, has_h);
+    let g = point_from_bytes(shell, base_bytes, true, encodings("uncompressed,compressed,hybrid"))?;
+    let tmp = make_curve("unknown", "", Vec.new(), shell.p.clone(), shell.a.clone(), shell.b.clone(), g.x.clone(), g.y.clone(), shell.n.clone(), shell.h.clone(), has_h);
+    for c in cs {
+        if curve_eq(tmp, c) {
+            return Ok(c.clone());
+        }
+    }
+    Ok(tmp)
+}
+
+// ----------------------------------------------------------- hashes, hmac
+
+fn hash_digest(name: Str, m: ref Vec[u8]) -> Vec[u8] {
+    if name == "sha1" {
+        sha1(m)
+    } else if name == "sha224" {
+        sha256_family(m, true)
+    } else if name == "sha256" {
+        sha256_family(m, false)
+    } else if name == "sha384" {
+        sha512_family(m, true)
+    } else {
+        sha512_family(m, false)
+    }
+}
+
+fn digest_size(name: Str) -> i64 {
+    if name == "sha1" {
+        20
+    } else if name == "sha224" {
+        28
+    } else if name == "sha256" {
+        32
+    } else if name == "sha384" {
+        48
+    } else {
+        64
+    }
+}
+
+fn hmac(name: Str, key: ref Vec[u8], msg: ref Vec[u8]) -> Vec[u8] {
+    let block = if name == "sha384" or name == "sha512" { 128 } else { 64 };
+    let mut k = if key.len() > block { hash_digest(name, key) } else { key.clone() };
+    while k.len() < block {
+        k.push(0u8);
+    }
+    let mut inner: Vec[u8] = Vec.new();
+    let mut outer: Vec[u8] = Vec.new();
+    for c in k {
+        inner.push(c ^ 0x36u8);
+        outer.push(c ^ 0x5Cu8);
+    }
+    let ih = hash_digest(name, cat(inner, msg));
+    hash_digest(name, cat(outer, ih))
+}
+
+// ---------------------------------------------------------------- keys.py
+
+// A VerifyingKey, or a SigningKey (is_private, with its secret d). hash is
+// the default hash function's name, empty for None.
+#[derive(Clone)]
+struct Key {
+    curve: Curve,
+    hash: String,
+    q: Pt,
+    is_private: bool,
+    d: Vec[u64],
+}
+
+fn oid_ec_public_key() -> Vec[i64] {
+    [1, 2, 840, 10045, 2, 1].to_vec()
+}
+
+fn is_eddsa_oid(oid: ref Vec[i64]) -> bool {
+    *oid == [1, 3, 101, 112].to_vec() or *oid == [1, 3, 101, 113].to_vec()
+}
+
+// VerifyingKey.from_public_point; ecdsa.Public_key's checks all come out
+// as the same MalformedPointError.
+fn vk_from_point(curve: ref Curve, q: ref Pt, hash: Str, validate: bool) -> Result[Key, Exc] {
+    not_ported(curve)?;
+    if q.inf {
+        return Err(exc("TypeError", "'<=' not supported between instances of 'int' and 'NoneType'".to_string()));
+    }
+    let bad = "Point does not lay on the curve";
+    if bn_cmp(q.x, curve.p) >= 0 or bn_cmp(q.y, curve.p) >= 0 {
+        return Err(malformed(bad.to_string()));
+    }
+    if validate and not contains_point(curve, q.x, q.y) {
+        return Err(malformed(bad.to_string()));
+    }
+    if validate and not (curve.has_h and bn_eq_small(curve.h, 1)) {
+        if not pt_mul(q, curve.n, curve)?.inf {
+            return Err(malformed(bad.to_string()));
+        }
+    }
+    Ok(Key { curve: curve.clone(), hash: hash.to_string(), q: q.clone(), is_private: false, d: Vec.new() })
+}
+
+fn vk_from_string(curve: ref Curve, s: ref Vec[u8], hash: Str, valid: ref Vec[String]) -> Result[Key, Exc] {
+    not_ported(curve)?;
+    let q = point_from_bytes(curve, s, true, valid)?;
+    vk_from_point(curve, q, hash, true)
+}
+
+fn vk_to_string(k: ref Key, encoding: Str) -> Result[Vec[u8], Exc] {
+    point_to_bytes(k.q, k.curve, encoding)
+}
+
+fn hash_label(h: Str) -> String {
+    if h.len() == 0 { "None".to_string() } else { h.to_string() }
+}
+
+fn vk_repr(k: ref Key) -> Result[String, Exc] {
+    Ok(f"VerifyingKey.from_string({bytes_repr(vk_to_string(k, "compressed")?)}, {k.curve.name}, {hash_label(k.hash)})")
+}
+
+fn vk_eq(x: ref Key, y: ref Key) -> bool {
+    curve_eq(x.curve, y.curve) and pt_eq(x.q, y.q)
+}
+
+fn vk_to_der(k: ref Key, point_encoding: Str, curve_encoding: Str) -> Result[Vec[u8], Exc] {
+    if point_encoding == "raw" {
+        return Err(exc("ValueError", "raw point_encoding not allowed in DER".to_string()));
+    }
+    let point_str = vk_to_string(k, point_encoding)?;
+    let mut alg: Vec[Vec[u8]] = Vec.new();
+    alg.push(encode_oid(oid_ec_public_key()));
+    alg.push(curve_to_der(k.curve, curve_encoding, point_encoding)?);
+    let mut seq: Vec[Vec[u8]] = Vec.new();
+    seq.push(encode_sequence(alg));
+    seq.push(encode_bitstring(point_str));
+    Ok(encode_sequence(seq))
+}
+
+fn vk_to_pem(k: ref Key, point_encoding: Str, curve_encoding: Str) -> Result[String, Exc] {
+    Ok(topem(vk_to_der(k, point_encoding, curve_encoding)?, "PUBLIC KEY"))
+}
+
+fn vk_from_der(cs: ref Vec[Curve], s: ref Vec[u8], hash: Str) -> Result[Key, Exc] {
+    let (s1, empty) = remove_sequence(s)?;
+    if empty.len() > 0 {
+        return Err(unexpected(f"trailing junk after DER pubkey: {hexlify_str(empty)}"));
+    }
+    let (s2, point_bits) = remove_sequence(s1)?;
+    let (oid_pk, rest) = remove_object(s2)?;
+    if is_eddsa_oid(oid_pk) {
+        return Err(exc("NotImplementedError", "EdDSA keys are not ported".to_string()));
+    }
+    if oid_pk != oid_ec_public_key() {
+        return Err(unexpected(f"Unexpected object identifier in DER encoding: {oid_tuple(oid_pk)}"));
+    }
+    let curve = curve_from_der(cs, rest)?;
+    let (point_str, empty2) = remove_bitstring(point_bits)?;
+    if empty2.len() > 0 {
+        return Err(unexpected(f"trailing junk after pubkey pointstring: {hexlify_str(empty2)}"));
+    }
+    if point_str.len() == curve.vk_len {
+        return Err(unexpected("Malformed encoding of public point".to_string()));
+    }
+    vk_from_string(curve, point_str, hash, encodings("uncompressed,compressed,hybrid"))
+}
+
+fn vk_from_pem(cs: ref Vec[Curve], s: ref Vec[u8], hash: Str) -> Result[Key, Exc] {
+    vk_from_der(cs, unpem(s)?, hash)
+}
+
+fn sk_from_secret(curve: ref Curve, d: ref Vec[u64], hash: Str) -> Result[Key, Exc] {
+    not_ported(curve)?;
+    if bn_is_zero(d) or bn_cmp(d, curve.n) >= 0 {
+        return Err(malformed(f"Invalid value for secexp, expected integer between 1 and {bn_str(curve.n)}"));
+    }
+    let q = pt_mul(generator(curve), d, curve)?;
+    let mut k = vk_from_point(curve, q, hash, false)?;
+    k.is_private = true;
+    k.d = d.clone();
+    Ok(k)
+}
+
+fn sk_from_string(curve: ref Curve, s: ref Vec[u8], hash: Str) -> Result[Key, Exc] {
+    if s.len() != curve.baselen {
+        return Err(malformed(f"Invalid length of private key, received {s.len()}, expected {curve.baselen}"));
+    }
+    sk_from_secret(curve, bn_from_bytes(s), hash)
+}
+
+fn sk_from_der(cs: ref Vec[Curve], s0: ref Vec[u8], hash: Str) -> Result[Key, Exc] {
+    let (s1, empty) = remove_sequence(s0)?;
+    if empty.len() > 0 {
+        return Err(unexpected(f"trailing junk after DER privkey: {hexlify_str(empty)}"));
+    }
+    let (v1, s2) = remove_integer(s1)?;
+    let mut version = v1;
+    let mut s = s2;
+    let mut curve: Option[Curve] = None;
+    if is_sequence(s) {
+        if bn_cmp(version, bn(1)) > 0 {
+            return Err(unexpected(f"expected version '0' or '1' at start of privkey, got {bn_str(version)}"));
+        }
+        let (sequence, s3) = remove_sequence(s)?;
+        let (algorithm_oid, algorithm_identifier) = remove_object(sequence)?;
+        if is_eddsa_oid(algorithm_oid) {
+            return Err(exc("NotImplementedError", "EdDSA keys are not ported".to_string()));
+        }
+        if algorithm_oid != oid_ec_public_key() and algorithm_oid != [1, 3, 132, 1, 12].to_vec() and algorithm_oid != [1, 3, 132, 1, 13].to_vec() {
+            return Err(unexpected(f"unexpected algorithm identifier '{oid_tuple(algorithm_oid)}'"));
+        }
+        curve = Some(curve_from_der(cs, algorithm_identifier)?);
+        let (s4, _) = remove_octet_string(s3)?;
+        let (s5, empty2) = remove_sequence(s4)?;
+        if empty2.len() > 0 {
+            return Err(unexpected(f"trailing junk after DER privkey: {hexlify_str(empty2)}"));
+        }
+        let (v2, s6) = remove_integer(s5)?;
+        version = v2;
+        s = s6;
+    }
+    if not bn_eq_small(version, 1) {
+        return Err(unexpected(f"expected version '1' at start of DER privkey, got {bn_str(version)}"));
+    }
+    let (privkey_str, s7) = remove_octet_string(s)?;
+    let c = match curve {
+        Some(c) => c,
+        None => {
+            let (tag, curve_oid_str, _) = remove_constructed(s7)?;
+            if tag != 0 {
+                return Err(unexpected(f"expected tag 0 in DER privkey, got {tag}"));
+            }
+            curve_from_der(cs, curve_oid_str)?
+        }
+    };
+    let mut padded: Vec[u8] = Vec.new();
+    while padded.len() + privkey_str.len() < c.baselen {
+        padded.push(0u8);
+    }
+    sk_from_string(c, cat(padded, privkey_str), hash)
+}
+
+fn sk_from_pem(cs: ref Vec[Curve], b: ref Vec[u8], hash: Str) -> Result[Key, Exc] {
+    let mut at = bytes_find(b, "-----BEGIN EC PRIVATE KEY-----");
+    if at == -1 {
+        at = bytes_find(b, "-----BEGIN PRIVATE KEY-----");
+        if at == -1 {
+            return Err(exc("ValueError", "subsection not found".to_string()));
+        }
+    }
+    sk_from_der(cs, unpem(tail(b, at))?, hash)
+}
+
+fn sk_to_string(k: ref Key) -> Result[Vec[u8], Exc] {
+    number_to_string(k.d, k.curve.n)
+}
+
+fn sk_to_der(k: ref Key, point_encoding: Str, format: Str, curve_encoding: Str) -> Result[Vec[u8], Exc] {
+    if point_encoding == "raw" {
+        return Err(exc("ValueError", "raw encoding not allowed in DER".to_string()));
+    }
+    let encoded_vk = vk_to_string(k, point_encoding)?;
+    let mut elems: Vec[Vec[u8]] = Vec.new();
+    elems.push(encode_integer(bn(1)));
+    elems.push(encode_octet_string(sk_to_string(k)?));
+    if format == "ssleay" {
+        elems.push(encode_constructed(0, curve_to_der(k.curve, curve_encoding, "uncompressed")?));
+    }
+    elems.push(encode_constructed(1, encode_bitstring(encoded_vk)));
+    let ec_private_key = encode_sequence(elems);
+    if format == "ssleay" {
+        return Ok(ec_private_key);
+    }
+    let mut alg: Vec[Vec[u8]] = Vec.new();
+    alg.push(encode_oid(oid_ec_public_key()));
+    alg.push(curve_to_der(k.curve, curve_encoding, "uncompressed")?);
+    let mut outer: Vec[Vec[u8]] = Vec.new();
+    outer.push(encode_integer(bn(1)));
+    outer.push(encode_sequence(alg));
+    outer.push(encode_octet_string(ec_private_key));
+    Ok(encode_sequence(outer))
+}
+
+fn sk_to_pem(k: ref Key, point_encoding: Str, format: Str, curve_encoding: Str) -> Result[String, Exc] {
+    let header = if format == "ssleay" { "EC PRIVATE KEY" } else { "PRIVATE KEY" };
+    Ok(topem(sk_to_der(k, point_encoding, format, curve_encoding)?, header))
+}
+
+// util.randrange(order, os.urandom)
+fn randrange(rng: mut ref Rng, order: ref Vec[u64]) -> Vec[u64] {
+    let upper_2 = bit_length(bn_sub(order, bn(2)));
+    let upper_256 = upper_2 / 8 + 1;
+    loop {
+        let ent = urandom(mut rng, upper_256);
+        let num = bn_add(bn_shr(bn_from_bytes(ent), upper_256 * 8 - upper_2), bn(1));
+        if bn_cmp(num, order) < 0 {
+            return num;
+        }
+    }
+}
+
+fn generate(rng: mut ref Rng, curve: ref Curve, hash: Str) -> Result[Key, Exc] {
+    not_ported(curve)?;
+    let d = randrange(mut rng, curve.n);
+    sk_from_secret(curve, d, hash)
+}
+
+fn truncate_and_convert_digest(digest0: ref Vec[u8], curve: ref Curve, allow_truncate: bool) -> Result[Vec[u64], Exc] {
+    let mut digest = digest0.clone();
+    if not allow_truncate {
+        if digest.len() > curve.baselen {
+            return Err(exc("BadDigestError", f"this curve ({curve.name}) is too short for the length of your digest ({8 * digest.len()})"));
+        }
+    } else {
+        digest = sub(digest, 0, curve.baselen);
+    }
+    let mut number = bn_from_bytes(digest);
+    if allow_truncate {
+        let max_length = bit_length(curve.n);
+        let length = digest.len() * 8;
+        if length > max_length {
+            number = bn_shr(number, length - max_length);
+        }
+    }
+    Ok(number)
+}
+
+// ecdsa.Private_key.sign, with k as given.
+fn sign_number(k: ref Key, number: ref Vec[u64], kk: ref Vec[u64]) -> Result[(Vec[u64], Vec[u64]), Exc] {
+    let n = ref k.curve.n;
+    if bn_is_zero(kk) or bn_cmp(kk, n) >= 0 {
+        return Err(exc("AssertionError", String.new()));
+    }
+    let p1 = pt_mul(generator(k.curve), bn_mod(kk, n), k.curve)?;
+    let r = bn_mod(p1.x, n);
+    if bn_is_zero(r) {
+        return Err(exc("RSZeroError", "amazingly unlucky random number r".to_string()));
+    }
+    let kinv = inverse_mod(kk, n)?;
+    let s = bn_mod(bn_mul(kinv, bn_add(number, bn_mod(bn_mul(k.d, r), n))), n);
+    if bn_is_zero(s) {
+        return Err(exc("RSZeroError", "amazingly unlucky random number s".to_string()));
+    }
+    Ok((r, s))
+}
+
+fn sign_digest(k: ref Key, digest: ref Vec[u8], kk: ref Vec[u64], allow_truncate: bool) -> Result[(Vec[u64], Vec[u64]), Exc] {
+    let number = truncate_and_convert_digest(digest, k.curve, allow_truncate)?;
+    sign_number(k, number, kk)
+}
+
+// --------------------------------------------------------------- rfc6979.py
+
+fn bits2int(data: ref Vec[u8], qlen: i64) -> Vec[u64] {
+    let x = bn_from_bytes(data);
+    let l = data.len() * 8;
+    if l > qlen { bn_shr(x, l - qlen) } else { x }
+}
+
+fn bits2octets(data: ref Vec[u8], order: ref Vec[u64]) -> Vec[u8] {
+    let z1 = bits2int(data, bit_length(order));
+    let z2 = if bn_cmp(z1, order) >= 0 { bn_sub(z1, order) } else { z1 };
+    bn_to_bytes(z2, orderlen(order))
+}
+
+fn byte_run(c: u8, n: i64) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    for _ in 0..n {
+        out.push(c);
+    }
+    out
+}
+
+fn generate_k(order: ref Vec[u64], secexp: ref Vec[u64], hname: Str, data: ref Vec[u8], retry0: i64) -> Result[Vec[u64], Exc] {
+    let mut retry_gen = retry0;
+    let qlen = bit_length(order);
+    let holen = digest_size(hname);
+    let rolen = (qlen + 7) / 8;
+    let bx = cat(number_to_string(secexp, order)?, bits2octets(data, order));
+    let mut v = byte_run(1u8, holen);
+    let mut k = byte_run(0u8, holen);
+    k = hmac(hname, k, cat(cat(v, byte_run(0u8, 1)), bx));
+    v = hmac(hname, k, v);
+    k = hmac(hname, k, cat(cat(v, byte_run(1u8, 1)), bx));
+    v = hmac(hname, k, v);
+    loop {
+        let mut t: Vec[u8] = Vec.new();
+        while t.len() < rolen {
+            v = hmac(hname, k, v);
+            t = cat(t, v);
+        }
+        let secret = bits2int(t, qlen);
+        if not bn_is_zero(secret) and bn_cmp(secret, order) < 0 {
+            if retry_gen <= 0 {
+                return Ok(secret);
+            }
+            retry_gen -= 1;
+        }
+        k = hmac(hname, k, cat(v, byte_run(0u8, 1)));
+        v = hmac(hname, k, v);
+    }
+}
+
+fn sign_digest_deterministic(k: ref Key, digest: ref Vec[u8], hname: Str, allow_truncate: bool) -> Result[(Vec[u64], Vec[u64]), Exc] {
+    let mut retry = 0;
+    loop {
+        let kk = generate_k(k.curve.n, k.d, hname, digest, retry)?;
+        match sign_digest(k, digest, kk, allow_truncate) {
+            Ok(rs) => {
+                return Ok(rs);
+            }
+            Err(e) => {
+                if e.cls != "RSZeroError" {
+                    return Err(e);
+                }
+                retry += 1;
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------- util.sigencode/decode
+
+fn sigencode(name: Str, r: ref Vec[u64], s0: ref Vec[u64], order: ref Vec[u64]) -> Result[Vec[u8], Exc] {
+    if name == "string" {
+        return Ok(cat(number_to_string(r, order)?, number_to_string(s0, order)?));
+    }
+    let s = if name == "canon" and bn_cmp(bn_shl(s0, 1), order) > 0 { bn_sub(order, s0) } else { s0.clone() };
+    let mut parts: Vec[Vec[u8]] = Vec.new();
+    parts.push(encode_integer(r));
+    parts.push(encode_integer(s));
+    Ok(encode_sequence(parts))
+}
+
+fn sigdecode(name: Str, sig: ref Vec[u8], order: ref Vec[u64]) -> Result[(Vec[u64], Vec[u64]), Exc] {
+    if name == "string" {
+        let l = orderlen(order);
+        if sig.len() != 2 * l {
+            return Err(exc("MalformedSignature", f"Invalid length of signature, expected {2 * l} bytes long, provided string is {sig.len()} bytes long"));
+        }
+        return Ok((bn_from_bytes(sub(sig, 0, l)), bn_from_bytes(tail(sig, l))));
+    }
+    let (rs, empty) = remove_sequence(sig)?;
+    if empty.len() > 0 {
+        return Err(unexpected(f"trailing junk after DER sig: {hexlify_str(empty)}"));
+    }
+    let (r, rest) = remove_integer(rs)?;
+    let (s, empty2) = remove_integer(rest)?;
+    if empty2.len() > 0 {
+        return Err(unexpected(f"trailing junk after DER numbers: {hexlify_str(empty2)}"));
+    }
+    Ok((r, s))
+}
+
+// ecdsa.Public_key.verifies
+fn verifies(k: ref Key, number: ref Vec[u64], r: ref Vec[u64], s: ref Vec[u64]) -> Result[bool, Exc] {
+    let n = ref k.curve.n;
+    if bn_is_zero(r) or bn_cmp(r, n) >= 0 or bn_is_zero(s) or bn_cmp(s, n) >= 0 {
+        return Ok(false);
+    }
+    let c = inverse_mod(s, n)?;
+    let u1 = bn_mod(bn_mul(number, c), n);
+    let u2 = bn_mod(bn_mul(r, c), n);
+    let xy = pt_mul_add(generator(k.curve), u1, k.q, u2, k.curve)?;
+    if xy.inf {
+        return Err(exc("TypeError", "unsupported operand type(s) for %: 'NoneType' and 'int'".to_string()));
+    }
+    Ok(bn_mod(xy.x, n) == *r)
+}
+
+fn verify_digest(k: ref Key, sig: ref Vec[u8], digest: ref Vec[u8], decoding: Str, allow_truncate: bool) -> Result[(), Exc] {
+    let number = truncate_and_convert_digest(digest, k.curve, allow_truncate)?;
+    let (r, s) = match sigdecode(decoding, sig, k.curve.n) {
+        Ok(rs) => rs,
+        Err(e) => {
+            if e.cls == "UnexpectedDER" or e.cls == "MalformedSignature" {
+                return Err(exc_wrap("BadSignatureError", "Malformed formatting of signature", e));
+            }
+            return Err(e);
+        }
+    };
+    if verifies(k, number, r, s)? {
+        return Ok(());
+    }
+    Err(exc("BadSignatureError", "Signature verification failed".to_string()))
+}
+
+fn verify(k: ref Key, sig: ref Vec[u8], data: ref Vec[u8], hname: Str, decoding: Str) -> Result[(), Exc] {
+    verify_digest(k, sig, hash_digest(hname, data), decoding, true)
+}
+
+// VerifyingKey.from_public_key_recovery: the two keys that could have made
+// the signature.
+fn recover(sig: ref Vec[u8], data: ref Vec[u8], curve: ref Curve, hname: Str) -> Result[Vec[Key], Exc] {
+    not_ported(curve)?;
+    let n = ref curve.n;
+    let p = ref curve.p;
+    let (r, s) = sigdecode("string", sig, n)?;
+    let e = truncate_and_convert_digest(hash_digest(hname, data), curve, true)?;
+    let x = bn_mod(r, p);
+    let alpha = f_add(f_mul(f_add(f_mul(x, x, p), bn_mod(curve.a, p), p), x, p), bn_mod(curve.b, p), p);
+    let beta = square_root_mod_prime(alpha, p)?;
+    let y = if bn_is_odd(beta) { bn_sub(p, beta) } else { beta };
+    let em = bn_mod(e, n);
+    let neg_e = if bn_is_zero(em) { em } else { bn_sub(n, em) };
+    let rinv = inverse_mod(r, n)?;
+    let mut out: Vec[Key] = Vec.new();
+    for flip in [false, true] {
+        let ry = if flip { f_neg(y, p) } else { y.clone() };
+        let big_r = pt(r, ry);
+        let inner = pt_mul_add(big_r, s, generator(curve), neg_e, curve)?;
+        let q = pt_mul(inner, rinv, curve)?;
+        if q.inf {
+            return Err(exc("TypeError", "'<=' not supported between instances of 'int' and 'NoneType'".to_string()));
+        }
+        if not contains_point(curve, q.x, q.y) {
+            return Err(exc("InvalidPointError", "Point does not lay on the curve".to_string()));
+        }
+        out.push(vk_from_point(curve, q, hname, true)?);
+    }
+    Ok(out)
+}
+
+// ECDH(private_key=a), load_received_public_key(b), then
+// generate_sharedsecret_bytes().
+fn ecdh(a: ref Key, b: ref Key) -> Result[Vec[u8], Exc] {
+    if not curve_eq(a.curve, b.curve) {
+        return Err(exc("InvalidCurveError", "Curve mismatch.".to_string()));
+    }
+    let shared = pt_mul(b.q, a.d, a.curve)?;
+    if shared.inf {
+        return Err(exc("InvalidSharedSecretError", "Invalid shared secret (INFINITY).".to_string()));
+    }
+    number_to_string(shared.x, a.curve.p)
+}
+
+// ------------------------------------------------------------------ jobs
+
+const HEADER: Str = "{\"alg\":\"ES256\",\"typ\":\"JWT\"}";
+
+fn read_file(path: Str) -> Vec[u8] {
+    match fs.read_bytes(f"data/{path}") {
+        Ok(b) => b,
+        Err(_) => Vec.new(),
+    }
+}
+
+fn key_index(keys: ref Vec[(String, Key)], name: Str) -> i64 {
+    let mut i = 0;
+    while i < keys.len() {
+        if keys[i].0 == name {
+            return i;
+        }
+        i += 1;
+    }
+    -1
+}
+
+fn put_key(keys: mut ref Vec[(String, Key)], name: Str, k: own Key) {
+    let at = key_index(keys, name);
+    if at >= 0 {
+        keys[at].1 = k;
+    } else {
+        keys.push((name.to_string(), k));
+    }
+}
+
+fn get_key(keys: ref Vec[(String, Key)], name: Str) -> Result[Key, Exc] {
+    let at = key_index(keys, name);
+    if at < 0 {
+        return Err(exc("KeyError", py_repr(name)));
+    }
+    Ok(keys[at].1.clone())
+}
+
+fn words_from(w: ref Vec[String], from: i64) -> Vec[u8] {
+    let mut parts: Vec[String] = Vec.new();
+    let mut i = from;
+    while i < w.len() {
+        parts.push(w[i].clone());
+        i += 1;
+    }
+    to_bytes(join(parts, " "))
+}
+
+fn print_block(s: Str) {
+    for line in split_on(s, 10u8) {
+        if line.len() > 0 {
+            println(f"  {line}");
+        }
+    }
+}
+
+fn py_bool(b: bool) -> String {
+    if b { "True".to_string() } else { "False".to_string() }
+}
+
+fn all_encodings() -> Vec[String] {
+    encodings("uncompressed,compressed,hybrid,raw")
+}
+
+fn run_job(cs: ref Vec[Curve], rng: mut ref Rng, keys: mut ref Vec[(String, Key)], sig: mut ref Vec[u8], w0: ref Vec[String]) -> Result[(), Exc] {
+    let mut w = w0.clone();
+    let cmd = w[0].clone();
+    if cmd == "seed" {
+        rng.state = py_int(w[1]).unwrap() as u64;
+    } else if cmd == "curves" {
+        let mut i = 1;
+        while i < w.len() {
+            let c = curve_by_name(cs, w[i])?;
+            let mut oid: Vec[String] = Vec.new();
+            for n in c.oid {
+                oid.push(f"{n}");
+            }
+            println(f"  {c.name} ({c.openssl}): baselen {c.baselen}, public key {c.vk_len} bytes, signature {2 * c.baselen} bytes, oid {join(oid, ".")}");
+            i += 1;
+        }
+    } else if cmd == "curve" {
+        let c = curve_by_name(cs, w[1])?;
+        println(f"  {c.name}, order {bn_bits(c.n)} bits");
+    } else if cmd == "genkey" {
+        let k = generate(mut rng, curve_by_name(cs, w[2])?, w[3])?;
+        println(f"  secret {hex_of(sk_to_string(k)?)}");
+        put_key(mut keys, w[1], k);
+    } else if cmd == "secret" {
+        let k = sk_from_secret(curve_by_name(cs, w[2])?, bn_from_hex(w[3]), "sha256")?;
+        println(f"  public {hex_of(vk_to_string(k, "compressed")?)}");
+        put_key(mut keys, w[1], k);
+    } else if cmd == "show" {
+        println(f"  {vk_repr(get_key(keys, w[1])?)?}");
+    } else if cmd == "encodings" {
+        let k = get_key(keys, w[1])?;
+        for enc in ["raw", "uncompressed", "compressed", "hybrid"] {
+            println(f"  {enc} {hex_of(vk_to_string(k, enc)?)}");
+        }
+    } else if cmd == "pem" {
+        let k = get_key(keys, w[1])?;
+        print_block(sk_to_pem(k, w[3], w[2], w[4])?);
+        print_block(vk_to_pem(k, w[3], w[4])?);
+    } else if cmd == "der" {
+        let k = get_key(keys, w[1])?;
+        println(f"  private {hex_of(sk_to_der(k, "uncompressed", "ssleay", "")?)}");
+        println(f"  public  {hex_of(vk_to_der(k, "uncompressed", "")?)}");
+    } else if cmd == "load" {
+        let k = sk_from_pem(cs, read_file(w[2]), "sha1")?;
+        println(f"  {k.curve.name} key, secret {hex_of(sk_to_string(k)?)}");
+        put_key(mut keys, w[1], k);
+    } else if cmd == "loadpub" {
+        let k = vk_from_pem(cs, read_file(w[2]), "sha1")?;
+        println(f"  {k.curve.name} key {hex_of(vk_to_string(k, "compressed")?)}");
+        put_key(mut keys, w[1], k);
+    } else if cmd == "same" {
+        let a = get_key(keys, w[1])?;
+        let b = get_key(keys, w[2])?;
+        println(f"  {py_bool(vk_eq(a, b))}");
+    } else if cmd == "sign" or cmd == "signk" or cmd == "signrand" or cmd == "digest" {
+        let k = get_key(keys, w[1])?;
+        let mut given: Vec[u64] = Vec.new();
+        if cmd == "signk" {
+            given = bn_parse(w[2]);
+            let _ = w.remove(2);
+        }
+        let h = w[2].clone();
+        let msg = words_from(w, 4);
+        let digest = hash_digest(h, msg);
+        let (r, s) = if cmd == "sign" {
+            sign_digest_deterministic(k, digest, h, true)?
+        } else if cmd == "signk" {
+            sign_digest(k, digest, given, true)?
+        } else if cmd == "signrand" {
+            let number = truncate_and_convert_digest(digest, k.curve, true)?;
+            let kk = randrange(mut rng, k.curve.n);
+            sign_number(k, number, kk)?
+        } else {
+            let number = truncate_and_convert_digest(digest, k.curve, false)?;
+            let kk = randrange(mut rng, k.curve.n);
+            sign_number(k, number, kk)?
+        };
+        let out = sigencode(w[3], r, s, k.curve.n)?;
+        println(f"  {out.len()} bytes {hex_of(out)}");
+        *sig = out;
+    } else if cmd == "verify" {
+        let k = get_key(keys, w[1])?;
+        verify(k, sig, words_from(w, 4), w[2], w[3])?;
+        println("  True");
+    } else if cmd == "badsig" {
+        let k = get_key(keys, w[1])?;
+        verify(k, hex_decode(w[2]), to_bytes("hello"), k.hash, "der")?;
+        println("  True");
+    } else if cmd == "recover" {
+        let k = get_key(keys, w[1])?;
+        for vk in recover(sig, words_from(w, 3), k.curve, w[2])? {
+            let mark = if vk_eq(vk, k) { " (the signer)" } else { "" };
+            println(f"  {hex_of(vk_to_string(vk, "compressed")?)}{mark}");
+        }
+    } else if cmd == "point" {
+        let encs = if w[2] == "-" { all_encodings() } else { encodings(w[2]) };
+        let k = vk_from_string(curve_by_name(cs, w[1])?, hex_decode(w[3]), "sha1", encs)?;
+        println(f"  {hex_of(vk_to_string(k, "uncompressed")?)}");
+    } else if cmd == "ecdh" {
+        let a = get_key(keys, w[1])?;
+        let b = get_key(keys, w[2])?;
+        println(f"  {hex_of(ecdh(a, b)?)}");
+    } else if cmd == "!tokens" {
+        tokens(get_key(keys, w[1])?, read_file(w[2]), read_file(w[3]), get_key(keys, w[4])?)?;
+    } else if cmd == "!ledger" {
+        ledger(cs, read_file(w[1]), read_file(w[2]))?;
+    }
+    Ok(())
+}
+
+fn text_lines(b: ref Vec[u8]) -> Vec[String] {
+    split_on(from_bytes(b.clone()), 10u8)
+}
+
+fn decode_text(s: Str) -> Result[String, Exc] {
+    Ok(from_bytes(b64url_decode(s)?))
+}
+
+// The issuer signs each claim as an ES256 token; then each presented token
+// is checked against the issuer's public key.
+fn tokens(issuer: ref Key, claims: ref Vec[u8], presented: ref Vec[u8], vk: ref Key) -> Result[(), Exc] {
+    for cl in text_lines(claims) {
+        if cl.len() == 0 {
+            continue;
+        }
+        let head = f"{b64url_encode(to_bytes(HEADER))}.{b64url_encode(to_bytes(cl))}";
+        let h = to_bytes(head);
+        let (r, s) = sign_digest_deterministic(issuer, hash_digest("sha256", h), "sha256", true)?;
+        let sig = sigencode("string", r, s, issuer.curve.n)?;
+        println(f"  issued {cl}");
+        println(f"    {head}.{b64url_encode(sig)}");
+    }
+    for tok in text_lines(presented) {
+        if tok.len() == 0 {
+            continue;
+        }
+        let parts = split_on(tok, 46u8);
+        if parts.len() != 3 {
+            println(f"  {tok}: malformed");
+            continue;
+        }
+        let header = decode_text(parts[0])?;
+        if header != HEADER {
+            println(f"  unsupported header {header}");
+            continue;
+        }
+        let payload = decode_text(parts[1])?;
+        let signed = to_bytes(f"{parts[0]}.{parts[1]}");
+        match verify(vk, b64url_decode(parts[2])?, signed, "sha256", "string") {
+            Ok(_) => println(f"  valid {payload}"),
+            Err(e) => {
+                if e.cls != "BadSignatureError" {
+                    return Err(e);
+                }
+                println(f"  REJECTED {payload}: {e.msg}");
+            }
+        }
+    }
+    Ok(())
+}
+
+// Accounts with opening balances, and entries whose signer is recovered
+// from the signature and must be the account the money leaves.
+fn ledger(cs: ref Vec[Curve], accounts: ref Vec[u8], entries: ref Vec[u8]) -> Result[(), Exc] {
+    let curve = curve_by_name(cs, "SECP256k1")?;
+    let mut names: Vec[String] = Vec.new();
+    let mut balance: Vec[i64] = Vec.new();
+    let mut pubs: Vec[Key] = Vec.new();
+    for line in text_lines(accounts) {
+        if line.len() == 0 {
+            continue;
+        }
+        let f = split_on(line, 32u8);
+        names.push(f[0].clone());
+        balance.push(py_int(f[1]).unwrap());
+        pubs.push(vk_from_string(curve, hex_decode(f[2]), "sha256", all_encodings())?);
+    }
+    for line in text_lines(entries) {
+        if line.len() == 0 {
+            continue;
+        }
+        let f = split_on(line, 124u8);
+        let msg = f"{f[0]}|{f[1]}|{f[2]}";
+        let cands = match recover(hex_decode(f[3]), to_bytes(msg), curve, "sha256") {
+            Ok(c) => c,
+            Err(e) => {
+                println(f"  {msg}: {e.cls}: {e.msg}");
+                continue;
+            }
+        };
+        let mut signer = -1;
+        for i in 0..names.len() {
+            for c in cands {
+                if vk_eq(pubs[i], c) {
+                    signer = i;
+                }
+            }
+        }
+        let from = key_of(names, f[0]);
+        let to = key_of(names, f[1]);
+        let amount = py_int(f[2]).unwrap();
+        if signer < 0 {
+            println(f"  {msg}: unknown signer");
+        } else if names[signer] != f[0] {
+            println(f"  {msg}: forged, signed by {names[signer]}");
+        } else if to < 0 {
+            println(f"  {msg}: no account {f[1]}");
+        } else if balance[from] < amount {
+            println(f"  {msg}: insufficient funds ({balance[from]})");
+        } else {
+            balance[from] -= amount;
+            balance[to] += amount;
+            println(f"  {msg}: ok");
+        }
+    }
+    let mut parts: Vec[String] = Vec.new();
+    for i in 0..names.len() {
+        parts.push(f"{names[i]} {balance[i]}");
+    }
+    println(f"  balances: {join(parts, ", ")}");
+    Ok(())
+}
+
+fn key_of(names: ref Vec[String], name: Str) -> i64 {
+    for i in 0..names.len() {
+        if names[i] == name {
+            return i;
+        }
+    }
+    -1
+}
+
+fn main() {
+    if let Err(e) = write_inputs() {
+        eprintln(e);
+        return;
+    }
+    let cs = load_curves();
+    let mut rng = Rng { state: 0u64 };
+    let mut keys: Vec[(String, Key)] = Vec.new();
+    let mut sig: Vec[u8] = Vec.new();
+    for hex in split_c(jobs_text(), '\n') {
+        if hex.len() == 0 {
+            continue;
+        }
+        let job = hex_string(hex);
+        println(f"> {job}");
+        let w = split_on(job, 32u8);
+        if let Err(e) = run_job(cs, mut rng, mut keys, mut sig, w) {
+            println(f"  {e.cls}: {e.msg}");
+        }
+    }
+}
+
+// Generated by gen_kara.py from data/jobs.txt.
+
+fn jobs_text() -> String {
+    let mut s = String.new();
+    s.push_str("73656564203131\n637572766573204e49535431393270204e49535432323470204e49535432353670204e49535433383470204e4953543532317020534543503235366b3120425241494e504f4f4c50323536723120425241494e504f4f4c503332307431\n6375727665207072696d653235367631\n637572766520736563703235366b31\n637572766520502d323536\n67656e6b65792061204e4953543235367020736861323536\n67656e6b65792062204e4953543235367020736861323536\n67656e6b6579206320534543503235366b3120736861323536\n67656e6b65792064204e495354313932702073686131\n67656e6b65792065204e4953543532317020736861353132\n67656e6b65792066204e4953543232347020736861323234\n67656e6b6579206720425241494e504f4f4c50323536723120736861323536\n67656e6b65792068204e4953543338347020736861333834\n736563726574206f6e65204e495354323536702031\n736563726574207a65726f204e495354323536702030\n73656372657420726663204e495354323536702043394146413944383435424137353136364235433231353736374231443639333445353043334442333645383942313237423841363232423132304636373231\n7365637265742074696e7920534543503235366b312033\n73686f772061\n73686f772064\n73686f77206f6e65\n656e636f64696e6773206f6e65\n656e636f64696e67732074696e79\n70656d20612073736c65617920756e636f6d70726573736564206e616d65645f6375727665\n70656d206420706b63733820636f6d70726573736564206e616d65645f6375727665\n70656d20642073736c65617920687962726964206578706c69636974\n6465722064\n6c6f616420697373756572206b6579732f6973737565722e70656d\n6c6f61642069737375657238206b6579732f6973737565725f706b6373382e70656d\n6c6f61647075622069707562206b6579732f6973737565725f7075622e70656d\n6c6f61647075622069657870206b6579732f6973737565725f6578706c696369742e70656d\n6c6f6164206b31206b6579732f6b312e70656d\n6c6f616420626164206b6579732f6973737565725f7075622e70656d\n6c6f616470756220756e6b6e6f776e206b6579732f756e6b6e6f776e5f63757276652e70656d\n6c6f616470756220727361206b6579732f7273615f6f69642e70656d\n6c6f616470756220726177206b6579732f7261775f706f696e742e70656d\n6c6f616470756220747261696c206b6579732f747261696c696e672e70656d\n6c6f6164707562206f6464206b6579732f6f64645f63757276652e70656d\n");
+    s.push_str("73616d65206973737565722069737375657238\n73616d6520697075622069657870\n73616d6520697075622061\n73686f772069657870\n7369676e207266632073686132353620737472696e672073616d706c65\n7369676e207266632073686132353620737472696e672074657374\n7369676e20726663207368613120737472696e672073616d706c65\n7369676e207266632073686135313220737472696e672073616d706c65\n7369676e2072666320736861323234206465722073616d706c65\n7665726966792072666320736861323234206465722073616d706c65\n7665726966792072666320736861323234206465722053616d706c65\n7369676e20612073686132353620646572207472616e736665722031303020746f206163636f756e74203432\n76657269667920612073686132353620646572207472616e736665722031303020746f206163636f756e74203432\n76657269667920622073686132353620646572207472616e736665722031303020746f206163636f756e74203432\n76657269667920612073686132353620737472696e67207472616e736665722031303020746f206163636f756e74203432\n7369676e2063207368613235362063616e6f6e2070617920626f622035\n766572696679206320736861323536206465722070617920626f622035\n7369676e6b20612031323334352073686132353620737472696e672068656c6c6f\n7369676e6b206120302073686132353620737472696e672068656c6c6f\n7369676e72616e6420612073686132353620737472696e672068656c6c6f\n7369676e72616e6420612073686132353620737472696e672068656c6c6f\n76657269667920612073686132353620737472696e672068656c6c6f\n7369676e20652073686135313220737472696e672061206c6f6e67206375727665\n76657269667920652073686135313220737472696e672061206c6f6e67206375727665\n7369676e206820736861333834206465722073686f7274\n766572696679206820736861333834206465722073686f7274\n7369676e20672073686132353620737472696e6720627261696e706f6f6c\n76657269667920672073686132353620737472696e6720627261696e706f6f6c\n64696765737420612073686132353620737472696e672073686f727420646967657374\n64696765737420662073686135313220737472696e67206c6f6e6720646967657374\n64696765737420642073686135313220737472696e67206c6f6e6720646967657374\n626164736967206120333034353032323130306666\n626164736967206120333030363032303130313032303130316666\n");
+    s.push_str("62616473696720612033303036303230313831303230313031\n626164736967206120333030373032303230303031303230313031\n62616473696720612033303036303230313030303230313031\n7369676e2074696e792073686132353620737472696e67207265636f766572206d65\n7265636f7665722074696e7920736861323536207265636f766572206d65\n7369676e20632073686132353620737472696e67207265636f766572206d65\n7265636f766572206320736861323536207265636f766572206d65\n706f696e74204e49535432353670202d20303336623137643166326531326334323437663862636536653536336134343066323737303337643831326465623333613066346131333934356438393863323936\n706f696e74204e49535432353670202d20303236623137643166326531326334323437663862636536653536336134343066323737303337643831326465623333613066346131333934356438393863323936\n706f696e74204e49535432353670202d20303536623137643166326531326334323437663862636536653536336134343066323737303337643831326465623333613066346131333934356438393863323936\n706f696e74204e49535432353670202d20303230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303035\n706f696e74204e49535432353670202d20303230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031\n706f696e74204e49535432323470202d2030333030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303033\n706f696e74204e49535432323470202d2030326237306530636264366262346266376633323133393062393461303363316433353663323131323233343332383064363131356331643231\n706f696e74204e49535431393270202d203037313838646138306562303330393066363763626632306562343361313838303066346666306166643832666631303132303731393262393566666338646137383633313031316564366232346364643537336639373761313165373934383131\n706f696e74204e49535431393270202d203036313838646138306562303330393066363763626632306562343361313838303066346666306166643832666631303132303731393262393566666338646137383633313031316564366232346364643537336639373761313165373934383131\n");
+    s.push_str("706f696e7420534543503235366b31202d2030343739626536363765663964636262616335356130363239356365383730623037303239626663646232646365323864393539663238313562313666383137393834383361646137373236613363343635356461346662666330653131303861386664313762343438613638353534313939633437643038666662313064346239\n706f696e7420534543503235366b31202d2030343739626536363765663964636262616335356130363239356365383730623037303239626663646232646365323864393539663238313562313666383137393834383361646137373236613363343635356461346662666330653131303861386664313762343438613638353534313939633437643038666662313064346238\n706f696e7420534543503235366b3120636f6d707265737365642c7261772030343739626536363765663964636262616335356130363239356365383730623037303239626663646232646365323864393539663238313562313666383137393834383361646137373236613363343635356461346662666330653131303861386664313762343438613638353534313939633437643038666662313064346239\n706f696e7420534543503235366b3120636f6d707265737365642037396265363637656639646362626163353561303632393563653837306230373032396266636462326463653238643935396632383135623136663831373938\n6563646820612062\n6563646820622061\n6563646820612063\n656364682063206b31\n21746f6b656e732069737375657220636c61696d732e74787420746f6b656e732e7478742069707562\n216c6564676572206163636f756e74732e747874206c65646765722e747874\n");
+    s
+}
+
+fn inputs_text() -> String {
+    let mut s = String.new();
+    s.push_str("keys/issuer.pem 2d2d2d2d2d424547494e2045432050524956415445204b45592d2d2d2d2d0a4d48634341514545494466442b4d6b2b2b4d6348776c4a365474576b732f796b4c6b647952325331636f4450485031484c5a51756f416f4743437147534d3439417745486f555144516741450a434772514d7044492f526c516f5651515061377347626d654432516d646e67752f4151757a74794a796979472b2f4650344655456a6843503470356b6441763058785641596258416b316b500a6a59464d6c64374d7a673d3d0a2d2d2d2d2d454e442045432050524956415445204b45592d2d2d2d2d0a\nkeys/issuer_pkcs8.pem 2d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d0a4d494748416745424d424d4742797147534d34394167454743437147534d3439417745484247307761774942415151674e3850347954373478776643556e704f3161537a2f4b517552334a480a5a4c5679674d38632f5563746c43366852414e4341415149617441796b4d6a3947564368564241397275775a755a34505a435a32654337384243374f33496e4b4c49623738552f675651534f0a45492f696e6d5230432f5266465542687463435457512b4e6755795633737a4f0a2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d0a\nkeys/issuer_pub.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a30444151634451674145434772514d7044492f526c516f5651515061377347626d654432516d646e67752f4151757a74794a0a796979472b2f4650344655456a6843503470356b6441763058785641596258416b316b506a59464d6c64374d7a673d3d0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\nkeys/issuer_explicit.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d49487a4d49484d42676371686b6a4f505149424d494841416745424d43774742797147534d3439415145434951442f2f2f2f2f414141414151414141414141414141414141414141502f2f0a2f2f2f2f2f2f2f2f2f2f2f2f2f7a42454243442f2f2f2f2f414141414151414141414141414141414141414141502f2f2f2f2f2f2f2f2f2f2f2f2f2f2f41516757735931324b6f366b2b657a0a3637315664706947764755644272444d553744324f383438506966535945734549514e724639487934537843522f69383575566a7045447964774e39675333724d3644306f546c46324a6a430a6c67496841502f2f2f2f3841414141412f2f2f2f2f2f2f2f2f2f2b38357671747078656568504f3579734c385979565241674542417949414167687130444b517950305a554b4655454432750a37426d356e67396b4a6e5a344c7677454c73376369636f730a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\n");
+    s.push_str("keys/k1.pem 2d2d2d2d2d424547494e2045432050524956415445204b45592d2d2d2d2d0a4d4651434151454549425870496336394a35617259547639414c45797571506a74416b513831564a32786e49772b5156653961336f416347425375424241414b6f53514449674144485537630a516f44474b34563071466b6167772f4831325351486d412f736976685a6c38413533586a514c303d0a2d2d2d2d2d454e442045432050524956415445204b45592d2d2d2d2d0a\nkeys/unknown_curve.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d465977454159484b6f5a497a6a3043415159464b34454541474d4451674145434772514d7044492f526c516f5651515061377347626d654432516d646e67752f4151757a74794a796979470a2b2f4650344655456a6843503470356b6441763058785641596258416b316b506a59464d6c64374d7a673d3d0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\nkeys/rsa_oid.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d4673774651594a4b6f5a496876634e4151454242676771686b6a4f50514d4242774e4341415149617441796b4d6a3947564368564241397275775a755a34505a435a32654337384243374f0a33496e4b4c49623738552f675651534f45492f696e6d5230432f5266465542687463435457512b4e6755795633737a4f0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\nkeys/raw_point.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d466777457759484b6f5a497a6a3043415159494b6f5a497a6a30444151634451514149617441796b4d6a3947564368564241397275775a755a34505a435a32654337384243374f33496e4b0a4c49623738552f675651534f45492f696e6d5230432f5266465542687463435457512b4e6755795633737a4f0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\nkeys/trailing.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d466b77457759484b6f5a497a6a3043415159494b6f5a497a6a30444151634451674145434772514d7044492f526c516f5651515061377347626d654432516d646e67752f4151757a74794a0a796979472b2f4650344655456a6843503470356b6441763058785641596258416b316b506a59464d6c64374d7a67413d0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\nkeys/odd_curve.pem 2d2d2d2d2d424547494e205055424c4943204b45592d2d2d2d2d0a4d4949424d7a4342374159484b6f5a497a6a304341544342344149424154417342676371686b6a4f50514542416945412f2f2f2f2f774141414145414141414141414141414141414141442f0a2f2f2f2f2f2f2f2f2f2f2f2f2f2f3877524151672f2f2f2f2f774141414145414141414141414141414141414141442f2f2f2f2f2f2f2f2f2f2f2f2f2f2f7745494672474e6469714f70506e0a732b7539565861596872786c485161777a464f77396a764f5044346e306d424d424545456178665238754573516b6634764f626c59365241386e634466594574367a4f67394b4535526469590a77705a5034304c692f68702f6d34376e36307038443534574b38347a563273785873374c746b426f4e3739523951496841502f2f2f2f3841414141412f2f2f2f2f2f2f2f2f2f2b38357671740a7078656568504f3579734c385979565241674542413049414241687130444b517950305a554b46554544327537426d356e67396b4a6e5a344c7677454c73376369636f7368767678542b42560a424934516a2b4b655a48514c3946385651474731774a4e5a44343242544a58657a4d343d0a2d2d2d2d2d454e44205055424c4943204b45592d2d2d2d2d0a\n");
+    s.push_str("accounts.txt 616c69636520313030203033326533306139626162333765626639363637383961663638356337343163316237653238333237373664376636366663373532623930666638386465623065660a626f62203430203032336532643238326237623734646464353935623031383364303832396465383764333066316137313632386366313636633630363438636664313633613765650a6361726f6c2030203032373436623164653163323837663561323637356461393164383764393463666263373235323630323034383861353938383934333666376165393262383531650a64617665203135203032383838643662636635376434366664386633346433616336393236613061613732623437356635353761353565623963393366383734343838393632643563360a\nledger.txt 616c6963657c626f627c32357c38333938353237376464646439373731626332343263393331656332353662623031636338323537366631643063643637323265393431316530623830353337346538393132396663623136363961303732613336396530303366353633313161336238313230613534373864356530363163316539623138396436376166640a626f627c6361726f6c7c33307c39336236633435653866633138346335663233383664383363663434306436393538643464656564346431313431323233613161323166343735303262343235373134616262346431376366316631366133313330346337626331356534653132643134666536303463313863336231303334326430373334616335626236330a6361726f6c7c646176657c31307c33636333326539376530323266336236303463663465366563393764663965363961396535663532353561636339326339623361653432326639386563623865393765303166643034623061646464386462386664613431356432633439373639363265303930616535303439313030646465636261653166343538346333360a646176657c616c6963657c35307c31656165633732373664656137363132323131343166666335373837626465373134346632313336333239336664633139306638316236343536343266626430366261303063356631303366393331306165326631336265386161393731383739636463653239353161396232646336643138663664633736373066323962610a616c6963657c6d616c6c6f72797c36307c65666539333063333832383539656562323566373561666431313039653632623964333235653664373938313831623234653063643234633337656334373163373631626233613031353631663663333836623638303730316630653830373962353036393264326663313132303135323066386339663930353434373963300a6d616c6c6f72797c6361726f6c7c31307c66383166383331653538626162303632653764316434323933623239383831323764336262623766383831613035366236613134613664373739666637393137633863393839353138366233646566363031383035383631333562306334643930346663336466613936623664616234313035396664356438623637373166320a6361726f6c7c616c6963657c39397c33613131303330393561663536306134363463656663393335643530343030616639383763316531643736636662646265633232613332353563313437646462623839616661626266303264323661323433633337616438303735326161353130366136353363356566656138376431643766396135323237353966326538660a626f627c646176657c31327c38353730343731383537666633613137373034356166363366643732316330613264616239373633356639643836663438613432303263633664376438333735633538393961323131316530313230386633643333653330393064336430346639663532393966326132366330303061663962383433633734336533633030610a616c6963657c6361726f6c7c357c3232663162653732323830326635306264303039336564313632393332323539336232643739383131383339393733643737636530323666393832633430326135373763646230653539363632626364376330346534343961653836656239336432616161623638393864363735633964343564633138373430623862390a646176657c626f627c317c30373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730370a616c6963657c646176657c32307c39353737323731656138393139363531323863623939303734666530336233353166653639656433353939383538663834623137636430306338336335333536383332613938646437313637656361373636326236653766376134336237333261653762353861376362353966396365623761626139633734363238316563610a\n");
+    s.push_str("claims.txt 7b22737562223a22616c696365222c22726f6c65223a2261646d696e222c22657870223a313736373232353630307d0a7b22737562223a22626f62222c22726f6c65223a22766965776572222c22657870223a313733353638393630307d0a7b22737562223a226361726f6c222c22726f6c65223a22656469746f72222c22657870223a313736373232353630307d0a\ntokens.txt 65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a6862476c6a5a534973496e4a76624755694f694a685a47317062694973496d5634634349364d5463324e7a49794e5459774d48302e2d77454b534b703549644f305a736f6f47646c50544a514178375730582d37644f7949703839584c396a33384b514a5359675659724b66594a543877634f367364693677706e514668654946356d66554a50467645510a65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a69623249694c434a796232786c496a6f6959575274615734694c434a6c654841694f6a45334d7a55324f446b324d4442392e34457a5465535839656a793069417675654770493731345a5858777778564e44416d345377676d2d6375515378485078496a6a6b334f536f7249597a42473970336d5f52374f45786559716b4d4d724a55766e3941770a65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a6a59584a7662434973496e4a76624755694f694a6c5a476c30623349694c434a6c654841694f6a45334e6a63794d6a55324d4442392e506a554670484d52567466497448344d6b505f7647725a4f7a4c305842716f536c476174396e4f5a4a37626539584d324855797762474c314b4b377a48656a5867443475625050794f5977363570537a4d31556131770a65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a6c646d55694c434a796232786c496a6f6959575274615734694c434a6c654841694f6a45334e6a63794d6a55324d4442392e41535670793848524b7a66374b72735a74373244794345525361516a66374f556f7a66694e7576536e42346c31774a6b35475563725a7331482d585466744d306d58657568415f4d7733346d427357505731573058410a65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a69623249694c434a796232786c496a6f69646d6c6c64325679496977695a586877496a6f784e7a4d314e6a67354e6a417766512e34457a5465535839656a793069417675654770493731345a5858777778564e44416d345377676d2d6375515378485078496a6a6b334f536f7249597a42473970336d5f52374f45786559716b4d4d724a55766e0a65794a68624763694f694a756232356c4969776964486c77496a6f69536c6455496e302e65794a7a645749694f694a6862476c6a5a534973496e4a76624755694f694a685a47317062694973496d5634634349364d5463324e7a49794e5459774d48302e0a6e6f742d612d746f6b656e0a65794a68624763694f694a46557a49314e694973496e523563434936496b705856434a392e65794a7a645749694f694a69623249694c434a796232786c496a6f69646d6c6c64325679496977695a586877496a6f784e7a4d314e6a67354e6a417766512e34457a5465535839656a793069417675654770493731345a5858777778564e44416d345377676d2d6375515378485078496a6a6b334f536f7249597a42473970336d5f52374f45786559716b4d4d724a55766e3941770a\n");
+    s
+}
+
+fn curves_text() -> String {
+    let mut s = String.new();
+    s.push_str("NIST192p prime192v1 1.2.840.10045.3.1.1 fffffffffffffffffffffffffffffffeffffffffffffffff fffffffffffffffffffffffffffffffefffffffffffffffc 64210519e59c80e70fa7e9ab72243049feb8deecc146b9b1 188da80eb03090f67cbf20eb43a18800f4ff0afd82ff1012 7192b95ffc8da78631011ed6b24cdd573f977a11e794811 ffffffffffffffffffffffff99def836146bc9b1b4d22831 1\nNIST224p secp224r1 1.3.132.0.33 ffffffffffffffffffffffffffffffff000000000000000000000001 fffffffffffffffffffffffffffffffefffffffffffffffffffffffe b4050a850c04b3abf54132565044b0b7d7bfd8ba270b39432355ffb4 b70e0cbd6bb4bf7f321390b94a03c1d356c21122343280d6115c1d21 bd376388b5f723fb4c22dfe6cd4375a05a07476444d5819985007e34 ffffffffffffffffffffffffffff16a2e0b8f03e13dd29455c5c2a3d 1\nNIST256p prime256v1 1.2.840.10045.3.1.7 ffffffff00000001000000000000000000000000ffffffffffffffffffffffff ffffffff00000001000000000000000000000000fffffffffffffffffffffffc 5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b 6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296 4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5 ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551 1\nNIST384p secp384r1 1.3.132.0.34 fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc b3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7 3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973 1\nNIST521p secp521r1 1.3.132.0.35 1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff 1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc 51953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f00 c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66 11839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650 1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409 1\n");
+    s.push_str("SECP256k1 secp256k1 1.3.132.0.10 fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f 0 7 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141 1\nBRAINPOOLP160r1 brainpoolP160r1 1.3.36.3.3.2.8.1.1.1 e95e4a5f737059dc60dfc7ad95b3d8139515620f 340e7be2a280eb74e2be61bada745d97e8f7c300 1e589a8595423412134faa2dbdec95c8d8675e58 bed5af16ea3f6a4f62938c4631eb5af7bdbcdbc3 1667cb477a1a8ec338f94741669c976316da6321 e95e4a5f737059dc60df5991d45029409e60fc09 1\nBRAINPOOLP192r1 brainpoolP192r1 1.3.36.3.3.2.8.1.1.3 c302f41d932a36cda7a3463093d18db78fce476de1a86297 6a91174076b1e0e19c39c031fe8685c1cae040e5c69a28ef 469a28ef7c28cca3dc721d044f4496bcca7ef4146fbf25c9 c0a0647eaab6a48753b033c56cb0f0900a2f5c4853375fd6 14b690866abd5bb88b5f4828c1490002e6773fa2fa299b8f c302f41d932a36cda7a3462f9e9e916b5be8f1029ac4acc1 1\nBRAINPOOLP224r1 brainpoolP224r1 1.3.36.3.3.2.8.1.1.5 d7c134aa264366862a18302575d1d787b09f075797da89f57ec8c0ff 68a5e62ca9ce6c1c299803a6c1530b514e182ad8b0042a59cad29f43 2580f63ccfe44138870713b1a92369e33e2135d266dbb372386c400b d9029ad2c7e5cf4340823b2a87dc68c9e4ce3174c1e6efdee12c07d 58aa56f772c0726f24c6b89e4ecdac24354b9e99caa3f6d3761402cd d7c134aa264366862a18302575d0fb98d116bc4b6ddebca3a5a7939f 1\nBRAINPOOLP256r1 brainpoolP256r1 1.3.36.3.3.2.8.1.1.7 a9fb57dba1eea9bc3e660a909d838d726e3bf623d52620282013481d1f6e5377 7d5a0975fc2c3057eef67530417affe7fb8055c126dc5c6ce94a4b44f330b5d9 26dc5c6ce94a4b44f330b5d9bbd77cbf958416295cf7e1ce6bccdc18ff8c07b6 8bd2aeb9cb7e57cb2c4b482ffc81b7afb9de27e1e3bd23c23a4453bd9ace3262 547ef835c3dac4fd97f8461a14611dc9c27745132ded8e545c1d54c72f046997 a9fb57dba1eea9bc3e660a909d838d718c397aa3b561a6f7901e0e82974856a7 1\nBRAINPOOLP320r1 brainpoolP320r1 1.3.36.3.3.2.8.1.1.9 d35e472036bc4fb7e13c785ed201e065f98fcfa6f6f40def4f92b9ec7893ec28fcd412b1f1b32e27 3ee30b568fbab0f883ccebd46d3f3bb8a2a73513f5eb79da66190eb085ffa9f492f375a97d860eb4 520883949dfdbc42d3ad198640688a6fe13f41349554b49acc31dccd884539816f5eb4ac8fb1f1a6 43bd7e9afb53d8b85289bcc48ee5bfe6f20137d10a087eb6e7871e2a10a599c710af8d0d39e20611 14fdd05545ec1cc8ab4093247f77275e0743ffed117182eaa9c77877aaac6ac7d35245d1692e8ee1 d35e472036bc4fb7e13c785ed201e065f98fcfa5b68f12a32d482ec7ee8658e98691555b44c59311 1\n");
+    s.push_str("BRAINPOOLP384r1 brainpoolP384r1 1.3.36.3.3.2.8.1.1.11 8cb91e82a3386d280f5d6f7e50e641df152f7109ed5456b412b1da197fb71123acd3a729901d1a71874700133107ec53 7bc382c63d8c150c3c72080ace05afa0c2bea28e4fb22787139165efba91f90f8aa5814a503ad4eb04a8c7dd22ce2826 4a8c7dd22ce28268b39b55416f0447c2fb77de107dcd2a62e880ea53eeb62d57cb4390295dbc9943ab78696fa504c11 1d1c64f068cf45ffa2a63a81b7c13f6b8847a3e77ef14fe3db7fcafe0cbd10e8e826e03436d646aaef87b2e247d4af1e 8abe1d7520f9c2a45cb1eb8e95cfd55262b70b29feec5864e19c054ff99129280e4646217791811142820341263c5315 8cb91e82a3386d280f5d6f7e50e641df152f7109ed5456b31f166e6cac0425a7cf3ab6af6b7fc3103b883202e9046565 1\nBRAINPOOLP512r1 brainpoolP512r1 1.3.36.3.3.2.8.1.1.13 aadd9db8dbe9c48b3fd4e6ae33c9fc07cb308db3b3c9d20ed6639cca703308717d4d9b009bc66842aecda12ae6a380e62881ff2f2d82c68528aa6056583a48f3 7830a3318b603b89e2327145ac234cc594cbdd8d3df91610a83441caea9863bc2ded5d5aa8253aa10a2ef1c98b9ac8b57f1117a72bf2c7b9e7c1ac4d77fc94ca 3df91610a83441caea9863bc2ded5d5aa8253aa10a2ef1c98b9ac8b57f1117a72bf2c7b9e7c1ac4d77fc94cadc083e67984050b75ebae5dd2809bd638016f723 81aee4bdd82ed9645a21322e9c4c6a9385ed9f70b5d916c1b43b62eef4d0098eff3b1f78e2d0d48d50d1687b93b97d5f7c6d5047406a5e688b352209bcb9f822 7dde385d566332ecc0eabfa9cf7822fdf209f70024a57b1aa000c55b881f8111b2dcde494a5f485e5bca4bd88a2763aed1ca2b2fa8f0540678cd1e0f3ad80892 aadd9db8dbe9c48b3fd4e6ae33c9fc07cb308db3b3c9d20ed6639cca70330870553e5c414ca92619418661197fac10471db1d381085ddaddb58796829ca90069 1\nSECP112r1 secp112r1 1.3.132.0.6 db7c2abf62e35e668076bead208b db7c2abf62e35e668076bead2088 659ef8ba043916eede8911702b22 9487239995a5ee76b55f9c2f098 a89ce5af8724c0a23e0e0ff77500 db7c2abf62e35e7628dfac6561c5 1\nSECP112r2 secp112r2 1.3.132.0.7 db7c2abf62e35e668076bead208b 6127c24c05f38a0aaaf65c0ef02c 51def1815db5ed74fcc34c85d709 4ba30ab5e892b4e1649dd0928643 adcd46f5882e3747def36e956e97 36df0aafd8b8d7597ca10520d04b 4\nSECP128r1 secp128r1 1.3.132.0.28 fffffffdffffffffffffffffffffffff fffffffdfffffffffffffffffffffffc e87579c11079f43dd824993c2cee5ed3 161ff7528b899b2d0c28607ca52c5b86 cf5ac8395bafeb13c02da292dded7a83 fffffffe0000000075a30d1b9038a115 1\n");
+    s.push_str("SECP160r1 secp160r1 1.3.132.0.8 ffffffffffffffffffffffffffffffff7fffffff ffffffffffffffffffffffffffffffff7ffffffc 1c97befc54bd7a8b65acf89f81d4d4adc565fa45 4a96b5688ef573284664698968c38bb913cbfc82 23a628553168947d59dcc912042351377ac5fb32 100000000000000000001f4c8f927aed3ca752257 1\nEd25519 - 1.3.101.112 edwards\nEd448 - 1.3.101.113 edwards\nBRAINPOOLP160t1 brainpoolP160t1 1.3.36.3.3.2.8.1.1.2 e95e4a5f737059dc60dfc7ad95b3d8139515620f e95e4a5f737059dc60dfc7ad95b3d8139515620c 7a556b6dae535b7b51ed2c4d7daa7a0b5c55f380 b199b13b9b34efc1397e64baeb05acc265ff2378 add6718b7c7c1961f0991b842443772152c9e0ad e95e4a5f737059dc60df5991d45029409e60fc09 1\nBRAINPOOLP192t1 brainpoolP192t1 1.3.36.3.3.2.8.1.1.4 c302f41d932a36cda7a3463093d18db78fce476de1a86297 c302f41d932a36cda7a3463093d18db78fce476de1a86294 13d56ffaec78681e68f9deb43b35bec2fb68542e27897b79 3ae9e58c82f63c30282e1fe7bbf43fa72c446af6f4618129 97e2c5667c2223a902ab5ca449d0084b7e5b3de7ccc01c9 c302f41d932a36cda7a3462f9e9e916b5be8f1029ac4acc1 1\nBRAINPOOLP224t1 brainpoolP224t1 1.3.36.3.3.2.8.1.1.6 d7c134aa264366862a18302575d1d787b09f075797da89f57ec8c0ff d7c134aa264366862a18302575d1d787b09f075797da89f57ec8c0fc 4b337d934104cd7bef271bf60ced1ed20da14c08b3bb64f18a60888d 6ab1e344ce25ff3896424e7ffe14762ecb49f8928ac0c76029b4d580 374e9f5143e568cd23f3f4d7c0d4b1e41c8cc0d1c6abd5f1a46db4c d7c134aa264366862a18302575d0fb98d116bc4b6ddebca3a5a7939f 1\nBRAINPOOLP256t1 brainpoolP256t1 1.3.36.3.3.2.8.1.1.8 a9fb57dba1eea9bc3e660a909d838d726e3bf623d52620282013481d1f6e5377 a9fb57dba1eea9bc3e660a909d838d726e3bf623d52620282013481d1f6e5374 662c61c430d84ea4fe66a7733d0b76b7bf93ebc4af2f49256ae58101fee92b04 a3e8eb3cc1cfe7b7732213b23a656149afa142c47aafbc2b79a191562e1305f4 2d996c823439c56d7f7b22e14644417e69bcb6de39d027001dabe8f35b25c9be a9fb57dba1eea9bc3e660a909d838d718c397aa3b561a6f7901e0e82974856a7 1\nBRAINPOOLP320t1 brainpoolP320t1 1.3.36.3.3.2.8.1.1.10 d35e472036bc4fb7e13c785ed201e065f98fcfa6f6f40def4f92b9ec7893ec28fcd412b1f1b32e27 d35e472036bc4fb7e13c785ed201e065f98fcfa6f6f40def4f92b9ec7893ec28fcd412b1f1b32e24 a7f561e038eb1ed560b3d147db782013064c19f27ed27c6780aaf77fb8a547ceb5b4fef422340353 925be9fb01afc6fb4d3e7d4990010f813408ab106c4f09cb7ee07868cc136fff3357f624a21bed52 63ba3a7a27483ebf6671dbef7abb30ebee084e58a0b077ad42a5a0989d1ee71b1b9bc0455fb0d2c3 d35e472036bc4fb7e13c785ed201e065f98fcfa5b68f12a32d482ec7ee8658e98691555b44c59311 1\n");
+    s.push_str("BRAINPOOLP384t1 brainpoolP384t1 1.3.36.3.3.2.8.1.1.12 8cb91e82a3386d280f5d6f7e50e641df152f7109ed5456b412b1da197fb71123acd3a729901d1a71874700133107ec53 8cb91e82a3386d280f5d6f7e50e641df152f7109ed5456b412b1da197fb71123acd3a729901d1a71874700133107ec50 7f519eada7bda81bd826dba647910f8c4b9346ed8ccdc64e4b1abd11756dce1d2074aa263b88805ced70355a33b471ee 18de98b02db9a306f2afcd7235f72a819b80ab12ebd653172476fecd462aabffc4ff191b946a5f54d8d0aa2f418808cc 25ab056962d30651a114afd2755ad336747f93475b7a1fca3b88f2b6a208ccfe469408584dc2b2912675bf5b9e582928 8cb91e82a3386d280f5d6f7e50e641df152f7109ed5456b31f166e6cac0425a7cf3ab6af6b7fc3103b883202e9046565 1\nBRAINPOOLP512t1 brainpoolP512t1 1.3.36.3.3.2.8.1.1.14 aadd9db8dbe9c48b3fd4e6ae33c9fc07cb308db3b3c9d20ed6639cca703308717d4d9b009bc66842aecda12ae6a380e62881ff2f2d82c68528aa6056583a48f3 aadd9db8dbe9c48b3fd4e6ae33c9fc07cb308db3b3c9d20ed6639cca703308717d4d9b009bc66842aecda12ae6a380e62881ff2f2d82c68528aa6056583a48f0 7cbbbcf9441cfab76e1890e46884eae321f70c0bcb4981527897504bec3e36a62bcdfa2304976540f6450085f2dae145c22553b465763689180ea2571867423e 640ece5c12788717b9c1ba06cbc2a6feba85842458c56dde9db1758d39c0313d82ba51735cdb3ea499aa77a7d6943a64f7a3f25fe26f06b51baa2696fa9035da 5b534bd595f5af0fa2c892376c84ace1bb4e3019b71634c01131159cae03cee9d9932184beef216bd71df2dadf86a627306ecff96dbb8bace198b61e00f8b332 aadd9db8dbe9c48b3fd4e6ae33c9fc07cb308db3b3c9d20ed6639cca70330870553e5c414ca92619418661197fac10471db1d381085ddaddb58796829ca90069 1\n");
+    s
+}
