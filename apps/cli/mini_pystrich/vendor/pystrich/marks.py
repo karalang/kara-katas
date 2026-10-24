@@ -1,0 +1,231 @@
+"""Matrix mark extraction shared by vector renderers (SVG, EPS, DXF)."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from enum import Enum, auto
+from typing import NamedTuple
+
+# A rectangular region of a matrix to be drawn as a single shape:
+# ``(x, y, width, height)`` in module (2D) or pixel (1D) units. A plain tuple
+# rather than a NamedTuple — a dense matrix yields one per run, so consumers
+# unpack it directly and skip the per-mark object construction.
+MatrixMark = tuple[int, int, int, int]
+
+
+class SymbolMarks(NamedTuple):
+    """A rendered symbol as dark rectangles in a unit grid.
+
+    ``marks`` are the dark regions as ``(x, y, width, height)`` rectangles,
+    with a top-left origin and y pointing down (matching the matrix, PIL and
+    SVG). ``width`` and ``height`` are the full extent of the grid the marks
+    live in -- the same canvas every other output format draws, so quiet
+    zones, finder pattern and (for 1D) the bearer bar and the space reserved
+    for the human-readable label are all included -- and a consumer can fit
+    ``[0, width] x [0, height]`` into any target box at any scale. The label
+    glyphs themselves are never marks. For 2D symbols one unit is one module;
+    for 1D symbols the x unit is one narrow bar and the y unit is one pixel
+    of the bar layout.
+    """
+
+    marks: tuple[MatrixMark, ...]
+    width: int
+    height: int
+
+
+class MarkShape(Enum):
+    """How marked cells are grouped and drawn in vector output.
+
+    Each value selects a grouping (one ``MatrixMark`` per cell, or one per
+    horizontal run) and -- where the renderer supports it -- the drawing
+    primitive used per mark.
+    """
+
+    HORIZONTAL_RUNS = auto()
+    """Maximal horizontal runs of matched cells, drawn as filled rectangles."""
+
+    SQUARE_CELLS = auto()
+    """One 1x1 region per matched cell, drawn as a filled rectangle."""
+
+    CIRCULAR_CELLS = auto()
+    """One 1x1 region per matched cell, drawn as a filled circle inscribed in the cell."""
+
+
+def iter_horizontal_runs(
+    matrix: Sequence[Sequence[int | None]],
+    *,
+    mark_values_when: bool,
+) -> Iterator[MatrixMark]:
+    """Yield each maximal horizontal run of cells whose truthiness equals ``mark_values_when``.
+
+    ``mark_values_when=True`` marks the dark (truthy) cells; ``False`` marks
+    the light cells (``0`` or ``None``). Each yielded mark has ``height=1``.
+    """
+    for y, row in enumerate(matrix):
+        run_start: int | None = None
+        for x, cell in enumerate(row):
+            if bool(cell) == mark_values_when:
+                if run_start is None:
+                    run_start = x
+            elif run_start is not None:
+                yield (run_start, y, x - run_start, 1)
+                run_start = None
+        if run_start is not None:
+            yield (run_start, y, len(row) - run_start, 1)
+
+
+def iter_cells(
+    matrix: Sequence[Sequence[int | None]],
+    *,
+    mark_values_when: bool,
+) -> Iterator[MatrixMark]:
+    """Yield a 1x1 mark for every cell whose truthiness equals ``mark_values_when``."""
+    for y, row in enumerate(matrix):
+        for x, cell in enumerate(row):
+            if bool(cell) == mark_values_when:
+                yield (x, y, 1, 1)
+
+
+def iter_marks(
+    matrix: Sequence[Sequence[int | None]],
+    *,
+    mark_values_when: bool,
+    mark_shape: MarkShape,
+) -> Iterator[MatrixMark]:
+    """Yield ``MatrixMark`` regions for the chosen ``mark_shape``."""
+    if mark_shape is MarkShape.HORIZONTAL_RUNS:
+        return iter_horizontal_runs(matrix, mark_values_when=mark_values_when)
+    if mark_shape in (MarkShape.SQUARE_CELLS, MarkShape.CIRCULAR_CELLS):
+        return iter_cells(matrix, mark_values_when=mark_values_when)
+    raise ValueError(f"Unknown MarkShape: {mark_shape!r}")
+
+
+class TextLabel(NamedTuple):
+    """A run of text to render below the bars in vector output.
+
+    Coordinates are in pixels (= user units for SVG/EPS at default DPI),
+    and ``y`` is the *top* edge of the text — matching the convention used
+    by ``PIL.ImageDraw.text(xy, ...)`` for the corresponding raster path.
+    ``anchor`` controls how ``x`` relates to the text run: ``"start"`` is
+    the left edge, ``"middle"`` the centre, ``"end"`` the right edge.
+    """
+
+    text: str
+    x: float
+    y: float
+    font_size: int
+    anchor: str = "start"
+
+
+class BarLayout(NamedTuple):
+    """Pixel-precise layout of a 1D barcode for any output format.
+
+    All values are in pixels (= user units for SVG/EPS at default DPI).
+    ``heights[i]`` is the bar's pixel height at column ``i`` (``0`` is a
+    gap). Each column is ``bar_width`` pixels wide. The four quiet zones
+    frame the symbol; ``quiet_left`` and ``quiet_top`` shift the bars,
+    while ``quiet_right`` and ``quiet_bottom`` only enlarge the canvas.
+    ``labels`` carries the human-readable text drawn beneath the bars,
+    rendered identically by the PNG, SVG and EPS paths. ``bearer_width``,
+    when positive, draws a bearer bar of that pixel thickness bordering the
+    bars (as used by ITF-14); it must be folded into the quiet zones, with
+    the label placed in the bottom quiet zone outside the frame.
+    """
+
+    heights: Sequence[int]
+    bar_width: int
+    quiet_left: int = 0
+    quiet_right: int = 0
+    quiet_top: int = 0
+    quiet_bottom: int = 0
+    labels: Sequence[TextLabel] = ()
+    bearer_width: int = 0
+
+    @property
+    def width(self) -> int:
+        """Total canvas width in pixels."""
+        return self.quiet_left + len(self.heights) * self.bar_width + self.quiet_right
+
+    @property
+    def height(self) -> int:
+        """Total canvas height in pixels."""
+        return self.quiet_top + max(self.heights, default=0) + self.quiet_bottom
+
+
+def iter_bar_marks(
+    heights: Sequence[int],
+    bar_width: int,
+    *,
+    quiet_left: int = 0,
+    quiet_top: int = 0,
+) -> Iterator[MatrixMark]:
+    """Yield a ``MatrixMark`` per maximal run of equal positive heights.
+
+    Coordinates and dimensions are in pixels. ``heights[i]`` is the bar's
+    pixel height at column ``i`` (``0`` is a gap; positive values are bars
+    sharing a top edge at ``y = quiet_top``). Each column is ``bar_width``
+    pixels wide. Adjacent columns with the same positive height collapse
+    into one mark.
+
+    Only ``quiet_left`` and ``quiet_top`` are accepted because they are
+    the only offsets that affect mark coordinates; the right and bottom
+    quiet zones are a renderer concern (canvas / viewBox sizing).
+    """
+    run_start: int | None = None
+    run_height = 0
+    for col, h in enumerate(heights):
+        if h == run_height and run_start is not None:
+            continue
+        if run_start is not None:
+            yield (
+                quiet_left + run_start * bar_width,
+                quiet_top,
+                (col - run_start) * bar_width,
+                run_height,
+            )
+            run_start = None
+            run_height = 0
+        if h > 0:
+            run_start = col
+            run_height = h
+    if run_start is not None:
+        yield (
+            quiet_left + run_start * bar_width,
+            quiet_top,
+            (len(heights) - run_start) * bar_width,
+            run_height,
+        )
+
+
+def iter_bearer_marks(layout: BarLayout) -> Iterator[MatrixMark]:
+    """Yield the four rectangles of a full-frame bearer bar.
+
+    Nothing is yielded when ``layout.bearer_width`` is zero. The frame borders
+    the bars only -- the top and bottom rules abut the bars, and the label (in
+    the bottom quiet zone) sits outside the frame. ``quiet_top`` holds the top
+    rule, so the bearer thickness must be folded into the quiet zones.
+    """
+    t = layout.bearer_width
+    if t <= 0:
+        return
+    bars_bottom = layout.quiet_top + max(layout.heights, default=0)
+    frame_height = bars_bottom + t
+    yield (0, 0, layout.width, t)  # top rule
+    yield (0, bars_bottom, layout.width, t)  # bottom rule
+    yield (0, 0, t, frame_height)  # left bar
+    yield (layout.width - t, 0, t, frame_height)  # right bar
+
+
+def iter_barcode_marks(layout: BarLayout) -> Iterator[MatrixMark]:
+    """Yield every dark mark of a 1D barcode: its bars, then its bearer bar.
+
+    The single entry point the PNG, SVG and EPS paths render from, composing
+    the raw :func:`iter_bar_marks` primitive with :func:`iter_bearer_marks`.
+    """
+    yield from iter_bar_marks(
+        layout.heights,
+        layout.bar_width,
+        quiet_left=layout.quiet_left,
+        quiet_top=layout.quiet_top,
+    )
+    yield from iter_bearer_marks(layout)
