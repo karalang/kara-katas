@@ -17,7 +17,7 @@ the key recovered from its signature belongs to the sending account.
   alice|bob|25: ok
   ...
   bob|dave|12: forged, signed by alice
-  balances: alice 55, bob 35, carol 20, dave 45
+  balances: alice 75, bob 35, carol 30, dave 15
 ```
 
 ## What it does
@@ -63,20 +63,27 @@ runs each job on the vendored library and prints the result;
   copies of the issued tokens, a changed payload, a token signed by another
   key, a truncated signature, an `alg: none` header and a string that is not
   a token.
-- **`!ledger`** runs 11 entries over four secp256k1 accounts: transfers that
+- **`!ledger`** runs 8 entries over four secp256k1 accounts: transfers that
   go through, a changed amount, entries signed by a key no account owns, an
   overdraft, an entry signed by the wrong account, and a signature one byte
   short.
 
 ## How the port works
 
-- **Big integers** are the `Vec[u64]` limbs of `mini_rsa`, with field
-  arithmetic mod p on top. `inverse_mod` uses the extended Euclidean
-  algorithm.
-- **Points** are added and doubled in Jacobian coordinates, and multiplied
-  by double-and-add. The library uses precomputed tables for the generator
-  and non-adjacent forms. Both compute the same point, so the output does
-  not show the difference.
+- **Big integers** are the `Vec[u64]` limbs of `mini_rsa`. Products mod
+  p are Montgomery multiplications, so the point arithmetic never divides.
+  `inverse_mod` uses the extended Euclidean algorithm.
+- **Points** are added and doubled in Jacobian coordinates, with the
+  cheaper doubling when a = -3. A point is multiplied four bits at a time
+  from a table of its first 15 multiples; the generator through a comb
+  table `gen_kara.py` precomputes from the library (the library keeps
+  precomputed generator tables too); and `u1 G + u2 Q` for verifying by
+  Shamir's trick, two bits of both scalars per step. The two keys a
+  signature recovers to share their two products. The library uses
+  non-adjacent forms instead. Both compute the same points, so the output
+  does not show the difference. With plain double-and-add over division
+  the jobs took 179 s under the MIR interpreter, past the corpus runner's
+  60 s limit; with these they take about 41 s there and 0.05 s built.
 - **Square roots mod p** follow `square_root_mod_prime` for `p % 4 == 3` and
   `p % 8 == 5`. For `p % 8 == 1` (P-224) the library uses a polynomial
   method and the port uses Tonelli-Shanks. Every caller picks the root by

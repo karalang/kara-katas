@@ -60,6 +60,18 @@ def curve_lines():
         cv, g = c.curve, c.generator
         p = cv.p()
         nums = [p, cv.a() % p, cv.b(), g.x(), g.y(), c.order, cv.cofactor()]
+        # A comb table for multiples of the generator, as the library's
+        # precomputed generator tables are: with d = ceil(bits(order) / 4),
+        # entry j (1..15) is the sum of 2^(i d) G over the bits i of j.
+        d = (c.order.bit_length() + 3) // 4
+        teeth = [g * (1 << (i * d)) for i in range(4)]
+        for j in range(1, 16):
+            acc = ellipticcurve.INFINITY
+            for i in range(4):
+                if j >> i & 1:
+                    acc = acc + teeth[i]
+            assert acc != ellipticcurve.INFINITY
+            nums += [acc.x(), acc.y()]
         out.append("%s %s %s %s" % (c.name, c.openssl_name, oid, " ".join("%x" % v for v in nums)))
     return out
 

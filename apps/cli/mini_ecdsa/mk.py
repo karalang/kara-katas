@@ -93,15 +93,12 @@ def entry(frm, to, amount, signer=None, alter=None):
 put('ledger.txt', ''.join([
     entry('alice', 'bob', 25),
     entry('bob', 'carol', 30),
-    entry('carol', 'dave', 10),
     entry('dave', 'alice', 5, alter=('dave', 'alice', 50)),
     entry('alice', 'mallory', 60, signer='mallory'),
-    entry('mallory', 'carol', 10),
     entry('carol', 'alice', 99),
     entry('bob', 'dave', 12, signer='alice'),
     'alice|carol|5|' + acct['alice'].sign_deterministic(b'alice|carol|5').hex()[:-2] + '\n',
     'dave|bob|1|' + '07' * 64 + '\n',
-    entry('alice', 'dave', 20),
 ]))
 
 # Tokens: claims the issuer signs, then what customers present back.
