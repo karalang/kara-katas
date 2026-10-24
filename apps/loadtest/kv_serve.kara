@@ -1,0 +1,322 @@
+// kv_serve: service/kv_http's key-value store as a long-running server,
+// the target of the M4a load test (run.sh).
+//
+// The store, the request parser, the handler and the reply renderer are
+// kv_http.kara's, unchanged. What differs is the connection model: kv_http
+// answers one batch per connection and then closes, inside one exchange
+// the program drives itself. Here an accept loop gives every connection
+// its own task, and a connection stays open: each read appends to a
+// buffer, every whole request in it is answered (HTTP/1.1 keep-alive and
+// pipelining), and the task ends when the client closes. The store is
+// shared by all tasks behind a Mutex.
+//
+// It listens on 127.0.0.1:27760 and runs until it is killed. The store
+// starts with keys k0 to k99.
+
+import std.json.{Json};
+
+#[derive(Serialize, Deserialize)]
+struct PutBody { value: String, tags: Vec[String] }
+
+#[derive(Serialize, Deserialize)]
+struct Item { key: String, value: String, tags: Vec[String], version: i64 }
+
+#[derive(Serialize, Deserialize)]
+struct Listing { count: i64, keys: Vec[String] }
+
+#[derive(Serialize, Deserialize)]
+struct ErrorBody { error: String, status: i64 }
+
+#[derive(Serialize, Deserialize)]
+struct Stats { requests: i64, hits: i64, misses: i64, writes: i64, bytes_in: i64 }
+
+struct Request {
+    method: String,
+    path: String,
+    headers: Vec[(String, String)],
+    body: String,
+}
+
+struct Reply { status: i64, body: String }
+
+struct Store {
+    items: SortedMap[String, Item],
+    stats: Stats,
+}
+
+fn reason(status: i64) -> String {
+    match status {
+        200 => "OK".to_string(),
+        201 => "Created".to_string(),
+        204 => "No Content".to_string(),
+        400 => "Bad Request".to_string(),
+        404 => "Not Found".to_string(),
+        405 => "Method Not Allowed".to_string(),
+        411 => "Length Required".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+fn error_reply(status: i64, msg: Str) -> Reply {
+    let e = ErrorBody { error: msg.to_string(), status: status };
+    Reply { status: status, body: Json.serialize(e) }
+}
+
+fn header_value(req: ref Request, name: Str) -> Option[String] {
+    for (k, v) in req.headers.iter() {
+        if k.to_lowercase() == name.to_lowercase() {
+            return Some(v.clone());
+        }
+    }
+    None
+}
+
+// Parses as many complete requests as `raw` holds. A request whose body is
+// shorter than its Content-Length ends the batch: the rest never arrived.
+fn parse_requests(raw: Str) -> Result[Vec[Request], String] {
+    let mut out: Vec[Request] = Vec.new();
+    let mut rest = raw.to_string();
+    while rest.len() > 0 {
+        let head_end = match rest.find("\r\n\r\n") {
+            Some(i) => i,
+            None => return Err(f"truncated head after {out.len()} requests"),
+        };
+        let head = rest[0..head_end].to_string();
+        let mut lines: Vec[String] = Vec.new();
+        for l in head.split("\r\n") {
+            lines.push(l.to_string());
+        }
+        let first: Vec[String] = lines[0].split(" ").map(|p| p.to_string()).collect();
+        if first.len() != 3 or not first[2].starts_with("HTTP/1.") {
+            return Err(f"bad request line [{lines[0]}]");
+        }
+        let mut headers: Vec[(String, String)] = Vec.new();
+        let mut i = 1;
+        while i < lines.len() {
+            match lines[i].find(":") {
+                Some(c) => {
+                    let k = lines[i][0..c].trim().to_string();
+                    let v = lines[i][c + 1..lines[i].len()].trim().to_string();
+                    headers.push((k, v));
+                }
+                None => return Err(f"bad header [{lines[i]}]"),
+            }
+            i = i + 1;
+        }
+        let mut req = Request {
+            method: first[0].clone(),
+            path: first[1].clone(),
+            headers: headers,
+            body: String.new(),
+        };
+        let body_start = head_end + 4;
+        let len = match header_value(req, "content-length") {
+            Some(v) => match i64.parse(v) {
+                Ok(n) => n,
+                Err(_) => return Err(f"bad content-length [{v}]"),
+            },
+            None => 0,
+        };
+        if body_start + len > rest.len() {
+            return Err(f"body short by {body_start + len - rest.len()} bytes");
+        }
+        req.body = rest[body_start..body_start + len].to_string();
+        rest = rest[body_start + len..rest.len()].to_string();
+        out.push(req);
+    }
+    Ok(out)
+}
+
+fn key_of(path: Str) -> Option[String] {
+    if path.starts_with("/kv/") and path.len() > 4 {
+        Some(path[4..path.len()].to_string())
+    } else {
+        None
+    }
+}
+
+fn handle(store: mut ref Store, req: ref Request) -> Reply {
+    store.stats.requests += 1;
+    store.stats.bytes_in += req.body.len();
+    if req.path == "/kv" {
+        if req.method != "GET" {
+            return error_reply(405, "list is GET only");
+        }
+        let mut keys: Vec[String] = Vec.new();
+        for (k, _) in store.items.iter() {
+            keys.push(k.clone());
+        }
+        let l = Listing { count: keys.len(), keys: keys };
+        return Reply { status: 200, body: Json.serialize(l) };
+    }
+    if req.path == "/stats" {
+        return Reply { status: 200, body: Json.serialize(store.stats) };
+    }
+    let key = match key_of(req.path) {
+        Some(k) => k,
+        None => return error_reply(404, f"no route {req.path}"),
+    };
+    if req.method == "GET" {
+        match store.items.get(key) {
+            Some(item) => {
+                store.stats.hits += 1;
+                Reply { status: 200, body: Json.serialize(item) }
+            }
+            None => {
+                store.stats.misses += 1;
+                error_reply(404, f"no key {key}")
+            }
+        }
+    } else if req.method == "PUT" {
+        if header_value(req, "content-length").is_none() {
+            return error_reply(411, "PUT needs a body");
+        }
+        let parsed: Result[PutBody, DeserializeError] = Json.deserialize(req.body);
+        match parsed {
+            Ok(b) => {
+                let version = match store.items.get(key) {
+                    Some(old) => old.version + 1,
+                    None => 1,
+                };
+                let item = Item { key: key.clone(), value: b.value, tags: b.tags, version: version };
+                let status = if version == 1 { 201 } else { 200 };
+                let body = Json.serialize(item);
+                store.items.insert(key, item);
+                store.stats.writes += 1;
+                Reply { status: status, body: body }
+            }
+            Err(_) => error_reply(400, "bad json"),
+        }
+    } else if req.method == "DELETE" {
+        match store.items.remove(key) {
+            Some(_) => {
+                store.stats.writes += 1;
+                Reply { status: 204, body: String.new() }
+            }
+            None => {
+                store.stats.misses += 1;
+                error_reply(404, f"no key {key}")
+            }
+        }
+    } else {
+        error_reply(405, f"method {req.method}")
+    }
+}
+
+fn render(r: ref Reply) -> String {
+    let mut s = f"HTTP/1.1 {r.status} {reason(r.status)}\r\n";
+    if r.body.len() > 0 {
+        s.push_str("Content-Type: application/json\r\n");
+    }
+    s.push_str(f"Content-Length: {r.body.len()}\r\n\r\n");
+    s.push_str(r.body);
+    s
+}
+
+// The length of the longest prefix of `raw` made of whole requests: each
+// a head ending in a blank line, then Content-Length bytes of body.
+fn complete_len(raw: Str) -> i64 {
+    let mut at = 0;
+    loop {
+        let rest = raw[at..raw.len()].to_string();
+        let head_end = match rest.find("\r\n\r\n") {
+            Some(i) => i,
+            None => return at,
+        };
+        let mut len = 0;
+        for line in rest[0..head_end].split("\r\n") {
+            let l = line.to_lowercase();
+            if l.starts_with("content-length:") {
+                len = match i64.parse(l[15..l.len()].trim()) {
+                    Ok(n) => n,
+                    Err(_) => 0,
+                };
+            }
+        }
+        if at + head_end + 4 + len > raw.len() {
+            return at;
+        }
+        at = at + head_end + 4 + len;
+    }
+}
+
+// One connection, for as long as the client keeps it open.
+fn serve_conn(conn: own TcpStream, store: ref Mutex[Store]) {
+    let mut pending = String.new();
+    let mut buf: Array[u8, 4096] = [0u8; 4096];
+    loop {
+        let n = match conn.read(mut buf) {
+            Ok(0) => return,
+            Ok(n) => n,
+            Err(_) => return,
+        };
+        let mut bytes: Vec[u8] = Vec.new();
+        let mut i = 0;
+        while i < n {
+            bytes.push(buf[i]);
+            i = i + 1;
+        }
+        match String.from_utf8(bytes) {
+            Ok(s) => pending.push_str(s),
+            Err(_) => return,
+        }
+        let cut = complete_len(pending);
+        if cut == 0 {
+            continue;
+        }
+        let batch = pending[0..cut].to_string();
+        pending = pending[cut..pending.len()].to_string();
+        let out = match parse_requests(batch) {
+            Ok(reqs) => {
+                let mut s = String.new();
+                for r in reqs.iter() {
+                    let g = store.lock();
+                    let reply = handle(mut g.value, r);
+                    s.push_str(render(reply));
+                }
+                s
+            }
+            Err(e) => {
+                let _ = conn.write_all(render(error_reply(400, e)).bytes());
+                return;
+            }
+        };
+        if conn.write_all(out.bytes()).is_err() {
+            return;
+        }
+    }
+}
+
+fn main() {
+    let listener = match TcpListener.bind("127.0.0.1:27760") {
+        Ok(l) => l,
+        Err(_) => {
+            println("bind failed");
+            return;
+        }
+    };
+    let mut items: SortedMap[String, Item] = SortedMap.new();
+    let mut k = 0;
+    while k < 100 {
+        let key = f"k{k}";
+        items.insert(key.clone(), Item { key: key, value: f"value {k}", tags: vec!["seed".to_string()], version: 1 });
+        k += 1;
+    }
+    let store = Mutex.new(Store {
+        items: items,
+        stats: Stats { requests: 0, hits: 0, misses: 0, writes: 0, bytes_in: 0 },
+    });
+    println("kv_serve listening on 127.0.0.1:27760");
+    let tasks = TaskGroup.new();
+    loop {
+        match listener.accept() {
+            Ok(conn) => {
+                let _ = tasks.spawn(|| serve_conn(conn, store));
+            }
+            Err(_) => {
+                // Out of descriptors, most likely: wait for some to close.
+                sleep_ms(10);
+            }
+        }
+    }
+}
