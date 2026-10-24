@@ -148,7 +148,9 @@ The bench first took each case with `let (nums, queries) =
 cases[(r + i) % 20]`. `karac check` refused the move out of the index
 and offered a borrow, a copy or `swap`; `karac fix` would apply the
 copy, `.clone()`, which would time a copy of 20,000 values a call, so
-the bench borrows the case with `ref` instead.
+the bench borrows the case with `ref` instead. `karac fix` picks the
+borrow for a plain `let t = v[i]` that is only read, but not yet for a
+destructuring one; that gap is kara's `B-2026-10-24-38`.
 
 ## Benchmarks
 
