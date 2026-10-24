@@ -187,6 +187,6 @@ times C's. Under valgrind's cachegrind v2 runs 4.21 billion
 instructions and 0.54 billion branches with 7.3 million mispredicted,
 Rust with overflow checks 2.77 billion, 0.28 billion and 6.7 million,
 and C 0.22 billion, 59 million and 4.0 million. The gap to C is most
-likely the
-map: a hash of three integers with a few multiplications against
-SipHash, and a table on the stack against a growable list per key.
+likely the map: a hash of three integers with a few multiplications
+against SipHash, and a table on the stack against a growable list per
+key.
