@@ -6,7 +6,8 @@
 #   bash run.sh [results-dir]
 #
 # KARAC names the compiler (default: karac on PATH). TIERS lists the idle
-# connection counts (default 1000 5000 10000 and the descriptor cap);
+# connection counts (default 1000 5000 10000 and 100000, or the descriptor
+# cap when it is lower);
 # RATES the request rates; RATE_SECONDS how long each rate runs.
 set -euo pipefail
 
@@ -26,8 +27,10 @@ mkdir -p "$out/bin"
 # should reach 100k needs `ulimit -Hn` above that first.
 ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
 nofile=$(ulimit -n)
+# The top tier is the 100k bar, or as close as the descriptor limit allows.
 cap=$((nofile - 500))
-tiers=${TIERS:-"1000 5000 10000 $cap"}
+top=$((cap < 100000 ? cap : 100000))
+tiers=${TIERS:-"1000 5000 10000 $top"}
 
 for s in kv_serve proxy_serve; do
     "$karac" build "$here/$s.kara" -o "$out/bin/$s" > "$out/bin/$s.build.log" 2>&1 \

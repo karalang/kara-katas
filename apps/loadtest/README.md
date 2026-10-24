@@ -113,9 +113,9 @@ the proxy rates open a connection per request, as `rev_proxy`'s clients do.
 - **This container caps descriptors at 20000** (`RLIMIT_NOFILE` soft and
   hard; raising the hard limit is not permitted here), so the top tier is
   19500 connections, not 100k. `run.sh` raises the soft limit to the hard
-  one and sizes the top tier from it, so on a box with `ulimit -Hn` above
-  about 101000 (and `fs.nr_open` to match) the same script measures the bar
-  itself. The memory per connection above is measured; what 100k would use
+  one, and its top tier is 100k or the most that limit allows, so on a box
+  with `ulimit -Hn` above about 100500 (and `fs.nr_open` to match) the same
+  script measures the bar itself. The memory per connection above is measured; what 100k would use
   is a projection from it, not a measurement.
 - **The client is Python.** Its own scheduling shows up as "client lag"
   (how late, at worst, it sent a request); when that is large, the high
