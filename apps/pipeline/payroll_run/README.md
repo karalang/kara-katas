@@ -101,7 +101,7 @@ All author errors, and every diagnostic but one was right:
   name. The design says binding it is an error, but `karac check` accepts
   the `let` and instead reports `no associated function 'len' on type
   'u8'` at `{u8.len()}`, which never names the binding. They are `txt1` ..
-  `txt8` now. That is kara ledger row B-2026-10-24-21.
+  `txt8` now. That is kara ledger row B-2026-10-24-22.
 
 After those edits it matched the mirror on the first run under
 `karac run`, the MIR interpreter, the LLVM backend, the ASan build and the
