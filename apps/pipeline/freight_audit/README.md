@@ -116,7 +116,7 @@ unpaid ($193,348.68) instead of 38 ($197,831.71).
   `f[6]` cannot be moved out of the Vec. It does not say so for `find` on
   a local `Str` or a literal, nor for `rfind`, `contains`, `starts_with`,
   `ends_with`, `split` or `replace` on the const, and the run is right
-  either way. That is kara ledger row B-2026-10-24-38; the clones come
+  either way. That is kara ledger row B-2026-10-24-39; the clones come
   out when it is fixed.
 
 After that edit it matched the mirror on the first run under the MIR
