@@ -1,0 +1,643 @@
+
+// ------------------------------------------------------------ the job runner
+
+// The A1 forms the decorators accept: convert_cell_args turns "B3" into
+// (2, 1), convert_range_args "A1:C4" into four numbers, and
+// convert_column_args "B:D" into two columns.
+fn cell_args(args: ref Vec[Val]) -> Result[Vec[Val], PyErr] {
+    if args.len() == 0 {
+        return Ok(args.clone());
+    }
+    match args[0].clone() {
+        Val.Str(t) => {
+            let (r, c) = cell_to_rowcol(t)?;
+            let mut out: Vec[Val] = [Val.Int(r), Val.Int(c)];
+            for i in 1..args.len() {
+                out.push(args[i].clone());
+            }
+            Ok(out)
+        }
+        _ => Ok(args.clone()),
+    }
+}
+
+fn range_args(args: ref Vec[Val]) -> Result[Vec[Val], PyErr] {
+    if args.len() == 0 {
+        return Ok(args.clone());
+    }
+    match args[0].clone() {
+        Val.Str(t) => {
+            let (r1, c1, r2, c2) = match t.split_once(":") {
+                Some((a, b)) => {
+                    let (r1, c1) = cell_to_rowcol(a.to_string())?;
+                    let (r2, c2) = cell_to_rowcol(b.to_string())?;
+                    (r1, c1, r2, c2)
+                }
+                None => {
+                    let (r, c) = cell_to_rowcol(t)?;
+                    (r, c, r, c)
+                }
+            };
+            let mut out: Vec[Val] = [Val.Int(r1), Val.Int(c1), Val.Int(r2), Val.Int(c2)];
+            for i in 1..args.len() {
+                out.push(args[i].clone());
+            }
+            Ok(out)
+        }
+        _ => Ok(args.clone()),
+    }
+}
+
+fn column_args(args: ref Vec[Val]) -> Result[Vec[Val], PyErr] {
+    if args.len() == 0 {
+        return Ok(args.clone());
+    }
+    match args[0].clone() {
+        Val.Str(t) => {
+            let (a, b) = match t.split_once(":") {
+                Some((x, y)) => (x.to_string(), y.to_string()),
+                None => return Err(raise("ValueError", "not enough values to unpack (expected 2, got 1)")),
+            };
+            let (_, c1) = cell_to_rowcol(f"{a}1")?;
+            let (_, c2) = cell_to_rowcol(f"{b}1")?;
+            let mut out: Vec[Val] = [Val.Int(c1), Val.Int(c2)];
+            for i in 1..args.len() {
+                out.push(args[i].clone());
+            }
+            Ok(out)
+        }
+        _ => Ok(args.clone()),
+    }
+}
+
+fn int_arg(args: ref Vec[Val], i: i64) -> i64 {
+    as_int(arg(args, i))
+}
+
+fn ok_int(n: i64) -> Result[Val, PyErr] {
+    Ok(Val.Int(n))
+}
+
+fn when_arg(v: ref Val) -> Result[When, PyErr] {
+    match v {
+        Val.Time(w) => Ok(w.clone()),
+        _ => Err(raise("TypeError", "Unknown or unsupported datetime type")),
+    }
+}
+
+fn is_cell_method(m: ref String) -> bool {
+    let names = ["write", "write_string", "write_number", "write_blank", "write_formula",
+                 "write_datetime", "write_boolean", "write_row", "write_column", "write_url",
+                 "write_rich_string", "set_top_left_cell", "freeze_panes"];
+    for n in names.iter() {
+        if *n == m {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_range_method(m: ref String) -> bool {
+    let names = ["write_array_formula", "write_dynamic_array_formula", "merge_range",
+                 "data_validation", "add_table", "set_selection", "autofilter", "print_area"];
+    for n in names.iter() {
+        if *n == m {
+            return true;
+        }
+    }
+    false
+}
+
+fn sheet_call(sh: mut ref Sheet, cx: mut ref Ctx, method: ref String,
+              args0: ref Vec[Val]) -> Result[Val, PyErr] {
+    let args = if is_cell_method(method) {
+        cell_args(args0)?
+    } else if is_range_method(method) {
+        range_args(args0)?
+    } else if method == "set_column" or method == "repeat_columns" {
+        column_args(args0)?
+    } else {
+        args0.clone()
+    };
+    let r = int_arg(args, 0);
+    let c = int_arg(args, 1);
+    let m = method.as_str();
+    if m == "write" {
+        let rest: Vec[Val] = args.iter().skip(2).map(|v| v.clone()).collect();
+        return Ok(Val.Int(write_any(mut sh, mut cx, r, c, rest)?));
+    }
+    if m == "write_string" {
+        return ok_int(write_string(mut sh, mut cx, r, c, str_of(arg(args, 2)), fmt_of(arg(args, 3))));
+    }
+    if m == "write_number" {
+        return Ok(Val.Int(write_number(mut sh, mut cx, r, c, arg(args, 2), fmt_of(arg(args, 3)))?));
+    }
+    if m == "write_blank" {
+        return ok_int(write_blank(mut sh, r, c, fmt_of(arg(args, 3))));
+    }
+    if m == "write_formula" {
+        return Ok(Val.Int(write_formula(mut sh, mut cx, r, c, str_of(arg(args, 2)), fmt_of(arg(args, 3)),
+                                        arg_or(args, 4, Val.Int(0)))?));
+    }
+    if m == "write_array_formula" or m == "write_dynamic_array_formula" {
+        let formula = str_of(arg(args, 4));
+        let dynamic = m == "write_dynamic_array_formula" or has_dynamic(formula, cx.lib.dyn_names);
+        return Ok(Val.Int(write_array_formula(mut sh, mut cx, r, c, int_arg(args, 2), int_arg(args, 3),
+                                              formula, fmt_of(arg(args, 5)),
+                                              arg_or(args, 6, Val.Int(0)), dynamic)?));
+    }
+    if m == "write_datetime" {
+        let w = when_arg(arg(args, 2))?;
+        return ok_int(write_datetime(mut sh, r, c, w, fmt_of(arg(args, 3))));
+    }
+    if m == "write_boolean" {
+        return ok_int(write_boolean(mut sh, r, c, arg(args, 2), fmt_of(arg(args, 3))));
+    }
+    if m == "write_row" {
+        return Ok(Val.Int(write_row(mut sh, mut cx, r, c, arg(args, 2), arg(args, 3))?));
+    }
+    if m == "write_column" {
+        return Ok(Val.Int(write_column(mut sh, mut cx, r, c, arg(args, 2), arg(args, 3))?));
+    }
+    if m == "write_url" {
+        return Ok(Val.Int(write_url(mut sh, mut cx, r, c, str_of(arg(args, 2)), arg(args, 3),
+                                    arg(args, 4), arg(args, 5))?));
+    }
+    if m == "write_rich_string" {
+        let rest: Vec[Val] = args.iter().skip(2).map(|v| v.clone()).collect();
+        return Ok(Val.Int(write_rich_string(mut sh, mut cx, r, c, rest)?));
+    }
+    if m == "merge_range" {
+        return merge_range(mut sh, mut cx, r, c, int_arg(args, 2), int_arg(args, 3), arg(args, 4),
+                           arg(args, 5));
+    }
+    if m == "set_column" {
+        return ok_int(set_column(mut sh, r, c, arg(args, 2), arg(args, 3), arg(args, 4)));
+    }
+    if m == "set_row" {
+        return ok_int(set_row(mut sh, r, arg(args, 1), arg(args, 2), arg(args, 3)));
+    }
+    if m == "set_default_row" {
+        let h = arg(args, 0);
+        let height = if is_nil(h) { sh.default_row_height.clone() } else { h };
+        if num(height) != 15.0 {
+            sh.default_row_height = height;
+        }
+        if truthy(arg(args, 1)) {
+            sh.default_row_zeroed = true;
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "autofit" {
+        autofit(mut sh, cx);
+        return Ok(Val.Nil);
+    }
+    if m == "data_validation" {
+        return Ok(Val.Int(data_validation(mut sh, r, c, int_arg(args, 2), int_arg(args, 3),
+                                          arg(args, 4))?));
+    }
+    if m == "add_table" {
+        return Ok(Val.Int(add_table(mut sh, mut cx, r, c, int_arg(args, 2), int_arg(args, 3),
+                                    arg(args, 4))?));
+    }
+    if m == "autofilter" {
+        autofilter(mut sh, r, c, int_arg(args, 2), int_arg(args, 3));
+        return Ok(Val.Nil);
+    }
+    if m == "filter_column_list" {
+        filter_column_list(mut sh, arg(args, 0), arg(args, 1))?;
+        return Ok(Val.Nil);
+    }
+    if m == "freeze_panes" {
+        let top = if is_nil(arg(args, 2)) { r } else { int_arg(args, 2) };
+        let left = if is_nil(arg(args, 3)) { c } else { int_arg(args, 3) };
+        sh.panes = [r, c, top, left, int_arg(args, 4)];
+        return Ok(Val.Nil);
+    }
+    if m == "set_selection" {
+        set_selection(mut sh, r, c, int_arg(args, 2), int_arg(args, 3));
+        return Ok(Val.Nil);
+    }
+    if m == "set_top_left_cell" {
+        if not (r == 0 and c == 0) {
+            sh.top_left_cell = cell_ref(r, c);
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "protect" {
+        protect(mut sh, arg_or(args, 0, sv("")), arg(args, 1));
+        return Ok(Val.Nil);
+    }
+    if m == "unprotect_range" {
+        let cr = arg(args, 0);
+        if is_nil(cr) {
+            warn(mut sh, "Cell range must be specified in unprotect_range()");
+            return ok_int(-1);
+        }
+        let range = lstrip_eq(pystr(cr)).replace("$", "");
+        sh.protected_ranges.push((range, String.new(), String.new()));
+        let n = sh.protected_ranges.len();
+        let name = if is_nil(arg(args, 1)) { f"Range{n}" } else { pystr(arg(args, 1)) };
+        let pw = arg(args, 2);
+        let password = if truthy(pw) { encode_password(pystr(pw)) } else { String.new() };
+        sh.protected_ranges[n - 1] = (sh.protected_ranges[n - 1].0.clone(), name, password);
+        return Ok(Val.Nil);
+    }
+    if m == "set_zoom" {
+        let mut z = arg_or(args, 0, Val.Int(100));
+        if num(z) < 10.0 or num(z) > 400.0 {
+            let n = as_int(z);
+            warn(mut sh, f"Zoom factor {n} outside range: 10 <= zoom <= 400");
+            z = Val.Int(100);
+        }
+        sh.zoom = as_int(z);
+        return Ok(Val.Nil);
+    }
+    if m == "set_print_scale" {
+        let s = arg(args, 0);
+        if num(s) < 10.0 or num(s) > 400.0 {
+            let n = as_int(s);
+            warn(mut sh, f"Print scale '{n}' outside range: 10 <= scale <= 400");
+            return Ok(Val.Nil);
+        }
+        sh.fit_page = false;
+        sh.print_scale = as_int(s);
+        sh.page_setup_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "set_start_page" {
+        sh.page_start = arg(args, 0);
+        return Ok(Val.Nil);
+    }
+    if m == "set_paper" {
+        if truthy(arg(args, 0)) {
+            sh.paper_size = arg(args, 0);
+            sh.page_setup_changed = true;
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "set_landscape" or m == "set_portrait" {
+        sh.orientation = if m == "set_landscape" { 0 } else { 1 };
+        sh.page_setup_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "set_page_view" {
+        sh.page_view = as_int(arg_or(args, 0, Val.Int(1)));
+        return Ok(Val.Nil);
+    }
+    if m == "set_header" or m == "set_footer" {
+        set_header_footer(mut sh, arg_or(args, 0, sv("")), arg(args, 1), arg(args, 2),
+                          m == "set_header");
+        return Ok(Val.Nil);
+    }
+    if m == "set_margins" {
+        sh.margin_left = arg_or(args, 0, Val.Float(0.7));
+        sh.margin_right = arg_or(args, 1, Val.Float(0.7));
+        sh.margin_top = arg_or(args, 2, Val.Float(0.75));
+        sh.margin_bottom = arg_or(args, 3, Val.Float(0.75));
+        return Ok(Val.Nil);
+    }
+    if m == "repeat_rows" {
+        repeat_rows(mut sh, r, arg(args, 1));
+        return Ok(Val.Nil);
+    }
+    if m == "repeat_columns" {
+        repeat_columns(mut sh, r, arg(args, 1));
+        return Ok(Val.Nil);
+    }
+    if m == "print_area" {
+        let (r2, c2) = (int_arg(args, 2), int_arg(args, 3));
+        if r == 0 and c == 0 and r2 == 1048575 and c2 == 16383 {
+            return Ok(Val.Nil);
+        }
+        sh.print_area_range = name_area(sh, r, c, r2, c2);
+        return ok_int(0);
+    }
+    if m == "fit_to_pages" {
+        sh.fit_page = true;
+        sh.fit_width = arg(args, 0);
+        sh.fit_height = arg(args, 1);
+        sh.page_setup_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "set_h_pagebreaks" or m == "set_v_pagebreaks" {
+        let b = match arg(args, 0) {
+            Val.List(v) => v,
+            _ => Vec.new(),
+        };
+        if m == "set_h_pagebreaks" {
+            sh.hbreaks = b;
+        } else {
+            sh.vbreaks = b;
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "center_horizontally" {
+        sh.print_options_changed = true;
+        sh.hcenter = true;
+        return Ok(Val.Nil);
+    }
+    if m == "center_vertically" {
+        sh.print_options_changed = true;
+        sh.vcenter = true;
+        return Ok(Val.Nil);
+    }
+    if m == "print_row_col_headers" {
+        sh.print_headers = true;
+        sh.print_options_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "hide_row_col_headers" {
+        sh.row_col_headers = true;
+        return Ok(Val.Nil);
+    }
+    if m == "hide_zero" {
+        sh.show_zeros = false;
+        return Ok(Val.Nil);
+    }
+    if m == "right_to_left" {
+        sh.is_right_to_left = true;
+        return Ok(Val.Nil);
+    }
+    if m == "hide_gridlines" {
+        let o = arg_or(args, 0, Val.Int(1));
+        if eq_int(o, 0) {
+            sh.print_gridlines = true;
+            sh.screen_gridlines = true;
+            sh.print_options_changed = true;
+        } else if eq_int(o, 1) {
+            sh.print_gridlines = false;
+            sh.screen_gridlines = true;
+        } else {
+            sh.print_gridlines = false;
+            sh.screen_gridlines = false;
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "print_across" {
+        sh.page_order = 1;
+        sh.page_setup_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "print_black_and_white" {
+        sh.black_white = true;
+        sh.page_setup_changed = true;
+        return Ok(Val.Nil);
+    }
+    if m == "activate" {
+        sh.hidden = 0;
+        sh.selected = 1;
+        cx.meta.activesheet = sh.index;
+        return Ok(Val.Nil);
+    }
+    if m == "select" {
+        sh.selected = 1;
+        sh.hidden = 0;
+        return Ok(Val.Nil);
+    }
+    if m == "hide" or m == "very_hidden" {
+        sh.hidden = if m == "hide" { 1 } else { 2 };
+        sh.selected = 0;
+        return Ok(Val.Nil);
+    }
+    if m == "set_first_sheet" {
+        sh.hidden = 0;
+        cx.meta.firstsheet = sh.index;
+        return Ok(Val.Nil);
+    }
+    if m == "set_tab_color" {
+        let color = pystr(arg(args, 0));
+        let (c2, ok) = xl_color(color);
+        if not ok {
+            warn(mut sh, f"Color '{color}' isn't a valid Excel color");
+        }
+        sh.tab_color = c2;
+        return Ok(Val.Nil);
+    }
+    if m == "outline_settings" {
+        sh.outline_on = arg_or(args, 0, Val.Int(1));
+        sh.outline_below = arg_or(args, 1, Val.Int(1));
+        sh.outline_right = arg_or(args, 2, Val.Int(1));
+        sh.outline_style = arg_or(args, 3, Val.Int(0));
+        sh.outline_changed = true;
+        return Ok(Val.Nil);
+    }
+    Err(raise("AttributeError", f"'Worksheet' object has no attribute '{method}'"))
+}
+
+// What a workbook call returns: a value to print, a new sheet, or a new
+// format (the last two are recorded, not printed).
+fn book_call(wb: mut ref Wb, sheets: mut ref Vec[Sheet], cx: mut ref Ctx, method: ref String,
+             args: ref Vec[Val]) -> Result[Val, PyErr] {
+    let m = method.as_str();
+    if m == "add_worksheet" {
+        add_worksheet(mut wb, mut sheets, arg(args, 0))?;
+        return Ok(Val.Nil);
+    }
+    if m == "add_format" {
+        let props = dict_of(arg(args, 0));
+        add_format(mut wb, mut cx, props)?;
+        return Ok(Val.Nil);
+    }
+    if m == "define_name" {
+        return Ok(define_name(mut wb, sheets, pystr(arg(args, 0)), pystr(arg(args, 1))));
+    }
+    if m == "set_properties" {
+        wb.doc_properties = dict_of(arg(args, 0));
+        return Ok(Val.Nil);
+    }
+    if m == "set_size" {
+        let w = arg(args, 0);
+        let h = arg(args, 1);
+        wb.window_width = if truthy(w) { (num(w) * 1440.0 / 96.0) as i64 } else { 16095 };
+        wb.window_height = if truthy(h) { (num(h) * 1440.0 / 96.0) as i64 } else { 9660 };
+        return Ok(Val.Nil);
+    }
+    if m == "set_tab_ratio" {
+        let r = arg(args, 0);
+        if is_nil(r) {
+            return Ok(Val.Nil);
+        }
+        if num(r) < 0.0 or num(r) > 100.0 {
+            let n = as_int(r);
+            wb.warns.push(f"Tab ratio '{n}' outside: 0 <= tab_ratio <= 100");
+        } else {
+            wb.tab_ratio = (num(r) * 10.0) as i64;
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "set_calc_mode" {
+        let mode = pystr(arg(args, 0));
+        wb.calc_mode = mode.clone();
+        if mode == "manual" {
+            wb.calc_on_load = false;
+        } else if mode == "auto_except_tables" {
+            wb.calc_mode = "autoNoTable".to_string();
+        }
+        if truthy(arg(args, 1)) {
+            wb.calc_id = arg(args, 1);
+        }
+        return Ok(Val.Nil);
+    }
+    if m == "read_only_recommended" {
+        wb.read_only = 2;
+        return Ok(Val.Nil);
+    }
+    Err(raise("AttributeError", f"'Workbook' object has no attribute '{method}'"))
+}
+
+fn take_warns(n: i64, label: ref String, wb: mut ref Wb, sheets: mut ref Vec[Sheet],
+              cx: mut ref Ctx) {
+    let mut all: Vec[String] = Vec.new();
+    for i in 0..sheets.len() {
+        for w in sheets[i].warns.iter() {
+            all.push(w.clone());
+        }
+        sheets[i].warns = Vec.new();
+    }
+    for w in cx.fm.warns.iter() {
+        all.push(w.clone());
+    }
+    cx.fm.warns = Vec.new();
+    for w in wb.warns.iter() {
+        all.push(w.clone());
+    }
+    wb.warns = Vec.new();
+    for w in all.iter() {
+        println(f"  {n} {label} warns: {w}");
+    }
+}
+
+fn split_sp(t: ref String) -> Vec[String] {
+    t.split(" ").map(|p| p.to_string()).collect()
+}
+
+fn run_book(lines: ref Vec[String], crc: ref Vec[i64]) {
+    let head = split_sp(lines[0]);
+    let name = unpct(head[1]);
+    let mut hp = Toks { t: head.clone(), i: 2 };
+    let options = dict_of(parse_val(mut hp, 0));
+    let mut cx = Ctx {
+        sst: new_sst(), lib: new_lib(),
+        fm: Formats { list: Vec.new(), xf_keys: Map.new(), dxf_keys: Map.new(), warns: Vec.new() },
+        meta: Meta { activesheet: 0, firstsheet: 0 },
+    };
+    let mut wb = match new_book(options, mut cx) {
+        Ok(b) => b,
+        Err(e) => {
+            println(f"  book raised {e.cls}: {e.msg}");
+            return;
+        }
+    };
+    let base = cx.fm.list.len();
+    let mut sheets: Vec[Sheet] = Vec.new();
+    println(f"== {name}");
+    let mut parts: Vec[(String, String)] = Vec.new();
+    let mut xf_count: i64 = 0;
+    let mut closed_ok = true;
+    for n in 1..lines.len() {
+        let toks = split_sp(lines[n]);
+        if toks[0] == "close" {
+            match close_book(mut wb, mut sheets, mut cx) {
+                Ok((p, x)) => {
+                    parts = p;
+                    xf_count = x;
+                }
+                Err(e) => {
+                    closed_ok = false;
+                    println(f"  {n} close raised {e.cls}: {e.msg}");
+                }
+            }
+            take_warns(n, "close", mut wb, mut sheets, mut cx);
+            continue;
+        }
+        let target = toks[0].clone();
+        let method = toks[1].clone();
+        let mut p = Toks { t: toks.clone(), i: 2 };
+        let mut args: Vec[Val] = Vec.new();
+        while not p.done() {
+            args.push(parse_val(mut p, base));
+        }
+        let label = f"{target}.{method}";
+        let res = if target == "wb" {
+            book_call(mut wb, mut sheets, mut cx, method, args)
+        } else {
+            let si = parse_int(target.substring(1));
+            sheet_call(mut sheets[si], mut cx, method, args)
+        };
+        let ret = match res {
+            Ok(v) => v,
+            Err(e) => {
+                println(f"  {n} {label} raised {e.cls}: {e.msg}");
+                Val.Nil
+            }
+        };
+        take_warns(n, label, mut wb, mut sheets, mut cx);
+        if not is_nil(ret) and not eq_int(ret, 0) {
+            let shown = pyrepr(ret);
+            println(f"  {n} {label} -> {shown}");
+        }
+    }
+    if not closed_ok {
+        println("  no file written");
+        return;
+    }
+    let z = zip_parts(crc, parts);
+    let path = f"mini_xlsxwriter_{name}";
+    if fs.write_bytes(path, z).is_err() {
+        println(f"  could not write {path}");
+        return;
+    }
+    let back = match fs.read_bytes(path) {
+        Ok(b) => b,
+        Err(_) => {
+            println(f"  could not read {path}");
+            return;
+        }
+    };
+    let _ = fs.remove_file(path);
+    let (entries, bad) = match read_zip(crc, back) {
+        Ok(r) => r,
+        Err(e) => {
+            println(f"  bad zip: {e}");
+            return;
+        }
+    };
+    let mut tables: i64 = 0;
+    for sh in sheets.iter() {
+        tables += sh.tables.len();
+    }
+    let ne = entries.len();
+    let ns = sheets.len();
+    let nu = cx.sst.arr.len();
+    let nc = cx.sst.count;
+    let nn = wb.defined_names.len();
+    println(f"  {ne} parts, {ns} sheets, {nu} strings ({nc} uses), {xf_count} cell formats, {tables} tables, {nn} names");
+    for e in entries.iter() {
+        let nm = pad_right(e.name, 40);
+        let sz = pad_left(f"{e.size}", 7);
+        let h = hex8(e.crc);
+        println(f"  {nm} {sz} {h}");
+    }
+    if bad.len() == 0 {
+        println("  read back: crc ok");
+    } else {
+        println(f"  read back: bad crc in {bad}");
+    }
+}
+
+fn main() {
+    let crc = crc_table();
+    let lines: Vec[String] = jobs_text().split("\n").map(|p| p.to_string()).collect();
+    let mut book: Vec[String] = Vec.new();
+    for line in lines.iter() {
+        if line.len() == 0 {
+            continue;
+        }
+        book.push(line.clone());
+        if line == "close" {
+            run_book(book, crc);
+            book = Vec.new();
+        }
+    }
+}

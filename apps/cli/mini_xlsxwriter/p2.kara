@@ -1,0 +1,1054 @@
+
+// ------------------------------------------------------------ formats
+
+// A Format. The properties a user sets keep the Python value they were set
+// to, because the format's key is made of their str() and the XML writes
+// them with "%s".
+#[derive(Clone)]
+struct Format {
+    num_format: Val,
+    num_format_index: i64,
+    font_index: i64,
+    has_font: bool,
+    has_dxf_font: bool,
+    bold: Val,
+    underline: Val,
+    italic: Val,
+    font_name: Val,
+    font_size: Val,
+    font_color: Val,
+    font_strikeout: Val,
+    font_outline: Val,
+    font_shadow: Val,
+    font_script: Val,
+    font_family: Val,
+    font_charset: Val,
+    font_scheme: Val,
+    font_condense: Val,
+    font_extend: Val,
+    theme: Val,
+    hyperlink: bool,
+    xf_id: i64,
+    hidden: Val,
+    locked: Val,
+    text_h_align: Val,
+    text_wrap: Val,
+    text_v_align: Val,
+    rotation: Val,
+    fg_color: Val,
+    bg_color: Val,
+    pattern: Val,
+    has_fill: bool,
+    has_dxf_fill: bool,
+    fill_index: i64,
+    border_index: i64,
+    has_border: bool,
+    has_dxf_border: bool,
+    bottom: Val,
+    bottom_color: Val,
+    diag_border: Val,
+    diag_color: Val,
+    diag_type: Val,
+    left: Val,
+    left_color: Val,
+    right: Val,
+    right_color: Val,
+    top: Val,
+    top_color: Val,
+    indent: Val,
+    shrink: Val,
+    reading_order: Val,
+    just_distrib: Val,
+    color_indexed: Val,
+    font_only: Val,
+    quote_prefix: Val,
+    xf_index: Option[i64],
+    dxf_index: Option[i64],
+    dxf_fg_color: Val,
+    dxf_bg_color: Val,
+    key: Option[String],
+}
+
+fn new_format() -> Format {
+    Format {
+        num_format: sv("General"), num_format_index: 0, font_index: 0, has_font: false,
+        has_dxf_font: false, bold: Val.Int(0), underline: Val.Int(0), italic: Val.Int(0),
+        font_name: sv("Calibri"), font_size: Val.Int(11), font_color: Val.Int(0),
+        font_strikeout: Val.Int(0), font_outline: Val.Int(0), font_shadow: Val.Int(0),
+        font_script: Val.Int(0), font_family: Val.Int(2), font_charset: Val.Int(0),
+        font_scheme: sv("minor"), font_condense: Val.Int(0), font_extend: Val.Int(0),
+        theme: Val.Int(0), hyperlink: false, xf_id: 0, hidden: Val.Int(0), locked: Val.Int(1),
+        text_h_align: Val.Int(0), text_wrap: Val.Int(0), text_v_align: Val.Int(0),
+        rotation: Val.Int(0), fg_color: Val.Int(0), bg_color: Val.Int(0), pattern: Val.Int(0),
+        has_fill: false, has_dxf_fill: false, fill_index: 0, border_index: 0, has_border: false,
+        has_dxf_border: false, bottom: Val.Int(0), bottom_color: Val.Int(0),
+        diag_border: Val.Int(0), diag_color: Val.Int(0), diag_type: Val.Int(0), left: Val.Int(0),
+        left_color: Val.Int(0), right: Val.Int(0), right_color: Val.Int(0), top: Val.Int(0),
+        top_color: Val.Int(0), indent: Val.Int(0), shrink: Val.Int(0), reading_order: Val.Int(0),
+        just_distrib: Val.Int(0), color_indexed: Val.Int(0), font_only: Val.Int(0),
+        quote_prefix: Val.Bool(false), xf_index: None, dxf_index: None,
+        dxf_fg_color: Val.Int(0), dxf_bg_color: Val.Int(0), key: None,
+    }
+}
+
+fn is_zero(v: ref Val) -> bool {
+    is_num(v) and num(v) == 0.0
+}
+
+fn set_align(f: mut ref Format, v: ref Val) {
+    let a = pystr(v).to_lowercase();
+    if a == "left" {
+        f.text_h_align = Val.Int(1);
+    }
+    if a == "centre" or a == "center" {
+        f.text_h_align = Val.Int(2);
+    }
+    if a == "right" {
+        f.text_h_align = Val.Int(3);
+    }
+    if a == "fill" {
+        f.text_h_align = Val.Int(4);
+    }
+    if a == "justify" {
+        f.text_h_align = Val.Int(5);
+    }
+    if a == "center_across" or a == "centre_across" {
+        f.text_h_align = Val.Int(6);
+    }
+    if a == "distributed" or a == "justify_distributed" {
+        f.text_h_align = Val.Int(7);
+    }
+    if a == "justify_distributed" {
+        f.just_distrib = Val.Int(1);
+    }
+    if a == "top" {
+        f.text_v_align = Val.Int(1);
+    }
+    if a == "vcentre" or a == "vcenter" {
+        f.text_v_align = Val.Int(2);
+    }
+    if a == "bottom" {
+        f.text_v_align = Val.Int(3);
+    }
+    if a == "vjustify" {
+        f.text_v_align = Val.Int(4);
+    }
+    if a == "vdistributed" {
+        f.text_v_align = Val.Int(5);
+    }
+}
+
+// getattr(self, "set_" + key)(value), for each property of add_format().
+// A warning goes to `warns`.
+fn set_prop(f: mut ref Format, key: ref String, v: ref Val, warns: mut ref Vec[String]) -> Result[(), PyErr] {
+    if key == "font_name" or key == "font" {
+        f.font_name = v.clone();
+    } else if key == "font_size" or key == "size" {
+        f.font_size = v.clone();
+    } else if key == "font_color" or key == "color" {
+        f.font_color = get_color(v);
+    } else if key == "bold" {
+        f.bold = v.clone();
+    } else if key == "italic" {
+        f.italic = v.clone();
+    } else if key == "underline" {
+        f.underline = v.clone();
+    } else if key == "font_strikeout" {
+        f.font_strikeout = v.clone();
+    } else if key == "font_script" {
+        f.font_script = v.clone();
+    } else if key == "font_outline" {
+        f.font_outline = v.clone();
+    } else if key == "font_shadow" {
+        f.font_shadow = v.clone();
+    } else if key == "num_format" {
+        f.num_format = v.clone();
+    } else if key == "locked" {
+        f.locked = v.clone();
+    } else if key == "hidden" {
+        f.hidden = v.clone();
+    } else if key == "align" or key == "valign" {
+        set_align(mut f, v);
+    } else if key == "center_across" {
+        f.text_h_align = Val.Int(6);
+    } else if key == "text_wrap" {
+        f.text_wrap = v.clone();
+    } else if key == "rotation" {
+        let mut r = as_int(v);
+        if r == 270 {
+            r = 255;
+        } else if r >= -90 and r <= 90 {
+            if r < 0 {
+                r = -r + 90;
+            }
+        } else {
+            warns.push("Rotation rotation outside range: -90 <= angle <= 90".to_string());
+            return Ok(());
+        }
+        f.rotation = Val.Int(r);
+    } else if key == "indent" {
+        f.indent = v.clone();
+    } else if key == "shrink" {
+        f.shrink = v.clone();
+    } else if key == "text_justlast" {
+        // Stored, never written.
+    } else if key == "pattern" {
+        f.pattern = v.clone();
+    } else if key == "bg_color" {
+        f.bg_color = get_color(v);
+    } else if key == "fg_color" {
+        f.fg_color = get_color(v);
+    } else if key == "border" {
+        f.bottom = v.clone();
+        f.top = v.clone();
+        f.left = v.clone();
+        f.right = v.clone();
+    } else if key == "border_color" {
+        f.bottom_color = get_color(v);
+        f.top_color = get_color(v);
+        f.left_color = get_color(v);
+        f.right_color = get_color(v);
+    } else if key == "bottom" {
+        f.bottom = v.clone();
+    } else if key == "bottom_color" {
+        f.bottom_color = get_color(v);
+    } else if key == "top" {
+        f.top = v.clone();
+    } else if key == "top_color" {
+        f.top_color = get_color(v);
+    } else if key == "left" {
+        f.left = v.clone();
+    } else if key == "left_color" {
+        f.left_color = get_color(v);
+    } else if key == "right" {
+        f.right = v.clone();
+    } else if key == "right_color" {
+        f.right_color = get_color(v);
+    } else if key == "diag_type" {
+        f.diag_type = v.clone();
+    } else if key == "diag_color" {
+        f.diag_color = get_color(v);
+    } else if key == "diag_border" {
+        f.diag_border = v.clone();
+    } else if key == "quote_prefix" {
+        f.quote_prefix = v.clone();
+    } else if key == "reading_order" {
+        f.reading_order = v.clone();
+    } else if key == "font_family" {
+        f.font_family = v.clone();
+    } else if key == "font_charset" {
+        f.font_charset = v.clone();
+    } else if key == "font_scheme" {
+        f.font_scheme = v.clone();
+    } else if key == "font_condense" {
+        f.font_condense = v.clone();
+    } else if key == "font_extend" {
+        f.font_extend = v.clone();
+    } else if key == "theme" {
+        f.theme = v.clone();
+    } else if key == "hyperlink" {
+        f.xf_id = 1;
+        f.underline = Val.Int(1);
+        f.theme = Val.Int(10);
+        f.hyperlink = truthy(v);
+    } else if key == "color_indexed" {
+        f.color_indexed = v.clone();
+    } else if key == "font_only" {
+        f.font_only = v.clone();
+    } else if key == "xf_index" {
+        f.xf_index = Some(as_int(v));
+    } else {
+        return Err(raise("AttributeError", f"'Format' object has no attribute 'set_{key}'"));
+    }
+    Ok(())
+}
+
+fn join_keys(parts: ref Vec[String]) -> String {
+    parts.join(":")
+}
+
+fn font_key(f: ref Format) -> String {
+    let parts = [pystr(f.bold), pystr(f.font_color), pystr(f.font_charset),
+                        pystr(f.font_family), pystr(f.font_outline), pystr(f.font_script),
+                        pystr(f.font_shadow), pystr(f.font_strikeout), pystr(f.font_name),
+                        pystr(f.italic), pystr(f.font_size), pystr(f.underline), pystr(f.theme)];
+    join_keys(parts)
+}
+
+fn border_key(f: ref Format) -> String {
+    let parts = [pystr(f.bottom), pystr(f.bottom_color), pystr(f.diag_border),
+                        pystr(f.diag_color), pystr(f.diag_type), pystr(f.left),
+                        pystr(f.left_color), pystr(f.right), pystr(f.right_color),
+                        pystr(f.top), pystr(f.top_color)];
+    join_keys(parts)
+}
+
+fn fill_key(f: ref Format) -> String {
+    let a = pystr(f.pattern);
+    let b = pystr(f.bg_color);
+    let c = pystr(f.fg_color);
+    f"{a}:{b}:{c}"
+}
+
+fn align_key(f: ref Format) -> String {
+    let parts = [pystr(f.text_h_align), pystr(f.text_v_align), pystr(f.indent),
+                        pystr(f.rotation), pystr(f.text_wrap), pystr(f.shrink),
+                        pystr(f.reading_order)];
+    join_keys(parts)
+}
+
+fn format_key(f: ref Format) -> String {
+    let parts = [font_key(f), border_key(f), fill_key(f), align_key(f), pystr(f.num_format),
+                        pystr(f.locked), pystr(f.quote_prefix), pystr(f.hidden)];
+    join_keys(parts)
+}
+
+// The book's formats and the key tables _get_xf_index() and
+// _get_dxf_index() share.
+struct Formats {
+    list: Vec[Format],
+    xf_keys: Map[String, i64],
+    dxf_keys: Map[String, i64],
+    warns: Vec[String],
+}
+
+impl Formats {
+    fn cached_key(mut ref self, i: i64) -> String {
+        match self.list[i].key.clone() {
+            Some(k) => k,
+            None => {
+                let k = format_key(self.list[i]);
+                self.list[i].key = Some(k.clone());
+                k
+            }
+        }
+    }
+
+    // _get_xf_index(): the first format with a key gets the next index; a
+    // later one with the same key shares it but keeps no index of its own.
+    fn xf_index(mut ref self, i: i64) -> i64 {
+        match self.list[i].xf_index {
+            Some(x) => x,
+            None => {
+                let k = self.cached_key(i);
+                match self.xf_keys.get(k) {
+                    Some(x) => *x,
+                    None => {
+                        let idx = 1 + self.xf_keys.len();
+                        self.xf_keys.insert(k, idx);
+                        self.list[i].xf_index = Some(idx);
+                        idx
+                    }
+                }
+            }
+        }
+    }
+
+    fn dxf_index(mut ref self, i: i64) -> i64 {
+        match self.list[i].dxf_index {
+            Some(x) => x,
+            None => {
+                let k = self.cached_key(i);
+                match self.dxf_keys.get(k) {
+                    Some(x) => *x,
+                    None => {
+                        let idx = self.dxf_keys.len();
+                        self.dxf_keys.insert(k, idx);
+                        self.list[i].dxf_index = Some(idx);
+                        idx
+                    }
+                }
+            }
+        }
+    }
+
+    fn add(mut ref self, defaults: ref Vec[(String, Val)], props: ref Vec[(String, Val)]) -> Result[i64, PyErr] {
+        // format_properties = defaults.copy(); .update(properties): a key
+        // in both keeps its first place.
+        let mut merged = defaults.clone();
+        for i in 0..props.len() {
+            let (k, v) = props[i].clone();
+            dset(mut merged, k, v);
+        }
+        let mut f = new_format();
+        for i in 0..merged.len() {
+            let (k, v) = merged[i].clone();
+            set_prop(mut f, k, v, mut self.warns)?;
+        }
+        self.list.push(f);
+        Ok(self.list.len() - 1)
+    }
+}
+
+// _get_align_properties(): whether alignment changed, and its attributes.
+fn align_props(f: ref Format) -> (bool, Attrs) {
+    let mut a = attrs();
+    let mut h = as_int(f.text_h_align);
+    let v = as_int(f.text_v_align);
+    let indent = f.indent.clone();
+    let mut shrink = truthy(f.shrink);
+    let mut just = truthy(f.just_distrib);
+    if not (h != 0 or v != 0 or truthy(indent) or truthy(f.rotation) or truthy(f.text_wrap)
+            or shrink or truthy(f.reading_order)) {
+        return (false, a);
+    }
+    if truthy(indent) and h != 1 and h != 3 and h != 7 and v != 1 and v != 3 and v != 5 {
+        h = 1;
+    }
+    if truthy(f.text_wrap) {
+        shrink = false;
+    }
+    if h == 4 or h == 5 or h == 7 {
+        shrink = false;
+    }
+    if h != 7 {
+        just = false;
+    }
+    if truthy(indent) {
+        just = false;
+    }
+    let names = ["", "left", "center", "right", "fill", "justify", "centerContinuous", "distributed"];
+    if h >= 1 and h <= 7 {
+        a.add("horizontal", names[h].to_string());
+    }
+    if just {
+        a.addi("justifyLastLine", 1);
+    }
+    if v == 1 {
+        a.add("vertical", "top".to_string());
+    }
+    if v == 2 {
+        a.add("vertical", "center".to_string());
+    }
+    if v == 4 {
+        a.add("vertical", "justify".to_string());
+    }
+    if v == 5 {
+        a.add("vertical", "distributed".to_string());
+    }
+    if truthy(f.rotation) {
+        a.addv("textRotation", f.rotation);
+    }
+    if truthy(indent) {
+        a.addv("indent", indent);
+    }
+    if truthy(f.text_wrap) {
+        a.addi("wrapText", 1);
+    }
+    if shrink {
+        a.addi("shrinkToFit", 1);
+    }
+    if eq_int(f.reading_order, 1) {
+        a.addi("readingOrder", 1);
+    }
+    if eq_int(f.reading_order, 2) {
+        a.addi("readingOrder", 2);
+    }
+    (true, a)
+}
+
+fn protection_props(f: ref Format) -> Attrs {
+    let mut a = attrs();
+    if not truthy(f.locked) {
+        a.addi("locked", 0);
+    }
+    if truthy(f.hidden) {
+        a.addi("hidden", 1);
+    }
+    a
+}
+
+// What the workbook's _prepare_format_properties() leaves for styles.xml.
+struct StyleData {
+    xf: Vec[i64],
+    dxf: Vec[i64],
+    font_count: i64,
+    num_formats: Vec[String],
+    border_count: i64,
+    fill_count: i64,
+}
+
+fn has_border_key(k: ref String) -> bool {
+    for c in k.bytes() {
+        if *c != b'0' and *c != b':' {
+            return true;
+        }
+    }
+    false
+}
+
+fn prepare_formats(fm: mut ref Formats) -> StyleData {
+    // _prepare_formats(): the formats by their xf and dxf indices.
+    let mut nxf: i64 = 0;
+    let mut ndxf: i64 = 0;
+    for i in 0..fm.list.len() {
+        if fm.list[i].xf_index.is_some() {
+            nxf += 1;
+        }
+        if fm.list[i].dxf_index.is_some() {
+            ndxf += 1;
+        }
+    }
+    let mut xf: Vec[i64] = Vec.filled(nxf, -1);
+    let mut dxf: Vec[i64] = Vec.filled(ndxf, -1);
+    for i in 0..fm.list.len() {
+        if let Some(x) = fm.list[i].xf_index {
+            xf[x] = i;
+        }
+        if let Some(x) = fm.list[i].dxf_index {
+            dxf[x] = i;
+        }
+    }
+    // _prepare_fonts().
+    let mut fonts: Map[String, i64] = Map.new();
+    let mut index: i64 = 0;
+    for j in 0..xf.len() {
+        let i = xf[j];
+        let k = font_key(fm.list[i]);
+        match fonts.get(k) {
+            Some(x) => {
+                fm.list[i].font_index = *x;
+                fm.list[i].has_font = false;
+            }
+            None => {
+                fonts.insert(k, index);
+                fm.list[i].font_index = index;
+                fm.list[i].has_font = true;
+                index += 1;
+            }
+        }
+    }
+    let font_count = index;
+    for j in 0..dxf.len() {
+        let i = dxf[j];
+        let f = fm.list[i].clone();
+        if truthy(f.font_color) or truthy(f.bold) or truthy(f.italic) or truthy(f.underline)
+            or truthy(f.font_strikeout) {
+            fm.list[i].has_dxf_font = true;
+        }
+    }
+    // _prepare_num_formats().
+    let mut unique: Map[String, i64] = Map.new();
+    let mut num_formats: Vec[String] = Vec.new();
+    let mut nindex: i64 = 164;
+    let mut order = xf.clone();
+    for j in 0..dxf.len() {
+        order.push(dxf[j]);
+    }
+    for j in 0..order.len() {
+        let i = order[j];
+        let nf = fm.list[i].num_format.clone();
+        if not is_str(nf) {
+            let mut n = as_int(nf);
+            if n == 0 {
+                n = 1;
+            }
+            fm.list[i].num_format_index = n;
+            continue;
+        }
+        let t = str_of(nf);
+        if t == "0" {
+            fm.list[i].num_format_index = 1;
+            continue;
+        }
+        if t == "General" {
+            fm.list[i].num_format_index = 0;
+            continue;
+        }
+        match unique.get(t) {
+            Some(x) => {
+                fm.list[i].num_format_index = *x;
+            }
+            None => {
+                unique.insert(t.clone(), nindex);
+                fm.list[i].num_format_index = nindex;
+                nindex += 1;
+                let has_xf = match fm.list[i].xf_index {
+                    Some(x) => x != 0,
+                    None => false,
+                };
+                if has_xf {
+                    num_formats.push(t);
+                }
+            }
+        }
+    }
+    // _prepare_borders().
+    let mut borders: Map[String, i64] = Map.new();
+    let mut bindex: i64 = 0;
+    for j in 0..xf.len() {
+        let i = xf[j];
+        let k = border_key(fm.list[i]);
+        match borders.get(k) {
+            Some(x) => {
+                fm.list[i].border_index = *x;
+                fm.list[i].has_border = false;
+            }
+            None => {
+                borders.insert(k, bindex);
+                fm.list[i].border_index = bindex;
+                fm.list[i].has_border = true;
+                bindex += 1;
+            }
+        }
+    }
+    for j in 0..dxf.len() {
+        let i = dxf[j];
+        if has_border_key(border_key(fm.list[i])) {
+            fm.list[i].has_dxf_border = true;
+        }
+    }
+    // _prepare_fills(): indices 0 and 1 are Excel's own two fills.
+    let mut fills: Map[String, i64] = Map.new();
+    fills.insert("0:0:0".to_string(), 0);
+    fills.insert("17:0:0".to_string(), 1);
+    let mut findex: i64 = 2;
+    for j in 0..dxf.len() {
+        let i = dxf[j];
+        let f = fm.list[i].clone();
+        if truthy(f.pattern) or truthy(f.bg_color) or truthy(f.fg_color) {
+            fm.list[i].has_dxf_fill = true;
+            fm.list[i].dxf_bg_color = f.bg_color.clone();
+            fm.list[i].dxf_fg_color = f.fg_color.clone();
+        }
+    }
+    for j in 0..xf.len() {
+        let i = xf[j];
+        let mut f = fm.list[i].clone();
+        if eq_int(f.pattern, 1) and not is_zero(f.bg_color) and not is_zero(f.fg_color) {
+            let tmp = f.fg_color.clone();
+            f.fg_color = f.bg_color.clone();
+            f.bg_color = tmp;
+        }
+        if num(f.pattern) <= 1.0 and not is_zero(f.bg_color) and is_zero(f.fg_color) {
+            f.fg_color = f.bg_color.clone();
+            f.bg_color = Val.Int(0);
+            f.pattern = Val.Int(1);
+        }
+        if num(f.pattern) <= 1.0 and is_zero(f.bg_color) and not is_zero(f.fg_color) {
+            f.pattern = Val.Int(1);
+        }
+        let k = fill_key(f);
+        match fills.get(k) {
+            Some(x) => {
+                f.fill_index = *x;
+                f.has_fill = false;
+            }
+            None => {
+                fills.insert(k, findex);
+                f.fill_index = findex;
+                f.has_fill = true;
+                findex += 1;
+            }
+        }
+        fm.list[i] = f;
+    }
+    StyleData { xf: xf, dxf: dxf, font_count: font_count, num_formats: num_formats,
+                border_count: bindex, fill_count: findex }
+}
+
+// ------------------------------------------------------------ styles.xml
+
+fn palette(c: ref Val) -> String {
+    let t = pystr(c);
+    if t == "Automatic" {
+        return t;
+    }
+    let body = if t.starts_with("#") { t.substring(1) } else { t };
+    let up = body.to_uppercase();
+    f"FF{up}"
+}
+
+fn underline_el(out: mut ref String, u: ref Val) {
+    let mut a = attrs();
+    if eq_int(u, 2) {
+        a.add("val", "double".to_string());
+    } else if eq_int(u, 33) {
+        a.add("val", "singleAccounting".to_string());
+    } else if eq_int(u, 34) {
+        a.add("val", "doubleAccounting".to_string());
+    }
+    empty(mut out, "u", a);
+}
+
+fn style_font(out: mut ref String, f: ref Format, dxf: bool, hyper: mut ref (bool, i64)) {
+    start0(mut out, "font");
+    if truthy(f.font_condense) {
+        empty1(mut out, "condense", "val", "0".to_string());
+    }
+    if truthy(f.font_extend) {
+        empty1(mut out, "extend", "val", "0".to_string());
+    }
+    if truthy(f.bold) {
+        empty0(mut out, "b");
+    }
+    if truthy(f.italic) {
+        empty0(mut out, "i");
+    }
+    if truthy(f.font_strikeout) {
+        empty0(mut out, "strike");
+    }
+    if truthy(f.font_outline) {
+        empty0(mut out, "outline");
+    }
+    if truthy(f.font_shadow) {
+        empty0(mut out, "shadow");
+    }
+    if truthy(f.underline) {
+        underline_el(mut out, f.underline);
+    }
+    if eq_int(f.font_script, 1) {
+        empty1(mut out, "vertAlign", "val", "superscript".to_string());
+    }
+    if eq_int(f.font_script, 2) {
+        empty1(mut out, "vertAlign", "val", "subscript".to_string());
+    }
+    if not dxf {
+        empty1(mut out, "sz", "val", pystr(f.font_size));
+    }
+    if eq_int(f.theme, -1) {
+        // No colour at all.
+    } else if truthy(f.theme) {
+        empty1(mut out, "color", "theme", pystr(f.theme));
+    } else if truthy(f.color_indexed) {
+        empty1(mut out, "color", "indexed", pystr(f.color_indexed));
+    } else if truthy(f.font_color) {
+        let c = palette(f.font_color);
+        if c != "Automatic" {
+            empty1(mut out, "color", "rgb", c);
+        }
+    } else if not dxf {
+        empty1(mut out, "color", "theme", "1".to_string());
+    }
+    if not dxf {
+        empty1(mut out, "name", "val", pystr(f.font_name));
+        if truthy(f.font_family) {
+            empty1(mut out, "family", "val", pystr(f.font_family));
+        }
+        if truthy(f.font_charset) {
+            empty1(mut out, "charset", "val", pystr(f.font_charset));
+        }
+        if pystr(f.font_name) == "Calibri" and is_str(f.font_name) and not f.hyperlink {
+            empty1(mut out, "scheme", "val", pystr(f.font_scheme));
+        }
+        if f.hyperlink {
+            hyper.0 = true;
+            if hyper.1 == 0 {
+                hyper.1 = f.font_index;
+            }
+        }
+    }
+    end(mut out, "font");
+}
+
+fn pattern_name(p: i64) -> String {
+    let names = ["none", "solid", "mediumGray", "darkGray", "lightGray", "darkHorizontal",
+                 "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis",
+                 "lightHorizontal", "lightVertical", "lightDown", "lightUp", "lightGrid",
+                 "lightTrellis", "gray125", "gray0625"];
+    names[p].to_string()
+}
+
+fn default_fill(out: mut ref String, pattern: Str) {
+    start0(mut out, "fill");
+    empty1(mut out, "patternFill", "patternType", pattern.to_string());
+    end(mut out, "fill");
+}
+
+fn style_fill(out: mut ref String, f: ref Format, dxf: bool) {
+    let pattern = as_int(f.pattern);
+    let bg = if dxf { f.dxf_bg_color.clone() } else { f.bg_color.clone() };
+    let fg = if dxf { f.dxf_fg_color.clone() } else { f.fg_color.clone() };
+    if not truthy(fg) and not truthy(bg) {
+        default_fill(mut out, pattern_name(pattern));
+        return;
+    }
+    start0(mut out, "fill");
+    if dxf and pattern <= 1 {
+        start0(mut out, "patternFill");
+    } else {
+        let mut a = attrs();
+        a.add("patternType", pattern_name(pattern));
+        start(mut out, "patternFill", a);
+    }
+    if truthy(fg) {
+        let c = palette(fg);
+        if c != "Automatic" {
+            empty1(mut out, "fgColor", "rgb", c);
+        }
+    }
+    if truthy(bg) {
+        let c = palette(bg);
+        if c != "Automatic" {
+            empty1(mut out, "bgColor", "rgb", c);
+        }
+    } else if not dxf and pattern <= 1 {
+        empty1(mut out, "bgColor", "indexed", "64".to_string());
+    }
+    end(mut out, "patternFill");
+    end(mut out, "fill");
+}
+
+fn sub_border(out: mut ref String, kind: Str, style: ref Val, color: ref Val) {
+    if not truthy(style) {
+        empty0(mut out, kind);
+        return;
+    }
+    let names = ["none", "thin", "medium", "dashed", "dotted", "thick", "double", "hair",
+                 "mediumDashed", "dashDot", "mediumDashDot", "dashDotDot", "mediumDashDotDot",
+                 "slantDashDot"];
+    let mut a = attrs();
+    a.add("style", names[as_int(style)].to_string());
+    start(mut out, kind, a);
+    if truthy(color) and pystr(color) != "Automatic" {
+        empty1(mut out, "color", "rgb", palette(color));
+    } else {
+        empty1(mut out, "color", "auto", "1".to_string());
+    }
+    end(mut out, kind);
+}
+
+fn style_border(out: mut ref String, f: ref Format, dxf: bool) {
+    let mut a = attrs();
+    let dt = as_int(f.diag_type);
+    if dt == 1 {
+        a.addi("diagonalUp", 1);
+    } else if dt == 2 {
+        a.addi("diagonalDown", 1);
+    } else if dt == 3 {
+        a.addi("diagonalUp", 1);
+        a.addi("diagonalDown", 1);
+    }
+    let mut diag = f.diag_border.clone();
+    if truthy(f.diag_type) and not truthy(diag) {
+        diag = Val.Int(1);
+    }
+    start(mut out, "border", a);
+    sub_border(mut out, "left", f.left, f.left_color);
+    sub_border(mut out, "right", f.right, f.right_color);
+    sub_border(mut out, "top", f.top, f.top_color);
+    sub_border(mut out, "bottom", f.bottom, f.bottom_color);
+    if not dxf {
+        sub_border(mut out, "diagonal", diag, f.diag_color);
+    }
+    if dxf {
+        sub_border(mut out, "vertical", Val.Nil, Val.Nil);
+        sub_border(mut out, "horizontal", Val.Nil, Val.Nil);
+    }
+    end(mut out, "border");
+}
+
+fn builtin_num_format(id: i64) -> String {
+    let codes = ["General", "0", "0.00", "#,##0", "#,##0.00", "($#,##0_);($#,##0)",
+                 "($#,##0_);[Red]($#,##0)", "($#,##0.00_);($#,##0.00)",
+                 "($#,##0.00_);[Red]($#,##0.00)", "0%", "0.00%", "0.00E+00", "# ?/?", "# ??/??",
+                 "m/d/yy", "d-mmm-yy", "d-mmm", "mmm-yy", "h:mm AM/PM", "h:mm:ss AM/PM", "h:mm",
+                 "h:mm:ss", "m/d/yy h:mm"];
+    if id >= 0 and id <= 22 {
+        return codes[id].to_string();
+    }
+    let hi = ["(#,##0_);(#,##0)", "(#,##0_);[Red](#,##0)", "(#,##0.00_);(#,##0.00)",
+              "(#,##0.00_);[Red](#,##0.00)", "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(_)",
+              "_($* #,##0_);_($* (#,##0);_($* \"-\"_);_(_)",
+              "_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(_)",
+              "_($* #,##0.00_);_($* (#,##0.00);_($* \"-\"??_);_(_)", "mm:ss", "[h]:mm:ss",
+              "mm:ss.0", "##0.0E+0", "@"];
+    if id >= 37 and id <= 49 {
+        return hi[id - 37].to_string();
+    }
+    "General".to_string()
+}
+
+fn num_fmt_el(out: mut ref String, id: i64, code: ref String) {
+    let c = if id < 164 { builtin_num_format(id) } else { code.clone() };
+    let mut a = attrs();
+    a.addi("numFmtId", id);
+    a.add("formatCode", c);
+    empty(mut out, "numFmt", a);
+}
+
+fn style_xf(out: mut ref String, f: ref Format) {
+    let mut a = attrs();
+    a.addi("numFmtId", f.num_format_index);
+    a.addi("fontId", f.font_index);
+    a.addi("fillId", f.fill_index);
+    a.addi("borderId", f.border_index);
+    a.addi("xfId", f.xf_id);
+    if truthy(f.quote_prefix) {
+        a.addi("quotePrefix", 1);
+    }
+    if f.num_format_index > 0 {
+        a.addi("applyNumberFormat", 1);
+    }
+    if f.font_index > 0 and not f.hyperlink {
+        a.addi("applyFont", 1);
+    }
+    if f.fill_index > 0 {
+        a.addi("applyFill", 1);
+    }
+    if f.border_index > 0 {
+        a.addi("applyBorder", 1);
+    }
+    let (apply_align, align) = align_props(f);
+    let has_align = apply_align and align.v.len() > 0;
+    if apply_align or f.hyperlink {
+        a.addi("applyAlignment", 1);
+    }
+    let prot = protection_props(f);
+    let mut has_protect = false;
+    if prot.v.len() > 0 or f.hyperlink {
+        a.addi("applyProtection", 1);
+        if not f.hyperlink {
+            has_protect = true;
+        }
+    }
+    if has_align or has_protect {
+        start(mut out, "xf", a);
+        if has_align {
+            empty(mut out, "alignment", align);
+        }
+        if has_protect {
+            empty(mut out, "protection", prot);
+        }
+        end(mut out, "xf");
+    } else {
+        empty(mut out, "xf", a);
+    }
+}
+
+fn styles_xml(fm: ref Formats, sd: ref StyleData) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main".to_string());
+    start(mut out, "styleSheet", a);
+    if sd.num_formats.len() > 0 {
+        let mut na = attrs();
+        na.addi("count", sd.num_formats.len());
+        start(mut out, "numFmts", na);
+        for i in 0..sd.num_formats.len() {
+            num_fmt_el(mut out, 164 + i, sd.num_formats[i]);
+        }
+        end(mut out, "numFmts");
+    }
+    let mut hyper: (bool, i64) = (false, 0);
+    let mut fa = attrs();
+    fa.addi("count", sd.font_count);
+    start(mut out, "fonts", fa);
+    for j in 0..sd.xf.len() {
+        let f = fm.list[sd.xf[j]].clone();
+        if f.has_font {
+            style_font(mut out, f, false, mut hyper);
+        }
+    }
+    end(mut out, "fonts");
+    let mut fl = attrs();
+    fl.addi("count", sd.fill_count);
+    start(mut out, "fills", fl);
+    default_fill(mut out, "none");
+    default_fill(mut out, "gray125");
+    for j in 0..sd.xf.len() {
+        let f = fm.list[sd.xf[j]].clone();
+        if f.has_fill {
+            style_fill(mut out, f, false);
+        }
+    }
+    end(mut out, "fills");
+    let mut ba = attrs();
+    ba.addi("count", sd.border_count);
+    start(mut out, "borders", ba);
+    for j in 0..sd.xf.len() {
+        let f = fm.list[sd.xf[j]].clone();
+        if f.has_border {
+            style_border(mut out, f, false);
+        }
+    }
+    end(mut out, "borders");
+    // cellStyleXfs: a second one for the hyperlink style.
+    let mut ca = attrs();
+    ca.addi("count", if hyper.0 { 2 } else { 1 });
+    start(mut out, "cellStyleXfs", ca);
+    let mut x0 = attrs();
+    x0.addi("numFmtId", 0);
+    x0.addi("fontId", 0);
+    x0.addi("fillId", 0);
+    x0.addi("borderId", 0);
+    empty(mut out, "xf", x0);
+    if hyper.0 {
+        let mut x1 = attrs();
+        x1.addi("numFmtId", 0);
+        x1.addi("fontId", hyper.1);
+        x1.addi("fillId", 0);
+        x1.addi("borderId", 0);
+        x1.addi("applyNumberFormat", 0);
+        x1.addi("applyFill", 0);
+        x1.addi("applyBorder", 0);
+        x1.addi("applyAlignment", 0);
+        x1.addi("applyProtection", 0);
+        start(mut out, "xf", x1);
+        empty1(mut out, "alignment", "vertical", "top".to_string());
+        empty1(mut out, "protection", "locked", "0".to_string());
+        end(mut out, "xf");
+    }
+    end(mut out, "cellStyleXfs");
+    let mut xfs = sd.xf.clone();
+    if xfs.len() > 0 and truthy(fm.list[xfs[xfs.len() - 1]].font_only) {
+        xfs.pop();
+    }
+    let mut xa = attrs();
+    xa.addi("count", xfs.len());
+    start(mut out, "cellXfs", xa);
+    for j in 0..xfs.len() {
+        style_xf(mut out, fm.list[xfs[j]]);
+    }
+    end(mut out, "cellXfs");
+    let mut sa = attrs();
+    sa.addi("count", if hyper.0 { 2 } else { 1 });
+    start(mut out, "cellStyles", sa);
+    if hyper.0 {
+        let mut h = attrs();
+        h.add("name", "Hyperlink".to_string());
+        h.addi("xfId", 1);
+        h.addi("builtinId", 8);
+        empty(mut out, "cellStyle", h);
+    }
+    let mut n = attrs();
+    n.add("name", "Normal".to_string());
+    n.addi("xfId", 0);
+    n.addi("builtinId", 0);
+    empty(mut out, "cellStyle", n);
+    end(mut out, "cellStyles");
+    let mut da = attrs();
+    da.addi("count", sd.dxf.len());
+    if sd.dxf.len() > 0 {
+        start(mut out, "dxfs", da);
+        let mut unused: (bool, i64) = (false, 0);
+        for j in 0..sd.dxf.len() {
+            let f = fm.list[sd.dxf[j]].clone();
+            start0(mut out, "dxf");
+            if f.has_dxf_font {
+                style_font(mut out, f, true, mut unused);
+            }
+            if f.num_format_index != 0 {
+                num_fmt_el(mut out, f.num_format_index, pystr(f.num_format));
+            }
+            if f.has_dxf_fill {
+                style_fill(mut out, f, true);
+            }
+            if f.has_dxf_border {
+                style_border(mut out, f, true);
+            }
+            end(mut out, "dxf");
+        }
+        end(mut out, "dxfs");
+    } else {
+        empty(mut out, "dxfs", da);
+    }
+    let mut ta = attrs();
+    ta.addi("count", 0);
+    ta.add("defaultTableStyle", "TableStyleMedium9".to_string());
+    ta.add("defaultPivotStyle", "PivotStyleLight16".to_string());
+    empty(mut out, "tableStyles", ta);
+    end(mut out, "styleSheet");
+    out
+}

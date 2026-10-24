@@ -1,0 +1,965 @@
+// mini_xlsxwriter: a port of XlsxWriter 3.2.0 (BSD-2-Clause, John McNamara),
+// the Python library that writes Excel .xlsx files.
+//
+// It builds a workbook from cell writes (strings, numbers, formulas, array
+// and dynamic-array formulas, booleans, dates and times, hyperlinks, rich
+// strings), cell formats (fonts, fills, borders, alignment, protection,
+// number formats), column and row settings, merged ranges, autofilters,
+// data validation, tables with total rows, defined names, panes, page
+// setup and protection, and packages it the way XlsxWriter does: every XML
+// part byte for byte, then a zip file written to disk and read back. The
+// jobs come from data/jobs.txt; oracle.py runs the same jobs on the
+// vendored library and wrote expected.out.
+
+// ------------------------------------------------------------ values
+
+// A date, a time or a timedelta, as the jobs pass them.
+#[derive(Clone)]
+struct When {
+    kind: i64, // 0 datetime, 1 date, 2 time, 3 timedelta
+    y: i64,
+    mo: i64,
+    d: i64,
+    h: i64,
+    mi: i64,
+    s: i64,
+    us: i64,
+}
+
+// A Python value as the jobs pass it. Fmt is a format by its index in the
+// book's list (0 the default format, 1 the hyperlink format).
+#[derive(Clone)]
+enum Val {
+    Nil,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(String),
+    Time(When),
+    Fmt(i64),
+    List(Vec[Val]),
+    Dict(Vec[(String, Val)]),
+}
+
+// An exception: its class and its message.
+#[derive(Clone)]
+struct PyErr {
+    cls: String,
+    msg: String,
+}
+
+fn raise(cls: Str, msg: ref String) -> PyErr {
+    PyErr { cls: cls.to_string(), msg: msg.clone() }
+}
+
+fn is_finite(x: f64) -> bool {
+    x == x and x - x == 0.0
+}
+
+// str() of a value, as "%s" formats it.
+#[allow(mutual_recursion_note)]
+fn pystr(v: ref Val) -> String {
+    match v {
+        Val.Nil => "None".to_string(),
+        Val.Bool(b) => if *b { "True".to_string() } else { "False".to_string() },
+        Val.Int(n) => f"{n}",
+        Val.Float(x) => float_repr(*x),
+        Val.Str(s) => s.clone(),
+        Val.Fmt(i) => f"<Format {i}>",
+        Val.Time(_) => "<datetime>".to_string(),
+        Val.List(items) => {
+            let mut out = "[".to_string();
+            for i in 0..items.len() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(pyrepr(items[i]));
+            }
+            out.push_str("]");
+            out
+        }
+        Val.Dict(_) => "{...}".to_string(),
+    }
+}
+
+#[allow(mutual_recursion_note)]
+fn pyrepr(v: ref Val) -> String {
+    match v {
+        Val.Str(s) => {
+            let q = if s.contains("'") and not s.contains("\"") { "\"" } else { "'" };
+            let mut out = q.to_string();
+            for c in s.chars() {
+                if c == '\\' {
+                    out.push_str("\\\\");
+                } else if c == '\n' {
+                    out.push_str("\\n");
+                } else if q == "'" and c == '\'' {
+                    out.push_str("\\'");
+                } else {
+                    out.push(c);
+                }
+            }
+            out.push_str(q);
+            out
+        }
+        _ => pystr(v),
+    }
+}
+
+// repr() of a float: Kāra prints the shortest round-trip digits as Python
+// does, but spells the special values differently.
+fn float_repr(x: f64) -> String {
+    if x != x {
+        return "nan".to_string();
+    }
+    if not is_finite(x) {
+        return if x > 0.0 { "inf".to_string() } else { "-inf".to_string() };
+    }
+    f"{x}"
+}
+
+fn truthy(v: ref Val) -> bool {
+    match v {
+        Val.Nil => false,
+        Val.Bool(b) => *b,
+        Val.Int(n) => *n != 0,
+        Val.Float(x) => *x != 0.0,
+        Val.Str(s) => s.len() > 0,
+        Val.Time(_) => true,
+        Val.Fmt(_) => true,
+        Val.List(items) => items.len() > 0,
+        Val.Dict(items) => items.len() > 0,
+    }
+}
+
+fn is_num(v: ref Val) -> bool {
+    match v {
+        Val.Bool(_) => true,
+        Val.Int(_) => true,
+        Val.Float(_) => true,
+        _ => false,
+    }
+}
+
+// The value of a number (a bool counts as 0 or 1, as in Python).
+fn num(v: ref Val) -> f64 {
+    match v {
+        Val.Bool(b) => if *b { 1.0 } else { 0.0 },
+        Val.Int(n) => *n as f64,
+        Val.Float(x) => *x,
+        _ => 0.0,
+    }
+}
+
+// int() of a number.
+fn as_int(v: ref Val) -> i64 {
+    match v {
+        Val.Bool(b) => if *b { 1 } else { 0 },
+        Val.Int(n) => *n,
+        Val.Float(x) => *x as i64,
+        _ => 0,
+    }
+}
+
+// value == n, for the integer comparisons the library makes.
+fn eq_int(v: ref Val, n: i64) -> bool {
+    is_num(v) and num(v) == (n as f64)
+}
+
+fn is_nil(v: ref Val) -> bool {
+    match v {
+        Val.Nil => true,
+        _ => false,
+    }
+}
+
+fn is_str(v: ref Val) -> bool {
+    match v {
+        Val.Str(_) => true,
+        _ => false,
+    }
+}
+
+fn str_of(v: ref Val) -> String {
+    match v {
+        Val.Str(s) => s.clone(),
+        _ => String.new(),
+    }
+}
+
+fn fmt_of(v: ref Val) -> Option[i64] {
+    match v {
+        Val.Fmt(i) => Some(*i),
+        _ => None,
+    }
+}
+
+fn sv(text: Str) -> Val {
+    Val.Str(text.to_string())
+}
+
+fn arg(args: ref Vec[Val], i: i64) -> Val {
+    if i < args.len() { args[i].clone() } else { Val.Nil }
+}
+
+fn arg_or(args: ref Vec[Val], i: i64, d: own Val) -> Val {
+    if i < args.len() { args[i].clone() } else { d }
+}
+
+fn dget(d: ref Vec[(String, Val)], key: Str) -> Option[Val] {
+    for i in 0..d.len() {
+        let (k, v) = d[i].clone();
+        if k == key {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn dget_or(d: ref Vec[(String, Val)], key: Str, dflt: own Val) -> Val {
+    match dget(d, key) {
+        Some(v) => v,
+        None => dflt,
+    }
+}
+
+fn dhas(d: ref Vec[(String, Val)], key: Str) -> bool {
+    for i in 0..d.len() {
+        if d[i].0 == key {
+            return true;
+        }
+    }
+    false
+}
+
+// d[key] = v, keeping the key's place when it is already there.
+fn dset(d: mut ref Vec[(String, Val)], key: Str, v: own Val) {
+    for i in 0..d.len() {
+        if d[i].0 == key {
+            d[i] = (key.to_string(), v);
+            return;
+        }
+    }
+    d.push((key.to_string(), v));
+}
+
+fn dict_of(v: ref Val) -> Vec[(String, Val)] {
+    match v {
+        Val.Dict(d) => d.clone(),
+        _ => Vec.new(),
+    }
+}
+
+// ------------------------------------------------------------ job tokens
+
+fn hexval(c: u8) -> i64 {
+    if c >= b'0' and c <= b'9' {
+        (c - b'0') as i64
+    } else if c >= b'a' and c <= b'f' {
+        (c - b'a') as i64 + 10
+    } else {
+        (c - b'A') as i64 + 10
+    }
+}
+
+// The text of a %XX-escaped token (the escapes are UTF-8 bytes).
+fn unpct(t: Str) -> String {
+    let b = t.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    let mut i: i64 = 0;
+    while i < b.len() {
+        if b[i] == b'%' {
+            out.push((hexval(b[i + 1]) * 16 + hexval(b[i + 2])) as u8);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String.from_utf8(out).unwrap_or("?".to_string())
+}
+
+fn parse_int(t: Str) -> i64 {
+    let b = t.bytes();
+    let mut i: i64 = 0;
+    let mut neg = false;
+    if b.len() > 0 and b[0] == b'-' {
+        neg = true;
+        i = 1;
+    }
+    let mut v: i64 = 0;
+    while i < b.len() {
+        v = v * 10 + ((b[i] - b'0') as i64);
+        i += 1;
+    }
+    if neg { -v } else { v }
+}
+
+fn parse_float_token(t: Str) -> f64 {
+    if t == "nan" {
+        return 0.0 / 0.0;
+    }
+    if t == "inf" {
+        return 1.0 / 0.0;
+    }
+    if t == "-inf" {
+        return -1.0 / 0.0;
+    }
+    f64.parse(t).unwrap_or(0.0)
+}
+
+struct Toks {
+    t: Vec[String],
+    i: i64,
+}
+
+impl Toks {
+    fn next(mut ref self) -> String {
+        let x = self.t[self.i].clone();
+        self.i += 1;
+        x
+    }
+
+    fn done(self) -> bool {
+        self.i >= self.t.len()
+    }
+}
+
+// "2026-10-01T09:30:00.000000" and its parts, by position.
+fn when_of(kind: i64, t: ref String) -> When {
+    let b = t.bytes();
+    let num_at = |a: i64, n: i64| {
+        let mut v: i64 = 0;
+        for k in 0..n {
+            v = v * 10 + ((b[a + k] - b'0') as i64);
+        }
+        v
+    };
+    if kind == 0 {
+        When { kind: 0, y: num_at(0, 4), mo: num_at(5, 2), d: num_at(8, 2), h: num_at(11, 2),
+               mi: num_at(14, 2), s: num_at(17, 2), us: num_at(20, 6) }
+    } else if kind == 1 {
+        When { kind: 1, y: num_at(0, 4), mo: num_at(5, 2), d: num_at(8, 2), h: 0, mi: 0, s: 0, us: 0 }
+    } else {
+        When { kind: 2, y: 0, mo: 0, d: 0, h: num_at(0, 2), mi: num_at(3, 2), s: num_at(6, 2),
+               us: num_at(9, 6) }
+    }
+}
+
+#[allow(mutual_recursion_note)]
+fn parse_val(p: mut ref Toks, base: i64) -> Val {
+    let t = p.next();
+    let c = t.bytes()[0];
+    let rest = t.substring(1);
+    if c == b'N' {
+        Val.Nil
+    } else if c == b'T' {
+        Val.Bool(true)
+    } else if c == b'F' {
+        Val.Bool(false)
+    } else if c == b'i' {
+        Val.Int(parse_int(rest))
+    } else if c == b'f' {
+        Val.Float(parse_float_token(rest))
+    } else if c == b's' {
+        Val.Str(unpct(rest))
+    } else if c == b'R' {
+        let (n, ch) = rest.split_once(":").unwrap();
+        let unit = unpct(ch);
+        let mut out = String.new();
+        for _ in 0..parse_int(n) {
+            out.push_str(unit);
+        }
+        Val.Str(out)
+    } else if c == b'C' {
+        let mut out = String.new();
+        for _ in 0..parse_int(rest) {
+            let part = parse_val(mut p, base);
+            out.push_str(str_of(part));
+        }
+        Val.Str(out)
+    } else if c == b'@' {
+        if rest == "u" { Val.Fmt(1) } else { Val.Fmt(base + parse_int(rest)) }
+    } else if c == b'd' {
+        Val.Time(when_of(0, rest))
+    } else if c == b'D' {
+        Val.Time(when_of(1, rest))
+    } else if c == b't' {
+        Val.Time(when_of(2, rest))
+    } else if c == b'x' {
+        let parts: Vec[String] = rest.split(",").map(|x| x.to_string()).collect();
+        Val.Time(When { kind: 3, y: 0, mo: 0, d: parse_int(parts[0]), h: 0, mi: 0,
+                        s: parse_int(parts[1]), us: parse_int(parts[2]) })
+    } else if c == b'L' {
+        let mut out: Vec[Val] = Vec.new();
+        for _ in 0..parse_int(rest) {
+            out.push(parse_val(mut p, base));
+        }
+        Val.List(out)
+    } else {
+        let mut out: Vec[(String, Val)] = Vec.new();
+        for _ in 0..parse_int(rest) {
+            let k = parse_val(mut p, base);
+            let v = parse_val(mut p, base);
+            out.push((str_of(k), v));
+        }
+        Val.Dict(out)
+    }
+}
+
+// ------------------------------------------------------------ numbers as text
+
+fn to_bytes(t: Str) -> Vec[u8] {
+    t.bytes().to_vec()
+}
+
+fn from_bytes(v: Vec[u8]) -> String {
+    String.from_utf8(v).unwrap_or("?".to_string())
+}
+
+// The exact decimal expansion of a positive finite double: its digits,
+// without leading or trailing zeros, and the position of the point (the
+// value is 0.DIGITS times ten to the power `decpt`). Eighty places hold
+// every binary digit of a value from 2^-28 up.
+fn exact_digits(ax: f64) -> (Vec[u8], i64) {
+    let text = if ax >= 0.00000001 { f"{ax:.80}" } else { f"{ax:.1080}" };
+    let b = to_bytes(text);
+    let mut all: Vec[u8] = Vec.new();
+    let mut point: i64 = -1;
+    for i in 0..b.len() {
+        if b[i] == b'.' {
+            point = all.len();
+        } else {
+            all.push(b[i]);
+        }
+    }
+    if point < 0 {
+        point = all.len();
+    }
+    let mut st: i64 = 0;
+    while st < all.len() and all[st] == b'0' {
+        st += 1;
+    }
+    let mut e = all.len();
+    while e > st and all[e - 1] == b'0' {
+        e -= 1;
+    }
+    let mut d: Vec[u8] = Vec.new();
+    for i in st..e {
+        d.push(all[i]);
+    }
+    (d, point - st)
+}
+
+// The digits rounded to the first `keep` of them, half to even on the exact
+// value (as printf rounds). The result has exactly `keep` digits, or
+// `keep + 1` when rounding carried into a new leading digit, with the point
+// moved by one.
+fn round_digits(d: ref Vec[u8], decpt: i64, keep: i64) -> (Vec[u8], i64) {
+    let mut out: Vec[u8] = Vec.new();
+    for i in 0..keep {
+        out.push(if i < d.len() { d[i] } else { b'0' });
+    }
+    if keep >= d.len() {
+        return (out, decpt);
+    }
+    let next = d[keep];
+    let mut up = false;
+    if next > b'5' {
+        up = true;
+    } else if next == b'5' {
+        let mut rest = false;
+        for i in (keep + 1)..d.len() {
+            if d[i] != b'0' {
+                rest = true;
+            }
+        }
+        if rest {
+            up = true;
+        } else {
+            let prev = if keep > 0 { (out[keep - 1] - b'0') as i64 } else { 0 };
+            up = prev % 2 == 1;
+        }
+    }
+    if not up {
+        return (out, decpt);
+    }
+    let mut i = keep - 1;
+    while i >= 0 {
+        if out[i] == b'9' {
+            out[i] = b'0';
+            i -= 1;
+        } else {
+            out[i] = out[i] + 1;
+            return (out, decpt);
+        }
+    }
+    let mut carried: Vec[u8] = Vec.new();
+    carried.push(b'1');
+    for j in 0..out.len() {
+        carried.push(out[j]);
+    }
+    (carried, decpt + 1)
+}
+
+// "%.<prec>g" (or "%.<prec>G") of a finite value.
+fn fmt_g(x: f64, prec: i64, upper: bool) -> String {
+    let neg = x < 0.0 or (x == 0.0 and 1.0 / x < 0.0);
+    let ax = if x < 0.0 { 0.0 - x } else { x };
+    let mut out = if neg { "-".to_string() } else { String.new() };
+    if ax == 0.0 {
+        out.push_str("0");
+        return out;
+    }
+    let (d, decpt) = exact_digits(ax);
+    let (rd, dp) = round_digits(d, decpt, prec);
+    let ex = dp - 1;
+    // The digits that are kept, without trailing zeros.
+    let mut n = rd.len();
+    while n > 1 and rd[n - 1] == b'0' {
+        n -= 1;
+    }
+    let mut b: Vec[u8] = Vec.new();
+    if ex < -4 or ex >= prec {
+        b.push(rd[0]);
+        if n > 1 {
+            b.push(b'.');
+            for i in 1..n {
+                b.push(rd[i]);
+            }
+        }
+        b.push(if upper { b'E' } else { b'e' });
+        b.push(if ex < 0 { b'-' } else { b'+' });
+        let a = if ex < 0 { 0 - ex } else { ex };
+        if a < 10 {
+            b.push(b'0');
+        }
+        for c in f"{a}".bytes() {
+            b.push(*c);
+        }
+    } else if ex < 0 {
+        b.push(b'0');
+        b.push(b'.');
+        for _ in 0..(0 - ex - 1) {
+            b.push(b'0');
+        }
+        for i in 0..n {
+            b.push(rd[i]);
+        }
+    } else {
+        for i in 0..(ex + 1) {
+            b.push(if i < n { rd[i] } else { b'0' });
+        }
+        if n > ex + 1 {
+            b.push(b'.');
+            for i in (ex + 1)..n {
+                b.push(rd[i]);
+            }
+        }
+    }
+    out.push_str(from_bytes(b));
+    out
+}
+
+// "%.16G" % number, as the cell writer formats a number.
+fn num_text(v: ref Val) -> String {
+    match v {
+        Val.Int(n) => fmt_g(*n as f64, 16, true),
+        _ => fmt_g(num(v), 16, true),
+    }
+}
+
+// float(text): Python's float() grammar, for strings_to_numbers and the
+// data validation checks. None when float() raises ValueError.
+fn py_float(text: ref String) -> Option[f64] {
+    let t = text.trim().to_string();
+    let b = to_bytes(t);
+    if b.len() == 0 {
+        return None;
+    }
+    let mut i: i64 = 0;
+    let mut neg = false;
+    if b[0] == b'+' or b[0] == b'-' {
+        neg = b[0] == b'-';
+        i = 1;
+    }
+    let word = t.substring(i).to_lowercase();
+    if word == "inf" or word == "infinity" {
+        return Some(if neg { -1.0 / 0.0 } else { 1.0 / 0.0 });
+    }
+    if word == "nan" {
+        return Some(0.0 / 0.0);
+    }
+    // Digits with single underscores between them, a fraction, an exponent.
+    let mut clean: Vec[u8] = Vec.new();
+    if neg {
+        clean.push(b'-');
+    }
+    let mut digits: i64 = 0;
+    let mut part = 0;
+    let mut prev_digit = false;
+    while i < b.len() {
+        let c = b[i];
+        if c >= b'0' and c <= b'9' {
+            clean.push(c);
+            prev_digit = true;
+            if part < 2 {
+                digits += 1;
+            }
+        } else if c == b'_' {
+            if not prev_digit or i + 1 >= b.len() or b[i + 1] < b'0' or b[i + 1] > b'9' {
+                return None;
+            }
+            prev_digit = false;
+        } else if c == b'.' and part == 0 {
+            clean.push(c);
+            part = 1;
+            prev_digit = false;
+        } else if (c == b'e' or c == b'E') and part < 2 {
+            if digits == 0 {
+                return None;
+            }
+            clean.push(b'e');
+            part = 2;
+            prev_digit = false;
+            if i + 1 < b.len() and (b[i + 1] == b'+' or b[i + 1] == b'-') {
+                clean.push(b[i + 1]);
+                i += 1;
+            }
+            if i + 1 >= b.len() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        i += 1;
+    }
+    if digits == 0 {
+        return None;
+    }
+    if part == 2 and not prev_digit {
+        return None;
+    }
+    f64.parse(from_bytes(clean)).ok()
+}
+
+// ------------------------------------------------------------ xml
+
+fn needs_escape(t: ref String) -> bool {
+    for c in t.bytes() {
+        if *c == b'"' or *c == b'&' or *c == b'<' or *c == b'>' or *c == b'\n' {
+            return true;
+        }
+    }
+    false
+}
+
+fn esc_attr(t: ref String) -> String {
+    if not needs_escape(t) {
+        return t.clone();
+    }
+    t.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace("\n", "&#xA;")
+}
+
+fn esc_data(t: ref String) -> String {
+    if not needs_escape(t) {
+        return t.clone();
+    }
+    t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+}
+
+fn is_hex(c: char) -> bool {
+    (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')
+}
+
+fn hex4(n: i64) -> String {
+    let digits = "0123456789ABCDEF".to_string();
+    let db = digits.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    let mut k: i64 = 3;
+    while k >= 0 {
+        out.push(db[(n >> (k * 4)) & 15]);
+        k -= 1;
+    }
+    from_bytes(out)
+}
+
+// _escape_control_characters(): a literal "_xHHHH_" gets "_x005F" in front
+// of it, the C0 controls other than tab and newline become "_xHHHH_", and
+// so do U+FFFE and U+FFFF.
+fn esc_ctl(t: ref String) -> String {
+    let cs: Vec[char] = t.chars().collect();
+    let mut plain = true;
+    for c in cs.iter() {
+        let n = *c as u32 as i64;
+        if *c == '_' or n < 32 or n == 0xFFFE or n == 0xFFFF {
+            plain = false;
+        }
+    }
+    if plain {
+        return t.clone();
+    }
+    let mut out = String.new();
+    let mut i: i64 = 0;
+    while i < cs.len() {
+        if cs[i] == '_' and i + 6 < cs.len() and cs[i + 1] == 'x' and is_hex(cs[i + 2])
+            and is_hex(cs[i + 3]) and is_hex(cs[i + 4]) and is_hex(cs[i + 5]) and cs[i + 6] == '_' {
+            out.push_str("_x005F");
+            for k in 0..7 {
+                out.push(cs[i + k]);
+            }
+            i += 7;
+        } else {
+            out.push(cs[i]);
+            i += 1;
+        }
+    }
+    let cs2: Vec[char] = out.chars().collect();
+    let mut res = String.new();
+    for c in cs2.iter() {
+        let n = *c as u32 as i64;
+        if (n <= 8) or (n >= 11 and n <= 31) or n == 0xFFFE or n == 0xFFFF {
+            res.push_str("_x");
+            res.push_str(hex4(n));
+            res.push_str("_");
+        } else {
+            res.push(*c);
+        }
+    }
+    res
+}
+
+// An attribute list, each value already str()-ed.
+struct Attrs {
+    v: Vec[(String, String)],
+}
+
+fn attrs() -> Attrs {
+    Attrs { v: Vec.new() }
+}
+
+impl Attrs {
+    fn add(mut ref self, k: Str, val: ref String) {
+        self.v.push((k.to_string(), val.clone()));
+    }
+
+    fn addi(mut ref self, k: Str, n: i64) {
+        self.v.push((k.to_string(), f"{n}"));
+    }
+
+    fn addv(mut ref self, k: Str, val: ref Val) {
+        self.v.push((k.to_string(), pystr(val)));
+    }
+}
+
+fn attr_text(a: ref Attrs, encode: bool) -> String {
+    let mut out = String.new();
+    for i in 0..a.v.len() {
+        let (k, v) = a.v[i].clone();
+        out.push_str(" ");
+        out.push_str(k);
+        out.push_str("=\"");
+        out.push_str(if encode { esc_attr(v) } else { v });
+        out.push_str("\"");
+    }
+    out
+}
+
+fn decl(out: mut ref String) {
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+}
+
+fn start(out: mut ref String, tag: Str, a: ref Attrs) {
+    out.push_str("<");
+    out.push_str(tag);
+    out.push_str(attr_text(a, true));
+    out.push_str(">");
+}
+
+fn start0(out: mut ref String, tag: Str) {
+    out.push_str("<");
+    out.push_str(tag);
+    out.push_str(">");
+}
+
+fn end(out: mut ref String, tag: Str) {
+    out.push_str("</");
+    out.push_str(tag);
+    out.push_str(">");
+}
+
+fn empty(out: mut ref String, tag: Str, a: ref Attrs) {
+    out.push_str("<");
+    out.push_str(tag);
+    out.push_str(attr_text(a, true));
+    out.push_str("/>");
+}
+
+fn empty0(out: mut ref String, tag: Str) {
+    out.push_str("<");
+    out.push_str(tag);
+    out.push_str("/>");
+}
+
+fn empty1(out: mut ref String, tag: Str, k: Str, v: ref String) {
+    let mut a = attrs();
+    a.add(k, v);
+    empty(mut out, tag, a);
+}
+
+fn data_el(out: mut ref String, tag: Str, text: ref String, a: ref Attrs) {
+    out.push_str("<");
+    out.push_str(tag);
+    out.push_str(attr_text(a, true));
+    out.push_str(">");
+    out.push_str(esc_ctl(esc_data(text)));
+    out.push_str("</");
+    out.push_str(tag);
+    out.push_str(">");
+}
+
+fn data0(out: mut ref String, tag: Str, text: ref String) {
+    data_el(mut out, tag, text, attrs());
+}
+
+// ------------------------------------------------------------ cell names
+
+fn col_name(col: i64) -> String {
+    let mut n = col + 1;
+    let mut letters: Vec[u8] = Vec.new();
+    while n > 0 {
+        let mut r = n % 26;
+        if r == 0 {
+            r = 26;
+        }
+        letters.insert(0, (64 + r) as u8);
+        n = (n - 1) / 26;
+    }
+    from_bytes(letters)
+}
+
+fn cell_ref(row: i64, col: i64) -> String {
+    let c = col_name(col);
+    let r = row + 1;
+    f"{c}{r}"
+}
+
+fn abs_cell(row: i64, col: i64) -> String {
+    let c = col_name(col);
+    let r = row + 1;
+    f"${c}${r}"
+}
+
+fn range_ref(r1: i64, c1: i64, r2: i64, c2: i64) -> String {
+    let a = cell_ref(r1, c1);
+    let b = cell_ref(r2, c2);
+    if a == b { a } else { f"{a}:{b}" }
+}
+
+// xl_cell_to_rowcol(): "$B$3" to (2, 1). The pattern is matched at the
+// start: up to three capitals, then digits.
+fn cell_to_rowcol(t: ref String) -> Result[(i64, i64), PyErr] {
+    if t.len() == 0 {
+        return Ok((0, 0));
+    }
+    let b = to_bytes(t);
+    let mut i: i64 = 0;
+    if b[i] == b'$' {
+        i += 1;
+    }
+    let mut col: i64 = 0;
+    let mut letters: i64 = 0;
+    while i < b.len() and letters < 3 and b[i] >= b'A' and b[i] <= b'Z' {
+        col = col * 26 + ((b[i] - b'A') as i64 + 1);
+        letters += 1;
+        i += 1;
+    }
+    if i < b.len() and b[i] == b'$' {
+        i += 1;
+    }
+    let mut row: i64 = 0;
+    let mut digits: i64 = 0;
+    while i < b.len() and b[i] >= b'0' and b[i] <= b'9' {
+        row = row * 10 + ((b[i] - b'0') as i64);
+        digits += 1;
+        i += 1;
+    }
+    if letters == 0 or digits == 0 {
+        return Err(raise("AttributeError", "'NoneType' object has no attribute 'group'"));
+    }
+    Ok((row - 1, col - 1))
+}
+
+fn is_alnum_str(t: ref String) -> bool {
+    if t.len() == 0 {
+        return false;
+    }
+    for c in t.chars() {
+        if not c.is_alphanumeric() {
+            return false;
+        }
+    }
+    true
+}
+
+// quote_sheetname(): a name that is not all letters and digits is quoted,
+// with its apostrophes doubled.
+fn quote_sheet(name: ref String) -> String {
+    if not is_alnum_str(name) and not name.starts_with("'") {
+        let inner = name.replace("'", "''");
+        return f"'{inner}'";
+    }
+    name.clone()
+}
+
+fn xl_color(color: ref String) -> (String, bool) {
+    let named = named_color(color);
+    let c = if named.len() > 0 and named != "Automatic" { named } else { color.clone() };
+    let b = to_bytes(c);
+    let mut ok = b.len() >= 7 and b[0] == b'#';
+    if ok {
+        for i in 1..7 {
+            let ch = b[i] as char;
+            if not is_hex(ch) {
+                ok = false;
+            }
+        }
+    }
+    let mut body = c.clone();
+    while body.starts_with("#") {
+        body = body.substring(1);
+    }
+    let up = body.to_uppercase();
+    (f"FF{up}", ok)
+}
+
+fn named_color(c: ref String) -> String {
+    let names = ["black", "blue", "brown", "cyan", "gray", "green", "lime", "magenta", "navy",
+                 "orange", "pink", "purple", "red", "silver", "white", "yellow", "automatic"];
+    let rgbs = ["#000000", "#0000FF", "#800000", "#00FFFF", "#808080", "#008000", "#00FF00",
+                "#FF00FF", "#000080", "#FF6600", "#FF00FF", "#800080", "#FF0000", "#C0C0C0",
+                "#FFFFFF", "#FFFF00", "Automatic"];
+    for i in 0..17 {
+        if names[i] == c {
+            return rgbs[i].to_string();
+        }
+    }
+    String.new()
+}
+
+// Format._get_color(): a named colour becomes its #RRGGBB.
+fn get_color(v: ref Val) -> Val {
+    match v {
+        Val.Str(c) => {
+            let n = named_color(c);
+            if n.len() > 0 { Val.Str(n) } else { v.clone() }
+        }
+        _ => v.clone(),
+    }
+}
+
+// Python's \w, on one character.
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() or c == '_'
+}

@@ -1,0 +1,1973 @@
+
+// ------------------------------------------------------------ dates
+
+fn days_from_civil(y0: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y0 - 1 } else { y0 };
+    let era = if y >= 0 { y / 400 } else { (y - 399) / 400 };
+    let yoe = y - era * 400;
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+// datetime_to_excel_datetime(): days since 1899-12-31, with the 1900 leap
+// year Excel believes in.
+fn excel_time(w: ref When) -> f64 {
+    let epoch = days_from_civil(1899, 12, 31);
+    let mut days: i64 = 0;
+    let mut secs: i64 = 0;
+    let mut us: i64 = 0;
+    if w.kind == 0 {
+        days = days_from_civil(w.y, w.mo, w.d) - epoch;
+        secs = w.h * 3600 + w.mi * 60 + w.s;
+        us = w.us;
+    } else if w.kind == 1 {
+        days = days_from_civil(w.y, w.mo, w.d) - epoch;
+    } else if w.kind == 2 {
+        secs = w.h * 3600 + w.mi * 60 + w.s;
+        us = w.us;
+    } else {
+        // timedelta(days, seconds, microseconds), normalized as Python does.
+        let total = (w.d * 86400 + w.s) * 1000000 + w.us;
+        let day_us: i64 = 86400 * 1000000;
+        days = if total >= 0 { total / day_us } else { -((-total + day_us - 1) / day_us) };
+        let rest = total - days * day_us;
+        secs = rest / 1000000;
+        us = rest % 1000000;
+    }
+    let mut t = (days as f64) + ((secs as f64) + (us as f64) / 1000000.0) / 86400.0;
+    if w.kind == 0 and w.y == 1900 and w.mo == 1 and w.d == 1 {
+        t -= 1.0;
+    }
+    if w.kind != 3 and t > 59.0 {
+        t += 1.0;
+    }
+    t
+}
+
+// ------------------------------------------------------------ strings
+
+fn clen(t: ref String) -> i64 {
+    let mut n: i64 = 0;
+    for _ in t.chars() {
+        n += 1;
+    }
+    n
+}
+
+fn cprefix(t: ref String, n: i64) -> String {
+    let mut out = String.new();
+    let mut k: i64 = 0;
+    for c in t.chars() {
+        if k >= n {
+            break;
+        }
+        out.push(c);
+        k += 1;
+    }
+    out
+}
+
+// Python's str.isspace() on one character.
+fn py_space(c: char) -> bool {
+    let n = c as u32 as i64;
+    (n >= 9 and n <= 13) or (n >= 28 and n <= 32) or n == 0x85 or n == 0xA0 or n == 0x1680
+        or (n >= 0x2000 and n <= 0x200A) or n == 0x2028 or n == 0x2029 or n == 0x202F
+        or n == 0x205F or n == 0x3000
+}
+
+// preserve_whitespace(): a leading or trailing space.
+fn preserve_ws(t: ref String) -> bool {
+    let cs: Vec[char] = t.chars().collect();
+    cs.len() > 0 and (py_space(cs[0]) or py_space(cs[cs.len() - 1]))
+}
+
+// The shared string table.
+struct Sst {
+    map: Map[String, i64],
+    arr: Vec[String],
+    count: i64,
+}
+
+fn new_sst() -> Sst {
+    Sst { map: Map.new(), arr: Vec.new(), count: 0 }
+}
+
+fn sst_index(sst: mut ref Sst, t: ref String) -> i64 {
+    sst.count += 1;
+    match sst.map.get(t) {
+        Some(i) => *i,
+        None => {
+            let i = sst.arr.len();
+            sst.map.insert(t.clone(), i);
+            sst.arr.push(t.clone());
+            i
+        }
+    }
+}
+
+// CHAR_WIDTHS, for autofit(): "HH:N" pairs, the character's code point
+// in hex and its width in pixels.
+fn char_widths() -> Map[char, i64] {
+    let mut m: Map[char, i64] = Map.new();
+    let parts: Vec[String] = char_width_spec().split(" ").map(|p| p.to_string()).collect();
+    for p in parts.iter() {
+        if let Some((h, w)) = p.split_once(":") {
+            let mut code: i64 = 0;
+            for c in h.bytes() {
+                code = code * 16 + hexval(*c);
+            }
+            if let Ok(c) = char.try_from(code as u32) {
+                m.insert(c, parse_int(w));
+            }
+        }
+    }
+    m
+}
+
+fn pixel_width(widths: ref Map[char, i64], t: ref String) -> i64 {
+    let mut n: i64 = 0;
+    for c in t.chars() {
+        n += match widths.get(c) {
+            Some(w) => *w,
+            None => 8,
+        };
+    }
+    n
+}
+
+// ------------------------------------------------------------ formulas
+
+// One of _prepare_formula()'s re.sub() rules: "\bNAME\(" where a "." in
+// NAME matches any character, or the "\SINGLE\(" rule, which is "\S"
+// followed by "INGLE(".
+#[derive(Clone)]
+struct SubRule {
+    word: bool,
+    pat: Vec[char],
+    rep: String,
+    future: bool,
+}
+
+fn sub_rules() -> Vec[SubRule] {
+    let mut out: Vec[SubRule] = Vec.new();
+    let lines: Vec[String] = formula_rule_spec().split("\n").map(|p| p.to_string()).collect();
+    for line in lines.iter() {
+        if line.len() == 0 {
+            continue;
+        }
+        let f: Vec[String] = line.split(" ").map(|p| p.to_string()).collect();
+        out.push(SubRule { word: f[0] == "b", pat: f[1].chars().collect(), rep: f[2].clone(),
+                           future: f[3] == "1" });
+    }
+    out
+}
+
+fn dyn_names() -> Vec[Vec[char]] {
+    let mut out: Vec[Vec[char]] = Vec.new();
+    let parts: Vec[String] = dynamic_function_spec().split(" ").map(|p| p.to_string()).collect();
+    for p in parts.iter() {
+        if p.len() > 0 {
+            out.push(p.chars().collect());
+        }
+    }
+    out
+}
+
+fn match_at(cs: ref Vec[char], i: i64, pat: ref Vec[char]) -> bool {
+    if i + pat.len() > cs.len() {
+        return false;
+    }
+    for k in 0..pat.len() {
+        let c = cs[i + k];
+        if pat[k] == '.' {
+            if c == '\n' {
+                return false;
+            }
+        } else if c != pat[k] {
+            return false;
+        }
+    }
+    true
+}
+
+fn word_start(cs: ref Vec[char], i: i64) -> bool {
+    i == 0 or not is_word(cs[i - 1])
+}
+
+fn apply_rule(t: ref String, r: ref SubRule) -> String {
+    let cs: Vec[char] = t.chars().collect();
+    let mut out = String.new();
+    let mut i: i64 = 0;
+    while i < cs.len() {
+        let hit = if r.word {
+            word_start(cs, i) and match_at(cs, i, r.pat)
+        } else {
+            not py_space(cs[i]) and cs[i] != '\n' and match_at(cs, i + 1, r.pat)
+        };
+        if hit {
+            out.push_str(r.rep);
+            i += r.pat.len() + (if r.word { 0 } else { 1 });
+        } else {
+            out.push(cs[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+// re_dynamic_function.search(): a dynamic array function call anywhere.
+fn has_dynamic(t: ref String, names: ref Vec[Vec[char]]) -> bool {
+    let cs: Vec[char] = t.chars().collect();
+    for i in 0..cs.len() {
+        if word_start(cs, i) {
+            for n in names.iter() {
+                if match_at(cs, i, n) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+// The tables the worksheets share.
+struct Lib {
+    rules: Vec[SubRule],
+    dyn_names: Vec[Vec[char]],
+    widths: Map[char, i64],
+}
+
+fn new_lib() -> Lib {
+    Lib { rules: sub_rules(), dyn_names: dyn_names(), widths: char_widths() }
+}
+
+fn prepare_formula(lib: ref Lib, f0: ref String, future: bool) -> String {
+    let mut f = f0.clone();
+    if f.starts_with("{") {
+        f = f.substring(1);
+    }
+    if f.starts_with("=") {
+        f = f.substring(1);
+    }
+    if f.ends_with("}") {
+        f = cprefix(f, clen(f) - 1);
+    }
+    if f.contains("_xlfn.") {
+        return f;
+    }
+    for r in lib.rules.iter() {
+        if r.future and not future {
+            break;
+        }
+        f = apply_rule(f, r);
+    }
+    f
+}
+
+fn lstrip_eq(t: ref String) -> String {
+    let mut s = t.clone();
+    while s.starts_with("=") {
+        s = s.substring(1);
+    }
+    s
+}
+
+// ------------------------------------------------------------ worksheets
+
+#[derive(Clone)]
+enum Cell {
+    Str(i64, Option[i64]),
+    Num(Val, Option[i64]),
+    Blank(Option[i64]),
+    Bool(i64, Option[i64]),
+    Formula(String, Option[i64], Val),
+    Array(String, Option[i64], Val, String, bool),
+    Date(f64, Option[i64]),
+    Rich(i64, Option[i64], String),
+}
+
+fn cell_fmt(c: ref Cell) -> Option[i64] {
+    match c {
+        Cell.Str(_, f) => *f,
+        Cell.Num(_, f) => *f,
+        Cell.Blank(f) => *f,
+        Cell.Bool(_, f) => *f,
+        Cell.Formula(_, f, _) => *f,
+        Cell.Array(_, f, _, _, _) => *f,
+        Cell.Date(_, f) => *f,
+        Cell.Rich(_, f, _) => *f,
+    }
+}
+
+// col_info[col]: [width, cell_format, hidden, level, collapsed, autofit].
+#[derive(Clone)]
+struct ColInfo {
+    width: Val,
+    fmt: Option[i64],
+    hidden: Val,
+    level: Val,
+    collapsed: Val,
+    autofit: bool,
+}
+
+// Python's == between two of the values a column setting holds.
+fn py_eq(a: ref Val, b: ref Val) -> bool {
+    if is_num(a) and is_num(b) {
+        return num(a) == num(b);
+    }
+    match (a, b) {
+        (Val.Nil, Val.Nil) => true,
+        (Val.Str(x), Val.Str(y)) => x == y,
+        (Val.Fmt(x), Val.Fmt(y)) => x == y,
+        _ => false,
+    }
+}
+
+fn col_eq(a: ref ColInfo, b: ref ColInfo) -> bool {
+    py_eq(a.width, b.width) and a.fmt == b.fmt and py_eq(a.hidden, b.hidden)
+        and py_eq(a.level, b.level) and py_eq(a.collapsed, b.collapsed) and a.autofit == b.autofit
+}
+
+#[derive(Clone)]
+struct RowInfo {
+    height: Val,
+    fmt: Option[i64],
+    hidden: Val,
+    level: Val,
+    collapsed: Val,
+}
+
+#[derive(Clone)]
+struct Link {
+    link_type: i64,
+    url: String,
+    anchor: Option[String],
+    tip: Val,
+}
+
+#[derive(Clone)]
+struct TCol {
+    id: i64,
+    name: String,
+    total_string: String,
+    total_function: String,
+    custom_total: String,
+    formula: String,
+    format: Option[i64],
+}
+
+#[derive(Clone)]
+struct Table {
+    id: i64,
+    name: Option[String],
+    range: String,
+    autofilter: Option[String],
+    columns: Vec[TCol],
+    style: String,
+    show_first_col: Val,
+    show_last_col: Val,
+    show_row_stripes: Val,
+    show_col_stripes: Val,
+    header_row_count: Val,
+    totals_row_shown: Val,
+}
+
+#[derive(Clone)]
+struct Valid {
+    cells: Vec[(i64, i64, i64, i64)],
+    opts: Vec[(String, Val)],
+}
+
+// The workbook state a worksheet reaches through worksheet_meta.
+struct Meta {
+    activesheet: i64,
+    firstsheet: i64,
+}
+
+fn key_of(row: i64, col: i64) -> i64 {
+    row * 16384 + col
+}
+
+struct Sheet {
+    name: String,
+    index: i64,
+    strings_to_numbers: bool,
+    strings_to_formulas: bool,
+    strings_to_urls: bool,
+    nan_inf_to_errors: bool,
+    use_future_functions: bool,
+    default_date_format: Option[i64],
+    max_url_length: i64,
+    dim_rowmin: i64,
+    dim_rowmax: i64,
+    dim_colmin: i64,
+    dim_colmax: i64,
+    col_info: SortedMap[i64, ColInfo],
+    set_rows: SortedMap[i64, RowInfo],
+    table: SortedMap[i64, Cell],
+    merge: Vec[(i64, i64, i64, i64)],
+    merged_cells: Map[i64, String],
+    table_cells: Map[i64, String],
+    hyperlinks: SortedMap[i64, Link],
+    hlink_count: i64,
+    tables: Vec[Table],
+    validations: Vec[Valid],
+    selections: Vec[(String, String, String)],
+    panes: Vec[i64],
+    hidden: i64,
+    selected: i64,
+    tab_color: String,
+    top_left_cell: String,
+    page_setup_changed: bool,
+    paper_size: Val,
+    orientation: i64,
+    print_options_changed: bool,
+    hcenter: bool,
+    vcenter: bool,
+    print_gridlines: bool,
+    screen_gridlines: bool,
+    print_headers: bool,
+    row_col_headers: bool,
+    header_footer_changed: bool,
+    header: String,
+    footer: String,
+    header_footer_aligns: Val,
+    header_footer_scales: Val,
+    margin_left: Val,
+    margin_right: Val,
+    margin_top: Val,
+    margin_bottom: Val,
+    margin_header: Val,
+    margin_footer: Val,
+    repeat_row_range: String,
+    repeat_col_range: String,
+    print_area_range: String,
+    page_order: i64,
+    black_white: bool,
+    page_start: Val,
+    fit_page: bool,
+    fit_width: Val,
+    fit_height: Val,
+    hbreaks: Vec[Val],
+    vbreaks: Vec[Val],
+    protect_options: Vec[(String, Val)],
+    protected_ranges: Vec[(String, String, String)],
+    zoom: i64,
+    print_scale: i64,
+    is_right_to_left: bool,
+    show_zeros: bool,
+    outline_row_level: i64,
+    outline_col_level: i64,
+    outline_style: Val,
+    outline_below: Val,
+    outline_right: Val,
+    outline_on: Val,
+    outline_changed: bool,
+    default_row_height: Val,
+    default_row_zeroed: bool,
+    autofilter_area: String,
+    autofilter_ref: String,
+    filter_range: (i64, i64),
+    filter_on: bool,
+    filter_cols: SortedMap[i64, Vec[Val]],
+    filter_cells: Set[i64],
+    rel_count: i64,
+    external_hyper_links: Vec[(String, String, String)],
+    external_table_links: Vec[(String, String, String)],
+    page_view: i64,
+    has_dynamic_arrays: bool,
+    warns: Vec[String],
+}
+
+fn new_sheet(name: ref String, index: i64) -> Sheet {
+    Sheet {
+        name: name.clone(), index: index, strings_to_numbers: false, strings_to_formulas: true,
+        strings_to_urls: true, nan_inf_to_errors: false, use_future_functions: false,
+        default_date_format: None, max_url_length: 2079, dim_rowmin: -1, dim_rowmax: -1,
+        dim_colmin: -1, dim_colmax: -1, col_info: SortedMap.new(), set_rows: SortedMap.new(),
+        table: SortedMap.new(), merge: Vec.new(), merged_cells: Map.new(),
+        table_cells: Map.new(), hyperlinks: SortedMap.new(), hlink_count: 0, tables: Vec.new(),
+        validations: Vec.new(), selections: Vec.new(), panes: Vec.new(), hidden: 0,
+        selected: 0, tab_color: String.new(), top_left_cell: String.new(),
+        page_setup_changed: false, paper_size: Val.Int(0), orientation: 1,
+        print_options_changed: false, hcenter: false, vcenter: false, print_gridlines: false,
+        screen_gridlines: true, print_headers: false, row_col_headers: false,
+        header_footer_changed: false, header: String.new(), footer: String.new(),
+        header_footer_aligns: Val.Bool(true), header_footer_scales: Val.Bool(true),
+        margin_left: Val.Float(0.7), margin_right: Val.Float(0.7), margin_top: Val.Float(0.75),
+        margin_bottom: Val.Float(0.75), margin_header: Val.Float(0.3),
+        margin_footer: Val.Float(0.3), repeat_row_range: String.new(),
+        repeat_col_range: String.new(), print_area_range: String.new(), page_order: 0,
+        black_white: false, page_start: Val.Int(0), fit_page: false, fit_width: Val.Int(0),
+        fit_height: Val.Int(0), hbreaks: Vec.new(), vbreaks: Vec.new(),
+        protect_options: Vec.new(), protected_ranges: Vec.new(), zoom: 100, print_scale: 100,
+        is_right_to_left: false, show_zeros: true, outline_row_level: 0, outline_col_level: 0,
+        outline_style: Val.Int(0), outline_below: Val.Int(1), outline_right: Val.Int(1),
+        outline_on: Val.Int(1), outline_changed: false, default_row_height: Val.Int(15),
+        default_row_zeroed: false, autofilter_area: String.new(), autofilter_ref: String.new(),
+        filter_range: (0, 0), filter_on: false, filter_cols: SortedMap.new(),
+        filter_cells: Set.new(), rel_count: 0, external_hyper_links: Vec.new(),
+        external_table_links: Vec.new(), page_view: 0, has_dynamic_arrays: false,
+        warns: Vec.new(),
+    }
+}
+
+// What a write needs besides the sheet: the shared strings, the formula
+// tables, and the formats (a table column format's dxf index is taken
+// when the table is added).
+struct Ctx {
+    sst: Sst,
+    lib: Lib,
+    fm: Formats,
+    meta: Meta,
+}
+
+fn warn(sh: mut ref Sheet, msg: ref String) {
+    sh.warns.push(msg.clone());
+}
+
+impl Sheet {
+    // _check_dimensions(): 0, or -1 when the cell is outside the sheet.
+    fn check_dims(mut ref self, row: i64, col: i64, ignore_row: bool, ignore_col: bool) -> i64 {
+        if row < 0 or col < 0 {
+            return -1;
+        }
+        if row >= 1048576 or col >= 16384 {
+            return -1;
+        }
+        if not ignore_row {
+            if self.dim_rowmin < 0 or row < self.dim_rowmin {
+                self.dim_rowmin = row;
+            }
+            if self.dim_rowmax < 0 or row > self.dim_rowmax {
+                self.dim_rowmax = row;
+            }
+        }
+        if not ignore_col {
+            if self.dim_colmin < 0 or col < self.dim_colmin {
+                self.dim_colmin = col;
+            }
+            if self.dim_colmax < 0 or col > self.dim_colmax {
+                self.dim_colmax = col;
+            }
+        }
+        0
+    }
+
+    fn put(mut ref self, row: i64, col: i64, c: own Cell) {
+        self.table.insert(key_of(row, col), c);
+    }
+}
+
+fn fmt_arg(v: ref Val) -> Option[i64] {
+    fmt_of(v)
+}
+
+fn write_string(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, t: ref String,
+                f: Option[i64]) -> i64 {
+    let mut err: i64 = 0;
+    if sh.check_dims(row, col, false, false) != 0 {
+        return -1;
+    }
+    let mut s = t.clone();
+    if clen(s) > 32767 {
+        s = cprefix(s, 32767);
+        err = -2;
+    }
+    let idx = sst_index(mut cx.sst, s);
+    sh.put(row, col, Cell.Str(idx, f));
+    err
+}
+
+#[allow(mutual_recursion_note)]
+fn write_number(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, n: ref Val,
+                f: Option[i64]) -> Result[i64, PyErr] {
+    let x = num(n);
+    if x != x or not is_finite(x) {
+        if sh.nan_inf_to_errors {
+            if x != x {
+                return write_formula(mut sh, mut cx, row, col, "#NUM!", f, sv("#NUM!"));
+            } else if x > 0.0 {
+                return write_formula(mut sh, mut cx, row, col, "1/0", f, sv("#DIV/0!"));
+            } else {
+                return write_formula(mut sh, mut cx, row, col, "-1/0", f, sv("#DIV/0!"));
+            }
+        }
+        return Err(raise("TypeError",
+                         "NAN/INF not supported in write_number() without 'nan_inf_to_errors' Workbook() option"));
+    }
+    if sh.check_dims(row, col, false, false) != 0 {
+        return Ok(-1);
+    }
+    sh.put(row, col, Cell.Num(n.clone(), f));
+    Ok(0)
+}
+
+fn write_blank(sh: mut ref Sheet, row: i64, col: i64, f: Option[i64]) -> i64 {
+    if f.is_none() {
+        return 0;
+    }
+    if sh.check_dims(row, col, false, false) != 0 {
+        return -1;
+    }
+    sh.put(row, col, Cell.Blank(f));
+    0
+}
+
+#[allow(mutual_recursion_note)]
+fn write_formula(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, formula: ref String,
+                 f: Option[i64], value: ref Val) -> Result[i64, PyErr] {
+    if sh.check_dims(row, col, false, false) != 0 {
+        return Ok(-1);
+    }
+    if formula.len() == 0 {
+        warn(mut sh, "Formula can't be None or empty");
+        return Ok(-1);
+    }
+    if has_dynamic(formula, cx.lib.dyn_names) {
+        return write_array_formula(mut sh, mut cx, row, col, row, col, formula, f, value, true);
+    }
+    if formula.starts_with("{") and formula.ends_with("}") {
+        return write_array_formula(mut sh, mut cx, row, col, row, col, formula, f, value, false);
+    }
+    let pf = prepare_formula(cx.lib, formula, sh.use_future_functions);
+    sh.put(row, col, Cell.Formula(pf, f, value.clone()));
+    Ok(0)
+}
+
+#[allow(mutual_recursion_note)]
+fn write_array_formula(sh: mut ref Sheet, cx: mut ref Ctx, r1: i64, c1: i64, r2: i64, c2: i64,
+                       formula: ref String, f: Option[i64], value: ref Val,
+                       dynamic: bool) -> Result[i64, PyErr] {
+    let (fr, lr) = if r1 > r2 { (r2, r1) } else { (r1, r2) };
+    let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+    if sh.check_dims(fr, fc, false, false) != 0 {
+        return Ok(-1);
+    }
+    if sh.check_dims(lr, lc, false, false) != 0 {
+        return Ok(-1);
+    }
+    let range = if fr == lr and fc == lc {
+        cell_ref(fr, fc)
+    } else {
+        let a = cell_ref(fr, fc);
+        let b = cell_ref(lr, lc);
+        f"{a}:{b}"
+    };
+    let pf = prepare_formula(cx.lib, formula, sh.use_future_functions);
+    sh.put(fr, fc, Cell.Array(pf, f, value.clone(), range, dynamic));
+    for row in fr..lr + 1 {
+        for col in fc..lc + 1 {
+            if row != fr or col != fc {
+                write_number(mut sh, mut cx, row, col, Val.Int(0), f)?;
+            }
+        }
+    }
+    if dynamic {
+        sh.has_dynamic_arrays = true;
+    }
+    Ok(0)
+}
+
+fn write_datetime(sh: mut ref Sheet, row: i64, col: i64, w: ref When, f: Option[i64]) -> i64 {
+    if sh.check_dims(row, col, false, false) != 0 {
+        return -1;
+    }
+    let n = excel_time(w);
+    let fmt = if f.is_none() { sh.default_date_format } else { f };
+    sh.put(row, col, Cell.Date(n, fmt));
+    0
+}
+
+fn write_boolean(sh: mut ref Sheet, row: i64, col: i64, b: ref Val, f: Option[i64]) -> i64 {
+    if sh.check_dims(row, col, false, false) != 0 {
+        return -1;
+    }
+    sh.put(row, col, Cell.Bool(if truthy(b) { 1 } else { 0 }, f));
+    0
+}
+
+fn type_name(v: ref Val) -> String {
+    match v {
+        Val.List(_) => "<class 'list'>".to_string(),
+        Val.Dict(_) => "<class 'dict'>".to_string(),
+        _ => "<class 'xlsxwriter.format.Format'>".to_string(),
+    }
+}
+
+fn url_like(t: ref String) -> bool {
+    t.starts_with("http://") or t.starts_with("https://") or t.starts_with("ftp://")
+        or t.starts_with("ftps://") or t.starts_with("mailto:") or t.starts_with("internal:")
+        or t.starts_with("external:")
+}
+
+// _write(): by the type of the token. rest is what follows the token.
+#[allow(mutual_recursion_note)]
+fn write_any(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, args: ref Vec[Val]) -> Result[i64, PyErr] {
+    if args.len() == 0 {
+        return Err(raise("TypeError", "write() takes at least 4 arguments (3 given)"));
+    }
+    let token = args[0].clone();
+    let a1 = arg(args, 1);
+    match token {
+        Val.Nil => Ok(write_blank(mut sh, row, col, fmt_arg(a1))),
+        Val.Bool(_) => Ok(write_boolean(mut sh, row, col, token, fmt_arg(a1))),
+        Val.Int(_) => write_number(mut sh, mut cx, row, col, token, fmt_arg(a1)),
+        Val.Float(_) => write_number(mut sh, mut cx, row, col, token, fmt_arg(a1)),
+        Val.Str(t) => write_token_string(mut sh, mut cx, row, col, t, args),
+        Val.Time(w) => Ok(write_datetime(mut sh, row, col, w, fmt_arg(a1))),
+        _ => {
+            let tn = type_name(token);
+            Err(raise("TypeError", f"Unsupported type {tn} in write()"))
+        }
+    }
+}
+
+#[allow(mutual_recursion_note)]
+fn write_token_string(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, t: ref String,
+                      args: ref Vec[Val]) -> Result[i64, PyErr] {
+    let a1 = arg(args, 1);
+    if t.len() == 0 {
+        // _write_blank(row, col, token, cell_format): the format is the
+        // argument after the token.
+        return Ok(write_blank(mut sh, row, col, fmt_arg(a1)));
+    }
+    if sh.strings_to_formulas and t.starts_with("=") {
+        return write_formula(mut sh, mut cx, row, col, t, fmt_arg(a1), arg_or(args, 2, Val.Int(0)));
+    }
+    if t.starts_with("{=") and t.ends_with("}") {
+        return write_formula(mut sh, mut cx, row, col, t, fmt_arg(a1), arg_or(args, 2, Val.Int(0)));
+    }
+    if t.contains(":") and sh.strings_to_urls and url_like(t) {
+        return write_url(mut sh, mut cx, row, col, t, a1, arg(args, 2), arg(args, 3));
+    }
+    if sh.strings_to_numbers {
+        if let Some(x) = py_float(t) {
+            if sh.nan_inf_to_errors or (x == x and is_finite(x)) {
+                return write_number(mut sh, mut cx, row, col, Val.Float(x), fmt_arg(a1));
+            }
+        }
+    }
+    Ok(write_string(mut sh, mut cx, row, col, t, fmt_arg(a1)))
+}
+
+fn write_row(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col0: i64, data: ref Val,
+             f: ref Val) -> Result[i64, PyErr] {
+    let items = match data {
+        Val.List(v) => v.clone(),
+        Val.Str(t) => {
+            let mut v: Vec[Val] = Vec.new();
+            for c in t.chars() {
+                v.push(Val.Str(c.to_string()));
+            }
+            v
+        }
+        _ => return Err(raise("TypeError", "object is not iterable")),
+    };
+    let mut col = col0;
+    for tok in items.iter() {
+        let err = write_any(mut sh, mut cx, row, col, [tok.clone(), f.clone()])?;
+        if err != 0 {
+            return Ok(err);
+        }
+        col += 1;
+    }
+    Ok(0)
+}
+
+fn write_column(sh: mut ref Sheet, cx: mut ref Ctx, row0: i64, col: i64, data: ref Val,
+                f: ref Val) -> Result[i64, PyErr] {
+    let items = match data {
+        Val.List(v) => v.clone(),
+        _ => return Err(raise("TypeError", "object is not iterable")),
+    };
+    let mut row = row0;
+    for tok in items.iter() {
+        let err = write_any(mut sh, mut cx, row, col, [tok.clone(), f.clone()])?;
+        if err != 0 {
+            return Ok(err);
+        }
+        row += 1;
+    }
+    Ok(0)
+}
+
+// ------------------------------------------------------------ urls
+
+fn has_pct_escape(t: ref String) -> bool {
+    let cs: Vec[char] = t.chars().collect();
+    for i in 0..cs.len() {
+        if cs[i] == '%' and i + 2 < cs.len() and is_hex(cs[i + 1]) and is_hex(cs[i + 2]) {
+            return true;
+        }
+    }
+    false
+}
+
+fn escape_url(t: ref String) -> String {
+    if has_pct_escape(t) {
+        return t.clone();
+    }
+    t.replace("%", "%25").replace("\"", "%22").replace(" ", "%20").replace("<", "%3c")
+        .replace(">", "%3e").replace("[", "%5b").replace("]", "%5d").replace("^", "%5e")
+        .replace("`", "%60").replace("{", "%7b").replace("}", "%7d")
+}
+
+fn write_url(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64, url0: ref String,
+             f: ref Val, string: ref Val, tip: ref Val) -> Result[i64, PyErr] {
+    if sh.check_dims(row, col, false, false) != 0 {
+        return Ok(-1);
+    }
+    let mut url = url0.clone();
+    let mut s = if is_nil(string) { url.clone() } else { str_of(string) };
+    let mut link_type: i64 = 1;
+    if url.starts_with("internal:") {
+        url = url.replace("internal:", "");
+        s = s.replace("internal:", "");
+        link_type = 2;
+    }
+    let mut external = false;
+    if url.starts_with("external:") {
+        url = url.replace("external:", "").replace("/", "\\");
+        s = s.replace("external:", "").replace("/", "\\");
+        external = true;
+    }
+    s = s.replace("mailto:", "");
+    if clen(s) > 32767 {
+        warn(mut sh, "Ignoring URL since it exceeds Excel's string limit of 32767 characters");
+        return Ok(-2);
+    }
+    let mut anchor: Option[String] = Some(s.clone());
+    if link_type == 1 {
+        match url.find("#") {
+            Some(p) => {
+                let head = url.substring(0, p);
+                let tail = url.substring(p + 1);
+                url = head;
+                anchor = Some(tail);
+            }
+            None => {
+                anchor = None;
+            }
+        }
+        url = escape_url(url);
+        if not external {
+            if let Some(a) = anchor.clone() {
+                anchor = Some(escape_url(a));
+            }
+        }
+        let uc: Vec[char] = url.chars().collect();
+        let drive = uc.len() >= 2 and is_word(uc[0]) and uc[1] == ':';
+        if drive or url.starts_with("\\") {
+            url = f"file:///{url}";
+        }
+        if url.starts_with(".\\") {
+            url = url.substring(2);
+        }
+    }
+    let tmp = match anchor.clone() {
+        Some(a) => a,
+        None => String.new(),
+    };
+    let max = sh.max_url_length;
+    if clen(url) > max or clen(tmp) > max {
+        warn(mut sh, f"Ignoring URL '{url}' with link or location/anchor > {max} characters since it exceeds Excel's limit for URLS");
+        return Ok(-3);
+    }
+    sh.hlink_count += 1;
+    if sh.hlink_count > 65530 {
+        warn(mut sh, f"Ignoring URL '{url}' since it exceeds Excel's limit of 65,530 URLS per worksheet.");
+        return Ok(-4);
+    }
+    let fmt = match fmt_of(f) {
+        Some(i) => Some(i),
+        None => Some(1),
+    };
+    write_string(mut sh, mut cx, row, col, s, fmt);
+    sh.hyperlinks.insert(key_of(row, col), Link { link_type: link_type, url: url, anchor: anchor,
+                                                   tip: tip.clone() });
+    Ok(0)
+}
+
+// ------------------------------------------------------------ rich strings
+
+fn ws_palette(c: ref Val) -> String {
+    let t = pystr(c);
+    let body = if t.starts_with("#") { t.substring(1) } else { t };
+    let up = body.to_uppercase();
+    f"FF{up}"
+}
+
+fn rich_font(out: mut ref String, f: ref Format) -> Result[(), PyErr] {
+    start0(mut out, "rPr");
+    if truthy(f.bold) {
+        empty0(mut out, "b");
+    }
+    if truthy(f.italic) {
+        empty0(mut out, "i");
+    }
+    if truthy(f.font_strikeout) {
+        empty0(mut out, "strike");
+    }
+    if truthy(f.font_outline) {
+        empty0(mut out, "outline");
+    }
+    if truthy(f.font_shadow) {
+        empty0(mut out, "shadow");
+    }
+    if truthy(f.underline) {
+        let mut a = attrs();
+        if eq_int(f.underline, 2) {
+            a.add("val", "double");
+        } else if eq_int(f.underline, 33) {
+            a.add("val", "singleAccounting");
+        } else if eq_int(f.underline, 34) {
+            a.add("val", "doubleAccounting");
+        }
+        empty(mut out, "u", a);
+    }
+    if eq_int(f.font_script, 1) {
+        empty1(mut out, "vertAlign", "val", "superscript");
+    }
+    if eq_int(f.font_script, 2) {
+        empty1(mut out, "vertAlign", "val", "subscript");
+    }
+    empty1(mut out, "sz", "val", pystr(f.font_size));
+    if eq_int(f.theme, -1) {
+        // no colour
+    } else if truthy(f.theme) or truthy(f.color_indexed) {
+        // _write_color() writes to the worksheet's own file handle, which
+        // is None until the worksheet is assembled.
+        return Err(raise("AttributeError", "'NoneType' object has no attribute 'write'"));
+    } else if truthy(f.font_color) {
+        empty1(mut out, "color", "rgb", ws_palette(f.font_color));
+    } else {
+        empty1(mut out, "color", "theme", "1");
+    }
+    empty1(mut out, "rFont", "val", pystr(f.font_name));
+    empty1(mut out, "family", "val", pystr(f.font_family));
+    if pystr(f.font_name) == "Calibri" and not f.hyperlink {
+        empty1(mut out, "scheme", "val", pystr(f.font_scheme));
+    }
+    end(mut out, "rPr");
+    Ok(())
+}
+
+fn write_rich_string(sh: mut ref Sheet, cx: mut ref Ctx, row: i64, col: i64,
+                     args: ref Vec[Val]) -> Result[i64, PyErr] {
+    let mut tokens = args.clone();
+    let mut cell_format: Option[i64] = None;
+    let mut raw = String.new();
+    if sh.check_dims(row, col, false, false) != 0 {
+        return Ok(-1);
+    }
+    if tokens.len() > 0 {
+        if let Some(i) = fmt_of(tokens[tokens.len() - 1]) {
+            cell_format = Some(i);
+            tokens.pop();
+        }
+    }
+    if tokens.len() <= 2 {
+        warn(mut sh, "You must specify more than 2 format/fragments for rich strings. Ignoring input in write_rich_string().");
+        return Ok(-5);
+    }
+    // Fragments: -1 the default Format(), else a format index; or a string.
+    let mut frags: Vec[(i64, String, bool)] = Vec.new();
+    let mut prev_format = true;
+    let mut pos: i64 = 0;
+    for t in tokens.iter() {
+        match fmt_of(t) {
+            None => {
+                let s = str_of(t);
+                if not prev_format {
+                    frags.push((-1, String.new(), true));
+                }
+                frags.push((0, s.clone(), false));
+                if s.len() == 0 {
+                    warn(mut sh, "Excel doesn't allow empty strings in rich strings. Ignoring input in write_rich_string().");
+                    return Ok(-4);
+                }
+                raw.push_str(s);
+                prev_format = false;
+            }
+            Some(i) => {
+                if prev_format and pos > 0 {
+                    warn(mut sh, "Excel doesn't allow 2 consecutive formats in rich strings. Ignoring input in write_rich_string().");
+                    return Ok(-3);
+                }
+                frags.push((i, String.new(), true));
+                prev_format = true;
+            }
+        }
+        pos += 1;
+    }
+    let mut out = String.new();
+    if not frags[0].2 {
+        start0(mut out, "r");
+    }
+    let dflt = new_format();
+    for fr in frags.iter() {
+        let (i, s, is_fmt) = fr.clone();
+        if is_fmt {
+            start0(mut out, "r");
+            if i < 0 {
+                rich_font(mut out, dflt)?;
+            } else {
+                let f = cx.fm.list[i].clone();
+                rich_font(mut out, f)?;
+            }
+        } else {
+            let mut a = attrs();
+            if preserve_ws(s) {
+                a.add("xml:space", "preserve");
+            }
+            data_el(mut out, "t", s, a);
+            end(mut out, "r");
+        }
+    }
+    if clen(raw) > 32767 {
+        warn(mut sh, "String length must be less than or equal to Excel's limit of 32,767 characters in write_rich_string().");
+        return Ok(-2);
+    }
+    let idx = sst_index(mut cx.sst, out);
+    sh.put(row, col, Cell.Rich(idx, cell_format, raw));
+    Ok(0)
+}
+
+// ------------------------------------------------------------ ranges
+
+fn merge_range(sh: mut ref Sheet, cx: mut ref Ctx, r1: i64, c1: i64, r2: i64, c2: i64,
+               data: ref Val, f: ref Val) -> Result[Val, PyErr] {
+    if r1 == r2 and c1 == c2 {
+        warn(mut sh, "Can't merge single cell");
+        return Ok(Val.Nil);
+    }
+    let (fr, lr) = if r1 > r2 { (r2, r1) } else { (r1, r2) };
+    let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+    if sh.check_dims(fr, fc, false, false) != 0 {
+        return Ok(Val.Int(-1));
+    }
+    if sh.check_dims(lr, lc, false, false) != 0 {
+        return Ok(Val.Int(-1));
+    }
+    let range = range_ref(fr, fc, lr, lc);
+    for row in fr..lr + 1 {
+        for col in fc..lc + 1 {
+            let k = key_of(row, col);
+            if let Some(prev) = sh.merged_cells.get(k) {
+                let p = prev.clone();
+                return Err(raise("OverlappingRange", f"Merge range '{range}' overlaps previous merge range '{p}'."));
+            }
+            if let Some(prev) = sh.table_cells.get(k) {
+                let p = prev.clone();
+                return Err(raise("OverlappingRange", f"Merge range '{range}' overlaps previous table range '{p}'."));
+            }
+            sh.merged_cells.insert(k, range.clone());
+        }
+    }
+    sh.merge.push((fr, fc, lr, lc));
+    write_any(mut sh, mut cx, fr, fc, [data.clone(), f.clone()])?;
+    for row in fr..lr + 1 {
+        for col in fc..lc + 1 {
+            if row == fr and col == fc {
+                continue;
+            }
+            write_blank(mut sh, row, col, fmt_of(f));
+        }
+    }
+    Ok(Val.Int(0))
+}
+
+fn clamp_level(v: ref Val) -> Val {
+    if num(v) < 0.0 {
+        Val.Int(0)
+    } else if num(v) > 7.0 {
+        Val.Int(7)
+    } else {
+        v.clone()
+    }
+}
+
+fn set_column(sh: mut ref Sheet, c1: i64, c2: i64, width: ref Val, f: ref Val,
+              options: ref Val) -> i64 {
+    let opts = dict_of(options);
+    let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+    let hidden = dget_or(opts, "hidden", Val.Bool(false));
+    let collapsed = dget_or(opts, "collapsed", Val.Bool(false));
+    let level0 = dget_or(opts, "level", Val.Int(0));
+    let ignore_col = not (fmt_of(f).is_some() or (truthy(width) and truthy(hidden)));
+    if sh.check_dims(0, lc, true, ignore_col) != 0 {
+        return -1;
+    }
+    if sh.check_dims(0, fc, true, ignore_col) != 0 {
+        return -1;
+    }
+    let level = clamp_level(level0);
+    if as_int(level) > sh.outline_col_level {
+        sh.outline_col_level = as_int(level);
+    }
+    for col in fc..lc + 1 {
+        sh.col_info.insert(col, ColInfo { width: width.clone(), fmt: fmt_of(f), hidden: hidden.clone(),
+                                          level: level.clone(), collapsed: collapsed.clone(),
+                                          autofit: false });
+    }
+    0
+}
+
+fn set_row(sh: mut ref Sheet, row: i64, height0: ref Val, f: ref Val, options: ref Val) -> i64 {
+    let opts = dict_of(options);
+    let min_col = if sh.dim_colmin >= 0 { sh.dim_colmin } else { 0 };
+    if sh.check_dims(row, min_col, false, false) != 0 {
+        return -1;
+    }
+    let mut height = if is_nil(height0) { sh.default_row_height.clone() } else { height0.clone() };
+    let mut hidden = dget_or(opts, "hidden", Val.Bool(false));
+    let collapsed = dget_or(opts, "collapsed", Val.Bool(false));
+    let level0 = dget_or(opts, "level", Val.Int(0));
+    if eq_int(height, 0) {
+        hidden = Val.Int(1);
+        height = sh.default_row_height.clone();
+    }
+    let level = clamp_level(level0);
+    if as_int(level) > sh.outline_row_level {
+        sh.outline_row_level = as_int(level);
+    }
+    sh.set_rows.insert(row, RowInfo { height: height, fmt: fmt_of(f), hidden: hidden, level: level,
+                                      collapsed: collapsed });
+    0
+}
+
+fn pixels_to_width(px: i64) -> f64 {
+    let p = px as f64;
+    if px <= 12 { p / 12.0 } else { (p - 5.0) / 7.0 }
+}
+
+fn autofit(sh: mut ref Sheet, cx: ref Ctx) {
+    if sh.dim_rowmax < 0 {
+        return;
+    }
+    let mut widest: SortedMap[i64, i64] = SortedMap.new();
+    for (k, cell) in sh.table.iter() {
+        let row = *k / 16384;
+        let col = *k % 16384;
+        let mut length: i64 = 0;
+        match cell {
+            Cell.Str(i, _) => {
+                length = text_width(cx.lib.widths, cx.sst.arr[*i]);
+            }
+            Cell.Rich(_, _, raw) => {
+                length = text_width(cx.lib.widths, raw);
+            }
+            Cell.Num(n, _) => {
+                length = 7 * clen(pystr(n));
+            }
+            Cell.Date(_, _) => {
+                length = 68;
+            }
+            Cell.Bool(b, _) => {
+                length = if *b != 0 { 31 } else { 36 };
+            }
+            Cell.Formula(_, _, v) => {
+                length = formula_width(cx.lib.widths, v);
+            }
+            Cell.Array(_, _, v, _, _) => {
+                length = formula_width(cx.lib.widths, v);
+            }
+            Cell.Blank(_) => {}
+        }
+        if sh.filter_cells.contains(key_of(row, col)) and length > 0 {
+            length += 16;
+        }
+        let have = match widest.get(col) {
+            Some(w) => *w,
+            None => 0,
+        };
+        if length > have {
+            widest.insert(col, length);
+        }
+    }
+    for (c, px) in widest.iter() {
+        let col = *c;
+        let mut width = pixels_to_width(*px + 7);
+        if width > 255.0 {
+            width = 255.0;
+        }
+        match sh.col_info.get(col) {
+            Some(info) => {
+                let mut ci = info.clone();
+                if not is_nil(ci.width) and not ci.autofit {
+                    if width > num(ci.width) {
+                        ci.width = Val.Float(width);
+                        ci.autofit = true;
+                    }
+                } else {
+                    ci.width = Val.Float(width);
+                    ci.autofit = true;
+                }
+                sh.col_info.insert(col, ci);
+            }
+            None => {
+                sh.col_info.insert(col, ColInfo { width: Val.Float(width), fmt: None,
+                                                  hidden: Val.Bool(false), level: Val.Int(0),
+                                                  collapsed: Val.Bool(false), autofit: true });
+            }
+        }
+    }
+}
+
+fn text_width(widths: ref Map[char, i64], t: ref String) -> i64 {
+    if not t.contains("\n") {
+        return pixel_width(widths, t);
+    }
+    let mut best: i64 = 0;
+    let parts: Vec[String] = t.split("\n").map(|p| p.to_string()).collect();
+    for p in parts.iter() {
+        let w = pixel_width(widths, p);
+        if w > best {
+            best = w;
+        }
+    }
+    best
+}
+
+// A formula's cached value: a number (a bool counts) longer when it is
+// positive, a string by its pixel width.
+fn formula_width(widths: ref Map[char, i64], v: ref Val) -> i64 {
+    match v {
+        Val.Str(t) => pixel_width(widths, t),
+        _ => {
+            if is_num(v) and num(v) > 0.0 { 7 * clen(pystr(v)) } else { 0 }
+        }
+    }
+}
+
+// ------------------------------------------------------------ validation
+
+fn dict_get_str(d: ref Vec[(String, Val)], k: Str) -> String {
+    match dget(d, k) {
+        Some(v) => pystr(v),
+        None => String.new(),
+    }
+}
+
+fn val_type(t: ref String) -> String {
+    let keys = ["any", "any value", "whole number", "whole", "integer", "decimal", "list", "date",
+                "time", "text length", "length", "custom"];
+    let vals = ["none", "none", "whole", "whole", "whole", "decimal", "list", "date", "time",
+                "textLength", "textLength", "custom"];
+    for i in 0..keys.len() {
+        if keys[i] == t {
+            return vals[i].to_string();
+        }
+    }
+    String.new()
+}
+
+fn criteria_type(t: ref String) -> String {
+    let keys = ["between", "not between", "equal to", "=", "==", "not equal to", "!=", "<>",
+                "greater than", ">", "less than", "<", "greater than or equal to", ">=",
+                "less than or equal to", "<="];
+    let vals = ["between", "notBetween", "equal", "equal", "equal", "notEqual", "notEqual",
+                "notEqual", "greaterThan", "greaterThan", "lessThan", "lessThan",
+                "greaterThanOrEqual", "greaterThanOrEqual", "lessThanOrEqual", "lessThanOrEqual"];
+    for i in 0..keys.len() {
+        if keys[i] == t {
+            return vals[i].to_string();
+        }
+    }
+    String.new()
+}
+
+fn csv_join(items: ref Vec[Val]) -> String {
+    let mut out = String.new();
+    for i in 0..items.len() {
+        if i > 0 {
+            out.push_str(",");
+        }
+        out.push_str(pystr(items[i]));
+    }
+    out
+}
+
+fn data_validation(sh: mut ref Sheet, r1: i64, c1: i64, r2: i64, c2: i64,
+                   options: ref Val) -> Result[i64, PyErr] {
+    if sh.check_dims(r1, c1, true, true) != 0 {
+        return Ok(-1);
+    }
+    if sh.check_dims(r2, c2, true, true) != 0 {
+        return Ok(-1);
+    }
+    let mut o = dict_of(options);
+    let valid = ["validate", "criteria", "value", "source", "minimum", "maximum", "ignore_blank",
+                 "dropdown", "show_input", "input_title", "input_message", "show_error",
+                 "error_title", "error_message", "error_type", "other_cells", "multi_range"];
+    for i in 0..o.len() {
+        let k = o[i].0.clone();
+        let mut known = false;
+        for v in valid.iter() {
+            if *v == k {
+                known = true;
+            }
+        }
+        if not known {
+            warn(mut sh, f"Unknown parameter '{k}' in data_validation()");
+            return Ok(-2);
+        }
+    }
+    if let Some(v) = dget(o, "source") {
+        dset(mut o, "value", v);
+    }
+    if let Some(v) = dget(o, "minimum") {
+        dset(mut o, "value", v);
+    }
+    if not dhas(o, "validate") {
+        warn(mut sh, "Parameter 'validate' is required in data_validation()");
+        return Ok(-2);
+    }
+    let vt = val_type(dict_get_str(o, "validate"));
+    if vt.len() == 0 {
+        let raw = dict_get_str(o, "validate");
+        warn(mut sh, f"Unknown validation type '{raw}' for parameter 'validate' in data_validation()");
+        return Ok(-2);
+    }
+    dset(mut o, "validate", Val.Str(vt.clone()));
+    if vt == "none" and is_nil(dget_or(o, "input_title", Val.Nil))
+        and is_nil(dget_or(o, "input_message", Val.Nil)) {
+        return Ok(-2);
+    }
+    if vt == "none" or vt == "list" or vt == "custom" {
+        dset(mut o, "criteria", sv("between"));
+        dset(mut o, "maximum", Val.Nil);
+    }
+    if not dhas(o, "criteria") {
+        warn(mut sh, "Parameter 'criteria' is required in data_validation()");
+        return Ok(-2);
+    }
+    let ct = criteria_type(dict_get_str(o, "criteria"));
+    if ct.len() == 0 {
+        let raw = dict_get_str(o, "criteria");
+        warn(mut sh, f"Unknown criteria type '{raw}' for parameter 'criteria' in data_validation()");
+        return Ok(-2);
+    }
+    dset(mut o, "criteria", Val.Str(ct.clone()));
+    if ct == "between" or ct == "notBetween" {
+        if not dhas(o, "maximum") {
+            warn(mut sh, "Parameter 'maximum' is required in data_validation() when using 'between' or 'not between' criteria");
+            return Ok(-2);
+        }
+    } else {
+        dset(mut o, "maximum", Val.Nil);
+    }
+    match dget(o, "error_type") {
+        None => dset(mut o, "error_type", Val.Int(0)),
+        Some(e) => {
+            let t = pystr(e);
+            let n = if t == "stop" { 0 } else if t == "warning" { 1 } else if t == "information" { 2 } else { -1 };
+            if n < 0 or not is_str(e) {
+                warn(mut sh, f"Unknown criteria type '{t}' for parameter 'error_type' in data_validation()");
+                return Ok(-2);
+            }
+            dset(mut o, "error_type", Val.Int(n));
+        }
+    }
+    if vt == "date" or vt == "time" {
+        let value = match dget(o, "value") {
+            Some(v) => v,
+            None => return Err(raise("KeyError", "'value'")),
+        };
+        if let Val.Time(w) = value {
+            let t = fmt_g(excel_time(w), 16, false);
+            dset(mut o, "value", Val.Str(t));
+            let mx = dget_or(o, "maximum", Val.Nil);
+            if let Val.Time(w2) = mx {
+                let t2 = fmt_g(excel_time(w2), 16, false);
+                dset(mut o, "maximum", Val.Str(t2));
+            }
+        }
+    }
+    let limits = [("input_title", 32, "input title"), ("error_title", 32, "error title"),
+                  ("input_message", 255, "input message"), ("error_message", 255, "error message")];
+    for lim in limits.iter() {
+        let (k, n, what) = lim.clone();
+        let v = dget_or(o, k, Val.Nil);
+        if truthy(v) and clen(pystr(v)) > n {
+            let t = pystr(v);
+            warn(mut sh, f"Length of {what} '{t}' exceeds Excel's limit of {n}");
+            return Ok(-2);
+        }
+    }
+    if vt == "list" {
+        if let Some(Val.List(items)) = dget(o, "value") {
+            let formula = csv_join(items);
+            if clen(formula) > 255 {
+                warn(mut sh, f"Length of list items '{formula}' exceeds Excel's limit of 255, use a formula range instead");
+                return Ok(-2);
+            }
+        }
+    }
+    for k in ["ignore_blank", "dropdown", "show_input", "show_error"].iter() {
+        if not dhas(o, *k) {
+            dset(mut o, *k, Val.Int(1));
+        }
+    }
+    let mut cells: Vec[(i64, i64, i64, i64)] = [(r1, c1, r2, c2)];
+    if let Some(Val.List(more)) = dget(o, "other_cells") {
+        for m in more.iter() {
+            if let Val.List(q) = m {
+                cells.push((as_int(q[0]), as_int(q[1]), as_int(q[2]), as_int(q[3])));
+            }
+        }
+    }
+    if let Some(mr) = dget(o, "multi_range") {
+        dset(mut o, "multi_range", Val.Str(pystr(mr).replace("$", "")));
+    }
+    sh.validations.push(Valid { cells: cells, opts: o });
+    Ok(0)
+}
+
+// ------------------------------------------------------------ tables
+
+fn name_ok(name: ref String) -> bool {
+    // ^[\w\\][\w\\.]*$ and not ^\d
+    let cs: Vec[char] = name.chars().collect();
+    if cs.len() == 0 {
+        return false;
+    }
+    if not (is_word(cs[0]) or cs[0] == '\\') {
+        return false;
+    }
+    for i in 1..cs.len() {
+        if not (is_word(cs[i]) or cs[i] == '\\' or cs[i] == '.') {
+            return false;
+        }
+    }
+    not (cs[0] >= '0' and cs[0] <= '9')
+}
+
+fn is_ascii_letter(c: char) -> bool {
+    (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')
+}
+
+fn is_digit(c: char) -> bool {
+    c >= '0' and c <= '9'
+}
+
+fn all_digits(cs: ref Vec[char], from: i64) -> bool {
+    if from >= cs.len() {
+        return false;
+    }
+    for i in from..cs.len() {
+        if not is_digit(cs[i]) {
+            return false;
+        }
+    }
+    true
+}
+
+// ^[a-zA-Z][a-zA-Z]?[a-dA-D]?\d+$
+fn looks_like_cell(name: ref String) -> bool {
+    let cs: Vec[char] = name.chars().collect();
+    if cs.len() == 0 or not is_ascii_letter(cs[0]) {
+        return false;
+    }
+    let ad = |c: char| (c >= 'a' and c <= 'd') or (c >= 'A' and c <= 'D');
+    // Try the optional letters every way the regex can.
+    if all_digits(cs, 1) {
+        return true;
+    }
+    if cs.len() > 1 and is_ascii_letter(cs[1]) and all_digits(cs, 2) {
+        return true;
+    }
+    if cs.len() > 1 and ad(cs[1]) and all_digits(cs, 2) {
+        return true;
+    }
+    if cs.len() > 2 and is_ascii_letter(cs[1]) and ad(cs[2]) and all_digits(cs, 3) {
+        return true;
+    }
+    false
+}
+
+fn is_rc(c: char) -> bool {
+    c == 'r' or c == 'c' or c == 'R' or c == 'C'
+}
+
+// ^[rcRC]$ or ^[rcRC]\d+[rcRC]\d+$
+fn looks_like_rc(name: ref String) -> bool {
+    let cs: Vec[char] = name.chars().collect();
+    if cs.len() == 1 and is_rc(cs[0]) {
+        return true;
+    }
+    if cs.len() < 4 or not is_rc(cs[0]) {
+        return false;
+    }
+    let mut i: i64 = 1;
+    while i < cs.len() and is_digit(cs[i]) {
+        i += 1;
+    }
+    if i == 1 or i >= cs.len() or not is_rc(cs[i]) {
+        return false;
+    }
+    all_digits(cs, i + 1)
+}
+
+fn table_function_formula(sh: mut ref Sheet, func: ref String, col_name: ref String) -> String {
+    let name = col_name.replace("'", "''").replace("#", "'#").replace("]", "']").replace("[", "'[");
+    let names = ["average", "countNums", "count", "max", "min", "stdDev", "sum", "var"];
+    let nums = [101, 102, 103, 104, 105, 107, 109, 110];
+    for i in 0..names.len() {
+        if names[i] == func {
+            let n = nums[i];
+            return f"SUBTOTAL({n},[{name}])";
+        }
+    }
+    warn(mut sh, f"Unsupported function '{func}' in add_table()");
+    String.new()
+}
+
+fn add_table(sh: mut ref Sheet, cx: mut ref Ctx, r1: i64, c1: i64, r2: i64, c2: i64,
+             options: ref Val) -> Result[i64, PyErr] {
+    let mut o = dict_of(options);
+    if sh.check_dims(r1, c1, true, true) != 0 {
+        return Ok(-1);
+    }
+    if sh.check_dims(r2, c2, true, true) != 0 {
+        return Ok(-1);
+    }
+    let (fr, lr) = if r1 > r2 { (r2, r1) } else { (r1, r2) };
+    let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+    let range = range_ref(fr, fc, lr, lc);
+    for row in fr..lr + 1 {
+        for col in fc..lc + 1 {
+            let k = key_of(row, col);
+            if let Some(prev) = sh.table_cells.get(k) {
+                let p = prev.clone();
+                return Err(raise("OverlappingRange", f"Table range '{range}' overlaps previous table range '{p}'."));
+            }
+            if let Some(prev) = sh.merged_cells.get(k) {
+                let p = prev.clone();
+                return Err(raise("OverlappingRange", f"Table range '{range}' overlaps previous merge range '{p}'."));
+            }
+            sh.table_cells.insert(k, range.clone());
+        }
+    }
+    let valid = ["autofilter", "banded_columns", "banded_rows", "columns", "data", "first_column",
+                 "header_row", "last_column", "name", "style", "total_row"];
+    for i in 0..o.len() {
+        let k = o[i].0.clone();
+        let mut known = false;
+        for v in valid.iter() {
+            if *v == k {
+                known = true;
+            }
+        }
+        if not known {
+            warn(mut sh, f"Unknown parameter '{k}' in add_table()");
+            return Ok(-2);
+        }
+    }
+    let banded_rows = dget_or(o, "banded_rows", Val.Bool(true));
+    dset(mut o, "banded_rows", banded_rows);
+    let header_row = dget_or(o, "header_row", Val.Bool(true));
+    dset(mut o, "header_row", header_row);
+    let autofilter0 = dget_or(o, "autofilter", Val.Bool(true));
+    dset(mut o, "autofilter", autofilter0);
+    let header = truthy(dget_or(o, "header_row", Val.Nil));
+    let mut num_rows = lr - fr;
+    if header {
+        num_rows -= 1;
+    }
+    if num_rows < 0 {
+        warn(mut sh, "Must have at least one data row in in add_table()");
+        return Ok(-2);
+    }
+    let mut t = Table {
+        id: 0, name: None, range: String.new(), autofilter: None, columns: Vec.new(),
+        style: String.new(),
+        show_first_col: dget_or(o, "first_column", Val.Bool(false)),
+        show_last_col: dget_or(o, "last_column", Val.Bool(false)),
+        show_row_stripes: dget_or(o, "banded_rows", Val.Bool(false)),
+        show_col_stripes: dget_or(o, "banded_columns", Val.Bool(false)),
+        header_row_count: dget_or(o, "header_row", Val.Int(0)),
+        totals_row_shown: dget_or(o, "total_row", Val.Bool(false)),
+    };
+    if let Some(nv) = dget(o, "name") {
+        let name = pystr(nv);
+        t.name = Some(name.clone());
+        if name.contains(" ") {
+            warn(mut sh, f"Name '{name}' in add_table() cannot contain spaces");
+            return Ok(-2);
+        }
+        if not name_ok(name) {
+            warn(mut sh, f"Invalid Excel characters in add_table(): '{name}'");
+            return Ok(-2);
+        }
+        if looks_like_cell(name) {
+            warn(mut sh, f"Name looks like a cell name in add_table(): '{name}'");
+            return Ok(-2);
+        }
+        if looks_like_rc(name) {
+            warn(mut sh, f"Invalid name '{name}' like a RC cell ref in add_table()");
+            return Ok(-2);
+        }
+    }
+    t.style = match dget(o, "style") {
+        Some(v) => if is_nil(v) { String.new() } else { pystr(v).replace(" ", "") },
+        None => "TableStyleMedium9".to_string(),
+    };
+    let mut first_data = fr;
+    let mut last_data = lr;
+    if header {
+        first_data += 1;
+    }
+    let total_row = truthy(dget_or(o, "total_row", Val.Nil));
+    if total_row {
+        last_data -= 1;
+    }
+    t.range = range_ref(fr, fc, lr, lc);
+    let a_range = range_ref(fr, fc, last_data, lc);
+    let mut autofilter = truthy(dget_or(o, "autofilter", Val.Nil));
+    if not header {
+        autofilter = false;
+    }
+    if autofilter {
+        t.autofilter = Some(a_range.clone());
+    }
+    let user_cols = match dget(o, "columns") {
+        Some(Val.List(v)) => Some(v),
+        _ => None,
+    };
+    let mut col_formats: Map[i64, Option[i64]] = Map.new();
+    let mut seen: Set[String] = Set.new();
+    let mut col_id: i64 = 1;
+    for col_num in fc..lc + 1 {
+        let mut cd = TCol { id: col_id, name: f"Column{col_id}", total_string: String.new(),
+                            total_function: String.new(), custom_total: String.new(),
+                            formula: String.new(), format: None };
+        let mut name_format: Option[i64] = None;
+        if let Some(cols) = user_cols.clone() {
+            let user = if col_id <= cols.len() { cols[col_id - 1].clone() } else { Val.Nil };
+            if truthy(user) {
+                let ud = dict_of(user);
+                let xformat = fmt_of(dget_or(ud, "format", Val.Nil));
+                let h = dget_or(ud, "header", Val.Nil);
+                if truthy(h) {
+                    cd.name = pystr(h);
+                }
+                let lower = cd.name.to_lowercase();
+                if seen.contains(lower) {
+                    warn(mut sh, f"Duplicate header name in add_table(): '{lower}'");
+                    return Ok(-2);
+                }
+                seen.insert(lower);
+                name_format = fmt_of(dget_or(ud, "header_format", Val.Nil));
+                let fv = dget_or(ud, "formula", Val.Nil);
+                if truthy(fv) {
+                    let mut formula = pystr(fv);
+                    if formula.starts_with("=") {
+                        formula = lstrip_eq(formula);
+                    }
+                    formula = formula.replace("@", "[#This Row],");
+                    cd.formula = prepare_formula(cx.lib, formula, true);
+                }
+                let tf = dget_or(ud, "total_function", Val.Nil);
+                if truthy(tf) {
+                    let mut func = pystr(tf);
+                    if func == "count_nums" {
+                        func = "countNums".to_string();
+                    }
+                    if func == "std_dev" {
+                        func = "stdDev".to_string();
+                    }
+                    let subtotals = ["average", "countNums", "count", "max", "min", "stdDev",
+                                     "sum", "var"];
+                    let mut is_sub = false;
+                    for s in subtotals.iter() {
+                        if *s == func {
+                            is_sub = true;
+                        }
+                    }
+                    let formula = if is_sub {
+                        table_function_formula(mut sh, func, cd.name)
+                    } else {
+                        let f = prepare_formula(cx.lib, func, true);
+                        cd.custom_total = f.clone();
+                        func = "custom".to_string();
+                        f
+                    };
+                    cd.total_function = func;
+                    let value = dget_or(ud, "total_value", Val.Int(0));
+                    write_formula(mut sh, mut cx, lr, col_num, formula, xformat, value)?;
+                } else {
+                    let ts = dget_or(ud, "total_string", Val.Nil);
+                    if truthy(ts) {
+                        cd.total_string = pystr(ts);
+                        write_string(mut sh, mut cx, lr, col_num, pystr(ts),
+                                     fmt_of(dget_or(ud, "format", Val.Nil)));
+                    }
+                }
+                if let Some(xi) = xformat {
+                    cd.format = Some(cx.fm.dxf_index(xi));
+                }
+                col_formats.insert(col_id - 1, xformat);
+            }
+        }
+        let header_name = cd.name.clone();
+        t.columns.push(cd);
+        if header {
+            write_string(mut sh, mut cx, fr, col_num, header_name, name_format);
+        }
+        col_id += 1;
+    }
+    if let Some(Val.List(data)) = dget(o, "data") {
+        let mut i: i64 = 0;
+        for row in first_data..last_data + 1 {
+            let mut j: i64 = 0;
+            for col in fc..lc + 1 {
+                if i < data.len() {
+                    if let Val.List(rowdata) = data[i].clone() {
+                        if j < rowdata.len() {
+                            let tok = rowdata[j].clone();
+                            let f = match col_formats.get(j) {
+                                Some(x) => match *x {
+                                    Some(xi) => Val.Fmt(xi),
+                                    None => Val.Nil,
+                                },
+                                None => Val.Nil,
+                            };
+                            write_any(mut sh, mut cx, row, col, [tok, f])?;
+                        }
+                    }
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+    }
+    let mut ci: i64 = 0;
+    for col_num in fc..lc + 1 {
+        let formula = t.columns[ci].formula.clone();
+        if formula.len() > 0 {
+            let ff = match col_formats.get(ci) {
+                Some(x) => *x,
+                None => None,
+            };
+            for row in first_data..last_data + 1 {
+                write_formula(mut sh, mut cx, row, col_num, formula, ff, Val.Int(0))?;
+            }
+        }
+        ci += 1;
+    }
+    sh.tables.push(t);
+    if autofilter {
+        for col in fc..lc + 1 {
+            sh.filter_cells.insert(key_of(fr, col));
+        }
+    }
+    Ok(0)
+}
+
+// ------------------------------------------------------------ filters, panes, pages
+
+fn name_area(sh: ref Sheet, r1: i64, c1: i64, r2: i64, c2: i64) -> String {
+    let cc1 = col_name(c1);
+    let cc2 = col_name(c2);
+    let rr1 = r1 + 1;
+    let rr2 = r2 + 1;
+    let mut only = false;
+    let (a, b) = if r1 == 0 and r2 == 1048575 {
+        only = true;
+        (f"${cc1}", f"${cc2}")
+    } else if c1 == 0 and c2 == 16383 {
+        only = true;
+        (f"${rr1}", f"${rr2}")
+    } else {
+        (f"${cc1}${rr1}", f"${cc2}${rr2}")
+    };
+    let area = if a == b and not only { a } else { f"{a}:{b}" };
+    let q = quote_sheet(sh.name);
+    f"{q}!{area}"
+}
+
+fn autofilter(sh: mut ref Sheet, r1: i64, c1: i64, r2: i64, c2: i64) {
+    let (fr, lr) = if r2 < r1 { (r2, r1) } else { (r1, r2) };
+    let (fc, lc) = if c2 < c1 { (c2, c1) } else { (c1, c2) };
+    sh.autofilter_area = name_area(sh, fr, fc, lr, lc);
+    sh.autofilter_ref = range_ref(fr, fc, lr, lc);
+    sh.filter_range = (fc, lc);
+    for col in fc..lc + 1 {
+        sh.filter_cells.insert(key_of(fr, col));
+    }
+}
+
+fn filter_column_list(sh: mut ref Sheet, colv: ref Val, filters: ref Val) -> Result[(), PyErr] {
+    if sh.autofilter_area.len() == 0 {
+        warn(mut sh, "Must call autofilter() before filter_column()");
+        return Ok(());
+    }
+    let mut col: i64 = 0;
+    match colv {
+        Val.Str(t) => {
+            let letters = t.clone();
+            let (_, c) = cell_to_rowcol(f"{t}1")?;
+            col = c;
+            if col >= 16384 {
+                warn(mut sh, f"Invalid column '{letters}'");
+                return Ok(());
+            }
+        }
+        _ => {
+            col = as_int(colv);
+        }
+    }
+    let (first, last) = sh.filter_range;
+    if col < first or col > last {
+        warn(mut sh, f"Column '{col}' outside autofilter() column range ({first},{last})");
+        return Ok(());
+    }
+    let items = match filters {
+        Val.List(v) => v.clone(),
+        _ => Vec.new(),
+    };
+    sh.filter_cols.insert(col, items);
+    sh.filter_on = true;
+    Ok(())
+}
+
+fn set_selection(sh: mut ref Sheet, r1: i64, c1: i64, r2: i64, c2: i64) {
+    let active = cell_ref(r1, c1);
+    let (fr, lr) = if r1 > r2 { (r2, r1) } else { (r1, r2) };
+    let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+    let sqref = range_ref(fr, fc, lr, lc);
+    if sqref == "A1" {
+        return;
+    }
+    sh.selections = [(String.new(), active, sqref)];
+}
+
+fn encode_password(pw: ref String) -> String {
+    let cs: Vec[char] = pw.chars().collect();
+    let mut hash: i64 = 0;
+    let mut i = cs.len() - 1;
+    while i >= 0 {
+        hash = ((hash >> 14) & 1) | ((hash << 1) & 32767);
+        hash = hash ^ (cs[i] as u32 as i64);
+        i -= 1;
+    }
+    hash = ((hash >> 14) & 1) | ((hash << 1) & 32767);
+    hash = hash ^ cs.len();
+    hash = hash ^ 52811;
+    let digits = "0123456789ABCDEF".to_string();
+    let db = digits.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    if hash == 0 {
+        out.push(b'0');
+    }
+    while hash > 0 {
+        out.insert(0, db[hash & 15]);
+        hash = hash >> 4;
+    }
+    from_bytes(out)
+}
+
+fn protect(sh: mut ref Sheet, pw: ref Val, options: ref Val) {
+    let password = if pystr(pw) != "" { encode_password(pystr(pw)) } else { String.new() };
+    let mut d: Vec[(String, Val)] = Vec.new();
+    let names = ["sheet", "content", "objects", "scenarios", "format_cells", "format_columns",
+                 "format_rows", "insert_columns", "insert_rows", "insert_hyperlinks",
+                 "delete_columns", "delete_rows", "select_locked_cells", "sort", "autofilter",
+                 "pivot_tables", "select_unlocked_cells"];
+    for n in names.iter() {
+        let on = *n == "sheet" or *n == "select_locked_cells" or *n == "select_unlocked_cells";
+        d.push((n.to_string(), Val.Bool(on)));
+    }
+    let o = dict_of(options);
+    for i in 0..o.len() {
+        let (k, v) = o[i].clone();
+        if dhas(d, k) {
+            dset(mut d, k, v);
+        } else {
+            warn(mut sh, f"Unknown protection object: '{k}'");
+        }
+    }
+    d.push(("password".to_string(), Val.Str(password)));
+    sh.protect_options = d;
+}
+
+fn set_header_footer(sh: mut ref Sheet, text0: ref Val, options: ref Val, margin: ref Val,
+                     is_header: bool) {
+    let what = if is_header { "Header" } else { "Footer" };
+    let lower = if is_header { "header" } else { "footer" };
+    let orig = pystr(text0);
+    let text = orig.replace("&[Picture]", "&G");
+    if clen(text) > 255 {
+        warn(mut sh, f"{what} string cannot be longer than Excel's limit of 255 characters");
+        return;
+    }
+    let mut o: Vec[(String, Val)] = match options {
+        Val.Nil => Vec.new(),
+        Val.Dict(d) => d.clone(),
+        _ => [("margin".to_string(), options.clone())],
+    };
+    if not is_nil(margin) {
+        dset(mut o, "margin", margin.clone());
+    }
+    let mut images: i64 = 0;
+    for k in ["image_left", "image_center", "image_right"].iter() {
+        if truthy(dget_or(o, *k, Val.Nil)) {
+            images += 1;
+        }
+    }
+    let placeholders = count_sub(text, "&G");
+    if placeholders != images {
+        warn(mut sh, f"Number of {lower} images ({images}) doesn't match placeholder count ({placeholders}) in string: {orig}");
+        return;
+    }
+    if let Some(v) = dget(o, "align_with_margins") {
+        sh.header_footer_aligns = v;
+    }
+    if let Some(v) = dget(o, "scale_with_doc") {
+        sh.header_footer_scales = v;
+    }
+    let m = dget_or(o, "margin", Val.Float(0.3));
+    if is_header {
+        sh.header = text;
+        sh.margin_header = m;
+    } else {
+        sh.footer = text;
+        sh.margin_footer = m;
+    }
+    sh.header_footer_changed = true;
+}
+
+fn count_sub(t: ref String, pat: Str) -> i64 {
+    let mut n: i64 = 0;
+    let mut rest = t.clone();
+    loop {
+        match rest.find(pat) {
+            Some(p) => {
+                n += 1;
+                rest = rest.substring(p + pat.len());
+            }
+            None => break,
+        }
+    }
+    n
+}
+
+fn repeat_columns(sh: mut ref Sheet, c1: i64, c2v: ref Val) {
+    let c2 = if is_nil(c2v) { c1 } else { as_int(c2v) };
+    let a = col_name(c1);
+    let b = col_name(c2);
+    let q = quote_sheet(sh.name);
+    sh.repeat_col_range = f"{q}!${a}:${b}";
+}
+
+fn repeat_rows(sh: mut ref Sheet, r1: i64, r2v: ref Val) {
+    let r2 = if is_nil(r2v) { r1 } else { as_int(r2v) };
+    let a = r1 + 1;
+    let b = r2 + 1;
+    let q = quote_sheet(sh.name);
+    sh.repeat_row_range = f"{q}!${a}:${b}";
+}

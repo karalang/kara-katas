@@ -1,0 +1,870 @@
+
+// ------------------------------------------------------------ workbook
+
+struct Wb {
+    strings_to_numbers: bool,
+    strings_to_formulas: bool,
+    strings_to_urls: bool,
+    nan_inf_to_errors: bool,
+    use_future_functions: bool,
+    default_date_format: Option[i64],
+    default_format_properties: Vec[(String, Val)],
+    max_url_length: i64,
+    sheetname_count: i64,
+    defined_names: Vec[(String, i64, String, bool)],
+    named_ranges: Vec[String],
+    doc_properties: Vec[(String, Val)],
+    window_width: i64,
+    window_height: i64,
+    tab_ratio: i64,
+    calc_mode: String,
+    calc_on_load: bool,
+    calc_id: Val,
+    read_only: i64,
+    has_metadata: bool,
+    warns: Vec[String],
+}
+
+fn new_book(options: ref Vec[(String, Val)], cx: mut ref Ctx) -> Result[Wb, PyErr] {
+    let mut max_url = as_int(dget_or(options, "max_url_length", Val.Int(2079)));
+    if max_url < 255 {
+        max_url = 2079;
+    }
+    let mut wb = Wb {
+        strings_to_numbers: truthy(dget_or(options, "strings_to_numbers", Val.Bool(false))),
+        strings_to_formulas: truthy(dget_or(options, "strings_to_formulas", Val.Bool(true))),
+        strings_to_urls: truthy(dget_or(options, "strings_to_urls", Val.Bool(true))),
+        nan_inf_to_errors: truthy(dget_or(options, "nan_inf_to_errors", Val.Bool(false))),
+        use_future_functions: truthy(dget_or(options, "use_future_functions", Val.Bool(false))),
+        default_date_format: None,
+        default_format_properties: dict_of(dget_or(options, "default_format_properties", Val.Nil)),
+        max_url_length: max_url, sheetname_count: 0, defined_names: Vec.new(),
+        named_ranges: Vec.new(), doc_properties: Vec.new(), window_width: 16095,
+        window_height: 9660, tab_ratio: 600, calc_mode: "auto".to_string(), calc_on_load: true,
+        calc_id: Val.Int(124519), read_only: 0, has_metadata: false, warns: Vec.new(),
+    };
+    add_format(mut wb, mut cx, [("xf_index".to_string(), Val.Int(0))])?;
+    add_format(mut wb, mut cx, [("hyperlink".to_string(), Val.Bool(true))])?;
+    let ddf = dget_or(options, "default_date_format", Val.Nil);
+    if not is_nil(ddf) {
+        let i = add_format(mut wb, mut cx, [("num_format".to_string(), ddf)])?;
+        wb.default_date_format = Some(i);
+    }
+    Ok(wb)
+}
+
+fn add_format(wb: mut ref Wb, cx: mut ref Ctx, props: ref Vec[(String, Val)]) -> Result[i64, PyErr] {
+    cx.fm.add(wb.default_format_properties, props)
+}
+
+fn has_invalid_sheet_char(t: ref String) -> bool {
+    for c in t.chars() {
+        if c == '[' or c == ']' or c == ':' or c == '*' or c == '?' or c == '/' or c == '\\' {
+            return true;
+        }
+    }
+    false
+}
+
+fn add_worksheet(wb: mut ref Wb, sheets: mut ref Vec[Sheet], name0: ref Val) -> Result[i64, PyErr] {
+    wb.sheetname_count += 1;
+    let mut name = if is_nil(name0) { String.new() } else { pystr(name0) };
+    if name.len() == 0 {
+        let n = wb.sheetname_count;
+        name = f"Sheet{n}";
+    }
+    if clen(name) > 31 {
+        return Err(raise("InvalidWorksheetName", f"Excel worksheet name '{name}' must be <= 31 chars."));
+    }
+    if has_invalid_sheet_char(name) {
+        return Err(raise("InvalidWorksheetName", f"Invalid Excel character '[]:*?/\\' in sheetname '{name}'."));
+    }
+    if name.starts_with("'") or name.ends_with("'") {
+        return Err(raise("InvalidWorksheetName", f"Sheet name cannot start or end with an apostrophe \"{name}\"."));
+    }
+    let lower = name.to_lowercase();
+    for s in sheets.iter() {
+        if s.name.to_lowercase() == lower {
+            return Err(raise("DuplicateWorksheetName", f"Sheetname '{name}', with case ignored, is already in use."));
+        }
+    }
+    let mut sh = new_sheet(name, sheets.len());
+    sh.strings_to_numbers = wb.strings_to_numbers;
+    sh.strings_to_formulas = wb.strings_to_formulas;
+    sh.strings_to_urls = wb.strings_to_urls;
+    sh.nan_inf_to_errors = wb.nan_inf_to_errors;
+    sh.use_future_functions = wb.use_future_functions;
+    sh.default_date_format = wb.default_date_format;
+    sh.max_url_length = wb.max_url_length;
+    sheets.push(sh);
+    Ok(sheets.len() - 1)
+}
+
+fn sheet_index_of(sheets: ref Vec[Sheet], name: ref String) -> i64 {
+    let mut n = name.clone();
+    while n.starts_with("'") {
+        n = n.substring(1);
+    }
+    while n.ends_with("'") {
+        n = n.substring(0, n.len() - 1);
+    }
+    for s in sheets.iter() {
+        if s.name == n {
+            return s.index;
+        }
+    }
+    -1
+}
+
+fn define_name(wb: mut ref Wb, sheets: ref Vec[Sheet], name0: ref String,
+               formula0: ref String) -> Val {
+    let formula = if formula0.starts_with("=") { lstrip_eq(formula0) } else { formula0.clone() };
+    let mut name = name0.clone();
+    let mut sheet_index: i64 = -1;
+    let bangs = count_sub(name, "!");
+    if bangs == 1 and not name.starts_with("!") and not name.ends_with("!") {
+        let (a, b) = match name.split_once("!") {
+            Some((x, y)) => (x.to_string(), y.to_string()),
+            None => (String.new(), String.new()),
+        };
+        sheet_index = sheet_index_of(sheets, a);
+        name = b;
+        if sheet_index < 0 {
+            wb.warns.push(f"Unknown sheet name '{a}' in defined_name()");
+            return Val.Int(-1);
+        }
+    }
+    if not name_ok(name) {
+        wb.warns.push(f"Invalid Excel characters in defined_name(): '{name}'");
+        return Val.Int(-1);
+    }
+    if looks_like_cell(name) {
+        wb.warns.push(f"Name looks like a cell name in defined_name(): '{name}'");
+        return Val.Int(-1);
+    }
+    if looks_like_rc(name) {
+        wb.warns.push(f"Invalid name '{name}' like a RC cell ref in defined_name()");
+        return Val.Int(-1);
+    }
+    wb.defined_names.push((name, sheet_index, formula, false));
+    Val.Nil
+}
+
+fn name_sort_key(n: ref (String, i64, String, bool)) -> String {
+    let (name, _, range, _) = n.clone();
+    let a = name.replace("_xlnm.", "").to_lowercase();
+    let mut r = range.clone();
+    while r.starts_with("'") {
+        r = r.substring(1);
+    }
+    let b = r.to_lowercase();
+    f"{a}::{b}"
+}
+
+fn prepare_defined_names(wb: mut ref Wb, sheets: ref Vec[Sheet]) {
+    let mut names = wb.defined_names.clone();
+    for sh in sheets.iter() {
+        if sh.autofilter_area.len() > 0 {
+            names.push(("_xlnm._FilterDatabase".to_string(), sh.index, sh.autofilter_area.clone(), true));
+        }
+        if sh.print_area_range.len() > 0 {
+            names.push(("_xlnm.Print_Area".to_string(), sh.index, sh.print_area_range.clone(), false));
+        }
+        if sh.repeat_col_range.len() > 0 or sh.repeat_row_range.len() > 0 {
+            let r = if sh.repeat_col_range.len() > 0 and sh.repeat_row_range.len() > 0 {
+                let a = sh.repeat_col_range.clone();
+                let b = sh.repeat_row_range.clone();
+                f"{a},{b}"
+            } else {
+                let a = sh.repeat_col_range.clone();
+                let b = sh.repeat_row_range.clone();
+                f"{a}{b}"
+            };
+            names.push(("_xlnm.Print_Titles".to_string(), sh.index, r, false));
+        }
+    }
+    // A stable sort on the key.
+    let keys: Vec[String] = names.iter().map(|n| name_sort_key(n)).collect();
+    let mut order: Vec[i64] = Vec.new();
+    for i in 0..names.len() {
+        order.push(i);
+    }
+    for i in 1..order.len() {
+        let mut j = i;
+        while j > 0 and keys[order[j - 1]] > keys[order[j]] {
+            let t = order[j];
+            order[j] = order[j - 1];
+            order[j - 1] = t;
+            j -= 1;
+        }
+    }
+    let mut sorted: Vec[(String, i64, String, bool)] = Vec.new();
+    for i in order.iter() {
+        sorted.push(names[*i].clone());
+    }
+    let mut ranges: Vec[String] = Vec.new();
+    for n in sorted.iter() {
+        let (name, index, range, _) = n.clone();
+        if name == "_xlnm._FilterDatabase" {
+            continue;
+        }
+        if let Some((sheet, _)) = range.split_once("!") {
+            let s = sheet.to_string();
+            if name.starts_with("_xlnm.") {
+                let t = name.replace("_xlnm.", "");
+                ranges.push(f"{s}!{t}");
+            } else if index != -1 {
+                ranges.push(f"{s}!{name}");
+            } else {
+                ranges.push(name);
+            }
+        }
+    }
+    wb.defined_names = sorted;
+    wb.named_ranges = ranges;
+}
+
+fn prepare_tables(sheets: mut ref Vec[Sheet]) -> Result[(), PyErr] {
+    let mut table_id: i64 = 0;
+    let mut seen: Set[String] = Set.new();
+    for si in 0..sheets.len() {
+        let n = sheets[si].tables.len();
+        if n == 0 {
+            continue;
+        }
+        let mut id = table_id + 1;
+        for ti in 0..n {
+            sheets[si].tables[ti].id = id;
+            if sheets[si].tables[ti].name.is_none() {
+                sheets[si].tables[ti].name = Some(f"Table{id}");
+            }
+            let name = match sheets[si].tables[ti].name.clone() {
+                Some(x) => x,
+                None => String.new(),
+            };
+            let lower = name.to_lowercase();
+            if seen.contains(lower) {
+                return Err(raise("DuplicateTableName", f"Duplicate name '{name}' used in worksheet.add_table()."));
+            }
+            seen.insert(lower);
+            sheets[si].external_table_links.push(("/table".to_string(),
+                                                  f"../tables/table{id}.xml", String.new()));
+            id += 1;
+        }
+        table_id += n;
+    }
+    Ok(())
+}
+
+// ------------------------------------------------------------ package parts
+
+fn rels_xml(rels: ref Vec[(String, String, String)]) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut ra = attrs();
+    ra.add("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships");
+    start(mut out, "Relationships", ra);
+    let mut id: i64 = 1;
+    for r in rels.iter() {
+        let (t, target, mode) = r.clone();
+        let mut a = attrs();
+        a.add("Id", f"rId{id}");
+        a.add("Type", t);
+        a.add("Target", target);
+        id += 1;
+        if mode.len() > 0 {
+            a.add("TargetMode", mode);
+        }
+        empty(mut out, "Relationship", a);
+    }
+    end(mut out, "Relationships");
+    out
+}
+
+fn doc_rel(kind: Str, target: ref String) -> (String, String, String) {
+    (f"http://schemas.openxmlformats.org/officeDocument/2006/relationships{kind}", target.clone(),
+     String.new())
+}
+
+fn content_types_xml(sheets: ref Vec[Sheet], table_count: i64, has_sst: bool,
+                     has_metadata: bool) -> String {
+    let pkg = "application/vnd.openxmlformats-package.";
+    let doc = "application/vnd.openxmlformats-officedocument.";
+    let mut out = String.new();
+    decl(mut out);
+    let mut ta = attrs();
+    ta.add("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types");
+    start(mut out, "Types", ta);
+    let defaults = [("rels".to_string(), f"{pkg}relationships+xml"),
+                    ("xml".to_string(), "application/xml".to_string())];
+    for d in defaults.iter() {
+        let (e, c) = d.clone();
+        let mut a = attrs();
+        a.add("Extension", e);
+        a.add("ContentType", c);
+        empty(mut out, "Default", a);
+    }
+    let mut ov: Vec[(String, String)] = [
+        ("/docProps/app.xml".to_string(), f"{doc}extended-properties+xml"),
+        ("/docProps/core.xml".to_string(), f"{pkg}core-properties+xml"),
+        ("/xl/styles.xml".to_string(), f"{doc}spreadsheetml.styles+xml"),
+        ("/xl/theme/theme1.xml".to_string(), f"{doc}theme+xml"),
+        ("/xl/workbook.xml".to_string(), f"{doc}spreadsheetml.sheet.main+xml"),
+    ];
+    for i in 0..sheets.len() {
+        let n = i + 1;
+        ov.push((f"/xl/worksheets/sheet{n}.xml", f"{doc}spreadsheetml.worksheet+xml"));
+    }
+    for i in 0..table_count {
+        let n = i + 1;
+        ov.push((f"/xl/tables/table{n}.xml", f"{doc}spreadsheetml.table+xml"));
+    }
+    if has_sst {
+        ov.push(("/xl/sharedStrings.xml".to_string(), f"{doc}spreadsheetml.sharedStrings+xml"));
+    }
+    if has_metadata {
+        ov.push(("/xl/metadata.xml".to_string(), f"{doc}spreadsheetml.sheetMetadata+xml"));
+    }
+    for o in ov.iter() {
+        let (p, c) = o.clone();
+        let mut a = attrs();
+        a.add("PartName", p);
+        a.add("ContentType", c);
+        empty(mut out, "Override", a);
+    }
+    end(mut out, "Types");
+    out
+}
+
+fn workbook_xml(wb: ref Wb, sheets: ref Vec[Sheet], meta: ref Meta) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+    a.add("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
+    start(mut out, "workbook", a);
+    let mut fv = attrs();
+    fv.add("appName", "xl");
+    fv.add("lastEdited", "4");
+    fv.add("lowestEdited", "4");
+    fv.add("rupBuild", "4505");
+    empty(mut out, "fileVersion", fv);
+    if wb.read_only != 0 {
+        empty1(mut out, "fileSharing", "readOnlyRecommended", "1");
+    }
+    empty1(mut out, "workbookPr", "defaultThemeVersion", "124226");
+    start0(mut out, "bookViews");
+    let mut v = attrs();
+    v.add("xWindow", "240");
+    v.add("yWindow", "15");
+    v.addi("windowWidth", wb.window_width);
+    v.addi("windowHeight", wb.window_height);
+    if wb.tab_ratio != 600 {
+        v.addi("tabRatio", wb.tab_ratio);
+    }
+    if meta.firstsheet > 0 {
+        v.addi("firstSheet", meta.firstsheet + 1);
+    }
+    if meta.activesheet > 0 {
+        v.addi("activeTab", meta.activesheet);
+    }
+    empty(mut out, "workbookView", v);
+    end(mut out, "bookViews");
+    start0(mut out, "sheets");
+    let mut id: i64 = 1;
+    for sh in sheets.iter() {
+        let mut sa = attrs();
+        sa.add("name", sh.name);
+        sa.addi("sheetId", id);
+        if sh.hidden == 1 {
+            sa.add("state", "hidden");
+        } else if sh.hidden == 2 {
+            sa.add("state", "veryHidden");
+        }
+        sa.add("r:id", f"rId{id}");
+        empty(mut out, "sheet", sa);
+        id += 1;
+    }
+    end(mut out, "sheets");
+    if wb.defined_names.len() > 0 {
+        start0(mut out, "definedNames");
+        for n in wb.defined_names.iter() {
+            let (name, sheet_id, range, hidden) = n.clone();
+            let mut na = attrs();
+            na.add("name", name);
+            if sheet_id != -1 {
+                na.addi("localSheetId", sheet_id);
+            }
+            if hidden {
+                na.add("hidden", "1");
+            }
+            data_el(mut out, "definedName", range, na);
+        }
+        end(mut out, "definedNames");
+    }
+    let mut c = attrs();
+    c.addv("calcId", wb.calc_id);
+    if wb.calc_mode == "manual" {
+        c.add("calcMode", wb.calc_mode);
+        c.add("calcOnSave", "0");
+    } else if wb.calc_mode == "autoNoTable" {
+        c.add("calcMode", wb.calc_mode);
+    }
+    if wb.calc_on_load {
+        c.add("fullCalcOnLoad", "1");
+    }
+    empty(mut out, "calcPr", c);
+    end(mut out, "workbook");
+    out
+}
+
+fn sst_xml(sst: ref Sst) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+    a.addi("count", sst.count);
+    a.addi("uniqueCount", sst.arr.len());
+    start(mut out, "sst", a);
+    for s0 in sst.arr.iter() {
+        let s = esc_ctl(s0);
+        if s.starts_with("<r>") and s.ends_with("</r>") {
+            out.push_str("<si>");
+            out.push_str(s);
+            out.push_str("</si>");
+        } else {
+            out.push_str(if preserve_ws(s) { "<si><t xml:space=\"preserve\">" } else { "<si><t>" });
+            out.push_str(esc_data(s));
+            out.push_str("</t></si>");
+        }
+    }
+    end(mut out, "sst");
+    out
+}
+
+fn iso_date(v: ref Val) -> String {
+    match v {
+        Val.Time(w) => {
+            let (y, mo, d, h, mi, s) = (w.y, w.mo, w.d, w.h, w.mi, w.s);
+            f"{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z"
+        }
+        _ => pystr(v),
+    }
+}
+
+fn core_xml(props: ref Vec[(String, Val)]) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns:cp", "http://schemas.openxmlformats.org/package/2006/metadata/core-properties");
+    a.add("xmlns:dc", "http://purl.org/dc/elements/1.1/");
+    a.add("xmlns:dcterms", "http://purl.org/dc/terms/");
+    a.add("xmlns:dcmitype", "http://purl.org/dc/dcmitype/");
+    a.add("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+    start(mut out, "cp:coreProperties", a);
+    if let Some(v) = dget(props, "title") {
+        data0(mut out, "dc:title", pystr(v));
+    }
+    if let Some(v) = dget(props, "subject") {
+        data0(mut out, "dc:subject", pystr(v));
+    }
+    data0(mut out, "dc:creator", pystr(dget_or(props, "author", sv(""))));
+    if let Some(v) = dget(props, "keywords") {
+        data0(mut out, "cp:keywords", pystr(v));
+    }
+    if let Some(v) = dget(props, "comments") {
+        data0(mut out, "dc:description", pystr(v));
+    }
+    data0(mut out, "cp:lastModifiedBy", pystr(dget_or(props, "author", sv(""))));
+    let created = iso_date(dget_or(props, "created", Val.Nil));
+    let mut ta = attrs();
+    ta.add("xsi:type", "dcterms:W3CDTF");
+    data_el(mut out, "dcterms:created", created, ta);
+    data_el(mut out, "dcterms:modified", created, ta);
+    if let Some(v) = dget(props, "category") {
+        data0(mut out, "cp:category", pystr(v));
+    }
+    if let Some(v) = dget(props, "status") {
+        data0(mut out, "cp:contentStatus", pystr(v));
+    }
+    end(mut out, "cp:coreProperties");
+    out
+}
+
+fn vt_vector(out: mut ref String, base: Str, items: ref Vec[(String, String)]) {
+    let mut a = attrs();
+    a.addi("size", items.len());
+    a.add("baseType", base.to_string());
+    start(mut out, "vt:vector", a);
+    for it in items.iter() {
+        let (kind, text) = it.clone();
+        if base == "variant" {
+            start0(mut out, "vt:variant");
+        }
+        out.push_str("<vt:");
+        out.push_str(kind);
+        out.push_str(">");
+        out.push_str(esc_ctl(esc_data(text)));
+        out.push_str("</vt:");
+        out.push_str(kind);
+        out.push_str(">");
+        if base == "variant" {
+            end(mut out, "vt:variant");
+        }
+    }
+    end(mut out, "vt:vector");
+}
+
+fn app_xml(wb: ref Wb, sheets: ref Vec[Sheet]) -> String {
+    let props = wb.doc_properties.clone();
+    let mut parts: Vec[(String, String)] = Vec.new();
+    let mut pairs: Vec[(String, String)] = Vec.new();
+    let mut count: i64 = 0;
+    for sh in sheets.iter() {
+        if sh.hidden != 2 {
+            parts.push(("lpstr".to_string(), sh.name.clone()));
+            count += 1;
+        }
+    }
+    if count != 0 {
+        pairs.push(("lpstr".to_string(), "Worksheets".to_string()));
+        pairs.push(("i4".to_string(), f"{count}"));
+    }
+    if wb.named_ranges.len() > 0 {
+        pairs.push(("lpstr".to_string(), "Named Ranges".to_string()));
+        let n = wb.named_ranges.len();
+        pairs.push(("i4".to_string(), f"{n}"));
+    }
+    for r in wb.named_ranges.iter() {
+        parts.push(("lpstr".to_string(), r.clone()));
+    }
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns", "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties");
+    a.add("xmlns:vt", "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes");
+    start(mut out, "Properties", a);
+    data0(mut out, "Application", "Microsoft Excel");
+    data0(mut out, "DocSecurity", f"{wb.read_only}");
+    data0(mut out, "ScaleCrop", "false");
+    start0(mut out, "HeadingPairs");
+    vt_vector(mut out, "variant", pairs);
+    end(mut out, "HeadingPairs");
+    start0(mut out, "TitlesOfParts");
+    vt_vector(mut out, "lpstr", parts);
+    end(mut out, "TitlesOfParts");
+    if let Some(v) = dget(props, "manager") {
+        data0(mut out, "Manager", pystr(v));
+    }
+    data0(mut out, "Company", pystr(dget_or(props, "company", sv(""))));
+    data0(mut out, "LinksUpToDate", "false");
+    data0(mut out, "SharedDoc", "false");
+    let hb = dget_or(props, "hyperlink_base", Val.Nil);
+    if not is_nil(hb) {
+        data0(mut out, "HyperlinkBase", pystr(hb));
+    }
+    data0(mut out, "HyperlinksChanged", "false");
+    data0(mut out, "AppVersion", "12.0000");
+    end(mut out, "Properties");
+    out
+}
+
+fn metadata_xml() -> String {
+    let mut out = String.new();
+    decl(mut out);
+    out.push_str(unpct(metadata_body()));
+    out
+}
+
+// The dynamic array metadata part, %-encoded because it holds braces.
+fn metadata_body() -> String {
+    let mut s = String.new();
+    s.push_str("<metadata xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ");
+    s.push_str("xmlns:xda=\"http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray\">");
+    s.push_str("<metadataTypes count=\"1\"><metadataType name=\"XLDAPR\" minSupportedVersion=\"120000\" ");
+    s.push_str("copy=\"1\" pasteAll=\"1\" pasteValues=\"1\" merge=\"1\" splitFirst=\"1\" rowColShift=\"1\" ");
+    s.push_str("clearFormats=\"1\" clearComments=\"1\" assign=\"1\" coerce=\"1\" cellMeta=\"1\"/>");
+    s.push_str("</metadataTypes><futureMetadata name=\"XLDAPR\" count=\"1\"><bk><extLst>");
+    s.push_str("<ext uri=\"%7Bbdbb8cdc-fa1e-496e-a857-3c3f30c029c3%7D\">");
+    s.push_str("<xda:dynamicArrayProperties fDynamic=\"1\" fCollapsed=\"0\"/></ext></extLst></bk>");
+    s.push_str("</futureMetadata><cellMetadata count=\"1\"><bk><rc t=\"1\" v=\"0\"/></bk></cellMetadata>");
+    s.push_str("</metadata>");
+    s
+}
+
+// ------------------------------------------------------------ zip
+
+fn crc_table() -> Vec[i64] {
+    let mut t: Vec[i64] = Vec.new();
+    for n in 0..256 {
+        let mut c: i64 = n;
+        for _ in 0..8 {
+            if (c & 1) != 0 {
+                c = 0xEDB88320 ^ (c >> 1);
+            } else {
+                c = c >> 1;
+            }
+        }
+        t.push(c);
+    }
+    t
+}
+
+fn crc32(table: ref Vec[i64], data: ref Vec[u8]) -> i64 {
+    let mut c: i64 = 0xFFFFFFFF;
+    for b in data.iter() {
+        c = table[(c ^ (*b as i64)) & 255] ^ (c >> 8);
+    }
+    c ^ 0xFFFFFFFF
+}
+
+fn put16(v: mut ref Vec[u8], n: i64) {
+    v.push((n & 255) as u8);
+    v.push(((n >> 8) & 255) as u8);
+}
+
+fn put32(v: mut ref Vec[u8], n: i64) {
+    put16(mut v, n & 0xFFFF);
+    put16(mut v, (n >> 16) & 0xFFFF);
+}
+
+fn get16(v: ref Vec[u8], at: i64) -> i64 {
+    (v[at] as i64) | ((v[at + 1] as i64) << 8)
+}
+
+fn get32(v: ref Vec[u8], at: i64) -> i64 {
+    get16(v, at) | (get16(v, at + 2) << 16)
+}
+
+// A stored (uncompressed) zip of the parts, dated 1980-01-01 as the
+// library dates them.
+fn zip_parts(table: ref Vec[i64], parts: ref Vec[(String, String)]) -> Vec[u8] {
+    let mut out: Vec[u8] = Vec.new();
+    let mut central: Vec[u8] = Vec.new();
+    for p in parts.iter() {
+        let (name, text) = p.clone();
+        let data = to_bytes(text);
+        let nb = to_bytes(name);
+        let crc = crc32(table, data);
+        let offset = out.len();
+        put32(mut out, 0x04034b50);
+        put16(mut out, 20);
+        put16(mut out, 0);
+        put16(mut out, 0);
+        put16(mut out, 0);
+        put16(mut out, 0x0021);
+        put32(mut out, crc);
+        put32(mut out, data.len());
+        put32(mut out, data.len());
+        put16(mut out, nb.len());
+        put16(mut out, 0);
+        out.extend_from_slice(nb.as_slice());
+        out.extend_from_slice(data.as_slice());
+        put32(mut central, 0x02014b50);
+        put16(mut central, 20);
+        put16(mut central, 20);
+        put16(mut central, 0);
+        put16(mut central, 0);
+        put16(mut central, 0);
+        put16(mut central, 0x0021);
+        put32(mut central, crc);
+        put32(mut central, data.len());
+        put32(mut central, data.len());
+        put16(mut central, nb.len());
+        put16(mut central, 0);
+        put16(mut central, 0);
+        put16(mut central, 0);
+        put16(mut central, 0);
+        put32(mut central, 0);
+        put32(mut central, offset);
+        central.extend_from_slice(nb.as_slice());
+    }
+    let cd_offset = out.len();
+    let cd_size = central.len();
+    out.extend_from_slice(central.as_slice());
+    put32(mut out, 0x06054b50);
+    put16(mut out, 0);
+    put16(mut out, 0);
+    put16(mut out, parts.len());
+    put16(mut out, parts.len());
+    put32(mut out, cd_size);
+    put32(mut out, cd_offset);
+    put16(mut out, 0);
+    out
+}
+
+// What the read-back finds: each entry's name, size and stored CRC-32,
+// and the first entry whose data does not match its CRC.
+struct ZipEntry {
+    name: String,
+    size: i64,
+    crc: i64,
+}
+
+fn read_zip(table: ref Vec[i64], z: ref Vec[u8]) -> Result[(Vec[ZipEntry], String), String] {
+    if z.len() < 22 {
+        return Err("too short".to_string());
+    }
+    let eocd = z.len() - 22;
+    if get32(z, eocd) != 0x06054b50 {
+        return Err("no end of central directory".to_string());
+    }
+    let count = get16(z, eocd + 10);
+    let mut at = get32(z, eocd + 16);
+    let mut entries: Vec[ZipEntry] = Vec.new();
+    let mut bad = String.new();
+    for _ in 0..count {
+        if get32(z, at) != 0x02014b50 {
+            return Err("bad central directory entry".to_string());
+        }
+        let crc = get32(z, at + 16);
+        let size = get32(z, at + 24);
+        let nlen = get16(z, at + 28);
+        let elen = get16(z, at + 30);
+        let clen2 = get16(z, at + 32);
+        let local = get32(z, at + 42);
+        let mut nb: Vec[u8] = Vec.new();
+        for k in 0..nlen {
+            nb.push(z[at + 46 + k]);
+        }
+        let name = from_bytes(nb);
+        at = at + 46 + nlen + elen + clen2;
+        let lnlen = get16(z, local + 26);
+        let lelen = get16(z, local + 28);
+        let start = local + 30 + lnlen + lelen;
+        let mut data: Vec[u8] = Vec.new();
+        for k in 0..size {
+            data.push(z[start + k]);
+        }
+        if crc32(table, data) != crc and bad.len() == 0 {
+            bad = name.clone();
+        }
+        entries.push(ZipEntry { name: name, size: size, crc: crc });
+    }
+    Ok((entries, bad))
+}
+
+fn hex8(n: i64) -> String {
+    let digits = "0123456789abcdef".to_string();
+    let db = digits.bytes();
+    let mut out: Vec[u8] = Vec.new();
+    let mut k: i64 = 7;
+    while k >= 0 {
+        out.push(db[(n >> (k * 4)) & 15]);
+        k -= 1;
+    }
+    from_bytes(out)
+}
+
+fn pad_right(t: ref String, w: i64) -> String {
+    let mut s = t.clone();
+    let mut n = clen(s);
+    while n < w {
+        s.push_str(" ");
+        n += 1;
+    }
+    s
+}
+
+fn pad_left(t: ref String, w: i64) -> String {
+    let mut s = String.new();
+    let mut n = clen(t);
+    while n < w {
+        s.push_str(" ");
+        n += 1;
+    }
+    s.push_str(t);
+    s
+}
+
+// close(): prepares the book and writes every part, in the packager's
+// order. The parts, and the summary counts.
+fn close_book(wb: mut ref Wb, sheets: mut ref Vec[Sheet], cx: mut ref Ctx) -> Result[(Vec[(String, String)], i64), PyErr] {
+    if sheets.len() == 0 {
+        add_worksheet(mut wb, mut sheets, Val.Nil)?;
+    }
+    if cx.meta.activesheet == 0 {
+        sheets[0].selected = 1;
+        sheets[0].hidden = 0;
+    }
+    prepare_defined_names(mut wb, sheets);
+    prepare_tables(mut sheets)?;
+    for sh in sheets.iter() {
+        if sh.has_dynamic_arrays {
+            wb.has_metadata = true;
+        }
+    }
+    let mut table_count: i64 = 0;
+    for sh in sheets.iter() {
+        table_count += sh.tables.len();
+    }
+    let has_sst = cx.sst.count > 0;
+    let mut parts: Vec[(String, String)] = Vec.new();
+    parts.push(("[Content_Types].xml".to_string(),
+                content_types_xml(sheets, table_count, has_sst, wb.has_metadata)));
+    let mut root: Vec[(String, String, String)] = Vec.new();
+    root.push(doc_rel("/officeDocument", "xl/workbook.xml"));
+    root.push(("http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties".to_string(),
+               "docProps/core.xml".to_string(), String.new()));
+    root.push(doc_rel("/extended-properties", "docProps/app.xml"));
+    parts.push(("_rels/.rels".to_string(), rels_xml(root)));
+    let mut wbr: Vec[(String, String, String)] = Vec.new();
+    for i in 0..sheets.len() {
+        let n = i + 1;
+        wbr.push(doc_rel("/worksheet", f"worksheets/sheet{n}.xml"));
+    }
+    wbr.push(doc_rel("/theme", "theme/theme1.xml"));
+    wbr.push(doc_rel("/styles", "styles.xml"));
+    if has_sst {
+        wbr.push(doc_rel("/sharedStrings", "sharedStrings.xml"));
+    }
+    if wb.has_metadata {
+        wbr.push(doc_rel("/sheetMetadata", "metadata.xml"));
+    }
+    parts.push(("xl/_rels/workbook.xml.rels".to_string(), rels_xml(wbr)));
+    for i in 0..sheets.len() {
+        let n = i + 1;
+        let x = sheet_xml(mut sheets[i], mut cx.fm);
+        parts.push((f"xl/worksheets/sheet{n}.xml", x));
+    }
+    let sd = prepare_formats(mut cx.fm);
+    parts.push(("xl/workbook.xml".to_string(), workbook_xml(wb, sheets, cx.meta)));
+    let mut tn: i64 = 1;
+    for sh in sheets.iter() {
+        for t in sh.tables.iter() {
+            parts.push((f"xl/tables/table{tn}.xml", table_xml(t)));
+            tn += 1;
+        }
+    }
+    if has_sst {
+        parts.push(("xl/sharedStrings.xml".to_string(), sst_xml(cx.sst)));
+    }
+    parts.push(("xl/styles.xml".to_string(), styles_xml(cx.fm, sd)));
+    parts.push(("xl/theme/theme1.xml".to_string(), unpct(theme_text())));
+    for i in 0..sheets.len() {
+        let mut links: Vec[(String, String, String)] = Vec.new();
+        for l in sheets[i].external_hyper_links.iter() {
+            let (k, target, mode) = l.clone();
+            links.push(doc_rel_mode(k, target, mode));
+        }
+        for l in sheets[i].external_table_links.iter() {
+            let (k, target, mode) = l.clone();
+            links.push(doc_rel_mode(k, target, mode));
+        }
+        if links.len() > 0 {
+            let n = i + 1;
+            parts.push((f"xl/worksheets/_rels/sheet{n}.xml.rels", rels_xml(links)));
+        }
+    }
+    parts.push(("docProps/core.xml".to_string(), core_xml(wb.doc_properties)));
+    parts.push(("docProps/app.xml".to_string(), app_xml(wb, sheets)));
+    if wb.has_metadata {
+        parts.push(("xl/metadata.xml".to_string(), metadata_xml()));
+    }
+    Ok((parts, sd.xf.len()))
+}
+
+fn doc_rel_mode(kind: ref String, target: ref String, mode: ref String) -> (String, String, String) {
+    (f"http://schemas.openxmlformats.org/officeDocument/2006/relationships{kind}", target.clone(),
+     mode.clone())
+}

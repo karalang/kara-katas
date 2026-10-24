@@ -1,0 +1,1033 @@
+
+// ------------------------------------------------------------ worksheet xml
+
+fn add_s(a: mut ref Attrs, k: Str, v: Str) {
+    a.add(k, v.to_string());
+}
+
+fn col_info_xml(out: mut ref String, fm: mut ref Formats, c1: i64, c2: i64, ci: ref ColInfo) {
+    let mut custom = true;
+    let mut xf: i64 = 0;
+    if let Some(i) = ci.fmt {
+        xf = fm.xf_index(i);
+    }
+    let mut width: f64 = 0.0;
+    if is_nil(ci.width) {
+        if not truthy(ci.hidden) {
+            width = 8.43;
+            custom = false;
+        }
+    } else {
+        width = num(ci.width);
+        if width == 8.43 {
+            custom = false;
+        }
+    }
+    let mut wtext = String.new();
+    if width > 0.0 {
+        if width < 1.0 {
+            width = (((width * 12.0 + 0.5) as i64) as f64 / 7.0 * 256.0) as i64 as f64 / 256.0;
+        } else {
+            width = (((((width * 7.0 + 0.5) as i64) + 5) as f64) / 7.0 * 256.0) as i64 as f64 / 256.0;
+        }
+        wtext = fmt_g(width, 16, false);
+    } else if is_nil(ci.width) or not is_num(ci.width) {
+        wtext = fmt_g(0.0, 16, false);
+    } else {
+        wtext = fmt_g(num(ci.width), 16, false);
+    }
+    let mut a = attrs();
+    a.addi("min", c1 + 1);
+    a.addi("max", c2 + 1);
+    a.add("width", wtext);
+    if xf != 0 {
+        a.addi("style", xf);
+    }
+    if truthy(ci.hidden) {
+        a.add("hidden", "1");
+    }
+    if ci.autofit {
+        a.add("bestFit", "1");
+    }
+    if custom {
+        a.add("customWidth", "1");
+    }
+    if truthy(ci.level) {
+        a.addv("outlineLevel", ci.level);
+    }
+    if truthy(ci.collapsed) {
+        a.add("collapsed", "1");
+    }
+    empty(mut out, "col", a);
+}
+
+fn cols_xml(out: mut ref String, sh: ref Sheet, fm: mut ref Formats) {
+    if sh.col_info.len() == 0 {
+        return;
+    }
+    start0(mut out, "cols");
+    let mut first: i64 = -1;
+    let mut last: i64 = -1;
+    let mut prev: Option[ColInfo] = None;
+    for (c, ci) in sh.col_info.iter() {
+        let col = *c;
+        match prev.clone() {
+            None => {
+                first = col;
+                last = col;
+                prev = Some(ci.clone());
+            }
+            Some(p) => {
+                if col == last + 1 and col_eq(ci, p) {
+                    last = col;
+                } else {
+                    col_info_xml(mut out, mut fm, first, last, p);
+                    first = col;
+                    last = col;
+                    prev = Some(ci.clone());
+                }
+            }
+        }
+    }
+    if let Some(p) = prev {
+        col_info_xml(mut out, mut fm, first, last, p);
+    }
+    end(mut out, "cols");
+}
+
+fn row_start(out: mut ref String, sh: ref Sheet, fm: mut ref Formats, row: i64, spans: ref String,
+             props: ref Option[RowInfo], empty_row: bool) {
+    let (height, fmt, hidden, level, collapsed) = match props {
+        Some(p) => (p.height.clone(), p.fmt, p.hidden.clone(), p.level.clone(), p.collapsed.clone()),
+        None => (sh.default_row_height.clone(), None, Val.Int(0), Val.Int(0), Val.Int(0)),
+    };
+    let mut a = attrs();
+    a.addi("r", row + 1);
+    let mut xf: i64 = 0;
+    if let Some(i) = fmt {
+        xf = fm.xf_index(i);
+    }
+    if spans.len() > 0 {
+        a.add("spans", spans);
+    }
+    if xf != 0 {
+        a.addi("s", xf);
+    }
+    if fmt.is_some() {
+        add_s(mut a, "customFormat", "1");
+    }
+    let changed = num(height) != 15.0;
+    if changed {
+        a.add("ht", fmt_g(num(height), 6, false));
+    }
+    if truthy(hidden) {
+        add_s(mut a, "hidden", "1");
+    }
+    if changed {
+        add_s(mut a, "customHeight", "1");
+    }
+    if truthy(level) {
+        a.addv("outlineLevel", level);
+    }
+    if truthy(collapsed) {
+        add_s(mut a, "collapsed", "1");
+    }
+    out.push_str("<row");
+    out.push_str(attr_text(a, false));
+    out.push_str(if empty_row { "/>" } else { ">" });
+}
+
+fn is_error_code(t: ref String) -> bool {
+    t == "#DIV/0!" or t == "#N/A" or t == "#NAME?" or t == "#NULL!" or t == "#NUM!" or t == "#REF!"
+        or t == "#VALUE!"
+}
+
+fn cell_xml(out: mut ref String, sh: ref Sheet, fm: mut ref Formats, row: i64, col: i64,
+            cell: ref Cell) {
+    let mut a = attrs();
+    a.add("r", cell_ref(row, col));
+    let row_fmt = match sh.set_rows.get(row) {
+        Some(ri) => ri.fmt,
+        None => None,
+    };
+    if let Some(i) = cell_fmt(cell) {
+        a.addi("s", fm.xf_index(i));
+    } else if let Some(i) = row_fmt {
+        a.addi("s", fm.xf_index(i));
+    } else if let Some(ci) = sh.col_info.get(col) {
+        if let Some(i) = ci.fmt {
+            a.addi("s", fm.xf_index(i));
+        }
+    }
+    match cell {
+        Cell.Num(n, _) => {
+            out.push_str("<c");
+            out.push_str(attr_text(a, true));
+            out.push_str("><v>");
+            out.push_str(num_text(n));
+            out.push_str("</v></c>");
+        }
+        Cell.Date(x, _) => {
+            out.push_str("<c");
+            out.push_str(attr_text(a, true));
+            out.push_str("><v>");
+            out.push_str(fmt_g(*x, 16, true));
+            out.push_str("</v></c>");
+        }
+        Cell.Str(i, _) => {
+            out.push_str("<c");
+            out.push_str(attr_text(a, true));
+            out.push_str(f" t=\"s\"><v>{i}</v></c>");
+        }
+        Cell.Rich(i, _, _) => {
+            out.push_str("<c");
+            out.push_str(attr_text(a, true));
+            out.push_str(f" t=\"s\"><v>{i}</v></c>");
+        }
+        Cell.Formula(f, _, v) => {
+            let mut value = pystr(v);
+            match v {
+                Val.Bool(b) => {
+                    a.add("t", "b");
+                    value = if *b { "1".to_string() } else { "0".to_string() };
+                }
+                Val.Str(t) => {
+                    if t.len() == 0 {
+                        // nothing
+                    } else if is_error_code(t) {
+                        a.add("t", "e");
+                    } else {
+                        a.add("t", "str");
+                    }
+                }
+                _ => {}
+            }
+            out.push_str("<c");
+            out.push_str(attr_text(a, true));
+            out.push_str("><f>");
+            out.push_str(esc_data(f));
+            out.push_str("</f><v>");
+            out.push_str(esc_data(value));
+            out.push_str("</v></c>");
+        }
+        Cell.Array(f, _, v, range, dynamic) => {
+            if *dynamic {
+                a.add("cm", "1");
+            }
+            let numeric = match v {
+                Val.Str(t) => py_float(t).is_some(),
+                _ => true,
+            };
+            if not numeric {
+                a.add("t", "str");
+            }
+            start(mut out, "c", a);
+            let mut fa = attrs();
+            fa.add("t", "array");
+            fa.add("ref", range);
+            data_el(mut out, "f", f, fa);
+            let value = if is_nil(v) { String.new() } else { pystr(v) };
+            data0(mut out, "v", value);
+            end(mut out, "c");
+        }
+        Cell.Blank(_) => {
+            empty(mut out, "c", a);
+        }
+        Cell.Bool(b, _) => {
+            a.add("t", "b");
+            start(mut out, "c", a);
+            data0(mut out, "v", f"{b}");
+            end(mut out, "c");
+        }
+    }
+}
+
+fn sheet_data_xml(out: mut ref String, sh: ref Sheet, fm: mut ref Formats) {
+    if sh.dim_rowmin < 0 {
+        empty0(mut out, "sheetData");
+        return;
+    }
+    start0(mut out, "sheetData");
+    // _calculate_spans(): the column span of each block of 16 rows.
+    let mut spans: Map[i64, (i64, i64)] = Map.new();
+    let mut rows: SortedMap[i64, bool] = SortedMap.new();
+    for (k, _) in sh.table.iter() {
+        let row = *k / 16384;
+        let col = *k % 16384;
+        rows.insert(row, true);
+        let b = row / 16;
+        let (lo, hi) = match spans.get(b) {
+            Some(p) => *p,
+            None => (col, col),
+        };
+        spans.insert(b, (if col < lo { col } else { lo }, if col > hi { col } else { hi }));
+    }
+    for (r, _) in sh.set_rows.iter() {
+        if rows.get(*r).is_none() {
+            rows.insert(*r, false);
+        }
+    }
+    let mut cells: Vec[(i64, Cell)] = Vec.new();
+    for (k, c) in sh.table.iter() {
+        cells.push((*k, c.clone()));
+    }
+    let mut ci: i64 = 0;
+    for (r, has) in rows.iter() {
+        let row = *r;
+        if row < sh.dim_rowmin or row > sh.dim_rowmax {
+            continue;
+        }
+        let span = match spans.get(row / 16) {
+            Some(p) => {
+                let (lo, hi) = *p;
+                let a = lo + 1;
+                let b = hi + 1;
+                f"{a}:{b}"
+            }
+            None => String.new(),
+        };
+        let props = match sh.set_rows.get(row) {
+            Some(p) => Some(p.clone()),
+            None => None,
+        };
+        if *has {
+            row_start(mut out, sh, mut fm, row, span, props, false);
+            while ci < cells.len() and cells[ci].0 / 16384 == row {
+                let (k, c) = cells[ci].clone();
+                cell_xml(mut out, sh, mut fm, row, k % 16384, c);
+                ci += 1;
+            }
+            end(mut out, "row");
+        } else {
+            row_start(mut out, sh, mut fm, row, span, props, true);
+        }
+    }
+    end(mut out, "sheetData");
+}
+
+fn selection_xml(out: mut ref String, sel: ref (String, String, String)) {
+    let (pane, active, sqref) = sel.clone();
+    let mut a = attrs();
+    if pane.len() > 0 {
+        a.add("pane", pane);
+    }
+    if active.len() > 0 {
+        a.add("activeCell", active);
+    }
+    if sqref.len() > 0 {
+        a.add("sqref", sqref);
+    }
+    empty(mut out, "selection", a);
+}
+
+fn x_split_width(w: f64) -> f64 {
+    let pixels = if w < 1.0 { (w * 12.0 + 0.5) as i64 } else { ((w * 7.0 + 0.5) as i64) + 5 };
+    let points = (pixels as f64) * 3.0 / 4.0;
+    points * 20.0 + 390.0
+}
+
+fn panes_xml(out: mut ref String, sh: mut ref Sheet) {
+    if sh.panes.len() == 0 {
+        return;
+    }
+    let row = sh.panes[0];
+    let col = sh.panes[1];
+    let mut top_row = sh.panes[2];
+    let mut left_col = sh.panes[3];
+    let pane_type = sh.panes[4];
+    let mut active_cell = String.new();
+    let mut sqref = String.new();
+    let mut has_sel = false;
+    if sh.selections.len() > 0 {
+        let (_, ac, sq) = sh.selections[0].clone();
+        active_cell = ac;
+        sqref = sq;
+        sh.selections = Vec.new();
+        has_sel = true;
+    }
+    let mut a = attrs();
+    if pane_type == 2 {
+        let mut y = row as f64;
+        let mut x = col as f64;
+        if row != 0 {
+            y = ((20 * row + 300) as i64) as f64;
+        }
+        if col != 0 {
+            x = x_split_width(col as f64);
+        }
+        if top_row == row and left_col == col {
+            top_row = (0.5 + (y - 300.0) / 20.0 / 15.0) as i64;
+            left_col = (0.5 + (x - 390.0) / 20.0 / 3.0 * 4.0 / 64.0) as i64;
+        }
+        let tl = cell_ref(top_row, left_col);
+        if not has_sel {
+            active_cell = tl.clone();
+            sqref = tl.clone();
+        }
+        let active_pane = pane_selections(mut sh, row, col, top_row, left_col, active_cell, sqref);
+        if col != 0 {
+            a.add("xSplit", fmt_g(x, 16, false));
+        }
+        if row != 0 {
+            a.add("ySplit", fmt_g(y, 16, false));
+        }
+        a.add("topLeftCell", tl);
+        if has_sel {
+            a.add("activePane", active_pane);
+        }
+    } else {
+        let tl = cell_ref(top_row, left_col);
+        let active_pane = pane_selections(mut sh, row, col, row, col, active_cell, sqref);
+        if col != 0 {
+            a.addi("xSplit", col);
+        }
+        if row != 0 {
+            a.addi("ySplit", row);
+        }
+        a.add("topLeftCell", tl);
+        a.add("activePane", active_pane);
+        a.add("state", if pane_type == 0 { "frozen" } else if pane_type == 1 { "frozenSplit" } else { "split" });
+    }
+    empty(mut out, "pane", a);
+}
+
+// The selections a pane leaves, and its active pane. The cells named for
+// the top-right and bottom-left panes are (0, c) and (r, 0).
+fn pane_selections(sh: mut ref Sheet, row: i64, col: i64, r: i64, c: i64, active: ref String,
+                   sqref: ref String) -> String {
+    if row != 0 and col != 0 {
+        let row_cell = cell_ref(r, 0);
+        let col_cell = cell_ref(0, c);
+        sh.selections.push(("topRight".to_string(), col_cell.clone(), col_cell));
+        sh.selections.push(("bottomLeft".to_string(), row_cell.clone(), row_cell));
+        sh.selections.push(("bottomRight".to_string(), active.clone(), sqref.clone()));
+        "bottomRight".to_string()
+    } else if col != 0 {
+        sh.selections.push(("topRight".to_string(), active.clone(), sqref.clone()));
+        "topRight".to_string()
+    } else {
+        sh.selections.push(("bottomLeft".to_string(), active.clone(), sqref.clone()));
+        "bottomLeft".to_string()
+    }
+}
+
+fn sheet_view_xml(out: mut ref String, sh: mut ref Sheet) {
+    let mut a = attrs();
+    if not sh.screen_gridlines {
+        a.add("showGridLines", "0");
+    }
+    if sh.row_col_headers {
+        a.add("showRowColHeaders", "0");
+    }
+    if not sh.show_zeros {
+        a.add("showZeros", "0");
+    }
+    if sh.is_right_to_left {
+        a.add("rightToLeft", "1");
+    }
+    if sh.selected != 0 {
+        a.add("tabSelected", "1");
+    }
+    if not truthy(sh.outline_on) {
+        a.add("showOutlineSymbols", "0");
+    }
+    if sh.page_view == 1 {
+        a.add("view", "pageLayout");
+    } else if sh.page_view == 2 {
+        a.add("view", "pageBreakPreview");
+    }
+    if sh.top_left_cell.len() > 0 {
+        a.add("topLeftCell", sh.top_left_cell);
+    }
+    if sh.zoom != 100 {
+        a.addi("zoomScale", sh.zoom);
+        if sh.page_view == 0 {
+            a.addi("zoomScaleNormal", sh.zoom);
+        }
+        if sh.page_view == 1 {
+            a.addi("zoomScalePageLayoutView", sh.zoom);
+        }
+        if sh.page_view == 2 {
+            a.addi("zoomScaleSheetLayoutView", sh.zoom);
+        }
+    }
+    a.add("workbookViewId", "0");
+    if sh.panes.len() > 0 or sh.selections.len() > 0 {
+        start(mut out, "sheetView", a);
+        panes_xml(mut out, mut sh);
+        let sels = sh.selections.clone();
+        for s in sels.iter() {
+            selection_xml(mut out, s);
+        }
+        end(mut out, "sheetView");
+    } else {
+        empty(mut out, "sheetView", a);
+    }
+}
+
+fn protection_xml(out: mut ref String, sh: ref Sheet) {
+    if sh.protect_options.len() == 0 {
+        return;
+    }
+    let o = sh.protect_options.clone();
+    let on = |k: Str| truthy(dget_or(o, k, Val.Nil));
+    let mut a = attrs();
+    if on("password") {
+        a.add("password", dict_get_str(o, "password"));
+    }
+    if on("sheet") {
+        a.add("sheet", "1");
+    }
+    if on("content") {
+        a.add("content", "1");
+    }
+    if not on("objects") {
+        a.add("objects", "1");
+    }
+    if not on("scenarios") {
+        a.add("scenarios", "1");
+    }
+    let zeros = [("format_cells", "formatCells"), ("format_columns", "formatColumns"),
+                 ("format_rows", "formatRows"), ("insert_columns", "insertColumns"),
+                 ("insert_rows", "insertRows"), ("insert_hyperlinks", "insertHyperlinks"),
+                 ("delete_columns", "deleteColumns"), ("delete_rows", "deleteRows")];
+    for z in zeros.iter() {
+        let (k, name) = z.clone();
+        if on(k) {
+            a.add(name, "0");
+        }
+    }
+    if not on("select_locked_cells") {
+        a.add("selectLockedCells", "1");
+    }
+    if on("sort") {
+        a.add("sort", "0");
+    }
+    if on("autofilter") {
+        a.add("autoFilter", "0");
+    }
+    if on("pivot_tables") {
+        a.add("pivotTables", "0");
+    }
+    if not on("select_unlocked_cells") {
+        a.add("selectUnlockedCells", "1");
+    }
+    empty(mut out, "sheetProtection", a);
+}
+
+fn sort_strings(v: mut ref Vec[String]) {
+    let n = v.len();
+    for i in 1..n {
+        let mut j = i;
+        while j > 0 and v[j - 1] > v[j] {
+            let t = v[j].clone();
+            v[j] = v[j - 1].clone();
+            v[j - 1] = t;
+            j -= 1;
+        }
+    }
+}
+
+fn autofilter_xml(out: mut ref String, sh: ref Sheet) {
+    if sh.autofilter_ref.len() == 0 {
+        return;
+    }
+    let mut a = attrs();
+    a.add("ref", sh.autofilter_ref);
+    if not sh.filter_on {
+        empty(mut out, "autoFilter", a);
+        return;
+    }
+    start(mut out, "autoFilter", a);
+    let (c1, c2) = sh.filter_range;
+    for col in c1..c2 + 1 {
+        if let Some(filters) = sh.filter_cols.get(col) {
+            let mut fa = attrs();
+            fa.addi("colId", col - c1);
+            start(mut out, "filterColumn", fa);
+            let mut non_blanks: Vec[String] = Vec.new();
+            for f in filters.iter() {
+                if pystr(f).to_lowercase() != "blanks" {
+                    non_blanks.push(pystr(f));
+                }
+            }
+            let mut ba = attrs();
+            if filters.len() != non_blanks.len() {
+                ba.add("blank", "1");
+            }
+            if filters.len() == 1 and non_blanks.len() == 0 {
+                empty(mut out, "filters", ba);
+            } else {
+                start(mut out, "filters", ba);
+                sort_strings(mut non_blanks);
+                for f in non_blanks.iter() {
+                    empty1(mut out, "filter", "val", f);
+                }
+                end(mut out, "filters");
+            }
+            end(mut out, "filterColumn");
+        }
+    }
+    end(mut out, "autoFilter");
+}
+
+fn formula_text(v: ref Val, is_first: bool) -> String {
+    if is_first {
+        if let Val.List(items) = v {
+            let j = csv_join(items);
+            return f"\"{j}\"";
+        }
+    }
+    match v {
+        Val.Str(t) => {
+            if py_float(t).is_none() and t.starts_with("=") {
+                lstrip_eq(t)
+            } else {
+                t.clone()
+            }
+        }
+        _ => pystr(v),
+    }
+}
+
+fn validation_xml(out: mut ref String, v: ref Valid) {
+    let o = v.opts.clone();
+    let mut sqref = String.new();
+    for c in v.cells.iter() {
+        let (r1, c1, r2, c2) = *c;
+        if sqref.len() > 0 {
+            sqref.push_str(" ");
+        }
+        let (fr, lr) = if r1 > r2 { (r2, r1) } else { (r1, r2) };
+        let (fc, lc) = if c1 > c2 { (c2, c1) } else { (c1, c2) };
+        sqref.push_str(range_ref(fr, fc, lr, lc));
+    }
+    if truthy(dget_or(o, "multi_range", Val.Nil)) {
+        sqref = dict_get_str(o, "multi_range");
+    }
+    let vt = dict_get_str(o, "validate");
+    let ct = dict_get_str(o, "criteria");
+    let mut a = attrs();
+    if vt != "none" {
+        a.add("type", vt);
+        if ct != "between" {
+            a.add("operator", ct);
+        }
+    }
+    let et = as_int(dget_or(o, "error_type", Val.Int(0)));
+    if et == 1 {
+        a.add("errorStyle", "warning");
+    }
+    if et == 2 {
+        a.add("errorStyle", "information");
+    }
+    if truthy(dget_or(o, "ignore_blank", Val.Nil)) {
+        a.add("allowBlank", "1");
+    }
+    if not truthy(dget_or(o, "dropdown", Val.Nil)) {
+        a.add("showDropDown", "1");
+    }
+    if truthy(dget_or(o, "show_input", Val.Nil)) {
+        a.add("showInputMessage", "1");
+    }
+    if truthy(dget_or(o, "show_error", Val.Nil)) {
+        a.add("showErrorMessage", "1");
+    }
+    let texts = [("error_title", "errorTitle"), ("error_message", "error"),
+                 ("input_title", "promptTitle"), ("input_message", "prompt")];
+    for t in texts.iter() {
+        let (k, name) = t.clone();
+        if dhas(o, k) {
+            a.add(name, dict_get_str(o, k));
+        }
+    }
+    a.add("sqref", sqref);
+    if vt == "none" {
+        empty(mut out, "dataValidation", a);
+        return;
+    }
+    start(mut out, "dataValidation", a);
+    data0(mut out, "formula1", formula_text(dget_or(o, "value", Val.Nil), true));
+    let mx = dget_or(o, "maximum", Val.Nil);
+    if not is_nil(mx) {
+        data0(mut out, "formula2", formula_text(mx, false));
+    }
+    end(mut out, "dataValidation");
+}
+
+fn hyperlinks_xml(out: mut ref String, sh: mut ref Sheet) {
+    if sh.hyperlinks.len() == 0 {
+        return;
+    }
+    let mut display: Option[String] = None;
+    let mut refs: Vec[(Link, i64, i64, i64, Option[String])] = Vec.new();
+    let links: Vec[(i64, Link)] = sh.hyperlinks.iter().map(|(k, l)| (*k, l.clone())).collect();
+    for kl in links.iter() {
+        let (k, link) = kl.clone();
+        if let Some(c) = sh.table.get(k) {
+            match c {
+                Cell.Str(_, _) => {}
+                _ => {
+                    display = Some(link.url.clone());
+                }
+            }
+        }
+        let mut rid: i64 = 0;
+        if link.link_type == 1 {
+            sh.rel_count += 1;
+            rid = sh.rel_count;
+            sh.external_hyper_links.push(("/hyperlink".to_string(), link.url.clone(),
+                                          "External".to_string()));
+        }
+        refs.push((link, k / 16384, k % 16384, rid, display.clone()));
+    }
+    start0(mut out, "hyperlinks");
+    for r in refs.iter() {
+        let (link, row, col, rid, disp) = r.clone();
+        let mut a = attrs();
+        a.add("ref", cell_ref(row, col));
+        if link.link_type == 1 {
+            a.add("r:id", f"rId{rid}");
+            if let Some(loc) = link.anchor.clone() {
+                a.add("location", loc);
+            }
+            if let Some(d) = disp {
+                a.add("display", d);
+            }
+            if not is_nil(link.tip) {
+                a.addv("tooltip", link.tip);
+            }
+        } else {
+            // _write_hyperlink_internal(row, col, url, str, tip): the
+            // location is the url and the display the link's string.
+            let _ = disp;
+            a.add("location", link.url);
+            if not is_nil(link.tip) {
+                a.addv("tooltip", link.tip);
+            }
+            a.add("display", match link.anchor.clone() {
+                Some(d) => d,
+                None => "None".to_string(),
+            });
+        }
+        empty(mut out, "hyperlink", a);
+    }
+    end(mut out, "hyperlinks");
+}
+
+fn sorted_breaks(v: ref Vec[Val]) -> Vec[i64] {
+    let mut s: SortedMap[i64, bool] = SortedMap.new();
+    for b in v.iter() {
+        let n = as_int(b);
+        if n != 0 {
+            s.insert(n, true);
+        }
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for (k, _) in s.iter() {
+        if out.len() < 1023 {
+            out.push(*k);
+        }
+    }
+    out
+}
+
+fn breaks_xml(out: mut ref String, tag: Str, v: ref Vec[Val], max: i64) {
+    let b = sorted_breaks(v);
+    if b.len() == 0 {
+        return;
+    }
+    let mut a = attrs();
+    a.addi("count", b.len());
+    a.addi("manualBreakCount", b.len());
+    start(mut out, tag, a);
+    for n in b.iter() {
+        let mut ba = attrs();
+        ba.addi("id", *n);
+        ba.addi("max", max);
+        ba.add("man", "1");
+        empty(mut out, "brk", ba);
+    }
+    end(mut out, tag);
+}
+
+fn page_xml(out: mut ref String, sh: ref Sheet) {
+    if sh.print_options_changed {
+        let mut a = attrs();
+        if sh.hcenter {
+            a.add("horizontalCentered", "1");
+        }
+        if sh.vcenter {
+            a.add("verticalCentered", "1");
+        }
+        if sh.print_headers {
+            a.add("headings", "1");
+        }
+        if sh.print_gridlines {
+            a.add("gridLines", "1");
+        }
+        empty(mut out, "printOptions", a);
+    }
+    let mut m = attrs();
+    m.addv("left", sh.margin_left);
+    m.addv("right", sh.margin_right);
+    m.addv("top", sh.margin_top);
+    m.addv("bottom", sh.margin_bottom);
+    m.addv("header", sh.margin_header);
+    m.addv("footer", sh.margin_footer);
+    empty(mut out, "pageMargins", m);
+    if sh.page_setup_changed {
+        let mut a = attrs();
+        if truthy(sh.paper_size) {
+            a.addv("paperSize", sh.paper_size);
+        }
+        if sh.print_scale != 100 {
+            a.addi("scale", sh.print_scale);
+        }
+        if sh.fit_page and not eq_int(sh.fit_width, 1) {
+            a.addv("fitToWidth", sh.fit_width);
+        }
+        if sh.fit_page and not eq_int(sh.fit_height, 1) {
+            a.addv("fitToHeight", sh.fit_height);
+        }
+        if sh.page_order != 0 {
+            a.add("pageOrder", "overThenDown");
+        }
+        if num(sh.page_start) > 1.0 {
+            a.addv("firstPageNumber", sh.page_start);
+        }
+        a.add("orientation", if sh.orientation != 0 { "portrait" } else { "landscape" });
+        if sh.black_white {
+            a.add("blackAndWhite", "1");
+        }
+        if not eq_int(sh.page_start, 0) {
+            a.add("useFirstPageNumber", "1");
+        }
+        empty(mut out, "pageSetup", a);
+    }
+    let mut h = attrs();
+    if not truthy(sh.header_footer_scales) {
+        h.add("scaleWithDoc", "0");
+    }
+    if not truthy(sh.header_footer_aligns) {
+        h.add("alignWithMargins", "0");
+    }
+    if sh.header_footer_changed {
+        start(mut out, "headerFooter", h);
+        if sh.header.len() > 0 {
+            data0(mut out, "oddHeader", sh.header);
+        }
+        if sh.footer.len() > 0 {
+            data0(mut out, "oddFooter", sh.footer);
+        }
+        end(mut out, "headerFooter");
+    }
+    breaks_xml(mut out, "rowBreaks", sh.hbreaks, 16383);
+    breaks_xml(mut out, "colBreaks", sh.vbreaks, 1048575);
+}
+
+fn dimension_ref(sh: ref Sheet) -> String {
+    if sh.dim_rowmin < 0 and sh.dim_colmin < 0 {
+        "A1".to_string()
+    } else if sh.dim_rowmin < 0 {
+        if sh.dim_colmin == sh.dim_colmax {
+            cell_ref(0, sh.dim_colmin)
+        } else {
+            let a = cell_ref(0, sh.dim_colmin);
+            let b = cell_ref(0, sh.dim_colmax);
+            f"{a}:{b}"
+        }
+    } else if sh.dim_rowmin == sh.dim_rowmax and sh.dim_colmin == sh.dim_colmax {
+        cell_ref(sh.dim_rowmin, sh.dim_colmin)
+    } else {
+        let a = cell_ref(sh.dim_rowmin, sh.dim_colmin);
+        let b = cell_ref(sh.dim_rowmax, sh.dim_colmax);
+        f"{a}:{b}"
+    }
+}
+
+fn sheet_xml(sh: mut ref Sheet, fm: mut ref Formats) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut wa = attrs();
+    wa.add("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+    wa.add("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
+    start(mut out, "worksheet", wa);
+    // sheetPr
+    if sh.fit_page or sh.filter_on or sh.tab_color.len() > 0 or sh.outline_changed {
+        let mut a = attrs();
+        if sh.filter_on {
+            a.add("filterMode", "1");
+        }
+        if sh.fit_page or sh.tab_color.len() > 0 or sh.outline_changed {
+            start(mut out, "sheetPr", a);
+            if sh.tab_color.len() > 0 {
+                empty1(mut out, "tabColor", "rgb", sh.tab_color);
+            }
+            if sh.outline_changed {
+                let mut oa = attrs();
+                if truthy(sh.outline_style) {
+                    oa.add("applyStyles", "1");
+                }
+                if not truthy(sh.outline_below) {
+                    oa.add("summaryBelow", "0");
+                }
+                if not truthy(sh.outline_right) {
+                    oa.add("summaryRight", "0");
+                }
+                if not truthy(sh.outline_on) {
+                    oa.add("showOutlineSymbols", "0");
+                }
+                empty(mut out, "outlinePr", oa);
+            }
+            if sh.fit_page {
+                empty1(mut out, "pageSetUpPr", "fitToPage", "1");
+            }
+            end(mut out, "sheetPr");
+        } else {
+            empty(mut out, "sheetPr", a);
+        }
+    }
+    empty1(mut out, "dimension", "ref", dimension_ref(sh));
+    start0(mut out, "sheetViews");
+    sheet_view_xml(mut out, mut sh);
+    end(mut out, "sheetViews");
+    let mut fa = attrs();
+    fa.addv("defaultRowHeight", sh.default_row_height);
+    if num(sh.default_row_height) != 15.0 {
+        fa.add("customHeight", "1");
+    }
+    if sh.default_row_zeroed {
+        fa.add("zeroHeight", "1");
+    }
+    if sh.outline_row_level != 0 {
+        fa.addi("outlineLevelRow", sh.outline_row_level);
+    }
+    if sh.outline_col_level != 0 {
+        fa.addi("outlineLevelCol", sh.outline_col_level);
+    }
+    empty(mut out, "sheetFormatPr", fa);
+    cols_xml(mut out, sh, mut fm);
+    sheet_data_xml(mut out, sh, mut fm);
+    protection_xml(mut out, sh);
+    if sh.protected_ranges.len() > 0 {
+        start0(mut out, "protectedRanges");
+        for pr in sh.protected_ranges.iter() {
+            let (range, name, pw) = pr.clone();
+            let mut a = attrs();
+            if pw.len() > 0 {
+                a.add("password", pw);
+            }
+            a.add("sqref", range);
+            a.add("name", name);
+            empty(mut out, "protectedRange", a);
+        }
+        end(mut out, "protectedRanges");
+    }
+    autofilter_xml(mut out, sh);
+    if sh.merge.len() > 0 {
+        let mut a = attrs();
+        a.addi("count", sh.merge.len());
+        start(mut out, "mergeCells", a);
+        for m in sh.merge.iter() {
+            let (r1, c1, r2, c2) = *m;
+            let a1 = cell_ref(r1, c1);
+            let b1 = cell_ref(r2, c2);
+            empty1(mut out, "mergeCell", "ref", f"{a1}:{b1}");
+        }
+        end(mut out, "mergeCells");
+    }
+    if sh.validations.len() > 0 {
+        let mut a = attrs();
+        a.addi("count", sh.validations.len());
+        start(mut out, "dataValidations", a);
+        for v in sh.validations.iter() {
+            validation_xml(mut out, v);
+        }
+        end(mut out, "dataValidations");
+    }
+    hyperlinks_xml(mut out, mut sh);
+    page_xml(mut out, sh);
+    if sh.tables.len() > 0 {
+        let mut a = attrs();
+        a.addi("count", sh.tables.len());
+        start(mut out, "tableParts", a);
+        for _ in 0..sh.tables.len() {
+            sh.rel_count += 1;
+            let r = sh.rel_count;
+            empty1(mut out, "tablePart", "r:id", f"rId{r}");
+        }
+        end(mut out, "tableParts");
+    }
+    end(mut out, "worksheet");
+    out
+}
+
+// ------------------------------------------------------------ tables part
+
+fn table_xml(t: ref Table) -> String {
+    let mut out = String.new();
+    decl(mut out);
+    let mut a = attrs();
+    a.add("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+    a.addi("id", t.id);
+    let name = match t.name.clone() {
+        Some(n) => n,
+        None => String.new(),
+    };
+    a.add("name", name);
+    a.add("displayName", name);
+    a.add("ref", t.range);
+    if not truthy(t.header_row_count) {
+        a.add("headerRowCount", "0");
+    }
+    if truthy(t.totals_row_shown) {
+        a.add("totalsRowCount", "1");
+    } else {
+        a.add("totalsRowShown", "0");
+    }
+    start(mut out, "table", a);
+    if let Some(af) = t.autofilter.clone() {
+        empty1(mut out, "autoFilter", "ref", af);
+    }
+    let mut ca = attrs();
+    ca.addi("count", t.columns.len());
+    start(mut out, "tableColumns", ca);
+    for c in t.columns.iter() {
+        let mut a = attrs();
+        a.addi("id", c.id);
+        a.add("name", c.name);
+        if c.total_string.len() > 0 {
+            a.add("totalsRowLabel", c.total_string);
+        } else if c.total_function.len() > 0 {
+            a.add("totalsRowFunction", c.total_function);
+        }
+        if let Some(d) = c.format {
+            a.addi("dataDxfId", d);
+        }
+        if c.formula.len() > 0 or c.custom_total.len() > 0 {
+            start(mut out, "tableColumn", a);
+            if c.formula.len() > 0 {
+                data0(mut out, "calculatedColumnFormula", c.formula);
+            }
+            if c.custom_total.len() > 0 {
+                data0(mut out, "totalsRowFormula", c.custom_total);
+            }
+            end(mut out, "tableColumn");
+        } else {
+            empty(mut out, "tableColumn", a);
+        }
+    }
+    end(mut out, "tableColumns");
+    let mut sa = attrs();
+    if t.style.len() > 0 and t.style != "None" {
+        sa.add("name", t.style);
+    }
+    sa.addi("showFirstColumn", as_int(t.show_first_col));
+    sa.addi("showLastColumn", as_int(t.show_last_col));
+    sa.addi("showRowStripes", as_int(t.show_row_stripes));
+    sa.addi("showColumnStripes", as_int(t.show_col_stripes));
+    empty(mut out, "tableStyleInfo", sa);
+    end(mut out, "table");
+    out
+}
