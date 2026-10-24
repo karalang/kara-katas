@@ -165,9 +165,9 @@ each round starting from a different one, and folds every answer's
 letters into a checksum. Every implementation prints `100 rounds over
 20 trees of 8500 nodes: 26800 letters, checksum 835565311`. Each call
 walks the tree and builds a fresh string at every leaf, about 3,160
-leaves a tree, at a mean depth of 13.5 letters. The Rust tree is LeetCode's
-`Option<Rc<RefCell<TreeNode>>>`, reference counted as Kāra's `shared
-struct` is.
+leaves a tree, at a mean depth of 13.5 letters. The Rust tree is
+LeetCode's `Option<Rc<RefCell<TreeNode>>>`, reference counted as Kāra's
+`shared struct` is.
 
 Timings on a quiet 4-core container, eight interleaved runs of each
 compiled program and one of Python, with karac at `395f71ae05`:
