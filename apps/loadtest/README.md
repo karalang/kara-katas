@@ -124,10 +124,15 @@ the proxy rates open a connection per request, as `rev_proxy`'s clients do.
   reason.
 - **One machine.** Client and server share 4 CPUs over loopback, so
   network latency is absent and CPU contention is not.
-- **Ports below 32768.** Linux picks source ports from 32768 to 60999. A
-  connect to a dead port inside that range now and then picks that port as
-  its own source and connects to itself, which made the proxy relay its own
-  upstream request back to a client about once in 20k requests when these
-  servers used 4776x ports. The ports here are outside the range, and
-  `apps/service/rev_proxy`'s dead upstreams moved from 47740 and 47741 to
-  27740 and 27741 for the same reason.
+- **Dead upstreams on 127.0.0.2.** A connect to a dead port on the
+  proxy's own address now and then picks that port as its own source and
+  connects to itself, and the proxy then relays its own upstream request
+  back to the client, which reads as status 0. Moving the ports below
+  Linux's default source range (32768 to 60999) was not enough: the GitHub
+  runner's load gate still saw two status-0 replies (the run's
+  `machine.txt` records the runner's range), and with the range set from
+  1024 this container saw 3 in 240k requests at 2000 rps, each one the
+  echo. b4 and s1 are now on 127.0.0.2. A connect there comes from
+  127.0.0.1, so it can never meet itself: 0 in 480k requests with the same
+  wide range.
+  `apps/service/rev_proxy`'s dead upstreams moved the same way.

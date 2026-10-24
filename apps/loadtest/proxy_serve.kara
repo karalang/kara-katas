@@ -12,11 +12,13 @@
 // way.
 //
 // The proxy listens on 127.0.0.1:27761, b1 and b2 on 27762 and 27763. b4
-// (27764) and s1 (27765) are in the pools but nothing listens on them.
-// Every port is below Linux's ephemeral range (32768 and up): a connect to
-// a dead port inside it now and then picks that same port as its source
-// and connects to itself, and the proxy then relays its own request back
-// as the reply (seen about once in 20k requests with 4776x ports).
+// (27764) and s1 (27765) are in the pools but nothing listens on them, and
+// they are on 127.0.0.2. A connect to a dead port on the proxy's own
+// address can pick that same port as its source and connect to itself,
+// and the proxy then relays its own request back as the reply: about once
+// in 80k requests when the port is inside the ephemeral range, which on
+// some machines starts at 1024. A connect to 127.0.0.2 comes from
+// 127.0.0.1, so it can never meet itself.
 // GET /__stats answers the per-upstream counters. It runs until killed.
 
 struct Header { name: String, value: String }
@@ -501,8 +503,8 @@ fn handle_client(conn: own TcpStream, state: ref Mutex[Proxy]) {
     let _ = conn.write_all(reply.bytes());
 }
 
-fn upstream(name: Str, port: i64) -> Upstream {
-    Upstream { name: name.to_string(), addr: f"127.0.0.1:{port}", down_for: 0, refused: 0, served: 0 }
+fn upstream(name: Str, host: Str, port: i64) -> Upstream {
+    Upstream { name: name.to_string(), addr: f"{host}:{port}", down_for: 0, refused: 0, served: 0 }
 }
 
 fn main() {
@@ -534,8 +536,8 @@ fn main() {
             Route { prefix: "/static/".to_string(), pool: 1, strip: false },
         ],
         pools: vec![
-            Cluster { name: "api".to_string(), members: vec![upstream("b1", 27762), upstream("b2", 27763), upstream("b4", 27764)], next: 0 },
-            Cluster { name: "static".to_string(), members: vec![upstream("s1", 27765)], next: 0 },
+            Cluster { name: "api".to_string(), members: vec![upstream("b1", "127.0.0.1", 27762), upstream("b2", "127.0.0.1", 27763), upstream("b4", "127.0.0.2", 27764)], next: 0 },
+            Cluster { name: "static".to_string(), members: vec![upstream("s1", "127.0.0.2", 27765)], next: 0 },
         ],
         requests: 0,
     });
