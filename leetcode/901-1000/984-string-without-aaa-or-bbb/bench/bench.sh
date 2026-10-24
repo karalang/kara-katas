@@ -124,8 +124,8 @@ fi
 echo
 
 bench_begin id=984 slug=string-without-aaa-or-bbb group=901-1000 \
-    title="Minimum Cost For Tickets" \
-    workload="300 rounds over 1000 plans of up to 365 days" sink="$expected"
+    title="String Without AAA or BBB" \
+    workload="100 rounds over 5300 pairs up to 100" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
