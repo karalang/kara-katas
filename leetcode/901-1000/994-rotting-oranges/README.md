@@ -15,7 +15,7 @@ has a fresh orange*. If *this is impossible, return* `-1`.
 
 ```
 grid = [[2,1,1],[1,1,0],[0,1,1]]  ->  4
-grid = [[2,1,1],[0,1,1],[1,0,1]]  ->  -1   (the bottom left orange never rots)
+grid = [[2,1,1],[0,1,1],[1,0,1]]  ->  -1   (bottom left never rots)
 grid = [[0,2]]                    ->  0    (no fresh orange at minute 0)
 ```
 
