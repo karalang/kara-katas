@@ -87,7 +87,7 @@ on four entity bindings for smarty and `.clone()` at their second use,
 two `ref` pattern bindings and one `.to_string()` (kept). The `.clone()`s
 were dropped: a `Str` is `Copy`, so the move they answer only existed
 because the binding was a `String` before the other fix, and `Str.clone()`
-is a `String`, which the next check refused (filed in kara, see below).
+is a `String`, which the next check refused (kara B-2026-10-25-19, open).
 The rest by hand: 23 byte comparisons written `'#' as u8` became
 `'#' as u32 as u8`, as the diagnostic says, and three discarded `Option`s
 from an attribute delete became `let _ =`.
@@ -96,7 +96,8 @@ Then check was clean, and on the MIR interpreter 806 of the 809 sections
 matched the oracle at once. The three that did not were mine: the
 emphasis builder tested `el.text is None` with the tree's truthiness test,
 so an empty text was filled in again. With `text_none` it matches the
-oracle under the MIR interpreter.
+oracle under the MIR interpreter, the LLVM backend, the ASan build and
+the native binary, with nothing on stderr.
 
 ## Running
 
@@ -110,7 +111,8 @@ karac run mini_markdown.kara
 
 The program writes `data/` from what it carries, reads the jobs back and
 writes the site to `data/out/`. About 4.5 minutes on the MIR
-interpreter (a debug build of `karac`).
+interpreter (a debug build of `karac`, past the corpus runner's default
+60 s timeout) and 0.2 s built.
 
 ## License
 
