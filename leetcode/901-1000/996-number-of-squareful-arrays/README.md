@@ -41,10 +41,10 @@ examples and eight more: one value; two that make a square; a value
 that makes a square with neither of two equal ones; three zeros and two
 ones, where the ones must not touch, and the same values given in
 another order; five distinct values with two orders and five with ten;
-and two values of 10^9, whose sum is not a square. Then five arrays of LeetCode's largest size, 12
-values: twelve 2s and twelve 0s, one array each; the first twelve
-triangular numbers, each next pair of which adds up to a square; six 0s
-and six 1s; and twelve values that never pair. Then totals over random
+and two values of 10^9, whose sum is not a square. Then five arrays of
+LeetCode's largest size, 12 values: twelve 2s and twelve 0s, one array
+each; the first twelve triangular numbers, each next pair of which adds
+up to a square; six 0s and six 1s; and twelve values that never pair. Then totals over random
 arrays: 300 of up to 4 values below 20, 3,000 of up to 8 below 50 and
 300 of up to 12 below 30; half random values and half a random walk in
 which each value makes a square with the one before it.
