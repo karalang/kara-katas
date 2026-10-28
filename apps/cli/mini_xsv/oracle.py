@@ -1146,7 +1146,10 @@ def main():
             err = str(e)
         if cmd in WRITES_CSV:
             emit(w.text())
-        out = "".join(OUT[mark:])
+        # A carriage return is shown as ^M, as `cat -v` shows it.
+        out = "".join(OUT[mark:]).replace("\r", "^M")
+        del OUT[mark:]
+        emit(out)
         if out and not out.endswith("\n"):
             emit("\n\\ no newline at end of output\n")
         if err is not None:
