@@ -146,13 +146,17 @@ the Mend loop is how it surfaced:
   check` refuses the turbofish (`::<..>` is Rust's; Kāra has no
   call-site type arguments) and says to annotate the binding instead,
   and `karac fix` applies that as a machine fix by deleting the type
-  arguments. What it leaves, `.collect() == capitals`, passes `karac
-  check` with no diagnostic and then fails in the MIR builder under
+  arguments. What it left, `.collect() == capitals`, passed `karac
+  check` with no diagnostic and then failed in the MIR builder under
   every backend: `an expression whose type does not lower
   (UnsolvedParam("C"))`. The comparison cannot fix `collect`'s result
   type, since `PartialEq` takes a right-hand type of its own, so the
   spec's answer is a refusal at check time; filed in kara as
-  `B-2026-10-29-36`. The arm binds the capitals as the diagnostic says,
+  `B-2026-10-29-36` and fixed in `9d8dfb194d`, after which `karac check`
+  refuses that line with E0238, "cannot infer type parameter 'C', this
+  call's result: nothing in the body fixes it", and asks for a type
+  annotation (measured at `7d0151411b`; the diagnostic has no machine
+  fix). The arm binds the capitals as the diagnostic says,
   `let caps: String = ...collect();`, and compares the binding.
 - The harness first built letters with `char.from_u32(n)`, Rust's name,
   which `karac check` refuses with a pointer to `char.try_from(n)`; that
