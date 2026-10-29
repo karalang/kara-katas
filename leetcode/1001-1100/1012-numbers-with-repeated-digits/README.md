@@ -127,9 +127,9 @@ The sets arm compares `set.count_ones()` with a length, and `count_ones`
 returns a `u32` while lengths are `i64`, so it is written
 `set.count_ones() as i64`: `karac check` refuses the mixed comparison
 and `karac fix` offers no repair, though the widening cast loses nothing
-(kara B-2026-10-29-16). That the bit-count methods return `u32` at all,
+(kara B-2026-10-29-18). That the bit-count methods return `u32` at all,
 where design.md says Kāra code uses `i64` for every count, is
-B-2026-10-29-17.
+B-2026-10-29-19.
 
 The legacy compiler was removed from kara at M3, so there is no legacy
 lane.
