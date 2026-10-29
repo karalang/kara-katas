@@ -1,0 +1,68 @@
+// LeetCode #1024: Video Stitching -- bench
+// Mirrors ./video_stitching.kara; see ../README.md § Benchmarks.
+
+fn video_stitching(clips: &[Vec<i64>], time: i64) -> i64 {
+    let mut furthest: Vec<i64> = vec![0; (time + 1) as usize];
+    for clip in clips.iter() {
+        if clip[0] <= time {
+            let s = clip[0] as usize;
+            furthest[s] = furthest[s].max(clip[1]);
+        }
+    }
+    let mut taken = 0;
+    let mut covered = 0;
+    let mut reach = 0;
+    for t in 0..time {
+        reach = reach.max(furthest[t as usize]);
+        if reach <= t {
+            return -1;
+        }
+        if t == covered {
+            taken += 1;
+            covered = reach;
+        }
+    }
+    taken
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 2000;
+    let rounds = 500;
+    let mut seed = 1024;
+    let mut cases: Vec<(Vec<Vec<i64>>, i64)> = Vec::new();
+    let mut total_clips = 0;
+    for _ in 0..count {
+        let time = 50 + next_random(&mut seed) % 51;
+        let mut clips: Vec<Vec<i64>> = Vec::new();
+        let mut at = 0;
+        while at < time {
+            let length = 1 + next_random(&mut seed) % 10;
+            let back = next_random(&mut seed) % 3;
+            clips.push(vec![(at - back).max(0), (at + length).min(100)]);
+            at += length;
+        }
+        for _ in 0..next_random(&mut seed) % (101 - clips.len() as i64) {
+            let start = next_random(&mut seed) % (time + 1);
+            let end = (start + next_random(&mut seed) % 21).min(100);
+            let place = next_random(&mut seed) % (clips.len() as i64 + 1);
+            clips.insert(place as usize, vec![start, end]);
+        }
+        total_clips += clips.len();
+        cases.push((clips, time));
+    }
+    let mut sum: i64 = 0;
+    let mut check: i64 = 0;
+    for _ in 0..rounds {
+        for (clips, time) in cases.iter() {
+            let answer = video_stitching(clips, *time);
+            sum += answer;
+            check = (check * 131 + answer + 1) % 1000000007;
+        }
+    }
+    println!("{count} cases, {total_clips} clips, {rounds} rounds: sum {sum}, checksum {check}");
+}
