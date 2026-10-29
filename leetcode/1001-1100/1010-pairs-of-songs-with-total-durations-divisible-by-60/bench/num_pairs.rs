@@ -1,0 +1,36 @@
+// LeetCode #1010 bench: the ★ arm (remainder counts in one pass) over 20
+// playlists of 60,000 songs, drawn once; each of 250 rounds counts the
+// pairs of every playlist, starting from a different one, and folds each
+// count into a checksum.
+
+fn num_pairs(time: &[i64]) -> i64 {
+    let mut seen = [0i64; 60];
+    let mut pairs = 0;
+    for &t in time {
+        let r = (t % 60) as usize;
+        pairs += seen[(60 - r) % 60];
+        seen[r] += 1;
+    }
+    pairs
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 20;
+    let rounds = 250;
+    let mut seed = 1010;
+    let playlists: Vec<Vec<i64>> = (0..count)
+        .map(|_| (0..60000).map(|_| 1 + next_random(&mut seed) % 500).collect())
+        .collect();
+    let mut check: i64 = 0;
+    for r in 0..rounds {
+        for k in 0..count {
+            check = (check * 31 + num_pairs(&playlists[(r + k) % count])) % 1000000007;
+        }
+    }
+    println!("{} rounds over {} playlists of 60000 songs: checksum {}", rounds, count, check);
+}
