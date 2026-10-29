@@ -159,6 +159,6 @@ the sequential lane. A plain `karac build` parallelizes nothing here
 sequential one.
 
 v2 took 0.61 times Rust's median time under overflow checks and 0.69
-times C's, the fastest of the five. Most of the work is allocating and
-growing the lists and freeing them again; we did not measure how each
-language's allocator shares in that, or why Kāra comes out ahead.
+times C's, the fastest of the five. Every call allocates, grows and
+frees about a thousand small lists; we did not measure how much of each
+language's time that takes, or why Kāra comes out ahead.
