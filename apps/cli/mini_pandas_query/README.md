@@ -117,7 +117,7 @@ program matches `expected.out` on `karac run`, `__mir-llvm-run`,
 
 The first `karac check` stopped at a parse error, mine: `let and = op
 == "&";`. Its fix renamed the binding to `r#and` and left the two uses
-as `and` (B-2026-10-29-11), so I renamed it by hand. Two functions then
+as `and` (B-2026-10-29-13), so I renamed it by hand. Two functions then
 clashed with ones reused from mini_pandas_display (`tokenize`,
 `py_float`), and I renamed mine. `karac fix` applied 10 edits over two
 rounds (`own` on five parameters, four `.clone()`s and a `mut` at a call),
@@ -131,7 +131,7 @@ which left 7 errors and 2 warnings:
   passes `p.as_str()`;
 - `op_ev(op, v, [a, b].to_vec())` with borrowed `a` and `b` is
   "expected 'ref Vec[Ev]', found 'Vec[ref Ev]'" with no help
-  (B-2026-10-29-12); the app clones the elements;
+  (B-2026-10-29-14); the app clones the elements;
 - `Parser` and `Args` shadow prelude types; the app renames them.
 
 The MIR build then refused `s.name ?? String.new()` on a match binding
@@ -142,9 +142,9 @@ the first run matched pandas on all 1,803 lines.
 
 ## Gaps found
 
-- **B-2026-10-29-11** (open): the fix for a keyword used as a binding
+- **B-2026-10-29-13** (open): the fix for a keyword used as a binding
   name renames the binding and none of its uses.
-- **B-2026-10-29-12** (open): a `Vec` built from borrowed parameters
+- **B-2026-10-29-14** (open): a `Vec` built from borrowed parameters
   passed where a `Vec` is expected has no help or fix.
 - **B-2026-10-28-28** (open) and **B-2026-10-29-10** (open), each met
   once more.
