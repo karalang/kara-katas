@@ -1,0 +1,115 @@
+# shop.db: a web shop's database
+read shop.db head=8 :: SELECT * FROM customers
+read shop.db :: SELECT type, name, tbl_name, rootpage FROM sqlite_master ORDER BY type, name
+read shop.db :: PRAGMA table_info(customers)
+read shop.db index_col=id parse_dates=signup :: SELECT id, name, signup, balance FROM customers WHERE country = 'DE' ORDER BY signup
+read shop.db :: SELECT country, count(*) AS customers, round(avg(balance), 2) AS avg_balance, sum(balance IS NULL) AS no_balance FROM customers GROUP BY country
+read shop.db :: SELECT status, count(*) AS n, sum(total_cents) / 100.0 AS revenue FROM orders GROUP BY status ORDER BY revenue DESC
+read shop.db parse_dates=month :: SELECT strftime('%Y-%m', placed) AS month, count(*) AS orders, sum(total_cents) AS cents FROM orders WHERE status != 'cancelled' GROUP BY month ORDER BY month
+read shop.db :: SELECT c.name, o.id AS order_id, o.placed, o.total_cents FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.total_cents > 50000 ORDER BY o.total_cents DESC LIMIT 10
+read shop.db :: SELECT o.id, o.customer_id, c.name FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE c.id IS NULL ORDER BY o.id
+read shop.db :: SELECT id, name FROM customers WHERE id NOT IN (SELECT customer_id FROM orders WHERE status <> 'cancelled') ORDER BY id
+read shop.db :: SELECT coupon, count(*) AS n FROM orders GROUP BY coupon
+read shop.db :: SELECT coupon, count(*) AS n FROM orders GROUP BY coupon COLLATE NOCASE
+read shop.db :: SELECT upper(coupon) AS code, count(*) AS n, count(DISTINCT customer_id) AS buyers FROM orders WHERE coupon IS NOT NULL GROUP BY 1
+read shop.db :: SELECT * FROM order_totals ORDER BY amount DESC LIMIT 5
+read shop.db :: SELECT p.category, sum(i.qty) AS units, round(sum(i.qty * i.unit_price), 2) AS revenue FROM order_items i JOIN products p ON p.sku = i.sku GROUP BY p.category ORDER BY revenue DESC
+read shop.db :: SELECT sku, price, round(price, 2) AS rounded, printf('%.2f', price) AS shown, CAST(price * 100 AS INTEGER) AS cents, typeof(price) AS type FROM products ORDER BY sku
+read shop.db :: SELECT title, weight_g, weight_g / 1000 AS kg_int, weight_g / 1000.0 AS kg, weight_g % 1000 AS rest FROM products WHERE weight_g IS NOT NULL ORDER BY weight_g DESC LIMIT 6
+read shop.db params='shipped',13 :: SELECT id, placed, total_cents FROM orders WHERE status = ? AND customer_id = ? ORDER BY id
+read shop.db named=st='paid',lo=20000 :: SELECT count(*) AS n, min(total_cents) AS lo, max(total_cents) AS hi, avg(total_cents) AS mean FROM orders WHERE status = :st AND total_cents >= :lo
+read shop.db :: SELECT customer_id, max(total_cents) AS biggest, placed FROM orders
+read shop.db :: SELECT name, email FROM customers WHERE email LIKE '%9@EXAMPLE.COM' ORDER BY id
+read shop.db :: SELECT id, name, email FROM customers WHERE email = 'ADA.20@example.com' OR email GLOB '*[0-9][0-9]@EXAMPLE.COM'
+read shop.db :: SELECT DISTINCT country FROM customers
+read shop.db :: SELECT country, group_concat(DISTINCT city) AS cities, group_concat(id, ';') AS ids FROM customers GROUP BY country
+read shop.db :: SELECT CASE WHEN total_cents >= 50000 THEN 'large' WHEN total_cents >= 10000 THEN 'medium' ELSE 'small' END AS size, count(*) AS n FROM orders GROUP BY size ORDER BY n DESC
+read shop.db :: SELECT customer_id, count(*) AS orders, sum(total_cents) AS spent FROM orders GROUP BY customer_id HAVING count(*) >= 6 ORDER BY spent DESC
+read shop.db :: SELECT id, placed, date(placed) AS day, time(placed) AS at, strftime('%w %j %W', placed) AS week, julianday(placed) - julianday('2026-01-01') AS days_in, unixepoch(placed) AS epoch FROM orders ORDER BY id LIMIT 5
+read shop.db :: SELECT strftime('%H', placed) AS hour, count(*) AS n FROM orders GROUP BY hour ORDER BY n DESC, hour LIMIT 5
+read shop.db :: SELECT name, signup, date(signup, '+1 year') AS renewal, date(signup, 'start of month', '+1 month', '-1 day') AS month_end, date(signup, '+1 month') AS next_month FROM customers WHERE signup IS NOT NULL ORDER BY id LIMIT 8
+read shop.db :: SELECT id, customer_id, total_cents, sum(total_cents) OVER (PARTITION BY customer_id ORDER BY placed) AS running, row_number() OVER (PARTITION BY customer_id ORDER BY placed) AS n FROM orders WHERE customer_id IN (1, 2) ORDER BY customer_id, placed
+read shop.db :: SELECT customer_id, sum(total_cents) AS spent, rank() OVER (ORDER BY sum(total_cents) DESC) AS rnk, dense_rank() OVER (ORDER BY count(*) DESC) AS by_orders FROM orders GROUP BY customer_id ORDER BY rnk LIMIT 8
+read shop.db :: WITH spend AS (SELECT customer_id, sum(total_cents) AS cents FROM orders WHERE status IN ('paid', 'shipped', 'delivered') GROUP BY customer_id) SELECT c.country, count(*) AS buyers, max(s.cents) AS top FROM spend s JOIN customers c ON c.id = s.customer_id GROUP BY c.country ORDER BY top DESC
+read shop.db :: SELECT name, (SELECT count(*) FROM orders o WHERE o.customer_id = c.id) AS orders FROM customers c ORDER BY orders DESC, name LIMIT 5
+read shop.db :: SELECT id, name FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.status = 'delivered') ORDER BY id
+read shop.db :: SELECT country FROM customers UNION SELECT 'XX' UNION SELECT 'DE'
+read shop.db :: SELECT 'customer' AS kind, count(*) AS n FROM customers UNION ALL SELECT 'order', count(*) FROM orders UNION ALL SELECT 'item', count(*) FROM order_items
+read shop.db index_col=country,city :: SELECT country, city, count(*) AS n FROM customers GROUP BY country, city
+read shop.db dtype=total_cents:float64,customer_id:Int64 head=4 :: SELECT id, customer_id, total_cents FROM orders
+read shop.db dtype_backend=numpy_nullable head=12 :: SELECT id, balance, email, vip, tier FROM customers
+read shop.db head=12 :: SELECT id, vip, typeof(vip) AS type FROM customers WHERE id % 3 = 0
+chunks shop.db chunksize=4 :: SELECT id, email, balance FROM customers WHERE id BETWEEN 19 AND 30
+read shop.db :: SELECT * FROM refunds
+read shop.db :: SELECT id, nmae FROM customers
+read shop.db :: SELECT id FORM customers
+read shop.db :: SELECT id, name FROM customers c JOIN orders o ON o.customer_id = c.id
+read shop.db :: SELECT country FROM customers WHERE count(*) > 3
+read shop.db params='paid' :: SELECT id FROM orders WHERE status = ? AND customer_id = ?
+read shop.db :: customers
+read shop.db index_col=customer :: SELECT id, name FROM customers LIMIT 3
+read shop.db dtype=balance:int64 :: SELECT id, balance FROM customers WHERE id BETWEEN 9 AND 12
+# history.db: a browser's history
+read history.db :: SELECT u.title, datetime(v.visit_time / 1000000 - 11644473600, 'unixepoch') AS visited, v.transition & 255 AS core FROM visits v JOIN urls u ON u.id = v.url ORDER BY v.visit_time DESC LIMIT 8
+read history.db parse_dates=t:us :: SELECT id, visit_time - 11644473600000000 AS t FROM visits ORDER BY id LIMIT 5
+read history.db :: SELECT substr(url, instr(url, '//') + 2, instr(substr(url, instr(url, '//') + 2), '/') - 1) AS host, sum(visit_count) AS visits FROM urls GROUP BY host ORDER BY visits DESC, host
+read history.db parse_dates=day :: SELECT date(visit_time / 1000000 - 11644473600, 'unixepoch') AS day, count(*) AS visits, round(sum(visit_duration) / 1e6 / 60, 1) AS minutes FROM visits GROUP BY day
+read history.db :: SELECT CASE transition & 255 WHEN 0 THEN 'link' WHEN 1 THEN 'typed' WHEN 2 THEN 'bookmark' WHEN 5 THEN 'generated' ELSE 'other' END AS how, (transition & 805306368) != 0 AS chain, count(*) AS n FROM visits GROUP BY 1, 2 ORDER BY 1, 2
+read history.db :: SELECT * FROM sqlite_sequence
+read history.db :: SELECT id, coalesce(title, url) AS label, visit_count, typed_count, hidden FROM urls ORDER BY id
+read history.db :: SELECT id, (visit_time - lag(visit_time) OVER (ORDER BY visit_time)) / 1000000 AS gap_s, lead(url, 1, -1) OVER (ORDER BY visit_time) AS next_url FROM visits ORDER BY visit_time LIMIT 6
+read history.db :: SELECT url, visit_count, round(100.0 * visit_count / (SELECT sum(visit_count) FROM urls), 1) AS pct FROM urls WHERE url LIKE 'https://www.sqlite.org/%' OR url LIKE '%wikipedia%' ORDER BY visit_count DESC
+# sensors.db: a building's temperature sensors
+read sensors.db parse_dates=ts :: SELECT * FROM readings WHERE device = 'th-03' ORDER BY ts LIMIT 6
+read sensors.db parse_dates=hour :: SELECT device, strftime('%Y-%m-%d %H:00', ts, 'unixepoch') AS hour, round(avg(temp_c), 2) AS t FROM readings WHERE temp_c > -100 GROUP BY device, hour ORDER BY device, hour LIMIT 8
+read sensors.db :: SELECT device, count(*) AS n, count(temp_c) AS with_temp, sum(temp_c = -999) AS sentinels, min(temp_c) AS lo, max(temp_c) AS hi, round(avg(humidity), 3) AS hum FROM readings GROUP BY device
+read sensors.db :: SELECT r.device, d.site, count(*) AS n FROM readings r LEFT JOIN devices d ON d.device = r.device GROUP BY r.device ORDER BY d.site, r.device
+read sensors.db head=8 :: SELECT device, ts, temp_c, round(avg(temp_c) OVER (PARTITION BY device ORDER BY ts ROWS BETWEEN 3 PRECEDING AND CURRENT ROW), 3) AS smooth FROM readings WHERE device = 'th-01' ORDER BY ts
+read sensors.db :: SELECT device, date(ts, 'unixepoch') AS day, max(battery) - min(battery) AS drop_pct, min(battery) AS low FROM readings GROUP BY 1, 2 ORDER BY 1, 2
+read sensors.db dtype_backend=numpy_nullable head=5 :: SELECT device, ts, humidity, battery FROM readings WHERE ts % 3600 < 10 ORDER BY ts
+chunks sensors.db chunksize=250 head=2 parse_dates=ts:s :: SELECT device, ts, temp_c FROM readings
+read sensors.db parse_dates=ts:s :: SELECT device, ts, temp_c, humidity FROM readings WHERE temp_c IS NULL ORDER BY ts
+read sensors.db :: SELECT typeof(ts), typeof(temp_c), count(*) FROM readings GROUP BY 1, 2
+read sensors.db :: SELECT device, ntile(4) OVER (ORDER BY temp_c) AS quartile, temp_c FROM readings WHERE ts % 21600 < 10 AND temp_c > -100 ORDER BY temp_c, device LIMIT 10
+read sensors.db :: SELECT site, count(*) AS devices, group_concat(device, ', ') AS ids, min(installed) AS first FROM devices GROUP BY site ORDER BY site
+# ledger16.db: a bank export in UTF-16
+read ledger16.db head=8 :: SELECT * FROM txns ORDER BY id
+read ledger16.db :: SELECT typeof(amount) AS type, count(*) AS n FROM txns GROUP BY 1
+read ledger16.db :: SELECT payee, count(*) AS n, sum(amount) AS total FROM txns GROUP BY payee ORDER BY payee
+read ledger16.db :: SELECT id, booked, amount FROM txns WHERE booked NOT LIKE '____-__-__' OR amount IS NULL OR typeof(amount) = 'text' ORDER BY id
+read ledger16.db parse_dates=booked head=6 :: SELECT id, booked FROM txns WHERE id >= 38 ORDER BY id
+read ledger16.db :: SELECT a.name, a.currency, count(t.id) AS n, round(total(t.amount), 2) AS total FROM accounts a LEFT JOIN txns t ON t.account_id = a.id GROUP BY a.id ORDER BY a.id
+read ledger16.db :: SELECT payee, length(payee) AS chars, upper(payee) AS shout, lower(payee) AS quiet, hex(payee) AS hex FROM txns GROUP BY payee ORDER BY payee LIMIT 5
+read ledger16.db :: SELECT category, count(*) AS n, round(sum(amount), 2) AS naive, round(sum(CAST(replace(amount, ',', '') AS REAL)), 2) AS spent FROM txns WHERE amount < 0 OR typeof(amount) = 'text' GROUP BY category ORDER BY spent
+read ledger16.db :: SELECT strftime('%Y-%m', booked) AS month, count(*) AS n FROM txns GROUP BY month
+read ledger16.db :: SELECT memo, instr(memo, '–') AS dash, substr(memo, -6) AS tail, trim(memo, 'Ref ') AS trimmed FROM txns WHERE memo IS NOT NULL ORDER BY id LIMIT 5
+# mixed.db: SQLite's type affinity
+read mixed.db :: SELECT label, typeof(anything) AS none, typeof(n) AS numeric, typeof(t) AS text, typeof(r) AS real, typeof(i) AS integer, typeof(d) AS datetime, typeof(flag) AS boolean, typeof(price) AS decimal, typeof(code) AS varchar, typeof(raw) AS blob, typeof(f) AS floating_point, typeof(ch) AS charint FROM typed ORDER BY id
+read mixed.db :: SELECT * FROM typed ORDER BY id
+read mixed.db :: SELECT label, n = 42 AS n_is_42, t = 42 AS t_is_42, anything = 42 AS any_is_42, anything = '42' AS any_is_text_42, r > 3 AS r_over_3, t < 5 AS t_under_5 FROM typed ORDER BY id
+read mixed.db :: SELECT label, anything + 1 AS plus, anything || '!' AS cat, CAST(anything AS INTEGER) AS as_int, CAST(anything AS REAL) AS as_real, CAST(anything AS NUMERIC) AS as_num, CAST(anything AS TEXT) AS as_text FROM typed ORDER BY id
+read mixed.db :: SELECT label, length(anything) AS len, abs(anything) AS abs, round(anything) AS rnd, quote(anything) AS quoted, anything IS NULL AS missing, coalesce(nullif(anything, ''), '(empty)') AS shown FROM typed ORDER BY id
+read mixed.db :: SELECT region, sum(units) AS units, sum(revenue) AS revenue, count(revenue) AS months, max(units) AS max_text, max(CAST(units AS INTEGER)) AS max_units FROM imported GROUP BY region
+read mixed.db :: SELECT region, month, units FROM imported WHERE units > 100 ORDER BY region, month
+read mixed.db :: SELECT region, month, units FROM imported WHERE CAST(units AS INTEGER) > 100 ORDER BY region, month
+read mixed.db :: SELECT k, v, typeof(v) AS type FROM kv
+read mixed.db :: SELECT 1 / 0 AS div0, 5 % 0 AS mod0, 7 / 2 AS idiv, -7 / 2 AS neg, -7 % 3 AS negmod, 7.5 % 2 AS fmod, 9223372036854775807 + 1 AS over, -9223372036854775808 - 1 AS under, 1 << 62 AS shl, -1 >> 1 AS shr, ~5 AS inv, 0.1 + 0.2 AS tenths, 1e308 * 10 AS inf, 2 * 3 + 4 AS p
+read mixed.db :: SELECT 'a' < 'b' AS lt, 'a' < 'B' AS lt_upper, 'a' = 'A' COLLATE NOCASE AS nocase, 'x ' = 'x' COLLATE RTRIM AS rtrim, NULL = NULL AS eq_null, NULL IS NULL AS is_null, 1 IN (1, NULL) AS in1, 2 IN (1, NULL) AS in2, 2 NOT IN (1, NULL) AS notin, 5 BETWEEN 1 AND 10 AS btw, 'abc' LIKE 'A_C' AS lk, 'abc' GLOB 'A*' AS gl, x'41' = 'A' AS blob_text
+read mixed.db :: SELECT round(2.5) AS a, round(-2.5) AS b, round(0.125, 2) AS c, round(2.675, 2) AS d, round(1.005, 2) AS e, round(1234.5678, -2) AS f, round(123456789.123456789, 4) AS g, printf('%5.1f|%-6s|%06d|%,d|%x|%e|%g', 3.14159, 'ab', 42, 1234567, 255, 12345.678, 0.0001) AS fmt, printf('%.3s', 'abcdef') AS cut
+read mixed.db :: SELECT date('2026-01-31', '+1 month') AS a, date('2024-02-29', '+1 year') AS b, datetime('2026-10-29 13:45:10.250', '+90 minutes') AS c, strftime('%Y-%m-%dT%H:%M:%fZ', '2026-10-29 13:45:10.250') AS d, date('2026-10-29', 'weekday 0') AS e, julianday('2000-01-01') AS f, date(2461343.5) AS g, datetime(1798000000, 'unixepoch') AS h, time('13:45') AS i, date('2026-13-01') AS bad, strftime('%s', '2026-10-29') AS secs, date('2026-10-29', '-0029 days', 'start of year') AS j
+read mixed.db :: SELECT upper('straße') AS up, lower('ÄÖÜ') AS low, length('naïve') AS chars, length(x'00ff00') AS bytes, substr('Grüße', 3, 2) AS mid, substr('abcdef', -3, 2) AS neg, substr('abcdef', 0, 3) AS zero, replace('a-b-c', '-', '+') AS rep, instr('banana', 'na') AS pos, ltrim('  x  ') || '|' AS lt, rtrim('xxhixx', 'x') AS rt, hex('é') AS hx, unicode('€') AS cp, char(75, 257) AS ch, concat('a', NULL, 1, 2.5) AS cc, concat_ws('-', 'a', NULL, 'b') AS cw, iif(1 > 2, 'yes', 'no') AS ii, max(3, 'a', 2.5) AS mx, min(3, NULL, 2) AS mn, typeof(min(3, NULL, 2)) AS mn_type
+# to_sql and get_schema
+schema shop.db name=order_facts keys=id parse_dates=placed :: SELECT id, placed, total_cents / 100.0 AS total, status = 'paid' AS paid, coupon FROM orders LIMIT 3
+schema shop.db name=my"table sqltype=n:BIGINT :: SELECT count(*) AS n, NULL AS missing FROM orders
+tosql mixed.db name=units_by_region :: SELECT region, sum(CAST(units AS INTEGER)) AS units, avg(revenue) AS avg_rev FROM imported GROUP BY region ;; SELECT type, name, sql FROM sqlite_master WHERE tbl_name = 'units_by_region' ;; SELECT * FROM units_by_region
+tosql shop.db name=customers :: SELECT 1 AS x
+tosql shop.db name=customers if_exists=append index=False :: SELECT 61 AS id, 'Test Person' AS name, 'test@example.com' AS email, 'XX' AS country, '1' AS vip ;; SELECT id, name, vip, typeof(vip) AS type, tier, signup FROM customers WHERE id > 58
+tosql shop.db name=daily parse_dates=day index_label=row :: SELECT date(placed) AS day, count(*) AS orders, sum(total_cents) AS cents FROM orders GROUP BY day ORDER BY day LIMIT 4 ;; SELECT sql FROM sqlite_master WHERE name = 'daily' ;; SELECT row, day, typeof(day) AS type, orders FROM daily
+tosql sensors.db name=devices if_exists=replace index=False sqltype=installed:DATE :: SELECT device, site, installed FROM devices WHERE installed IS NOT NULL ;; SELECT sql FROM sqlite_master WHERE name = 'devices' ;; SELECT * FROM devices
+# errors
+read notadb.db :: SELECT * FROM t
+read empty.db :: SELECT * FROM sqlite_master
+read empty.db :: SELECT * FROM t
+read missing.db :: SELECT 1
+read mixed.db :: SELECT sum(i) FROM typed WHERE label IN ('big', 'int')
+read mixed.db :: SELECT abs(-9223372036854775808)
