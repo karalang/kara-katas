@@ -89,7 +89,9 @@ def frame(df, head):
         print(f"  {c!r}: {t}")
     if head is not None:
         df = df.head(head)
-    sys.stdout.write(df.to_csv(lineterminator="\n"))
+    # A carriage return inside a field prints as \r: kara's checkout
+    # turns a raw CR in expected.out into LF.
+    sys.stdout.write(df.to_csv(lineterminator="\n").replace("\r", "\\r"))
 
 
 def warned(w):
