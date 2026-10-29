@@ -134,7 +134,7 @@ The warning was a `struct Parser` that shadows the prelude's, renamed
 
 ## Gaps found
 
-- **B-2026-10-29-32** (diagnostics): `ref mut m` in a pattern, Rust's
+- **B-2026-10-29-34** (diagnostics): `ref mut m` in a pattern, Rust's
   order for Kāra's `mut ref m`, is reported as "'mut' is a reserved
   keyword" plus a cascading parse error, with no fix. `mut m` in a
   pattern already gets a Rust-syntax diagnostic with a fix.
