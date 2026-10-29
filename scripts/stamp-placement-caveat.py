@@ -94,11 +94,21 @@ def main():
         margin, comp, _ratio = m
         excess = r.get("excess", r["spread"]) - 1.0
         risk = excess / margin if margin > 1e-9 else float("inf")
+        readme = ROOT / pathlib.Path(r["source"]).parent.parent / "README.md"
         if excess < args.min_excess or risk < args.min_risk:
+            # A re-bench can widen the margin past the placement spread; a
+            # caveat stamped on the old margin is then false, so drop it.
+            if readme.exists():
+                text = readme.read_text()
+                out = BLOCK_RE.sub("", text)
+                if out != text:
+                    seen.add(r["id"])
+                    changed.append((r["id"], r["slug"], excess, margin))
+                    if not args.check:
+                        readme.write_text(out)
             continue
         seen.add(r["id"])
 
-        readme = ROOT / pathlib.Path(r["source"]).parent.parent / "README.md"
         if not readme.exists():
             skipped.append((r["id"], "no README"))
             continue

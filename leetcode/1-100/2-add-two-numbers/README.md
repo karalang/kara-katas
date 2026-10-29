@@ -40,8 +40,6 @@ python3 recursive.py
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are a 2026-06-06 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 ### How to run
 
@@ -55,7 +53,7 @@ brew install hyperfine    # also needs rustc, clang, go, karac
 | File | What it does |
 |---|---|
 | [`bench/iterative.kara`](bench/iterative.kara) | N=100 nine-digit lists built once; K=500_000 iterations of `add_two_numbers(l1, l2)` with sum-of-first-digit sink |
-| [`bench/iterative.rs`](bench/iterative.rs) | Algorithmic mirror; uses `Rc<RefCell<ListNode>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O` |
+| [`bench/iterative.rs`](bench/iterative.rs) | Algorithmic mirror; uses `Rc<RefCell<ListNode>>` to mirror Kāra's `shared struct` reference semantics; compiled with `rustc -O` (and `-C overflow-checks=on` for the equal-safety row) |
 | [`bench/iterative.c`](bench/iterative.c) | Algorithmic mirror; plain `malloc`/`free` per-node — no RC, no GC; compiled with `clang -O3` |
 | [`bench/go-seq/main.go`](bench/go-seq/main.go) | Algorithmic mirror; GC-managed pointer-linked nodes; compiled with `go build` |
 | [`bench/iterative.py`](bench/iterative.py) | Algorithmic mirror — same N, K, sink |
@@ -64,80 +62,89 @@ All mirrors print `4000000` (500_000 × 8 — the units digit of 999…9 + 999�
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-06, hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O`, `clang -O3`, `go build`. Kara binary verified seq via `nm -gU target/iterative_kara | grep karac_par_run` (no auto-par symbols present) per BENCH.md § Implicit auto-par. This is the post-RC-elision-ladder re-bench: karac `e6b810e0` (2026-06-06) completed the eight-phase RC-elision program (see [`phase-7-codegen.md`](../../../../kara/docs/implementation_checklist/phase-7-codegen.md) § Phase C) — `ListNode` is 16 bytes/node here, down from 24, with zero refcount operations anywhere in the binary.
+Snapshot — Apple M5 Pro (6P+12E), Darwin 25.6.0, measured 2026-10-29 (UTC), karac `0.1.0-dev.13686+g04628b0eb` — the v2/MIR backend, which replaced the legacy backend as the default codegen path on Oct 22. hyperfine `--warmup 5 --runs 30 --shell=none`, native binaries via `karac build`, `rustc -O` (rustc 1.95.0), `clang -O3` (Apple clang 21.0.0), `go build` (go 1.26.3). Since the v2 redesign `karac build` is sequential unless `KARAC_AUTO_PAR=1`, so the Kāra row is the seq lane by construction.
 
 | Implementation | Wall time | User-CPU | Within-workload ratio |
 |---|---|---|---|
-| c    iterative (clang -O3)       | 503.0 ms ± 23.8 ms     | 500.0 ms | 1.05× of Kāra |
-| **kāra iterative (codegen)**     | **479.9 ms ± 32.3 ms** | 477.0 ms | **1.00×** (baseline) |
-| go   iterative                   | 443.8 ms ± 5.4 ms      | 458.0 ms | 0.92× of Kāra |
-| rust iterative (`Rc<RefCell>`)   | 882.4 ms ± 20.3 ms     | 879.0 ms | 1.84× of Kāra |
+| go   iterative                         | 455.6 ms ± 11.0 ms     | 468.4 ms  | 0.62× of Kāra |
+| c    iterative (clang -O3)             | 592.0 ms ± 6.8 ms      | 586.5 ms  | 0.81× of Kāra |
+| **kāra iterative (codegen)**           | **730.5 ms ± 13.3 ms** | 720.9 ms  | **1.00×** (baseline) |
+| rust iterative (`-C overflow-checks=on`) | 1016.1 ms ± 14.5 ms  | 1007.6 ms | 1.39× of Kāra |
+| rust iterative (`Rc<RefCell>`, `-O`)   | 1037.1 ms ± 29.3 ms    | 1022.6 ms | 1.42× of Kāra |
 
-Light-load snapshot — σ is tight across the board (≤6.7%), so the absolute numbers are trustworthy this time.
+σ is tight across the board (≤2.9%), so the gaps are well outside noise.
 
-Allocator-bound + RC-discipline-bound shape: a hot inner loop walking and growing a chain of ~100 small heap nodes, then dropping the chain when the result goes out of scope. **Kāra is ahead of C (0.95×, i.e. C runs 1.05× of Kāra) and 1.84× faster than Rust's `Rc<RefCell<>>`** on this lane; Go's bump-allocator + GC leads the lane at 0.92×. Three generations of karac codegen work target exactly this `Option[shared T]` linked-list shape:
+**Kāra is 1.23× C on this lane, no longer at C parity.** The previous run (karac on the legacy backend) measured Kāra at 698.8 ms against C's 692.2 ms — 1.01×, parity. On this run Kāra is 730.5 ms against C's 592.0 ms. Part of that movement is C getting faster on this host, but part of it is a real Kāra regression: a matched same-commit instruction-count A/B on this kernel has the MIR backend executing 24.74 G instructions against the legacy backend's 21.45 G (+15%; cycles +17%). Tracked as B-2026-10-28-34. Kāra still runs ahead of both Rust rows — 0.70× of `rustc -O` and 0.72× of the equal-safety `rustc -O -C overflow-checks=on` (Kāra checks integer overflow by default) — and Go's bump-pointer young-generation allocator + amortized GC sweep leads the lane at 0.62× of Kāra.
+
+#### Re-bench 2026-10-29 — what moved
+
+| Metric | Previous run | This run | Change | Classification |
+|---|---|---|---|---|
+| Kāra runtime | 698.8 ms | 730.5 ms | +4.5% | **Regression** — MIR backend executes +15% instructions on this kernel; B-2026-10-28-34 |
+| C runtime | 692.2 ms | 592.0 ms | −14.5% | Host drift (comparator) |
+| Rust runtime (`-O`) | 1088.9 ms | 1037.1 ms | −4.8% | Host drift (comparator) |
+| Go runtime | 445.0 ms | 455.6 ms | +2.4% | Host drift (comparator) |
+| Kāra binary size | 34,312 B | 336,824 B | +302 KB | **Regression** — MIR binary floor; B-2026-10-28-36 |
+| Kāra compile elapsed | 92.0 ms | 158.1 ms | +72% | **Regression** — rustc/clang flat (97.6 → 101.9 ms, 41.3 → 43.5 ms); B-2026-10-28-37 |
+| Kāra compile peak RSS | 24.1 MiB | 67.8 MiB | +43.7 MiB | **Regression** — rustc/clang flat (31.8 → 31.6 MiB, 2.5 → 2.6 MiB); B-2026-10-28-37 |
+
+The comparator moves are host drift: the same unchanged C, Rust and Go sources moved by −14.5% to +2.4% between runs. Kāra's runtime ratio against C moved from 1.01× to 1.23×; the instruction-count A/B is what separates the compiler's share of that from the host's.
+
+How this kata got to parity in the first place — three generations of karac codegen work target exactly this `Option[shared T]` linked-list shape:
 
 1. **Niche layout for `Option[shared T]` struct fields** (2026-05-22): the field stores a single nullable pointer (null = `None`, non-null = `Some`) instead of the conventional 4-i64 `{tag, w0, w1, w2}` enum. Per-node heap size for `ListNode { val: i64, mut next: Option[ListNode] }` drops from 48 bytes to 24 bytes — same shape Rust gets for free on `Option<Rc<T>>` but `Rc<RefCell<>>` doesn't (the `RefCell` borrow-counter inflates the inner type past pointer-sized).
 2. **Iterative drop for self-referential single-field shapes** (2026-05-22): the drop function for a shared struct whose only heap-owning field is `Option[Self]` (niche-optimized) emits a while-loop with inlined rc-dec on the chain pointer instead of one recursive `dec_ref` call per link. For a 100-node chain freed 500K times that's 50M function calls collapsed into 50M loop iterations of straight-line IR. This is what closed the gap on Rust.
+3. **RC elision — the headerless-chain ladder** (2026-06-06, karac `e6b810e0`): ownership analysis proves every `ListNode` in the program lives in a cluster its chain head solely owns — fresh literal links, builder-call adoption at the caller, borrowed-param walk families across `add_two_numbers`'s arguments — and a program-wide purity gate then drops the refcount word from the type's layout entirely. Nodes shrink 24 → 16 bytes (malloc size-class 32 → 16), builds are plain stores, walks are count-free, drops are a tag-guarded pointer-chase free loop. This is what closed the gap on C on the legacy backend.
 
-3. **RC elision — the headerless-chain ladder** (2026-06-06, karac `e6b810e0`): ownership analysis proves every `ListNode` in the program lives in a cluster its chain head solely owns — fresh literal links, builder-call adoption at the caller, borrowed-param walk families across `add_two_numbers`'s arguments — and a program-wide purity gate then drops the refcount word from the type's layout entirely. Nodes shrink 24 → 16 bytes (malloc size-class 32 → 16), builds are plain stores, walks are count-free, drops are a tag-guarded pointer-chase free loop. No rc word and no count traffic anywhere in this binary. **This is what closed the gap on C.**
+The 1.23× C gap on this run is not a layout regression — peak RSS is still at C's figure (see below) — but extra instructions in the MIR backend's code for the same kernel (B-2026-10-28-34).
 
-The C gap is closed — and on this snapshot Kāra is slightly ahead: the refcount header and its maintenance were the remaining cost, and the elision ladder removed both, so Kāra now carries the same per-node bytes as C's `struct ListNode`, same malloc/free traffic, same walk, and edges C by ~5% (C runs 1.05× of Kāra). Go's bump-pointer young-generation allocator + amortized GC sweep leads the lane, ~8% ahead of Kāra (0.92×). Python runs the same shape in a tree-walking interpreter 10.8× slower than Kāra.
-
-(An even earlier snapshot of this kata reported 358 ms / 2.53× faster than Rust; that number measured the kernel correctly but the `karac` runtime was leaking the result chain on every iteration — peak RSS climbed to 2.3 GiB. After closing that leak the memory-correct number was 832 ms / 1.06× faster than Rust; the niche-layout + iterative-drop pair brought it to the 545 ms / 1.62× number on 2026-05-22, and a higher-load 2026-05-31 snapshot landed at 601 ms / 1.56× faster than Rust. The RC-elision ladder then took it to C parity and past it — fork-point A/B probes attribute 531 → 403 ms (1.32× cumulative) to the ladder itself, with the headerless-layout rung alone worth 1.20 ± 0.03× — and the re-bench snapshot above measures Kāra at 479.9 ms ± 32.3 against C's 503.0 ms ± 23.8 in the same run.)
+(Earlier history: a first snapshot reported 358 ms / 2.53× faster than Rust, but the runtime was leaking the result chain on every iteration — peak RSS climbed to 2.3 GiB. The memory-correct number was 832 ms / 1.06× faster than Rust; niche layout + iterative drop brought it to 545 ms / 1.62× on 2026-05-22, and the RC-elision ladder took it to C parity, with fork-point A/B probes attributing 531 → 403 ms (1.32× cumulative) to the ladder itself.)
 
 ### Runtime — long workloads (Python)
 
-Same snapshot, hyperfine `--warmup 2 --runs 10 --shell=none`:
-
-| Run | Mean ± σ |
-|---|---|
-| `py iterative` | 5.163 s ± 0.038 s |
-
-Python is **10.8× slower** than Kāra codegen on this workload — the gap CPython opens against any compiled-with-codegen language at workload sizes where algorithm time dominates interpreter-startup floors.
+Python was not timed in this run — `bench/results.json` carries no Python row, so there is no current figure to report here. Run `./bench/bench.sh` with `python3` available to add it; on earlier snapshots CPython ran this shape roughly an order of magnitude slower than Kāra codegen.
 
 ### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-06-06, hyperfine `--warmup 1 --runs 10 --shell=none` with `--prepare` deleting the artifact before each run:
+Same snapshot, hyperfine `--warmup 1 --runs 10 --shell=none` with `--prepare` deleting the artifact before each run:
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `iterative` | **76.1 ± 0.7 ms** | 114.9 ± 1.9 ms | 46.8 ± 0.3 ms |
+| `iterative` | **158.1 ± 6.1 ms** | 101.9 ± 1.5 ms | 43.5 ± 0.8 ms |
 
-`karac build` is **1.51× faster than `rustc -O`** on this file, sitting between clang (the floor for an LLVM-backed single-file compile) and rustc (which carries more frontend work per file). Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
+`karac build` is now **1.55× slower than `rustc -O`** on this file (and 3.63× clang). On the previous run it was 92.0 ms, faster than rustc's 97.6 ms; rustc and clang are flat across the two runs, so the +72% is Kāra's — tracked as B-2026-10-28-37. Multi-file projects (Go modules, Cargo) are deliberately excluded from this table — first-invocation `go build` and `cargo build` mix dep resolution + link and aren't comparable to a single-file `karac`/`rustc`/`clang` invocation.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    iterative | 32.9 KiB |
-| **kāra iterative** | **33.4 KiB** |
+| **kāra iterative** | **328.9 KiB** |
 | rust iterative | 456.3 KiB |
 | go   iterative | 2434.1 KiB |
 
-Kāra's binary is now **within ~450 bytes of clang's** (34,152 bytes vs clang's 33,704 — the elision ladder's free-walk loop lands it essentially on clang's figure). Down from 311.9 KiB → 49.0 KiB after the karac cost gate (`1a26792`) elided a wasteful 2-stmt par-group activation that was carrying ~263 KiB of `karac_par_run` machinery + thread-pool init, then down to 32.9 KiB after the `__TEXT,__jittmpl` segment re-scope (`e76f42b`, 2026-05-25) reclaimed an additional 16 KiB per Mach-O binary. Since the elision ladder, this binary carries no RC machinery at all for `ListNode` (the purity gate passed program-wide — headerless nodes, free-walk drop); Rust still pays its `Rc`/`RefCell` static-link cost at a much higher baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
+Kāra's binary is **336,824 bytes, up +302 KB** from the previous run, where it sat within a few hundred bytes of clang's 33,704. The kernel did not grow: the MIR backend links a larger fixed floor into every binary, tracked as B-2026-10-28-36. Kāra remains below Rust's `Rc`/`RefCell` static-link baseline. Go's ~2.4 MiB on every binary is the Go runtime + GC + reflection — a deliberate Go design choice, not workload-driven.
 
 ### Runtime memory (peak, RSS)
 
 | Implementation | Peak |
 |---|---|
 | c    iterative | 1.0 MiB |
-| **kāra iterative (codegen)** | **1.1 MiB** |
+| **kāra iterative (codegen)** | **1.0 MiB** |
 | rust iterative | 1.1 MiB |
-| py   iterative | 9.4 MiB |
-| go   iterative | 9.6 MiB |
+| go   iterative | 9.3 MiB |
 
-Kāra now sits at **parity with C and Rust** on peak RSS — down from 1.6 MiB pre-fix (the par-pool initialization paid by the wasteful `karac_par_run` activation). The karac cost gate at `1a26792` elides the activation at codegen so the pool init never runs, returning kara to the per-iteration allocate-then-drop steady-state footprint that the workload's algorithmic shape actually requires. Go's baseline includes the runtime + GC; Python's includes the CPython interpreter.
+Kāra sits at **parity with C** on peak RSS (1,098,064 vs 1,098,040 bytes) and just under Rust — the per-iteration allocate-then-drop steady state the workload's algorithmic shape requires, with headerless 16-byte nodes. Go's baseline includes the runtime + GC. (Python is not in this run.)
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 iterative.c | 2.6 MiB |
-| karac build iterative.kara | 13.6 MiB |
-| rustc -O iterative.rs | 31.9 MiB |
+| rustc -O iterative.rs | 31.6 MiB |
+| karac build iterative.kara | 67.8 MiB |
 
-`karac` compiles this file in **~14 MiB peak** — between clang and rustc, with no algorithmic blowup signature. (Up ~1 MiB from the 2026-05-31 snapshot — the known fixed-floor karac compile-memory growth, probe-confirmed workload-independent; output binary unchanged in behavior.) Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
+`karac` now peaks at **~68 MiB** compiling this file — above rustc, up from 24.1 MiB on the previous run while rustc and clang are flat. Same regression as the compile-time row: B-2026-10-28-37. Go is omitted from the compile-memory row per BENCH.md — `go build`'s first invocation mixes module resolution + std-lib link and isn't comparable to a single-file invocation.
 
 ### Why this kata is in the harness
 
