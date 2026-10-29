@@ -216,3 +216,7 @@ O(1)-indexed-char form) failed codegen with *"no handler for method 'collect' on
 non-identifier receiver"* though it ran fine under the interpreter; the fix lowers
 `<string>.chars().collect()` to the already-supported `for c in s.chars() { v.push(c) }`
 build. See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-28-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/count_and_say.kara` executes 1.67× legacy's instructions: MIR stores the panic location into a global on every loop iteration, and since the globals became `thread_local` (for auto-par correctness, `B-2026-10-26-7`) each store is a TLV-getter call. Removing the `thread_local` alone recovers ~76% of the gap.

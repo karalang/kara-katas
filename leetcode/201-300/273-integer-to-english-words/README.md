@@ -336,3 +336,7 @@ done
 # cross-language benchmark (needs hyperfine, rustc, clang, go)
 bash bench/bench.sh
 ```
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-28-42`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/spell_seq.kara` executes 2.31× legacy's instructions and makes 2.3× its mallocs: every `return "One"` heap-copies the literal (legacy returned a borrowed static), and `a + " " + b` reallocates once per operand (legacy allocated the chain once).

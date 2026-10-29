@@ -59,3 +59,7 @@ diff <(karac run word_break.kara) <(python3 word_break.py) && echo OK
 ## Notes
 
 Clean first-pass dogfood: `Set[String]` + per-probe `substring` allocation + `Vec[bool]` DP, compiled correctly with no friction (interp == build == Python, valgrind-clean). Sets up #140 Word Break II (enumerate every segmentation), which needs backtracking rather than a boolean table.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-28-40`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/word_break.kara` executes 2.03× legacy's instructions: MIR checks the full upper bound on `dp[j]` and `s[off+j]`, which legacy proved in range from the loop guard, and those checks push the 4-trip inner loop over LLVM's peel budget. Removing the two checks recovers 97.8% of the gap.

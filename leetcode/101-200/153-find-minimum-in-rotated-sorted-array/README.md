@@ -126,3 +126,7 @@ Kāra matches Rust's and C's peak RSS within a page (single-shot readings on the
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor; Go is the cross-runtime data point — and on `binary_search` it's a useful upset (fastest of the four via cross-call inlining), a reminder that the per-workload winner depends on which overhead regime dominates. Python is the ergonomic foil.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/binary_search.kara` executes 1.55× legacy's instructions (14 vs 9 per search step): MIR never ported legacy's midpoint `assume` (`B-2026-06-16-1`), and passing the slice through memory hides its length from LLVM's range pass until after inlining. Katas 34, 35, 74 and 275 share the shape.
