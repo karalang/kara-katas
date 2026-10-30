@@ -82,7 +82,7 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         karac build "$src" >/dev/null
         mv "$stem" "$out"
@@ -95,7 +95,10 @@ isa_build_rust count.rs
 build_rust_ovf count.rs
 build_c    count.c
 build_kara count.kara
-build_kara count_seq.kara
+# count_seq is the single-threaded lane, but auto-par (on by default)
+# parallelizes it anyway (about 356% CPU on x86, 2026-10-30), so it builds
+# with auto-par off.
+KARAC_AUTO_PAR=0 build_kara count_seq.kara
 
 # Rayon variant lives in its own Cargo project under bench/rayon/ because
 # rayon is a third-party crate (no rustc single-file path for that).

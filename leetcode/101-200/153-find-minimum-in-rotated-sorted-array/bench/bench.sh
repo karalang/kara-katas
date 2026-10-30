@@ -148,7 +148,9 @@ isa_build_rust binary_search.rs
 ovf_build_rust binary_search.rs
 build_c    linear_scan.c
 build_c    binary_search.c
-build_kara linear_scan.kara
+# linear_scan is seq-only, and auto-par (on by default) parallelizes it too
+# (about 150% CPU on x86, 2026-10-30), so its lane is the KARAC_AUTO_PAR=0 twin.
+build_kara_seq linear_scan.kara
 build_kara binary_search.kara          # auto-par (par lane)
 build_kara_seq binary_search.kara      # seq twin (seq lane)
 build_go_seq linear_scan
@@ -161,7 +163,7 @@ build_go_par     findmin_go_par
 expected_ls="10"
 mismatch_ls=""
 for pair in \
-    'ls_kara:./target/linear_scan_kara' \
+    'ls_kara:./target/linear_scan_kara_seq' \
     'ls_rust:./target/linear_scan' \
     'ls_c:./target/linear_scan_c' \
     'ls_go:./target/linear_scan_go_seq'; do
@@ -225,7 +227,7 @@ bench_begin id=153 slug=find-minimum-in-rotated-sorted-array group=101-200 \
 echo "=== runtime — linear_scan (compiled, K=10) ==="
 rt_begin --warmup 5 --runs 30
 rt_cmd --lang kara --approach linear_scan --lane seq --mode codegen \
-    --name 'kara linear_scan (codegen)' --cmd './target/linear_scan_kara'
+    --name 'kara linear_scan (codegen)' --cmd './target/linear_scan_kara_seq'
 rt_cmd --lang rust --approach linear_scan --lane seq --mode native \
     --name 'rust linear_scan' --cmd './target/linear_scan'
 isa_rt_cmds "linear_scan" seq
@@ -302,7 +304,7 @@ ce_end
 
 echo
 echo "=== binary size ==="
-size_put --lang kara --approach linear_scan   --lane seq --mode codegen --path target/linear_scan_kara
+size_put --lang kara --approach linear_scan   --lane seq --mode codegen --path target/linear_scan_kara_seq
 size_put --lang kara --approach binary_search --lane seq --mode codegen --path target/binary_search_kara_seq
 size_put --lang kara --approach binary_search --lane par --mode codegen --path target/binary_search_kara
 size_put --lang rust --approach linear_scan   --lane seq --mode native  --path target/linear_scan
@@ -317,7 +319,7 @@ size_put --lang go   --approach binary_search --lane par --mode native  --path t
 
 echo
 echo "=== runtime memory (peak) ==="
-mem_put --lang kara --approach linear_scan   --lane seq --mode codegen --bytes "$(mem_peak ./target/linear_scan_kara)"
+mem_put --lang kara --approach linear_scan   --lane seq --mode codegen --bytes "$(mem_peak ./target/linear_scan_kara_seq)"
 mem_put --lang rust --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan)"
 mem_put --lang c    --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan_c)"
 mem_put --lang go   --approach linear_scan   --lane seq --mode native  --bytes "$(mem_peak ./target/linear_scan_go_seq)"

@@ -149,7 +149,9 @@ ovf_build_rust hash_map.rs
 build_c    brute_force.c
 build_c    hash_map.c
 build_kara brute_force.kara
-build_kara hash_map.kara
+# hash_map is seq-only, and auto-par (on by default) parallelizes it too
+# (about 160% CPU on x86, 2026-10-30), so its lane is the KARAC_AUTO_PAR=0 twin.
+build_kara_seq hash_map.kara
 build_kara_seq brute_force.kara
 build_go_seq brute_force
 build_go_seq hash_map
@@ -176,7 +178,7 @@ for triple in \
     'bf_rayon:./target/two_sum_rayon:-200' \
     'bf_go_par:./target/two_sum_go_par:-200' \
     'bf_c_par:./target/brute_force_c_par:-200' \
-    'hm_kara:./target/hash_map_kara:-20' \
+    'hm_kara:./target/hash_map_kara_seq:-20' \
     'hm_rust:./target/hash_map:-20' \
     'hm_c:./target/hash_map_c:-20' \
     'hm_go:./target/hash_map_go_seq:-20'; do
@@ -229,7 +231,7 @@ rt_cmd --lang c --approach brute_force --lane seq --mode native \
 rt_cmd --lang go --approach brute_force --lane seq --mode native \
     --name 'go   brute_force' --cmd './target/brute_force_go_seq'
 rt_cmd --lang kara --approach hash_map --lane seq --mode codegen \
-    --name 'kara hash_map (codegen)' --cmd './target/hash_map_kara'
+    --name 'kara hash_map (codegen)' --cmd './target/hash_map_kara_seq'
 rt_cmd --lang rust --approach hash_map --lane seq --mode native \
     --name 'rust hash_map' --cmd './target/hash_map'
 isa_rt_cmds "hash_map" seq
@@ -308,7 +310,7 @@ size_put --lang kara --approach brute_force --lane par --mode codegen --path tar
 size_put --lang c    --approach brute_force --lane par --mode native  --path target/brute_force_c_par
 size_put --lang rust --approach brute_force --lane par --mode native  --path target/two_sum_rayon
 size_put --lang go   --approach brute_force --lane par --mode native  --path target/two_sum_go_par
-size_put --lang kara --approach hash_map    --lane seq --mode codegen --path target/hash_map_kara
+size_put --lang kara --approach hash_map    --lane seq --mode codegen --path target/hash_map_kara_seq
 size_put --lang rust --approach brute_force --lane seq --mode native  --path target/brute_force
 size_put --lang rust --approach hash_map    --lane seq --mode native  --path target/hash_map
 size_put --lang c    --approach brute_force --lane seq --mode native  --path target/brute_force_c
@@ -328,7 +330,7 @@ mem_put --lang kara --approach brute_force --lane par --mode codegen --bytes "$(
 mem_put --lang c    --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/brute_force_c_par)"
 mem_put --lang rust --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/two_sum_rayon)"
 mem_put --lang go   --approach brute_force --lane par --mode native  --bytes "$(mem_peak ./target/two_sum_go_par)"
-mem_put --lang kara --approach hash_map    --lane seq --mode codegen --bytes "$(mem_peak ./target/hash_map_kara)"
+mem_put --lang kara --approach hash_map    --lane seq --mode codegen --bytes "$(mem_peak ./target/hash_map_kara_seq)"
 mem_put --lang kara --approach hash_map    --lane seq --mode interp  --bytes "$(mem_peak karac run hash_map.kara)"
 mem_put --lang rust --approach brute_force --lane seq --mode native  --bytes "$(mem_peak ./target/brute_force)"
 mem_put --lang rust --approach hash_map    --lane seq --mode native  --bytes "$(mem_peak ./target/hash_map)"

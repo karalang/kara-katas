@@ -7,7 +7,8 @@
 # is small (linear build + a linear measure/walk + an in-place re-link), so a
 # par lane would mostly measure dispatch overhead. The sink reads the result
 # head under an `if let` guard, which keeps the loop off karac's auto-par-on-
-# reduction allow-list — the default `karac build` stays single-threaded, so
+# reduction allow-list — but current karac parallelizes it anyway (about 360% CPU on x86,
+# 2026-10-30), so the seq lane builds with KARAC_AUTO_PAR=0 and
 # the kara row is directly comparable to rustc -O / clang -O3 / go build on a
 # per-core codegen-quality basis. Same discipline as kata #19.
 #
@@ -71,9 +72,11 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+    # Seq lane: auto-par is on by default, so build with it off. bench.sh is
+    # a dependency so an earlier auto-par binary is never taken as fresh.
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
@@ -157,7 +160,7 @@ ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach rotate_list --mode codegen \
     --prepare "rm -f target/${STEM}_kara.ce ${STEM}" \
     --name "karac build ${STEM}.kara" \
-    --cmd "sh -c \"karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara.ce\""
+    --cmd "sh -c \"KARAC_AUTO_PAR=0 karac build ${STEM}.kara >/dev/null && mv ${STEM} target/${STEM}_kara.ce\""
 ce_cmd --lang rust --approach rotate_list --mode native \
     --prepare "rm -f target/${STEM}" \
     --name "rustc -O ${STEM}.rs" --cmd "rustc -O ${STEM}.rs -o target/${STEM}"
@@ -185,7 +188,7 @@ echo "=== compile memory (cold) ==="
 for src in "${STEM}.kara"; do
     stem="$(basename "$src" .kara)"
     rm -f "target/${stem}_kara.ce" "$stem"
-    bytes=$(mem_peak karac build "$src")
+    bytes=$(mem_peak env KARAC_AUTO_PAR=0 karac build "$src")
     mv "$stem" "target/${stem}_kara.ce" 2>/dev/null || true
     cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done

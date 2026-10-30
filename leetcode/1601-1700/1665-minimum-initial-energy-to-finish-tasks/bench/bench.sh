@@ -72,9 +72,11 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+    # Seq lane: auto-par is on by default, so build with it off. bench.sh is
+    # a dependency so an earlier auto-par binary is never taken as fresh.
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
@@ -158,9 +160,9 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach greedy --mode codegen \
-    --prepare 'rm -f target/greedy_kara greedy' \
+    --prepare 'rm -f target/greedy_kara.ce greedy' \
     --name 'karac build greedy.kara' \
-    --cmd 'sh -c "karac build greedy.kara >/dev/null && mv greedy target/greedy_kara"'
+    --cmd 'sh -c "KARAC_AUTO_PAR=0 karac build greedy.kara >/dev/null && mv greedy target/greedy_kara.ce"'
 ce_cmd --lang rust --approach greedy --mode native \
     --prepare 'rm -f target/greedy' \
     --name 'rustc -O greedy.rs' --cmd 'rustc -O greedy.rs -o target/greedy'
@@ -194,7 +196,7 @@ for src in greedy.kara; do
     # left the next run's build_kara freshness check satisfied and the seq lane
     # silently measuring an auto-par binary.
     rm -f "$stem"
-    bytes=$(mem_peak karac build "$src")
+    bytes=$(mem_peak env KARAC_AUTO_PAR=0 karac build "$src")
     rm -f "$stem"
     cmem_put --lang kara --approach "$stem" --mode codegen --bytes "$bytes"
 done
