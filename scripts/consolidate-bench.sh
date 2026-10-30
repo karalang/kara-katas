@@ -2,8 +2,16 @@
 # consolidate-bench.sh — merge every per-kata bench/results.json into one
 # top-level bench-results.json, the single feed a dashboard reads.
 #
-# Usage: ./scripts/consolidate-bench.sh [-o OUTPUT]
+# Usage: ./scripts/consolidate-bench.sh [-o OUTPUT] [-i NAME] [-k STAMP]
 #   -o OUTPUT   output path (default: <repo-root>/bench-results.json)
+#   -i NAME     per-kata file name to merge (default: results.json). A host
+#               feed such as results.container-x86.json is merged into its own
+#               OUTPUT, never into bench-results.json, so hosts never mix.
+#   -k STAMP    keep only files whose env.karac_build starts with STAMP, so a
+#               feed is one compiler build; each file left out is logged.
+#
+#   ./scripts/consolidate-bench.sh -i results.container-x86.json -k <stamp> \
+#       -o bench-results.container-x86.json
 #
 # Discovers all leetcode/*/*/bench/results.json, validates each carries the
 # expected schema_version, and emits:
@@ -24,10 +32,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/bench-results.json"
 SCHEMA_VERSION=1
+NAME=results.json
+STAMP=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) OUT="$2"; shift 2 ;;
+        -i) NAME="$2"; shift 2 ;;
+        -k) STAMP="$2"; shift 2 ;;
         *) echo "consolidate-bench: unknown arg '$1'" >&2; exit 2 ;;
     esac
 done
@@ -36,11 +48,15 @@ done
 # mapfile.)
 files=()
 while IFS= read -r f; do
+    if [ -n "$STAMP" ] && [ "$(jq -r '.env.karac_build // ""' "$f" | cut -d' ' -f1)" != "$STAMP" ]; then
+        echo "consolidate-bench: leaving out ${f#"$ROOT"/} (karac_build is not $STAMP)" >&2
+        continue
+    fi
     files+=("$f")
-done < <(find "$ROOT/leetcode" -path '*/bench/results.json' | sort)
+done < <(find "$ROOT/leetcode" -path "*/bench/$NAME" | sort)
 
 if [ "${#files[@]}" -eq 0 ]; then
-    echo "consolidate-bench: no per-kata results.json found under leetcode/ — " \
+    echo "consolidate-bench: no per-kata $NAME found under leetcode/ — " \
          "run a kata's bench.sh first" >&2
     exit 1
 fi
@@ -58,8 +74,8 @@ done
 # coverage gap is explicit (never silently truncate).
 while IFS= read -r benchsh; do
     dir="$(dirname "$benchsh")"
-    if [ ! -f "$dir/results.json" ]; then
-        echo "consolidate-bench: no results.json for ${dir#"$ROOT"/} " \
+    if [ ! -f "$dir/$NAME" ]; then
+        echo "consolidate-bench: no $NAME for ${dir#"$ROOT"/} " \
              "(bench.sh not yet migrated/run)" >&2
     fi
 done < <(find "$ROOT/leetcode" -path '*/bench/bench.sh' | sort)
