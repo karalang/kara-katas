@@ -184,5 +184,6 @@ collection and widened by this kata to a collection passed as an
 argument; fixed in kara 0ddbf56292, where it is one error per call with
 an `.into_iter()` that `karac fix` applies. The arm now writes
 `.chain([..].into_iter())`. The same arm first subtracted
-`t.leading_zeros()`, a `u32`, from an `i64`, which `karac check` refuses
-as a mix of integer types, rightly; it casts with `as i64`.
+`t.leading_zeros()`, then a `u32`, from an `i64`, which `karac check`
+refused as a mix of integer types, so it cast with `as i64`. Bit counts
+return `i64` since kara B-2026-10-29-19, and the cast is gone.

@@ -123,13 +123,12 @@ for every arm and the differential. The release build is at kara
 archives rebuilt at `8b6e8a9088`. Under `karac __mir-run` the arms take
 0.3 s (★) to 26 s (dp).
 
-The sets arm compares `set.count_ones()` with a length, and `count_ones`
-returns a `u32` while lengths are `i64`, so it is written
-`set.count_ones() as i64`: `karac check` refuses the mixed comparison
-and `karac fix` offers no repair, though the widening cast loses nothing
-(kara B-2026-10-29-18). That the bit-count methods return `u32` at all,
-where design.md says Kāra code uses `i64` for every count, is
-B-2026-10-29-19.
+The sets arm compares `set.count_ones()` with a length. `count_ones`
+returned a `u32` while lengths are `i64`, so the arm was first written
+`set.count_ones() as i64`: `karac check` refused the mixed comparison and
+`karac fix` offered no repair (kara B-2026-10-29-18). Bit counts return
+`i64` since kara B-2026-10-29-19, as design.md says every count does, and
+the arm now compares `set.count_ones()` directly.
 
 The legacy compiler was removed from kara at M3, so there is no legacy
 lane.
