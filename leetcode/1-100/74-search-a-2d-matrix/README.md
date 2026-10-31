@@ -102,3 +102,7 @@ The load-bearing facts: the five-language sink agreement on `844187512`, and tha
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and at **equal safety** (both overflow-checked) kāra is **ahead** on the M5 (361 vs 371 ms, 1.03×) on this pointer-chasing search, and ahead of wrapping `rustc -O` too. C calibrates the metal floor, Go is the other native data point (fastest here, but within 1.2 % of kāra on instructions retired — identical work), Python (run at 1/10 the query count, timed separately) the ergonomic foil.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-30-36`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/search_a_2d_matrix.kara` executes 1.32× legacy's instructions (4.31G vs 3.27G). It is not the binary-search midpoint gap fixed for katas 34, 35, 153 and 275 (B-2026-10-28-41): this search is closed (`while lo <= hi`) and indexes `m[mid / cols][mid % cols]`, and stating `lo <= mid <= hi` there changed nothing.
