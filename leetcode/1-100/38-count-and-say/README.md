@@ -219,4 +219,6 @@ build. See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
 
 ## Bug ledger
 
-**Surfaced [`B-2026-10-28-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/count_and_say.kara` executes 1.67× legacy's instructions: MIR stores the panic location into a global on every loop iteration, and since the globals became `thread_local` (for auto-par correctness, `B-2026-10-26-7`) each store is a TLV-getter call. Removing the `thread_local` alone recovers ~76% of the gap.
+**Surfaced [`B-2026-10-28-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/count_and_say.kara` executes 1.67× legacy's instructions: MIR stores the panic location into a global on every loop iteration, and since the globals became `thread_local` (for auto-par correctness, `B-2026-10-26-7`) each store is a TLV-getter call. Removing the `thread_local` alone recovers ~76% of the gap. **Fixed** by kara `e1bd415c72`: each block now takes the thread-locals' address once, so the loop no longer calls the TLV getter (1.80G → 1.26G instructions, 1.18× legacy).
+
+**Surfaced [`B-2026-10-31-2`](../../../../kara/docs/bugs-v2.md)** (perf, open). The rest of the gap: the two stores of the call site per loop trip themselves, where legacy passed the site statically to a cold abort path; deleting them reached legacy's count.
