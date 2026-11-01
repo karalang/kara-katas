@@ -8,7 +8,7 @@
 # hash. Compute-bound: each rep allocates an (m+1)x(n+1) Vec[Vec[i64]] table (~25x7) and fills it
 # O(m*n) — the nested-Vec DP regime (cf. #72 edit-distance). C uses a flat long[] table, Go a
 # [][]int64, Rust a Vec<Vec<i64>> over &[u8]; Kara indexes String.bytes() into a Vec[Vec[i64]].
-# Default `karac build` is byte-equal to KARAC_AUTO_PAR=0.
+# Default `karac build` is single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.

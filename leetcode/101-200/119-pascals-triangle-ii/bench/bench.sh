@@ -12,7 +12,7 @@
 # FIXED (fix 6474a73); the DP update loop is now at equal-safety-Rust PARITY (isolated microbench 1.01x).
 # Both mirrors bulk-fill the ones (kara Vec.filled, Rust vec![1;n]) for fill parity. The residual ~1.21x
 # vs rust_ovf is the O(k) fill + per-rep alloc + noise, NOT the DP loop and NOT the `cmp $1` guard
-# (B-2026-07-17-14, invalidated — it costs 0%). Default `karac build` == KARAC_AUTO_PAR=0.
+# (B-2026-07-17-14, invalidated — it costs 0%). Default `karac build` is single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.

@@ -12,7 +12,9 @@
 # RESULT: kara TIES C (1.01x) and is ~1.56x AHEAD of rustc -O here — its bounds-check elision proves
 # the nested index `triangle[i][k]` / `dp[k]` in-range from the `while k <= i` guard and drops the
 # inner checks (branchless cmov min + one jo overflow, no bounds panic), while idiomatic Rust keeps
-# the nested-Vec bounds checks. Default `karac build` == KARAC_AUTO_PAR=0.
+# the nested-Vec bounds checks. Legacy's default `karac build` stayed single-threaded; on v2/MIR it
+# auto-parallelizes (one karac_mir_task_spawn in main), so the seq lane builds with KARAC_AUTO_PAR=0,
+# comparable to rustc -O / clang -O2 / Go.
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.
@@ -85,8 +87,8 @@ build_kara() {
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }

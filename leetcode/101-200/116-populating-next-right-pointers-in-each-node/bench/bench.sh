@@ -10,7 +10,7 @@
 # per rep — the mutate regime (same family as #114 flatten), distinct from the read-only (#112) and
 # collect (#113) walks. C/Go use raw *Node; Rust uses Rc<RefCell> (the safe RC interior-mutability
 # peer to Kara `shared`); Kara mutates `mut next` on `shared` nodes. Default `karac build` is
-# byte-equal to KARAC_AUTO_PAR=0.
+# single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.

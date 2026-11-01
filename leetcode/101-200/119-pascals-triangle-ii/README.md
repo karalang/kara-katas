@@ -40,15 +40,15 @@ one row, updated in place right-to-left:   row[k] = row[k] + row[k-1]
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`72342709`). Workload: each rep computes the rowIndex-th Pascal row for a data-dependent rowIndex (30+acc%20, 30..49) as one Vec[i64] updated in place right-to-left (row[k]=row[k]+row[k-1]), folding every entry; K=440000 reps — the in-place index-assignment regime.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 132.5 ms | 0.73× |
-| Rust `-O` | 132.5 ms | 0.73× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 165.6 ms | 0.92× |
-| Go | 174.4 ms | 0.97× |
-| **Kāra (codegen)** | 180.7 ms | 1.00× |
+| Rust `-O` | 151.2 ms | 0.75× |
+| C `clang -O3` | 151.4 ms | 0.75× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 188.7 ms | 0.94× |
+| Go | 197.0 ms | 0.98× |
+| **Kāra (codegen)** | 201.4 ms | 1.00× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -74,18 +74,27 @@ python3 ground_truth.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-17 snapshot; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`get_row.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
+> ✅ **M5 re-bench (2026-11-01).** The canonical numbers below are the corpus's **Apple M5 Pro** run (6P+12E, Darwin 25.6.0; **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23), `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). Against the 2026-07-27 legacy-backend M5 feed kāra is flat against every comparator (each move under this session's ~10 % noise band): kāra/Rust 1.36× → 1.33×, kāra/equal-safety Rust 1.09× → 1.07×, kāra/C 1.36× → 1.33×, kāra/Go 1.04× → 1.02×. An earlier shared **x86-64 Linux cloud-container** run, which this section originally reported as canonical, is kept below as history ([`bench/results.container-x86.json`](bench/results.container-x86.json)); absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal.
 
 **Workload.** Each rep computes the `rowIndex`-th row for a **data-dependent** `rowIndex` (`30 + acc%20`, so 30…49, seeded by the running hash so `get_row()` can't be hoisted out of the loop), building one row of `rowIndex+1` ones and updating it in place right-to-left, folding every entry — **K = 440,000** reps. This is the **in-place index-assignment regime**: a single small `Vec` per rep, dominated by the O(k²) in-place `row[k] = row[k] + row[k-1]` updates. **Fill parity:** both mirrors bulk-fill the initial ones — Kāra `Vec.filled(n, 1)`, Rust `vec![1i64; n]` — so the O(k) fill is the same algorithm on both sides (an earlier version filled Kāra with a `Vec.new()` + push loop, which raced a scalar fill against Rust's tuned bulk-fill and distorted the margin; see the note below).
 
 **Node representation & equal safety.** All mirrors use one flat array: Kāra `Vec[i64]`, Rust `Vec<i64>`, Go `[]int64`, C `long[]` (one `malloc` per rep). Kāra checks integer overflow **and array bounds** by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on overflow.
 
-`--warmup 8 --runs 40`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note — this container run is noisy, σ up to ±10 %, so read the *ratios*, not the absolute ms):
+Single-threaded mirrors, ~99.6 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin; Go's runtime runs at 109 % CPU, 196.0 ms user). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01** (canonical; hyperfine, 30 runs; sink `72342709` agreed by all five mirrors):
+
+| Implementation | Wall time | Store |
+|---|---|---|
+| rust get_row (rustc -O)                             | 151.2 ± 2.1 ms | `Vec<i64>` |
+| c    get_row (clang -O3)                             | 151.4 ± 2.0 ms | `long[]` |
+| rust get_row (rustc -O, overflow-checks=on)          | 188.7 ± 6.4 ms | `Vec<i64>` |
+| go   get_row (`[]int64`)                            | 197.0 ± 1.4 ms | `[]int64` |
+| **kāra get_row**                                    | **201.4 ± 3.8 ms** | **`Vec[i64]`** |
+
+**On the M5 (2026-11-01, v2/MIR) Kāra is last of five, as it was on the 2026-07-27 legacy-backend feed:** **1.07× behind the equal-safety Rust row**, 1.02× behind Go (inside noise), and **1.33× behind stock Rust and C**, which tie. kāra holds **1.09 MiB** peak RSS (Rust 1.11, C 1.08; Go 9.6 MiB). Binary size: c 32.8 KiB, **kāra 295.9 KiB**, rust 455.4 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (the legacy M5 kāra binary here was 33.5 KiB), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Compile-cold on the M5 is clang 48.2 ms < rustc 90.3 ms < **karac 113.6 ms** (2.4× clang, 1.26× rustc).
+
+`--warmup 8 --runs 40`. All single-threaded. **x86-64 container numbers** (history: the earlier container run this section first reported — this container run is noisy, σ up to ±10 %, so read the *ratios*, not the absolute ms):
 
 | Implementation | Wall time | Store |
 |---|---|---|
@@ -95,19 +104,19 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | **kāra get_row**                                    | **355 ± 12 ms** | **`Vec[i64]`** |
 | go   get_row (`[]int64`)                            | 445 ± 21 ms | `[]int64` |
 
-**The DP loop this kata is *about* is now at Rust parity — and getting there corrected two prior misreadings.** The hot loop is `while k >= 1 { row[k] = row[k] + row[k-1]; k = k-1 }`, an in-place descending update.
+**On the container, the DP loop this kata is *about* reached Rust parity — and getting there corrected two prior misreadings.** The hot loop is `while k >= 1 { row[k] = row[k] + row[k-1]; k = k-1 }`, an in-place descending update.
 
 **Bounds check — FIXED ([kara `B-2026-07-17-1`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), fix `6474a73`).** Kāra used to emit a per-iteration `cmp; ja <panic>` bounds check on `row[k]` that LLVM elides for Rust but kāra kept — because `k` is bounded by the *outer* loop variable only **transitively** (`k ≤ i-1`, `i ≤ rowIndex`, `len = rowIndex+1`), a chain LLVM's interval passes can't derive. The compiler now recognises this rolling-1D-DP shape (`compute_descending_skips`) and proves `k ≤ k_init = i-1 ≤ rowIndex-1 < rowIndex+1 = row.len()` from a length pin + the enclosing counter's bound, then skips the upper-half check kara-side. With it gone, an **isolated** in-place-update microbench measures **1.01×** vs equal-safety Rust, and the update-loop asm is byte-identical to Rust's. The DP loop is no longer the gap.
 
-**Two red herrings, recorded honestly.** The equal-safety margin above (~1.21× vs `rustc -O -C overflow-checks=on`) is **not** the DP loop:
+**Two red herrings, recorded honestly.** The container's equal-safety margin above (~1.21× vs `rustc -O -C overflow-checks=on`) is **not** the DP loop:
 - **The `cmp $1` loop guard was a mirage ([kara `B-2026-07-17-14`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), now `invalid`).** kāra lowers `while k >= 1` to `dec; cmp $1; ja` where Rust folds the guard into `dec; jne` (one fewer instruction). It *looks* like a gap, but a drift-immune A/B of two binaries differing only in that lowering showed **0 % wall-clock difference** — the loop is counter-dependency-bound and the branch predictor hides the extra compare. Filed, then invalidated after measurement.
 - **The residual is the O(k) fill + per-rep alloc/free, plus container noise.** Both `Vec.filled` and Rust's `vec![1;n]` vectorize (`movaps`/`movups`); Rust merely unrolls 2× more. There is **no single isolable codegen gap** left here — when Rust is switched to a matching push-fill loop, *kāra is 1.45× faster*. The margin is fill/alloc overhead spread thin, dominated by measurement noise on this host.
 
-Python (pure-Python, ~20× slower per rep, run at a fraction of K, timed separately, not cross-checked) is not comparable and omitted. kāra holds a small peak RSS (level with Rust, a fraction of Go's).
+Python (pure-Python, ~20× slower per rep, run at a fraction of K, timed separately, not cross-checked) is not comparable and omitted. kāra holds a small peak RSS (level with Rust, a fraction of Go's; M5 figures above).
 
-**Flagged for the M5 re-bench** — container orderings can shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/)), and this run was noisy; treat the *margins* as data points. The load-bearing result — kāra's DP update loop at Rust parity after `B-2026-07-17-1` — is an asm-level fact, not a microarchitectural quirk.
+**Flagged for the M5 re-bench** — container orderings can shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/)), and this run was noisy; treat the *margins* as data points. The load-bearing result — kāra's DP update loop at Rust parity after `B-2026-07-17-1` — is an asm-level fact, not a microarchitectural quirk. (2026-11-01 note: that asm-level parity was established on the legacy backend and has not been re-checked on v2/MIR; on the M5 Kāra is 1.07× the equal-safety Rust row, see the M5 table above.)
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 

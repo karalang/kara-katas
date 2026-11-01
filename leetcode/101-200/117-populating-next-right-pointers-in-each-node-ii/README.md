@@ -74,13 +74,25 @@ python3 ground_truth.py
 ## Benchmarks
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`connect.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
+> ✅ **M5 re-bench (2026-11-01).** The canonical numbers below are the corpus's **Apple M5 Pro** run (6P+12E, Darwin 25.6.0; **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23), `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). Against the 2026-07-28 legacy-backend M5 run kāra is flat against every comparator (each move under this session's ~10 % noise band): kāra/Rust 0.87× → 0.93×, kāra/equal-safety Rust 0.86× → 0.90×, kāra/C 1.20× → 1.28×, kāra/Go 1.51× → 1.45×. An earlier shared **x86-64 Linux cloud-container** run, which this section originally reported as canonical, is kept below as history ([`bench/results.container-x86.json`](bench/results.container-x86.json)); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal.
 
 **Workload.** Each rep builds a fresh **~500-node** pseudo-random BST (fixed insert sequence, so a fixed **shape**) whose values carry a **data-dependent** base (`base = acc%100`, shifting every value equally so the shape is unchanged and nothing hoists), wires every node's `next` with the O(1)-space dummy-head threading, and folds a level-order hash that reads the `next` chain back — **K = 16,000** reps. This is the **mutate regime**: shared-node allocation (~500 RC nodes built + freed) plus in-place `next` wiring per rep, the arbitrary-tree sibling of [#116](../116-populating-next-right-pointers-in-each-node/).
 
 **Node representation & equal safety.** As in [#116](../116-populating-next-right-pointers-in-each-node/): **C** (`*Node`) and **Go** (`*Node`, GC) chase raw pointers (dummy head a stack local); **Rust** uses **`Rc<RefCell<Node>>`** — the *safe* interior-mutability peer to Kāra's `shared` (RC), the caveat being that an *unsafe* raw-pointer Rust would match C. Kāra's `shared` is RC too but **without** `RefCell`'s runtime borrow flag (the ownership pass discharges it statically). Kāra checks integer overflow by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on the hash fold.
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
+`--warmup 5 --runs 30 --shell=none`. Single-threaded mirrors, ~99.6 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin; Go's runtime runs at 113 % CPU, 225.6 ms user). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01** (canonical; sink `483878699` agreed by all five mirrors):
+
+| Implementation | Wall time | Node representation |
+|---|---|---|
+| go   connect (GC `*Node`)                           | 226.6 ± 2.3 ms | `*Node` |
+| c    connect (clang -O3)                            | 257.9 ± 4.7 ms | `*Node` (raw) |
+| **kāra connect**                                    | **329.3 ± 3.9 ms** | **`shared` (RC)** |
+| rust connect (rustc -O)                             | 353.8 ± 2.9 ms | `Rc<RefCell>` |
+| rust connect (rustc -O, overflow-checks=on)          | 364.1 ± 10.6 ms | `Rc<RefCell>` |
+
+**On the M5 (2026-11-01, v2/MIR) Kāra is third of five, ahead of both safe-Rust rows** — **0.93× `rustc -O`** (1.07× ahead) and **0.90× the equal-safety Rust row** (1.11× ahead), **1.28× behind raw-pointer C** and **1.45× behind Go**, the same ordering as the 2026-07-28 legacy-backend M5 run in the box below. kāra holds **1.09 MiB** peak RSS (Rust 1.09, C 1.02; Go 9.8 MiB). Binary size: c 32.8 KiB, **kāra 295.8 KiB**, rust 456.3 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (the legacy M5 kāra binary here was 33.3 KiB), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Compile-cold on the M5 is clang 47.1 ms < rustc 125.5 ms < **karac 132.2 ms** (2.8× clang, 1.05× rustc).
+
+**x86-64 container numbers** (history: the earlier, undated container run this section first reported):
 
 | Implementation | Wall time | Node representation |
 |---|---|---|
@@ -90,11 +102,11 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | rust connect (rustc -O, overflow-checks=on)          | 527.9 ± 15.3 ms | `Rc<RefCell>` |
 | rust connect (rustc -O)                             | 530.3 ± 21.0 ms | `Rc<RefCell>` |
 
-**Kāra sits between raw-pointer C and safe `Rc<RefCell>` Rust — ahead of both Go and safe Rust, behind C by a wider margin than [#116](../116-populating-next-right-pointers-in-each-node/) (1.42× vs 1.02×).** The extra gap to C is *construction*, not the wiring: the arbitrary-tree workload builds each ~500-node tree via **repeated root-down BST inserts** (≈500 inserts × ~log-depth traversal), which is RC-inc/dec-heavy in Kāra but a raw pointer-chase in C — a heavier build than #116's single-pass perfect-tree fill. On the `connect` itself Kāra still runs **1.04× ahead of Go** and **1.11× ahead of safe `rustc -O` Rust** (both the dummy-head sentinel and the node graph are RC/`Rc` in Kāra and Rust alike, so that comparison is clean; Kāra's edge is the absent `RefCell` borrow flag). A raw-pointer (unsafe) Rust would sit alongside C; the `Rc<RefCell>` row is the honest *safe*-Rust peer, and that is the one Kāra passes. Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`). Python is listed at **375 ms but ran K = 800 — 1/20 of the compiled iterations** (pure-Python is ~20× slower per rep; timed separately, not cross-checked), so its wall-clock is not comparable.
+**On this container run Kāra sat between raw-pointer C and safe `Rc<RefCell>` Rust — ahead of both Go and safe Rust, behind C by a wider margin than [#116](../116-populating-next-right-pointers-in-each-node/) (1.42× vs 1.02×).** The extra gap to C is *construction*, not the wiring: the arbitrary-tree workload builds each ~500-node tree via **repeated root-down BST inserts** (≈500 inserts × ~log-depth traversal), which is RC-inc/dec-heavy in Kāra but a raw pointer-chase in C — a heavier build than #116's single-pass perfect-tree fill. On the `connect` itself Kāra still runs **1.04× ahead of Go** and **1.11× ahead of safe `rustc -O` Rust** (both the dummy-head sentinel and the node graph are RC/`Rc` in Kāra and Rust alike, so that comparison is clean; Kāra's edge is the absent `RefCell` borrow flag). A raw-pointer (unsafe) Rust would sit alongside C; the `Rc<RefCell>` row is the honest *safe*-Rust peer, and that is the one Kāra passes. Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`). Python is listed at **375 ms (earlier container run, not re-run 2026-11-01) but ran K = 800 — 1/20 of the compiled iterations** (pure-Python is ~20× slower per rep; timed separately, not cross-checked), so its wall-clock is not comparable.
 
-kāra holds **1.7 MiB** peak RSS — **level with C** (1.7 MiB), below Rust's 2.1 MiB and a fraction of Go's 6.9 MiB. And because this workload nets **zero heap growth** (each rep builds, wires, and frees a fixed tree), the backtrace-symbolizer tree is stripped: the kāra binary is **15.4 KiB, at parity with C's 15.8 KiB** — vs Rust's 3.8 MiB and Go's 2.1 MiB.
+On the container kāra held **1.7 MiB** peak RSS — **level with C** (1.7 MiB), below Rust's 2.1 MiB and a fraction of Go's 6.9 MiB. And because this workload nets **zero heap growth** (each rep builds, wires, and frees a fixed tree), the backtrace-symbolizer tree is stripped: the container kāra binary was **15.4 KiB, at parity with C's 15.8 KiB** — vs Rust's 3.8 MiB and Go's 2.1 MiB.
 
-> **M5 result (2026-07-28) — half the predicted direction held, half inverted.**
+> **M5 result (2026-07-28, legacy backend; history) — half the predicted direction held, half inverted.** (2026-11-01 note: the v2/MIR re-bench keeps this ordering — see the M5 table above.)
 > This section used to argue the direction "should hold, since it reflects the
 > RC-model difference, not a microarchitectural quirk." On the canonical M5 host:
 >
@@ -119,7 +131,7 @@ kāra holds **1.7 MiB** peak RSS — **level with C** (1.7 MiB), below Rust's 2.
 > better than a container run suggested. The text below is the pre-M5 container
 > analysis, retained for provenance.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 

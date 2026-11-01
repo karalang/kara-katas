@@ -10,7 +10,7 @@
 # RC/traversal regime (cf. #104, #110). Kara passes Option[shared] by value, rc-inc/dec'ing
 # every visited node; C/Go use raw pointers, Rust a Box walked by &-borrow. The two recursive
 # calls are independent but auto-par's granularity cutoff (B-2026-07-15-4, fixed) leaves the
-# 31-node walks sequential (default `karac build` byte-equal to KARAC_AUTO_PAR=0).
+# 31-node walks sequential (default `karac build` stays single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01)).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.

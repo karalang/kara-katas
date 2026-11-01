@@ -9,8 +9,7 @@
 # ALLOC-bound: each rep allocates 16 inner Vec[i64] path snapshots (+ the outer Vec) and the
 # backtracking path buffer — the collect-and-copy regime (cf. #107's nested-Vec build). Kara
 # threads one `mut ref` output + running path; C uses raw *Node + a growable path list, Go a GC
-# slice accumulator, Rust a Box tree with &mut Vec<Vec<i64>>. Default `karac build` is byte-equal
-# to KARAC_AUTO_PAR=0.
+# slice accumulator, Rust a Box tree with &mut Vec<Vec<i64>>. Default `karac build` is single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.

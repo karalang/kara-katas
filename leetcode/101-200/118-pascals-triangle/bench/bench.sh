@@ -10,7 +10,7 @@
 # uses nested long** with per-row malloc (structural parity, NOT a flat array), Go [][]int64, Rust
 # Vec<Vec<i64>>; Kara builds Vec[Vec[i64]]. NOTE: kara's compiler auto-pre-sizes the balanced-if push
 # rows (the presize pass), which Rust's identical Vec::new()+push does not get. Default `karac build`
-# is byte-equal to KARAC_AUTO_PAR=0.
+# is single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.
