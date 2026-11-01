@@ -83,32 +83,28 @@ diff <(karac run combinations.kara) <(karac run combinations_bitmask.kara)  && e
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-10 snapshot; the feed was last measured 2026-07-11.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`combinations.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ✅ **M5-confirmed (2026-07-10).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The five-way dead heat holds:** kāra ties the C/Go front (within 1.004× of the C floor) and stays ahead of both Rust builds on this recursion-bound backtracking. `bench/results.json` records the M5 host.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23). The first M5 snapshot (2026-07-10/11, legacy backend) replaced an earlier x86-64 cloud-container one. **The five-way dead heat holds:** all five runtimes sit inside ~1 %, each within the others' σ; kāra's ratios to every comparator are flat since July (Kāra/Rust 0.97× → 1.00×, Kāra/C 1.00× → 1.00×, Kāra/Go 1.00× → 0.99×). `bench/results.json` records the M5 host.
 
 **Workload.** The pruned start-indexed backtracking (the ★) run as an **enumerate-and-fold**: the recursion visits all **C(16, 8) = 12,870** combinations and folds each leaf's values into a threaded accumulator (no `Vec`-of-`Vec` storage — so the measured work is the **DFS recursion itself**, not allocation), for **K = 1,500** iterations seeded by the loop index so nothing hoists. All five compiled mirrors must agree on `667304351` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99.7 % CPU (the loop-carried sum is not a reduction the auto-par pass can split — `karac build --concurrency-report` reports `<no parallelization opportunities detected>`; verified equal to `KARAC_AUTO_PAR=0`). **M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99.9 % CPU (the loop-carried sum is not a reduction the auto-par pass can split — `karac build --concurrency-report` reports `<no parallelization opportunities detected>`, and the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin). **M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| c    combinations (clang -O3)                     | **480.6 ± 1.5 ms** |
-| go   combinations                                | 481.5 ± 1.3 ms |
-| **kāra combinations**                            | **482.7 ± 1.9 ms** |
-| rust combinations (rustc -O, overflow-checks=on) | 485.0 ± 7.5 ms |
-| rust combinations (rustc -O)                     | 495.1 ± 20.3 ms |
+| rust combinations (rustc -O, overflow-checks=on) | **547.4 ± 6.6 ms** |
+| **kāra combinations**                            | **548.1 ± 5.1 ms** |
+| rust combinations (rustc -O)                     | 548.8 ± 5.6 ms |
+| c    combinations (clang -O3)                     | 550.2 ± 5.1 ms |
+| go   combinations                                | 553.5 ± 6.2 ms |
 
-A **~3% five-way dead heat**. On this recursion-bound backtracking kāra lands **3rd of five, within 1.004× of the C floor** — tied with C (480.6 ms) and Go (481.5 ms) and **ahead of both Rust builds**. Overflow checks are free here (the workload is call/branch-bound, not arithmetic-bound), so equal-safety `rustc -O -C overflow-checks=on` (485.0 ms) and plain `rustc -O` (495.1 ms, noise-inflated by outliers this run) sit just behind kāra, which is overflow-checked by default. Python at 1/10 the iteration count is ~0.69 s (~14× kāra projected).
+A **~1 % five-way dead heat**. On this recursion-bound backtracking kāra lands **2nd of five, 1.001× the equal-safety `rustc -O -C overflow-checks=on` row** (547.4 ms) and level with plain `rustc -O` (548.8 ms), C (550.2 ms) and Go (553.5 ms) — every gap is smaller than the rows' σ, so the order is not meaningful. Overflow checks are free here (the workload is call/branch-bound, not arithmetic-bound), which is why the overflow-checked Rust build is no slower than the wrapping one. Python was last measured 2026-07-11 and not re-run: at 1/10 the iteration count it took ~0.69 s (~14× kāra projected, at July's kāra time).
 
-Compile-cold on the M5 is clang 37.9 ms < rustc 79.5 ms < **karac 81.5 ms** (~2.1× clang, within noise of rustc). Binary size: c 32.8 KiB, **kāra 33.3 KiB** (C parity), rust 455.8 KiB, go 2.38 MiB. Peak RSS: **kāra 1.02 MiB — identical to C**, rust 1.06, go 2.72 MiB. Every static metric is at the C floor; the runtime is a dead heat. See [`bench/results.json`](bench/results.json) for exact records.
+Compile-cold on the M5 is clang 43.9 ms < rustc 87.0 ms < **karac 112.5 ms** (2.6× clang, 1.29× rustc). Binary size: c 32.8 KiB, **kāra 295.8 KiB**, rust 455.8 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Peak RSS: c 1.00 MiB, **kāra 1.03 MiB**, rust 1.08, go 2.70 MiB. The runtime is a dead heat. See [`bench/results.json`](bench/results.json) for exact records.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this recursion-bound backtracking the five languages land within a few percent of each other. C calibrates the metal floor, Go is the other native data point, Python (run at 1/10 the iteration count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this recursion-bound backtracking the five languages land within about 1 % of each other (2026-11-01). C calibrates the metal floor, Go is the other native data point, Python (run at 1/10 the iteration count, timed separately; last measured 2026-07-11) the ergonomic foil.

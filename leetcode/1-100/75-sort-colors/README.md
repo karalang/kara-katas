@@ -71,29 +71,26 @@ diff <(karac run sort_colors.kara) <(karac run sort_colors_counting.kara)    && 
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-11 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`sort_colors.{kara,rs,c,py}`, `go-seq/main.go`, plus the parallel comparators `sort_colors_par.c`, `rayon/`, `go-par/`).
 
-> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **On the M5 both lanes improve for kāra:** the seq lane pulls *ahead* of Rust (1.12×, not just tying it), and the par lane's auto-par *overtakes* hand-tuned rayon (it sat behind rayon on the 4-vCPU container). `bench/results.json` records the M5 host.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23). The first M5 snapshot (2026-07-11) replaced an earlier x86-64 cloud-container one; on the M5 the seq lane sits *ahead* of Rust (1.12×) and the par lane's auto-par runs level with hand-tuned rayon and the C-pthreads floor (it sat behind rayon on the 4-vCPU container). Against the previous feed (2026-07-28) both lanes are flat relative to C and Rust. `bench/results.json` records the M5 host.
 
-**Workload — a batch that exposes both lanes.** Like kata [#1](../1-two-sum/), Sort Colors is benched as **K = 2,000 independent** Dutch-flag sorts (the ★) of `n = 59,999`-element `{0,1,2}` arrays, each grown by `push`/`append`/`realloc` (matching Kāra's `Vec.new()+push`, the [#72](../72-edit-distance/) fairness lesson), hashed, and combined through a **plain associative sum**. The length is deliberately *not* a multiple of 3, so the sorted result genuinely depends on the seed (no constant-fold/hoist). Because the reduction is an associative `sum`, the **default `karac build` auto-parallelizes the `for i in 0..K` loop with no hand-written parallel code** — giving both a single-threaded lane and a parallel lane over the *same* work. All nine seq+par mirrors agree on `315566453719` before timing.
+**Workload — a batch that exposes both lanes.** Like kata [#1](../1-two-sum/), Sort Colors is benched as **K = 2,000 independent** Dutch-flag sorts (the ★) of `n = 59,999`-element `{0,1,2}` arrays, each grown by `push`/`append`/`realloc` (matching Kāra's `Vec.new()+push`, the [#72](../72-edit-distance/) fairness lesson), hashed, and combined through a **plain associative sum**. The length is deliberately *not* a multiple of 3, so the sorted result genuinely depends on the seed (no constant-fold/hoist). Because the reduction is an associative `sum`, the **default `karac build` auto-parallelizes the `for i in 0..K` loop with no hand-written parallel code** — giving both a single-threaded lane and a parallel lane over the *same* work (verified in the emitted IR (`KARAC_MIR_LL`): the default build calls `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` twin does not). All nine seq+par mirrors agree on `315566453719` before timing.
 
 #### Seq lane — single-threaded
 
-`--warmup 3 --runs 20 --shell=none`. `rustc -O -C overflow-checks=on` is the equal-safety row (Kāra checks overflow by default; kata [#69](../69-sqrtx/)'s discipline). **M5 Pro numbers.**
+`--warmup 3 --runs 20 --shell=none`. `rustc -O -C overflow-checks=on` is the equal-safety row (Kāra checks overflow by default; kata [#69](../69-sqrtx/)'s discipline). **M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| c    sort_colors (clang -O3)                     | **460.6 ± 1.2 ms** |
-| **kāra sort_colors (KARAC_AUTO_PAR=0)**          | **462.0 ± 4.0 ms** |
-| rust sort_colors (rustc -O)                      | 516.5 ± 4.7 ms |
-| rust sort_colors (rustc -O, overflow-checks=on)  | 518.6 ± 6.5 ms |
-| go   sort_colors                                 | 812.1 ± 17.6 ms |
+| **kāra sort_colors (KARAC_AUTO_PAR=0)**          | **499.7 ± 1.7 ms** |
+| c    sort_colors (clang -O3)                     | 502.3 ± 5.4 ms |
+| rust sort_colors (rustc -O, overflow-checks=on)  | 559.5 ± 6.0 ms |
+| rust sort_colors (rustc -O)                      | 560.3 ± 6.3 ms |
+| go   sort_colors                                 | 993.0 ± 8.4 ms |
 
-Kāra **ties the C floor** (462.0 vs 460.6 ms, 1.00×) and **beats both Rust builds by 1.12×** — including, at **equal safety**, `rustc -O -C overflow-checks=on` (518.6 ms). Go trails at ~812 ms — its GC churns on the per-iteration 60 k-element `append` allocations (spilling onto a second core, 142 % CPU), where Kāra/C/Rust free deterministically at ~100 % CPU.
+Kāra **ties the C floor** (499.7 vs 502.3 ms, 0.99×, inside C's ±5.4 ms) and **beats both Rust builds by 1.12×** — including, at **equal safety**, `rustc -O -C overflow-checks=on` (559.5 ms). Go trails at ~993 ms (1.99× kāra) — its GC churns on the per-iteration 60 k-element `append` allocations (spilling onto a second core, 185 % CPU), where Kāra/C/Rust free deterministically at ~100 % CPU.
 
 #### Par lane — auto-par vs hand-tuned
 
@@ -101,15 +98,15 @@ The **same batch**, parallel: `karac build`'s auto-parallelizer splits the sum r
 
 | Implementation | Wall time | Cores used |
 |---|---|---|
-| c    sort_colors (pthreads — metal floor)        | **35.5 ± 2.7 ms** | 15.4 |
-| **kāra sort_colors (auto-par, NO parallel code)**| **37.9 ± 3.5 ms** | 14.4 |
-| rust sort_colors (rayon par_iter)                | 38.7 ± 2.1 ms | 16.2 |
-| go   sort_colors (goroutines + WaitGroup)        | 195.9 ± 4.2 ms | 6.1 |
+| **kāra sort_colors (auto-par, NO parallel code)**| **38.1 ± 1.9 ms** | 14.5 |
+| c    sort_colors (pthreads — metal floor)        | 38.2 ± 2.8 ms | 14.3 |
+| rust sort_colors (rayon par_iter)                | 38.9 ± 1.0 ms | 16.1 |
+| go   sort_colors (goroutines + WaitGroup)        | 258.4 ± 6.4 ms | 5.9 |
 
-**This is the headline.** Kāra's auto-par — emitted from a plain `for i in 0..K { sum = sum + sort_and_hash(i) }` with **no threads, no `par`, no parallel library** — **overtakes hand-tuned rayon** (37.9 vs 38.7 ms) and lands within **1.07×** of the bare-metal C-pthreads floor, a **12.2× speedup** over its own single-threaded twin (462.0 → 37.9 ms) on the M5's 18 cores. It beats rayon on *total work* too: kāra spends **538.6 ms of CPU — matching C-pthreads' 538.5 ms** — to rayon's 615.3 ms, so the compiler-emitted split is as efficient as the metal floor's and leaner than rayon's. On the 4-vCPU container kāra sat *behind* rayon (220.6 vs 216.4 ms); the M5's wider core count is exactly where the auto-parallelizer's split pulls ahead. The same zero-parallel-code auto-par showcase as kata [#1](../1-two-sum/); the entire parallelization is a compiler decision off the associative reduction.
+**This is the headline.** Kāra's auto-par — emitted from a plain `for i in 0..K { sum = sum + sort_and_hash(i) }` with **no threads, no `par`, no parallel library** — **ties hand-tuned rayon and the bare-metal C-pthreads floor** (38.1 vs 38.9 and 38.2 ms; a three-way tie inside each other's σ), a **13.1× speedup** over its own single-threaded twin (499.7 → 38.1 ms) on the M5's 18 cores. It is leaner than rayon on *total work*: kāra spends **543.6 ms of CPU, about C-pthreads' 538.1 ms**, to rayon's 613.8 ms, so the compiler-emitted split is as efficient as the metal floor's. Go's goroutine lane is 6.8× behind kāra (Kāra/Go 0.18× → 0.15× since 2026-07-28 — a move in Go's number, 190 → 258 ms, not kāra's). On the 4-vCPU container kāra sat *behind* rayon (220.6 vs 216.4 ms); the M5's wider core count is where the auto-parallelizer's split catches up. The same zero-parallel-code auto-par showcase as kata [#1](../1-two-sum/); the entire parallelization is a compiler decision off the associative reduction.
 
-Compile-cold on the M5 is clang 40.4 ms < rustc 80.1 ms < **karac 83.3 ms** (~2.1× clang, within noise of rustc). Binary size: c 32.8 KiB, **kāra 33.4 KiB seq / 296.1 KiB par** (the par binary carries the auto-par scheduler), rust 455.6 KiB, go 2.38 MiB. Runtime peak RSS: **kāra 2.5 MiB seq / 15.1 MiB par** (thread pool + per-core buffers), vs c 1.7, rust 2.2, go 11.1 MiB. Python at 1/10 K is ~0.88 s. See [`bench/results.json`](bench/results.json) for the exact records.
+Compile-cold on the M5 is clang 45.1 ms < rustc 85.5 ms < **karac 144.9 ms** (3.2× clang, 1.69× rustc). Binary size: c 32.8 KiB, **kāra 295.8 KiB seq / 377.1 KiB par** (the par binary carries the auto-par scheduler), rust 455.7 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Runtime peak RSS: **kāra 1.72 MiB seq / 15.8 MiB par** (thread pool + per-core buffers), vs c 1.72, rust 2.25, go 10.3 MiB. Python at 1/10 K was ~0.88 s (last measured 2026-07-11, not re-run). See [`bench/results.json`](bench/results.json) for the exact records.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline seq ratio is the codegen-vs-Rust gap — kāra ahead by 1.12× at equal safety on the M5 — and in the par lane rayon is the hand-tuned-parallel yardstick that Kāra's auto-par **overtakes** (37.9 vs 38.7 ms, and on less total CPU). C calibrates the metal floor (seq clang and pthreads), Go is the GC data point (slow here on the allocation-heavy batch), Python the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline seq ratio is the codegen-vs-Rust gap — kāra ahead by 1.12× at equal safety on the M5 (2026-11-01) — and in the par lane rayon is the hand-tuned-parallel yardstick that Kāra's auto-par **ties** (38.1 vs 38.9 ms, on less total CPU). C calibrates the metal floor (seq clang and pthreads), Go is the GC data point (slow here on the allocation-heavy batch), Python the ergonomic foil.

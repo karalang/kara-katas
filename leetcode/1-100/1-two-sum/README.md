@@ -39,9 +39,6 @@ python3 hash_map.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are the 2026-10-29 snapshot** in [`bench/results.json`](bench/results.json) (M5 Pro, 6P+12E, `karac 0.1.0-dev.13686+g04628b0eb` — the v2/MIR backend, which has replaced the legacy backend). The [charts](../../../BENCHMARKS.md) render from the same feed.
-
 ### How to run
 
 ```bash
