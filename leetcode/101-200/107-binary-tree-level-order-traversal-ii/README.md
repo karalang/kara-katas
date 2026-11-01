@@ -68,19 +68,30 @@ diff <(karac run level_order_bottom.kara) <(karac run level_order_bottom_bfs.kar
 python3 ground_truth.py
 ```
 
-<!-- placement-caveat -->
-**Measurement caveat — code placement.** This kata's runtime moves by up to **13%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **3.8%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
-
 ## Benchmarks
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`level_order_bottom.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus's canonical **Apple M5 Pro** numbers ([`bench/results.json`](bench/results.json)) are folded in separately; absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. Re-run `bench.sh` on the M5 to refresh the canonical table.
+> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.6.0; karac g6697158fa (0.9.0-dev.14057, v2/MIR backend), `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20; measured 2026-11-01) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. The container table, the first M5 result (2026-07-28) and the container analysis follow the M5 table, retained for provenance.
 
 **Workload.** Build 8 distinct 15-node BSTs once, then **K = 1,000,000** reps of DFS-with-depth bottom-up level order on a **data-dependent-selected** tree (`idx = acc%8`, seeded by the running hash, so nothing hoists), building a fresh `Vec[Vec[i64]]` output (rows emitted deepest-first) and folding the whole result — level count, each level's size, and every value — into a rolling polynomial hash. Each rep allocates both the depth-indexed rows *and* the reversed-order output, so the workload is **allocation-bound**. Each mirror uses its natural node: Kāra `shared` (RC), C/Go raw pointer, **Rust `Box` + `&`-borrow** (the tree is never mutated or shared during traversal). All five compiled mirrors must agree on `59640307` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../../1-100/69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **x86-64 container numbers** (canonical M5 pending; see the machine note):
+`--warmup 5 --runs 30 --shell=none`. All single-threaded (~99.9 % CPU; the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin; Go 128 % with its GC). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01:**
+
+| Implementation | Wall time | Node / result representation |
+|---|---|---|
+| **kāra level_order_bottom**                         | **416.9 ± 12.8 ms** | **`shared` (RC) + `Vec[Vec]`** |
+| c    level_order_bottom (clang -O3)                 | 453.3 ± 39.3 ms | `malloc` pointer + `realloc` rows |
+| go   level_order_bottom (GC)                        | 481.3 ± 5.0 ms | `*Node` + `[][]int64` (GC) |
+| rust level_order_bottom (rustc -O, overflow-checks=on)| 519.3 ± 21.3 ms | `Box` + `Vec<Vec>` |
+| rust level_order_bottom (rustc -O)                  | 524.7 ± 20.7 ms | `Box` + `Vec<Vec>` |
+
+**On the v2/MIR backend Kāra leads the lane.** It is **1.26× ahead of `rustc -O`**, **1.25× ahead of equal-safety `rustc -O -C overflow-checks=on`**, **1.15× ahead of Go**, and **1.09× ahead of C**. The Rust and Go leads are many σ wide and wider than this kata's code-placement range (up to 13 %, [`placement-spread.json`](../../../placement-spread.json)); the C lead is not — it sits inside C's own run-to-run spread (σ 39.3 ms, 8.7 %) and inside that placement range, so read Kāra-vs-C as a tie that leans Kāra. Against the previous M5 feed (2026-07-27, legacy backend `karac 0.1.0`) Kāra gained on every comparator: Kāra/Rust 0.96× → 0.79×, Kāra/equal-safety-Rust 0.94× → 0.80×, Kāra/C 1.05× → 0.92×, Kāra/Go 1.18× → 0.87× (the comparators themselves ran 0–20 % slower this session — Go most — so the ratios, not the milliseconds, carry the comparison). That moves Kāra from third, behind Go and C, to first.
+
+Peak RSS on the M5: **kāra 1.08 MiB**, Rust 1.14 MiB, C 1.17 MiB, Go 9.8 MiB. Binary size: C 33.0 KiB, **kāra 295.8 KiB** (302,896 B), Rust 456.8 KiB, Go 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (this kata's was 33.6 KiB on 2026-07-27), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Compile-cold is clang 55.5 ms < rustc 114.2 ms < **karac 141.9 ms** (2.6× clang, 1.24× rustc). Python was not re-run (see the container note below).
+
+**Container reference (x86-64), retained for provenance.** Same flags, same workload:
 
 | Implementation | Wall time | Node / result representation |
 |---|---|---|
@@ -90,6 +101,8 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 | rust level_order_bottom (rustc -O, overflow-checks=on)| 740.4 ± 21.3 ms | `Box` + `Vec<Vec>` |
 | go   level_order_bottom (GC)                        | 978.9 ± 15.0 ms | `*Node` + `[][]int64` (GC) |
 
+> **Note (2026-11-01):** the 2026-07-28 result below (Kāra third, Go first) was the legacy backend; on karac g6697158fa Kāra is first and Go third (M5 table above).
+>
 > **M5 result (2026-07-28) — Kāra lands third, and Go leads.** The container
 > analysis below predicted the ordering "raw malloc < Kāra < Box/Vec < Go GC".
 > On the canonical M5 host Go is not last; it is **first**:
@@ -112,13 +125,13 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 > hiding it. C's floor also narrowed to 1.05×. The text below is the pre-M5
 > container analysis, retained for provenance.
 
-**On this allocation-bound nested-container workload Kāra lands second — ahead of Rust by 30% and Go by 74%.** Every rep builds two layers of fresh `Vec[Vec[i64]]` (the depth-indexed rows, then the deepest-first output) and tears them down, so the per-rep cost is the nested-container churn. Against its semantic peer Rust — `Box` node walked by `&`-borrow, `Vec<Vec<i64>>` result — Kāra is **1.29× ahead** (563 vs 729 ms; 563 vs 740 with overflow-checks on): building an outer vector of freshly-grown inner vectors and freeing the lot is exactly the shape Kāra's `Vec` growth handles leanest, and it stays ahead even with the per-node RC inc/decs the borrow-based Rust walk skips, because the *allocation* dominates. **C is the floor** at 464 ms (Kāra **1.21× behind**): raw `malloc`/`realloc`/`free`, no refcount, no GC. **Go trails at 979 ms** (Kāra **1.74× ahead**): its GC pays hardest on the 1 M × (two nested-slice layers) allocation churn — deferred collection being the wrong trade for short-lived nested allocations, the same GC-under-churn regime where Go placed last in [#102](../102-binary-tree-level-order-traversal/) and [#103](../103-binary-tree-zigzag-level-order-traversal/). So the ordering is by allocator overhead on short-lived nested containers — raw malloc < **Kāra RC/`Vec`** < `Box`/`Vec` < Go GC — the same nested-Vec regime where Kāra beat Rust in [#102](../102-binary-tree-level-order-traversal/) (the alloc-heavy tree siblings consistently favor Kāra's `Vec` growth over Rust's `Vec<Vec>`). Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`) over the run. Python is listed at **207 ms but ran K = 50,000 — 1/20 of the compiled iterations** (pure-Python recursion is ~20× slower per rep; timed separately, not cross-checked), so its wall-clock is not comparable.
+**On this allocation-bound nested-container workload Kāra lands second — ahead of Rust by 30% and Go by 74%.** Every rep builds two layers of fresh `Vec[Vec[i64]]` (the depth-indexed rows, then the deepest-first output) and tears them down, so the per-rep cost is the nested-container churn. Against its semantic peer Rust — `Box` node walked by `&`-borrow, `Vec<Vec<i64>>` result — Kāra is **1.29× ahead** (563 vs 729 ms; 563 vs 740 with overflow-checks on): building an outer vector of freshly-grown inner vectors and freeing the lot is exactly the shape Kāra's `Vec` growth handles leanest, and it stays ahead even with the per-node RC inc/decs the borrow-based Rust walk skips, because the *allocation* dominates. **C is the floor** at 464 ms (Kāra **1.21× behind**): raw `malloc`/`realloc`/`free`, no refcount, no GC. **Go trails at 979 ms** (Kāra **1.74× ahead**): its GC pays hardest on the 1 M × (two nested-slice layers) allocation churn — deferred collection being the wrong trade for short-lived nested allocations, the same GC-under-churn regime where Go placed last in [#102](../102-binary-tree-level-order-traversal/) and [#103](../103-binary-tree-zigzag-level-order-traversal/). So the ordering is by allocator overhead on short-lived nested containers — raw malloc < **Kāra RC/`Vec`** < `Box`/`Vec` < Go GC — the same nested-Vec regime where Kāra beat Rust in [#102](../102-binary-tree-level-order-traversal/) (the alloc-heavy tree siblings consistently favor Kāra's `Vec` growth over Rust's `Vec<Vec>`). Verified correct **and** valgrind-clean (`0 errors, 0 bytes in use at exit`) over the run. Python is listed at **207 ms but ran K = 50,000 — 1/20 of the compiled iterations** (pure-Python recursion is ~20× slower per rep; timed separately, not cross-checked; container figure, not re-run on the M5), so its wall-clock is not comparable.
 
 kāra holds **2.5 MiB** peak RSS (parity with Rust's 2.4 MiB, above C's 1.5 MiB) vs Go's **7.7 MiB**. The kāra binary measures **336 KiB** here — a build-linkage artifact of this container run (heap-growing programs retain the backtrace-symbolizer tree `--gc-sections` should strip; a correct build is ~15 KiB), independent of the runtime numbers, flagged for the M5 — vs C's 16 KiB and Go's 2.2 MiB.
 
-**Flagged for the M5 re-bench** — the corpus has seen container tree orderings shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/), [#99](../../1-100/99-recover-binary-search-tree/)), so treat the *margin* as a data point; the Kāra-ahead-of-Rust sign is robust across the nested-Vec siblings ([#102](../102-binary-tree-level-order-traversal/)), but the size may compress.
+**Flagged for the M5 re-bench** — the corpus has seen container tree orderings shift on the M5's wider core (see [#97](../../1-100/97-interleaving-string/), [#99](../../1-100/99-recover-binary-search-tree/)), so treat the *margin* as a data point; the Kāra-ahead-of-Rust sign is robust across the nested-Vec siblings ([#102](../102-binary-tree-level-order-traversal/)), but the size may compress. *(2026-11-01: the sign held throughout; the margin compressed to 1.04× on the legacy backend, 2026-07-28, and is 1.26× on v2/MIR.)*
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference) and, once folded in, [`bench/results.json`](bench/results.json) (M5, canonical).
+Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 

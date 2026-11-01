@@ -10,7 +10,7 @@
 # workload is ALLOCATION-bound. Each mirror uses its natural node: Kara `shared` (RC), C/Go
 # raw pointer, Rust Box + &-borrow. The DFS's two recursive calls both write the shared `rows`
 # accumulator (a genuine dependency), so auto-par leaves the recursion sequential and the
-# default `karac build` stays single-threaded (verified byte-equal to KARAC_AUTO_PAR=0).
+# default `karac build` stays single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is the like-for-like (kata #69's discipline).
 # Python runs a smaller K (pure-Python is slow) — timed separately, NOT cross-checked.
