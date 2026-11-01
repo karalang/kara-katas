@@ -99,7 +99,7 @@ smells.py:27: function 'connect' reads global 'retries', not class attribute Con
 
 One row, filed in the kara ledger:
 
-- B-2026-11-01-5: a struct variant named like a library type
+- B-2026-11-01-6: a struct variant named like a library type
   (`Stmt.Match { cases }`; `Response`, `Client`, `Regex` and `Stats` too)
   passes `karac check`, but `karac run` and `karac build` refuse a use of
   its `Vec` field. The checker also reads that variant's field types from
