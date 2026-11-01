@@ -87,8 +87,6 @@ use `Slice[i64]` / `mut Slice[i64]`; `ref Slice` was a probe that turned up a la
 soundness hole, now closed for every caller.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: a reused length-`N=100` buffer is refilled each iteration with a `k`-rotated
 permutation of `1..N`, one slot is punched out of range to create a `k`-dependent gap, and
@@ -98,49 +96,56 @@ in place every iteration — the hot loop allocates nothing — so this is **all
 integer compute, the in-place-array counterpart to #38/#39/#40's heap work. The gap location
 varies with the loop index (no hoisting) and the checksum carries a loop-borne dependency, so
 it is a single-lane (seq) bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:03Z) with karac `g6697158fa` (v2/MIR
+backend).
 
 ### Seq lane — runtime (single-threaded in-place cyclic sort)
 
-| | Rust (`overflow-checks=on`) | **Kāra** | C | Rust (`-O`) | Go | Python |
+| | Rust (`overflow-checks=on`) | C | Rust (`-O`) | **Kāra** | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 51.4 ms | **52.1 ms** | 52.4 ms | 54.8 ms | 59.9 ms | 1603 ms |
-| vs Kāra | 1.01× faster (= safety) | — | 1.01× slower | 1.05× slower | 1.15× slower | 30.8× slower |
+| time | 54.5 ± 1.0 ms | 56.1 ± 1.3 ms | 59.4 ± 2.3 ms | **61.3 ± 1.1 ms** | 63.1 ± 1.2 ms | 1603 ms (last measured 2026-06-19, not re-run) |
+| vs Kāra | 1.12× faster (= safety) | 1.09× faster | 1.03× faster | — | 1.03× slower | 30.8× slower (2026-06-19 ratio) |
 
-**On allocation-free compute Kāra is in a dead heat with the C-class — and ties equal-safety
-Rust.** This is the #36/#37 result, not the #39/#40 one: with no `malloc`/`free` in the hot
-loop, the gap that allocation churn opened in the backtracking katas closes entirely. Kāra
-(52.1 ms) lands between `rustc -C overflow-checks=on` (51.4 ms) and C (52.4 ms) — all three
-within ~2% — and **ahead** of unchecked `rustc -O` (54.8 ms) and Go (59.9 ms).
+**On allocation-free compute Kāra stays in the C-class pack, now at its back rather than its
+middle.** This is still the #36/#37 result, not the #39/#40 one: with no `malloc`/`free` in the
+hot loop, the large gap that allocation churn opened in the backtracking katas does not appear.
+Kāra (61.3 ms) is 1.03× unchecked `rustc -O`, 1.09× C, and 1.03× *ahead* of Go. Against the
+previous (2026-06-19, legacy-backend) run that is near flat: Kāra/Rust 0.95× → 1.03×, Kāra/C
+1.00× → 1.09×, Kāra/Go 0.87× → 0.97×.
 
-- **Equal safety is free here.** Kāra checks arithmetic by default; the apples-to-apples
-  comparator is `rustc -C overflow-checks=on` (51.4 ms), which **ties** Kāra (52.1 ms) to
-  within 1%. That unchecked `rustc -O` (54.8 ms) is actually *slower* than its checked
-  sibling is codegen noise on this swap-and-scan loop (the modulus keeps every value in
-  range, so neither traps) — the takeaway is that the checked/unchecked spread is ~6% and
-  Kāra sits inside it. No allocation, no String, no `Vec[Vec]` — just indexed loads, compares,
-  and swaps, which Kāra lowers as tightly as clang.
-- **The residual to clang is compile-time, not runtime.** Runtime is a three-way tie;
-  `clang -O3` only leads on *build* speed (45.3 ms, the toolchain floor).
+- **The equal-safety comparator moved most.** Kāra checks arithmetic by default; the
+  apples-to-apples comparator is `rustc -C overflow-checks=on` (54.5 ms), which went from tying
+  Kāra (1.01×) to leading it by 1.12×. As before, checked Rust is *faster* than its unchecked
+  `rustc -O` sibling (54.5 vs 59.4 ms) — codegen noise on this swap-and-scan loop (the modulus
+  keeps every value in range, so neither traps); the checked/unchecked spread is ~9%, and Kāra
+  now sits just outside it. No allocation, no String, no `Vec[Vec]` — just indexed loads,
+  compares, and swaps.
+- **Compile is no longer a Kāra win.** `clang -O3` is the build-speed floor (50.1 ms) and
+  `rustc -O` (93.5 ms) now builds faster than `karac` (114.8 ms) — see the table below.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum
-reduction carries a loop-borne dependency, so karac's auto-par pass does not fire: the default
-and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded.
+reduction carries a loop-borne dependency, so karac's auto-par pass does not fire: neither the
+default nor the `KARAC_AUTO_PAR=0` build's emitted IR (`KARAC_MIR_LL`) contains a call of
+`karac_mir_task_spawn`, and the two binaries are **byte-identical** (re-checked with karac
+`g6697158fa`); both run single-threaded.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.05 MiB | 1.00 MiB | 2.67 MiB |
-| binary size (seq) | 33.4 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
-| compile elapsed | 72.4 ms | 84.8 ms | **45.3 ms** |
-| compile peak RSS | 13.1 MiB | 27.8 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.05 MiB | 1.06 MiB | **1.02 MiB** | 2.69 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 114.8 ms | 93.5 ms | **50.1 ms** |
+| compile peak RSS | 56.4 MiB | 27.7 MiB | **2.5 MiB** |
 
-A single 100-element buffer means runtime RSS is tiny and allocator-bound: Kāra and C tie at
-**1.00 MiB** (byte-for-byte equal peak), Rust within rounding at 1.05 MiB, while Go's runtime
-pays 2.67 MiB and Python's interpreter 6.8 MiB. The seq compute binary references no
-par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.4 KiB** — 13.6× under Rust and
-within a rounding of C's 32.7 KiB. Compile favours Kāra over `rustc -O` on both elapsed (72.4
-vs 84.8 ms) and peak compiler RSS (13.1 vs 27.8 MiB); clang's 45.3 ms / 2.5 MiB is the floor.
+A single 100-element buffer means runtime RSS is tiny and allocator-bound: C peaks at
+**1.02 MiB**, Kāra at 1.05 MiB (32 KiB over C) and Rust at 1.06 MiB, while Go's runtime pays
+2.69 MiB and Python's interpreter 6.8 MiB (last measured 2026-06-19, not re-run). The Kāra
+binary is **295.8 KiB** — 1.5× under Rust's 455.4 KiB but 9× C's 32.7 KiB; every MIR-backend
+Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Compile now favours `rustc -O` over
+`karac` on both elapsed (93.5 vs 114.8 ms) and peak compiler RSS (27.7 vs 56.4 MiB); clang's
+50.1 ms / 2.5 MiB is the floor.
 
 ## Kāra features exercised
 
@@ -152,9 +157,9 @@ vs 84.8 ms) and peak compiler RSS (13.1 vs 27.8 MiB); clang's 45.3 ms / 2.5 MiB 
   alternative surfaced (and fixed) [`B-2026-06-19-1`](../../../../kara/docs/bug-ledger.jsonl).
 - **`Vec[bool]` presence table** — the seen-table allocates, fills, and indexes a `Vec[bool]`
   of size `n+1`, the allocating contrast to the in-place pair.
-- **Checked integer arithmetic at C speed** — index math, negation (sign marking), and the
-  checksum fold all run under Kāra's default overflow checking, matching
-  `rustc -C overflow-checks=on` to within 1%.
+- **Checked integer arithmetic near C speed** — index math, negation (sign marking), and the
+  checksum fold all run under Kāra's default overflow checking, within 1.12× of
+  `rustc -C overflow-checks=on` and 1.09× of C.
 - **Three factorings of one O(n) idea** — cyclic sort, sign marking, and a boolean seen-table,
   all agreeing across the LeetCode examples under both `karac run` and `karac build`.
 

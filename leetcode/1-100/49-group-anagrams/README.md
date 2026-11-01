@@ -179,9 +179,6 @@ Both solvers are byte-identical to the oracle under `karac run`, `karac build` (
 and `KARAC_AUTO_PAR=0`.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-02 snapshot; the feed was last measured 2026-08-04.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 ### How to run
 
@@ -208,27 +205,39 @@ classes whose letters are `L` consecutive alphabet letters mod 26 — so exactly
 anagram groups arise. `K = 40` outer iterations regroup the same list. All five print the same
 sink (`K × 26 = 1040`) so the grouping participates in I/O and can't be elided.
 
-**Seq-only kata.** The per-word work is a sort + one hash-map lookup; there's no cross-word parallel
-structure the auto-par cost model engages, so the Kāra binary is built `KARAC_AUTO_PAR=0` and the
-seq row is the apples-to-apples comparator against the native single-file compilers.
+**Seq-only kata.** The per-word work is a sort + one hash-map lookup, and the bench times only the
+seq lane: the Kāra binary is built `KARAC_AUTO_PAR=0`, so its row is the apples-to-apples comparator
+against the native single-file compilers. (When this kata was written there was no cross-word
+parallel structure the auto-par cost model engaged. That no longer holds under the v2/MIR
+toolchain: the default build's emitted IR (`KARAC_MIR_LL`) carries `karac_mir_task_spawn` calls in
+`main` and `make_words` and the binary is 409.5 KiB, while the `KARAC_AUTO_PAR=0` twin carries none.
+The default lane is not benched.)
 
 ### Runtime
 
-Snapshot — M5 Pro, 2026-07-02, hyperfine `--warmup 5 --runs 30`, medians:
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T02:09Z UTC), hyperfine
+`--warmup 5 --runs 30`:
 
-| Run | Median |
-|---|---|
-| `c    group_anagrams` (clang -O3) | **10.3 ms** |
-| `rust group_anagrams` (rustc -O)  | 26.3 ms |
-| **`kara group_anagrams` (codegen, seq)** | **42.8 ms** |
-| `go   group_anagrams` (go build)  | 70.9 ms |
-| `py   group_anagrams` (CPython)   | 154.4 ms |
+| Run | Mean ± σ | Median | Kāra vs it |
+|---|---|---|---|
+| `c    group_anagrams` (clang -O3) | **9.05 ± 0.22 ms** | 9.04 ms | 3.38× slower |
+| `rust group_anagrams` (rustc -O)  | 26.88 ± 0.93 ms | 26.78 ms | 1.14× slower |
+| `rust group_anagrams` (`overflow-checks=on`, = Kāra safety) | 29.17 ± 1.07 ms | 29.02 ms | 1.05× slower |
+| **`kara group_anagrams` (codegen, seq)** | **30.58 ± 1.25 ms** | **30.41 ms** | — |
+| `go   group_anagrams` (go build)  | 74.85 ± 1.45 ms | 74.50 ms | 2.45× faster |
+| `py   group_anagrams` (CPython)   | 154.4 ms median (last measured 2026-07-02, not re-run) | — | — |
 
 The hot cost of this kata is the **anagram key**, computed `N × K = 800_000` times — the map is
-tiny (26 entries), so the sort dominates. Kāra runs **1.63× slower than Rust**, **1.66× faster than
-Go**, and **3.6× faster than CPython**; C's 4× lead is a workload-shape win (its 8-char key never
-leaves the stack — zero heap allocation), not a codegen gap, so the within-abstraction comparator is
-Rust.
+tiny (26 entries), so the sort dominates. Kāra runs **1.14× slower than Rust** (1.05× off the
+safety-matched `overflow-checks=on` build) and **2.45× faster than Go** (Go's mean is wall-clock;
+its user CPU, 74.4 ms, matches it here); against CPython it was **3.6× faster** at the 2026-07-02
+snapshot (Python not re-run). C's 3.4× lead is a workload-shape win (its 8-char key never leaves the
+stack — zero heap allocation), not a codegen gap, so the within-abstraction comparator is Rust.
+
+**Improved since the previous feed** (karac `g9b43809ab`, 2026-08-04): Kāra/Rust moved 1.63× →
+1.14×, Kāra/C 4.95× → 3.38× and Kāra/Go 0.62× → 0.41× — a 30–35% relative gain against every
+comparator, while the comparators themselves ran 6–13% slower in absolute terms this session.
 
 **This kata drove a `karac` runtime optimization.** The first cut of this bench was a *loss* for
 Kāra — **97 ms**, 3.7× slower than Rust and 1.4× slower than Go — because `String.sorted()` took a
@@ -244,19 +253,20 @@ byte-sort fast-path for karac_string_sorted*).
 
 ### Compile time, binary size, memory
 
-Snapshot — M5 Pro, 2026-07-02, hyperfine `--warmup 1 --runs 10` (compile, cold via `--prepare`);
-size and peak RSS are single deterministic samples.
+M5 Pro, measured 2026-10-31 (same run as above), hyperfine `--warmup 1 --runs 10` (compile, cold
+via `--prepare`); size and runtime peak RSS are single deterministic samples.
 
-| Compiler | Compile (cold) | Binary | Peak RSS |
+| Compiler | Compile (cold) | Binary | Peak RSS (runtime) |
 |---|---|---|---|
-| `clang -O3` | 62.4 ms | 32.9 KiB | 1.19 MiB |
-| **`karac build`** | **82.4 ms** | **295.5 KiB** | **2.00 MiB** |
-| `rustc -O` | 151.2 ms | 475.7 KiB | 1.95 MiB |
-| `go build` | — (excluded; mixes module + std-lib link) | 2452.3 KiB | 9.28 MiB |
+| `clang -O3` | 68.8 ms | 33.0 KiB | 1.31 MiB |
+| **`karac build`** (seq) | **123.4 ms** | **344.6 KiB** | **2.00 MiB** |
+| `rustc -O` | 145.4 ms | 475.7 KiB | 1.97 MiB |
+| `go build` | — (excluded; mixes module + std-lib link) | 2452.3 KiB | 9.41 MiB |
 
-Kāra also wins the toolchain envelope: it **compiles ~1.8× faster than `rustc -O`**, emits a binary
-**~38% smaller than Rust** (and ~8× smaller than Go), and peaks at **2.0 MiB RSS** — line-ball with
-Rust, ~4× under Go and Python.
+Kāra still **compiles faster than `rustc -O`** (1.18×), though behind clang (1.79×). Binary size:
+every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger
+`B-2026-10-28-36`); this one is **344.6 KiB**, ~28% smaller than Rust's 475.7 KiB and ~7× smaller
+than Go. Runtime peak RSS is **2.0 MiB** — line-ball with Rust (1.97 MiB), ~4.7× under Go.
 
 ## Calibration re-probe (2026-10-06)
 

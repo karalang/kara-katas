@@ -73,7 +73,7 @@ because there is no branch left to mispredict). Kāra and the safety-matched
 predictor pipelines, letting independent iterations overlap — ~112–120 ms, **~3× faster**. The
 two land in a dead heat (Kāra 119.9 ms vs checked Rust 112.4 ms, within 7%), so this is a
 *codegen choice on this loop shape*, not a Kāra-specific trick: when Rust is compiled to the
-same branchy code, it ties Kāra.
+same branchy code, it ties Kāra. (Those figures are the legacy snapshot. On the 31 Oct 2026 v2/MIR re-bench the two are 1.12× apart on means and within 4% on medians, see § Benchmarks; the shape of the argument stands.)
 
 The honest reading is the corpus's usual one — **the apples-to-apples (equal-safety) comparator
 ties Kāra** — with the added note that `clang`/`rustc -O`'s `csel` transform happens to be a
@@ -82,9 +82,6 @@ the idiomatic two-pointer in every language (no hand-tuning to force or forbid `
 gap is what the stock toolchains emit.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: a jagged length-`N=1000` terrain (`(i*37)%100`) is built **once**, then **`TOTAL =
 200000`** times a single slot is punched (`height[k%n] = (k*19)%100`, an O(1) tweak that shifts
@@ -96,50 +93,57 @@ slot changes per iteration — the hot loop **allocates nothing** — so this is
 integer compute, the in-place-scan counterpart to [#41](../41-first-missing-positive/). The
 punch location and the checksum carry a loop-borne dependency (no hoisting), so it is a
 single-lane (seq) bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:04Z) with karac `g6697158fa` (v2/MIR
+backend).
 
 ### Seq lane — runtime (single-threaded converging two-pointer)
 
 | | Rust (`overflow-checks=on`) | Go | **Kāra** | C | Rust (`-O`) | Python |
 |---|---|---|---|---|---|---|
-| time | 112.4 ms | 113.1 ms | **119.9 ms** | 340.9 ms | 353.1 ms | 5358 ms |
-| vs Kāra | 1.07× faster (= safety) | 1.06× faster | — | 2.84× slower | 2.95× slower | 44.7× slower |
+| time | 120.6 ± 5.4 ms | 124.0 ± 4.1 ms | **135.4 ± 18.7 ms** | 375.6 ± 7.7 ms | 387.5 ± 6.5 ms | 5358 ms (last measured 2026-06-19, not re-run) |
+| vs Kāra | 1.12× faster (= safety) | 1.09× faster | — | 2.77× slower | 2.86× slower | 44.7× slower (2026-06-19 ratio) |
 
-**Kāra ties the equal-safety comparator and Go, and is ~3× ahead of stock C and Rust — because
-of the `csel` story above, not raw throughput.** This is the rare kata where reading the
-*shape* matters more than usual:
+**Kāra sits with the equal-safety comparator and Go, and is ~2.8× ahead of stock C and Rust —
+because of the `csel` story above, not raw throughput.** This is the rare kata where reading
+the *shape* matters more than usual. Against the previous (2026-06-19, legacy-backend) run the
+picture is flat: Kāra/Rust 0.34× → 0.35×, Kāra/C 0.35× → 0.36×, Kāra/Go 1.06× → 1.09×.
 
-- **Equal safety is a dead heat.** Kāra checks arithmetic by default; the apples-to-apples
-  comparator is `rustc -C overflow-checks=on` (112.4 ms), which ties Kāra (119.9 ms) to within
-  7%. Go (113.1 ms) sits with them. All three keep the converging-pointer comparison as a
-  predicted branch.
-- **Don't over-read the 3× over C/Rust.** `clang -O3` (340.9 ms) and `rustc -O` (353.1 ms) emit
+- **Equal safety is a near-tie.** Kāra checks arithmetic by default; the apples-to-apples
+  comparator is `rustc -C overflow-checks=on` (120.6 ms), 1.12× ahead of Kāra's mean
+  (135.4 ms). Kāra's mean carries a wide ±18.7 ms σ from a few slow runs (max 166.8 ms); on
+  medians the two are 123.8 vs 119.2 ms, within 4%. Go (124.0 ms) sits with them. All three
+  keep the converging-pointer comparison as a predicted branch.
+- **Don't over-read the ~2.8× over C/Rust.** `clang -O3` (375.6 ms) and `rustc -O` (387.5 ms) emit
   a branchless `csel` chain that serializes the loop-carried `left`/`right` update — a
   latency-bound de-optimization for *this* kernel on Apple Silicon (confirmed terrain-
   independent; see § What this kata surfaced). It is a real, reproducible gap, but it is a stock-
-  toolchain codegen choice, not evidence Kāra's compute is 3× faster in general. The honest
-  headline is the equal-safety tie.
-- **Python** runs the identical algorithm interpreted: 44.7× slower.
+  toolchain codegen choice, not evidence Kāra's compute is ~3× faster in general. The honest
+  headline is the equal-safety near-tie.
+- **Python** runs the identical algorithm interpreted: 44.7× slower (2026-06-19 run, not re-run).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.06 MiB | 1.00 MiB | 2.66 MiB |
-| binary size (seq) | 33.4 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
-| compile elapsed | 65.0 ms | 81.6 ms | **42.2 ms** |
-| compile peak RSS | 13.2 MiB | 27.6 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.03 MiB | 1.06 MiB | **1.02 MiB** | 2.64 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 113.0 ms | 84.5 ms | **46.6 ms** |
+| compile peak RSS | 57.6 MiB | 27.6 MiB | **2.6 MiB** |
 
-A single 1000-element buffer means runtime RSS is tiny and allocator-bound: Kāra and C tie at
-**1.00 MiB** (byte-for-byte equal peak, 1 065 272 bytes), Rust within rounding at 1.06 MiB,
-while Go's runtime pays 2.66 MiB and Python's interpreter 6.8 MiB. The seq compute binary
-references no par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.4 KiB** — 13.6×
-under Rust and within a rounding of C's 32.7 KiB. Compile favours Kāra over `rustc -O` on both
-elapsed (65.0 vs 81.6 ms) and peak compiler RSS (13.2 vs 27.6 MiB); clang's 42.2 ms / 2.5 MiB is
-the floor.
+A single 1000-element buffer means runtime RSS is tiny and allocator-bound: C peaks at
+**1.02 MiB** (1 065 272 bytes), Kāra at 1.03 MiB (1 081 680 bytes, 16 KiB over C) and Rust at
+1.06 MiB, while Go's runtime pays 2.64 MiB and Python's interpreter 6.8 MiB (last measured
+2026-06-19, not re-run). The Kāra binary is **295.8 KiB** — 1.5× under Rust's 455.4 KiB but 9×
+C's 32.7 KiB; every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were
+~34 KB (tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Compile now favours
+`rustc -O` over `karac` on both elapsed (84.5 vs 113.0 ms) and peak compiler RSS (27.6 vs
+57.6 MiB); clang's 46.6 ms / 2.6 MiB is the floor.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum reduction
-carries a loop-borne dependency, so karac's auto-par pass does not fire: the default and
-`KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded.
+carries a loop-borne dependency, so karac's auto-par pass does not fire: neither the default
+nor the `KARAC_AUTO_PAR=0` build's emitted IR (`KARAC_MIR_LL`) contains a call of
+`karac_mir_task_spawn`, and the two binaries are **byte-identical** (re-checked with karac
+`g6697158fa`); both run single-threaded.
 
 ## Kāra features exercised
 
@@ -155,7 +159,7 @@ carries a loop-borne dependency, so karac's auto-par pass does not fire: the def
   basin-closing loop.
 - **Checked integer arithmetic that ties C-class** — index math, the running-max compares, the
   width × depth slab products, and the checksum fold all run under Kāra's default overflow
-  checking, matching `rustc -C overflow-checks=on` to within 7% — and the predicted-branch
+  checking, within 1.12× of `rustc -C overflow-checks=on` (4% on medians) — and the predicted-branch
   lowering avoids the `csel` latency trap the stock `-O` backends fall into here.
 - **Three factorings of one O(n) idea** — two-pointer, prefix/suffix maxima, and a monotonic
   stack, all agreeing across the LeetCode examples under both `karac run` and `karac build`.

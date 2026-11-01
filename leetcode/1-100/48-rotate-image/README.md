@@ -103,9 +103,6 @@ print-grid helper in every solver, which is written in its natural `let row = m[
 the fix.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-30.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: a fixed `n=20` matrix (the max LeetCode size) is rotated **`TOTAL = 40000`** times **in
 place**, the state carrying forward across iterations. Each iteration punches one cell
@@ -115,50 +112,60 @@ cell varies with the loop index (no hoisting of an otherwise-constant result) an
 carries a loop-borne dependency, so this is a single-lane (seq) bench by construction. Unlike kata
 [#46](../46-permutations/)/[#47](../47-permutations-ii/), **the rotation kernel allocates nothing
 per solve** — the matrix is its own scratch — so this measures pure compute: nested-`Vec[Vec[i64]]`
-index arithmetic, bounds checks, and in-place swaps. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+index arithmetic, bounds checks, and in-place swaps. Apple M5 Pro; `bench/bench.sh` (`hyperfine`,
+30 runs). Measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T02:09Z UTC).
 
 ### Seq lane — runtime (single-threaded in-place ring rotation)
 
 | | C | **Kāra** | Rust (`-O`) | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 45.3 ms | **52.6 ms** | 47.6 ms | 51.0 ms | 53.6 ms | 1138.7 ms |
-| vs Kāra | 1.16× faster | — | 1.11× faster | 1.03× faster (= safety) | 1.02× slower | 21.6× slower |
+| time | 50.2 ± 0.5 ms | **58.3 ± 0.8 ms** | 52.7 ± 1.4 ms | 56.3 ± 0.9 ms | 59.5 ± 0.7 ms | 1138.7 ms (last measured 2026-06-30, not re-run) |
+| vs Kāra | 1.16× faster | — | 1.11× faster | 1.04× faster (= safety) | 1.02× slower | ~22× slower (vs that run's Kāra) |
 
 This is an **allocation-free, index-bound** kernel — every iteration is `O(n²)` double-indexed
 reads/writes into a `Vec[Vec[i64]]` plus an `O(n²)` checksum fold, with no heap traffic. At that mix
-Kāra lands at **52.6 ms: ahead of Go, within ~3% of the safety-matched `rustc -C overflow-checks=on`
-(51.0 ms), ~1.11× behind `rustc -O`, and ~1.16× behind C** — comfortably inside the documented v1
-bar (`design.md`: "within ~2× apples-to-apples"). The residual gap to C is codegen quality on the
-doubly-indirect `m[i][j]` inner loop (two pointer-chases + two bounds checks per cell under Kāra's
-checked-by-default indexing), not arithmetic: the safety-matched Rust comparator
-(`overflow-checks=on`, 51.0 ms) is the right yardstick, and Kāra sits ~3% off it. Python runs the
-identical algorithm interpreted, ~21.6× behind.
+Kāra lands **ahead of Go (1.02×), ~4% off the safety-matched `rustc -C overflow-checks=on`, ~1.11×
+behind `rustc -O`, and ~1.16× behind C** — comfortably inside the documented v1 bar (`design.md`:
+"within ~2× apples-to-apples"). The ratios are flat against the previous snapshot (legacy backend,
+2026-06-30: 1.16× C, 1.11× Rust, 0.98× Go); every comparator ran ~11% slower in absolute terms
+this session, Kāra included. The residual gap to C is codegen quality on the doubly-indirect
+`m[i][j]` inner loop (two pointer-chases + two bounds checks per cell under Kāra's checked-by-default
+indexing), not arithmetic: the safety-matched Rust comparator (`overflow-checks=on`) is the right
+yardstick, and Kāra sits ~4% off it. Python runs the identical algorithm interpreted, ~22× behind
+(last measured 2026-06-30, not re-run).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.02 MiB | 1.06 MiB | **1.00 MiB** | 2.64 MiB |
-| binary size (seq) | 33.4 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
-| compile elapsed | **82.2 ms** | 124.4 ms | 86.4 ms |
-| compile peak RSS | 19.7 MiB | 31.5 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.05 MiB | 1.08 MiB | **1.02 MiB** | 2.80 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
+| compile elapsed | 135.5 ms | 125.4 ms | **107.3 ms** |
+| compile peak RSS | 56.8 MiB | 31.4 MiB | **2.7 MiB** |
 
-Runtime peak RSS is a three-way tie among the native mirrors — Kāra **1.02 MiB**, C 1.00 MiB, Rust
-1.06 MiB, all within noise — while Go's runtime pays 2.64 MiB and Python's interpreter 6.8 MiB. The
-seq compute binary references no par-scheduler runtime, so LTO + `-dead_strip` carve it to
-**33.4 KiB**, within a rounding of C's 32.8 KiB and 13.6× under Rust. Compile is the clean win here:
-Kāra is the **fastest** of the three AOT toolchains end to end — **82.2 ms**, 1.05× faster than
-`clang -O3` (86.4 ms) and 1.51× faster than `rustc -O` (124.4 ms) — at 1.6× lighter peak compiler
-RSS than `rustc` (19.7 vs 31.5 MiB); clang's 2.5 MiB is the floor.
+Runtime peak RSS is a three-way tie among the native mirrors — Kāra **1.05 MiB**, C 1.02 MiB, Rust
+1.08 MiB, all within noise — while Go's runtime pays 2.80 MiB and Python's interpreter 6.8 MiB (last
+measured 2026-06-30, not re-run). Binary size: every v2/MIR Kāra binary is ~300–390 KB where
+legacy's were ~34 KB (tracked as kara ledger `B-2026-10-28-36`); this one is **295.8 KiB**, 1.54×
+under Rust's 455.4 KiB and 9.0× over C's 32.8 KiB. Compile is no longer a win: Kāra is now the
+slowest of the three AOT toolchains here — 135.5 ms vs `rustc -O`'s 125.4 ms (1.08×) and
+`clang -O3`'s 107.3 ms (1.26×) — and its peak compiler RSS is 1.8× `rustc`'s (56.8 vs 31.4 MiB);
+clang's 2.7 MiB is the floor.
 
 **No par lane — by construction.** The per-iteration rotate is pure, but the checksum reduction
-carries a loop-borne dependency, so karac's auto-par pass does not fire on the bench harness: the
-default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded — same
-as [#45](../45-jump-game-ii/)/[#46](../46-permutations/)/[#47](../47-permutations-ii/). Worth noting
-the contrast the **solver** files draw out: their rotation loops *are* embarrassingly parallel (each
-ring-cycle / transpose-swap / scatter touches disjoint cells), so auto-par safely transforms them —
-the default and seq solver binaries differ yet produce identical output on every case. The
-allocation-free, disjoint-write structure that makes ring rotation a clean auto-par target is the
+carries a loop-borne dependency, so karac's auto-par pass does not fire on the bench harness:
+neither the default nor the `KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn`
+(verified in the emitted IR, `KARAC_MIR_LL`), and both run single-threaded — same as
+[#45](../45-jump-game-ii/)/[#46](../46-permutations/)/[#47](../47-permutations-ii/). Under the MIR
+backend the two binaries are the same size (295.8 KiB) but not byte-identical (the default build's
+pre-optimisation IR carries extra block structure). Worth noting the contrast the **solver** files
+draw out: their rotation loops *are* embarrassingly parallel (each ring-cycle / transpose-swap /
+scatter touches disjoint cells), and on the legacy backend auto-par safely transformed them — the
+default and seq solver binaries differed yet produced identical output on every case. *As of the
+2026-10-31 v2/MIR toolchain auto-par no longer fires on any of the four solvers either: none of
+their default builds carries a `karac_mir_task_spawn` call, and default and seq output match.* The
+allocation-free, disjoint-write structure that made ring rotation a clean auto-par target is the
 same structure that keeps it competitive with C here.
 
 ## Kāra features exercised
@@ -181,7 +188,7 @@ same structure that keeps it competitive with C here.
   rebinding makes it mutable for the in-place rotate.
 - **Checked integer arithmetic at zero cost** — the ring/transpose index math (`n-1-i`, `n-1-j`)
   and the position-weighted checksum fold run under Kāra's default overflow checking and land within
-  ~3% of the safety-matched `rustc -C overflow-checks=on`; the seq-lane result here is set by
+  ~4% of the safety-matched `rustc -C overflow-checks=on`; the seq-lane result here is set by
   index-codegen quality, not arithmetic.
 
 ---

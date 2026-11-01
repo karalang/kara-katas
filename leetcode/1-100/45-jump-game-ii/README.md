@@ -66,8 +66,6 @@ and the equal-safety Rust comparator on a tight scalar loop**, with the differen
 run-to-run noise (§ Benchmarks). That parity-with-no-asterisk is itself the finding here.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: a reachable length-`N=1000` array `nums` (entries `1 + i%4`, so every index can always
 step at least one forward and the answer is well-defined under every punch) is built **once**,
@@ -78,41 +76,50 @@ checksum (sink `92502267`). The per-iteration cost is therefore the **greedy min
 itself**, not an O(n) refill — the hot loop **allocates nothing**, the answer varies with the
 loop index (no hoisting), and the checksum carries a loop-borne dependency, so this is a
 single-lane (seq) bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:07Z) with karac `g6697158fa` (v2/MIR
+backend).
 
 ### Seq lane — runtime (single-threaded greedy range expansion)
 
-| | Rust (`-O`) | Go | Rust (`overflow-checks=on`) | C | **Kāra** | Python |
+| | Rust (`overflow-checks=on`) | Go | C | Rust (`-O`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 99.4 ms | 101.2 ms | 102.8 ms | 103.0 ms | **103.8 ms** | 6680 ms |
-| vs Kāra | 1.04× faster | 1.03× faster | 1.01× faster (= safety) | 1.01× faster | — | 64.4× slower |
+| time | 101.7 ± 1.2 ms | 103.2 ± 2.9 ms | 108.0 ± 1.8 ms | 109.7 ± 1.9 ms | **112.8 ± 4.6 ms** | 6680 ms (last measured 2026-06-19, not re-run) |
+| vs Kāra | 1.11× faster (= safety) | 1.09× faster | 1.04× faster | 1.03× faster | — | 64.4× slower (2026-06-19 ratio) |
 
-**Kāra is at parity** — every native mirror lands within ~4% of it, and the equal-safety
-comparator, C, and Go are all within ~1% (inside the noise band; Kāra's own run-to-run σ is
-±2.6 ms). On a branch-predictable forward scalar loop there is no safety tax to isolate and no
-codegen choice to diverge on: `rustc -C overflow-checks=on` (102.8 ms) ties plain `rustc -O`
-(99.4 ms) to within 3%, and Kāra sits right with them. Python runs the identical algorithm
-interpreted, 64× behind.
+**Kāra is near parity** — C and `rustc -O` land within ~4% of it, Go and the equal-safety
+comparator within ~11% (Kāra's own run-to-run σ is ±4.6 ms). Against the previous
+(2026-06-19, legacy-backend) run this is flat: Kāra/Rust 1.04× → 1.03×, Kāra/C 1.01× → 1.04×,
+Kāra/Go 1.03× → 1.09×. The one comparator that moved is checked Rust: `rustc -C
+overflow-checks=on` (101.7 ms) was ~3% *slower* than plain `rustc -O` last time and is now
+~7% *faster* than it, so Kāra/checked-Rust went 1.01× → 1.11× while Kāra held steady against
+unchecked Rust. On a branch-predictable forward scalar loop there is no safety tax to isolate
+— the checked and unchecked Rust builds trade places run to run — and no codegen choice to
+diverge on. Python runs the identical algorithm interpreted, 64× behind (2026-06-19 run, not
+re-run).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.06 MiB | 1.00 MiB | 2.56 MiB |
-| binary size (seq) | 33.4 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
-| compile elapsed | 91.9 ms | 105.0 ms | **51.1 ms** |
-| compile peak RSS | 13.3 MiB | 28.8 MiB | **2.5 MiB** |
+| **runtime peak RSS** | **1.03 MiB** | 1.08 MiB | **1.03 MiB** | 2.56 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 113.9 ms | 88.4 ms | **44.5 ms** |
+| compile peak RSS | 56.7 MiB | 28.7 MiB | **2.6 MiB** |
 
 A single 1000-element `i64` buffer means runtime RSS is tiny and allocator-bound: Kāra and C
-tie at **1.00 MiB** (byte-for-byte equal peak, 1 065 272 bytes), Rust within rounding at
-1.06 MiB, while Go's runtime pays 2.56 MiB and Python's interpreter 6.8 MiB. The seq compute
-binary references no par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.4 KiB** —
-13.6× under Rust and within a rounding of C's 32.7 KiB. Compile favours Kāra over `rustc -O` on
-both elapsed (91.9 vs 105.0 ms) and peak compiler RSS (13.3 vs 28.8 MiB); clang's 51.1 ms /
-2.5 MiB is the floor.
+tie at **1.03 MiB** (1 081 680 vs 1 081 656 bytes, 24 bytes apart), Rust within rounding at
+1.08 MiB, while Go's runtime pays 2.56 MiB and Python's interpreter 6.8 MiB (last measured
+2026-06-19, not re-run). The Kāra binary is **295.8 KiB** — 1.5× under Rust's 455.4 KiB but 9×
+C's 32.7 KiB; every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were
+~34 KB (tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Compile now favours
+`rustc -O` over `karac` on both elapsed (88.4 vs 113.9 ms) and peak compiler RSS (28.7 vs
+56.7 MiB); clang's 44.5 ms / 2.6 MiB is the floor.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum reduction
-carries a loop-borne dependency, so karac's auto-par pass does not fire: the default and
-`KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded.
+carries a loop-borne dependency, so karac's auto-par pass does not fire: neither the default
+nor the `KARAC_AUTO_PAR=0` build's emitted IR (`KARAC_MIR_LL`) contains a call of
+`karac_mir_task_spawn`, and the two binaries are **byte-identical** (re-checked with karac
+`g6697158fa`); both run single-threaded.
 
 ## Kāra features exercised
 
@@ -127,7 +134,7 @@ carries a loop-borne dependency, so karac's auto-par pass does not fire: the def
   with a nested loop that still totals one linear pass (`lo` chases `hi+1`).
 - **Checked integer arithmetic that ties C-class** — the index math, the `i+nums[i]` reach
   compares, and the checksum fold all run under Kāra's default overflow checking and land
-  dead-even with `rustc -C overflow-checks=on` on this scalar loop.
+  within 1.03× of `rustc -O` and 1.11× of `rustc -C overflow-checks=on` on this scalar loop.
 - **Three factorings of one shortest-path-by-layers idea** — greedy collapse, explicit layer
   window, and full DP recurrence — all agreeing across the LeetCode examples under both
   `karac run` and `karac build`.

@@ -84,8 +84,9 @@ profiler:
 
 The gap was never a safety tax — `rustc -C overflow-checks=on` (36.8 ms) ties plain `rustc -O`
 (36.0 ms) — and it was never the v1 allocator being "just slow": it was one redundant per-element
-clone. **With Fix 1, Kāra goes from ~2× behind to ~1.2–1.3× of C/Rust — and now runs *faster than
-Go* on this kernel** (§ Benchmarks). The residual ~1.25× is the genuine per-clone cost of the
+clone. **With Fix 1, Kāra went from ~2× behind to ~1.2–1.3× of C/Rust — and ran *faster than
+Go* on this kernel** (legacy backend, June 2026; the 2026-10-31 v2/MIR re-bench has it at 1.35× C /
+1.46× Rust, still ahead of Go — § Benchmarks). The residual is the genuine per-clone cost of the
 remaining 5040 leaf snapshots (element-wise copy vs `memcpy`) plus allocator differences — well
 inside Kāra's documented v1 bar (`design.md`: "within ~2× apples-to-apples").
 
@@ -98,47 +99,57 @@ free to vary without changing the `n!` count, so each iteration punches one slot
 permutation's position-weighted signature plus the count is folded into a rolling checksum (sink
 `75196912`). The punched values vary with the loop index (no hoisting of the otherwise-constant
 permutation set) and the checksum carries a loop-borne dependency, so this is a single-lane (seq)
-bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+bench by construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`, 30 runs). Measured 2026-10-31
+with karac `g6697158fa` (the v2/MIR backend; [`bench/results.json`](bench/results.json)
+`measured_at` 2026-11-01T02:07Z UTC).
 
 ### Seq lane — runtime (single-threaded used-array backtracking)
 
-Measured with the clone-elision fix (`B-2026-06-19-6`) landed:
-
 | | Rust (`-O`) | Rust (`overflow-checks=on`) | C | **Kāra** | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 36.0 ms | 36.8 ms | 38.4 ms | **47.0 ms** | 49.0 ms | 725.9 ms |
-| vs Kāra | 1.30× faster | 1.28× faster (= safety) | 1.22× faster | — | 1.04× slower | 15.4× slower |
+| time | 37.6 ± 2.0 ms | 37.6 ± 1.7 ms | 40.6 ± 1.9 ms | **54.7 ± 1.9 ms** | 61.8 ± 1.2 ms | 725.9 ms (last measured 2026-06-19, not re-run) |
+| vs Kāra | 1.46× faster | 1.45× faster (= safety) | 1.35× faster | — | 1.13× slower | ~15× slower (vs that run's Kāra) |
 
 This is an **allocation-bound** workload — 5040 leaf `Vec[i64]` snapshots per solve into a growing
-`Vec[Vec[i64]]`. Before the fix Kāra trailed native by ~2× (73.4 ms), which a `malloc` interposer
-pinned to Kāra issuing exactly 2× C's allocations — the signature loop's `let perm = perms[j]`
-deep-cloned each element it only read. With that clone elided (`B-2026-06-19-6`) Kāra drops to
-**47.0 ms — ~1.2–1.3× of C/Rust, and now faster than Go**. The safety-matched comparator confirms
-the residual isn't arithmetic: at **equal safety** `rustc -C overflow-checks=on` (36.8 ms) ties
-plain `rustc -O` (36.0 ms). What's left is the genuine cost of the 5040 remaining leaf clones
-(element-wise copy vs `memcpy`) plus allocator differences. Python runs the identical algorithm
-interpreted, 15× behind.
+`Vec[Vec[i64]]`. Before the clone-elision fix (`B-2026-06-19-6`) Kāra trailed native by ~2× (73.4
+ms on the legacy backend), which a `malloc` interposer pinned to Kāra issuing exactly 2× C's
+allocations — the signature loop's `let perm = perms[j]` deep-cloned each element it only read.
+With that clone elided Kāra now sits at **1.46× Rust and 1.35× C, still ahead of Go** (Go's 61.8 ms
+wall is also 102 ms of CPU — 61.7 ms user + 40.2 ms system at 165% — against Kāra's 52.9 ms user).
+The safety-matched comparator confirms the residual isn't arithmetic: at **equal safety** `rustc -C
+overflow-checks=on` (37.6 ms) ties plain `rustc -O` (37.6 ms). What's left is the genuine cost of the
+5040 remaining leaf clones (element-wise copy vs `memcpy`) plus allocator differences. Python runs
+the identical algorithm interpreted, ~15× behind (last measured 2026-06-19, not re-run).
+
+**Against the previous snapshot (legacy backend, 2026-06-19) this is slightly worse, borderline:**
+Kāra/Rust moved 1.30× → 1.46× and Kāra/C 1.22× → 1.35× (1.10–1.12× relative), while Kāra/Go
+improved 0.96× → 0.88×. Most of that move is session noise rather than codegen — the MIR build runs
+1.04× the October legacy build's instructions (1.30G vs 1.26G) — so it is not tracked as a ledger
+row.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.67 MiB | 1.72 MiB | **1.64 MiB** | 9.1 MiB |
-| binary size (seq) | 33.4 KiB | 455.9 KiB | **33.0 KiB** | 2434.1 KiB |
-| compile elapsed | 79.2 ms | 105.4 ms | **49.7 ms** |
-| compile peak RSS | 13.9 MiB | 31.3 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.70 MiB | 1.89 MiB | **1.63 MiB** | 8.9 MiB |
+| binary size (seq) | 295.8 KiB | 455.9 KiB | **33.0 KiB** | 2434.1 KiB |
+| compile elapsed | 131.4 ms | 106.7 ms | **52.5 ms** |
+| compile peak RSS | 57.1 MiB | 31.3 MiB | **2.6 MiB** |
 
-Runtime peak RSS is a three-way tie among the native mirrors — Kāra **1.67 MiB**, C 1.64 MiB, Rust
-1.72 MiB, all within noise — while Go's runtime pays 9.1 MiB and Python's interpreter 8.9 MiB. The
-seq compute binary references no par-scheduler runtime, so LTO + `-dead_strip` carve it to
-**33.4 KiB**, within a rounding of C's 33.0 KiB and 13.6× under Rust. Compile favours Kāra over
-`rustc -O` on both elapsed (79.2 vs 105.4 ms) and peak compiler RSS (13.9 vs 31.3 MiB); clang's
-49.7 ms / 2.5 MiB is the floor.
+Runtime peak RSS stays close among the native mirrors — Kāra **1.70 MiB**, C 1.63 MiB, Rust
+1.89 MiB — while Go's runtime pays 8.9 MiB and Python's interpreter 8.9 MiB (last measured
+2026-06-19, not re-run). Binary size: every v2/MIR Kāra binary is ~300–390 KB where legacy's were
+~34 KB (tracked as kara ledger `B-2026-10-28-36`); this one is **295.8 KiB**, 1.54× under Rust's
+455.9 KiB and 9.0× over C's 33.0 KiB. Compile now favours `rustc -O` over Kāra on both elapsed
+(106.7 vs 131.4 ms) and peak compiler RSS (31.3 vs 57.1 MiB); clang's 52.5 ms / 2.6 MiB is the
+floor.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum reduction
-carries a loop-borne dependency, so karac's auto-par pass does not fire: the default and
-`KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded — same as
-[#45](../45-jump-game-ii/).
+carries a loop-borne dependency, so karac's auto-par pass does not fire: neither the default nor the
+`KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn` (verified in the emitted IR,
+`KARAC_MIR_LL`), and both run single-threaded — same as [#45](../45-jump-game-ii/). Under the MIR
+backend the two binaries are the same size (295.8 KiB) but no longer byte-identical: the default
+build's pre-optimisation IR carries extra block structure that shifts a few bytes of code.
 
 ## Kāra features exercised
 
@@ -157,8 +168,9 @@ carries a loop-borne dependency, so karac's auto-par pass does not fire: the def
   the recursion as `mut ref` bindings; the root call writes the `mut` markers (fresh owned
   bindings) and interior calls forward them unmarked, per the call-site-marker rule.
 - **Checked integer arithmetic at zero cost** — the index math and the position-weighted checksum
-  fold run under Kāra's default overflow checking and land dead-even with `rustc -C
-  overflow-checks=on`; the seq-lane residual here is allocation, not arithmetic.
+  fold run under Kāra's default overflow checking; at that safety level `rustc -C
+  overflow-checks=on` ties plain `rustc -O` (37.6 vs 37.6 ms on the 2026-10-31 re-bench), so the
+  seq-lane residual here is allocation, not arithmetic.
 
 ---
 
@@ -177,7 +189,8 @@ benchmark drove **two `karac` codegen fixes**, both landed:
   (double-free of the moved source + leak of the old element). The index-store now drops the old
   element and suppresses the moved source's cleanup.
 
-The residual ~1.25× is the genuine per-clone cost of the 5040 remaining leaf snapshots
-(element-wise copy vs `memcpy`), well inside the documented v1 bar (`design.md`: "within ~2×
+The residual (~1.25× at the fix; 1.35× C / 1.46× Rust on the 2026-10-31 v2/MIR re-bench) is the
+genuine per-clone cost of the 5040 remaining leaf snapshots (element-wise copy vs `memcpy`), well
+inside the documented v1 bar (`design.md`: "within ~2×
 apples-to-apples"). See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl) for the
 cross-kata history.
