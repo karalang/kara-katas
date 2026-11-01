@@ -38,10 +38,6 @@ python3 binary_search.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-17 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 ### How to run
 
 ```bash
@@ -66,45 +62,48 @@ All compiled mirrors print the same sum-of-results sink per workload (linear: `1
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-17, hyperfine `--warmup 5 --runs 30 --shell=none`. Seq lane (both workloads single-threaded):
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend; [`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T00:18Z UTC), hyperfine `--warmup 5 --runs 30 --shell=none`. Seq lane (both workloads single-threaded), plus the `binary_search` par lane:
 
 | Workload | Kāra (codegen) | Rust | C (clang -O3) | Go | Kāra : Rust |
 |---|---|---|---|---|---|
-| `linear_scan` (K=10) | 5.1 ± 0.2 ms | 5.6 ± 1.5 ms | 4.8 ± 0.1 ms | 9.7 ± 1.5 ms | **kāra 1.10× faster** |
-| `binary_search` (K=2M) | 39.1 ± 1.2 ms | 51.4 ± 1.0 ms | 38.8 ± 0.4 ms | 35.0 ± 1.6 ms | **kāra 1.31× faster** |
+| `linear_scan` (K=10) | 5.66 ± 0.11 ms | 5.51 ± 0.11 ms | 4.97 ± 0.08 ms | 10.15 ± 1.80 ms | kāra 1.03× slower |
+| `binary_search` (K=2M) | 46.2 ± 0.7 ms | 58.2 ± 1.2 ms | 44.5 ± 1.0 ms | 37.9 ± 2.7 ms | **kāra 1.26× faster** |
+| `binary_search` par (auto-par vs rayon / pthreads / goroutines) | 9.18 ± 1.01 ms | 7.51 ± 0.27 ms | 6.97 ± 0.52 ms | 7.74 ± 0.27 ms | kāra 1.22× slower |
 
-**The binary-search midpoint BCE fix landed kāra at C parity here.** Before [`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md), `binary_search` ran **66.1 ms — 1.76× behind C** (and behind Rust), because the per-iteration `nums[mid]` bounds check survived `-O2`: folding `mid < len` needs the *relational* invariant `mid < hi`, which LLVM's interval-based CVP can't derive, and kāra's `mid = extractvalue(sadd.with.overflow …)` is opaque to its range pass. Teaching karac to emit `assume(lo <= mid < hi)` at the midpoint binding (surfaced and fixed via [#34](../../1-100/34-find-first-and-last-position/)) folds the check, dropping `binary_search` to **39.1 ms — dead even with C (38.8 ms) and 1.31× ahead of Rust**; Go's 35.0 ms keeps a 1.12× edge (its aggressive cross-call inlining of the ~21-iteration search into the K loop still wins the call-overhead-dominated regime). `linear_scan` holds at 1.10× ahead of Rust / 1.07× behind C. The two shapes:
+**The binary-search midpoint BCE fix landed kāra at C parity here** (history below is the 2026-06-17 legacy snapshot; the current MIR ratios follow it). Before [`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md), `binary_search` ran **66.1 ms — 1.76× behind C** (and behind Rust), because the per-iteration `nums[mid]` bounds check survived `-O2`: folding `mid < len` needs the *relational* invariant `mid < hi`, which LLVM's interval-based CVP can't derive, and kāra's `mid = extractvalue(sadd.with.overflow …)` is opaque to its range pass. Teaching karac to emit `assume(lo <= mid < hi)` at the midpoint binding (surfaced and fixed via [#34](../../1-100/34-find-first-and-last-position/)) folds the check, dropping `binary_search` to **39.1 ms — dead even with C (38.8 ms) and 1.31× ahead of Rust**; Go's 35.0 ms keeps a 1.12× edge (its aggressive cross-call inlining of the ~21-iteration search into the K loop still wins the call-overhead-dominated regime). `linear_scan` then held at 1.10× ahead of Rust / 1.07× behind C (no longer true on MIR: now 1.03× behind Rust, 1.14× behind C). The two shapes:
 
 - **`linear_scan` is inner-loop-dominated** — 20 M indexed reads, one compare each. Closed once karac's TargetMachine started passing the host CPU baseline (apple-m1 on macOS arm64) instead of `generic`/`""`, which is what unlocked LLVM's autovectorizer cost-model to interleave by 4 (matching Rust). See [`karac-rust/docs/implementation_checklist/phase-10-targets.md`](../../../../karac-rust/docs/implementation_checklist/phase-10-targets.md) for the CPU-baseline-per-target table mirroring rustc.
 - **`binary_search` is call-overhead-dominated** — each call is only ~21 iterations, so we measure how cheaply 2 M function dispatches happen plus the mid-compute and indexing inside. Three karac changes closed the gap, in order: source-level `Vec.with_capacity(n)` (eliminated the doubling-realloc transient 2× RSS and ~22% of the fill cost); type-aware operator dispatch (`u64` `lo`/`hi`/`mid` made LLVM emit the fused `sub + add ..., lsr #1` mid-point and `b.lo` guard — two instructions instead of the signed `cinc + asr` three); and finally the **midpoint bounds-check elision** ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md)), which removed the surviving per-iteration `nums[mid]` check and is what brought the seq lane from 1.76× behind C to parity.
 
+**On the v2/MIR backend (2026-10-31).** MIR initially lost the midpoint `assume` ([`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md), now fixed by kara `b8ad892458`); with it restored, seq `binary_search` is back close to the legacy ratios: Kāra/C **1.04×** (legacy 2026-07-28: 0.98×), Kāra/Rust **0.79×** (legacy: 0.73×), with Go still 1.22× ahead of Kāra. `linear_scan` is Kāra/C **1.14×** (legacy: 1.06×) and 1.03× behind Rust. The par lane slipped from 0.98× rayon (legacy) to **1.22× rayon** (and 1.32× C pthreads): the whole par workload is ~7–9 ms, so the fixed cost of standing up the worker pool ([`B-2026-10-28-35`](../../../../kara/docs/bugs-v2.md)) is a large share of it. Every comparator ran 12–35% slower this session than on 2026-07-28 (machine state), so compare ratios, not ms.
+
 ### Codegen vs Python
 
-2026-05-19 readings (the py mirrors are gated off by default; kāra rows updated to 06-05):
+Python rows last measured 2026-05-19, not re-run (the py mirrors are gated off by default); kāra rows from the 2026-10-31 re-bench, so the ratios are cross-session:
 
 | Run | Mean ± σ | Slower than Kāra codegen |
 |---|---|---|
-| `kara linear_scan` (codegen) | 5.1 ± 0.2 ms | — |
-| `py linear_scan` | 271.6 ± 4.1 ms *(05-19)* | **~53×** |
-| `kara binary_search` (codegen) | 39.1 ± 1.2 ms | — |
-| `py binary_search` | 1329 ± 12 ms *(05-19)* | **~34×** |
+| `kara linear_scan` (codegen) | 5.66 ± 0.11 ms | — |
+| `py linear_scan` | 271.6 ± 4.1 ms *(05-19)* | **~48×** |
+| `kara binary_search` (codegen) | 46.2 ± 0.7 ms | — |
+| `py binary_search` | 1329 ± 12 ms *(05-19)* | **~29×** |
 
-Python is ~34–53× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
+Python is ~29–48× slower than Kāra codegen on these workloads. The gap is wider for `linear_scan` because the inner body (one compare, one store) is exactly the regime where CPython bytecode dispatch overhead dominates per-iteration cost.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-17, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+M5 Pro, the 2026-10-31 re-bench (karac `g6697158fa`), hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build linear_scan.kara` | 80.2 ± 0.9 ms | 33.3 KiB |
-| `rustc -O linear_scan.rs` | 105.3 ± 1.9 ms | 455.6 KiB |
-| `clang -O3 linear_scan.c` | 53.2 ± 1.4 ms | 32.8 KiB |
-| `karac build binary_search.kara` | 76.5 ± 1.4 ms | 33.3 KiB |
-| `rustc -O binary_search.rs` | 94.4 ± 1.6 ms | 455.7 KiB |
-| `clang -O3 binary_search.c` | 47.5 ± 0.7 ms | 32.8 KiB |
+| `karac build linear_scan.kara` | 145.8 ± 2.7 ms | 295.8 KiB |
+| `rustc -O linear_scan.rs` | 100.9 ± 1.9 ms | 455.6 KiB |
+| `clang -O3 linear_scan.c` | 53.7 ± 0.9 ms | 32.8 KiB |
+| `karac build binary_search.kara` | 152.1 ± 2.0 ms | 295.8 KiB |
+| `rustc -O binary_search.rs` | 86.1 ± 0.7 ms | 455.7 KiB |
+| `clang -O3 binary_search.c` | 46.9 ± 0.7 ms | 32.8 KiB |
 
-Kāra compiles both files **1.23–1.31× faster** than `rustc -O` and produces binaries **~14× smaller** (within ~150 B of clang's). The `linear_scan` binary rebuilds byte-identical to the 06-05 snapshot, but `binary_search`'s codegen **changed** with the midpoint bounds-check elision fix ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md)) — it now emits the `assume(lo <= mid < hi)` facts and folds the loop's `nums[mid]` check, which is the runtime win above; the gated extra `default<O1>` pass that completes the fold is invisible in the cold-compile number (76.5 ms, still 1.23× under `rustc -O`). Compile memory: karac 13.3 / 13.1 MiB vs rustc 29.3 / 27.1 and clang 2.5 / 2.6.
+Kāra now compiles **1.45–1.77× slower** than `rustc -O` (145.8 vs 100.9 ms, 152.1 vs 86.1 ms). Binary size: every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger `B-2026-10-28-36`); these are **295.8 KiB** (seq) and 377.1 KiB (the auto-par `binary_search` build), still 1.54× under Rust's seq binaries. Compile memory: karac 56.7 / 56.0 MiB vs rustc 29.2 / 27.0 and clang 2.6 / 2.6. *(History, 2026-06-17, legacy backend: karac compiled 1.23–1.31× faster than `rustc -O` into ~33 KiB binaries; the midpoint bounds-check elision fix ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md)) changed `binary_search`'s codegen and its gated extra `default<O1>` pass was invisible in the cold-compile number.)*
 
 ### Runtime memory (peak)
 
@@ -113,15 +112,15 @@ Kāra compiles both files **1.23–1.31× faster** than `rustc -O` and produces 
 | `kara linear_scan` (codegen) | 16.3 MiB |
 | `rust linear_scan` | 16.3 MiB |
 | `c    linear_scan` | 16.3 MiB |
-| `go   linear_scan` | 18.9 MiB |
-| `py linear_scan` | 85.5 MiB *(05-19)* |
+| `go   linear_scan` | 18.6 MiB |
+| `py linear_scan` | 85.5 MiB *(05-19, not re-run)* |
 | `kara binary_search` (codegen) | 16.3 MiB |
-| `rust binary_search` | 16.3 MiB |
+| `rust binary_search` | 16.4 MiB |
 | `c    binary_search` | 16.3 MiB |
-| `go   binary_search` | 18.9 MiB |
-| `py binary_search` | 85.4 MiB *(05-19)* |
+| `go   binary_search` | 18.8 MiB |
+| `py binary_search` | 85.4 MiB *(05-19, not re-run)* |
 
-Kāra matches Rust's and C's peak RSS within a page (single-shot readings on the shared 16 MiB `Vec[i64]` working set; Go's +2.6 MiB is its GC arena + runtime) — both bench files use `Vec.with_capacity(n)` to pre-allocate the 2M-element fill, so neither the kāra nor the rust path goes through the doubling-realloc transient that left the old kāra peak at 32.8 MiB.
+Kāra matches Rust's and C's peak RSS within a page (single-shot readings on the shared 16 MiB `Vec[i64]` working set; Go's +2.3–2.4 MiB is its GC arena + runtime) — both bench files use `Vec.with_capacity(n)` to pre-allocate the 2M-element fill, so neither the kāra nor the rust path goes through the doubling-realloc transient that left the old kāra peak at 32.8 MiB.
 
 ### Why Rust is in the harness
 
@@ -129,4 +128,4 @@ Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-
 
 ## Bug ledger
 
-**Surfaced [`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/binary_search.kara` executes 1.55× legacy's instructions (14 vs 9 per search step): MIR never ported legacy's midpoint `assume` (`B-2026-06-16-1`), and passing the slice through memory hides its length from LLVM's range pass until after inlining. Katas 34, 35, 74 and 275 share the shape.
+**Surfaced [`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md)** (perf, **fixed** by kara `b8ad892458`). On the v2/MIR backend `bench/binary_search.kara` executes 1.55× legacy's instructions (14 vs 9 per search step): MIR never ported legacy's midpoint `assume` (`B-2026-06-16-1`), and passing the slice through memory hides its length from LLVM's range pass until after inlining. Katas 34, 35, 74 and 275 share the shape. With the fix, the 2026-10-31 re-bench puts seq `binary_search` at Kāra/C 1.04× and Kāra/Rust 0.79× (legacy: 0.98× / 0.73×).

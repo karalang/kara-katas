@@ -34,15 +34,17 @@ The entire problem is the **comparator**. To decide whether `a` should come befo
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`207909229184`). Workload: 500-element PRNG array, 400 passes each rebuilt+perturbed then insertion-sorted under the concat comparator (a-b vs b-a, numeric); sink=sum of per-pass Horner checksums of the concatenation digit stream.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-10-31, karac g6697158fa (v2/MIR backend; feed `measured_at` 2026-11-01 UTC) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 52.2 ms | 0.82× |
-| Rust `-O` | 53.6 ms | 0.84× |
-| **Kāra (codegen)** | 63.6 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 64.9 ms | 1.02× |
-| Go | 90.8 ms | 1.43× |
+| C `clang -O3` | 60.1 ms | 0.83× |
+| Rust `-O` | 60.7 ms | 0.84× |
+| **Kāra (codegen)** | 72.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 75.2 ms | 1.04× |
+| Go | 104.8 ms | 1.44× |
+
+Flat against the previous (legacy-backend, 2026-07-27) run in ratio terms: Kāra/C 1.22× → 1.21×, Kāra/Rust `-O` 1.19× → 1.19×; every lane's absolute time rose ~13–15% with machine state between the two sessions.
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

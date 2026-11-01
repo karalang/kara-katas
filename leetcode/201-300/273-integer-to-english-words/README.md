@@ -142,24 +142,26 @@ against its own kind.
 
 #### Sequential lane — Apple M5 Pro, per-core, `KARAC_AUTO_PAR=0`
 
-2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs. The canonical
-host — `bench/results.json`.
+2026-10-31, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR backend), hyperfine 30
+runs. The canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Go ‡ | 504.7 ± 8.7 ms | 0.66× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 747.1 ± 31.7 ms | 0.98× |
-| Rust `-O` | 751.5 ± 34.7 ms | 0.99× |
-| **Kāra (codegen)** | **762.7 ± 13.7 ms** | 1.00× |
-| C `clang -O3` | 951.7 ± 27.1 ms | 1.25× |
+| Go ‡ | 584.0 ± 4.7 ms | 0.78× |
+| **Kāra (codegen)** | **751.7 ± 24.6 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 840.7 ± 24.8 ms | 1.12× |
+| Rust `-O` | 854.4 ± 23.5 ms | 1.14× |
+| C `clang -O3` | 1021.7 ± 31.1 ms | 1.36× |
 
-‡ Go runs at **107.6% CPU** (514 ms user against 504.7 wall) — its concurrent
-collector, on a lane where every other row is at 99.7%. Its wall-clock lead is
-not entirely a per-core result.
+‡ Go runs at **113.5% CPU** (579.6 ms user + 83.4 ms system against 584.0 wall)
+— its concurrent collector, on a lane where every other row is at 99.9%. Its
+wall-clock lead is not entirely a per-core result.
 
-**Kāra is ahead of C by 1.25× and level with both Rust builds** (within 2%, on σ
-of 1.8–4.6%). The container had Kāra and C tied at 1.002×; on this host Kāra
-pulls clear of C while staying pinned to Rust. That is the M5's cheaper allocator
+**Kāra is ahead of C by 1.36× and ahead of both Rust builds by 1.12–1.14×** (σ
+2.7–3.3%). In ratios against the previous measurement (2026-08-15, legacy
+backend, karac g50267795a): Kāra/Rust 1.01× → 0.88×, Kāra/C 0.80× → 0.74×. The
+container had Kāra and C tied at 1.002×; on this host Kāra pulls clear of C, and
+now of Rust too. The C gap is the M5's cheaper allocator
 rewarding the owned-string implementations — Kāra, Rust and Go all manage their
 own string buffers, while the C mirror's explicit `malloc`/`realloc` join does
 not benefit as much.
@@ -171,26 +173,34 @@ is nothing but string allocation, Kāra is not behind the systems languages.**
 
 | Impl | Mean ± σ | user (ms) | CPU% | vs Kāra |
 |---|---|---|---|---|
-| Rust (rayon `par_iter`) | 137.7 ± 13.5 ms | 2349 | 1714% | 0.80× |
-| Go (goroutines) | 157.9 ± 2.1 ms | 736 | 616% | 0.92× |
-| **Kāra (`#[par_order_free]`)** | **172.2 ± 8.6 ms** | 2850 | 1661% | 1.00× |
-| C (pthreads — metal floor) | 215.6 ± 15.4 ms | 3651 | 1698% | 1.25× |
+2026-10-31, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR backend), hyperfine 30
+runs.
 
-**Kāra beats the C pthreads floor by 1.25× and trails rayon by the same factor.**
-Its seq→par ratio is 762.7 → 172.2 ms, **4.43× on 14 cores** — much lower
-efficiency than the container's 3.61× on 4, and the user-time column says why:
-2850 ms of CPU against the sequential lane's 757 ms is **3.8× the total work** for
-a 4.4× wall-clock gain. The auto-par lowering is paying real overhead at this
-grain, where on 4 cores it paid ~4%.
+| Impl | Mean ± σ | user (ms) | CPU% | vs Kāra |
+|---|---|---|---|---|
+| **Kāra (`#[par_order_free]`)** | **113.2 ± 10.0 ms** | 1573 | 1397% | 1.00× |
+| Rust (rayon `par_iter`) | 126.8 ± 13.7 ms | 2116 | 1681% | 1.12× |
+| Go (goroutines) | 210.2 ± 2.1 ms | 809 | 603% | 1.86× |
+| C (pthreads — metal floor) | 213.8 ± 17.3 ms | 3444 | 1615% | 1.89× |
 
-**Go's row is the one to look at.** It reaches 157.9 ms on **736 ms of CPU** —
-under a quarter of Kāra's and a fifth of C's — so on a throughput-per-core basis
-it wins this lane outright. Rayon's 41.5% σ problem from the container does not
-reproduce here (13.5 ms on 137.7, 9.8%).
+**Kāra now leads the lane: 1.12× ahead of rayon and 1.86–1.89× ahead of Go and
+the C pthreads floor.** On 2026-08-15 (legacy backend) it trailed rayon at 1.25×
+and led C pthreads at 0.80×; now Kāra/rayon is 0.89× and Kāra/C-pthreads 0.53×.
+Its seq→par ratio is 751.7 → 113.2 ms, **6.64×** (it was 4.43×), and the
+user-time column says where that came from: 1573 ms of CPU against the
+sequential lane's 749 ms is **2.1× the total work** for a 6.6× wall-clock gain,
+down from 3.8× the total work on 2026-08-15. The auto-par lowering still pays
+overhead at this grain — on the container's 4 cores it paid ~4% — but far less
+than it did.
 
-> **Cross-lane caveat.** Parallel rows use 14 cores against the sequential lane's
-> 1 and are **not comparable** to them. CPU% makes it unambiguous (seq ~99.7%,
-> par 616–1714%).
+**Go's row is still the frugal one.** It reaches 210.2 ms on **809 ms of CPU** —
+about half Kāra's and under a quarter of C's — so per CPU-ms it remains the
+cheapest row, though no longer close on wall time. Rayon's 41.5% σ problem from
+the container does not reproduce here (13.7 ms on 126.8, 10.8%).
+
+> **Cross-lane caveat.** Parallel rows use every core against the sequential
+> lane's 1 and are **not comparable** to them. CPU% makes it unambiguous (seq
+> ~99.9%, par 603–1681%).
 
 #### The x86 corroboration run — sequential lane
 
@@ -339,4 +349,4 @@ bash bench/bench.sh
 
 ## Bug ledger
 
-**Surfaced [`B-2026-10-28-42`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/spell_seq.kara` executes 2.31× legacy's instructions and makes 2.3× its mallocs: every `return "One"` heap-copies the literal (legacy returned a borrowed static), and `a + " " + b` reallocates once per operand (legacy allocated the chain once).
+**Fixed [`B-2026-10-28-42`](../../../../kara/docs/bugs-v2.md)** (perf). On the v2/MIR backend `bench/spell_seq.kara` executed 2.31× legacy's instructions and made 2.3× its mallocs: every `return "One"` heap-copied the literal (legacy returned a borrowed static), and `a + " " + b` reallocated once per operand (legacy allocated the chain once). Fixed in kara `5e8165275e` (part 1: literal returns borrow their bytes) and `de113d6d66` (part 2: `+` chains allocate once).

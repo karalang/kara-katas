@@ -95,7 +95,7 @@ build_go_seq
 # SEQ twin (auto-par OFF). The par lane does not currently fan out — see
 # ../README.md § Benchmarks and B-2026-08-17-14 — so it is reported as a
 # Kara-to-Kara pair only, with no hand-threaded mirrors to compare against yet.
-if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ]; then
+if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ] || [ "$(command -v karac)" -nt "target/${STEM}_seq_kara" ]; then
     echo "compiling ${STEM}_seq.kara (seq, KARAC_AUTO_PAR=0) ..." >&2
     KARAC_AUTO_PAR=0 karac build "${STEM}_seq.kara" -o "target/${STEM}_seq_kara" >/dev/null
 fi

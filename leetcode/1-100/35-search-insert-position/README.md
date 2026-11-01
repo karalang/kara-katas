@@ -88,10 +88,6 @@ access, and `searchInsert` does not inline into the hot loop. No new bug surface
 this kata is the fix from #34 paying off on the most-used binary search in the set.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-16 snapshot; the feed was last measured 2026-06-17.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Workload: build one fixed strictly-increasing array of length `N = 4096` once
 (`nums[p] = 2·p` — distinct, so found and insert positions never collide), then run
 the insert query (`lower_bound`) **`TOTAL = 14M`** times for targets cycling through
@@ -99,45 +95,53 @@ the insert query (`lower_bound`) **`TOTAL = 14M`** times for targets cycling thr
 neighbours / largest odd = append at `N`), folding each index into a checksum (sink
 `862973806`). The target varies with the loop index, so no comparator can hoist the
 query out of the loop; the accumulator carries a loop-borne dependency, so it does
-not auto-parallelize. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+not auto-parallelize. Apple M5 Pro; `bench/bench.sh` (`hyperfine`, 30 runs). Measured
+2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T00:17Z UTC).
 
 ### Seq lane — runtime (single-threaded half-open `lower_bound`)
 
 | | C | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 120.2 ms | 169.5 ms | 171.4 ms | **189.6 ms** | 303.4 ms | 5629 ms |
-| vs Kāra | 1.58× faster | 1.12× faster | **1.11× faster (= safety)** | — | 1.60× slower | 29.7× slower |
+| time | 138.7 ms ± 2.0 | 196.8 ms ± 2.6 | 198.8 ms ± 2.0 | **196.6 ms ± 2.7** | 353.7 ms ± 6.6 | 5641 ms (last measured 2026-06-17, not re-run) |
+| vs Kāra | 1.42× faster | 1.00× (tie) | **1.01× slower (= safety; tie)** | — | 1.80× slower | ~29× slower (cross-session) |
 
-**Within 1.11× of equal-safety Rust, and 1.60× ahead of Go.** The midpoint
+**Level with Rust (1.00× `-O`, 1.01× ahead of equal-safety Rust — inside σ), and 1.80×
+ahead of Go.** The midpoint
 `llvm.assume` fix ([`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md), surfaced
 by [#34](../34-find-first-and-last-position/)) folds the `nums[mid]` bounds check on
 this exact loop, so Kāra sits in the binary-search through-line's band rather than
-paying a per-iteration check. The overflow tax is zero (`-O` and
-`-C overflow-checks=on` differ by < 1.2%, inside noise), so the residual ~11 % gap
-to equal-safety Rust is the genuine distance a branchy, allocation-light search
-leaves between Kāra and the systems-language floor (C's no-overhead 1.58×). Go,
-whose BCE leaves the midpoint check in, runs the same algorithm 1.60× slower.
+paying a per-iteration check. On the v2/MIR backend the fix was carried over as
+[`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md) (fixed, kara `b8ad892458`), and
+it closed the gap that remained on legacy: Kāra/Rust went from **1.12× (2026-06-17,
+legacy) to 1.00×**, and Kāra/C from 1.58× to **1.42×**. (Every comparator ran 15–17%
+slower this session than on 2026-06-17 — machine state — so compare ratios, not ms.)
+The overflow tax is ~zero (`-O` and `-C overflow-checks=on` differ by ~1%, inside
+noise). The remaining 1.42× to C is the distance a branchy, allocation-light search
+leaves between Kāra/Rust and C's no-overhead floor. Go, whose BCE leaves the midpoint
+check in, runs the same algorithm 1.80× slower.
 
 **No par lane — by construction.** The query is pure and independent, but karac's
 auto-par-on-reduction pass does not fire on this loop (per-call function + checksum
-reduction): the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and
-both run single-threaded.
+reduction). On the v2 backend neither build dispatches tasks (no call of
+`karac_mir_task_spawn` in either one's `KARAC_MIR_LL` IR, checked 31 Oct 2026); the timed binary here is the `KARAC_AUTO_PAR=0` seq build, and it
+runs single-threaded (195.2 ms user over 196.6 ms wall).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 2.97 MiB |
-| binary size (seq) | **33.4 KiB** | 455.7 KiB | 32.7 KiB | 2434.1 KiB |
-| compile elapsed | 73.4 ms | 91.2 ms | **45.7 ms** |
-| compile peak RSS | **13.0 MiB** | 26.5 MiB | 2.5 MiB |
+| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 2.70 MiB |
+| binary size (seq) | 295.8 KiB | 455.7 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 113.6 ms | 83.4 ms | **45.5 ms** |
+| compile peak RSS | 54.6 MiB | 26.5 MiB | **2.6 MiB** |
 
 The single 4096-element array is the only heap allocation, so runtime RSS ties C and
-Rust to within rounding (1.06 / 1.05 / 1.11 MiB). The seq compute binary references
-no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.4 KiB** —
-13.6× under Rust and within a rounding of C's 32.7 KiB. Compile favours Kāra over
-`rustc -O` on both elapsed (73.4 vs 91.2 ms) and peak compiler RSS (13.0 vs 26.5
-MiB); clang's 45.7 ms is the toolchain floor.
+Rust to within rounding (1.06 / 1.05 / 1.11 MiB). Binary size: every v2/MIR Kāra
+binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger
+`B-2026-10-28-36`); this one is **295.8 KiB**, 1.54× under Rust's 455.7 KiB. Compile
+now favours `rustc -O` over Kāra on both elapsed (83.4 vs 113.6 ms) and peak compiler
+RSS (26.5 vs 54.6 MiB); clang's 45.5 ms is the toolchain floor.
 
 ## Kāra features exercised
 

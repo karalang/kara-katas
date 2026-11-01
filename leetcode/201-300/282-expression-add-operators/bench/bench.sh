@@ -95,7 +95,7 @@ build_go_seq
 # --- SEQ twin + PAR mirrors -------------------------------------------------
 # The SEQ table compares single-threaded against single-threaded; the PAR row is
 # compared only against mirrors that also opted into parallelism.
-if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ]; then
+if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ] || [ "$(command -v karac)" -nt "target/${STEM}_seq_kara" ]; then
     echo "compiling ${STEM}_seq.kara (seq, KARAC_AUTO_PAR=0) ..." >&2
     KARAC_AUTO_PAR=0 karac build "${STEM}_seq.kara" -o "target/${STEM}_seq_kara" >/dev/null
 fi

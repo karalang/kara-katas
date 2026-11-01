@@ -187,7 +187,7 @@ done
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are a 2026-08-17 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are a 2026-08-17 snapshot; the feed was last measured 2026-11-01.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
 > snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
@@ -196,6 +196,25 @@ done
 > and it is current as of the date stamped above. Absolute milliseconds are NOT
 > comparable between the two hosts; only the **within-file cross-language
 > ratios** are.
+
+**Apple M5 Pro, 31 Oct 2026** (karac g6697158fa, v2/MIR backend, hyperfine 30
+runs, sequential lane built with `KARAC_AUTO_PAR=0`):
+
+| lane | time | vs C |
+|---|---:|---:|
+| `rustc -O` | 77.3 ms ± 3.2 | 0.85× |
+| `go build` | 78.0 ms ± 2.3 | 0.86× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 79.7 ms ± 3.6 | 0.88× |
+| `clang -O3` | 90.6 ms ± 4.3 | 1.00× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **118.7 ms ± 4.1** | **1.31×** |
+| `karac build` (`#[par_order_free]`, par lane) | 64.9 ms ± 5.0, 225% CPU | — |
+
+On the M5 Kāra is last in the sequential lane: 1.31× behind C, 1.49× behind
+equal-safety Rust and 1.54× behind `rustc -O`. The par lane is 1.83× over Kāra's
+own seq lane. The previously published M5 seq figures (Kāra/C 1.26×) came from a
+28 Aug 2026 binary, because `bench.sh` did not rebuild the seq binary when karac
+changed; that harness bug was fixed in this re-bench, and these are the first
+honest v2/MIR numbers for the kata.
 
 **The topological sort is not the workload.** It runs over 26 letters — O(26²)
 however many words you feed it. All the time is in phase 1, walking adjacent word
@@ -292,7 +311,7 @@ done
 
 ## Benchmarks
 <!-- bench-staleness -->
-> **Figures in this section are a 2026-08-17 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+> **Figures in this section are a 2026-08-17 snapshot; the feed was last measured 2026-11-01.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 **The topological sort is not the workload.** It runs over 26 letters — O(26²)
 however many words you feed it. All the time is in phase 1, walking adjacent word
@@ -327,6 +346,10 @@ both trail C and Go, which is unusual for this corpus and worth its own look
 someday.
 
 ### The parallel lane does not fan out
+
+*Superseded (31 Oct 2026): this was fixed by `B-2026-08-17-14`'s nested-dispatch
+cap; see "The parallel lane" in the section above — the par lane now fans out
+(225% CPU, 1.83× over seq on the M5).*
 
 | | time | cpu |
 |---|---:|---:|

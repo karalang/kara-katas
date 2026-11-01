@@ -113,47 +113,55 @@ times for targets cycling through `[0, 2N)` so all four control-flow paths (hit 
 odd-miss / over-miss / boundary) fire, folding both endpoints into a checksum
 (sink `421417033`). The target varies with the loop index, so no comparator can
 hoist the query out of the loop; the accumulator carries a loop-borne dependency,
-so it does not auto-parallelize. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+so it does not auto-parallelize. Apple M5 Pro; `bench/bench.sh` (`hyperfine`, 30 runs).
+Measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T00:16Z UTC).
 
 ### Seq lane — runtime (single-threaded two-bounds binary search)
 
 | | C | Go | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Python |
 |---|---|---|---|---|---|---|
-| time | 134.6 ms | 139.2 ms | 187.8 ms | **208.4 ms** | 187.8 ms | 7025 ms |
-| vs Kāra | 1.55× faster | 1.50× faster | 1.11× faster | — | **1.11× faster (= safety)** | 34× slower |
+| time | 158.3 ms ± 2.1 | 159.4 ms ± 11.5 | 221.5 ms ± 3.7 | **226.6 ms ± 2.5** | 220.8 ms ± 2.9 | 7025 ms (last measured 2026-06-16, not re-run) |
+| vs Kāra | 1.43× faster | 1.42× faster | 1.02× faster | — | **1.03× faster (= safety)** | ~31× slower (cross-session) |
 
 **The bounds-check fix is the whole story.** Before [`B-2026-06-16-1`](../../../../kara/docs/bug-ledger.md),
 Kāra ran **298 ms — 1.58× behind equal-safety Rust**, the widest gap of the
 binary-search katas, entirely from the un-folded `nums[mid]` check (the overflow
 tax is *zero* here: `rustc -O` and `-C overflow-checks=on` both land at 187.8 ms).
 Teaching `karac` to assert the midpoint's `lo <= mid < hi` lets LLVM fold the
-check, dropping Kāra to **208 ms — within 1.11× of equal-safety Rust**, the same
-band as the rest of the through-line. The residual gap is one `nums[lo]` check in
-`main` (a guard-proven index against a decoupled length, a separate issue) plus the
-genuine ~11 % a branchy, allocation-light search leaves between Kāra and the
-systems-language floor (C's no-overhead `1.55×`).
+check, dropping Kāra to **within 1.11× of equal-safety Rust** (2026-06-16, legacy
+backend; Kāra/C 1.55×), the same band as the rest of the through-line. On the v2/MIR
+backend the midpoint fix was carried over as
+[`B-2026-10-28-41`](../../../../kara/docs/bugs-v2.md) (fixed, kara `b8ad892458`), and
+the 2026-10-31 re-bench puts Kāra at **1.02× Rust `-O` and 1.03× equal-safety Rust**,
+with Kāra/C narrowed from 1.55× to **1.43×**. (Every comparator ran 14–18% slower this
+session than on 2026-06-16 — machine state — so compare ratios, not ms.) What remains is
+the gap a branchy, allocation-light search leaves between Kāra and the systems-language
+floor that C and Go share.
 
 **No par lane — by construction.** Each query is independent, but karac's
 auto-par-on-reduction pass does not fire on this loop (per-call function + checksum
-reduction): the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and
-both run single-threaded.
+reduction). On the v2 backend neither build dispatches tasks (no call of
+`karac_mir_task_spawn` in either one's `KARAC_MIR_LL` IR, checked 31 Oct 2026); the timed binary here is the `KARAC_AUTO_PAR=0` seq build, and it
+runs single-threaded (225.2 ms user over 226.6 ms wall).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 3.0 MiB |
-| binary size (seq) | **33.4 KiB** | 455.7 KiB | 32.7 KiB | 2434.1 KiB |
-| compile elapsed | **74.3 ms** | 93.9 ms | 46.8 ms |
-| compile peak RSS | **13.2 MiB** | 26.8 MiB | 2.5 MiB |
+| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 2.7 MiB |
+| binary size (seq) | 295.8 KiB | 455.7 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 117.9 ms | 88.1 ms | **47.4 ms** |
+| compile peak RSS | 57.4 MiB | 26.8 MiB | **2.5 MiB** |
 
 The single 4096-element array is the only heap allocation, so runtime RSS ties C
-and Rust to within rounding (1.06 / 1.05 / 1.11 MiB). The seq compute binary
-references no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to
-**33.4 KiB** — 13.6× under Rust. Compile favors Kāra over `rustc -O` on both
-elapsed (74.3 vs 93.9 ms) and peak compiler RSS (13.2 vs 26.8 MiB) — and the gated
-second optimization pass the fix adds is invisible in the numbers (it runs only for
-binary-search modules, where it pays for itself many times over at runtime).
+and Rust to within rounding (1.06 / 1.05 / 1.11 MiB). Binary size: every v2/MIR Kāra
+binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger
+`B-2026-10-28-36`); this one is **295.8 KiB**, 1.54× under Rust's 455.7 KiB. Compile now
+favors `rustc -O` over Kāra on both elapsed (88.1 vs 117.9 ms) and peak compiler RSS
+(26.8 vs 57.4 MiB). (On the legacy backend the gated second optimization pass the
+midpoint fix adds was invisible in the compile numbers; it runs only for binary-search
+modules, where it pays for itself many times over at runtime.)
 
 ## Kāra features exercised
 

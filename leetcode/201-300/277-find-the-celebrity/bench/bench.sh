@@ -98,7 +98,7 @@ build_go_seq
 # <stem>.kara and is compared only against mirrors that ALSO opted into
 # parallelism. A cross-lane row would measure the comparator's choice, not the
 # compiler.
-if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ]; then
+if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ] || [ "$(command -v karac)" -nt "target/${STEM}_seq_kara" ]; then
     echo "compiling ${STEM}_seq.kara (seq, KARAC_AUTO_PAR=0) ..." >&2
     KARAC_AUTO_PAR=0 karac build "${STEM}_seq.kara" -o "target/${STEM}_seq_kara" >/dev/null
 fi

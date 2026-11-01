@@ -188,6 +188,11 @@ seven digits so the enumerating solver stays practical under `--interp`; the
 | container x86-64, 4 cores | 1176.3 ms | 303.9 ms | **3.87×** | 389% | 1.00× |
 | Apple M5 Pro, 6P+12E | 1099.2 ms | 355.5 ms | **3.09×** | 1566% | 5.10× |
 
+*Note (31 Oct 2026, karac g6697158fa, v2/MIR):* that M5 row's seq figure came
+from a stale seq twin (see the harness fix in [Benchmarks](#benchmarks)). The
+re-bench measures seq 1136.9 ms, par 258.2 ms — **4.40×** auto-par worth at
+1430% CPU, par user-CPU 3.25× seq — and Go 2.59× on that host.
+
 On the container the lane is near-perfect — 3.87× out of 3.885 cores is 99.6%
 efficiency, and the parallel build's total CPU equals the sequential build's to
 0.3%. On the M5 the same source returns 3.09× for 15.7 cores (19.7% efficiency)
@@ -278,17 +283,21 @@ was a redundant heap box per `Map.get` and is **fixed** (`B-2026-09-12-28`);
 auto-par there now returns 93–104% of a C pthreads mirror's speedup.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The **M5** columns below are the canonical Apple M5 Pro (6P+12E)
+> lane, [`bench/results.json`](bench/results.json) — karac g6697158fa (v2/MIR
+> backend), measured 2026-10-31 (feed `measured_at` 2026-11-01 UTC); that is the
+> file `scripts/consolidate-bench.sh` feeds into the top-level chart. The
+> **container** columns are an earlier shared **x86-64 Linux cloud container**
+> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json)
+> for history. Absolute milliseconds are NOT comparable between the two hosts;
+> only the **within-host cross-language ratios** are.
+>
+> **Harness fix in this re-bench.** `bench/bench.sh` used to rebuild the seq twin
+> only when `exprops_seq.kara` changed, not when `karac` did, so the previously
+> published M5 seq row was timed on a stale binary; it now also rebuilds when the
+> installed `karac` is newer, and these are the first M5 seq numbers from the
+> measuring compiler.
 
 The search *is* the workload, and it is allocation-heavy in a way the algorithm
 can't avoid: every branch builds a new expression string, so a nine-digit input
@@ -298,15 +307,18 @@ All lanes print `60478588`.
 
 ### SEQ lane — single-threaded against single-threaded
 
-| lane | time | vs C |
-|---|---:|---:|
-| `clang -O3` | 385.0 ms ± 16.1 | 1.00× |
-| `go build` | 758.5 ms ± 39.8 | 1.97× |
-| **`karac build`, `KARAC_AUTO_PAR=0`** | **1176 ms ± 42** | **3.05×** |
-| **`rustc -O -C overflow-checks=on`** (equal safety) | **1384 ms ± 41** | **3.59×** |
-| `rustc -O` | 1402 ms ± 43 | 3.64× |
+| lane | M5 time | M5 vs C | container time | container vs C |
+|---|---:|---:|---:|---:|
+| `clang -O3` | 378.2 ms ± 16.6 | 1.00× | 385.0 ms ± 16.1 | 1.00× |
+| `go build` | 369.2 ms ± 6.5 | 0.98× | 758.5 ms ± 39.8 | 1.97× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **1136.9 ms ± 51.0** | **3.01×** | **1176 ms ± 42** | **3.05×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **1294.2 ms ± 26.3** | **3.42×** | **1384 ms ± 41** | **3.59×** |
+| `rustc -O` | 1304.7 ms ± 30.2 | 3.45× | 1402 ms ± 43 | 3.64× |
 
-**0.85× against the equal-safety comparator** — Kāra ahead of Rust, stated
+**0.88× against the equal-safety comparator on the M5** (0.87× against
+`rustc -O`; 0.85× on the container). The previous M5 row had Kāra/Rust at 0.96×
+and Kāra/C at 3.23×, but its seq twin was the stale binary described above. On
+the M5, Go's sequential mirror ties C. Kāra ahead of Rust, stated
 precisely rather than claimed as a codegen win: Rust's mirror uses `format!` per
 branch, which does more work than a plain concatenation. Fair as "the same
 algorithm" — it's how a Rust programmer writes it — but the gap is a string-API
@@ -314,14 +326,16 @@ difference as much as a compiler one.
 
 ### PAR lane — against mirrors that also reached for threads
 
-| lane | time | vs pthreads |
-|---|---:|---:|
-| `clang -O3` + pthreads (metal floor) | 98.8 ms ± 7.3 | 1.00× |
-| Go, one goroutine per input | 270.8 ms ± 14.2 | 2.74× |
-| **`karac build`, `#[par_order_free]`** | **303.9 ms ± 13.2** | **3.08×** |
+| lane | M5 time | M5 vs pthreads | container time | container vs pthreads |
+|---|---:|---:|---:|---:|
+| `clang -O3` + pthreads (metal floor) | 142.8 ms ± 13.9 | 1.00× | 98.8 ms ± 7.3 | 1.00× |
+| Go, one goroutine per input | 142.7 ms ± 1.6 | 1.00× | 270.8 ms ± 14.2 | 2.74× |
+| **`karac build`, `#[par_order_free]`** | **258.2 ms ± 24.7** | **1.81×** | **303.9 ms ± 13.2** | **3.08×** |
 
-**3.9× over its own sequential twin** on 4 cores, and level with hand-written
-goroutines. The 220 searches are over *different* inputs and share nothing, so
+On the container: **3.9× over its own sequential twin** on 4 cores, and level
+with hand-written goroutines. On the M5: **4.40× over its sequential twin**
+(1136.9 → 258.2 ms) at 1430% CPU, 1.81× behind both the pthreads floor and Go's
+goroutines, which tie there. Kāra/C-pthreads was 2.81× in the previous M5 run. The 220 searches are over *different* inputs and share nothing, so
 this is parallelism the problem contains rather than manufactured.
 
 ### The sink had to be redesigned for that lane to exist

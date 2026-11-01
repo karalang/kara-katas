@@ -99,7 +99,7 @@ build_go_seq
 # compared only against mirrors that ALSO opted into parallelism — pthreads C
 # and goroutine Go. A cross-lane row would conflate compiler quality with
 # whether the comparator reached for threads at all.
-if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ]; then
+if [ ! -x "target/${STEM}_seq_kara" ] || [ "${STEM}_seq.kara" -nt "target/${STEM}_seq_kara" ] || [ "$(command -v karac)" -nt "target/${STEM}_seq_kara" ]; then
     echo "compiling ${STEM}_seq.kara (seq, KARAC_AUTO_PAR=0) ..." >&2
     KARAC_AUTO_PAR=0 karac build "${STEM}_seq.kara" -o "target/${STEM}_seq_kara" >/dev/null
 fi
