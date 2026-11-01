@@ -168,3 +168,7 @@ On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. This kata completes the grid-DP triple — #62 (pure-sum scan, C/Rust parity after a codegen fix), #63 (sum + obstacle branch, parity after the `B-2026-07-08-3` strength-reduction fix), #64 (`cost + min` scan, the `min` a real `std.cmp` call). **#64 is where the family finally *leads*:** the M5 re-bench confirms kāra ~1.13× ahead of both Rust and C (see the confirmation note), driven by the branchless generic-`min` lowering on top of the #62/#63 check-elision work — kāra wins despite paying default overflow checks the native mirrors skip. It also carries the lowest peak RSS of the four.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-31-38`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/minimum_path_sum.kara` runs legacy's instruction count (1.01×) but 1.77× its cycles on the M5: the inner loop reloads `dp[c - 1]`, the value the previous iteration just stored, through a paired load that overlaps that store, where legacy kept it in a register. Measured 31 Oct 2026 with karac g6697158fa; this kata's benchmark figures above predate the v2 backend and have not been re-run yet.
