@@ -36,17 +36,19 @@ Store a `Map[number → count]`. `add` bumps the count (O(1)). `find(value)` sca
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`762965`). Workload: build a 170-add sparse multiset over [0,6K) keys (~168 distinct), then 1.2M full-scan find(target) queries; sink=count of trues. NOTE: Kara/Rust/Go/Python use a hash map; C hand-rolls a direct-address count table + distinct-key list (same membership semantics)..
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-09 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 305.1 ms | 0.09× |
-| Rust `-O` | 775.9 ms | 0.22× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 780.2 ms | 0.22× |
-| Go | 1.13 s | 0.32× |
-| **Kāra (codegen)** | 3.57 s | 1.00× |
+| C `clang -O3` | 328.2 ms | 0.13× |
+| Rust `-O` | 829.0 ms | 0.33× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 893.3 ms | 0.36× |
+| Go | 1.28 s | 0.51× |
+| **Kāra (codegen)** | 2.50 s | 1.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac af8afd80c959); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra is 3.01× behind Rust, 2.79× behind equal-safety Rust, 7.60× behind C and 1.95× behind Go. That is a regression against the previous M5 feed (karac fd6750a84, legacy backend, 2026-09-14): Kāra/Rust 2.56× → 3.01×, Kāra/C 6.28× → 7.60×, Kāra/Go 1.64× → 1.95×, about 1.2× on every comparator — see § Bug ledger (every comparator also ran 10–19% slower in absolute terms this session, so compare ratios, not milliseconds). The 2026-09-14 feed falls inside the u64 map-key miscompile window, but this kata keys `Map[i64, i64]`, so it stands as the baseline.
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -59,7 +61,7 @@ diff <(karac run two_sum_iii.kara) <(python3 two_sum_iii.py) && echo OK
 
 ## Notes
 
-A 🔒 **LeetCode-Premium** problem (locked; spec reconstructed from its widely-known description). Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+A 🔒 **LeetCode-Premium** problem (locked; spec reconstructed from its widely-known description). Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
 
 **A `Map.keys()` materialisation cost — now fixed in `karac`.** [`B-2026-07-24-2`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): `for k in map.keys()` (and `.values()` / `.entries()`) eagerly built a fresh heap `Vec` of the whole key set on **every evaluation**. This kata's `find` does `for k in ds.counts.keys()` and runs 1.2M times over a ~170-entry map — 1.2M malloc + full-set-copy + free cycles — which put the Kāra row at ~1.74× the equal-safety Rust mirror, whose `keys()` is a zero-allocation inlined bucket walk. A benchmark gap rather than a correctness one, and the kind that only shows up when the iteration sits inside a hot loop rather than at the top level.
 
@@ -81,4 +83,10 @@ Cause: the per-process-seeded SipHash-1-3 migration (`59c8d30cd`) replaced an in
 
 The benchmark table above was measured on karac `8dc5a4d8baeb`, which PREDATES that fix — it is the regressed figure, not the recovered one, and this kata has not been re-benched since.
 
+> **Note (1 Nov 2026).** The table above has since been replaced: it is now the 2026-11-01 run on karac g6697158fa (v2/MIR backend), which post-dates the fix.
+
 Read the residual in **cycles, not instructions**: kāra's IPC on this shape runs ~6.1 against Rust's ~4.0, so a wide core absorbs much of the difference and an instruction ratio overstates the user-visible gap by roughly half. The remaining gap is the map machinery — a byte-at-a-time control-byte walk and function-pointer `hash_fn`/`eq_fn` against hashbrown's SIMD group scan and monomorphised calls — tracked on [`B-2026-09-07-53`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl), not the hash algorithm.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-01-44`](../../../../kara/docs/bugs-v2.md)** (perf, open). The 2026-11-01 re-bench on the v2/MIR backend moved Kāra from 2.56× to 3.01× behind Rust (6.28× → 7.60× C, 1.64× → 1.95× Go). The MIR build executes FEWER instructions than legacy (0.75×) but takes 1.43× its cycles on its `Map[i64, i64]` kernel.

@@ -34,15 +34,17 @@ Because the array is **sorted**, the classic hash-map [Two Sum](../../1-100/1-tw
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400987230`). Workload: build-once 20K-elem sorted PRNG array + 20K two-pointer two-sum sweeps for guaranteed-solution PRNG targets (loop-carried lo/hi convergence, data-dependent branch, non-vectorizing); sink = sum of 1-based index pairs.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 62.5 ms | 0.27× |
-| **Kāra (codegen)** | 233.5 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 235.1 ms | 1.01× |
-| C `clang -O3` | 239.3 ms | 1.02× |
-| Rust `-O` | 239.7 ms | 1.03× |
+| Go | 68.7 ms | 0.27× |
+| **Kāra (codegen)** | 258.0 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 261.1 ms | 1.01× |
+| Rust `-O` | 265.3 ms | 1.03× |
+| C `clang -O3` | 265.8 ms | 1.03× |
+
+Kāra edges both Rust builds and C (0.97× `rustc -O`, 0.97× C) and is 3.76× behind Go — flat against the 2026-07-28 feed (0.97× / 0.98× / 3.74×). Binary size: the MIR Kāra binary is 302,872 bytes, where the legacy backend's was ~34 KB (tracked as kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

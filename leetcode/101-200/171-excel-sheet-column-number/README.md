@@ -94,29 +94,32 @@ print sequence — which is exactly the kind of defect a multi-line-output kata 
 positioned to flush.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: parse a corpus of **50,000 distinct titles** (built once via `to_title`,
 too many for an optimizer to tabulate) round-robin **10⁸ times**, reducing to the
 summed column numbers (sink `2 500 050 000 000`). The parse is pure arithmetic —
-**compute-bound**, a clean read on tight-loop codegen. Apple M5 Pro;
-`bench/bench.sh` (`hyperfine`).
+**compute-bound**, a clean read on tight-loop codegen. Apple M5 Pro (6P+12E),
+2026-11-01, karac g6697158fa (v2/MIR backend); `bench/bench.sh` (`hyperfine`,
+30 runs seq / 50 runs par).
 
 ### Seq lane — runtime (single-threaded)
 
 | | C | Rust (`-O`) | **Kāra** | Go | Rust (`-C overflow-checks=on`) |
 |---|---|---|---|---|---|
-| time | 134 ms | 139 ms | **231 ms** | 152 ms | 233 ms |
-| vs Kāra | 1.73× faster | 1.66× faster | — | 1.53× faster | **1.01× slower** |
+| time | 150.5 ms | 156.4 ms | **292.1 ms** | 170.7 ms | 267.3 ms |
+| vs Kāra | 1.94× faster | 1.87× faster | — | 1.71× faster | **1.09× faster** |
+
+Against the previous M5 feed (karac 0.1.0, legacy backend, 2026-07-28) this is a
+~1.1× slip relative to every comparator: Kāra/Rust 1.66× → 1.87×, Kāra/C 1.74× →
+1.94×, Kāra/Go 1.54× → 1.71× (every comparator also ran ~15% slower in absolute
+terms this session, so compare ratios, not milliseconds).
 
 **Read the two Rust columns together — this is the whole story.** Kāra traps on
 integer overflow *by default* (design.md § Arithmetic Overflow: "defined
 behavior, never undefined"); `rustc -O` **silently wraps**. That safety is not
-free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.67×**
-(139 → 233 ms) — almost exactly the gap to Kāra. **At equal overflow safety, Kāra
-is at parity with Rust** — codegen parity on a tight integer loop. The 1.66×
+free: turning it on in Rust (`-C overflow-checks=on`) costs Rust **1.71×**
+(156 → 267 ms) — most of the gap to Kāra. **At equal overflow safety, Kāra
+trails Rust by 1.09×** (it was at parity on the July feed). Most of the 1.87×
 against `rustc -O`'s default is the price of a silent-wraparound class of bugs
 Kāra refuses to ship and Rust release opts out of. (C and Go also wrap; they are
 the unsafe-but-fast floor, not safety peers.)
@@ -129,36 +132,43 @@ embarrassingly parallel. Every implementation parallelizes that *same* reduction
 
 | | parallel code written | time |
 |---|---|---|
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 14 ms |
-| Rust + rayon | `rayon` crate + `.into_par_iter()` rewrite | 16 ms |
-| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 18 ms |
-| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **24 ms** |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 16.7 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` rewrite | 17.2 ms |
+| Go goroutines | manual chunking + `sync.WaitGroup` + merge | 21.0 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the reduction | **31.8 ms** |
 
-**Kāra's auto-par turns its 231 ms seq run into 24 ms — a 9.8× self-speedup
+The par lane is verified in the emitted IR (`KARAC_MIR_LL`): the default build
+carries a call of `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` twin does not.
+Against the July feed Kāra/rayon moved 1.51× → 1.84× (Kāra/C 1.68× → 1.90×,
+Kāra/Go 1.23× → 1.51×), the same ~1.1× seq slip plus some par-side loss.
+
+**Kāra's auto-par turns its 292 ms seq run into 31.8 ms — a 9.2× self-speedup
 across the machine's cores from the *same single-threaded source*, no parallel
 code, no crate, no goroutine boilerplate.** The absolute number trails hand-tuned
-rayon (1.49×) — partly the same overflow-safety tax (rayon wraps), partly
+rayon (1.84×) — partly the same overflow-safety tax (rayon wraps), partly
 per-thread codegen — but the engineering delta is the point: rayon/goroutines/
 pthreads each cost a dependency or a hand-rolled chunk-merge and a new class of
-data-race bugs; Kāra delivers 9× from code that reads sequential.
+data-race bugs; Kāra delivers 9.2× from code that reads sequential.
 
 ### Compile, binary
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **82 ms** | 116 ms | 49 ms |
-| binary (seq) | **295 KiB** | 457 KiB | 33 KiB |
+| compile elapsed | **156 ms** | 112 ms | 50 ms |
+| binary (seq) | **312 KiB** | 457 KiB | 33 KiB |
 
-Kāra's cold compile (82 ms) beats `rustc -O` (116 ms), and emits a **295 KiB**
-binary — **1.5× smaller than Rust**, **8× smaller than Go** (2.4 MiB). Runtime
-peak RSS is a clean 3.1 MiB.
+Kāra's cold compile (156 ms) is now 1.39× slower than `rustc -O` (112 ms); it
+emits a **312 KiB** seq binary (377 KiB par) — **1.46× smaller than Rust**, **7.8×
+smaller than Go** (2.4 MiB). Every MIR Kāra binary is ~300–390 KB (kara ledger
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Runtime peak RSS is
+3.0 MiB seq (Rust 3.0 MiB), 3.4 MiB par.
 
 **Buyer reframe.** Kāra ships overflow-trap safety *by default* at near-Rust
-codegen speed (at parity at equal safety), and a 9× parallel speedup from
+codegen speed (1.09× behind at equal safety), and a 9.2× parallel speedup from
 single-threaded source — the safety a Rust team would have to remember to enable,
 and the parallelism they'd pay a crate + an API rewrite + a data-race audit for,
 both arrive for free. The remaining single-thread gap to `rustc -O`'s default is
-exactly the silent-overflow bug class Kāra declines to ship.
+mostly the silent-overflow bug class Kāra declines to ship.
 
 ## Kāra features exercised
 

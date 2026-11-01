@@ -34,15 +34,17 @@ Forward DP fails: the best cell to occupy depends on both current health *and* f
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`5417974`). Workload: build a 200x200 signed PRNG dungeon once, then 2000 backward min-health DP passes with a per-pass cell sign-flip punch; sink=sum of dp[0][0] over passes.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 78.6 ms | 0.74× |
-| C `clang -O3` | 85.2 ms | 0.80× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 91.4 ms | 0.86× |
-| **Kāra (codegen)** | 105.8 ms | 1.00× |
-| Rust `-O` | 111.2 ms | 1.05× |
+| Go | 88.8 ms | 0.49× |
+| C `clang -O3` | 95.0 ms | 0.52× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 108.7 ms | 0.60× |
+| Rust `-O` | 131.9 ms | 0.72× |
+| **Kāra (codegen)** | 182.0 ms | 1.00× |
+
+Kāra is now 1.38× behind Rust, 1.67× behind equal-safety Rust, 1.92× behind C and 2.05× behind Go; the Kāra row is noisy (σ 40.6 ms, runs spanning 103–214 ms). The previous M5 feed (karac 0.1.0, 2026-07-27) had Kāra 0.95× Rust (ahead of `rustc -O`, 1.24× behind C) — dated history, not the standing result. That move is not a v2/MIR-backend regression: the MIR build matches legacy dd86e3955 at 1.00× its instructions and 0.94× its cycles, so the July build was faster than October's legacy one (every comparator also ran 12–19% slower in absolute terms this session).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -57,4 +59,4 @@ diff <(karac run dungeon_game.kara) <(python3 dungeon_game.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

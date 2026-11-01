@@ -31,7 +31,7 @@ The linear-time constraint rules out comparison sorting. Key insight: if `n` val
 - **`Slice[i64]` from `Array[i64, N]`** including the empty-array `Array[i64, 0]` case (`n < 2` early-out).
 
 ## Benchmarks
-> **Machine.** The canonical **Apple M5 Pro** run ([`bench/results.json`](bench/results.json), 2026-07-28) is in the correction box below and is what the top-level charts use; the container table that follows immediately is the superseded x86-64 reference ([`bench/results.container-x86.json`](bench/results.container-x86.json)). Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
+> **Machine.** The canonical **Apple M5 Pro** run ([`bench/results.json`](bench/results.json), 2026-11-01, karac g6697158fa, v2/MIR backend) is in the re-bench box below and is what the top-level charts use; the 2026-07-28 M5 correction box is history, and the container table that follows immediately is the superseded x86-64 reference ([`bench/results.container-x86.json`](bench/results.container-x86.json)). Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
 
 Compute-bound, seq-only kata. The workload is **build-once + punch**: fill `N = 1_000_000` deterministic LCG values, then run `maximum_gap` `K = 30` times, perturbing one element each round so the pure function can't be hoisted. All five mirrors print the same sink (`462870`). The dominant cost is the O(n) bucket allocation + data-dependent scatter, so this doubles as an **allocator + memory-scatter** benchmark.
 
@@ -72,8 +72,28 @@ Container snapshot, hyperfine `--warmup 5 --runs 30` — **superseded by the M5 
 > kernels. What it does not survive is the specific "edges out C's
 > `malloc`/`calloc`" conclusion: the container run that supported it had C at a
 > system-time disadvantage that does not reproduce on this host.
+>
+> *Note (2026-11-01): the "beats both Rust builds by ~1.2×" ranking above no longer holds — see the re-bench below.*
 
-Kāra's codegen leads **both Rust builds and Go**, and trails only C. The kernel repeatedly allocates three ~1M-element buckets and scatters into them; the measured cost is dominated by **allocation + memory traffic**, where Kāra's allocator (reused arenas across the K calls) beats Rust's and Go's GC — but not C's `malloc`/`calloc`. This remains a workload-specific result, not a general claim: for the tight-arithmetic kernels elsewhere in this corpus (e.g. [#152](../152-maximum-product-subarray/)) C's lead is wider still. Python is a **scale reference only** (run 3× — it is ~20× slower here because the per-bucket work is pathological under CPython).
+> **Re-bench (2026-11-01, karac g6697158fa, v2/MIR backend) — regressed.** Seq lane
+> (`KARAC_AUTO_PAR=0`), hyperfine 30 runs on the M5:
+>
+> | Implementation | M5 wall time | vs Kāra |
+> |---|---|---|
+> | c    `maximum_gap` (clang -O3) | **199.8 ± 2.4 ms** | 0.71× |
+> | **kāra `maximum_gap`** | **283.1 ± 3.4 ms** | **1.00×** |
+> | rust `maximum_gap` (rustc -O) | 285.9 ± 2.1 ms | 1.01× |
+> | rust `maximum_gap` (overflow-checks=on) | 290.5 ± 2.0 ms | 1.03× |
+> | go   `maximum_gap` | 334.0 ± 3.8 ms | 1.18× |
+>
+> In ratios against the 2026-07-28 feed: Kāra/Rust 0.84× → 0.99×, Kāra/C
+> 1.17× → 1.42×, Kāra/Go 0.71× → 0.85× — a ~1.2× slip against all three
+> (tracked as [`B-2026-11-01-43`](../../../../kara/docs/bugs-v2.md), see Bug ledger).
+> Kāra now ties `rustc -O`, is 1.03× ahead of equal-safety Rust and 1.18× ahead
+> of Go. Binary size: the MIR Kāra binary is 302,872 bytes, where the legacy
+> backend's was ~34 KB (tracked as kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
+
+As of the 2026-11-01 re-bench Kāra's codegen **ties both Rust builds** (within 3%), leads **Go** by 1.18×, and trails C by 1.42×. The kernel repeatedly allocates three ~1M-element buckets and scatters into them; the measured cost is dominated by **allocation + memory traffic**, where Kāra's allocator (reused arenas across the K calls) beats Rust's and Go's GC — but not C's `malloc`/`calloc`. This remains a workload-specific result, not a general claim: for the tight-arithmetic kernels elsewhere in this corpus (e.g. [#152](../152-maximum-product-subarray/)) C's lead is wider still. Python is a **scale reference only** (run 3× — it is ~20× slower here because the per-bucket work is pathological under CPython).
 
 ## Running
 
@@ -87,3 +107,7 @@ diff <(karac run maximum_gap.kara) <(python3 maximum_gap.py) && echo OK
 ## Notes
 
 Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. (The full-scale bench kernel is too slow under the tree-walk interpreter to A/B at `N=1M`; the small correctness cases above cover the interpreter surface, and the JIT matches the compiled sink.)
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-01-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/maximum_gap.kara` retires 1.30× legacy dd86e3955's instructions and takes 1.19× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 0.84× to 0.99× `rustc -O`, from 1.17× to 1.42× C and from 0.71× to 0.85× Go. Measured 2026-11-01 with karac g6697158fa; unattributed.

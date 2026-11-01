@@ -34,15 +34,17 @@ A trailing zero is a factor of `10 = 2·5`. In `n!` the factors of 2 vastly outn
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`153124810625000`). Workload: trailing_zeroes summed over n in 0..35M (repeated /5 factor-count loop; scalar, non-vectorizing).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 89.7 ms | 0.88× |
-| C `clang -O3` | 94.2 ms | 0.92× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 95.9 ms | 0.94× |
-| Go | 101.8 ms | 1.00× |
-| **Kāra (codegen)** | 102.1 ms | 1.00× |
+| Rust `-O` | 95.5 ms | 0.83× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 99.3 ms | 0.86× |
+| Go | 101.5 ms | 0.88× |
+| C `clang -O3` | 103.6 ms | 0.90× |
+| **Kāra (codegen)** | 115.0 ms | 1.00× |
+
+Against the previous M5 feed (karac 0.1.0, legacy backend, 2026-07-28) Kāra is flat against Rust and C (Kāra/Rust 1.14× → 1.20×, Kāra/C 1.08× → 1.11×). Only Go moved (Kāra/Go 1.00× → 1.13×), on Go's side: Go's time held (101.8 → 101.5 ms) while every other comparator ran 4–10% slower this session, so compare ratios, not milliseconds.
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -57,4 +59,4 @@ diff <(karac run trailing_zeroes.kara) <(python3 trailing_zeroes.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

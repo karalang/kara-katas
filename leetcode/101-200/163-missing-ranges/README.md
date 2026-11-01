@@ -35,15 +35,17 @@ Track `prev` — the last number accounted for — initialised to `lower - 1`. S
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`320331567536794`). Workload: build-once 1M-elem sorted PRNG array + 120K sliding-window missing-ranges sweeps (loop-carried prev, data-dependent gap>=2 branch, non-vectorizing); sink = ranges count + endpoint checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 50.4 ms | 0.11× |
-| Rust `-O` | 50.5 ms | 0.11× |
-| **Kāra (codegen)** | 479.1 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 489.4 ms | 1.02× |
-| Go | 503.1 ms | 1.05× |
+| C `clang -O3` | 58.1 ms | 0.10× |
+| Rust `-O` | 59.2 ms | 0.10× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 548.2 ms | 0.91× |
+| Go | 552.1 ms | 0.91× |
+| **Kāra (codegen)** | 604.7 ms | 1.00× |
+
+The ~10× gap (10.21× behind `rustc -O`, 10.41× behind C) is to plain `rustc -O` and C, which vectorise this loop. Against equal-safety Rust (`-C overflow-checks=on`) Kāra is 1.10× behind, and Go is in the same range (1.10×). That is the in-loop overflow check blocking vectorisation (kara `B-2026-08-16-11`, legacy ledger, wontfix): the checked Rust build pays the same ~10×. Flat against the 2026-07-28 feed (9.49× behind `rustc -O`); the equal-safety and Go ratios slipped from Kāra marginally ahead (0.98× / 0.95×) to 1.10× behind. Binary size: the MIR Kāra binary is 302,880 bytes, where the legacy backend's was ~34 KB (tracked as kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

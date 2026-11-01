@@ -30,13 +30,22 @@ The **Boyer-Moore voting** algorithm hits the O(n)/O(1) follow-up target. Keep a
 - **`Slice[i64]`** input from `Array[i64, N]` literals.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+> **Machine.** The canonical figures are the Apple M5 Pro run below ([`bench/results.json`](bench/results.json)). The container table further down is the original reference run on a shared **x86-64 Linux cloud container** (22 Jul 2026), kept as history — [`bench/results.container-x86.json`](bench/results.container-x86.json) has since been re-measured and no longer holds those figures; absolute times there are noisy, so **within-run cross-language ratios are the signal.**
 
-> **Machine.** Container-only reference run — a shared **x86-64 Linux cloud container** ([`bench/results.container-x86.json`](bench/results.container-x86.json)); canonical Apple-M5 numbers (`bench/results.json`) are pending a maintainer run. Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
+Compute-bound, seq-only kata (the default build does not auto-parallelize: verified in the emitted IR (`KARAC_MIR_LL`), neither the default nor the `KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn`). **Build-once + punch**: fill `N = 10_000_000` LCG values with a 60% majority, then run the Boyer-Moore scan `K = 20` times, perturbing one element each round so the pure function can't be hoisted. All five mirrors print the same sink (`140`). The scan's candidate/count dependency chain makes it a genuine **sequential arithmetic-and-branch** kernel — the opposite regime from [#164](../164-maximum-gap/)'s allocation-bound bucket sort.
 
-Compute-bound, seq-only kata. **Build-once + punch**: fill `N = 10_000_000` LCG values with a 60% majority, then run the Boyer-Moore scan `K = 20` times, perturbing one element each round so the pure function can't be hoisted. All five mirrors print the same sink (`140`). The scan's candidate/count dependency chain makes it a genuine **sequential arithmetic-and-branch** kernel — the opposite regime from [#164](../164-maximum-gap/)'s allocation-bound bucket sort.
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine `--warmup 5 --runs 30`; `KARAC_AUTO_PAR=0`):
+
+| Run | Mean ± σ | vs kāra |
+|---|---|---|
+| c `majority_element` (`clang -O3`) | 235.1 ± 4.8 ms | 2.29× ahead |
+| rust `majority_element` (`-O`, wrapping) | 235.9 ± 3.5 ms | 2.28× ahead |
+| go `majority_element` | 257.6 ± 4.1 ms | 2.09× ahead |
+| rust `majority_element` (`overflow-checks=on`) | 533.0 ± 5.1 ms | 1.01× ahead |
+| **kāra `majority_element` (codegen)** | **538.2 ± 5.5 ms** | — |
+| python `majority_element` | 13.81 ± 0.70 s — last measured 22 Jul 2026 on the container, not re-run (scale only) | — |
+
+On the M5 Kāra is at equal-safety parity with `rust_ovf` (1.01× behind, inside one σ), and 2.28× behind wrapping `rustc -O`, 2.29× behind C, 2.09× behind Go. Against the previous M5 measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 2.19× → 2.28×, Kāra/C 2.21× → 2.29×, Kāra/Go 2.00× → 2.09×, Kāra/`rust_ovf` 0.98× → 1.01× (every comparator also ran ~10% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 ### How to run
 
@@ -47,7 +56,9 @@ brew install hyperfine    # one-time, also needs rustc, clang, go, karac
 
 ### Equal-safety: ahead of `rust_ovf`; the check tax vs wrapping C
 
-Container snapshot, hyperfine `--warmup 5 --runs 30`:
+> **Note (1 Nov 2026).** "Ahead of `rust_ovf`" below is the container run's. On the M5 Pro (table above) Kāra is 1.01× *behind* `rust_ovf`.
+
+Container snapshot (22 Jul 2026), hyperfine `--warmup 5 --runs 30`:
 
 | Run | Mean ± σ | vs kāra |
 |---|---|---|
@@ -61,6 +72,8 @@ Container snapshot, hyperfine `--warmup 5 --runs 30`:
 The honest comparison is at **equal safety**. Kāra bounds-checks every `nums[i]` and overflow-checks the `count ± 1` updates by default; `rustc -O` and `clang -O3` do neither. Matching Kāra's overflow safety with `-C overflow-checks=on` moves Rust to **1.278 s** — and against *that* lane **Kāra is ahead** (1.180 vs 1.278). Against wrapping C/Rust (~470 ms) Kāra pays roughly **2.5×** — the price of bounds + overflow checks on a kernel whose entire body is one compare, one branch, and one add per element, where those checks are a large fraction of the work and the wrapping frontends' loop can be transformed more aggressively.
 
 This is the mirror image of [#164](../164-maximum-gap/), where the same compiler is *fastest* because that kernel is allocation-bound rather than check-bound. Two katas, two regimes, one honest safety story.
+
+> **Note (1 Nov 2026).** "Fastest" on #164 was the container run's; on the M5 Pro #164's Kāra row now ties Rust (0.99×) and trails C (1.42×) — see that kata's README.
 
 ## Running
 

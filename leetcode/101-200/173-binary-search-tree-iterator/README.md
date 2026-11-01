@@ -33,15 +33,17 @@ Instead of materialising the whole in-order traversal, keep an explicit **stack*
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`158936080794544`). Workload: build a 4K-node index-pool BST once, then 30K full in-order traversals via an explicit stack iterator with a per-pass single-node value punch; sink=sum of position-weighted in-order values.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 132.3 ms | 0.85× |
-| Rust `-O` | 140.4 ms | 0.90× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 147.8 ms | 0.95× |
-| Go | 153.7 ms | 0.99× |
-| **Kāra (codegen)** | 155.5 ms | 1.00× |
+| C `clang -O3` | 150.3 ms | 0.85× |
+| Rust `-O` | 157.6 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 165.1 ms | 0.93× |
+| Go | 172.3 ms | 0.97× |
+| **Kāra (codegen)** | 176.8 ms | 1.00× |
+
+Against the previous M5 feed (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 1.11× → 1.12×, Kāra/C 1.18× → 1.18×, Kāra/Go 1.01× → 1.03× (every comparator also ran ~12% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

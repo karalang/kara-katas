@@ -32,19 +32,24 @@ Parse each version into its list of integer revisions in a **single byte scan** 
 - **`Vec[i64]` per-version revision lists** returned by value from `revisions`.
 - **`if`-expression zero-padding** for the shorter version (`let x = if i < na { a[i] } else { 0 }`).
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **7%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.0%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`10371066`). Workload: build-once pool of 4096 PRNG version strings + 10M PRNG-paired compare_version calls (byte-scan parse into revision lists + element-wise compare, per-call alloc, non-vectorizing); sink = sum of (-1/0/1 result +1).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 92.7 ms | 0.18× |
-| Go | 137.5 ms | 0.26× |
-| Rust `-O` | 521.2 ms | 1.00× |
-| **Kāra (codegen)** | 523.8 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 555.0 ms | 1.06× |
+| C `clang -O3` | 108.0 ms | 0.21× |
+| Go | 159.8 ms | 0.32× |
+| Rust `-O` | 506.3 ms | 1.00× |
+| **Kāra (codegen)** | 506.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 559.1 ms | 1.10× |
+
+Kāra ties `rustc -O` (1.00×), is 1.10× ahead of equal-safety Rust, and is 4.69× behind C and 3.17× behind Go — flat against the 2026-09-07 feed (1.04× / 4.94× / 3.41×). Binary size: the MIR Kāra binary is 302,896 bytes, where the legacy backend's was ~34 KB (tracked as kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

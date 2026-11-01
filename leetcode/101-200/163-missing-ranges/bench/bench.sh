@@ -132,7 +132,7 @@ echo
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=163 slug=missing-ranges group=101-200 \
     title="Missing Ranges" \
-    workload="build-once 1M-elem sorted PRNG array + 120K sliding-window missing-ranges sweeps (loop-carried prev, data-dependent gap>=2 branch, non-vectorizing); sink = ranges count + endpoint checksum" sink="$expected"
+    workload="build-once 1M-elem sorted PRNG array + 120K sliding-window missing-ranges sweeps (loop-carried prev, data-dependent gap>=2 branch; wrapping builds ~10x faster than overflow-checked); sink = ranges count + endpoint checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

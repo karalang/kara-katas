@@ -35,17 +35,19 @@ Emit the sign and integer part, then do **long division** on the fractional part
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`215566009`). Workload: 500K PRNG numerator/denominator pairs (den 2..1024) through long-division digit generation (variable-divisor idiv/mod + seen-remainder Map, non-vectorizing); sink = checksum of fractional digits. NOTE: C hand-rolls an epoch-stamped table in place of the Map (identical digit stream).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-08 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 646.5 ms | 0.39× |
-| Rust `-O` | 1.46 s | 0.87× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 1.46 s | 0.87× |
-| Go | 1.47 s | 0.88× |
-| **Kāra (codegen)** | 1.67 s | 1.00× |
+| C `clang -O3` | 702.2 ms | 0.73× |
+| **Kāra (codegen)** | 956.5 ms | 1.00× |
+| Rust `-O` | 1.57 s | 1.65× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 1.58 s | 1.65× |
+| Go | 1.62 s | 1.69× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 8dc5a4d8baeb); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Improved against every comparator since the 2026-09-08 feed: Kāra/Rust 1.14× → 0.61×, Kāra/C 2.58× → 1.36×, Kāra/Go 1.13× → 0.59× — Kāra now runs ahead of both Rust builds and Go and trails only C (whose mirror hand-rolls the table). The 2026-09-08 feed falls inside the u64 map-key miscompile window, but this kata keys `Map[i64, i64]` and that feed's sink matched, so it stands as the baseline. Binary size: the Kāra binary is 303,056 bytes (the 2026-09-08 build was already 302,896); the MIR-wide binary-size growth is tracked as kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
