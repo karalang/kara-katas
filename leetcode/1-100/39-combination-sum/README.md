@@ -100,8 +100,6 @@ sorted / closure code, not just this kata. Full codegen (1618) + par_codegen (12
 memory_sanitizer ASAN (264) + Linux LSan (264) green; fmt + clippy clean.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-18 snapshot; the feed was last measured 2026-06-19.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: enumerate combinations for a per-iteration target. **`TOTAL = 30000`** times, with
 candidates `[2,3,5,7]`, set `target = 18 + (k % 13)` (a per-iteration target, so nothing
@@ -113,55 +111,69 @@ loop-borne dependency, so this is a single-lane (seq) bench by construction. Unl
 this is a **heap-allocating** workload — each solve grows a fresh `Vec[Vec[i64]]` and clones
 a path at every leaf — so it isolates nested-collection allocation + the backtracking
 codegen, the counterpart to #38's `String` growth. Apple M5 Pro; `bench/bench.sh`
-(`hyperfine`).
+(`hyperfine`). Figures below are the 2026-10-31 re-bench (results.json `measured_at`
+2026-11-01T02:01Z), measured with **karac 0.9.0-dev.14057+g6697158fa** — the v2/MIR backend
+(the legacy backend was deleted 2026-10-23).
 
 ### Seq lane — runtime (single-threaded mutable-path backtracking)
 
-| | Rust (`-O`) | Rust (`overflow-checks=on`) | C | Go | **Kāra** | Python |
+| | **Kāra** | Rust (`-O`) | Rust (`overflow-checks=on`) | C | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 40.3 ms | 40.8 ms | 43.1 ms | 48.2 ms | **59.0 ms** | 759 ms |
-| vs Kāra | 1.46× faster | **1.45× faster (= safety)** | 1.37× faster | 1.22× faster | — | 12.9× slower |
+| time | **43.8 ± 1.6 ms** | 44.5 ± 1.5 ms | 45.2 ± 1.7 ms | 46.4 ± 2.0 ms | 53.5 ± 0.4 ms | 759 ms (last measured 2026-06-19, not re-run) |
+| vs Kāra | — | 1.02× slower | **1.03× slower (= safety)** | 1.06× slower | 1.22× slower | 12.9× slower than the 2026-06-19 Kāra figure |
 
-**Kāra trails the C-class here, and the gap is allocation, not the algorithm.** Where the
-stack-integer compute of #36/#37 put Kāra *ahead* of C, #39 is dominated by `Vec[Vec[i64]]`
-growth and a path `clone()` at every solution leaf — `malloc`/`realloc`/`free` churn that
-C/Rust/Go drive through the same allocator but with tighter per-object overhead. The headline
-costs are structural, not a miscompile:
+**Kāra now leads the field — narrowly.** It is 1.02× ahead of `rustc -O`, 1.03× ahead of
+equal-safety Rust, 1.06× ahead of C and 1.22× ahead of Go; the Rust margin (0.7 ms) is inside
+either side's σ, so read it as a tie with Rust and a small lead on C. In language ratios
+against the previous feed (legacy karac 0.1.0, 2026-06-19): Kāra/Rust 1.46× → 0.98×,
+Kāra/C 1.37× → 0.94×, Kāra/Go 1.22× → 0.82× — a ~1.5× relative gain, while every comparator
+ran 8–11 % slower in absolute ms this session.
 
-- **The residual is allocation churn.** Each `solve` allocates a fresh result vector and one
+**The June standing (history).** On the legacy build Kāra trailed the C-class here (1.46×
+behind Rust), and the gap was put down to allocation, not the algorithm: #39 is dominated by
+`Vec[Vec[i64]]` growth and a path `clone()` at every solution leaf — `malloc`/`realloc`/`free`
+churn that C/Rust/Go drive through the same allocator but with tighter per-object overhead.
+That residual does not show on the MIR backend; which part of the MIR lowering removed it was
+not isolated in this pass. The June analysis:
+
+- **The residual was allocation churn.** Each `solve` allocates a fresh result vector and one
   fresh heap buffer per combination snapshot, all freed at the end of the iteration — the
   same per-step allocate-and-grow that #38's "residual 1.58× to C is now purely allocation"
-  note identified. Closing it is the same deeper move (builder-buffer / arena reuse across
-  iterations) and is left as identified headroom — **not** claimed until implemented and
-  measured. This pass fixed the two **correctness** bugs above; no perf change was made or is
-  claimed.
-- **The overflow tax is ~zero.** `rustc -O` (40.3 ms) and `-C overflow-checks=on` (40.8 ms)
-  are within ~1% — the hot path is pointer-chasing and `i64` adds well inside range, no
-  arithmetic to check — so **equal-safety** Rust is 1.45× ahead, the same as unchecked. Rust
-  (40.3 ms) edges C (43.1 ms) here on `Vec` ergonomics; Go (48.2 ms) sits between C and Kāra.
+  note identified. Closing it was left as identified headroom (builder-buffer / arena reuse
+  across iterations) — never implemented in the kata; the June pass fixed the two
+  **correctness** bugs above and claimed no perf change.
+- **The overflow tax is ~zero.** `rustc -O` (44.5 ms) and `-C overflow-checks=on` (45.2 ms)
+  are within ~2% — the hot path is pointer-chasing and `i64` adds well inside range, no
+  arithmetic to check. Rust (44.5 ms) still edges C (46.4 ms) here on `Vec` ergonomics; Go
+  (53.5 ms) is the slowest compiled mirror.
 
 **No par lane — by construction.** The per-iteration solve is pure, but the checksum
 reduction carries a loop-borne dependency, so karac's auto-par-on-reduction pass does not
-fire: the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run
-single-threaded. (Fixing B-2026-06-18-10 was about the auto-par pass *mis-compiling* the
-sorted solver's comparator, not about this bench parallelizing — it doesn't.)
+fire: verified in the emitted IR (`KARAC_MIR_LL`) on the 2026-10-31 MIR build — neither the
+default nor the `KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn` (the
+detector fires on a known auto-par program), and both run single-threaded. (Fixing
+B-2026-06-18-10 was about the auto-par pass *mis-compiling* the sorted solver's comparator,
+not about this bench parallelizing — it doesn't.)
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.14 MiB** | 1.22 MiB | 1.20 MiB | 9.66 MiB |
-| binary size (seq) | 33.3 KiB | 456.0 KiB | **32.8 KiB** | 2434.1 KiB |
-| compile elapsed | 74.4 ms | 90.4 ms | **45.8 ms** |
-| compile peak RSS | 13.7 MiB | 29.0 MiB | **2.5 MiB** |
+| **runtime peak RSS** | **1.20 MiB** | 1.27 MiB | 1.22 MiB | 9.23 MiB |
+| binary size (seq) | 295.8 KiB | 456.0 KiB | **32.8 KiB** | 2434.1 KiB |
+| compile elapsed | 118.0 ms | 94.9 ms | **49.3 ms** |
+| compile peak RSS | 58.7 MiB | 29.0 MiB | **2.6 MiB** |
 
 The result vectors are freed each iteration, so steady-state RSS is allocator-bound and
-tight: Kāra (**1.14 MiB**) is actually the lowest, with Rust (1.22) and C (1.20) within
-rounding, while Go's runtime pays 9.66 MiB and Python's interpreter 6.8 MiB. The seq compute
-binary references no par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.3 KiB** —
-13.7× under Rust and within a rounding of C's 32.8 KiB (Go's static runtime is 2.4 MiB).
-Compile favours Kāra over `rustc -O` on both elapsed (74.4 vs 90.4 ms) and peak compiler RSS
-(13.7 vs 29.0 MiB); clang's 45.8 ms / 2.5 MiB is the toolchain floor.
+tight: Kāra (**1.20 MiB**) is still the lowest, with C (1.22) and Rust (1.27) within
+rounding, while Go's runtime pays 9.23 MiB and Python's interpreter paid 6.8 MiB (last
+measured 2026-06-19, not re-run). Every MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md));
+this one is **295.8 KiB** (302,896 B, was 34,112 B on legacy), 1.54× under Rust and 9.0×
+over C (Go's static runtime is 2.4 MiB). On the MIR backend compile no longer favours Kāra:
+karac is 1.24× slower than `rustc -O` (118.0 vs 94.9 ms) and peaks at 2.0× its compiler RSS
+(58.7 vs 29.0 MiB); the legacy build was 74.4 ms / 13.7 MiB, ahead of rustc on both.
+clang's 49.3 ms / 2.6 MiB is the toolchain floor.
 
 ## Kāra features exercised
 

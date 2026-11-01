@@ -146,10 +146,12 @@ finally pinned the real cause, and it is now closed
   variable-bounded loops (the binary-search katas) are untouched — the gate is narrow by
   design.
 
+> **Note (2026-10-31):** the "Kāra now leads the field" result above is the June legacy
+> build's. On the v2/MIR backend the unroll hint is no longer emitted on this loop and Kāra
+> is 1.37× behind `rustc -O`, on the C floor — [`B-2026-10-31-44`](../../../../kara/docs/bugs-v2.md)
+> (perf, open); see § Benchmarks.
+
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-17 snapshot; the feed was last measured 2026-06-18.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: the template is **Arto Inkala's 2012 "world's hardest sudoku"** — the puzzle
 engineered to force maximal backtracking. **`TOTAL = 500`** times, copy the template into
@@ -164,59 +166,75 @@ loop. Recursion + branchy mask arithmetic over a fixed-size grid, **no heap allo
 the hot path** (board + the three masks are all stack storage), so this measures
 backtracking-search codegen, not the allocator. The accumulator carries a loop-borne
 dependency, so this is a single-lane (seq) bench by construction. Apple M5 Pro;
-`bench/bench.sh` (`hyperfine`).
+`bench/bench.sh` (`hyperfine`). Figures below are the 2026-10-31 re-bench (results.json
+`measured_at` 2026-11-01T02:00Z), measured with **karac 0.9.0-dev.14057+g6697158fa** — the
+v2/MIR backend (the legacy backend was deleted 2026-10-23).
 
 ### Seq lane — runtime (single-threaded bitmask-backtracking solve)
 
-| | **Kāra** | Rust (`-O`) | Rust (`overflow-checks=on`) | C | Go | Python |
+| | Rust (`overflow-checks=on`) | Rust (`-O`) | **Kāra** | C | Go | Python |
 |---|---|---|---|---|---|---|
-| time | **184.1 ms** | 190.5 ms | 190.7 ms | 260.6 ms | 297.5 ms | 19027 ms |
-| vs Kāra | — | 1.03× slower | **1.04× slower (= safety)** | 1.42× slower | 1.62× slower | 103× slower |
+| time | 211.5 ± 3.5 ms | 211.7 ± 3.4 ms | **289.5 ± 5.2 ms** | 295.7 ± 3.7 ms | 334.8 ± 3.6 ms | 19027 ms (last measured 2026-06-18, not re-run) |
+| vs Kāra | **1.37× faster (= safety)** | 1.37× faster | — | 1.02× slower | 1.16× slower | 103× slower than the 2026-06-18 Kāra figure |
 
-**Kāra is the fastest of the field — 1.03× ahead of `rustc -O`, 1.42× ahead of C, 1.62×
-ahead of Go.** The solver is written in its natural `mut ref Array[i64, 81]` /
-`mut ref Array[i64, 9]` form (board + masks), which lowers each borrow to a single `ptr`
-carrying LLVM `noalias`. Two codegen properties combine to put it ahead of even Rust:
+**Kāra no longer leads the field: it is back on the C floor (1.02× ahead of clang, 1.16×
+ahead of Go) and 1.37× behind `rustc -O`.** In language ratios against the previous feed
+(legacy karac 0.1.0, 2026-06-18): Kāra/Rust 0.97× → 1.37×, Kāra/C 0.71× → 0.98×,
+Kāra/Go 0.62× → 0.86× — a ~1.4× relative regression, against comparators that ran only
+11–13 % slower in absolute ms this session. The solver is still written in its natural
+`mut ref Array[i64, 81]` / `mut ref Array[i64, 9]` form (board + masks), which lowers each
+borrow to a single `ptr` carrying LLVM `noalias`; what it has lost is the unroll:
 
-- **The candidate loop is fully unrolled.** The hot inner loop `while d <= 9 { … }` carries
-  Kāra's full-unroll hint ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl),
-  **fixed [`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**), so LLVM expands it into
+- **The candidate loop is no longer fully unrolled.** The hot inner loop
+  `while d <= 9 { … }` carried Kāra's full-unroll hint on the June legacy build
+  ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl),
+  **fixed [`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**), so LLVM expanded it into
   nine straight-line digit blocks — the single optimization that closed (and then crossed) a
   1.34× gap. This was the whole story: before the fix Kāra sat at the **C floor** (254 ms,
   rolled, a hair *ahead* of clang), and Rust's lead came *entirely* from unrolling the same
   loop (proven by forcing the unroll on the C mirror — it lands exactly on Rust — and by
   disabling rustc's unroller, which drops Rust back to ~255 ms). clang declines this unroll
-  even at `-O3 -funroll-loops`; Kāra and rustc both take it.
-- **Kāra then *edges out* Rust** because it carries `noalias` (from the exclusive `mut ref`
-  borrow) *and*, on a fixed `Array[i64, N]`, drops bounds checks the type makes provable —
-  whereas Rust's bench indexes `&mut [i64]` slices, which still bounds-check. Same unroll,
-  one fewer check class per access.
-- **The overflow tax is ~zero on this kernel.** `rustc -O` (190.5 ms) and
-  `-C overflow-checks=on` (190.7 ms) are within noise — the hot path is array indexing +
+  even at `-O3 -funroll-loops`; rustc takes it. The MIR backend never emits the hint on
+  this loop (it calls `go` recursively and exits early, which its unroll gate rejects), so
+  the loop runs rolled again and the measured gap, 1.37×, is the June rolled gap
+  (~1.34×) back — filed as [`B-2026-10-31-44`](../../../../kara/docs/bugs-v2.md) (perf,
+  open). The regression is against the June build, not the MIR switch: the October legacy
+  build had lost the unroll too, and MIR runs 1.01× its instructions.
+- **The `noalias` + no-bounds-check edge still shows against C.** Kāra carries `noalias`
+  (from the exclusive `mut ref` borrow) *and*, on a fixed `Array[i64, N]`, drops bounds
+  checks the type makes provable — which is what keeps the rolled loop a hair ahead of
+  clang. In June the same edge put Kāra 1.03× ahead of an equally-unrolled Rust, whose
+  bench indexes `&mut [i64]` slices that still bounds-check.
+- **The overflow tax is ~zero on this kernel.** `rustc -O` (211.7 ms) and
+  `-C overflow-checks=on` (211.5 ms) are within noise — the hot path is array indexing +
   bitwise mask ops, with the single multiply only in the once-per-solve signature fold — so
-  equal-safety Rust is 1.04× behind, the same as unchecked.
+  equal-safety Rust is 1.37× ahead, the same as unchecked.
 
 **No par lane — by construction.** The solve is pure per iteration, but the checksum
 reduction carries a loop-borne dependency, so karac's auto-par-on-reduction pass does not
-fire: the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run
-single-threaded.
+fire: the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** (re-checked on the
+2026-10-31 MIR build: same 302,880 B, same sha) and both run single-threaded.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.05 MiB | 1.02 MiB | 2.78 MiB |
-| binary size (seq) | 33.1 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
-| compile elapsed | 80.2 ms | 83.1 ms | **43.0 ms** |
-| compile peak RSS | 15.5 MiB | 26.5 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.03 MiB | 1.08 MiB | **1.00 MiB** | 2.72 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
+| compile elapsed | 125.2 ms | 89.9 ms | **47.2 ms** |
+| compile peak RSS | 59.8 MiB | 26.4 MiB | **2.6 MiB** |
 
-The board and masks are all stack storage with no hot-path allocation, so runtime RSS is
-the **lowest of the natives** — 1.00 MiB, just under C's 1.02 MiB and Rust's 1.05 MiB; Go's
-runtime pays 2.78 MiB and Python's interpreter 7.06 MiB. The seq compute binary references
-no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to **33.1 KiB** — 13.8×
-under Rust and within a rounding of C's 32.8 KiB (Go's static runtime is 2.4 MiB). Compile
-favours Kāra over `rustc -O` on both elapsed (80.2 vs 83.1 ms) and peak compiler RSS (15.5
-vs 26.5 MiB); clang's 43.0 ms / 2.5 MiB is the toolchain floor.
+The board and masks are all stack storage with no hot-path allocation, so runtime RSS sits
+with the natives — 1.03 MiB, between C's 1.00 MiB and Rust's 1.08 MiB (single-shot
+readings, a 16 KiB page or two apart); Go's runtime pays 2.72 MiB and Python's interpreter
+paid 7.06 MiB (last measured 2026-06-18, not re-run). Every MIR Kāra binary is ~300–390 KB
+where the legacy backend's were ~34 KB (kara ledger
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this one is **295.8 KiB**
+(302,880 B, was 33,904 B on legacy), 1.54× under Rust and 9.0× over C (Go's static runtime
+is 2.4 MiB). On the MIR backend compile no longer favours Kāra: karac is 1.39× slower than
+`rustc -O` (125.2 vs 89.9 ms) and peaks at 2.3× its compiler RSS (59.8 vs 26.4 MiB); the
+legacy build was 80.2 ms / 15.5 MiB, ahead of rustc on both. clang's 47.2 ms / 2.6 MiB is
+the toolchain floor.
 
 ## Kāra features exercised
 
@@ -265,6 +283,11 @@ unroller off drops back onto Kāra/C. The fix emits `llvm.loop.unroll.full` on s
 constant-trip counted loops, which takes Kāra **1.03× ahead of Rust** here (and 2.88× on
 [#36](../36-valid-sudoku/)). See the
 [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
+
+**Surfaced [`B-2026-10-31-44`](../../../../kara/docs/bugs-v2.md)** (perf, open). The MIR
+backend never emits the full-unroll hint on the `while d <= 9` candidate loop (it recurses
+and exits early) — the exact loop `B-2026-06-17-7` targeted — so the bench went from 0.97×
+to 1.37× `rustc -O`. Shared with [#36](../36-valid-sudoku/).
 
 ## Calibration re-probe (2026-10-06)
 

@@ -62,10 +62,6 @@ diff <(karac run brute_force.kara) <(karac run sliding_window.kara) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-08 snapshot; the feed was last measured 2026-09-08.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 ### How to run
 
 ```bash
@@ -87,21 +83,24 @@ Each implementation builds the identical text from the classic glibc LCG (`a = 1
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded:
+M5 Pro, 2026-10-31 (`results.json` `measured_at` 2026-11-01T01:52Z), karac 0.9.0-dev.14057+g6697158fa (v2/MIR backend), hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded:
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| c    concat_words (clang -O3) | 25.5 ± 0.9 ms | 4.6× ahead of kāra |
-| rust concat_words | 68.7 ± 2.9 ms | 1.72× ahead of kāra |
-| **kāra concat_words (codegen)** | **118.4 ± 1.0 ms** | — |
-| go   concat_words | 173.2 ± 2.4 ms | kāra 1.46× ahead of Go |
+| c    concat_words (clang -O3, hashed `(ptr, len)` keys) | 60.6 ± 1.8 ms | 2.50× ahead of kāra |
+| rust concat_words | 72.6 ± 1.7 ms | 2.09× ahead of kāra |
+| rust concat_words (`overflow-checks=on`) | 72.8 ± 1.5 ms | 2.08× ahead of kāra |
+| **kāra concat_words (codegen)** | **151.7 ± 4.1 ms** | — |
+| go   concat_words | 209.5 ± 6.1 ms | kāra 1.38× ahead of Go |
 
-This kata was the *driver* for two karac changes, and the table above is the after. **Before** them (binding each window slice to a `let`, so every `s[j..j+L]` heap-allocated a fresh `String`), idiomatic Kāra ran this in **199 ms — 3.1× behind Rust — with 10.0 MiB peak RSS** from ~8 million `malloc`/`free` pairs. The two fixes:
+The ratios are flat against the 2026-09-08 legacy feed (Kāra/Rust 2.09× → 2.09×, Kāra/C 2.47× → 2.50×, Kāra/Go 0.77× → 0.72×); every comparator ran 10–18% slower in absolute ms this session, so compare ratios, not milliseconds. The rest of this subsection is the history of how the kata got here.
+
+This kata was the *driver* for two karac changes, and the 2026-06-08 snapshot (kāra 118.4 ms, Rust 68.7 ms, Go 173.2 ms) was the after. **Before** them (binding each window slice to a `let`, so every `s[j..j+L]` heap-allocated a fresh `String`), idiomatic Kāra ran this in **199 ms — 3.1× behind Rust — with 10.0 MiB peak RSS** from ~8 million `malloc`/`free` pairs. The two fixes:
 
 1. **Borrowed String-slice map keys.** A slice written inline as a map key is now a borrowed view into `s` (no allocation); `insert` deep-copies only on a fresh key (see [§ Why the slice is written inline](#why-the-slice-is-written-inline)). Allocation drops from once-per-window to once-per-*distinct*-word — the same thing Rust's `&str` keys and C's packed `u32` keys do.
 2. **`Map.clear()` frees its heap keys.** The sliding window clears `seen` on every dead window; `karac_map_clear` previously only zeroed the bucket status and *leaked* the owned key buffers. Fixed, RSS drops from 10.0 MiB to **1.4 MiB — at parity with Rust's 1.4 MiB** (see [peak-RSS table](#runtime-memory-peak)).
 
-Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing at **1.72× Rust on runtime and ~parity on memory**, and **1.46× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 4.6× lead in the snapshot above was its zero-hashing packed-`u32` key — a representation no general string solution gets.
+Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing on that snapshot at **1.72× Rust on runtime and ~parity on memory**, and **1.46× ahead of Go**. The remaining runtime gap to Rust is the honest cost of staying leak-free: `seen.clear()` now actually *frees* the keys it used to leak (~2 M `free()` calls over the run), and Rust's borrowed `&str` keys mean it never allocated or freed them in the first place. C's 4.6× lead in that snapshot (25.5 ms) was its zero-hashing packed-`u32` key — a representation no general string solution gets.
 
 > ⚠️ **That C mirror has been replaced, and the 4.6× with it.** `3561607`
 > (31 Jul 2026) found it was a cross-language parity violation, not a fast C
@@ -118,42 +117,44 @@ Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing
 > section are unaffected — Kāra sits at 1.77× behind `rustc -O` and 1.55× ahead
 > of Go on that feed, both within a hair of the ratios quoted above.
 
-That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 2.3× faster than `rustc -O`** and ships a binary **38 % smaller than Rust's**.
+Note (31 Oct 2026): the Rust ratio "quoted above" has since moved — Kāra was 2.09× behind `rustc -O` already on the 8 Sep 2026 legacy feed and is 2.09× on the v2/MIR feed in the table; the move from 1.77× happened between 4 Aug and 8 Sep on the legacy backend and has not been attributed.
+
+That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 1.34× faster than `rustc -O`** and ships a binary **31 % smaller than Rust's** (2.3× and 38 % on the 2026-06-08 snapshot).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara concat_words` (codegen) | 118.4 ± 1.0 ms |
-| `rust concat_words` | 68.7 ± 2.9 ms |
-| `py concat_words` | 638.3 ± 18.1 ms |
+| `kara concat_words` (codegen) | 151.7 ± 4.1 ms |
+| `rust concat_words` | 72.6 ± 1.7 ms |
+| `py concat_words` — last measured 2026-06-08, not re-run | 638.3 ± 18.1 ms |
 
-Kāra codegen is **~5.3× faster than CPython** — CPython allocates a `str` per slice *and* dispatches every map operation through the interpreter.
+Python is not in the 2026-10-31 feed (the run did not set `KARA_BENCH_INCLUDE_PY`); the ratio here is from the 2026-06-08 snapshot, when Kāra codegen was **~5.3× faster than CPython** — CPython allocates a `str` per slice *and* dispatches every map operation through the interpreter.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-08, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+M5 Pro, 2026-10-31, karac g6697158fa (v2/MIR backend), hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build concat_words.kara` | 90.5 ± 0.7 ms | 295.7 KiB |
-| `rustc -O concat_words.rs` | 205.1 ± 1.8 ms | 473.6 KiB |
-| `clang -O3 concat_words.c` | 59.4 ± 0.6 ms | 32.9 KiB |
+| `karac build concat_words.kara` | 161.2 ± 1.7 ms | 328.5 KiB |
+| `rustc -O concat_words.rs` | 215.4 ± 3.1 ms | 473.6 KiB |
+| `clang -O3 concat_words.c` | 70.1 ± 1.0 ms | 33.1 KiB |
 | `go build` | — | 2434.3 KiB |
 
-Kāra compiles this kata **2.3× faster than `rustc -O`** (1.52× slower than C) and produces a binary **38 % smaller than Rust's**. The 295 KiB is the `Map`/`String` runtime floor — this workload pulls in the hash-map and string-slice runtime, so it does not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit.
+Kāra compiles this kata **1.34× faster than `rustc -O`** (2.30× slower than C) and produces a binary **31 % smaller than Rust's** (336,368 B). Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's lean katas were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md); this kata was never on the lean floor (legacy shipped 312.7 KiB on the 2026-09-08 feed), so MIR adds 16 KiB here. On the 2026-06-08 legacy snapshot Kāra compiled 2.3× faster than `rustc -O` (90.5 vs 205.1 ms) with a 295.7 KiB binary — the `Map`/`String` runtime floor: this workload pulls in the hash-map and string-slice runtime, so it did not reach the lean ~33 KiB scalar floor that sibling katas like [#27](../27-remove-element/README.md) and [#29](../29-divide-two-integers/README.md) hit on the legacy backend.
 
 ### Runtime memory (peak)
 
 | Run | Peak RSS |
 |---|---|
 | `c    concat_words` | 1.2 MiB |
-| `rust concat_words` | 1.4 MiB |
 | `kara concat_words` (codegen) | 1.4 MiB |
-| `py concat_words` | 7.8 MiB |
-| `go   concat_words` | 9.5 MiB |
+| `rust concat_words` | 1.4 MiB |
+| `py concat_words` — last measured 2026-06-08, not re-run | 7.8 MiB |
+| `go   concat_words` | 9.8 MiB |
 
-Kāra now sits **at parity with Rust** and an order of magnitude below Go's GC arena — the live set is tiny (a few count maps + the 200 KB text), and with the `Map.clear` leak fixed there is no allocator high-water from churned keys. Before the fix this row read 10.0 MiB; it is the clearest single-number evidence that the two changes worked.
+Kāra now sits **at parity with Rust** (1,474,896 B vs 1,507,640 B; C 1,294,648 B) and an order of magnitude below Go's GC arena — the live set is tiny (a few count maps + the 200 KB text), and with the `Map.clear` leak fixed there is no allocator high-water from churned keys. Before the fix this row read 10.0 MiB; it is the clearest single-number evidence that the two changes worked.
 
 ### Why Rust is in the harness
 

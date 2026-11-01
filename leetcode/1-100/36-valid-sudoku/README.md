@@ -85,9 +85,6 @@ hits the hot path with zero heap allocation; the pedagogical files use `ref Vec[
 *drove to a fix* — both forms build now; the bench stays on the idiomatic `Slice`.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-17 snapshot; the feed was last measured 2026-06-18.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Workload: build one fixed, fully-solved (valid) board once as a flat `Array[i64, 81]`,
 then **`TOTAL = 5M`** times **perturb** cell `k % 81` to digit `(k % 9) + 1`, validate
@@ -98,52 +95,65 @@ hoist the validation out of the loop; ~half the perturbations introduce a duplic
 carries a loop-borne dependency, so this is a single-lane (seq) bench by construction.
 Pure branchy integer compute over a fixed-size grid, **no heap allocation in the hot
 path** (board + the three masks are all stack storage), so this measures validation
-codegen, not the allocator. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+codegen, not the allocator. Apple M5 Pro; `bench/bench.sh` (`hyperfine`). Figures below
+are the 2026-10-31 re-bench (results.json `measured_at` 2026-11-01T01:58Z), measured with
+**karac 0.9.0-dev.14057+g6697158fa** — the v2/MIR backend (the legacy backend was deleted
+2026-10-23).
 
 ### Seq lane — runtime (single-threaded single-pass bitmask validation)
 
-| | **Kāra** | C | Rust (`-O`) | Rust (`overflow-checks=on`) | Go | Python |
+| | C | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Go | Python |
 |---|---|---|---|---|---|---|
-| time | **65.3 ms** | 117.4 ms | 118.2 ms | 122.4 ms | 254.0 ms | 29054 ms |
-| vs Kāra | — | 1.80× slower | 1.81× slower | **1.87× slower (= safety)** | 3.89× slower | 445× slower |
+| time | 130.4 ± 2.2 ms | 133.1 ± 7.3 ms | 138.3 ± 5.6 ms | **220.7 ± 5.9 ms** | 282.9 ± 3.3 ms | 29054 ms (last measured 2026-06-18, not re-run) |
+| vs Kāra | 1.69× faster | 1.66× faster | **1.60× faster (= safety)** | — | 1.28× slower | 445× slower than the 2026-06-18 Kāra figure |
 
-**Kāra is the fastest of the field — 1.8× ahead of both C and `rustc -O`, 3.9× ahead of
-Go.** This flipped from an earlier 1.54×-*behind*-Rust standing when karac learned to
+**Kāra no longer leads the field: it trails C by 1.69× and `rustc -O` by 1.66× (1.60×
+behind equal-safety Rust), and stays ahead of Go only (1.28×).** In language ratios
+against the previous feed (legacy karac 0.1.0, 2026-06-18): Kāra/Rust 0.55× → 1.66×,
+Kāra/C 0.56× → 1.69×, Kāra/Go 0.26× → 0.78× — a 3.0× relative regression, against
+comparators that ran only 11–13 % slower in absolute ms this session.
+
+**Why it moved — the lost full unroll.** The June lead came from karac learning to
 **fully unroll small constant-trip loops** ([`B-2026-06-17-7`](../../../../kara/docs/bug-ledger.jsonl),
 **fixed [`1de4eb1e`](../../../../kara/docs/bug-ledger.jsonl)**, surfaced by the sibling
 [#37](../37-sudoku-solver/)). The validator's whole hot path is the nested 9×9 grid scan
 (`while r < 9 { while c < 9 { … } }`) — both loops have a small constant trip count, and
-karac now expands them into straight-line code, where clang and `rustc -O` both leave them
-**rolled** here. Stacked with `noalias` (from the `mut ref` exclusive borrow) and the
-bounds-check elision a fixed `Array[i64, N]` makes provable, the unroll compounds into a
-1.8× lead over the C-class. The overflow tax is small but real (`rustc -O` 118.2 ms vs
-`-C overflow-checks=on` 122.4 ms, +3.5 %), so equal-safety Rust is 1.87× behind; Go —
-whose BCE leaves the mask-index checks in and does not inline `isValid` into the hot loop
-— runs the same algorithm 3.9× slower.
+the June build expanded them into straight-line code, where clang and `rustc -O` both
+leave them **rolled** here; stacked with `noalias` (from the `mut ref` exclusive borrow)
+and the bounds-check elision a fixed `Array[i64, N]` makes provable, that compounded into
+a 1.8× lead over the C-class. The MIR backend never emits the full-unroll hint on these
+loops — they call `box_index` and exit early, which its unroll gate rejects — so the scan
+runs rolled, filed as [`B-2026-10-31-44`](../../../../kara/docs/bugs-v2.md) (perf, open).
+The regression is against the June build, not the MIR switch: the October legacy build
+had lost the unroll too, and MIR runs 1.02× its instructions. The overflow tax on the
+Rust side stays small (`rustc -O` 133.1 ms vs `-C overflow-checks=on` 138.3 ms, +3.9 %);
+Go — whose BCE leaves the mask-index checks in and does not inline `isValid` into the hot
+loop — is still the slowest compiled mirror.
 
 **No par lane — by construction.** The validation is pure and independent per
 iteration, but the checksum reduction carries a loop-borne dependency, so karac's
 auto-par-on-reduction pass does not fire: the default and `KARAC_AUTO_PAR=0` binaries
-are **byte-identical** and both run single-threaded.
+are **byte-identical** (re-checked on the 2026-10-31 MIR build: same 302,880 B, same sha)
+and both run single-threaded.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.00 MiB** | 1.06 MiB | **1.00 MiB** | 2.69 MiB |
-| binary size (seq) | 33.0 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
-| compile elapsed | 101.6 ms | 85.6 ms | **46.0 ms** |
-| compile peak RSS | 17.2 MiB | 26.1 MiB | **2.5 MiB** |
+| **runtime peak RSS** | 1.05 MiB | 1.06 MiB | **1.00 MiB** | 2.67 MiB |
+| binary size (seq) | 295.8 KiB | 455.4 KiB | **32.8 KiB** | 2434.1 KiB |
+| compile elapsed | 130.1 ms | 106.3 ms | **55.1 ms** |
+| compile peak RSS | 55.3 MiB | 26.1 MiB | **2.6 MiB** |
 
 The board and masks are all stack storage with no hot-path allocation, so runtime RSS
-ties C to the byte (1.00 / 1.00 MiB) with Rust a rounding behind (1.06 MiB); Python's
-interpreter pays 6.9 MiB. The seq compute binary references no `String`/par-scheduler
-runtime, so LTO + `-dead_strip` carve it to **33.0 KiB** — 13.8× under Rust and within a
-rounding of C's 32.8 KiB (Go's static runtime is 2.4 MiB). Compile now trails `rustc -O`
-on elapsed (101.6 vs 85.6 ms) — fully unrolling the nested 9×9 scan hands the LLVM backend
-more straight-line IR to optimize, the compile-time cost of the runtime win — though it
-still leads on peak compiler RSS (17.2 vs 26.1 MiB); clang's 46.0 ms / 2.5 MiB is the
-toolchain floor.
+sits within a 16 KiB page or so of C and Rust (1.05 / 1.00 / 1.06 MiB); Python's
+interpreter paid 6.9 MiB (last measured 2026-06-18, not re-run). Every MIR Kāra binary is
+~300–390 KB where the legacy backend's were ~34 KB (kara ledger
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this one is **295.8 KiB**
+(302,880 B, was 33,808 B on legacy), 1.54× under Rust and 9.0× over C (Go's static
+runtime is 2.4 MiB). Compile trails `rustc -O` on elapsed (130.1 vs 106.3 ms, 1.22×) and
+now on peak compiler RSS too (55.3 vs 26.1 MiB, 2.1×; the legacy build peaked at
+17.2 MiB); clang's 55.1 ms / 2.6 MiB is the toolchain floor.
 
 ## Kāra features exercised
 
@@ -173,3 +183,8 @@ name-keyed index route; the fix mirrors the existing `ref Vec[T]` route
 index-store. The bench keeps the idiomatic `Slice[i64]` borrowed view (same form as
 #34/#35); `ref Array` now also builds.
 See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
+
+**Surfaced [`B-2026-10-31-44`](../../../../kara/docs/bugs-v2.md)** (perf, open). The MIR
+backend never full-unrolls the validator's constant-trip 9×9 scan (it calls and exits
+early), where the June legacy fix `B-2026-06-17-7` did: the bench went from 0.55× to
+1.66× `rustc -O`. Shared with [#37](../37-sudoku-solver/).

@@ -88,8 +88,6 @@ part of the LeetCode problem (`len ≥ 1`), but exercising it is what flushed a
 latent codegen gap that any future `Array[T, 0] = []` → `Slice` would have hit.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-15.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
 Workload: build one fixed rotated-sorted array of length `N = 4096` once (values
 `2·((p+ROT)%N)` — even, so odd targets miss), then run the ★ one-pass `search`
@@ -98,47 +96,59 @@ Workload: build one fixed rotated-sorted array of length `N = 4096` once (values
 (sink `455834850`). The target varies with the loop index, so no comparator can
 hoist the pure call out of the loop; the accumulator carries a loop-borne
 dependency, so it does not auto-parallelize. Apple M5 Pro; `bench/bench.sh`
-(`hyperfine`).
+(`hyperfine`). Figures below are the 2026-10-31 re-bench (results.json
+`measured_at` 2026-11-01T01:56Z), measured with **karac
+0.9.0-dev.14057+g6697158fa** — the v2/MIR backend (the legacy backend was deleted
+2026-10-23).
 
 ### Seq lane — runtime (single-threaded rotated binary search)
 
-| | C | Rust (`-O`) | Go | **Kāra** | Rust (`overflow-checks=on`) | Python |
+| | C | Rust (`-O`) | Go | Rust (`overflow-checks=on`) | **Kāra** | Python |
 |---|---|---|---|---|---|---|
-| time | 211.3 ms | 283.8 ms | 289.9 ms | **309.5 ms** | 311.3 ms | 9827 ms |
-| vs Kāra | 1.46× faster | 1.09× faster | 1.07× faster | — | **1.01× (tied at = safety)** | 32× slower |
+| time | 245.0 ± 1.8 ms | 330.8 ± 3.7 ms | 356.2 ± 17.0 ms | 360.8 ± 5.2 ms | **362.1 ± 5.3 ms** | 9827 ms (last measured 2026-06-15, not re-run) |
+| vs Kāra | 1.48× faster | 1.09× faster | 1.02× faster | **1.00× (tied at = safety)** | — | 32× slower than the 2026-06-15 Kāra figure |
 
 **A branchy, data-dependent compute kernel — and the cleanest equal-safety read
 yet.** Binary search's direction at each step depends on a comparison the branch
 predictor can't pre-resolve, and the arithmetic is light (a `mid`, a `%` for the
 checksum). That makes the overflow-check tax the dominant Kāra-vs-Rust variable:
-`rustc -O` (wrap) runs 284 ms, but turning Rust's checks **on** to match Kāra's
-checked-by-default semantics (design.md § Arithmetic Overflow) costs it 284 → 311
-ms (+9.7 %). Kāra lands at **310 ms — dead even with equal-safety Rust** (a hair
-ahead). The unchecked tier — wrapping `rustc -O` (284) and Go (290, no integer
-overflow checking either) — is ~1.07–1.09× faster precisely because it skips the
-checks this loop still pays per step; C's no-overhead floor is 1.46×. The honest
-one-liner: **at equal overflow safety Kāra ties Rust on branchy search; the gap to
-the headline `rustc -O` number is the overflow-check tax, not a codegen deficit.**
+`rustc -O` (wrap) runs 331 ms, but turning Rust's checks **on** to match Kāra's
+checked-by-default semantics (design.md § Arithmetic Overflow) costs it 331 → 361
+ms (+9.1 %). Kāra lands at **362 ms — dead even with equal-safety Rust** (0.4 %
+behind, well inside either side's σ). The unchecked tier — wrapping `rustc -O`
+(331) and Go (356, no integer overflow checking either) — is ~1.02–1.09× faster
+precisely because it skips the checks this loop still pays per step; C's
+no-overhead floor is 1.48×. The honest one-liner: **at equal overflow safety Kāra
+ties Rust on branchy search; the gap to the headline `rustc -O` number is the
+overflow-check tax, not a codegen deficit.**
+
+**MIR vs the previous feed (legacy karac 0.1.0, 2026-06-15), in language ratios:**
+Kāra/Rust 1.09× → 1.09×, Kāra/C 1.46× → 1.48×, Kāra/Go 1.07× → 1.02× — flat
+(every comparator, Kāra included, ran ~16–23 % slower in absolute ms this session).
 
 **No par lane — by construction.** Each search is independent, but karac's
 auto-par-on-reduction pass does not fire on this loop (per-call function +
 modulo reduction): verified, the default and `KARAC_AUTO_PAR=0` binaries are
-**byte-identical** and both run single-threaded (cpu 99.6 %).
+**byte-identical** (re-checked on the 2026-10-31 MIR build: same 302,880 B, same
+sha) and both run single-threaded (cpu 99.9 %).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.06 MiB | 1.11 MiB | **1.05 MiB** | 2.95 MiB |
-| binary size (seq) | **33.4 KiB** | 455.7 KiB | 32.7 KiB | 2434.1 KiB |
-| compile elapsed | **74.1 ms** | 90.9 ms | 46.6 ms |
-| compile peak RSS | **13.0 MiB** | 26.7 MiB | 2.6 MiB |
+| **runtime peak RSS** | 1.05 MiB | 1.11 MiB | **1.03 MiB** | 2.77 MiB |
+| binary size (seq) | 295.8 KiB | 455.7 KiB | **32.7 KiB** | 2434.1 KiB |
+| compile elapsed | 114.6 ms | 84.4 ms | **47.5 ms** |
+| compile peak RSS | 56.3 MiB | 26.6 MiB | **2.6 MiB** |
 
 The single 4096-element array is the only heap allocation, so runtime RSS ties C
-and Rust to within rounding (1.06 / 1.05 / 1.11 MiB). The seq compute binary
-references no `String`/par-scheduler runtime, so LTO + `-dead_strip` carve it to
-**33.4 KiB** — 13.6× under Rust. Compile favors Kāra over `rustc -O` on both
-elapsed (74.1 vs 90.9 ms) and peak compiler RSS (13.0 vs 26.7 MiB).
+and Rust to within rounding (1.05 / 1.03 / 1.11 MiB). Every MIR Kāra binary is
+~300–390 KB where the legacy backend's were ~34 KB (kara ledger
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this one is **295.8 KiB**
+(302,880 B, was 34,160 B on legacy), 1.54× under Rust and 9.0× over C. On the MIR
+backend compile no longer favors Kāra: karac is 1.36× slower than `rustc -O`
+(114.6 vs 84.4 ms) and peaks at 2.1× its compiler RSS (56.3 vs 26.6 MiB); on the
+legacy build it was 74.1 ms / 13.0 MiB, ahead of rustc on both.
 
 **Where this lands.** With [#31](../31-next-permutation/) (in-place compute,
 tied), [#32](../32-longest-valid-parentheses/) (alloc-churn, Kāra ahead at equal

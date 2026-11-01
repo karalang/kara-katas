@@ -33,10 +33,6 @@ diff <(karac run two_pointer.kara) <(python3 two_pointer.py) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-07 snapshot; the feed was last measured 2026-06-16.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 ### How to run
 
 ```bash
@@ -58,40 +54,40 @@ The input is built once: `original[i] = original[i − 1] + bit`, where `bit` co
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded (seq-only kata — the write head `k` is loop-carried: each element's destination depends on every prior keep/skip decision, so there's no auto-par surface):
+M5 Pro, 2026-10-31 (`results.json` `measured_at` 2026-11-01T01:46Z), karac 0.9.0-dev.14057+g6697158fa (v2/MIR backend), hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded (seq-only kata — the write head `k` is loop-carried: each element's destination depends on every prior keep/skip decision, so there's no auto-par surface):
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| rust two_pointer (`-O`, wrapping) | 54.6 ± 0.6 ms | 1.11× ahead of kāra |
-| rust two_pointer (`overflow-checks=on`) | 53.5 ± 0.4 ms | 1.13× ahead of kāra |
-| c    two_pointer (clang -O3) | 56.0 ± 0.4 ms | 1.08× ahead of kāra |
-| **kāra two_pointer (codegen)** | **60.5 ± 0.5 ms** | — |
-| go   two_pointer | 62.5 ± 0.7 ms | kāra 1.03× ahead of Go |
+| rust two_pointer (`overflow-checks=on`) | 60.8 ± 0.8 ms | 1.07× ahead of kāra |
+| rust two_pointer (`-O`, wrapping) | 62.6 ± 2.3 ms | 1.04× ahead of kāra |
+| c    two_pointer (clang -O3) | 63.9 ± 1.9 ms | 1.02× ahead of kāra |
+| **kāra two_pointer (codegen)** | **65.1 ± 1.0 ms** | — |
+| go   two_pointer | 69.3 ± 1.6 ms | kāra 1.07× ahead of Go |
 
-All five land within 14% of each other — this workload is mispredict-bound, not compute-bound. The honest comparison is at equal safety: Kāra checks integer overflow by default, and `rustc -O` *wraps*. But this kata's index/compare arithmetic never approaches an overflow, so the overflow check is essentially free for Rust — adding `-C overflow-checks=on` doesn't slow Rust down (53.5 vs 54.6 ms, inside the noise band). So unlike the arithmetic-heavy katas, there's almost no safety tax to subtract here, and Kāra's **~1.13×** gap to equal-safety Rust is a genuine (if small) codegen residual, not an overflow-check artifact — don't read it as parity. With keep/skip a coin flip, the ~50% mispredict rate on the conditional write costs ~10 cycles every other element, and that penalty is identical for every backend; what's left to differentiate on is per-iteration overhead. Kāra's ~4 ms gap to C is the bounds-check tax on three data-dependent indexed accesses per element (`nums[i]`, `nums[k−1]`, `nums[k]` — `k` is data-dependent, so no frontend can prove the accesses in-range), and Rust pays the same checks yet edges out C here — conditional-store emission roulette, inside overlapping noise bands. Induction-variable bounds-check elision (tracked: [karac phase-7 § transitive bounds from induction-variable monotonicity](../../../../kara/docs/implementation_checklist/phase-7-codegen.md), promoted 2026-06-07 with this kata's bench as one of its two natural-pull triggers; rationale in the [v62 brainstorm archive](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md)) targets exactly this shape. Same regime as kata [#88](../88-merge-sorted-array/README.md#codegen-vs-rust-the-headline), with the branch made honest.
+All five land within 15% of each other — this workload is mispredict-bound, not compute-bound. The honest comparison is at equal safety: Kāra checks integer overflow by default, and `rustc -O` *wraps*. But this kata's index/compare arithmetic never approaches an overflow, so the overflow check is essentially free for Rust — adding `-C overflow-checks=on` doesn't slow Rust down (60.8 vs 62.6 ms, inside the noise band). So unlike the arithmetic-heavy katas, there's almost no safety tax to subtract here, and Kāra's **~1.07×** gap to equal-safety Rust is a genuine (if small) codegen residual, not an overflow-check artifact — don't read it as parity. With keep/skip a coin flip, the ~50% mispredict rate on the conditional write costs ~10 cycles every other element, and that penalty is identical for every backend; what's left to differentiate on is per-iteration overhead. Kāra's ~1 ms (1.02×) gap to C is the bounds-check tax on three data-dependent indexed accesses per element (`nums[i]`, `nums[k−1]`, `nums[k]` — `k` is data-dependent, so no frontend can prove the accesses in-range), and Rust pays the same checks yet edges out C here — conditional-store emission roulette, inside overlapping noise bands. Induction-variable bounds-check elision (tracked: [karac phase-7 § transitive bounds from induction-variable monotonicity](../../../../kara/docs/implementation_checklist/phase-7-codegen.md), promoted 2026-06-07 with this kata's bench as one of its two natural-pull triggers; rationale in the [v62 brainstorm archive](../../../../kara/brainstorming/archive/v62_interpreter_perf_and_binary_size.md)) targets exactly this shape. Same regime as kata [#88](../88-merge-sorted-array/README.md#codegen-vs-rust-the-headline), with the branch made honest. Against the 2026-06-16 legacy feed the ratios are flat: Kāra/Rust 1.11× → 1.04×, Kāra/C 1.08× → 1.02×, Kāra/Go 0.97× → 0.94× (every comparator also ran 11–15% slower in absolute ms this session, so compare ratios, not milliseconds).
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara two_pointer` (codegen) | 60.5 ± 0.5 ms |
-| `rust two_pointer` | 54.6 ± 0.6 ms |
-| `py two_pointer` | 884.1 ± 4.8 ms |
+| `kara two_pointer` (codegen) | 65.1 ± 1.0 ms |
+| `rust two_pointer` | 62.6 ± 2.3 ms |
+| `py two_pointer` — last measured 2026-06-07, not re-run | 884.1 ± 4.8 ms |
 
-Python is **~15× slower** than Kāra codegen — per-iteration CPython bytecode dispatch on a body of one compare, one conditional write, and an increment.
+Python is not in the 2026-10-31 feed (the run did not set `KARA_BENCH_INCLUDE_PY`); the ratio here is from the 2026-06-07 snapshot, when Python was **~15× slower** than Kāra codegen — per-iteration CPython bytecode dispatch on a body of one compare, one conditional write, and an increment.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-07, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+M5 Pro, 2026-10-31, karac g6697158fa (v2/MIR backend), hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build two_pointer.kara` | 74.4 ± 0.8 ms | 33.3 KiB |
-| `rustc -O two_pointer.rs` | 97.5 ± 1.6 ms | 455.4 KiB |
-| `clang -O3 two_pointer.c` | 48.7 ± 0.8 ms | 32.8 KiB |
+| `karac build two_pointer.kara` | 115.6 ± 1.7 ms | 295.8 KiB |
+| `rustc -O two_pointer.rs` | 91.1 ± 1.3 ms | 455.4 KiB |
+| `clang -O3 two_pointer.c` | 49.0 ± 0.7 ms | 32.8 KiB |
 | `go build` | — | 2434.1 KiB |
 
-Kāra compiles this kata **1.31× faster** than `rustc -O` and produces a binary **~93% smaller** than Rust's — and **within ~0.5 KiB of C** (33.3 vs 32.8 KiB). Same lean profile as kata [#88](../88-merge-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
+On the v2/MIR backend Kāra compiles this kata **1.27× slower** than `rustc -O` (2.36× clang) and produces a binary at 65% of Rust's. Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). The rest of this paragraph is the legacy backend's history: on the 2026-06-07 snapshot Kāra compiled **1.31× faster** than `rustc -O` (74.4 vs 97.5 ms) and produced a binary **~93% smaller** than Rust's — **within ~0.5 KiB of C** (33.3 vs 32.8 KiB). Same lean profile as kata [#88](../88-merge-sorted-array/README.md#compile-time-and-binary-size): the workload reaches `Vec.filled` + indexed read/write, `Slice[i64]` indexing, `println(i64)` — and nothing else; cross-archive LTO + DCE elides the rest of the runtime.
 
 ### Runtime memory (peak)
 
@@ -100,10 +96,10 @@ Kāra compiles this kata **1.31× faster** than `rustc -O` and produces a binary
 | `kara two_pointer` (codegen) | 31.6 MiB |
 | `c    two_pointer` | 31.6 MiB |
 | `rust two_pointer` | 31.6 MiB |
-| `go   two_pointer` | 34.5 MiB |
-| `py two_pointer` | 98.8 MiB |
+| `go   two_pointer` | 34.3 MiB |
+| `py two_pointer` — last measured 2026-06-07, not re-run | 98.8 MiB |
 
-**Parity with C and Rust** — kāra's reading is byte-identical to C and Rust (33,161,216 B each). The working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.9 MiB is GC arena + runtime; Python's 98.8 MiB is per-element PyObject boxing. Same story as kata [#88](../88-merge-sorted-array/README.md#runtime-memory-peak).
+**Parity with C and Rust** — kāra's reading (33,145,192 B) is within 24 B of C (33,145,168 B) and 16 KiB of Rust (33,161,552 B). The working set is two `Vec[i64]`s of 2M elements (16 MiB each: `original` + `workspace`). Go's +2.7 MiB is GC arena + runtime; Python's 98.8 MiB is per-element PyObject boxing. Same story as kata [#88](../88-merge-sorted-array/README.md#runtime-memory-peak).
 
 ### Why Rust is in the harness
 

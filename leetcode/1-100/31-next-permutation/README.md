@@ -68,10 +68,6 @@ render katas ([#43](../43-multiply-strings/)) already cleared — nothing new fo
 the front-end or codegen to trip on.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-16.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Workload: start from the sorted array `[0, 1, …, 9]` and call `next_permutation`
 `10!` times to walk **every** permutation of 10 elements in lexicographic order
 (the `10!`-th call wraps back to sorted), folding a rolling checksum of each
@@ -81,14 +77,20 @@ is the un-elidable observation: every permutation must be produced *and* read in
 order, so no comparator can fold the enumeration away. The enumeration carries a
 hard loop-borne dependency (each permutation is computed in place from the
 previous), so it does **not** auto-parallelize — a single-lane (seq) bench by
-construction. Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
+construction. Apple M5 Pro, 2026-10-31 (`results.json` `measured_at`
+2026-11-01T01:53Z), karac 0.9.0-dev.14057+g6697158fa (v2/MIR backend);
+`bench/bench.sh` (`hyperfine`).
 
 ### Seq lane — runtime (single-threaded permutation enumeration)
 
 | | C | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Go | Python |
 |---|---|---|---|---|---|---|
-| time | 290.0 ms | 291.1 ms | **293.6 ms** | 296.5 ms | 322.3 ms | 16377 ms |
-| vs Kāra | 1.01× faster | 1.01× faster | — | **1.00× (equal-safety parity)** | 1.10× slower | 56× slower |
+| time | 333.2 ± 3.3 ms | 336.8 ± 3.5 ms | **346.0 ± 2.8 ms** | 344.1 ± 3.0 ms | 372.7 ± 3.9 ms | 16465 ms (last measured 2026-06-16, not re-run) |
+| vs Kāra | 1.04× faster | 1.03× faster | — | **1.01× faster (equal-safety parity)** | 1.08× slower | 56× slower (vs the 2026-06-16 Kāra row) |
+
+Flat against the 2026-06-16 legacy feed: Kāra/Rust 1.02× → 1.03×, Kāra/C
+1.02× → 1.04×, Kāra/Go 0.92× → 0.93× (every comparator ran 15–16% slower in
+absolute ms this session, so compare ratios, not milliseconds).
 
 **The compute-bound counterpoint to [#43](../43-multiply-strings/).** Multiply
 Strings was allocation- *and* arithmetic-bound — a per-result `Vec[i64]` + a
@@ -98,10 +100,10 @@ array lives in a fixed `Array[i64, 10]`, the algorithm steps it **in place**, an
 the only arithmetic is the bounded checksum (modulus `2^31 - 1`, nothing ever
 near an overflow). The honest comparison is at equal safety: Kāra checks integer
 overflow by default, and `rustc -O` *wraps*. With no heap traffic and no real
-overflow-check pressure, **Kāra is dead even with Rust and C** — 293.6 ms vs
-Rust's 291.1 ms (`-O`, wrap) and C's 290.0 ms, both ~1.01×, and at **equal overflow
-safety it reaches parity** — 293.6 ms vs Rust's 296.5 ms with
-`-C overflow-checks=on`, a 1.00× tie (Kāra a hair ahead, well inside the noise).
+overflow-check pressure, **Kāra is within 4% of Rust and C** — 346.0 ms vs
+Rust's 336.8 ms (`-O`, wrap, 1.03×) and C's 333.2 ms (1.04×), and at **equal overflow
+safety it reaches parity** — 346.0 ms vs Rust's 344.1 ms with
+`-C overflow-checks=on`, a 1.01× tie (Rust a hair ahead, inside the noise).
 This is the honest flip side of #43: when the workload is pure in-place integer
 compute rather than small-object allocation, the residual Kāra carries elsewhere
 simply isn't there.
@@ -110,32 +112,38 @@ simply isn't there.
 permutation is derived in place from the one before it, so karac's
 auto-par-on-reduction pass does not fire — verified here, the default and
 `KARAC_AUTO_PAR=0` binaries agree on the sink and both run single-threaded
-(cpu 99.6 %).
+(cpu 99.6 %, legacy backend; the 2026-10-31 run benches the `KARAC_AUTO_PAR=0`
+twin, at cpu 99.8 %).
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 1.03 MiB | 1.08 MiB | **1.00 MiB** | 2.86 MiB |
-| binary size (seq) | **33.1 KiB** | 455.4 KiB | 32.8 KiB | 2434.1 KiB |
-| compile elapsed | **77.9 ms** | 88.9 ms | 46.8 ms |
-| compile peak RSS | **13.5 MiB** | 26.0 MiB | 2.6 MiB |
+| **runtime peak RSS** | 1.03 MiB | 1.08 MiB | **1.00 MiB** | 2.63 MiB |
+| binary size (seq) | **295.8 KiB** | 455.4 KiB | 32.8 KiB | 2434.1 KiB |
+| compile elapsed | **121.8 ± 1.9 ms** | 82.8 ± 1.2 ms | 47.4 ± 0.8 ms |
+| compile peak RSS | **55.6 MiB** | 25.8 MiB | 2.6 MiB |
 
 The no-allocation shape shows in memory too: Kāra's runtime RSS (1.03 MiB)
 **ties C and Rust** to within rounding — the same flat-heap profile #43 now also
 reaches on memory once its RC-aliasing slack was fixed. With
 nothing on the heap, there is no slack to surface.
 
-The binary is **33.1 KiB** — an order of magnitude under the ~295 KiB auto-par
-floor and 13.8× smaller than Rust's 455 KiB: this seq compute binary references no
-`String`/`Vec`/par-scheduler runtime symbol, so LTO + `-dead_strip` carve nearly
-the whole runtime away (within 0.3 KiB of C's 32.8 KiB). Compile still favors
-Kāra over `rustc -O` on both elapsed (77.9 vs 88.9 ms) and peak compiler RSS
-(13.5 vs 26.0 MiB).
+On the v2/MIR backend the binary is **295.8 KiB** (302,880 B, 65% of Rust's
+455 KiB): every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were
+~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). On the
+legacy backend it was **33.1 KiB** — an order of magnitude under the ~295 KiB
+auto-par floor and 13.8× smaller than Rust's: this seq compute binary references no
+`String`/`Vec`/par-scheduler runtime symbol, so LTO + `-dead_strip` carved nearly
+the whole runtime away (within 0.3 KiB of C's 32.8 KiB). Compile now favors
+`rustc -O` over Kāra on both elapsed (121.8 vs 82.8 ms, 1.47×) and peak compiler RSS
+(55.6 vs 25.8 MiB, 2.16×); on the legacy backend Kāra won both (77.9 vs 88.9 ms,
+13.5 vs 26.0 MiB).
 
 **Where this lands.** A pure in-place integer-compute kernel: Kāra ties Rust and
-C on runtime (parity with checked-Rust at equal safety, 1.00×), ties them on
-memory, and wins on binary size and compile. Paired with #43 it draws the line cleanly — Kāra's residual is
+C on runtime (within 4%; parity with checked-Rust at equal safety, 1.01×) and
+ties them on memory; on the v2/MIR backend it no longer wins on binary size or
+compile (it did on the legacy backend). Paired with #43 it draws the line cleanly — Kāra's residual is
 small-object allocation + checked arithmetic on hot allocation paths, and when a
 workload touches neither, Kāra is right on the systems-language floor.
 
