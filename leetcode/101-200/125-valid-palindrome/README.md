@@ -90,11 +90,10 @@ follow-on in `phase-12-self-hosting.md`.
 
 [`32ad0c84`]: ../../../../kara/
 
-## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **8%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **1.3%** margin against `go build` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
 
+## Benchmarks
 Workload: check a fixed palindrome (`"A man, a plan, a canal: Panama"` × 8,
 which filters to the palindrome core `amanaplanacanalpanama` × 8 — itself a
 palindrome, so every pass does the **full** scan) `ITERS=3M` times, reducing to
@@ -103,36 +102,42 @@ the palindrome count (sink `3 000 000`). The benched algorithm is the
 pure two-pointer over a fixed input is loop-invariant and the optimizer folds
 the 3M iterations to one, so — exactly as #394 benches its allocating decode —
 the per-pass allocation is what keeps the reduction honest. Apple M5 Pro;
-`bench/bench.sh` (`hyperfine`). **Seq lane** = single-threaded (Kāra built
-`KARAC_AUTO_PAR=0`).
+`bench/bench.sh` (`hyperfine`), karac g6697158fa (v2/MIR backend), measured
+2026-11-01. **Seq lane** = single-threaded (Kāra built `KARAC_AUTO_PAR=0`).
 
 ### Seq lane — runtime (single-threaded, apples-to-apples)
 
-| | C | **Kāra (seq)** | Go | Rust |
-|---|---|---|---|---|
-| time | 415.5 ms | **796.6 ms** | 643.6 ms | 734.4 ms |
-| vs Kāra | 1.92× faster | — | 1.24× faster | 1.08× faster |
+| | C | Go | **Kāra (seq)** | Rust (overflow-checks=on) | Rust |
+|---|---|---|---|---|---|
+| time | 491.6 ± 4.3 ms | 757.4 ± 45.9 ms | **767.1 ± 12.5 ms** | 873.9 ± 15.4 ms | 875.6 ± 32.3 ms |
+| vs Kāra | 1.56× faster | 1.01× faster | — | 1.14× slower | 1.14× slower |
 
 On this allocation-light byte-scan + predicate + case-fold workload, **Kāra's
-single-threaded codegen trails the pack** — `clang -O3` by 1.92×, `go build` by
-1.24×, and `rustc -O` by 1.08×. The tight classify/compare inner loop with a
-per-pass `Vec[u8]` allocation lands Kāra at the back here; it's in the same
-order of magnitude as Rust and Go, but behind all three compiled comparators on
-this shape.
+single-threaded codegen is now ahead of Rust and level with Go** — 0.88× of
+`rustc -O` (and of `overflow-checks=on` Rust), 1.01× of `go build`, and 1.56×
+behind `clang -O3`. That is a real gain, not session drift: every comparator ran
+10–16% slower in this session than in the previous feed (legacy karac,
+2026-07-28) while Kāra ran 8% faster, so the ratios moved — Kāra/Rust 1.04× →
+0.88×, Kāra/C 1.94× → 1.56×, Kāra/Go 1.28× → 1.01×. C's lead is the tight
+classify/compare inner loop with a per-pass allocation at its leanest.
 
 ### Compile, binary
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **78.8 ms** | 96.6 ms | 47.5 ms |
-| compile peak RSS | 13.5 MiB | 27.6 MiB | 2.5 MiB |
-| binary (seq) | **33.3 KiB** | 455.6 KiB | 32.7 KiB |
+| compile elapsed | **157.5 ms** | 94.2 ms | 49.5 ms |
+| compile peak RSS | 57.5 MiB | 27.6 MiB | 2.6 MiB |
+| binary (seq) | **295.8 KiB** | 455.6 KiB | 32.7 KiB |
+| binary (par) | 377.1 KiB | 454.0 KiB (rayon) | 32.9 KiB (pthreads) |
 
-Kāra's cold compile (79 ms) edges `rustc -O` (97 ms) at half its peak memory,
-and emits a **C-sized 33 KiB binary** — **13.7× smaller than Rust** and **74×
-smaller than Go** (2.4 MiB, runtime+GC in every binary). Runtime peak RSS is a
-clean **1.2 MiB**, tying Rust and within 1.1× of C — no leak (unlike #394's
-String-return-binding leak; this kata's allocations all free at scope exit).
+Kāra's cold compile (158 ms) is now 1.67× `rustc -O`'s (94 ms) at 2.1× its peak
+memory. The seq binary is 302,896 B — 1.54× smaller than Rust's and 8.2× smaller
+than Go's (2.4 MiB, runtime+GC in every binary), but no longer C-sized: every
+v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (legacy built this
+kata to 34,320 B), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
+Runtime peak RSS is a clean **1.1 MiB**, tying Rust and within 1.08× of C — no
+leak (unlike #394's String-return-binding leak; this kata's allocations all free
+at scope exit).
 
 ### Par lane — auto-par vs hand-tuned parallelism (multi-core)
 
@@ -143,26 +148,32 @@ programmer had to write:
 
 | | parallel code written | time | total CPU |
 |---|---|---|---|
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 38.5 ms | 574 ms |
-| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass` reduction | **66.3 ms** | 1036 ms |
-| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 60.4 ms | 1031 ms |
-| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 224.8 ms | 1011 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 53.8 ± 1.9 ms | 776 ms |
+| **Kāra (auto-par)** | **none** — the compiler recognized the `sum += pass` reduction | **200.0 ± 9.2 ms** | 2941 ms |
+| Rust + rayon | `rayon` crate dependency + `.into_par_iter()` rewrite | 172.3 ± 13.5 ms | 2822 ms |
+| Go goroutines | manual chunking + `sync.WaitGroup` + partial-merge | 324.7 ± 6.0 ms | 1168 ms |
 
-**Kāra's auto-par lands within 1.10× of hand-tuned rayon (66.3 vs 60.4 ms) and
-runs 3.4× faster than hand-written goroutines — with no parallel source at
-all**, sitting within 1.72× of the raw-pthreads "metal floor." It spends
-slightly more total CPU than rayon (1036 ms vs 1031 ms) to get there. The
-default `karac build` emits a
-`karac_par_reduce` dispatch off the plain sequential `sum += pass(input)` loop;
-the Rust, Go, and C programmers each had to opt in and restructure. Speedup over
-Kāra's own seq lane: **12.0×** (796.6 ms → 66.3 ms) across the machine's free cores.
-(Multi-core within the par lane; per [`BENCH.md`]'s two-lane discipline, *not*
-comparable to the single-thread seq rows above.)
+**Kāra's auto-par lands within 1.16× of hand-tuned rayon (200.0 vs 172.3 ms) and
+runs 1.62× faster than hand-written goroutines — with no parallel source at
+all**, sitting 3.72× behind the raw-pthreads "metal floor." It spends 1.04× the
+total CPU rayon does (2941 ms vs 2822 ms) to get there. Against the previous
+feed (legacy karac, 2026-07-28) that is Kāra/rayon 1.08× → 1.16× (flat), Kāra/Go
+0.84× → 0.62× (better), Kāra/C 3.98× → 3.72×. The default `karac build` emits a
+task-spawn dispatch (one `karac_mir_task_spawn` call in its emitted IR,
+`KARAC_MIR_LL`; the `KARAC_AUTO_PAR=0` seq build has none) off the plain
+sequential `sum += pass(input)` loop; the Rust, Go, and C programmers each had
+to opt in and restructure. Speedup over Kāra's own seq lane: **3.84×** (767.1 ms
+→ 200.0 ms) across the machine's free cores. (Multi-core within the par lane;
+per [`BENCH.md`]'s two-lane discipline, *not* comparable to the single-thread
+seq rows above.) Measured 2026-11-01: pinned to exactly two workers
+(`KARAC_THREADS=2`) the par build is slower than at one worker (1.29–1.51 s vs
+0.79–0.91 s), [`B-2026-11-01-17`](../../../../kara/docs/bugs-v2.md); the
+published default-worker row above is unaffected.
 
 **Buyer reframe.** The parallel speedup that costs a Rust team a crate, an API
 rewrite, and a new class of data-race bugs to chase — and a Go team a hand-rolled
-chunk/merge that here still ran 3.4× slower — Kāra delivers from the same
-single-threaded source, landing within 1.10× of rayon's throughput at
+chunk/merge that here still ran 1.62× slower — Kāra delivers from the same
+single-threaded source, landing within 1.16× of rayon's throughput at
 comparable CPU. Colorless parallelism: fewer lines, no `unsafe`/`Send`/`Sync`
 reasoning, no goroutine-leak or partial-merge bugs, at near-rayon throughput.
 Less engineering and fewer concurrency incidents per unit of performance.
@@ -181,9 +192,11 @@ Less engineering and fewer concurrency incidents per unit of performance.
   the lexer's normalized-token-text path).
 - **Recursion over a `Slice[u8]` argument** — `check(bytes, i, j)` with byte
   indexing (recursive style).
-- **Auto-parallelized reduction** — `sum += pass(input)` lowered to a
-  `karac_par_reduce` dispatch with no parallel source (par lane).
+- **Auto-parallelized reduction** — `sum += pass(input)` lowered to
+  task spawns (`karac_mir_task_spawn` in the v2/MIR IR) with no parallel source (par lane).
 
----
+## Bug ledger
 
-**Bug ledger:** this kata surfaced `B-2026-06-13-14` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
+This kata surfaced `B-2026-06-13-14` — see the [`karac` bug ledger](../../../../kara/docs/bug-ledger.md).
+
+**Surfaced [`B-2026-11-01-17`](../../../../kara/docs/bugs-v2.md)** (perf, open). With exactly two workers (`KARAC_THREADS=2`) the auto-par binary runs slower than with one (1.29–1.51 s against 0.79–0.91 s), on 3.5× the cycles for 1.6% more instructions. The published par row uses the default worker count and is unaffected. This kata is the row's second instance; the first is [#71](../../1-100/71-simplify-path/#bug-ledger). Measured 1 Nov 2026 with karac g6697158fa.

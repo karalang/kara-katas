@@ -48,20 +48,30 @@ diff <(karac run max_profit.kara) <(python3 max_profit.py) && echo OK
 python3 ground_truth.py
 ```
 
-<!-- placement-caveat -->
-**Measurement caveat — code placement.** This kata's runtime moves by up to **12%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **3.4%** margin against `go build` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
-
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`max_profit.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** The canonical numbers below are a shared **x86-64 Linux cloud-container** reference run — [`bench/results.container-x86.json`](bench/results.container-x86.json). Absolute times/sizes/RSS are **not** comparable across hosts; only within-file cross-language ratios are the signal. This is a **short workload (~24–32 ms)**, so container noise is elevated — read the *ratios*. Re-run `bench.sh` on the M5 to fold a canonical `results.json`.
+> **Machine.** The canonical numbers are the **Apple M5 Pro** run — [`bench/results.json`](bench/results.json), karac g6697158fa (v2/MIR backend), measured 2026-11-01. The earlier shared **x86-64 Linux cloud-container** reference run ([`bench/results.container-x86.json`](bench/results.container-x86.json)) is kept below as history. Absolute times/sizes/RSS are **not** comparable across hosts; only within-file cross-language ratios are the signal. This is a **short workload (~6–19 ms on the M5)** — read the *ratios*.
 
 **Workload.** `N = 2,000,000` deterministic LCG-generated prices in `[1, 4096]`, the greedy scan run **K = 10** times, folding a sum-of-results sink. Dominated by the O(n) `profit += max(0, prices[i] - prices[i-1])` pass.
 
 **Equal safety.** Kāra checks integer overflow (and array bounds) by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on overflow.
+
+**M5 Pro, 2026-11-01** — `--warmup 5 --runs 30`, all single-threaded (bench.sh builds Kāra with `KARAC_AUTO_PAR=0`; the default build auto-parallelises the K=10 outer `sum` loop — one `karac_mir_task_spawn` call in its emitted IR (`KARAC_MIR_LL`), none in the seq build):
+
+| Implementation | Wall time | vs kāra |
+|---|---|---|
+| c    max_profit (clang -O3)                    | 6.3 ± 0.1 ms | 2.69× faster |
+| rust max_profit (rustc -O)                     | 7.3 ± 0.2 ms | 2.33× faster |
+| go   max_profit (`[]int64`)                    | 15.4 ± 0.5 ms | 1.11× faster |
+| **kāra max_profit**                            | **17.1 ± 0.4 ms** | — |
+| rust max_profit (rustc -O, overflow-checks=on) | 18.9 ± 0.7 ms | 1.11× slower |
+
+**On the M5, Kāra is ahead of equal-safety Rust (0.90×) and 2.33× behind wrapping `rustc -O`.** The ~2.3× gap to wrapping Rust is long-standing (2.27× in the previous M5 feed, legacy karac, 2026-07-27) and is the same overflow-check tax described below, larger on this host: turning on `overflow-checks=on` costs Rust itself 2.59× (7.3 → 18.9 ms), more than Kāra's whole gap. Every comparator ran 10–15% slower in this session than in that one, so the ratios carry the change: Kāra/Rust 2.27× → 2.33×, Kāra/C 2.50× → 2.69×, Kāra/Go 1.03× → 1.11× — flat relative to the comparators.
+
+**Binary size and memory (M5, 2026-11-01).** Kāra 302,920 B, Rust 466,584 B, C 33,520 B, Go 2,492,514 B. Every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (legacy built this kata to 34,200 B), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Peak RSS is 16.3 MiB for Kāra, Rust and C alike (the 16 MB price vector), 18.7 MiB for Go. Cold compile: `karac build` 110.9 ± 1.9 ms, `rustc -O` 97.1 ± 1.4 ms, `clang -O3` 59.3 ± 0.9 ms.
+
+**Container history** (x86-64, undated snapshot; not re-run):
 
 `--warmup 12 --runs 60`. All single-threaded. **x86-64 container numbers**:
 
@@ -73,8 +83,8 @@ Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, a
 | **kāra max_profit**                            | **29 ± 2 ms** | **`Vec[i64]`** |
 | go   max_profit (`[]int64`)                    | 32 ± 1 ms | `[]int64` |
 
-**Kāra is at equal-safety parity with Rust — kāra 29 ms reads identical to `rustc -O -C overflow-checks=on` at 29 ms.** The ~1.2× gap to wrapping `rust -O` / C (both 24 ms) is the **overflow-check tax**, not a codegen deficit: kāra's greedy loop is `sub prices[i]-prices[i-1]; jo <ovf>; jle <skip>; add`, with **both** the forward index `prices[i]` and the offset index `prices[i-1]` bounds-check-elided (the `for i in 1..n` guard proves `i-1 ≥ 0` and `i < n`) — the whole binary carries a single panic site, the shared overflow trap. That is the same instruction budget `overflow-checks=on` Rust carries, hence the tie. Verified correct (all compiled mirrors agree on the sink) and valgrind-clean. Python (pure-Python, ~30× slower per rep, timed separately) is omitted.
+**On the container, Kāra was at equal-safety parity with Rust — kāra 29 ms read identical to `rustc -O -C overflow-checks=on` at 29 ms.** The ~1.2× gap to wrapping `rust -O` / C (both 24 ms) is the **overflow-check tax**, not a codegen deficit: kāra's greedy loop is `sub prices[i]-prices[i-1]; jo <ovf>; jle <skip>; add`, with **both** the forward index `prices[i]` and the offset index `prices[i-1]` bounds-check-elided (the `for i in 1..n` guard proves `i-1 ≥ 0` and `i < n`) — the whole binary carries a single panic site, the shared overflow trap. That is the same instruction budget `overflow-checks=on` Rust carries, hence the tie. Verified correct (all compiled mirrors agree on the sink) and valgrind-clean. Python (pure-Python, ~30× slower per rep, timed separately; not re-run 2026-11-01) is omitted.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../../1-100/1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at a matched greedy O(n) scan (`Slice[i64]` vs `&[i64]`). Like its sibling [#121](../121-best-time-to-buy-and-sell-stock/), this is a *clean-parity* kata: the equal-safety comparison ties (both carry overflow + the same elided bounds checks), and the only separation from wrapping `-O` Rust is the safety tax kāra pays by default. C's `long[]` is the metal floor, Go the GC data point, Python (timed separately, not cross-checked) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../../1-100/1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — here at a matched greedy O(n) scan (`Slice[i64]` vs `&[i64]`). Like its sibling [#121](../121-best-time-to-buy-and-sell-stock/), this is a *clean-parity* kata: the equal-safety comparison ties or better (both carry overflow + the same elided bounds checks; 0.90× on the M5, 2026-11-01), and the only separation from wrapping `-O` Rust is the safety tax kāra pays by default. C's `long[]` is the metal floor, Go the GC data point, Python (timed separately, not cross-checked) the ergonomic foil.

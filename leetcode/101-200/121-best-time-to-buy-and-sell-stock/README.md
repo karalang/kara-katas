@@ -37,11 +37,7 @@ python3 one_pass.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-06-16.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
-> **Machine.** The canonical numbers below are an **Apple M5 Pro** run ([`bench/results.json`](bench/results.json)). A shared **x86-64 Linux cloud-container** reference run is folded in separately ([`bench/results.container-x86.json`](bench/results.container-x86.json)); absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal. The container run reproduces the headline — **kāra at equal-safety parity with `rustc -O -C overflow-checks=on`** (both ~32 ms there, ~1.3× behind wrapping `rust -O`, the overflow-check tax) — though its short ~30 ms workload is noisier, so the M5 run is the stable reference.
+> **Machine.** The canonical numbers below are an **Apple M5 Pro** run ([`bench/results.json`](bench/results.json)) — karac g6697158fa (v2/MIR backend), measured 2026-11-01. A shared **x86-64 Linux cloud-container** reference run is folded in separately ([`bench/results.container-x86.json`](bench/results.container-x86.json)); absolute times/sizes/RSS are **not** comparable across the two hosts, only within-file cross-language ratios are the signal. The container run reproduced the headline — **kāra at equal-safety parity with `rustc -O -C overflow-checks=on`** (both ~32 ms there, ~1.3× behind wrapping `rust -O`, the overflow-check tax) — though its short ~30 ms workload is noisier, so the M5 run is the stable reference.
 
 ### How to run
 
@@ -64,39 +60,39 @@ All mirrors print the same sum-of-results sink (`K × max_profit = 40_950`) so t
 
 ### Codegen vs Rust (the headline)
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded (seq-only kata — the running-min/max-profit pair is a cross-iteration dependency chain):
+M5 Pro, 2026-11-01, karac g6697158fa (v2/MIR backend), hyperfine `--warmup 5 --runs 30 --shell=none`. All four compiled mirrors single-threaded (seq-only kata — the running-min/max-profit pair is a cross-iteration dependency chain; bench.sh builds Kāra with `KARAC_AUTO_PAR=0`, because the default build auto-parallelises the K=10 outer `sum` loop — one `karac_mir_task_spawn` call in its emitted IR (`KARAC_MIR_LL`), none in the seq build):
 
 | Run | Mean ± σ | Gap |
 |---|---|---|
-| c    one_pass (clang -O3) | 13.2 ± 0.1 ms | 1.07× ahead of kāra |
-| **kāra one_pass (codegen)** | **14.3 ± 0.1 ms** | — |
-| rust one_pass (`-O`, wrapping) | 13.7 ± 0.1 ms | 1.04× ahead of kāra |
-| rust one_pass (`overflow-checks=on`) | 14.1 ± 0.1 ms | **1.01× — equal-safety parity** |
-| go   one_pass | 15.1 ± 1.2 ms | kāra 1.06× ahead of Go |
+| c    one_pass (clang -O3) | 14.9 ± 0.3 ms | 1.08× ahead of kāra |
+| rust one_pass (`-O`, wrapping) | 15.6 ± 0.3 ms | 1.03× ahead of kāra |
+| go   one_pass | 15.9 ± 0.3 ms | 1.01× ahead of kāra |
+| **kāra one_pass (codegen)** | **16.1 ± 0.3 ms** | — |
+| rust one_pass (`overflow-checks=on`) | 16.2 ± 0.8 ms | **1.00× — equal-safety parity** |
 
-The honest comparison is at equal safety. Kāra checks integer overflow by default; `rustc -O` *wraps* — its 13.7 ms is a no-overflow-check binary. Matching Kāra's default safety with `-C overflow-checks=on` moves Rust to **14.1 ms**, and against that lane Kāra and Rust read **identical to the tenth of a millisecond** — a **1.01× tie** (14.3 vs 14.1, both ~12.5 ms User, well inside the noise band). The small gap to wrapping `-O` Rust is the overflow-check safety tax, and it vanishes once Rust opts into the same checks. The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. The May-14 snapshot read kara at 1.09× *of* Rust on M1; the gap closed with the cross-archive LTO + DCE work and the karac drop-pathway fix that also showed up in kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak)'s memory profile. C's 1.07× lead is the no-bounds-check, no-overflow-check floor.
+The honest comparison is at equal safety. Kāra checks integer overflow by default; `rustc -O` *wraps* — its 15.6 ms is a no-overflow-check binary. Matching Kāra's default safety with `-C overflow-checks=on` moves Rust to **16.2 ms**, and against that lane Kāra reads **1.00×** (16.1 vs 16.2, both ~14.7 ms User, well inside the noise band). The small gap to wrapping `-O` Rust is the overflow-check safety tax, and it vanishes once Rust opts into the same checks. The O(n) scan is essentially a tight loop with two compares, a subtraction, and two conditional stores — a regime where modern LLVM produces near-optimal machine code for either frontend. Every comparator ran 8–14% slower in this session than in the previous feed (legacy karac, 2026-06-16), so the ratios carry the comparison: Kāra/Rust 1.04× → 1.03×, Kāra/C 1.09× → 1.08×, Kāra/Go 0.97× → 1.01× — flat on all three. The May-14 snapshot read kara at 1.09× *of* Rust on M1; the gap closed with the cross-archive LTO + DCE work and the karac drop-pathway fix that also showed up in kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak)'s memory profile. C's 1.08× lead is the no-bounds-check, no-overflow-check floor.
 
 ### Codegen vs Python
 
 | Run | Mean ± σ |
 |---|---|
-| `kara one_pass` (codegen) | 14.3 ± 0.1 ms |
-| `rust one_pass` (`-O`, wraps) | 13.7 ± 0.1 ms |
-| `py one_pass` | 520.3 ± 2.0 ms |
+| `kara one_pass` (codegen) | 16.1 ± 0.3 ms |
+| `rust one_pass` (`-O`, wraps) | 15.6 ± 0.3 ms |
+| `py one_pass` (last measured 2026-06-16, not re-run) | 524.7 ± 3.1 ms |
 
-Python is **~36× slower** than Kāra codegen on this workload — the per-iteration overhead of CPython bytecode dispatch dominates everything else when the body is two integer compares.
+Python was **~37× slower** than Kāra codegen in its last measured session (524.7 vs 14.3 ms, 2026-06-16; this run did not set `KARA_BENCH_INCLUDE_PY`) — the per-iteration overhead of CPython bytecode dispatch dominates everything else when the body is two integer compares.
 
 ### Compile time and binary size
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+M5 Pro, 2026-11-01, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build one_pass.kara` | 74.8 ± 0.4 ms | 33.3 KiB |
-| `rustc -O one_pass.rs` | 94.5 ± 1.7 ms | 455.6 KiB |
-| `clang -O3 one_pass.c` | 46.1 ± 0.4 ms | 32.7 KiB |
+| `karac build one_pass.kara` | 110.6 ± 2.0 ms | 295.8 KiB |
+| `rustc -O one_pass.rs` | 89.1 ± 1.1 ms | 455.6 KiB |
+| `clang -O3 one_pass.c` | 46.9 ± 1.0 ms | 32.7 KiB |
 
-Kāra compiles this kata **1.26× faster** than `rustc -O` and produces a binary **~93% smaller** — within 615 bytes of C's (34,099 vs 33,484 B). (The 2026-05-18 snapshot read `karac build` at 56.4 ± 1.2 ms against the karac installed at the time; the May-30 karac reinstall plus the 06-05 environment band account for today's 74.8 — the emitted binary is byte-identical across the two compilers. rustc 82.0 → 94.5.) The much smaller binary tracks the cross-archive LTO + DCE work landed 2026-05-12, which strips the unreachable runtime surface (HTTP, JSON, tokio subgraph, `Map`, `String`, shared structs) when downstream features aren't used. Same shape as kata [#4](../../1-100/4-median-of-two-sorted-arrays/#compile-time-and-binary-size) and kata [#88](../../1-100/88-merge-sorted-array/#compile-time-and-binary-size).
+`karac build` is now **1.24× slower** than `rustc -O` on this kata (the 2026-06-16 legacy feed had it 1.33× faster, 71.0 vs 94.7 ms). The Kāra binary is 302,920 B — **~35% smaller** than Rust's, but ~9× C's 33,512 B: every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (legacy built this kata to 34,056 B), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). (History: the legacy binary's near-C size tracked the cross-archive LTO + DCE work landed 2026-05-12, which strips the unreachable runtime surface (HTTP, JSON, tokio subgraph, `Map`, `String`, shared structs) when downstream features aren't used. Same shape as kata [#4](../../1-100/4-median-of-two-sorted-arrays/#compile-time-and-binary-size) and kata [#88](../../1-100/88-merge-sorted-array/#compile-time-and-binary-size).)
 
 ### Runtime memory (peak)
 
@@ -104,12 +100,12 @@ Kāra compiles this kata **1.26× faster** than `rustc -O` and produces a binary
 |---|---|
 | `kara one_pass` (codegen) | 16.3 MiB |
 | `c    one_pass` | 16.3 MiB |
-| `rust one_pass` | 16.3 MiB |
-| `go   one_pass` | 19.0 MiB |
-| `py one_pass` | 81.7 MiB |
+| `rust one_pass` | 16.4 MiB |
+| `go   one_pass` | 18.8 MiB |
+| `py one_pass` (last measured 2026-06-16, not re-run) | 81.8 MiB |
 
-**Parity with C and Rust on memory** — today's single-shot readings put kara and Rust byte-identical (17,137,664 B) with C one 32 KiB page below; the 2026-05-18 sample read kara/Rust byte-identical instead. Page-level jitter aside, all three sit on the same working set: the bench's `Vec.filled(N, 0)` for a 2M-element `Vec[i64]` allocates exactly the 16 MiB, then the one-pass scan walks it. The May-14 snapshot measured kara at 32.8 MiB against the same source; the 16 MiB headroom traced to a karac drop / allocator pathway that has since been fixed, and the current build matches Rust's `vec![0; N]` allocation profile exactly. Same story as kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak).
+**Parity with C and Rust on memory** — the 2026-11-01 single-shot readings put kara (17,138,024 B) between C (17,105,232 B) and Rust (17,154,384 B), all within 48 KiB of each other. Page-level jitter aside, all three sit on the same working set: the bench's `Vec.filled(N, 0)` for a 2M-element `Vec[i64]` allocates exactly the 16 MiB, then the one-pass scan walks it. The May-14 snapshot measured kara at 32.8 MiB against the same source; the 16 MiB headroom traced to a karac drop / allocator pathway that has since been fixed, and the current build matches Rust's `vec![0; N]` allocation profile. Same story as kata [#88](../../1-100/88-merge-sorted-array/#runtime-memory-peak).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (1.07× ahead — the no-bounds-check loop), Go is the cross-runtime data point (1.06× behind kāra), and Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above. C calibrates the LLVM-backend floor (1.08× ahead — the no-bounds-check loop), Go is the cross-runtime data point (1.01× ahead of kāra, a tie), and Python is the ergonomic foil.

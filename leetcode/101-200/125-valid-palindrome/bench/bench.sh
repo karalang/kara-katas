@@ -8,8 +8,8 @@
 # so the ITERS reduction does real work every iteration (a pure two-pointer is
 # loop-invariant over a fixed input and folds to one pass). Each pass is still
 # independent, so the outer `sum += pass(input)` reduction is embarrassingly
-# parallel — recognized by karac's auto-par-on-reduction pass (karac_par_reduce
-# dispatch). Per BENCH.md's two-lane discipline a second kara binary is built
+# parallel — recognized by karac's auto-par-on-reduction pass (on v2/MIR: karac_mir_task_spawn
+# calls in the default build's IR, checked 2026-11-01). Per BENCH.md's two-lane discipline a second kara binary is built
 # with KARAC_AUTO_PAR=0 for the apples-to-apples seq comparison; the default
 # auto-par binary is the production regime and headlines the par lane.
 #
