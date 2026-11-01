@@ -37,15 +37,15 @@ The pivot is the last element (fixed, so the run is deterministic and matches th
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`601411203752`). Workload: quickselect (Lomuto) run 420x, array of 120k rebuilt from the PRNG stream each pass; sum of k-th largest values.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 295.2 ms | 0.98× |
-| Rust `-O` | 297.1 ms | 0.98× |
-| C `clang -O3` | 297.3 ms | 0.98× |
-| **Kāra (codegen)** | 302.3 ms | 1.00× |
-| Go | 307.5 ms | 1.02× |
+| C `clang -O3` | 327.4 ms | 1.00× |
+| **Kāra (codegen)** | 327.7 ms | 1.00× |
+| Rust `-O` | 328.1 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 328.7 ms | 1.00× |
+| Go | 335.3 ms | 1.02× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -60,4 +60,4 @@ diff <(karac run kth_largest.kara) <(python3 kth_largest.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

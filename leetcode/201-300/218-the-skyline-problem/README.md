@@ -37,15 +37,17 @@ Because every single-building skyline is already sorted by x and merge preserves
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`64666874995`). Workload: divide-and-conquer skyline over 24000 PRNG buildings, 100 build-once+punch re-runs; sum of x+h over all key points (allocation-heavy).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 214.7 ms | 0.65× |
-| Go | 257.1 ms | 0.78× |
-| **Kāra (codegen)** | 329.0 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 350.7 ms | 1.07× |
-| Rust `-O` | 358.2 ms | 1.09× |
+| C `clang -O3` | 229.0 ms | 0.77× |
+| **Kāra (codegen)** | 297.9 ms | 1.00× |
+| Go | 324.9 ms | 1.09× |
+| Rust `-O` | 366.4 ms | 1.23× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 370.0 ms | 1.24× |
+
+Against the 2026-07-27 legacy-backend run, Kāra improved against every comparator: Kāra/Rust `-O` 0.92× → 0.81×, Kāra/equal-safety Rust 0.94× → 0.81×, Kāra/C 1.53× → 1.30×, Kāra/Go 1.28× → 0.92× (Kāra now runs ahead of Go, which it trailed before). Every comparator also ran slower this session, so compare the ratios, not the milliseconds.
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -60,4 +62,4 @@ diff <(karac run skyline.kara) <(python3 skyline.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

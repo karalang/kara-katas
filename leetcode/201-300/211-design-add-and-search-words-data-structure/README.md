@@ -58,17 +58,19 @@ The cost split is worth naming: a wildcard-free query is O(len) exactly as in #2
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`262567`). Workload: build a 20k-word index-pool trie once, then match 8M PRNG wildcard patterns via backtracking DFS; sink = count of matches.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 158.2 ms | 0.86× |
-| Rust `-O` | 158.9 ms | 0.86× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 164.2 ms | 0.89× |
-| **Kāra (codegen)** | 184.3 ms | 1.00× |
-| Go | 198.3 ms | 1.08× |
+| **Kāra (codegen)** | 174.0 ms | 1.00× |
+| Rust `-O` | 177.7 ms | 1.02× |
+| C `clang -O3` | 178.1 ms | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 185.1 ms | 1.06× |
+| Go | 222.0 ms | 1.28× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
+Against the previous run (2026-07-27, pre-MIR karac) Kāra moved from 1.16× to 0.98× Rust `-O`, 1.17× to 0.98× C and 0.93× to 0.78× Go: it now runs level with C and Rust (about 2% ahead, 6% ahead of the equal-safety Rust row) and leads Go by a wider margin. Every comparator ran ~12% slower this session (machine state), so compare the ratios, not the absolute ms.
 
 ## Running
 

@@ -39,15 +39,15 @@ This is [#208](../208-implement-trie-prefix-tree/)'s trie fused with grid backtr
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`16961616561`). Workload: build a 4k-word trie once, then run the trie-guided 12x12 board DFS over 40k fresh PRNG boards; sink = traversal checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 138.3 ms | 0.68× |
-| Rust `-O` | 164.3 ms | 0.81× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 168.0 ms | 0.83× |
-| **Kāra (codegen)** | 202.1 ms | 1.00× |
-| Go | 225.8 ms | 1.12× |
+| C `clang -O3` | 153.7 ms | 0.67× |
+| Rust `-O` | 183.6 ms | 0.80× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 187.7 ms | 0.82× |
+| **Kāra (codegen)** | 229.2 ms | 1.00× |
+| Go | 249.9 ms | 1.09× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -62,4 +62,4 @@ diff <(karac run word_search_ii.kara) <(python3 word_search_ii.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean (no leak despite the mutable board, per-node `Map` children, and `Vec[String]` result churn). Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean (no leak despite the mutable board, per-node `Map` children, and `Vec[String]` result churn). Benchmarked: see § Benchmarks.
