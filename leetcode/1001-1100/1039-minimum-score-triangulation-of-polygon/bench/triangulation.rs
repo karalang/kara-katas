@@ -1,0 +1,50 @@
+// LeetCode #1039: Minimum Score Triangulation of Polygon -- bench
+// Mirrors ../triangulation.kara; see ../README.md § Benchmarks.
+
+fn min_score_triangulation(values: &[i64]) -> i64 {
+    let n = values.len();
+    let mut best: Vec<Vec<i64>> = vec![vec![0; n]; n];
+    for len in 2..n {
+        for i in 0..n - len {
+            let j = i + len;
+            let mut least = i64::MAX;
+            for k in i + 1..j {
+                let score = best[i][k] + best[k][j] + values[i] * values[k] * values[j];
+                if score < least {
+                    least = score;
+                }
+            }
+            best[i][j] = least;
+        }
+    }
+    best[0][n - 1]
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let count = 2000;
+    let rounds = 10;
+    let mut seed = 1039;
+    let mut polygons: Vec<Vec<i64>> = Vec::new();
+    for _ in 0..count {
+        let mut values = Vec::new();
+        for _ in 0..50 {
+            values.push(next_random(&mut seed) % 100 + 1);
+        }
+        polygons.push(values);
+    }
+    let mut total: i64 = 0;
+    let mut check: i64 = 0;
+    for _ in 0..rounds {
+        for values in polygons.iter() {
+            let score = min_score_triangulation(values);
+            total += score;
+            check = (check * 131 + score) % 1000000007;
+        }
+    }
+    println!("{count} polygons of 50 vertices, {rounds} rounds: total {total}, checksum {check}");
+}
