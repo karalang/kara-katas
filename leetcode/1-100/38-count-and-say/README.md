@@ -141,9 +141,11 @@ state — so the session-to-session story is told in ratios, not ms.) The gap is
 instruction count: exact pmc counts put the MIR binary at **1.14G instructions vs legacy's
 1.07G**, back at legacy's level after
 [`B-2026-10-28-43`](../../../../kara/docs/bugs-v2.md) (fixed, see the Bug ledger below). It
-is **IPC**: cycles are **193M vs legacy's 151M (1.28×)**. The likely cause is the two
-per-iteration stores of the call site that MIR still emits on the loop path, tracked as
-[`B-2026-10-31-2`](../../../../kara/docs/bugs-v2.md) (open).
+is **IPC**: cycles are **193M vs legacy's 151M (1.28×)**. It is not the per-iteration
+call-site stores: those are gone in the measured build
+([`B-2026-10-31-2`](../../../../kara/docs/bugs-v2.md), fixed by kara a4ea53a5ee). The cause
+is not yet attributed, and is tracked as
+[`B-2026-10-31-37`](../../../../kara/docs/bugs-v2.md) (open).
 
 Where #36/#37 (stack integer compute) put Kāra *ahead* of C and Rust, #38 is pure `String`
 work — a UTF-8-correct heap buffer where C/Go/Rust drive a raw byte buffer. The June
@@ -232,4 +234,6 @@ build. See the [`karac` bug ledger](../../../../kara/docs/bug-ledger.jsonl).
 
 **Surfaced [`B-2026-10-28-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/count_and_say.kara` executes 1.67× legacy's instructions: MIR stores the panic location into a global on every loop iteration, and since the globals became `thread_local` (for auto-par correctness, `B-2026-10-26-7`) each store is a TLV-getter call. Removing the `thread_local` alone recovers ~76% of the gap. **Fixed** by kara `e1bd415c72`: each block now takes the thread-locals' address once, so the loop no longer calls the TLV getter (1.80G → 1.26G instructions, 1.18× legacy).
 
-**Surfaced [`B-2026-10-31-2`](../../../../kara/docs/bugs-v2.md)** (perf, open). The rest of the gap: the two stores of the call site per loop trip themselves, where legacy passed the site statically to a cold abort path; deleting them reached legacy's count.
+**Surfaced [`B-2026-10-31-2`](../../../../kara/docs/bugs-v2.md)** (perf, **fixed** by kara a4ea53a5ee). The two stores of the call site per loop trip: a library body that can abort now takes its caller's place as arguments, as legacy passed it statically, and instructions are back at legacy's count.
+
+**Surfaced [`B-2026-10-31-37`](../../../../kara/docs/bugs-v2.md)** (perf, open). With instructions at legacy's level, the binary still takes 1.22–1.28× legacy's cycles (1.44× `rustc -O` on wall time); the cause is not yet attributed.
