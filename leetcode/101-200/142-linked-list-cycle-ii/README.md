@@ -40,15 +40,15 @@ As in [#141](../141-linked-list-cycle/), nodes are `Vec`-owned (strong) and `nex
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`44997903`). Workload: Floyd two-phase cycle-ENTRY detection over 1000 index-pool lists x 3000 perturbed passes (pointer-chasing).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 218.4 ms | 0.99× |
-| **Kāra (codegen)** | 221.3 ms | 1.00× |
-| Go | 223.1 ms | 1.01× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 236.3 ms | 1.07× |
-| C `clang -O3` | 240.1 ms | 1.08× |
+| Rust `-O` | 246.6 ms | 0.94× |
+| Go | 250.0 ms | 0.95× |
+| **Kāra (codegen)** | 262.4 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 262.4 ms | 1.00× |
+| C `clang -O3` | 268.6 ms | 1.02× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

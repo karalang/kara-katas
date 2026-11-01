@@ -37,15 +37,15 @@ The Kāra version then **rewires the weak `next` chain** to follow that order (`
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`24750936645771`). Workload: in-place L0->Ln->L1->... reorder of a 100K-node index-pool list x 1000 perturbed passes; position-weighted checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 243.8 ms | 0.99× |
-| **Kāra (codegen)** | 246.2 ms | 1.00× |
-| Rust `-O` | 257.2 ms | 1.04× |
-| C `clang -O3` | 281.0 ms | 1.14× |
-| Go | 282.8 ms | 1.15× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 272.0 ms | 0.96× |
+| Rust `-O` | 283.0 ms | 0.99× |
+| **Kāra (codegen)** | 284.8 ms | 1.00× |
+| Go | 309.4 ms | 1.09× |
+| C `clang -O3` | 313.6 ms | 1.10× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

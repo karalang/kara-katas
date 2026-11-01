@@ -43,17 +43,17 @@ The one subtlety is lexical: `"-"` the subtraction operator and `"-11"` the nega
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`760375256`). Workload: stack-machine eval of a large valid RPN token stream x K punches, modular result sum sink.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 198.2 ms | 0.98× |
-| **Kāra (codegen)** | 201.4 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 202.2 ms | 1.00× |
-| C `clang -O3` | 206.1 ms | 1.02× |
-| Go | 422.1 ms | 2.10× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 219.9 ms | 1.00× |
+| **Kāra (codegen)** | 220.6 ms | 1.00× |
+| Rust `-O` | 221.3 ms | 1.00× |
+| C `clang -O3` | 237.9 ms | 1.08× |
+| Go | 459.4 ms | 2.08× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Kāra is level with Rust (1.00×), ahead of C (0.93×; C's ±25 ms σ this session makes that a near-tie) and ahead of Go (0.48×) — flat against the 2026-07-27 measurement in ratio terms. Single-machine snapshot (`bench/results.json`, karac g6697158fa, 2026-11-01); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

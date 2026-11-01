@@ -40,17 +40,21 @@ Slopes are kept **exact** — no floating point, no precision loss. The directio
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`696`). Workload: sort-based slope-run count, N=1200 K=8.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 110.5 ms | 0.91× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 111.7 ms | 0.92× |
-| **Kāra (codegen)** | 121.9 ms | 1.00× |
-| C `clang -O3` | 221.6 ms | 1.82× |
-| Go | 290.5 ms | 2.38× |
+| Rust `-O` | 121.9 ms | 0.93× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 124.7 ms | 0.96× |
+| **Kāra (codegen)** | 130.5 ms | 1.00× |
+| C `clang -O3` | 246.4 ms | 1.89× |
+| Go | 321.2 ms | 2.46× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Kāra is 1.05× equal-safety Rust (1.07× `rustc -O`) and ahead of C (0.53×) and Go (0.41×) — flat against the 2026-07-28 measurement in ratio terms.
+
+**Auto-par lane (Kāra only).** The default build auto-parallelises the anchor loop (the par binary's emitted IR (`KARAC_MIR_LL`) carries a call of `karac_mir_task_spawn`; the `KARAC_AUTO_PAR=0` twin's does not). It runs in 20.5 ms ± 0.2 ms, 6.36× faster than Kāra's own seq lane. No comparator has a parallel version, so this row is not part of the cross-language comparison above.
+
+Single-machine snapshot (`bench/results.json`, karac g6697158fa, 2026-11-01); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

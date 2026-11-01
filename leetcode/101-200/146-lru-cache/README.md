@@ -45,17 +45,17 @@ Every operation (`unlink`, `push_front`, `move_front`, evict) is O(1) index arit
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`65640802092`). Workload: 32M PRNG get/put ops, cap=1024 key-range=4096; index-pool DLL + key->slot map (C flat table, others hashmap), constant eviction.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-09 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 190.0 ms | 0.11× |
-| Rust `-O` | 727.2 ms | 0.44× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 760.6 ms | 0.46× |
-| Go | 940.4 ms | 0.57× |
-| **Kāra (codegen)** | 1.66 s | 1.00× |
+| C `clang -O3` | 207.5 ms | 0.24× |
+| Rust `-O` | 824.2 ms | 0.97× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 825.6 ms | 0.97× |
+| **Kāra (codegen)** | 850.6 ms | 1.00× |
+| Go | 1024.7 ms | 1.20× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 30e6c45b187e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. On that baseline Kāra is 1.03× behind Rust, 4.10× behind C (whose key→slot map is a flat table, not a hashmap), and ahead of Go (0.83×). Against the previous feed (karac fd6750a84, 2026-09-14) that is 1.60× → 1.03× `rustc -O`, 6.29× → 4.10× C and 1.25× → 0.83× Go. That feed falls inside the 2026-09-07..09-19 window when u64-keyed map lookups were miscompiled, but this kata keys its map by `i64` and that feed's sink matched, so the window does not apply here. Single-machine snapshot (`bench/results.json`, karac g6697158fa, 2026-11-01); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -93,5 +93,7 @@ Two things worth stating plainly, because the shape here is easy to misread:
 
 - **The old margin was not real.** Kāra was hashing an integer key with one multiply while every comparator used a DoS-resistant hash; the 0.31× was substantially a measurement of that asymmetry rather than of the map. Sibling katas [#347](../../301-400/347-top-k-frequent-elements/README.md) and [#387](../../301-400/387-first-unique-character-in-a-string/README.md) carried that caveat explicitly and predicted a statistical tie at equal hashing.
 - **The residue is still real and still ours.** At genuinely equal hashing kāra is behind, and an isolated lookup microbenchmark puts the gap at 1.73× on instructions but only **1.14× on wall clock** — sizing it on instruction count alone overstates it by roughly half. This kata's 2.29× is worse than that floor, and it runs at low IPC on both sides, so some of what is left here is memory behaviour rather than the lookup sequence. That is tracked, unresolved, and deliberately not guessed at.
+
+> **2026-11-01 note:** the 2.29× above is history. Re-benched on karac g6697158fa (v2/MIR backend), Kāra is 1.03× equal-safety Rust on this workload — see the table above.
 
 An inline-SipHash codegen path was built and measured against exactly this question: it is worth 2.6–4.8% and was not landed. The regression is essentially irreducible while scalar keys hash with SipHash-1-3.
