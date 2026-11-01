@@ -39,15 +39,17 @@ The histogram pass is O(cols) with a **monotonic stack** of column indices with 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`225518`). Workload: histogram + monotonic-stack maximal rectangle over a 70x70 0/1 matrix x 11K passes (build-once + punch).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 75.0 ms | 0.60× |
-| **Kāra (codegen)** | 125.2 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 127.2 ms | 1.02× |
-| Rust `-O` | 129.4 ms | 1.03× |
-| Go | 161.5 ms | 1.29× |
+| C `clang -O3` | 83.6 ± 1.5 ms | 0.52× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 148.6 ± 1.7 ms | 0.93× |
+| Rust `-O` | 149.1 ± 2.9 ms | 0.93× |
+| **Kāra (codegen)** | 160.5 ± 3.1 ms | 1.00× |
+| Go | 197.0 ± 4.7 ms | 1.23× |
+
+Kāra is now **1.08× behind both Rust builds** and 1.92× the C floor, still ahead of Go (0.81×). Against the previous feed (2026-07-27, legacy backend) that is a borderline slip: Kāra/Rust 0.97× → 1.08×, Kāra/C 1.67× → 1.92×, Kāra/Go 0.78× → 0.81×. The MIR build runs 1.03× the legacy build's instructions at 1.12× its cycles, so the loss is mostly cycles per instruction, not extra work.
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

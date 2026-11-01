@@ -75,40 +75,40 @@ diff <(karac run partition_list.kara) <(karac run partition_list_collect.kara)  
 ## Benchmarks
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`partition_list.{kara,rs,c,py}`, `go-seq/main.go`, plus the par-lane `partition_list_par.c`, `rayon/`, `go-par/`).
 
-> ✅ **M5-confirmed (2026-08-05).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. Seq lane: kāra **ties both Rust builds** (behind C/Go on this allocation-bound list). The par lane is the standout — kāra's zero-parallel-code auto-par **beats hand-tuned rayon 1.26×** on the M5 (a tie on the container) and goroutines 1.48×, for a **5.12× self-speedup** over its own seq lane. `bench/results.json` records the M5 host.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E = 18 logical cores; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23). The first M5 snapshot (2026-08-05) replaced an earlier x86-64 cloud-container one. Seq lane: kāra **ties both Rust builds** within noise (behind C/Go on this allocation-bound list); flat against every comparator since 2026-08-05. The par lane is the standout and improved against all three comparators — kāra's zero-parallel-code auto-par **beats hand-tuned rayon 1.55×** and goroutines 2.49×, lands within 1.05× of the C-pthreads floor, for a **7.19× self-speedup** over its own seq lane. `bench/results.json` records the M5 host.
 >
-> ⚠️ **Provenance — this kata's par lane regressed and was repaired between snapshots.** The 2026-07-28 corpus run recorded kāra's par row at **683.7 ms @ 99.8 % CPU** — auto-par had silently stopped firing, so a *sequential* binary was published against parallel rayon, reading as "0.25× / ~4× slower than rayon" in the public feed. Cause: auto-par's cross-task-safety gate was TYPE-based and declined a reduction whose body allocates an iteration-local `shared` value (karac **B-2026-07-30-1**, fixed 2026-07-30 in `05b1fe66`). This README was *not* wrong during that window — it still carried the pre-regression 2026-07-11 numbers, which is why it disagreed with `results.json`. Both now agree on the 2026-08-05 re-bench, sink-verified across all five binaries (`84997457408934`).
+> ⚠️ **Provenance — this kata's par lane regressed and was repaired between snapshots.** The 2026-07-28 corpus run recorded kāra's par row at **683.7 ms @ 99.8 % CPU** — auto-par had silently stopped firing, so a *sequential* binary was published against parallel rayon, reading as "0.25× / ~4× slower than rayon" in the public feed. Cause: auto-par's cross-task-safety gate was TYPE-based and declined a reduction whose body allocates an iteration-local `shared` value (karac **B-2026-07-30-1**, fixed 2026-07-30 in `05b1fe66`). This README was *not* wrong during that window — it still carried the pre-regression 2026-07-11 numbers, which is why it disagreed with `results.json`. Both agreed on the 2026-08-05 re-bench, and again on the 2026-11-01 one, sink-verified across all five binaries (`84997457408934`).
 
 **Two lanes over one workload.** A batch of **K = 170,000 independent** partitions: each iteration builds a **fresh M = 200-node linked list** whose values depend on the iteration index (`val = (j·7 + iter) % 100`, so no call hoists), stably partitions it around `x = 50`, and the per-iteration fold is combined through an **associative sum** (order-independent, so parallel and sequential produce the same total). This is an **allocation-bound** workload — a fresh M-node list is built and torn down every iteration — so *no* implementation scales linearly; the point is auto-par vs hand-tuned parallelism on equal, malloc-heavy footing. All nine seq + par mirrors must agree on `84997457408934` before timing.
 
 - **Seq lane** — single-threaded: kāra (`KARAC_AUTO_PAR=0`) vs `rustc -O` / `clang -O3` / `go build` per-core.
-- **Par lane** — the *same* batch, parallel: the default `karac build` **auto-parallelises the `for k in 0..K` sum reduction with no hand-written parallel code**, raced against hand-tuned C-pthreads, rayon, and goroutines.
+- **Par lane** — the *same* batch, parallel: the default `karac build` **auto-parallelises the `for k in 0..K` sum reduction with no hand-written parallel code** (verified in the emitted IR (`KARAC_MIR_LL`): the default build calls `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` twin does not), raced against hand-tuned C-pthreads, rayon, and goroutines.
 
 **Equal reference semantics.** Kāra uses a `shared struct` (Rc-like) list; **Rust mirrors it with `Rc<RefCell<ListNode>>`** (same per-node reference-count overhead; each rayon task builds its own thread-local `Rc` lists), Go a GC-managed `*ListNode`, and **C a plain `malloc`/`free` raw-pointer list** (single-owner, the metal floor). **Equal safety:** the seq lane includes a `rustc -O -C overflow-checks=on` row (kata [#69](../69-sqrtx/)'s discipline).
 
-#### Seq lane — single-threaded (`--warmup 3 --runs 20`)
+#### Seq lane — single-threaded (`--warmup 3 --runs 20`; M5 Pro, karac g6697158fa, 2026-11-01)
 
 | Implementation | Wall time |
 |---|---|
-| c    partition_list (clang -O3, malloc list)          | **443.4 ± 12.6 ms** |
-| go   partition_list (`*Node`, GC)                     | 451.8 ± 6.3 ms |
-| **kāra partition_list (`KARAC_AUTO_PAR=0`)**          | **633.1 ± 7.0 ms** |
-| rust partition_list (rustc -O, `Rc<RefCell>`)         | 640.5 ± 10.1 ms |
-| rust partition_list (rustc -O, overflow-checks=on)    | 673.4 ± 56.0 ms |
+| c    partition_list (clang -O3, malloc list)          | **491.7 ± 22.0 ms** |
+| go   partition_list (`*Node`, GC)                     | 531.2 ± 5.2 ms |
+| rust partition_list (rustc -O, `Rc<RefCell>`)         | 724.2 ± 22.6 ms |
+| rust partition_list (rustc -O, overflow-checks=on)    | 736.8 ± 37.3 ms |
+| **kāra partition_list (`KARAC_AUTO_PAR=0`)**          | **746.0 ± 32.0 ms** |
 
-Single-threaded and at **matched reference semantics**, kāra's `shared struct` **ties both Rust builds** (633.1 vs `Rc<RefCell>` 640.5 / 673.4 ms — within noise; the sibling [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/) lists put kāra slightly ahead). On the M5 the native front pulls away on this allocation-bound partition: C's unchecked pointer list at 1.43× under kāra and Go's GC list at 1.40×. Overflow checks are free here. Python is timed separately.
+Single-threaded and at **matched reference semantics**, kāra's `shared struct` **ties both Rust builds** (746.0 vs `Rc<RefCell>` 724.2 / 736.8 ms — 1.03× / 1.01×, inside every row's σ; Kāra/Rust was 0.99× on 2026-08-05, so flat). On the M5 the native front pulls away on this allocation-bound partition: C's unchecked pointer list at 1.52× under kāra and Go's GC list at 1.40× (both flat since 2026-08-05: 1.43× and 1.40×). Overflow checks are free here. Python is timed separately.
 
-#### Par lane — auto-par vs hand-tuned, NOT comparable to seq (`--warmup 5 --runs 30`)
+#### Par lane — auto-par vs hand-tuned, NOT comparable to seq (`--warmup 5 --runs 30`; M5 Pro, karac g6697158fa, 2026-11-01)
 
 | Implementation | Wall time |
 |---|---|
-| c    partition_list (pthreads — metal floor)            | **79.6 ± 7.7 ms** |
-| **kāra partition_list (auto-par, NO parallel code)**    | **123.7 ± 35.6 ms** |
-| rust partition_list (rayon `into_par_iter`)             | 155.6 ± 23.4 ms |
-| rust partition_list (rayon, overflow-checks=on)         | 166.9 ± 30.5 ms |
-| go   partition_list (goroutines + WaitGroup)            | 183.3 ± 2.0 ms |
+| c    partition_list (pthreads — metal floor)            | **99.2 ± 15.6 ms** |
+| **kāra partition_list (auto-par, NO parallel code)**    | **103.7 ± 8.2 ms** |
+| rust partition_list (rayon `into_par_iter`)             | 161.3 ± 17.1 ms |
+| rust partition_list (rayon, overflow-checks=on)         | 170.1 ± 21.5 ms |
+| go   partition_list (goroutines + WaitGroup)            | 258.8 ± 3.1 ms |
 
-The standout: kāra's **zero-parallel-code auto-par beats hand-tuned rayon** (123.7 vs 155.6 ms, **1.26×**; 1.35× against the equal-safety rayon build) and the goroutine version (183.3 ms, 1.48×), a step behind only the raw-pthreads floor (79.6 ms, 1.55×). rayon's per-task overhead on this build-a-fresh-list-per-iteration batch is higher than the compiler's leaner reduction split — the inverse of sibling [#84](../84-largest-rectangle-in-histogram/), where rayon edged kāra. Against its own single-threaded seq lane (633.1 ms) that is a **5.12× self-speedup** on the M5's 18 cores, for free — no threads or annotations written. Note the wide σ on the sub-200 ms par rows (kāra ±35.6, rayon ±23.4) — at this duration the lane is dispatch-noise-dominated; the ordering is stable across runs but treat the exact ratio as ±0.1. See [`bench/results.json`](bench/results.json).
+The standout: kāra's **zero-parallel-code auto-par beats hand-tuned rayon** (103.7 vs 161.3 ms, **1.55×**; 1.64× against the equal-safety rayon build) and the goroutine version (258.8 ms, 2.49×), and sits within 1.05× of the raw-pthreads floor (99.2 ms, inside C's ±15.6 ms). That is an improvement against all three since 2026-08-05: Kāra/rayon 0.79× → 0.64×, Kāra/C 1.55× → 1.05×, Kāra/Go 0.67× → 0.40×. It also spends less total CPU than rayon (1.38 s of user time vs rayon's 2.72 s; C-pthreads 1.25 s). rayon's per-task overhead on this build-a-fresh-list-per-iteration batch is higher than the compiler's leaner reduction split — the inverse of sibling [#84](../84-largest-rectangle-in-histogram/), where rayon edged kāra. Against its own single-threaded seq lane (746.0 ms) that is a **7.19× self-speedup** on the M5's 18 cores, for free — no threads or annotations written. Note the wide σ on the sub-200 ms par rows (C ±15.6, rayon ±17.1, kāra ±8.2) — at this duration the lane is dispatch-noise-dominated; the ordering against rayon and Go is stable across runs, but treat the exact ratios as ±0.1 and kāra-vs-C as a tie. See [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 

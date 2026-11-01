@@ -89,11 +89,14 @@ diff <(karac run remove_duplicates_ii_list.kara) <(python3 remove_duplicates_ii_
 diff <(karac run remove_duplicates_ii_list.kara) <(karac run remove_duplicates_ii_list_recursive.kara)          && echo OK
 ```
 
+<!-- placement-caveat -->
+**Measurement caveat — code placement.** This kata's runtime moves by up to **10%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **3.2%** margin against `rustc -O -C overflow-checks=on` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+
 ## Benchmarks
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`remove_duplicates_ii_list.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The load-bearing result holds; the ordering shifts:** kāra's `shared struct` still beats Rust's `Rc<RefCell>` at equal reference semantics (1.10×), but Go's GC-managed pointer list — 4th on the container — leapfrogs to *fastest* on the M5, so kāra lands 3rd of five. `bench/results.json` records the M5 host.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23). The first M5 snapshot (2026-07-11, legacy backend) replaced an earlier x86-64 cloud-container one, on which Go was 4th; on the M5 Go's GC-managed pointer list is *fastest*. **The ordering holds, the margin over Rust narrows to a tie:** kāra is 3rd of five, and its ratios are flat since July (Kāra/Rust 0.91× → 0.96×, Kāra/C 1.32× → 1.44×, Kāra/Go 1.57× → 1.62×) — but the remaining 1.03–1.04× edge over Rust's `Rc<RefCell>` sits inside this kata's code-placement spread (see the caveat above), so read it as a tie. `bench/results.json` records the M5 host.
 
 **Workload.** The dedup pass mutates/re-links the list, so — like kata [#21](../21-merge-two-sorted-lists/)'s merge bench — each iteration builds a **fresh** sorted linked list and runs `delete_duplicates` on it. The list is an **M = 300** sorted run where every **even** value is duplicated (removed by #82) and every **odd** value is single (kept): `[0,0,1,2,2,3,…]`. For **K = 61,000** iterations (seeded by the loop index so nothing hoists) it builds, dedups, and folds the surviving values through a **rolling polynomial hash**. Per-iteration node allocation is part of the measured work — fair, since every mirror allocates its nodes — alongside the RC-node pointer chase and the run-detection logic. All five compiled mirrors must agree on `494436670` before timing.
 
@@ -101,22 +104,22 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin; Go's ~115 % is its GC). **M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| go   remove_duplicates_ii_list                               | **296.1 ± 4.5 ms** |
-| c    remove_duplicates_ii_list (clang -O3)                    | 350.0 ± 5.0 ms |
-| **kāra remove_duplicates_ii_list**                           | **463.6 ± 8.3 ms** |
-| rust remove_duplicates_ii_list (rustc -O, overflow-checks=on)| 510.1 ± 10.0 ms |
-| rust remove_duplicates_ii_list (rustc -O)                    | 510.9 ± 10.8 ms |
+| go   remove_duplicates_ii_list                               | **345.7 ± 4.1 ms** |
+| c    remove_duplicates_ii_list (clang -O3)                    | 388.2 ± 28.1 ms |
+| **kāra remove_duplicates_ii_list**                           | **559.8 ± 27.8 ms** |
+| rust remove_duplicates_ii_list (rustc -O, overflow-checks=on)| 578.3 ± 21.6 ms |
+| rust remove_duplicates_ii_list (rustc -O)                    | 582.2 ± 21.8 ms |
 
-**The load-bearing result survives the reordering:** at **matched reference semantics** kāra's `shared struct` still beats Rust's `Rc<RefCell<ListNode>>` — **1.10×** ahead of both `rustc -O` (510.9 ms) and overflow-checked Rust (510.1 ms). `RefCell` pays a runtime borrow-flag check on every `.borrow()`/`.borrow_mut()` (several per step) where kāra's RC handle reads the value directly; that tax is most of the gap, and it survives on the reference machine. What *changed* from the container is the top: **Go's GC-managed pointer list jumps from 4th to fastest** (296.1 ms — arm64's allocator loves this build-a-fresh-list-per-iteration churn), and unchecked raw-pointer C sits 2nd, so kāra lands **3rd of five** — 1.32× behind C, 1.57× behind Go, still ahead of both Rusts. Overflow checks are free here (the loop is allocation/pointer-bound). Python (K=3000, ~0.43 s at 1/20 the native iteration count) is timed separately.
+**The load-bearing comparison is now a tie:** at **matched reference semantics** kāra's `shared struct` is **1.03×** ahead of overflow-checked Rust (578.3 ms) and **1.04×** ahead of `rustc -O` (582.2 ms) — down from 1.10× in July, and inside both σ (~22–28 ms here) and the ~10 % code-placement spread, so it no longer supports "beats Rust". `RefCell` pays a runtime borrow-flag check on every `.borrow()`/`.borrow_mut()` (several per step) where kāra's RC handle reads the value directly; on this run that tax no longer shows as a clear gap. The top is unchanged from July: **Go's GC-managed pointer list is fastest** (345.7 ms — arm64's allocator loves this build-a-fresh-list-per-iteration churn), and unchecked raw-pointer C sits 2nd, so kāra lands **3rd of five** — 1.44× behind C, 1.62× behind Go, level with both Rusts. Overflow checks are free here (the loop is allocation/pointer-bound). Python was last measured 2026-07-11 and not re-run: at K=3000 (1/20 the native iteration count) it took ~0.13 s (the feed’s figure; earlier text quoted ~0.43 s).
 
-**Binary size & RSS.** The kāra binary is **33.1 KiB** (C parity, 32.7 KiB) and peak RSS **1.05 MiB** — tied with C, lowest of the five — versus Go's **9.4 MiB** GC heap. See [`bench/results.json`](bench/results.json).
+**Binary size & RSS.** Binary size: c 32.7 KiB, **kāra 295.8 KiB**, rust 456.2 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Peak RSS: c 1.03 MiB, **kāra 1.05 MiB**, rust 1.09 MiB — versus Go's **10.1 MiB** GC heap. See [`bench/results.json`](bench/results.json).
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
+Compile-cold on the M5: clang 46.8 ms < rustc 118.0 ms < **karac 139.3 ms** (1.18× rustc, 2.98× clang); full records in [`bench/results.json`](bench/results.json). The earlier container records are in [`bench/results.container-x86.json`](bench/results.container-x86.json).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, at **matched reference semantics** (`shared struct` vs `Rc<RefCell>`), the comparison is especially direct. C's raw-pointer list calibrates the metal floor, Go is the GC data point, Python (run at a fraction of the iteration count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and here, at **matched reference semantics** (`shared struct` vs `Rc<RefCell>`), the comparison is especially direct (a tie inside placement noise on 2026-11-01). C's raw-pointer list calibrates the metal floor, Go is the GC data point, Python (run at a fraction of the iteration count, timed separately; last measured 2026-07-11) the ergonomic foil.

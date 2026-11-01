@@ -78,13 +78,10 @@ diff <(karac run remove_duplicates_ii.kara) <(karac run remove_duplicates_ii_sli
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-10 snapshot; the feed was last measured 2026-07-11.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`remove_duplicates_ii.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ✅ **M5-confirmed (2026-07-10).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The dead heat holds** — kāra ties both Rust builds to within a millisecond and sits 1.007× off the C floor, 1.21× ahead of Go. The honest nuance (see below): this is a *latency-bound* loop, so kāra's dead heat is genuine on the clock even though it retires **1.75× C's instructions** — the density is masked in the stall shadow (`B-2026-07-10-5`). `bench/results.json` records the M5 host.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23). The first M5 snapshot (2026-07-10/11, legacy backend) replaced an earlier x86-64 cloud-container one. **The dead heat holds** — kāra, C and both Rust builds finish within 1.1 % of each other, and kāra stays 1.20× ahead of Go; its ratios are flat since July (Kāra/Rust 1.00× → 1.01×, Kāra/C 1.01× → 1.01×, Kāra/Go 0.83× → 0.83×). The honest nuance (see below): this is a *latency-bound* loop, so the dead heat is genuine on the clock even though kāra retired **1.75× C's instructions** in July — the density is masked in the stall shadow (`B-2026-07-10-5`). `bench/results.json` records the M5 host.
 
 **Workload — why not the in-place sweep itself.** The kata's two-pointer write is a **csel-on-converging-pointer**: the optimizer would vectorise the conditional store away, and mutating in place forces a per-iteration *copy* of the array (allocation domination) — both erase the work you meant to measure (`BENCHMARKS.md`'s pitfalls). So the bench times the **decision logic**: the generalized run-scan computes the at-most-2 dedup and folds each kept value through a **rolling polynomial hash**. The loop-carried hash serialises the scan (resisting vectorisation) over a fixed **N = 3000** sorted array (mixed run lengths 1, 2, 3, … so the cap actually drops elements) built **once**, for **K = 67,000** iterations seeded by the loop index so nothing hoists. All five compiled mirrors must agree on `103734817` before timing.
 
@@ -92,20 +89,20 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin). **M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| c    remove_duplicates_ii (clang -O3)                    | **518.2 ± 1.7 ms** |
-| **kāra remove_duplicates_ii**                            | **522.0 ± 3.3 ms** |
-| rust remove_duplicates_ii (rustc -O)                     | 522.1 ± 3.3 ms |
-| rust remove_duplicates_ii (rustc -O, overflow-checks=on) | 522.5 ± 4.5 ms |
-| go   remove_duplicates_ii                                | 629.9 ± 2.1 ms |
+| rust remove_duplicates_ii (rustc -O)                     | **607.9 ± 4.7 ms** |
+| c    remove_duplicates_ii (clang -O3)                    | 608.1 ± 8.6 ms |
+| rust remove_duplicates_ii (rustc -O, overflow-checks=on) | 609.9 ± 6.2 ms |
+| **kāra remove_duplicates_ii**                            | **614.6 ± 8.2 ms** |
+| go   remove_duplicates_ii                                | 736.5 ± 12.2 ms |
 
-A **dead heat** — kāra, `rustc -O`, and equal-safety Rust finish within **half a millisecond** of each other (522.0 / 522.1 / 522.5 ms), all 1.007× off the C floor and 1.21× ahead of Go. But the parity is **latency-masked, not codegen parity** — the honest read the reference machine makes visible. The loop is a tight dependent chain of multiply-add-mod over sequential reads, memory/latency-bound (every mirror's IPC is low — C 1.16, kāra 2.02), so the wall-clock is set by cycles-to-drain-the-chain, which are equal. Under the hood kāra retires **4.77 G instructions to C's 2.73 G (1.75×) and rust_ovf's 4.14 G (1.15×)** — its per-element bounds + overflow checks are real extra work that simply executes in the stall shadow for free here. On a *throughput*-bound loop the same density gap surfaces as a real loss (kata [#79](../79-word-search/); the general characterization is `B-2026-07-10-5`). Overflow checks cost nothing (latency-bound), so equal-safety and wrapping Rust are indistinguishable. Python (K=3000, ~0.49 s, a fraction of the native iteration count) is timed separately.
+A **dead heat** — `rustc -O`, C, equal-safety Rust and kāra finish within **7 ms (1.1 %)** of each other (607.9 / 608.1 / 609.9 / 614.6 ms), every gap inside σ; kāra is 1.011× off the fastest and 1.20× ahead of Go. The order within the four-way tie is noise — in July kāra sat 2nd, a hair ahead of both Rusts. But the parity is **latency-masked, not codegen parity** — the honest read the reference machine makes visible. The loop is a tight dependent chain of multiply-add-mod over sequential reads, memory/latency-bound (every mirror's IPC was low in July — C 1.16, kāra 2.02), so the wall-clock is set by cycles-to-drain-the-chain, which are equal. Under the hood the July legacy build retired **4.77 G instructions to C's 2.73 G (1.75×) and rust_ovf's 4.14 G (1.15×)** (counts not re-taken on MIR) — its per-element bounds + overflow checks are real extra work that simply executes in the stall shadow for free here. On a *throughput*-bound loop the same density gap surfaces as a real loss (kata [#79](../79-word-search/); the general characterization is `B-2026-07-10-5`). Overflow checks cost nothing (latency-bound), so equal-safety and wrapping Rust are indistinguishable. Python was last measured 2026-07-11 and not re-run: at K=3000, a fraction of the native iteration count, it took ~0.49 s.
 
-Compile-cold on the M5: clang 40.6 ms < rustc 81.8 ms < **karac 84.1 ms** (~1.03× rustc, ~2.07× clang). Binary 33.3 KiB (C parity), runtime RSS 1.08 MiB (~C). Full records in [`bench/results.json`](bench/results.json).
+Compile-cold on the M5: clang 47.8 ms < rustc 89.9 ms < **karac 120.4 ms** — karac is now 1.34× slower than rustc (~1.03× in July) and 2.52× the clang floor. Binary size: c 32.7 KiB, **kāra 295.8 KiB**, rust 455.7 KiB, go 2.38 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Peak RSS: c 1.05 MiB, **kāra 1.11 MiB**, rust 1.13 MiB, go 2.83 MiB. Full records in [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this serialised hash-fold scan the two land in a dead heat. C calibrates the metal floor, Go is the other native data point, Python (run at a fraction of the iteration count, timed separately) the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap — and on this serialised hash-fold scan the two land in a dead heat (1.01×, 2026-11-01). C calibrates the metal floor, Go is the other native data point, Python (run at a fraction of the iteration count, timed separately; last measured 2026-07-11) the ergonomic foil.
