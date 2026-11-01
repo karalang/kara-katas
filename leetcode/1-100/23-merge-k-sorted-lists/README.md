@@ -63,51 +63,55 @@ diff <(python3 divide_and_conquer.py)     <(python3 heap.py)               && ec
 ```
 
 ## Benchmarks
-Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`divide_and_conquer.{kara,rs,c,py}`, `go-seq/main.go`).
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`divide_and_conquer.{kara,rs,c,py}`, `go-seq/main.go`). Figures below are the 2026-10-31 re-bench (results.json `measured_at` 2026-11-01T01:26Z), measured with **karac 0.9.0-dev.14057+g6697158fa** — the v2/MIR backend (the legacy backend was deleted 2026-10-23).
 
 **Workload.** Every iteration builds k = 8 fresh 128-node lists (1024 nodes malloc'd per iter), where list j holds values `j, j+8, j+16, …` — stride-k interleaving, so at *every* pairwise merge level the two operands fully interleave (the k-way generalization of kata [#21](../21-merge-two-sorted-lists/)'s evens/odds worst case, which defeats the branch predictor at all log k = 3 rounds). The merged 1024-node list is summed and freed. K = 100,000 iterations; the merged list is `[0..1023]`, sum `1023·1024/2 = 523,776`, sink `K · 523,776 =` **52,377,600,000** — all four compiled mirrors must agree before timing. This is kata #21's alloc/merge/drop workload scaled ~5× per iteration and given a merge *tree* instead of a single merge: same RC-node allocator churn, plus the interval walk's Vec element read/write traffic.
 
-**Two-lane kata** (BENCH.md § Implicit auto-par): the default `karac build` links the par-dispatch surface (the K-loop fold is reduction-shaped), so the bench builds the dual binaries and reports them separately. Each *merge* is inherently sequential pointer-chasing, but the K-loop over independent iterations is not — auto-par parallelizes across iterations, and the par lane below carries the full four-way comparator set.
+**Two-lane kata** (BENCH.md § Implicit auto-par): the default `karac build` links the par-dispatch surface (the K-loop fold is reduction-shaped), so the bench builds the dual binaries and reports them separately. Each *merge* is inherently sequential pointer-chasing, but the K-loop over independent iterations is not — auto-par parallelized across iterations through the 2026-08-05 feed, and the par lane below carries the full four-way comparator set. **On the 2026-10-31 MIR build auto-par does not fire** — see § Runtime — par lane.
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, **2026-08-05**, `bench.sh` (hyperfine `--warmup 5 --runs 30 --shell=none`, structured-JSON emit). All compiled rows single-threaded; the kāra row is `KARAC_AUTO_PAR=0`.
+M5 Pro, 2026-10-31, karac g6697158fa (v2/MIR), `bench.sh` (hyperfine `--warmup 5 --runs 30 --shell=none`, structured-JSON emit). All compiled rows single-threaded; the kāra row is `KARAC_AUTO_PAR=0`.
 
-| Implementation | Wall time |
-|---|---|
-| go   divide_and_conquer            | 1.146 ± 0.018 s |
-| c    divide_and_conquer (clang -O3) | 1.408 ± 0.021 s |
-| **kāra divide_and_conquer**        | **2.285 ± 0.038 s** |
-| rust divide_and_conquer (`-C overflow-checks=on`) | 2.559 ± 0.014 s |
-| rust divide_and_conquer            | 2.560 ± 0.032 s |
+| Implementation | Wall time | vs Kāra |
+|---|---|---|
+| go   divide_and_conquer            | 1.339 ± 0.013 s | 0.52× |
+| c    divide_and_conquer (clang -O3) | 1.638 ± 0.078 s | 0.64× |
+| **kāra divide_and_conquer**        | **2.578 ± 0.037 s** | **1.00×** |
+| rust divide_and_conquer (`-C overflow-checks=on`) | 2.909 ± 0.066 s | 1.13× |
+| rust divide_and_conquer            | 2.926 ± 0.070 s | 1.13× |
 
-**Kāra leads Rust by 1.12×** and trails C by 1.62× and Go by 1.99×. Same cause as katas [#19](../19-remove-nth-node-from-end-of-list/) / [#21](../21-merge-two-sorted-lists/), amplified: Rust's reference-semantics mirror is `Rc<RefCell<ListNode>>`, and the merge *tree* multiplies the per-node `Rc` clone + `RefCell` borrow-flag traffic — every node is re-spliced at every one of the log k = 3 rounds, so Kāra stays ahead of Rust while its plain RC headers shrug the extra rounds off. Against the no-refcount mirrors the order is kata 21's: allocator-bound RC-node churn lands Kāra behind C's plain malloc/free and Go's GC arena (whose bump-allocated nodes and absent per-iter free win this workload outright). Note the equal-safety Rust row (`-C overflow-checks=on`) is indistinguishable from release here — this workload is allocator-bound, not arithmetic-bound, so the overflow-check tax that dominates katas like [#171](../../101-200/171-excel-sheet-column-number/) has nothing to bite on.
+**Kāra leads Rust by 1.13×** and trails C by 1.57× and Go by 1.92×. Same cause as katas [#19](../19-remove-nth-node-from-end-of-list/) / [#21](../21-merge-two-sorted-lists/), amplified: Rust's reference-semantics mirror is `Rc<RefCell<ListNode>>`, and the merge *tree* multiplies the per-node `Rc` clone + `RefCell` borrow-flag traffic — every node is re-spliced at every one of the log k = 3 rounds, so Kāra stays ahead of Rust while its plain RC headers shrug the extra rounds off. Against the no-refcount mirrors the order is kata 21's: allocator-bound RC-node churn lands Kāra behind C's plain malloc/free and Go's GC arena (whose bump-allocated nodes and absent per-iter free win this workload outright). Note the equal-safety Rust row (`-C overflow-checks=on`) is indistinguishable from release here — this workload is allocator-bound, not arithmetic-bound, so the overflow-check tax that dominates katas like [#171](../../101-200/171-excel-sheet-column-number/) has nothing to bite on.
+
+**MIR vs the previous feed (karac g4044152df, 2026-08-05), in language ratios:** Kāra/Rust 0.89× → 0.88×, Kāra/C 1.62× → 1.57×, Kāra/Go 1.99× → 1.92× — flat.
 
 > **Provenance — the seq table moved between 2026-06-07 and 2026-08-05.** Earlier: go 1.116 / c 1.328 / kāra 1.967 / rust 2.385 s, quoted as "Kāra leads Rust by 1.44×." All four mirrors drifted up on the current toolchain (go +2.7 %, c +6.0 %, rust +7.4 %, kāra +16.2 %), narrowing the Rust lead to 1.12×. **Kāra's larger drift is not specific to this kata** — comparing `bench-baseline.json` (2026-06-06) against the current feed across 36 katas with a seq lane, kāra's median is **1.18× slower** while c (0.99×), go (0.98×) and rust (1.01×) are flat. That is a corpus-wide Kāra seq-lane regression over June, not a property of this workload, and it is unattributed to a specific commit.
 
 ### Runtime — par lane (auto-par, cross-lane — NOT comparable to the seq rows above)
 
-Snapshot — M5 Pro, 2026-08-05. Kāra's row is the **default** `karac build` with **no parallel code in the source**; the other three are hand-written parallelism over the same K-loop.
+M5 Pro, 2026-10-31, karac g6697158fa (v2/MIR). Kāra's row is the **default** `karac build` with **no parallel code in the source**; the other three are hand-written parallelism over the same K-loop.
 
 | Implementation | Wall time | CPU | user |
 |---|---|---|---|
-| c    divide_and_conquer + pthreads (metal floor) | 0.466 ± 0.068 s | 1678 % | 7.81 s |
-| rust divide_and_conquer + rayon                  | 0.487 ± 0.024 s | 1775 % | 8.62 s |
-| rust + rayon (`-C overflow-checks=on`)           | 0.504 ± 0.022 s | 1781 % | 8.96 s |
-| go   divide_and_conquer + goroutines             | 0.643 ± 0.003 s | 623 %  | 2.94 s |
-| **kāra divide_and_conquer (auto-par, no par source)** | **0.726 ± 0.177 s** | 1759 % | 12.76 s |
+| c    divide_and_conquer + pthreads (metal floor) | 0.323 ± 0.050 s | 1508 % | 4.87 s |
+| rust divide_and_conquer + rayon                  | 0.501 ± 0.026 s | 1613 % | 8.05 s |
+| rust + rayon (`-C overflow-checks=on`)           | 0.514 ± 0.026 s | 1632 % | 8.37 s |
+| go   divide_and_conquer + goroutines             | 0.837 ± 0.006 s | 612 %  | 3.29 s |
+| **kāra divide_and_conquer (default build) — auto-par does not fire (sequential program)** | **2.579 ± 0.046 s** | 100 % | 2.58 s |
 
-**Auto-par delivers 3.15× over Kāra's own seq lane** (2.285 → 0.726 s) with zero parallel code written. Against the hand-written par mirrors it trails: 0.67× of rayon, 0.64× of the C pthreads floor. The gap is visible in the user-CPU column — Kāra burns 12.76 s of CPU to rayon's 8.62 s for the same work, i.e. the parallel decomposition is correct but the per-iteration RC/allocator cost it carries into each worker is the same tax the seq lane shows. This is an honest *trailing* result on an allocator-bound workload; contrast [#394](../../301-400/394-decode-string/), where the same auto-par machinery **beats** both rayon and the C floor on fine-grained tasks. Note also the wide σ (±0.177 s) — the par lane on this kata is noisier than its comparators.
+**The kāra row is not a parallel result.** The default build's emitted IR (`KARAC_MIR_LL`) contains no `karac_mir_task_spawn` call, and the binary runs the sequential program: 2579 ms at 100 % CPU against the `KARAC_AUTO_PAR=0` twin's 2578 ms, with the same 302,880-byte binary. Read as a ratio it is 5.15× rayon, 7.98× the C pthreads floor and 3.08× Go — where the 2026-08-05 feed had Kāra at 1.49× rayon, 1.56× C and 1.13× Go with auto-par delivering 3.15× over its own seq lane. Filed as [`B-2026-10-31-43`](../../../../kara/docs/bugs-v2.md) (see § Bug ledger).
 
-> **⚠️ Provenance — an earlier par figure here is unreproducible and has been removed.** This section previously claimed **213.1 ± 5.7 ms wall / 3.68 s user, "~8.7× over seq"** (dated 2026-06-07). Today's sink-verified measurement is 726.0 ms. The old figure is not merely stale, it is **internally implausible**: 213 ms would put Kāra 2.2× *faster* than hand-written parallel C (466 ms) on a workload where C beats it 1.62× in the seq lane. It also dates to the same day as the double-free fix this kata surfaced (karac `9e261565`), a bug whose manifestation explicitly "changed between default and `KARAC_AUTO_PAR=0` builds" — so the most likely reading is that it was measured on a binary that was not doing all the work. Today's number has sink agreement across all five binaries (`52377600000`). **Do not reinstate the 8.7× claim without a reproducible run.**
+(History, 2026-08-05 legacy build: the auto-par row read 0.726 ± 0.177 s at 1759 % CPU / 12.76 s user, against C pthreads 0.466 s, rayon 0.487 s and Go 0.643 s — a correct parallel decomposition that trailed the hand-written mirrors because each worker carried the seq lane's RC/allocator tax; contrast [#394](../../301-400/394-decode-string/), where the same auto-par machinery beat both rayon and the C floor on fine-grained tasks.)
+
+> **⚠️ Provenance — an earlier par figure here is unreproducible and has been removed.** This section previously claimed **213.1 ± 5.7 ms wall / 3.68 s user, "~8.7× over seq"** (dated 2026-06-07). The 2026-08-05 sink-verified measurement was 726.0 ms. The old figure is not merely stale, it is **internally implausible**: 213 ms would put Kāra 2.2× *faster* than hand-written parallel C (466 ms) on a workload where C beats it 1.62× in the seq lane. It also dates to the same day as the double-free fix this kata surfaced (karac `9e261565`), a bug whose manifestation explicitly "changed between default and `KARAC_AUTO_PAR=0` builds" — so the most likely reading is that it was measured on a binary that was not doing all the work. The 2026-08-05 number had sink agreement across all five binaries (`52377600000`). **Do not reinstate the 8.7× claim without a reproducible run.**
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py divide_and_conquer` (K=10k) | 1.752 ± 0.033 s |
+| `py divide_and_conquer` (K=10k) — last measured by 2026-06-15, not re-run | 1.752 ± 0.033 s |
 
-Python at K=10k is 1.77 s; projecting to the compiled mirrors' K=100k (~17.7 s) puts it **~7.7× slower than kāra seq** (17.7 / 2.285 s) — the same narrow Python gap as katas 19/21, because node allocation happens in CPython's C internals and the workload has no arithmetic inner loop for the interpreter to lose on.
+Not re-run on 2026-10-31 (the bench did not set `KARA_BENCH_INCLUDE_PY`). Python at K=10k was 1.75 s; projecting to the compiled mirrors' K=100k (~17.5 s) put it **~7.7× slower than the 2026-08-05 kāra seq figure** (17.5 / 2.285 s; a cross-session projection, not re-derived against the current feed) — the same narrow Python gap as katas 19/21, because node allocation happens in CPython's C internals and the workload has no arithmetic inner loop for the interpreter to lose on.
 
 ### Compile elapsed (cold)
 
@@ -115,45 +119,45 @@ Python at K=10k is 1.77 s; projecting to the compiled mirrors' K=100k (~17.7 s) 
 
 | Compiler | Time |
 |---|---|
-| clang -O3 divide_and_conquer.c           | **52.5 ± 0.3 ms** |
-| **karac build divide_and_conquer.kara**  | **96.2 ± 0.6 ms** |
-| rustc -O divide_and_conquer.rs           | 138.8 ± 1.3 ms |
+| clang -O3 divide_and_conquer.c           | **55.1 ± 1.0 ms** |
+| rustc -O divide_and_conquer.rs           | 137.1 ± 2.0 ms |
+| **karac build divide_and_conquer.kara**  | **152.2 ± 3.1 ms** |
 
-Kāra compiles **1.41× faster than `rustc -O`** and sits at **1.80× of clang -O3** — same shape as the rest of the corpus (kata 21: 1.27× / 1.90×).
+On the MIR backend karac compiles **1.11× slower than `rustc -O`** and sits at **2.76× of clang -O3** (kata 21: 1.17× / 2.85×). The 2026-08-05 legacy build was 1.41× faster than rustc (96.2 ms vs 138.8 ms).
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    divide_and_conquer            | 32.8 KiB |
-| **kāra divide_and_conquer (seq)**  | **33.3 KiB** |
-| kāra divide_and_conquer (par)      | 296.1 KiB |
+| **kāra divide_and_conquer (seq)**  | **295.8 KiB** |
+| kāra divide_and_conquer (par)      | 295.8 KiB |
 | rust divide_and_conquer            | 456.6 KiB |
 | go   divide_and_conquer            | 2434.2 KiB |
 
-Kāra's seq binary is **33.6 KiB — 792 bytes off C's 32.8 KiB** (34,368 vs 33,576 B), the kata-21 story verbatim: no sort, no auto-par dispatch in the seq build, so the ~262 KiB libstd floor never links and a `shared struct` linked-list program lands at C size. The default build's **312.5 KiB** (319,952 B) is the standard auto-par floor (see [kata 16 § Binary size](../16-3sum-closest/README.md)) — i.e. auto-par costs ~279 KiB of dispatch machinery here. Both Kāra binaries undercut Rust's (456.6 KiB seq / 454.7 KiB rayon) and are ~73× smaller than Go's 2.4 MiB.
+Every MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); the seq binary is **295.8 KiB** (302,880 B, was 34,368 B in the 2026-08-05 feed), 1.54× under Rust's 456.6 KiB and 9.0× over C's 32.8 KiB. The default build is **byte-identical in size** (302,880 B; was 319,952 B with the auto-par machinery) — consistent with no task-spawn code being emitted ([`B-2026-10-31-43`](../../../../kara/docs/bugs-v2.md)). Both Kāra binaries undercut Rust's (456.6 KiB seq / 454.7 KiB rayon) and are ~8× smaller than Go's 2.4 MiB.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    divide_and_conquer            | 1.1 MiB |
-| **kāra divide_and_conquer (seq)**  | **1.2 MiB** |
-| rust divide_and_conquer            | 1.2 MiB |
-| kāra divide_and_conquer (par)      | 3.0 MiB |
-| go   divide_and_conquer            | 9.4 MiB |
+| c    divide_and_conquer            | 1.08 MiB |
+| **kāra divide_and_conquer (seq)**  | **1.13 MiB** |
+| rust divide_and_conquer            | 1.14 MiB |
+| kāra divide_and_conquer (par)      | 1.11 MiB |
+| go   divide_and_conquer            | 9.88 MiB |
 
-Kāra's seq peak RSS reads byte-identical to Rust's in this sample (1,245,472 B each — single-shot `/usr/bin/time -l`, page-noisy, so read it as parity) and a hair over C. The 1024 nodes per iteration are allocated, merged, and fully freed inside the loop — steady state stays flat across all 100,000 iterations, the same leak-free splice story the kata-21 refcount fixes established, now over a merge tree. The par build's 3.0 MiB carries the worker pool; Go's 9.4 MiB its GC arena + scheduler.
+Kāra's seq peak RSS sits within a page or so of Rust's (1,179,984 vs 1,196,344 B — single-shot `/usr/bin/time -l`, page-noisy, so read it as parity) and a hair over C (1,130,808 B). The 1024 nodes per iteration are allocated, merged, and fully freed inside the loop — steady state stays flat across all 100,000 iterations, the same leak-free splice story the kata-21 refcount fixes established, now over a merge tree. The par build's 1.11 MiB carries no worker pool this time (it was 3.0 MiB on 2026-08-05) — it runs sequentially; the hand-written par mirrors read C pthreads 2.45 MiB, rayon 3.52 MiB, Go 14.25 MiB. Go's seq 9.9 MiB is its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 divide_and_conquer.c          | 2.5 MiB |
-| **karac build divide_and_conquer.kara** | **15.3 MiB** |
+| clang -O3 divide_and_conquer.c          | 2.6 MiB |
 | rustc -O divide_and_conquer.rs          | 33.1 MiB |
+| **karac build divide_and_conquer.kara** | **58.9 MiB** |
 
-Kāra's compile-memory footprint is ~5.5× clang's and ~2.4× below rustc's — corpus shape (kata 21 read 11.3 MiB on a slightly smaller program).
+On the MIR backend karac's compile-memory peak is **1.78× rustc's** and ~23× clang's (kata 21: 58.1 MiB). The 2026-08-05 legacy build peaked at 15.3 MiB, ~2.2× below rustc.
 
 ### Why Rust is in the harness
 
@@ -165,3 +169,7 @@ Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a t
 
 - **B-2026-10-06-87** — comparing an indexed tuple element is refused by `karac build`, and `PriorityQueue[(..)]` cannot be built through the stdlib's `outranks`.
 - The kata-2 tuple-literal `match` leak (B-2026-10-06-78) was hit again by the merge-two-lists step.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-31-43`](../../../../kara/docs/bugs-v2.md)** (perf, open). The default (auto-par) build no longer parallelizes the K-loop: its emitted IR (`KARAC_MIR_LL`) has no `karac_mir_task_spawn` call, and it runs the sequential program (2579 ms at 100 % CPU vs the `KARAC_AUTO_PAR=0` twin's 2578 ms, same binary size), so the par lane went 1.49× → 5.15× rayon. Measured 31 Oct 2026 with karac g6697158fa.

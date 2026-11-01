@@ -63,10 +63,6 @@ diff <(karac run valid_parentheses.kara) <(python3 valid_parentheses.py) && echo
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`valid_parentheses.{kara,rs,c,py}`, `go-seq/main.go`).
 
 **Workload.** `depth = 1000`, so each input is a 2000-byte nested run — `depth` openers followed by `depth` closers (`"(((…)))"`), valid by construction. The bracket *type* rotates `kind = k % 3` over `()`, `[]`, `{}` so the branch predictor can't memorize one opener/closer pair. On 1/7 of the iters (`k % 7 == 0`) the final closer is flipped to a wrong type, so the validator pushes all `depth` openers, pops `depth-1` correct closers, then mismatches on the last — exercising the `false` early-return path on a near-full stack. `K = 500,000` iters. Each iteration builds a fresh `Vec[u8]` (grown from empty — allocator traffic) and validates it with a fresh `Vec[u8]` stack (push `depth`, pop `depth`). The sink is the count of *valid* inputs: corrupt fires on `k % 7 == 0` (⌈500000/7⌉ = 71429 iters), so the count is `500000 − 71429` = **428,571**; all four compiled mirrors must agree before timing. The demo validates a `ref String`; the bench operates on a byte buffer so all four mirrors run byte-for-byte over the bracket-stack algorithm itself.
@@ -75,16 +71,17 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. The 2026-05-30 snapshot read 1.002 / 1.034 / 1.116 / 1.242 s — all four rows drifted down ~4–5% together on byte-identical binaries (kāra-seq, rust, and c all reproduced bit-for-bit), so the shift is batch variance.
+M5 Pro, 2026-10-31 (`results.json` `measured_at` 2026-11-01T01:11Z), karac 0.9.0-dev.14057+g6697158fa (v2/MIR backend), hyperfine `--warmup 5 --runs 30 --shell=none`. All comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`. The `rust -C overflow-checks=on` row is the equal-safety comparator, since Kāra checks overflow by default.
 
 | Implementation | Wall time |
 |---|---|
-| **kāra valid_parentheses (seq)** | **921.9 ± 15.1 ms** |
-| c    valid_parentheses (clang -O3) | 1012.2 ± 18.2 ms |
-| rust valid_parentheses           | 1.063 ± 0.023 s |
-| go   valid_parentheses           | 1.186 ± 0.015 s |
+| **kāra valid_parentheses (seq)** | **1138.2 ± 21.7 ms** |
+| c    valid_parentheses (clang -O3) | 1177.3 ± 24.0 ms |
+| rust valid_parentheses           | 1260.5 ± 35.3 ms |
+| rust valid_parentheses (overflow-checks=on) | 1279.9 ± 27.1 ms |
+| go   valid_parentheses           | 1494.8 ± 22.2 ms |
 
-On the seq lane **Kāra is the fastest of the four** — it leads **C by 1.10×**, **Rust by 1.15×**, and **Go by 1.29×**. This is an allocator + stack-churn workload (build a fresh 2000-byte `Vec[u8]` and run a `Vec[u8]` push/pop stack over it, 500k times), with no arithmetic kernel and no sort, so it measures exactly the two things this kata stresses: small-`Vec` allocation/grow traffic and `push`/`pop`. Kāra's `Vec` grow path and the (now byte-narrowed) `pop` land it a hair ahead of `clang -O3`'s manual doubling-`realloc` mirror — the LLVM-backend floor — and clear of Rust, whose `Vec<u8>` growth + per-`push` capacity checks cost ~12% here. The gap to Rust is the load-bearing number: Kāra's semantic peer, same backend, and Kāra wins the per-core comparison on pure collection churn. Go trails at 1.28× on `append` + GC bookkeeping.
+On the seq lane **Kāra is still the fastest** — it leads **C by 1.03×**, **Rust by 1.11×** (1.12× against the overflow-checked build), and **Go by 1.31×**. The margin has narrowed: on the 2026-07-28 legacy feed Kāra/Rust was 0.74× and Kāra/C 0.79×, now 0.90× and 0.97×. The MIR build executes 1.41× legacy's instructions on this kernel (26.26G vs 18.59G, `KARAC_AUTO_PAR=0`); cause unattributed, filed as [`B-2026-10-31-42`](../../../../kara/docs/bugs-v2.md). This is an allocator + stack-churn workload (build a fresh 2000-byte `Vec[u8]` and run a `Vec[u8]` push/pop stack over it, 500k times), with no arithmetic kernel and no sort, so it measures exactly the two things this kata stresses: small-`Vec` allocation/grow traffic and `push`/`pop`. Kāra's `Vec` grow path and the (now byte-narrowed) `pop` land it a hair ahead of `clang -O3`'s manual doubling-`realloc` mirror — the LLVM-backend floor — and clear of Rust, whose `Vec<u8>` growth + per-`push` capacity checks cost ~11% here. The gap to Rust is the load-bearing number: Kāra's semantic peer, same backend, and Kāra wins the per-core comparison on pure collection churn. Go trails at 1.31× on `append` + GC bookkeeping.
 
 ### Runtime — auto-par regime
 
@@ -92,17 +89,20 @@ The per-iter `if is_valid_bytes(buf) { count += 1 }` is a count-reduction over i
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra valid_parentheses (auto-par default)** | **83.1 ± 3.8 ms** | 1346.0 ms |
+| c    valid_parentheses (pthreads)  | **134.2 ± 8.2 ms** | 2055.4 ms |
+| rust valid_parentheses (rayon par_iter) | 139.5 ± 6.9 ms | 2223.4 ms |
+| **kāra valid_parentheses (auto-par default)** | **147.8 ± 7.9 ms** | 2108.2 ms |
+| go   valid_parentheses (goroutines + WaitGroup) | 1379.5 ± 33.7 ms | 3238.6 ms |
 
-The auto-par binary is **11.1× faster than the kāra seq binary** (921.9 → 83.1 ms), spreading the K=500k count-reduction across the cores at a ~16× user-CPU-to-wall ratio on M5 Pro. This is the legitimate-win case (BENCH.md kata #4 path): each iteration's buffer build + validate is fully independent, so the reduction parallelizes cleanly — a better ratio than the sort+allocate body of kata [#15](../15-3sum/) (7.6×), because here there's no shared sort runtime and the per-worker work is a clean alloc/scan. The cost is the `karac_par_reduce` + worker-pool runtime surface (see § Binary size, § Runtime memory).
+The auto-par binary is **7.7× faster than the kāra seq binary** (1138.2 → 147.8 ms), spreading the K=500k count-reduction across the cores at a ~14.3× user-CPU-to-wall ratio on M5 Pro. Against the parallel comparators it is now **1.06× behind rayon and 1.10× behind C pthreads** (0.68× / 0.71× on the 2026-07-28 feed), and 9.3× ahead of Go. The par loss is the same seq gap ([`B-2026-10-31-42`](../../../../kara/docs/bugs-v2.md)): the par build's instruction count is flat across worker counts (26.33G at 1 worker, 26.39G at 18), so the dispatch is not the cost. This is the legitimate-win case (BENCH.md kata #4 path): each iteration's buffer build + validate is fully independent, so the reduction parallelizes cleanly — a better ratio than the sort+allocate body of kata [#15](../15-3sum/) (4.5× on the same 2026-10-31 toolchain), because here there's no shared sort runtime and the per-worker work is a clean alloc/scan. The cost is the `karac_par_reduce` + worker-pool runtime surface (see § Binary size, § Runtime memory).
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py valid_parentheses` (K=100k) | 6.517 ± 0.112 s |
+| `py valid_parentheses` (K=100k) — last measured 2026-06-05, not re-run | 6.517 ± 0.112 s |
 
-Python at K=100k is 6.52 s; projecting to the compiled mirrors' K=500k (~32.6 s) puts it **~35× slower than kāra seq**. The hot path is a per-byte Python-level loop with a dict lookup and a list `append`/`pop` per character — exactly the interpreter-bound shape with no C-builtin to hide behind (contrast kata [#15](../15-3sum/), where `sorted()` keeps the gap to ~14×), so the gap is wide and typical of the corpus's pure-iteration katas. Against the auto-par regime the cross-lane ratio is ~357×.
+Python is not in the 2026-10-31 feed (the run did not set `KARA_BENCH_INCLUDE_PY`); the figure and ratios in this paragraph are from the 2026-06-05 snapshot. Python at K=100k was 6.52 s; projecting to the compiled mirrors' K=500k (~32.6 s) put it **~35× slower than kāra seq** at the time. The hot path is a per-byte Python-level loop with a dict lookup and a list `append`/`pop` per character — exactly the interpreter-bound shape with no C-builtin to hide behind (contrast kata [#15](../15-3sum/), where `sorted()` keeps the gap to ~14×), so the gap is wide and typical of the corpus's pure-iteration katas. Against the auto-par regime the cross-lane ratio was ~357×.
 
 ### Compile elapsed (cold)
 
@@ -110,45 +110,45 @@ Python at K=100k is 6.52 s; projecting to the compiled mirrors' K=500k (~32.6 s)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 valid_parentheses.c           | **47.9 ± 0.4 ms** |
-| **karac build valid_parentheses.kara**  | **77.2 ± 0.4 ms** |
-| rustc -O valid_parentheses.rs           | 91.4 ± 1.6 ms |
+| clang -O3 valid_parentheses.c           | **52.1 ± 1.6 ms** |
+| rustc -O valid_parentheses.rs           | 92.1 ± 3.0 ms |
+| **karac build valid_parentheses.kara**  | **171.2 ± 3.1 ms** |
 
-Kāra compiles **1.18× faster than `rustc -O`** and sits at **1.61× of clang -O3** — same shape as the rest of the corpus (this kata's tiny Rust mirror makes the rustc margin the corpus's narrowest).
+Kāra compiles **1.86× slower than `rustc -O`** and at **3.28× of clang -O3** on the v2/MIR backend. (The 2026-06-05 legacy snapshot read 77.2 ms, 1.18× faster than rustc.)
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    valid_parentheses            | 32.8 KiB |
-| **kāra valid_parentheses (seq)**  | **33.3 KiB** |
-| **kāra valid_parentheses (auto-par)** | **296.1 KiB** |
+| **kāra valid_parentheses (seq)**  | **295.8 KiB** |
+| **kāra valid_parentheses (auto-par)** | **377.1 KiB** |
 | rust valid_parentheses            | 455.6 KiB |
 | go   valid_parentheses            | 2434.2 KiB |
 
-Kāra's seq binary is **33.3 KiB — within 600 B of C's 32.8 KiB**. This kata calls no `sort_by`, so it never links the runtime's libstd floor (panic infrastructure + DWARF symbolizer) that dominates the sort-using katas (15 / 16 / 18, ~295 KiB) — a no-sort `Vec[u8]` stack program is as small as the C mirror (see [kata 16 § Binary size](../16-3sum-closest/README.md) for the breakdown). The auto-par row at **296.1 KiB sits exactly on the documented auto-par floor** — the `karac_par_reduce` + worker-pool / threading surface plus the libstd retinue it keeps reachable — and lands **at ~65% of Rust's 455.6 KiB**. (The 2026-05-30 snapshot read 417.6 KiB for the auto-par row; −124,864 B of that was rlib contamination in a mis-built runtime archive, the same incident corrected across katas #14–#18. The seq binary was unaffected — it reproduced bit-for-bit today — because a no-sort, no-par program reaches none of the contaminated surface.) C's 32.8 KiB (no runtime archive) is the floor; Go's 2.4 MiB carries its runtime.
+Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md): today's seq binary is 295.8 KiB and the auto-par row 377.1 KiB (83% of Rust's 455.6 KiB). The rest of this paragraph is the legacy backend's history. Kāra's seq binary was **33.3 KiB — within 600 B of C's 32.8 KiB**. This kata calls no `sort_by`, so it never links the runtime's libstd floor (panic infrastructure + DWARF symbolizer) that dominates the sort-using katas (15 / 16 / 18, ~295 KiB) — a no-sort `Vec[u8]` stack program was as small as the C mirror (see [kata 16 § Binary size](../16-3sum-closest/README.md) for the breakdown). The auto-par row at **296.1 KiB sat exactly on the documented auto-par floor** — the `karac_par_reduce` + worker-pool / threading surface plus the libstd retinue it keeps reachable — and landed **at ~65% of Rust's 455.6 KiB**. (The 2026-05-30 snapshot read 417.6 KiB for the auto-par row; −124,864 B of that was rlib contamination in a mis-built runtime archive, the same incident corrected across katas #14–#18. The seq binary was unaffected — it reproduced bit-for-bit today — because a no-sort, no-par program reaches none of the contaminated surface.) C's 32.8 KiB (no runtime archive) is the floor; Go's 2.4 MiB carries its runtime.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
 | rust valid_parentheses            | 1.2 MiB |
-| c    valid_parentheses            | 1.4 MiB |
+| c    valid_parentheses            | 1.2 MiB |
 | **kāra valid_parentheses (seq)**  | **1.2 MiB** |
 | **kāra valid_parentheses (auto-par)** | **3.9 MiB** |
-| go   valid_parentheses            | 9.5 MiB |
+| go   valid_parentheses            | 10.2 MiB |
 
-Kāra seq's peak RSS (1,261,856 B) sits below C (1,458,464 B) and Rust (1,311,008 B) on this run — single-shot `/usr/bin/time -l` samples, so treat the trio's relative ordering as sample noise at this granularity. The per-iter input buffer and stack are allocated, used, and freed inside the loop, so steady state stays flat across all 500,000 iterations. The auto-par regime's 3.9 MiB is the worker pool's per-thread scratch + partials; single-sample, so directionally promising but unconfirmed. Go's 9.5 MiB carries its GC arena + scheduler.
+Kāra seq's peak RSS (1,212,752 B) sits below Rust (1,229,112 B) and C (1,278,264 B) on this run — single-shot `/usr/bin/time -l` samples, so treat the trio's relative ordering as sample noise at this granularity. The per-iter input buffer and stack are allocated, used, and freed inside the loop, so steady state stays flat across all 500,000 iterations. The auto-par regime's 3.9 MiB (4,096,456 B) is the worker pool's per-thread scratch + partials — level with rayon's 3.9 MiB (4,112,720 B) and below C pthreads' 5.1 MiB; single-sample, so directionally promising but unconfirmed. Go's 10.2 MiB carries its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 valid_parentheses.c          | 2.6 MiB |
-| **karac build valid_parentheses.kara** | **13.5 MiB** |
-| rustc -O valid_parentheses.rs          | 26.9 MiB |
+| rustc -O valid_parentheses.rs          | 26.8 MiB |
+| **karac build valid_parentheses.kara** | **57.1 MiB** |
 
-Kāra's compile-memory footprint is ~4.1× clang's and ~2.6× lower than rustc's on this kata — same shape as the rest of the corpus. (+0.1 MiB vs 05-30 — within the content-independent karac compile-mem floor band tracked across the corpus.)
+Kāra's compile-memory footprint on the v2/MIR backend is ~22.3× clang's and 2.13× rustc's on this kata. (The 2026-06-05 legacy snapshot read 13.5 MiB, ~2× below rustc.)
 
 
 
@@ -162,3 +162,7 @@ Re-probed with new phrasings, on all four surfaces plus valgrind, as part of a t
 
 - **B-2026-10-06-86** — a value enum carrying a unit-only enum payload is refused (`E_ENUM_NESTED_ENUM_PAYLOAD`).
 - The kata-3 `chars()` chain row (B-2026-10-06-80) and the kata-1 predicate row (B-2026-10-06-74) were hit again.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-31-42`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/valid_parentheses.kara` executes 1.41× legacy's instructions (26.26G vs 18.59G, 1.37× the cycles, `KARAC_AUTO_PAR=0`): the seq lane went from 0.74× to 0.90× `rustc -O` and the par lane from 0.68× to 1.06× rayon. The par build's instructions are flat across worker counts, so the par loss is the same seq gap. Cause unattributed.

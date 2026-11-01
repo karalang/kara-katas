@@ -57,10 +57,6 @@ diff <(karac run remove_nth.kara) <(python3 remove_nth.py) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`remove_nth.{kara,rs,c,py}`, `go-seq/main.go`).
 
 **Workload.** A fresh N = 100-node list (values `1..N`) is built every iteration — the removal mutates the chain in place, so each iter needs a fresh list — then one node is removed and the result head is read. K = 500,000 iterations. The removal position rotates `n = (k % N) + 1` over the full range `[1, N]`, so across any N consecutive iters every position is removed once — tail (`n=1`), head (`n=N`), and every interior node — which keeps the branch predictor from learning a single splice trajectory and exercises the dummy's head-removal path on 1/N of the iters. The sink is the running sum of the result head's value (1 on the iters that keep the head, 2 on the 1/N that remove it) = `(K − K/N)·1 + (K/N)·2` = **505,000**; all four compiled mirrors must agree before timing.
@@ -71,24 +67,25 @@ This is the **alloc/splice/drop peer to kata 2's alloc-per-digit**: where kata 2
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four single-threaded. This kata's bench is the longest sustained load in the 1–100 tranche (~2.4 s of CPU per iteration set), and back-to-back batches drift ±5% together thermally — three same-day runs put kāra at 533–576 ms with every comparator moving in step, while the *ratios* held to ±2% across all three. Quote the ratios, not the walls. (The 2026-05-30 snapshot read kāra 530.7 / c 509.2 — kāra reproduces to 0.5% on a cool run; the old C reading was ~1.1× of today's, consistent with that batch's documented load inflation on other katas.)
+M5 Pro, 2026-10-31 (`results.json` `measured_at` 2026-11-01T01:05Z), karac 0.9.0-dev.14057+g6697158fa (v2/MIR backend), hyperfine `--warmup 5 --runs 30 --shell=none`. All single-threaded; the `rust -C overflow-checks=on` row is the equal-safety comparator, since Kāra checks overflow by default. This kata's bench is the longest sustained load in the 1–100 tranche (~2.4 s of CPU per iteration set), and back-to-back batches drift ±5% together thermally — three same-day runs on 2026-06-05 put kāra at 533–576 ms with every comparator moving in step, while the *ratios* held to ±2% across all three. Quote the ratios, not the walls. (Against the 2026-07-28 feed the ratios are flat: Kāra/Rust 0.76× → 0.74×, Kāra/C 1.20× → 1.19×.)
 
 | Implementation | Wall time |
 |---|---|
-| go   remove_nth                    | 438.1 ± 5.2 ms |
-| c    remove_nth (clang -O3)        | 528.9 ± 13.0 ms |
-| **kāra remove_nth**                | **673.4 ± 27.6 ms** |
-| rust remove_nth                    | 871.3 ± 29.4 ms |
+| go   remove_nth                    | 521.5 ± 7.5 ms |
+| c    remove_nth (clang -O3)        | 683.3 ± 21.2 ms |
+| **kāra remove_nth**                | **811.9 ± 29.2 ms** |
+| rust remove_nth                    | 1092.0 ± 32.8 ms |
+| rust remove_nth (overflow-checks=on) | 1093.9 ± 19.0 ms |
 
-**Kāra leads Rust by 1.29×** and trails C by ~1.27× and Go by ~1.54×. The headline number — the gap to Rust, Kāra's semantic peer — is wide because Rust's reference-semantics linked list is `Rc<RefCell<ListNode>>`, whose per-node `Rc` refcount + `RefCell` borrow-flag traffic is heavier than Kāra's plain RC header (this is the same effect kata 2 shows, where Rust's `Rc<RefCell<>>` is the slowest mirror). Against the manual-memory floor the order flips: this kata is allocator-bound (build + drop ~100 nodes per iter, plus the splice), and Kāra's per-node RC inc/dec bookkeeping sits just behind C's plain `malloc`/`free` (~1.12×) and Go's GC-managed pointer nodes (~1.20×) — there is no sort here for Kāra's inlined-comparator edge (kata 15/18) to show through, so on pure RC-node churn Kāra lands behind the no-refcount mirrors. The Rust gap is the load-bearing number and it is the widest in the corpus, driven by `Rc<RefCell>`.
+**Kāra leads Rust by 1.35×** (1.35× against the overflow-checked build too) and trails C by ~1.19× and Go by ~1.56×. The headline number — the gap to Rust, Kāra's semantic peer — is wide because Rust's reference-semantics linked list is `Rc<RefCell<ListNode>>`, whose per-node `Rc` refcount + `RefCell` borrow-flag traffic is heavier than Kāra's plain RC header (this is the same effect kata 2 shows, where Rust's `Rc<RefCell<>>` is the slowest mirror). Against the manual-memory floor the order flips: this kata is allocator-bound (build + drop ~100 nodes per iter, plus the splice), and Kāra's per-node RC inc/dec bookkeeping sits behind C's plain `malloc`/`free` (~1.19×) and Go's GC-managed pointer nodes (~1.56×) — there is no sort here for Kāra's inlined-comparator edge (kata 15/18) to show through, so on pure RC-node churn Kāra lands behind the no-refcount mirrors. The Rust gap is the load-bearing number and it is the widest in the corpus, driven by `Rc<RefCell>`.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py remove_nth` (K=100k) | 773.7 ± 2.2 ms |
+| `py remove_nth` (K=100k) — last measured 2026-06-05, not re-run | 773.7 ± 2.2 ms |
 
-Python at K=100k is 796 ms; projecting to the compiled mirrors' K=500k (~3.98 s) puts it **~7.0× slower than kāra seq** — the narrowest Python gap in the corpus, because this workload is dominated by allocation (which CPython does in C) and pointer-chasing rather than arithmetic the interpreter would run bytecode-by-bytecode.
+Python is not in the 2026-10-31 feed (the run did not set `KARA_BENCH_INCLUDE_PY`); the figure and ratio in this paragraph are from the 2026-06-05 snapshot. Python at K=100k was 774–796 ms; projecting to the compiled mirrors' K=500k (~3.98 s) put it **~7.0× slower than kāra seq** at the time — the narrowest Python gap in the corpus, because this workload is dominated by allocation (which CPython does in C) and pointer-chasing rather than arithmetic the interpreter would run bytecode-by-bytecode.
 
 ### Compile elapsed (cold)
 
@@ -96,22 +93,22 @@ Python at K=100k is 796 ms; projecting to the compiled mirrors' K=500k (~3.98 s)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 remove_nth.c           | **45.9 ± 0.4 ms** |
-| **karac build remove_nth.kara**  | **80.3 ± 0.4 ms** |
-| rustc -O remove_nth.rs           | 111.5 ± 1.8 ms |
+| clang -O3 remove_nth.c           | **47.8 ± 1.0 ms** |
+| rustc -O remove_nth.rs           | 110.4 ± 1.7 ms |
+| **karac build remove_nth.kara**  | **129.2 ± 2.2 ms** |
 
-Kāra compiles **1.39× faster than `rustc -O`** and sits at **1.75× of clang -O3** — same shape as the rest of the corpus. (05-30 read 67.6 for karac; the corpus-wide karac compile band has sat at ~75–85 ms in the 06-05 sweep — single-digit-ms drift on an identical compiler binary, environmental.)
+Kāra compiles **1.17× slower than `rustc -O`** and at **2.70× of clang -O3** on the v2/MIR backend. (The 2026-06-05 legacy snapshot read 80.3 ms, 1.39× faster than rustc.)
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    remove_nth                    | 32.7 KiB |
-| **kāra remove_nth**                | **33.1 KiB** |
+| **kāra remove_nth**                | **295.8 KiB** |
 | rust remove_nth                    | 456.1 KiB |
 | go   remove_nth                    | 2434.1 KiB |
 
-Kāra's seq binary is **33.1 KiB — essentially identical to C's 32.7 KiB**, and far below Rust's 456 KiB. This kata calls no `sort_by` and triggers no auto-par dispatch, so it never links the runtime's libstd floor (panic infrastructure + DWARF symbolizer) that dominates the sort-using katas (15 / 16 / 18, ~295 KiB) — see [kata 16 § Binary size](../16-3sum-closest/README.md) for that breakdown. With no sort, a `shared struct` linked-list program is as small as the C mirror.
+Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md); today's 295.8 KiB is that floor, 65% of Rust's 456 KiB. On the legacy backend (2026-06-05, and still 33.1 KiB on the 2026-07-28 feed) Kāra's seq binary was **33.1 KiB — essentially identical to C's 32.7 KiB**. This kata calls no `sort_by` and triggers no auto-par dispatch, so it never links the runtime's libstd floor (panic infrastructure + DWARF symbolizer) that dominates the sort-using katas (15 / 16 / 18, ~295 KiB) — see [kata 16 § Binary size](../16-3sum-closest/README.md) for that breakdown. With no sort, a `shared struct` linked-list program was as small as the C mirror on that backend.
 
 ### Runtime memory (peak)
 
@@ -120,20 +117,20 @@ Kāra's seq binary is **33.1 KiB — essentially identical to C's 32.7 KiB**, an
 | c    remove_nth                    | 1.0 MiB |
 | **kāra remove_nth**                | **1.1 MiB** |
 | rust remove_nth                    | 1.1 MiB |
-| go   remove_nth                    | 9.9 MiB |
+| go   remove_nth                    | 10.1 MiB |
 
-Kāra's peak RSS (1,147,168 B) sits above C (1,081,632 B) and below Rust (1,196,320 B) — the per-iter list is allocated, spliced, and fully freed inside the loop, so steady state stays flat across all 500,000 iterations with no growth. Go's 9.9 MiB carries its GC arena + scheduler. (Reaching flat RSS here required fixing a `shared struct` refcount leak in karac's codegen that this kata surfaced — see the note under § Kāra features.)
+Kāra's peak RSS (1,114,448 B) sits one page above C (1,098,040 B) and level with Rust (1,114,424 B) — the per-iter list is allocated, spliced, and fully freed inside the loop, so steady state stays flat across all 500,000 iterations with no growth. Go's 10.1 MiB carries its GC arena + scheduler. (Reaching flat RSS here required fixing a `shared struct` refcount leak in karac's codegen that this kata surfaced — see the note under § Kāra features.)
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 remove_nth.c          | 2.5 MiB |
-| **karac build remove_nth.kara** | **13.8 MiB** |
-| rustc -O remove_nth.rs          | 30.4 MiB |
+| rustc -O remove_nth.rs          | 30.3 MiB |
+| **karac build remove_nth.kara** | **58.9 MiB** |
 
-Kāra's compile-memory footprint is ~4× clang's and ~3× lower than rustc's on this kata — same shape as the rest of the corpus. (Flat vs the 05-30 reading.)
+Kāra's compile-memory footprint on the v2/MIR backend is ~23.1× clang's and 1.94× rustc's on this kata. (The 2026-06-05 legacy snapshot read 13.8 MiB, ~2.2× below rustc.)
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound linked-list kata **Kāra leads Rust by ~1.3×** — the same cause kata 2 identifies: a reference-semantics linked list is `Rc<RefCell<>>` in Rust, whose per-node refcount + borrow-flag overhead is heavier than Kāra's RC header. Against the no-refcount mirrors (C, Go) Kāra trails (~1.27× / ~1.54×) because pure RC-node churn — with no sort to amortize — is the whole workload. The Rust gap is the load-bearing number.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this allocator-bound linked-list kata **Kāra leads Rust by ~1.35×** — the same cause kata 2 identifies: a reference-semantics linked list is `Rc<RefCell<>>` in Rust, whose per-node refcount + borrow-flag overhead is heavier than Kāra's RC header. Against the no-refcount mirrors (C, Go) Kāra trails (~1.19× / ~1.56×) because pure RC-node churn — with no sort to amortize — is the whole workload. The Rust gap is the load-bearing number.
