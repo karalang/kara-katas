@@ -35,15 +35,15 @@ Isomorphism is a **bijection**, so one map isn't enough — you need both direct
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`80126`). Workload: is_isomorphic (two-map bijection) over 600K sliding width-200 windows (version-stamped map kernel).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 47.7 ms | 0.84× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 50.1 ms | 0.88× |
-| Rust `-O` | 56.2 ms | 0.99× |
-| **Kāra (codegen)** | 56.7 ms | 1.00× |
-| Go | 62.2 ms | 1.10× |
+| C `clang -O3` | 54.7 ms | 0.82× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 56.3 ms | 0.85× |
+| Rust `-O` | 63.7 ms | 0.96× |
+| **Kāra (codegen)** | 66.4 ms | 1.00× |
+| Go | 70.0 ms | 1.05× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -58,4 +58,4 @@ diff <(karac run isomorphic.kara) <(python3 isomorphic.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

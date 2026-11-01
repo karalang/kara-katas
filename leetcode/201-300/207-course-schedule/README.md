@@ -36,15 +36,17 @@ Each pair `[a, b]` becomes a directed edge `b → a`, and every node carries an 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`39968130`). Workload: Kahn topological sort over 8K passes on a 5000-node / 15000-edge CSR graph (BFS traversal kernel).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 87.0 ms | 0.91× |
-| Rust `-O` | 94.1 ms | 0.99× |
-| **Kāra (codegen)** | 95.4 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 97.4 ms | 1.02× |
-| Go | 150.6 ms | 1.58× |
+| C `clang -O3` | 97.1 ms | 0.82× |
+| Rust `-O` | 105.1 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 108.5 ms | 0.92× |
+| **Kāra (codegen)** | 117.8 ms | 1.00× |
+| Go | 167.0 ms | 1.42× |
+
+Against the 2026-07-28 legacy-backend run, Kāra slipped about 1.1× against every comparator: Kāra/Rust `-O` 1.01× → 1.12×, Kāra/equal-safety Rust 0.98× → 1.09×, Kāra/C 1.10× → 1.21×, Kāra/Go 0.63× → 0.71×. Every comparator also ran slower this session, so compare the ratios, not the milliseconds. On the v2/MIR backend the kernel executes 1.08× legacy's instructions; that slip is tracked with other small ones in the aggregate row [`B-2026-11-01-45`](../../../../kara/docs/bugs-v2.md) (see [Bug ledger](#bug-ledger)).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -59,4 +61,8 @@ diff <(karac run course_schedule.kara) <(python3 course_schedule.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-01-45`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On the v2/MIR backend the `bench/` Kāra program executes 1.08× legacy dd86e3955's instructions and 1.07× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 1.01× to 1.12× `rustc -O`, 1.10× to 1.21× C and 0.63× to 0.71× Go. Measured 2026-11-01 with karac g6697158fa; too small to file alone, so it sits in the aggregate row for small slips, alongside #210, which runs the same Kahn's-sort kernel shape.

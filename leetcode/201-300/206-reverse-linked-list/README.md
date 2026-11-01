@@ -33,15 +33,17 @@ Keep three cursors: `prev` (the reversed portion built so far, initially empty),
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`10067210720000`). Workload: relink + in-place reverse + position-weighted walk over 40K passes on a 3000-node index-pool list (pointer-chase kernel).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 206.2 ms | 0.62× |
-| Go | 227.1 ms | 0.69× |
-| Rust `-O` | 252.8 ms | 0.76× |
-| C `clang -O3` | 298.3 ms | 0.90× |
-| **Kāra (codegen)** | 330.5 ms | 1.00× |
+| Go | 236.0 ms | 0.68× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 305.1 ms | 0.88× |
+| C `clang -O3` | 345.9 ms | 1.00× |
+| **Kāra (codegen)** | 347.0 ms | 1.00× |
+| Rust `-O` | 367.9 ms | 1.06× |
+
+Against the 2026-07-28 legacy-backend run, Kāra improved against Rust and C: Kāra/Rust `-O` 1.31× → 0.94×, Kāra/equal-safety Rust 1.60× → 1.14×, Kāra/C 1.11× → 1.00×, while Kāra/Go held at 1.46× → 1.47×. Every comparator ran slower this session than in the July run, so compare the ratios, not the milliseconds. Part of the Rust move is on Rust's side: Go did not move, and both Rust rows were noisy this run (±47 ms on `rustc -O`, ±40 ms on the overflow-checked build, against ±11 ms for Kāra).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -56,4 +58,4 @@ diff <(karac run reverse_list.kara) <(python3 reverse_list.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

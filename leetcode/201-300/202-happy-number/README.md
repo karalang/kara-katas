@@ -33,15 +33,15 @@ The digit-square-sum map is a function, so iterating it either reaches `1` or en
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`564003`). Workload: is_happy (Floyd + digit-square-sum) over 1..4M starts (data-dependent div/branch kernel).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 202.0 ms | 1.00× |
-| **Kāra (codegen)** | 202.5 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 204.6 ms | 1.01× |
-| C `clang -O3` | 206.0 ms | 1.02× |
-| Go | 222.2 ms | 1.10× |
+| Rust `-O` | 226.2 ms | 0.98× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 230.1 ms | 0.99× |
+| C `clang -O3` | 232.4 ms | 1.00× |
+| **Kāra (codegen)** | 231.4 ms | 1.00× |
+| Go | 250.2 ms | 1.08× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -56,4 +56,4 @@ diff <(karac run happy_number.kara) <(python3 happy_number.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

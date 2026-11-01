@@ -35,21 +35,23 @@ Many valid orders can exist. This solution pins a single deterministic one by se
 - **String assembly for output** — the order is space-joined with a `first` flag (no trailing separator).
 
 <!-- placement-caveat -->
-**Measurement caveat — code placement.** This kata's runtime moves by up to **35%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **1.5%** margin against `rustc -O -C overflow-checks=on` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+**Measurement caveat — code placement.** This kata's runtime moves by up to **35%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **3.8%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
 
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`400425564371`). Workload: build a 20k-node/80k-edge random DAG once (CSR); run Kahn topo-sort 800 times, punching one blocked course per pass; sink = sum of emitted count + order checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 81.1 ms | 0.95× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 83.9 ms | 0.99× |
-| **Kāra (codegen)** | 85.1 ms | 1.00× |
-| Rust `-O` | 100.2 ms | 1.18× |
-| C `clang -O3` | 170.0 ms | 2.00× |
+| Go | 88.9 ms | 0.85× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 93.2 ms | 0.89× |
+| **Kāra (codegen)** | 104.2 ms | 1.00× |
+| Rust `-O` | 108.4 ms | 1.04× |
+| C `clang -O3` | 189.5 ms | 1.82× |
+
+Against the 2026-07-28 legacy-backend run, Kāra slipped about 1.1× against Rust and Go: Kāra/Rust `-O` 0.85× → 0.96×, Kāra/equal-safety Rust 1.01× → 1.12×, Kāra/Go 1.05× → 1.17×, Kāra/C 0.50× → 0.55×. Every comparator also ran slower this session, so compare the ratios, not the milliseconds. On the v2/MIR backend the kernel executes 1.06× legacy's instructions and 1.11× its cycles; that slip is tracked with other small ones in the aggregate row [`B-2026-11-01-45`](../../../../kara/docs/bugs-v2.md) (see [Bug ledger](#bug-ledger)).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -64,4 +66,8 @@ diff <(karac run course_schedule_ii.kara) <(python3 course_schedule_ii.py) && ec
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-01-45`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On the v2/MIR backend the `bench/` Kāra program executes 1.06× legacy dd86e3955's instructions and 1.11× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 0.85× to 0.96× `rustc -O`, 1.05× to 1.17× Go and 0.50× to 0.55× C. Measured 2026-11-01 with karac g6697158fa; too small to file alone, so it sits in the aggregate row for small slips, alongside #207, which runs the same Kahn's-sort kernel shape.
