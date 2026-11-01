@@ -32,21 +32,21 @@ Scan the grid. Each time an **unvisited land cell** is found, it must belong to 
 - **`mut ref Vec[Vec[i64]]` parameter** — the grid is consumed by value in `report` (`let mut g = grid`) then passed with the `mut` marker to the mutating `num_islands`.
 
 <!-- placement-caveat -->
-**Measurement caveat — code placement.** This kata's runtime moves by up to **9%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.9%** margin against `rustc -O` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
+**Measurement caveat — code placement.** This kata's runtime moves by up to **9%** with code placement alone: rebuilt with its machine code sitting at a different address, the same program, same compiler and same input runs that much faster or slower. That is wider than the **0.9%** margin against `rustc -O -C overflow-checks=on` quoted below, so read that comparison as a tie rather than as a result. Measured across four code placements against a same-binary control — see [`placement-spread.json`](../../../placement-spread.json) and [BENCHMARKS.md](../../../BENCHMARKS.md#code-placement-arm64).
 
 ## Benchmarks
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`6469639`). Workload: iterative stack flood-fill island count over an 80x80 PRNG 0/1 grid x 13000 passes, grid restored from a persistently-punched master each pass (data-dependent stack growth, non-vectorizing).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 95.3 ms | 0.34× |
-| Go | 174.8 ms | 0.62× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 280.7 ms | 0.99× |
-| Rust `-O` | 280.7 ms | 0.99× |
-| **Kāra (codegen)** | 283.2 ms | 1.00× |
+| C `clang -O3` | 109.6 ms | 0.37× |
+| Go | 199.7 ms | 0.67× |
+| Rust `-O` | 286.4 ms | 0.96× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 296.5 ms | 0.99× |
+| **Kāra (codegen)** | 299.2 ms | 1.00× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -61,4 +61,4 @@ diff <(karac run number_of_islands.kara) <(python3 number_of_islands.py) && echo
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

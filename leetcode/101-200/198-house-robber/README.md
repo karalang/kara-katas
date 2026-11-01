@@ -34,17 +34,17 @@ At each house there are two choices: **skip** it (keep the best total up to the 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`130976291209`). Workload: O(1)-space rob() DP over a 5000-house PRNG array x 90000 punched passes (loop-carried max recurrence, one house flipped per pass).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| **Kāra (codegen)** | 199.5 ms | 1.00× |
-| C `clang -O3` | 200.2 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 200.3 ms | 1.00× |
-| Rust `-O` | 200.9 ms | 1.01× |
-| Go | 202.4 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 231.0 ms | 1.00× |
+| Rust `-O` | 231.6 ms | 1.00× |
+| C `clang -O3` | 231.7 ms | 1.00× |
+| **Kāra (codegen)** | 231.8 ms | 1.00× |
+| Go | 233.1 ms | 1.01× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. All four compiled languages tie within ±0.6% (σ ≈ 3 ms each), as in the 2026-07-27 run. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -57,4 +57,4 @@ diff <(karac run house_robber.kara) <(python3 house_robber.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

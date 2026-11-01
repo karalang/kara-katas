@@ -36,17 +36,17 @@ A **breadth-first** sweep makes "right side view" fall out directly: process the
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`256749133`). Workload: level-order right-side-view BFS over an 8191-node complete index-pool tree x 40000 punched passes (per-level allocation churn + pointer-chasing; one node value flipped per pass).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 171.4 ms | 0.60× |
-| **Kāra (codegen)** | 285.4 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 335.9 ms | 1.18× |
-| Rust `-O` | 340.2 ms | 1.19× |
-| Go | 831.2 ms | 2.91× |
+| C `clang -O3` | 198.0 ms | 0.68× |
+| **Kāra (codegen)** | 289.5 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 378.6 ms | 1.31× |
+| Rust `-O` | 382.9 ms | 1.32× |
+| Go | 1246.2 ms | 4.30× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Against the 2026-07-27 run (karac 0.1.0), Kāra gained on every comparator: Kāra/Rust 0.84× → 0.76×, Kāra/C 1.67× → 1.46×, Kāra/Go 0.34× → 0.23× (quoted as ratios because every comparator ran 13–50% slower in absolute terms this session; Go's run used 216% CPU, 1.48 s of it system time). Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -59,4 +59,4 @@ diff <(karac run right_side_view.kara) <(python3 right_side_view.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

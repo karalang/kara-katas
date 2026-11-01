@@ -132,7 +132,7 @@ echo
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=191 slug=number-of-1-bits group=101-200 \
     title="Number of 1 Bits" \
-    workload="Brian Kernighan popcount, N=4M K=40" sink="$expected"
+    workload="Brian Kernighan popcount, N=2M K=10" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
