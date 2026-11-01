@@ -62,9 +62,6 @@ bench/bench.sh
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-04 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`spiral_matrix_ii.{kara,rs,c,py}`, `go-seq/main.go`, plus the par-lane `spiral_matrix_ii_par.c`, `go-par/`, `rayon/`).
 
@@ -76,20 +73,21 @@ Two design choices are load-bearing and worth stating, because both are traps a 
 - **The checksum reads *every* cell**, so no mirror can dead-code the off-diagonal writes — the elision that made kata 57's first C mirror 20× too fast. All `n²` cells are materialized and read.
 - **The C/Rust/Go grids all use the nested-allocation shape** (`int64**` / `Vec<Vec<i64>>` / `[][]int64`, `n + 1` allocations), matching Kāra's `Vec[Vec[i64]]` — not a single flat buffer. This keeps the allocation cost apples-to-apples.
 
-Two-lane kata (BENCH.md § Implicit auto-par): the `total = total + <checksum>` accumulator is the slice-1 allow-list reduction, so `karac build` may emit a `karac_par_reduce` dispatch by default. The bench builds two kara binaries — `KARAC_AUTO_PAR=0` (seq) and default (auto-par) — reported separately.
+Two-lane kata (BENCH.md § Implicit auto-par): the `total = total + <checksum>` accumulator is the slice-1 allow-list reduction, so the default `karac build` parallelises it — verified in the emitted IR (`KARAC_MIR_LL`): the default build carries a call of `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` build does not. The bench builds two kara binaries — `KARAC_AUTO_PAR=0` (seq) and default (auto-par) — reported separately.
 
-Snapshot — Apple M5 Pro (6P+12E), Darwin 25.5.0, 2026-07-04, hyperfine `--warmup 5 --runs 30 -N`. karac 0.1.0, rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers from the committed [`results.json`](bench/results.json).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:20Z) — Apple M5 Pro (6P+12E), Darwin 25.6.0, hyperfine `--warmup 5`, 30 seq / 50 par runs. karac `g6697158fa` (0.9.0-dev.14057, v2/MIR backend), rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers from the committed [`results.json`](bench/results.json) unless marked otherwise.
 
 ### Runtime — seq lane
 
 | Implementation | Wall time |
 |---|---|
-| c    spiral_matrix_ii (clang -O3)     | **67.4 ± 2.0 ms** |
-| rust spiral_matrix_ii                 | 78.2 ± 2.0 ms |
-| go   spiral_matrix_ii                 | 108.1 ± 2.8 ms |
-| **kāra spiral_matrix_ii (seq)**       | **114.0 ± 2.4 ms** |
+| c    spiral_matrix_ii (clang -O3)     | **69.1 ± 1.8 ms** |
+| rust spiral_matrix_ii                 | 81.3 ± 2.3 ms |
+| rust spiral_matrix_ii (`overflow-checks=on`) | 94.1 ± 2.1 ms |
+| **kāra spiral_matrix_ii (seq)**       | **103.0 ± 1.6 ms** |
+| go   spiral_matrix_ii                 | 128.6 ± 2.9 ms |
 
-This kata is the corpus's **"where Kāra lags" data point** — the mirror image of [kata #57](../57-insert-interval/), where Kāra tied Rust on a flat-allocation sweep. Here **Kāra trails Rust by 1.46×** (114.0 vs 78.2) and C by 1.69×, heavier than the corpus norm.
+This kata is the corpus's **"where Kāra lags" data point** — the mirror image of [kata #57](../57-insert-interval/), where Kāra leads Rust on a flat-allocation sweep. Here **Kāra trails Rust by 1.27×** (103.0 vs 81.3), equal-safety Rust (`overflow-checks=on`) by 1.09×, and C by 1.49×; it is ahead of Go (0.80×). Against the previous run (2026-07-28, legacy backend) Kāra gained on every comparator, most on Go: Kāra/Rust 1.40× → 1.27×, Kāra/C 1.54× → 1.49×, Kāra/Go 1.06× → 0.80×.
 
 **Profiled 2026-07-04 — the cause is Kāra's default safety checks, not nested indexing (and not auto-vectorization).** This README's first cut guessed nested `Vec[Vec[i64]]` double-indirection; a follow-up guessed auto-vectorization. A rigorous profiling pass **refuted both**. Decomposing the workload by rewriting it flat (`Vec[i64]`, index `i·n+j`), with a reused buffer (0 per-iter allocation), and with `wrapping` arithmetic + unchecked reads isolates the real cost:
 
@@ -100,71 +98,73 @@ This kata is the corpus's **"where Kāra lags" data point** — the mirror image
 
 Removing Kāra's default **overflow-checked arithmetic** (→ `wrapping_*`) and **bounds-checked indexing** (→ `get_unchecked`) lands it on Rust. The ratio is also invariant to representation and allocation — nested→flat is ~2.2× on *both* sides (nesting is expensive for everyone), leaving the ratio pinned — which is what ruled *out* nesting and allocation. And it is *not* vectorization: the checksum `s += g[i]·(i+1)` is a weighted integer reduction that **no** compiler vectorizes — clang -O2/-O3, rustc -O, and karac all emit 0 vector ops for it (the tempting "0 vs 2,589 SIMD" reading was a whole-binary count dominated by Rust's SIMD-heavy std, not the kata loop). So the gap is the ordinary **safe-by-default tax**: Kāra traps on overflow and bounds-checks, Rust release wraps and elides — Kāra matches *checked* Rust and trails *release* Rust by the cost of the checks. That reduces to the existing karac decision to expose a `wrapping_*` opt-out rather than weaken the default; full write-up in the karac spike [`codegen-autovectorization.md`](https://github.com/karalang/kara/blob/main/docs/spikes/codegen-autovectorization.md) (resolved) and [`overflow-check-elision.md`](https://github.com/karalang/kara/blob/main/docs/spikes/overflow-check-elision.md). C leads Rust by only 1.16×.
 
+*2026-10-31 note:* the bench now carries its own equal-safety row, and on it Kāra seq is 1.09× behind `rustc -C overflow-checks=on` (103.0 vs 94.1 ms) — close to, not at, checked Rust.
+
 ### Runtime — auto-par regime
 
 The `total = total + <checksum>` reduction is auto-par-eligible:
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| rust spiral_matrix_ii (rayon par_iter) | **12.8 ± 0.7 ms** | 181 ms |
-| c    spiral_matrix_ii (pthreads) | 14.5 ± 0.8 ms | 175 ms |
-| **kāra spiral_matrix_ii (auto-par default)** | **20.5 ± 1.3 ms** | 274 ms |
-| go   spiral_matrix_ii (goroutines) | 112.2 ± 2.0 ms | 295 ms |
+| rust spiral_matrix_ii (rayon par_iter) | **13.3 ± 1.0 ms** | 177 ms |
+| c    spiral_matrix_ii (pthreads) | 14.6 ± 1.4 ms | 178 ms |
+| **kāra spiral_matrix_ii (auto-par default)** | **16.3 ± 0.9 ms** | 203 ms |
+| go   spiral_matrix_ii (goroutines) | 155.9 ± 2.2 ms | 337 ms |
 
-Kāra's auto-par binary is **5.6× faster than its own seq binary** (114.0 → 20.5 ms) — much better parallel scaling than #57's 2.6×, because each iteration here does far more work (generate + fold an `n²` matrix) to amortize the dispatch overhead. It still trails rayon by 1.60×, carrying forward the seq-lane nested-index gap into each worker. Go's goroutine version is *no faster than its seq* (108 → 112 ms): the per-iter `[][]int64` allocation churn serializes on the GC/allocator across goroutines, exactly the contention the manual-free mirrors avoid.
+Kāra's auto-par binary is **6.3× faster than its own seq binary** (103.0 → 16.3 ms) — better parallel scaling than #57's 3.6×, because each iteration here does far more work (generate + fold an `n²` matrix) to amortize the dispatch overhead. It trails rayon by 1.22× and C pthreads by 1.12×, carrying the seq-lane checked-arithmetic gap into each worker; against the previous run that is an improvement (Kāra/rayon 1.53× → 1.22×, Kāra/C 1.41× → 1.12×). Go's goroutine version is *slower than its seq* (128.6 → 155.9 ms): the per-iter `[][]int64` allocation churn serializes on the GC/allocator across goroutines, exactly the contention the manual-free mirrors avoid.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py spiral_matrix_ii` (K=18k) | 240.5 ± 0.6 ms |
+| `py spiral_matrix_ii` (K=18k) | 240.5 ± 0.6 ms (last measured 2026-07-04, not re-run) |
 
-Python at K=18k is 240 ms; projecting to K=180k (~2.4 s) puts it **~21× slower than kāra seq**. Heavier multiple than the interval katas because the whole workload is nested list indexing in interpreter code, with no C-implemented `sorted()` to hide behind.
+Python at K=18k was 240 ms; projecting to K=180k (~2.4 s) puts it **~23× slower than this run's kāra seq** (a cross-session ratio, since Python was not re-run). Heavier multiple than the interval katas because the whole workload is nested list indexing in interpreter code, with no C-implemented `sorted()` to hide behind.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 spiral_matrix_ii.c          | **53.6 ± 0.9 ms** |
-| **karac build spiral_matrix_ii.kara** | **93.1 ± 1.1 ms** |
-| rustc -O spiral_matrix_ii.rs          | 114.9 ± 0.9 ms |
+| clang -O3 spiral_matrix_ii.c          | **60.2 ± 1.1 ms** |
+| rustc -O spiral_matrix_ii.rs          | 124.0 ± 3.2 ms |
+| **karac build spiral_matrix_ii.kara** | **181.1 ± 3.0 ms** |
 
-Kāra compiles **1.23× faster than `rustc -O`** and sits at 1.74× of clang -O3 — same shape as the rest of the corpus.
+Compile now favours `rustc -O`: karac is **1.46× slower than `rustc -O`** and 3.01× clang -O3 (the 2026-07-04 snapshot had karac 1.23× faster than rustc). The same flip shows across the corpus under the MIR backend (tracked as [`B-2026-10-31-41`](../../../../kara/docs/bugs-v2.md)).
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    spiral_matrix_ii (seq)           | 32.8 KiB |
-| **kāra spiral_matrix_ii (seq)**       | **33.4 KiB** |
-| **kāra spiral_matrix_ii (auto-par)**  | **312.2 KiB** |
+| **kāra spiral_matrix_ii (seq)**       | **295.8 KiB** |
+| **kāra spiral_matrix_ii (auto-par)**  | **377.1 KiB** |
 | rust spiral_matrix_ii (seq)           | 455.4 KiB |
 | go   spiral_matrix_ii (seq)           | 2434.1 KiB |
 
-Kāra seq sits within 0.6 KiB of C's no-frills floor — no sort, no runtime fallback to drag in. The auto-par binary's +279 KiB is the par-scheduler runtime.
+Kāra seq is **295.8 KiB** — 1.5× under Rust's 455.4 KiB but 9× C's 32.8 KiB; every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). The auto-par binary's +81 KiB over seq is the par-scheduler runtime.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    spiral_matrix_ii (seq)           | 1.1 MiB |
-| **kāra spiral_matrix_ii (seq)**       | **1.1 MiB** |
-| rust spiral_matrix_ii (seq)           | 1.2 MiB |
-| **kāra spiral_matrix_ii (auto-par)**  | **3.5 MiB** |
-| go   spiral_matrix_ii (seq)           | 9.4 MiB |
+| c    spiral_matrix_ii (seq)           | 1.14 MiB |
+| **kāra spiral_matrix_ii (seq)**       | **1.16 MiB** |
+| rust spiral_matrix_ii (seq)           | 1.17 MiB |
+| **kāra spiral_matrix_ii (auto-par)**  | **3.20 MiB** |
+| go   spiral_matrix_ii (seq)           | 10.3 MiB |
 
-Kāra seq's peak RSS is byte-identical to C's (1,196,344 B) — each matrix is allocated and freed inside the iteration, so steady state is flat across K. The auto-par 3.5 MiB is the worker pool's per-thread scratch (each thread holds a live matrix); Go's 9.4 MiB seq / 19.8 MiB par is its GC arena.
+Kāra seq's peak RSS is one 16 KiB page above C's (1,212,752 vs 1,196,344 B; the previous build matched C byte for byte) and under Rust's — each matrix is allocated and freed inside the iteration, so steady state is flat across K. The auto-par 3.20 MiB is the worker pool's per-thread scratch (each thread holds a live matrix); Go's 10.3 MiB seq / 16.8 MiB par is its GC arena.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 spiral_matrix_ii.c          | 2.6 MiB |
-| **karac build spiral_matrix_ii.kara** | **21.0 MiB** |
 | rustc -O spiral_matrix_ii.rs          | 31.8 MiB |
+| **karac build spiral_matrix_ii.kara** | **59.6 MiB** |
 
-Kāra's compile-memory footprint is ~8× clang's and ~1.5× lower than rustc's — same shape as the rest of the corpus.
+Kāra's compile-memory footprint is ~23× clang's and ~1.9× rustc's (the 2026-07-04 snapshot had it ~1.5× *under* rustc) — same flip as compile elapsed above.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap. On this kata that ratio is **1.46× (seq) / 1.60× (auto-par) in Rust's favor** — and the profiling pass above pinned it to Kāra's **safe-by-default tax** (overflow-checked arithmetic + bounds-checked indexing): with `wrapping_*` + unchecked access the workload reaches Rust parity (27.4 vs 26.3 ms). So it's the *checked-vs-release* difference, not a codegen-quality gap — Kāra matches checked Rust; the lever is the existing `wrapping_*` opt-out. C calibrates the LLVM floor, Go is the cross-runtime data point (and here shows GC-allocation contention defeating its own goroutine parallelism), Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline ratio is the codegen-vs-Rust gap. On this kata that ratio is **1.27× (seq) / 1.22× (auto-par) in Rust's favor** (1.09× against equal-safety `overflow-checks=on` Rust) — and the 2026-07-04 profiling pass above pinned it to Kāra's **safe-by-default tax** (overflow-checked arithmetic + bounds-checked indexing): with `wrapping_*` + unchecked access the workload reaches Rust parity (27.4 vs 26.3 ms). So it's the *checked-vs-release* difference, not a codegen-quality gap — Kāra sits within 1.09× of checked Rust; the lever is the existing `wrapping_*` opt-out. C calibrates the LLVM floor, Go is the cross-runtime data point (and here shows GC-allocation contention defeating its own goroutine parallelism), Python is the ergonomic foil.

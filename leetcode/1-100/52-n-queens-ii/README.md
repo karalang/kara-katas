@@ -127,10 +127,6 @@ was fixed.
   special case.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-03 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 ```bash
 brew install hyperfine    # one-time, also needs rustc (rustup), clang, go, karac
 ./bench/bench.sh          # KARA_BENCH_INCLUDE_PY=1 to include the Python row
@@ -161,20 +157,23 @@ identically (`47557170`) — a **bit-exact, cross-language-diffable sink**. Magn
 This kernel is exactly the return-value reduction that tripped B-2026-07-03-14; the Kāra binary is
 built `KARAC_AUTO_PAR=0` (the counting DFS is one deep recursive chain with no cross-branch parallel
 structure worth engaging), and — post-fix — the default auto-par build now produces the *same* sink
-sequentially rather than crashing.
+sequentially rather than crashing. Neither build carries a call of `karac_mir_task_spawn` (verified
+in the emitted IR, `KARAC_MIR_LL`).
 
 ### Runtime
 
-Snapshot — M5 Pro, 2026-07-03, hyperfine `--warmup 5 --runs 30`, means:
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T02:14Z UTC), hyperfine
+`--warmup 5 --runs 30`, means:
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| `c    nqueens2_bench` (clang -O3) | **80.2 ms ± 2.3 ms** | 78.6 ms |
-| `rust nqueens2_bench` (rustc -O) | **80.6 ms ± 1.0 ms** | 79.1 ms |
-| **`kara nqueens2_bench`** (codegen, seq) | **166.4 ms ± 2.5 ms** | 165.0 ms |
-| `rust nqueens2_bench` (`-C overflow-checks=on`) | **177.5 ms ± 3.2 ms** | 174.6 ms |
-| `go   nqueens2_bench` (go build) | **181.2 ms ± 4.4 ms** | 178.8 ms |
-| `py   nqueens2_bench` (CPython) | **4702 ms** | — |
+| `c    nqueens2_bench` (clang -O3) | **84.1 ms ± 0.8 ms** | 82.4 ms |
+| `rust nqueens2_bench` (rustc -O) | **86.0 ms ± 1.3 ms** | 84.8 ms |
+| `rust nqueens2_bench` (`-C overflow-checks=on`) | **183.6 ms ± 4.0 ms** | 180.4 ms |
+| **`kara nqueens2_bench`** (codegen, seq) | **186.6 ms ± 3.1 ms** | 184.4 ms |
+| `go   nqueens2_bench` (go build) | **189.1 ms ± 3.0 ms** | 186.1 ms |
+| `py   nqueens2_bench` (CPython) | **4702 ms** (last measured 2026-07-03, not re-run) | — |
 
 **Read the two Rust rows together — that's the apples-to-apples story.** The hot kernel is pure
 integer arithmetic: three shifts, three masks, and a `c·(row+1)` checksum per candidate across a
@@ -182,30 +181,37 @@ integer arithmetic: three shifts, three masks, and a `c·(row+1)` checksum per c
 ([design.md § Arithmetic Overflow](../../../../kara/docs/design.md): "defined behavior, never
 undefined"); `rustc -O` **silently wraps**. So the equal-safety build — Rust with
 `-C overflow-checks=on` — is the comparison that holds safety constant, and against it **Kāra is
-faster**: 166.4 ms vs 177.5 ms, a **1.07× win**, while also edging out Go (0.92×, 166.4 vs 181.2). The
-wider **2.06×** against `rustc -O`'s default is exactly the silent-wraparound the checks buy back —
+level**: 186.6 ms vs 183.6 ms, 1.02×, inside one σ, and level with Go (0.99×, 186.6 vs 189.1). The
+wider **2.17×** against `rustc -O`'s default is exactly the silent-wraparound the checks buy back —
 this kernel never actually overflows, but Kāra checks every `row + c` and `c · (row + 1)` like the
-language guarantees, and so does the checked-Rust row. C and Go wrap too; they are the unsafe-but-fast
-floor (`clang -O3` at 80.2 ms), not safety peers. Kāra is **~28× faster than CPython**.
+language guarantees, and so does the checked-Rust row (2.13× its own unchecked build). C and Go wrap
+too; they are the unsafe-but-fast floor (`clang -O3` at 84.1 ms, 2.22× ahead of Kāra), not safety
+peers. Kāra was **~28× faster than CPython** in the 2026-07-03 run (Python not re-run).
 
-So on a pure branchy-recursion integer kernel, Kāra's default-safe output lands **ahead of both
-safety-matched Rust and Go** — the same result [#51](../51-n-queens/) reached with the out-parameter
+So on a pure branchy-recursion integer kernel, Kāra's default-safe output lands **level with both
+safety-matched Rust and Go** — the same result [#51](../51-n-queens/) reaches with the out-parameter
 kernel, here reproduced with the pure return-value one — and the only gap left is the ~2× the
-wrapping compilers get by opting out of the overflow checks Kāra refuses to ship without.
+wrapping compilers get by opting out of the overflow checks Kāra refuses to ship without. That ~2×
+predates the v2/MIR backend: against the July legacy-backend feed the language ratios are flat —
+Kāra/Rust 2.10× → 2.17×, Kāra/C 2.10× → 2.22×, Kāra/Go 0.94× → 0.99×, all inside this session's
+noise. The July snapshot's "1.07× ahead of checked Rust" is now a tie (0.97× → 1.02×).
 
 ### Compile time, binary size, memory
 
-Snapshot — M5 Pro, 2026-07-03, hyperfine `--warmup 1 --runs 10` (compile, cold via `--prepare`);
-size and peak RSS are single deterministic samples.
+Same run, hyperfine `--warmup 1 --runs 10` (compile, cold via `--prepare`); size and peak RSS are
+single deterministic samples.
 
 | Compiler | Compile (cold) | Binary | Peak RSS |
 |---|---|---|---|
-| `clang -O3` | 39.2 ms | 32.7 KiB | 1.00 MiB |
-| `rustc -O` | 72.4 ms | 455.4 KiB | 1.05 MiB |
-| **`karac build`** | **75.1 ms** | **33.0 KiB** | **1.00 MiB** |
-| `go build` | — (excluded; mixes module + std-lib link) | 2434.1 KiB | 2.66 MiB |
+| `clang -O3` | 44.7 ms | 32.7 KiB | 1.02 MiB |
+| `rustc -O` | 80.5 ms | 455.4 KiB | 1.06 MiB |
+| **`karac build`** | **119.2 ms** | **295.8 KiB** | **1.05 MiB** |
+| `go build` | — (excluded; mixes module + std-lib link) | 2434.1 KiB | 2.72 MiB |
 
-Kāra emits a binary **~14× smaller than Rust** and line-ball with C (33.0 vs 32.7 KiB), and ties C for
-the **lowest peak RSS** (1.00 MiB, a hair under Rust and ~2.7× under Go, ~6.7× under CPython). Its cold
-compile is on par with `rustc -O` (75.1 vs 72.4 ms) and ~1.9× behind `clang`. Every figure lands
-within noise of [#51](../51-n-queens/)'s — the two katas compile the same shape of kernel.
+Binary size: every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara
+ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this one is **295.8 KiB**, 1.54×
+under Rust's 455.4 KiB and 9.0× over C's 32.7 KiB. Peak RSS is a three-way tie among the native
+mirrors (1.02–1.06 MiB), ~2.6× under Go; CPython was ~6.7× over Kāra in the 2026-07-03 run (not
+re-run). The cold compile now trails `rustc -O` (119.2 vs 80.5 ms, 1.48×) and `clang` (2.67×), at a
+higher peak compiler RSS than rustc (54.2 vs 25.3 MiB). Every figure lands within noise of
+[#51](../51-n-queens/)'s — the two katas compile the same shape of kernel.

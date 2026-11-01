@@ -139,55 +139,67 @@ fold to one **bit-exact, cross-language-diffable** value.
 
 ### Seq lane — runtime (single-threaded greedy forward max-reach)
 
-Snapshot — M5 Pro, 2026-07-03, hyperfine `--warmup 5 --runs 30`, means:
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend;
+[`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T02:16Z UTC), hyperfine
+`--warmup 5 --runs 30`, means:
 
 | Implementation | Wall time | vs Kāra |
 |---|---|---|
-| `go   jump_game` (go build) | **81.6 ms ± 3.4 ms** | 1.35× faster |
-| `rust jump_game` (`-C overflow-checks=on`) | 106.3 ms ± 2.6 ms | 1.04× faster (= safety) |
-| `rust jump_game` (rustc -O) | 108.7 ms ± 1.6 ms | 1.02× faster |
-| **`kara jump_game`** (codegen, seq) | **110.4 ms ± 2.8 ms** | — |
-| `c    jump_game` (clang -O3) | 110.9 ms ± 2.3 ms | 1.00× (tie) |
-| `py   jump_game` (CPython) | 7182 ms | 65× slower |
+| `go   jump_game` (go build) | **83.1 ms ± 5.4 ms** | 1.30× faster |
+| **`kara jump_game`** (codegen, seq) | **108.0 ms ± 3.2 ms** | — |
+| `rust jump_game` (`-C overflow-checks=on`) | 108.3 ms ± 3.2 ms | 1.00× (tie, = safety) |
+| `rust jump_game` (rustc -O) | 110.5 ms ± 2.0 ms | 1.02× slower |
+| `c    jump_game` (clang -O3) | 111.2 ms ± 2.6 ms | 1.03× slower |
+| `py   jump_game` (CPython) | 7182 ms (last measured 2026-07-03, not re-run) | ~65× slower (vs that run's Kāra) |
 
-**Kāra ties the C/Rust cluster and Go pulls ahead.** The C-family — `rustc` (108.7), its
-equal-safety variant (106.3), C (110.9), and Kāra (110.4) — all land inside a ~4.6 ms band, well
-under a single run's noise (σ ≈ 2–3 ms). Kāra is **dead-even with `clang -O3`** (110.4 vs
-110.9 ms, a 0.5 ms tie) and within noise of both Rust variants, including the
+**Kāra ties the C/Rust cluster and Go pulls ahead.** The C-family — `rustc` (110.5), its
+equal-safety variant (108.3), C (111.2), and Kāra (108.0) — all land inside a ~3.2 ms band, well
+under a single run's noise (σ ≈ 2–3 ms). Kāra is **dead-even with `clang -O3`** (108.0 vs
+111.2 ms, inside one σ) and within noise of both Rust variants, including the
 overflow-checks-on comparator that matches Kāra's checked-by-default integer semantics
 ([design.md § Arithmetic Overflow](../../../../kara/docs/design.md)) — so there is **no safety
 tax to isolate** on this branch-predictable scalar scan.
 
-The one real spread is **Go, ~1.35× ahead at 81.6 ms.** Unlike [#45](../45-jump-game-ii/), where
-every native mirror (Go included) tied within ~4%, `gc` lowers *this* particular kernel — a
-bounds-checked linear scan with an early-exit `return` and a running max — into a tighter inner
-loop than the LLVM/`gc` back ends produce for the C-family here. It is a codegen difference on
-the scan shape, not an algorithmic one: all six run the identical greedy solve and fold the
-identical checksum. Kāra's default-safe output sits squarely with C and Rust; the honest finding
-is a C-class tie with Go the outlier, rather than [#45](../45-jump-game-ii/)'s six-way dead heat.
-Python runs the identical algorithm interpreted, ~65× behind.
+The one real spread is **Go, ~1.30× ahead at 83.1 ms** (median 80.6 ms; its σ of 5.4 ms is the
+widest row). Unlike [#45](../45-jump-game-ii/), where every native mirror (Go included) tied within
+~4%, `gc` lowers *this* particular kernel — a bounds-checked linear scan with an early-exit `return`
+and a running max — into a tighter inner loop than the LLVM/`gc` back ends produce for the C-family
+here. It is a codegen difference on the scan shape, not an algorithmic one: all six run the identical
+greedy solve and fold the identical checksum. Kāra's default-safe output sits squarely with C and
+Rust; the honest finding is a C-class tie with Go the outlier, rather than
+[#45](../45-jump-game-ii/)'s six-way dead heat. Python runs the identical algorithm interpreted,
+~65× behind (last measured 2026-07-03, not re-run).
+
+Against the previous snapshot (legacy backend, 2026-07-03) the language ratios are flat:
+Kāra/Rust 1.02× → 0.98×, Kāra/C 1.00× → 0.97×, Kāra/Go 1.35× → 1.30×.
 
 ### Compile time, binary size, memory
 
-Snapshot — M5 Pro, 2026-07-03, hyperfine `--warmup 1 --runs 10` (compile, cold via `--prepare`);
-size and peak RSS are single deterministic samples.
+Same run, hyperfine `--warmup 1 --runs 10` (compile, cold via `--prepare`); size and peak RSS are
+single deterministic samples.
 
 | Compiler | Compile (cold) | Binary | Peak RSS |
 |---|---|---|---|
-| `clang -O3` | **43.9 ms** | **32.7 KiB** | **1.02 MiB** |
-| `rustc -O` | 84.1 ms | 455.6 KiB | 1.05 MiB |
-| **`karac build`** | **77.8 ms** | **33.4 KiB** | **1.03 MiB** |
-| `go build` | — (excluded; mixes module + std-lib link) | 2434.1 KiB | 2.67 MiB |
+| `clang -O3` | **47.8 ms** | **32.7 KiB** | **1.03 MiB** |
+| `rustc -O` | 88.6 ms | 455.6 KiB | 1.06 MiB |
+| **`karac build`** | **113.6 ms** | **295.8 KiB** | **1.05 MiB** |
+| `go build` | — (excluded; mixes module + std-lib link) | 2434.1 KiB | 2.56 MiB |
 
-Kāra emits a binary **~13.6× smaller than Rust** and line-ball with C (33.4 vs 32.7 KiB), and
-ties C and Rust for peak RSS (~1.0 MiB, ~2.6× under Go and ~6.5× under CPython). Its cold compile
-**edges `rustc -O`** (77.8 vs 84.1 ms) on both elapsed and peak compiler RSS (18.4 vs 26.5 MiB);
-`clang`'s 43.9 ms / 2.5 MiB is the floor. Every figure lands within noise of
-[#45](../45-jump-game-ii/)'s — the two katas compile the same shape of tiny integer kernel.
+Binary size: every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara
+ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this one is **295.8 KiB**, 1.54×
+under Rust's 455.6 KiB and 9.0× over C's 32.7 KiB. Peak RSS ties C and Rust (~1.0 MiB, ~2.4× under
+Go; CPython was ~6.5× over Kāra in the 2026-07-03 run, not re-run). The cold compile now **trails
+`rustc -O`** (113.6 vs 88.6 ms, 1.28×) at a higher peak compiler RSS (57.6 vs 26.5 MiB); `clang`'s
+47.8 ms / 2.6 MiB is the floor. Every figure lands within noise of [#45](../45-jump-game-ii/)'s —
+the two katas compile the same shape of tiny integer kernel.
 
 **No par lane — by construction.** The greedy solve is pure per iteration, but the checksum
-reduction carries a loop-borne dependency, so karac's auto-par pass does not fire: the default
-and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run single-threaded.
+reduction carries a loop-borne dependency, so karac's auto-par pass does not fire: neither the
+default nor the `KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn` (verified in the
+emitted IR, `KARAC_MIR_LL`), and both run single-threaded. The two binaries are the same size
+(295.8 KiB) and this run's pair happened to come out byte-identical, but under the MIR backend that
+is not guaranteed: the default build's pre-optimisation IR carries extra block structure, and karac
+builds are not byte-reproducible run to run.
 
 ---
 

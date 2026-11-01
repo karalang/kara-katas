@@ -69,38 +69,38 @@ diff <(karac run plus_one.kara) <(karac run plus_one_carry.kara) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-08 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`plus_one.{kara,rs,c,py}`, `go-seq/main.go`).
 
 > ✅ **M5-confirmed (2026-07-08).** The numbers below were measured on the corpus's **Apple M5 Pro reference machine** (arm64, clang 21 / rustc 1.95 / go 1.26), replacing the earlier x86-64 cloud-container snapshot. The container's expected result holds: **kāra sits at C/Go parity and ahead of Rust** — kāra 250.4 ms, go 250.1 ms, c 250.1 ms, rust 267.8 ms (kāra ~1.07× ahead of Rust, dead-even with C and Go). No anomaly to reconcile (unlike #64's kāra-lead); this is the clean C-parity result the RMW-scan family established, now with comparable M5 numbers folded into the corpus.
+>
+> **Note (2026-10-31):** re-measured with karac g6697158fa (v2/MIR backend) — the tables below are that run, and the C/Go tie and Rust lead still hold. The "unlike #64's kāra-lead" contrast no longer applies: #64 now trails Rust under v2/MIR.
 
 **Workload.** A single `plus_one` is O(1) amortised (the ★ returns at the first digit below 9), so one call is far too cheap to time. The honest heavy workload is the operation the kata *is*: increment a number over and over. So a fixed-width **W = 9** decimal digit buffer is driven as a base-10 **counter**, applying the ★'s reverse-scan carry **in place** K = 80,000,000 times — a build-once + punch workload (BENCHMARKS.md's preferred shape). Keeping the carry in one reused buffer (rather than the kata's per-call fresh `Vec`) measures the **carry-scan codegen** itself, not allocator throughput. `K < 10⁹`, so the counter never overflows 9 digits and the array-widening path (`[9,9,9] → [1,0,0,0]`, a once-per-power-of-ten rarity) does not fire in steady state. The sink is a rolling polynomial hash `acc = (acc*131 + digits[k % W]) % 1_000_000_007`; the **rotating** index `k % W` reads every digit over its cycle, so the carry propagation cannot be dead-code-eliminated down to `units = k % 10`. All four compiled mirrors must agree on `496509690` before timing.
 
-**Seq-only kata**: the hash sink is a **loop-carried dependency**, so the K-loop is not a reduction karac's auto-par pass can split — the default `karac build` stays single-threaded, directly comparable to `rustc -O` / `clang -O3` / `go build` on a per-core basis.
+**Seq-only kata**: the hash sink is a **loop-carried dependency**, so the K-loop is not a reduction karac's auto-par pass can split — the default `karac build` stays single-threaded (verified in the emitted IR (`KARAC_MIR_LL`): no call of `karac_mir_task_spawn`), directly comparable to `rustc -O` / `clang -O3` / `go build` on a per-core basis.
 
 ### Runtime — seq lane
 
-`--warmup 5 --runs 30 --shell=none`. All four single-threaded. **M5 Pro numbers** (see caveat).
+M5 Pro, karac g6697158fa (v2/MIR backend), 2026-10-31 (`measured_at` 2026-11-01T02:29Z UTC), `--warmup 5 --runs 30 --shell=none`. All single-threaded.
 
-| Implementation | Wall time |
-|---|---|
-| c    plus_one (clang -O3)           | 250.1 ± 0.5 ms |
-| go   plus_one                       | 250.1 ± 1.3 ms |
-| **kāra plus_one**                   | **250.4 ± 0.7 ms** |
-| rust plus_one (rustc -O)            | 267.8 ± 2.4 ms |
+| Implementation | Wall time | User | vs kāra |
+|---|---|---|---|
+| **kāra plus_one**                   | **276.0 ± 2.7 ms** | **272.1 ms** | — |
+| c    plus_one (clang -O3)           | 278.2 ± 1.8 ms | 275.4 ms | kāra 0.99× |
+| go   plus_one                       | 278.4 ± 2.4 ms | 275.2 ms | kāra 0.99× |
+| rust plus_one (`-C overflow-checks=on`) | 290.7 ± 3.3 ms | 287.7 ms | kāra 0.95× |
+| rust plus_one (rustc -O)            | 298.0 ± 4.3 ms | 294.8 ms | kāra 0.93× |
 
-**Kāra sits dead even with C and Go** on this in-place carry scan — a **three-way tie at ~250 ms** (c 250.1, go 250.1, kāra 250.4, all within 0.15 %) — and **~1.07× ahead of Rust**, with the tightest variance of the four (±0.8 ms). This is the expected C-parity result and the reassuring one: it matches #62/#63's finding on the same RMW-scan family, no #64-style asterisk. Kāra also pays for its default overflow checks on the `digit + 1` / `acc*131 + …` arithmetic that `rustc -O`/`clang -O3` skip, so reaching C's time (and beating Rust) here is an equal-*result*-or-better at a stricter safety posture.
+**Kāra sits dead even with C and Go** on this in-place carry scan — a **three-way tie at ~277 ms** (kāra 276.0, c 278.2, go 278.4, all within 1 %) — and **~1.08× ahead of Rust** (1.05× ahead of Rust at equal safety, `-C overflow-checks=on`). That is flat against the previous feed (2026-07-28, legacy backend: Kāra/Rust 0.94× → 0.93×, Kāra/C 1.00× → 0.99×, Kāra/Go 0.99× → 0.99×). All five absolute times are ~11–13% higher than in July for machine-state reasons, the ratios are not. (History, 2026-07-08 snapshot: c 250.1 / go 250.1 / kāra 250.4 / rust 267.8 ms — the same tie.) Unlike its #62/#63/#64 grid-DP siblings, which now trail Rust under v2/MIR, this carry scan holds C parity. Kāra also pays for its default overflow checks on the `digit + 1` / `acc*131 + …` arithmetic that `rustc -O`/`clang -O3` skip, so reaching C's time (and beating Rust) here is an equal-*result*-or-better at a stricter safety posture.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py plus_one` (K=8M) | 516.4 ± 6.8 ms |
+| `py plus_one` (K=8M) — last measured 2026-07-08, not re-run | 516.4 ± 6.8 ms |
 
-Python at K=8M is ~0.52 s; projecting to the compiled mirrors' K=80M (~5.2 s) puts it **~20× slower than kāra seq** — a narrower Python gap than #62's ~16.7× → #64's ~108× range would suggest, because the per-iteration body here is a very short reverse scan (usually one step) rather than an inner grid loop.
+Not re-run in the 2026-10-31 pass (no `KARAC_BENCH_INCLUDE_PY`). As of 2026-07-08, Python at K=8M was ~0.52 s; projecting to the compiled mirrors' K=80M (~5.2 s) put it **~20× slower than that session's kāra seq** — a narrower Python gap than #62's ~16.7× → #64's ~108× range would suggest, because the per-iteration body here is a very short reverse scan (usually one step) rather than an inner grid loop.
 
 ### Compile elapsed (cold)
 
@@ -108,44 +108,44 @@ Python at K=8M is ~0.52 s; projecting to the compiled mirrors' K=80M (~5.2 s) pu
 
 | Compiler | Time |
 |---|---|
-| clang -O3 plus_one.c          | **37.4 ms** |
-| rustc -O plus_one.rs          | 69.1 ms |
-| **karac build plus_one.kara** | **78.9 ms** |
+| clang -O3 plus_one.c          | **46.1 ± 0.7 ms** |
+| rustc -O plus_one.rs          | 81.1 ± 0.8 ms |
+| **karac build plus_one.kara** | **120.2 ± 1.8 ms** |
 
-On the M5 karac compiles at ~2.1× clang and ~1.14× rustc — a hair behind rustc. Small-single-file compile time is dominated by process/LLVM-init overhead that differs across the toolchain sets.
+On the M5 karac compiles at ~2.61× clang and ~1.48× rustc. Small-single-file compile time is dominated by process/LLVM-init overhead that differs across the toolchain sets.
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    plus_one                | 32.8 KiB |
-| **kāra plus_one**            | **33.3 KiB** |
-| go   plus_one                | 2.38 MiB |
+| **kāra plus_one**            | **295.8 KiB** |
 | rust plus_one                | 455.4 KiB |
+| go   plus_one                | 2.38 MiB |
 
-Kāra's seq binary is **33.3 KiB — within ~0.5 KiB of C**, and far below Rust's 455 KiB and Go's 2.4 MiB (the same lean floor as #62–64 on the M5).
+Kāra's seq binary is **295.8 KiB** (302,872 B) — ~9× C's, below Rust's 455 KiB and Go's 2.4 MiB (the same floor as #62–64). Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (this kata's was 34,232 B); that floor is tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    plus_one                | 1.00 MiB |
-| **kāra plus_one**            | **1.02 MiB** |
+| c    plus_one                | 1.02 MiB |
+| **kāra plus_one**            | **1.05 MiB** |
 | rust plus_one                | 1.06 MiB |
-| go   plus_one                | 2.66 MiB |
+| go   plus_one                | 2.55 MiB |
 
-Kāra's peak RSS (1.02 MiB) is within ~1–4 % of C and Rust — the working set is a nine-element array, so peak is dominated by the process/runtime base, near-identical across the compiled mirrors; Go's 2.66 MiB carries its GC arena + scheduler.
+Kāra's peak RSS (1,098,040 B) is within ~1–3 % of C (1,065,272 B) and Rust (1,114,424 B) — the working set is a nine-element array, so peak is dominated by the process/runtime base, near-identical across the compiled mirrors; Go's 2.55 MiB carries its GC arena + scheduler.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 plus_one.c          | **2.5 MiB** |
-| **karac build plus_one.kara** | **18.5 MiB** |
+| clang -O3 plus_one.c          | **2.6 MiB** |
 | rustc -O plus_one.rs          | 25.1 MiB |
+| **karac build plus_one.kara** | **55.8 MiB** |
 
-On the M5 karac's compile-memory footprint sits between clang (lowest) and rustc — well under rustc's.
+On the M5 karac has the highest compile-memory footprint of the three — ~2.2× rustc's, ~21× clang's.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. On this in-place carry scan (M5) kāra ties C and Go and leads Rust ~1.07× — the clean C-parity result the RMW-scan family (#62/#63) established, without #64's provisional asterisk. The load-bearing claim is the five-language sink agreement and that kāra reaches C's/Go's time — and beats Rust — at its stricter (overflow-checked) safety posture.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, Python is the ergonomic foil. On this in-place carry scan (M5, karac g6697158fa, 2026-10-31) kāra ties C and Go and leads Rust ~1.08× — the clean C-parity result the RMW-scan family (#62/#63) reached in July and which, under v2/MIR, this kata alone of the four still holds. The load-bearing claim is the five-language sink agreement and that kāra reaches C's/Go's time — and beats Rust — at its stricter (overflow-checked) safety posture.

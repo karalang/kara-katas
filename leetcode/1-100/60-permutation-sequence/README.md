@@ -61,9 +61,6 @@ bench/bench.sh
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-04 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Unusually, this kata benchmarks **both solvers** — the O(n²) factorial closed form *and* the O(k·n) `next_permutation` walk — each across Kāra, Rust, C, Go, and Python, in a seq lane and an auto-par lane. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`permutation_sequence{,_nextperm}.{kara,rs,c,py}`, `go-seq{,-np}/main.go`, `rayon{,-np}/`).
 
@@ -72,20 +69,20 @@ Unusually, this kata benchmarks **both solvers** — the O(n²) factorial closed
 - **Rotating `(n, k)` defeats loop-invariant code motion.** A fixed `(n, k)` makes `get_permutation` a hoistable invariant; rotating over 9 cases forces real work every iteration.
 - **The checksum reads *every* output digit**, so no mirror can dead-code the digit picks.
 
-**The two solvers run different K.** The factorial form is O(n²) and independent of `k`; the `next_permutation` form is O(k·n) and does *thousands of times* more work per query. K was picked so both land in a comparable window — **factorial K = 500,000** (sink `69777768`) and **next-perm K = 333** (sink `46472`); post-pre-sizing the factorial lane runs ~44 ms and next-perm ~77 ms. They are **not** directly wall-time comparable at equal K, so the fair cross-solver metric is **permutations resolved per second**, `K · 1000 / mean_ms`, over identical `(n, k)` inputs:
+**The two solvers run different K.** The factorial form is O(n²) and independent of `k`; the `next_permutation` form is O(k·n) and does *thousands of times* more work per query. K was picked so both land in a comparable window — **factorial K = 500,000** (sink `69777768`) and **next-perm K = 333** (sink `46472`); post-pre-sizing the factorial lane runs ~44 ms and next-perm ~74 ms. They are **not** directly wall-time comparable at equal K, so the fair cross-solver metric is **permutations resolved per second**, `K · 1000 / mean_ms`, over identical `(n, k)` inputs:
 
 | solver (Kāra) | lane | K | mean | **perms/sec** |
 |---|---|---:|---:|---:|
-| factorial (closed form) | seq | 500,000 | 43.6 ms | **11.5 M/s** |
-| next-perm (iterate) | seq | 333 | 77.4 ms | **4,302/s** |
-| factorial (closed form) | auto-par | 500,000 | 12.4 ms | **40.3 M/s** |
-| next-perm (iterate) | auto-par | 333 | 11.2 ms | **29,700/s** |
+| factorial (closed form) | seq | 500,000 | 44.4 ms | **11.3 M/s** |
+| next-perm (iterate) | seq | 333 | 74.4 ms | **4,473/s** |
+| factorial (closed form) | auto-par | 500,000 | 9.4 ms | **53.4 M/s** |
+| next-perm (iterate) | auto-par | 333 | 11.4 ms | **29,300/s** |
 
-So on identical queries the O(n²) closed form resolves **≈2,670× more permutations per second** than iterating `next_permutation` (seq lane) — the measured price of algorithm choice, and exactly why the closed form is the canonical answer. (Under auto-par the ratio is ≈1,350×: the closed form parallelizes to 40 M/s while next-perm's heavier per-iter body scales less cleanly — see below.)
+So on identical queries the O(n²) closed form resolves **≈2,520× more permutations per second** than iterating `next_permutation` (seq lane) — the measured price of algorithm choice, and exactly why the closed form is the canonical answer. (Under auto-par the ratio is ≈1,820×: the closed form parallelizes to 53 M/s while next-perm's heavier per-iter body scales less cleanly — see below.)
 
 > **A karac auto-par bug found here — now fixed (`99617752`, ledger `B-2026-07-03-34`):** the first cut fed the rotated `(n, k)` cases through captured fixed-size `Array[i64, 9]` lookup tables. Under the default auto-par build those tables miscompiled — a worker indexing `atab[k % m]` with a loop-derived index trapped `vec index out of bounds`, while a constant index and `Vec[i64]` tables were both fine. Root cause: a follow-on to the by-pointer array-capture fix `c3050fc8` (`B-2026-06-15-3`). The reduction worker's modulo bounds-check-elision *preflight* is a Vec-only optimization that reads `{ptr,len,cap}` field 1 as the length; a by-pointer array capture has no such header, so it read `element[1]` as a bogus length and trapped on it (`btab = [1,2,3,4]` → `element[1] = 2 < 4` → false panic). The fix skips the preflight for array captures (their length is the compile-time constant `N`, so the per-iter static-`N` check already suffices). The bench keeps `Vec[i64]` tables (the idiomatic choice, and what the numbers above were measured with); the `Array[i64, 9]` form now compiles and runs correctly on all lanes too.
 
-Snapshot — Apple M5 Pro (6P+12E), Darwin 25.5.0, 2026-07-04, hyperfine `--warmup 5–10 --runs 30–50 -N`. karac 0.1.0 (with the auto-par `Array`-capture fix `99617752` and the loop-fill pre-sizing extensions `23287e52` + `e9c33a8d` — see the factorial discussion below), rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers from the committed [`results.json`](bench/results.json).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:21Z) — Apple M5 Pro (6P+12E), Darwin 25.6.0, hyperfine, 30 seq / 50 par runs. karac `g6697158fa` (0.9.0-dev.14057, v2/MIR backend; the auto-par `Array`-capture fix `99617752` and the loop-fill pre-sizing extensions `23287e52` + `e9c33a8d` date from the 2026-07-04 snapshot — see the factorial discussion below), rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers from the committed [`results.json`](bench/results.json) unless marked otherwise.
 
 ### Runtime — seq lane
 
@@ -93,89 +90,93 @@ Snapshot — Apple M5 Pro (6P+12E), Darwin 25.5.0, 2026-07-04, hyperfine `--warm
 
 | Implementation (next-perm, seq) | Wall time |
 |---|---|
-| rust nextperm         | **74.9 ± 0.4 ms** |
-| c    nextperm         | 75.0 ± 0.8 ms |
-| **kāra nextperm (seq)** | **77.4 ± 1.4 ms** |
-| go   nextperm         | 109.5 ± 7.2 ms |
+| **kāra nextperm (seq)** | **74.4 ± 1.3 ms** |
+| c    nextperm         | 77.8 ± 1.2 ms |
+| rust nextperm (`overflow-checks=on`) | 78.1 ± 0.9 ms |
+| rust nextperm         | 78.3 ± 0.9 ms |
+| go   nextperm         | 111.2 ± 2.5 ms |
 
-Kāra codegen lands **within ~3% of C and Rust** (77.4 vs 75.0 / 74.9) — a compute-bound integer workload with almost no allocation is where Kāra's LLVM backend ties its native peers. Go trails by 1.46×.
+Kāra codegen lands **~4–5% ahead of C and Rust** (74.4 vs 77.8 / 78.3; Kāra/C 0.96×, Kāra/Rust 0.95×) — a compute-bound integer workload with almost no allocation is where Kāra's LLVM backend ties or edges its native peers. Against the previous run (2026-07-28, legacy backend) the ratios are flat (Kāra/Rust 0.96× → 0.95×, Kāra/C 0.96× → 0.96×). Go trails by 1.49×.
 
 **Factorial** allocates three `Vec`s per query (`fact` / `digits` / `result`) — and this is where a **compiler optimization** the kata surfaced pays off:
 
 | Implementation (factorial, seq) | Wall time |
 |---|---|
-| c    factorial        | **33.0 ± 1.5 ms** |
-| go   factorial        | 33.0 ± 1.0 ms |
-| **kāra factorial (seq)** | **43.6 ± 1.9 ms** |
-| rust factorial        | 103.0 ± 4.3 ms |
+| c    factorial        | **33.1 ± 1.9 ms** |
+| go   factorial        | 36.7 ± 0.5 ms |
+| **kāra factorial (seq)** | **44.4 ± 2.0 ms** |
+| rust factorial (`overflow-checks=on`) | 103.5 ± 3.9 ms |
+| rust factorial        | 104.2 ± 4.0 ms |
 
-C and Go pre-size every buffer (`malloc(n)` / `make(…, n)`) and never realloc. The **idiomatic Rust mirror grows its Vecs by `push`** (`Vec::new()`, matching the kata's `Vec.new()`) and pays the realloc churn — 103 ms, 3.1× behind C. Kāra writes the *same* `Vec.new()` idiom, yet lands at **43.6 ms — 2.36× ahead of Rust** and only 1.32× behind C. The difference is that **karac's automatic loop-fill pre-sizing pass rewrites `Vec.new()` → `with_capacity` for a counted push-loop**, so all three buffers are single-allocated with no source change — the growth cost the Rust programmer would have to eliminate by hand (`Vec::with_capacity`). Building this kata drove three extensions to that pass (`23287e52` + `e9c33a8d`): it now covers `while d <= n` inclusive fills (previously only `<`), cumulative fills that *read* the buffer (`fact.push(fact[i-1]·i)`), and a pre-loop **seed push** (`fact.push(1)`), which together are what let all three of the solver's Vecs pre-size. The residual 1.32× behind C is the **safe-by-default tax** — bounds- and overflow-checks — the same checked-vs-release gap kata #57/#59 measured, not allocation: with the growth gone, this lane is now compute-bound like next-perm. (Rust reaches the same floor with an explicit `with_capacity`; the point is that Kāra's compiler gets there from the naïve source.)
+C and Go pre-size every buffer (`malloc(n)` / `make(…, n)`) and never realloc. The **idiomatic Rust mirror grows its Vecs by `push`** (`Vec::new()`, matching the kata's `Vec.new()`) and pays the realloc churn — 104 ms, 3.1× behind C. Kāra writes the *same* `Vec.new()` idiom, yet lands at **44.4 ms — 2.35× ahead of Rust** and only 1.34× behind C (1.21× behind Go). Against the previous run (2026-07-28, legacy backend) the ratios are flat: Kāra/Rust 0.39× → 0.43×, Kāra/C 1.30× → 1.34×, Kāra/Go 1.37× → 1.21×. The difference is that **karac's automatic loop-fill pre-sizing pass rewrites `Vec.new()` → `with_capacity` for a counted push-loop**, so all three buffers are single-allocated with no source change — the growth cost the Rust programmer would have to eliminate by hand (`Vec::with_capacity`). Building this kata drove three extensions to that pass (`23287e52` + `e9c33a8d`): it now covers `while d <= n` inclusive fills (previously only `<`), cumulative fills that *read* the buffer (`fact.push(fact[i-1]·i)`), and a pre-loop **seed push** (`fact.push(1)`), which together are what let all three of the solver's Vecs pre-size. The residual 1.34× behind C is the **safe-by-default tax** — bounds- and overflow-checks — the same checked-vs-release gap kata #57/#59 measured, not allocation: with the growth gone, this lane is now compute-bound like next-perm. (Rust reaches the same floor with an explicit `with_capacity`; the point is that Kāra's compiler gets there from the naïve source.)
 
 ### Runtime — auto-par regime
 
-Both solvers' `total = total + <checksum>` reductions are auto-par-eligible, so `karac build` emits a `karac_par_reduce` by default:
+Both solvers' `total = total + <checksum>` reductions are auto-par-eligible, so the default `karac build` parallelises both — verified in the emitted IR (`KARAC_MIR_LL`): each default build carries a call of `karac_mir_task_spawn`, neither `KARAC_AUTO_PAR=0` build does:
 
 | Solver | Kāra (auto-par) | Rust (rayon) | Kāra speedup vs own seq |
 |---|---|---|---|
-| factorial | **12.4 ± 1.4 ms** | 30.2 ± 3.7 ms | 3.5× |
-| next-perm | 11.2 ± 0.6 ms | **9.5 ± 0.5 ms** | 6.9× |
+| factorial | **9.4 ± 1.1 ms** | 30.3 ± 3.1 ms | 4.7× |
+| next-perm | 11.4 ± 0.4 ms | **10.0 ± 0.4 ms** | 6.6× |
 
-On **factorial**, Kāra's zero-parallel-code auto-par is **2.4× faster than hand-written rayon** (12.4 vs 30.2 ms) — it carries the pre-sizing win from the seq lane into every worker, while the rayon mirror still grows its Vecs per iteration. On **next-perm** (a ~10 ms dispatch-bound workload where the per-iter body is a heavy `next_permutation` walk with a single tiny fill) the two are close, rayon a hair ahead (9.5 vs 11.2 ms) — within the run-to-run noise of a sub-15 ms parallel workload. Both parallelize well over their own seq lanes (3.5× / 6.9×).
+On **factorial**, Kāra's zero-parallel-code auto-par is **3.2× faster than hand-written rayon** (9.4 vs 30.3 ms; Kāra/rayon 0.41× → 0.31× against the previous run) — it carries the pre-sizing win from the seq lane into every worker, while the rayon mirror still grows its Vecs per iteration. On **next-perm** (a ~10 ms dispatch-bound workload where the per-iter body is a heavy `next_permutation` walk with a single tiny fill) the two are close, rayon ahead by 1.13× (10.0 vs 11.4 ms) — a gap now larger than either side's ±0.4 ms σ, and flat against the previous run (1.10×). Both parallelize well over their own seq lanes (4.7× / 6.6×).
 
 ### Runtime — Python
 
 | Run | Mean ± σ | projected to compiled K | vs Kāra seq |
 |---|---|---|---|
-| `py factorial` (K=50k) | 60.9 ± 0.7 ms | ~609 ms @ K=500k | ~14× slower |
-| `py nextperm` (K=9) | 120.5 ± 1.1 ms | ~4.5 s @ K=333 | ~58× slower |
+| `py factorial` (K=50k) | 60.9 ± 0.7 ms (last measured 2026-07-04, not re-run) | ~609 ms @ K=500k | ~14× slower |
+| `py nextperm` (K=9) | 120.5 ± 1.1 ms (last measured 2026-07-04, not re-run) | ~4.5 s @ K=333 | ~60× slower |
 
-Python's factorial multiple (~14×) doubled from the pre-pre-sizing snapshot precisely because Kāra's factorial seq lane got 2× faster; its next-perm multiple (~58×) is larger still because that solver is pure-Python per-step loops with no C-implemented shortcut to hide behind.
+The "vs Kāra seq" column divides the 2026-07-04 Python figures by this run's Kāra seq times (a cross-session ratio). Python's factorial multiple (~14×) doubled from the pre-pre-sizing snapshot precisely because Kāra's factorial seq lane got 2× faster; its next-perm multiple (~60×) is larger still because that solver is pure-Python per-step loops with no C-implemented shortcut to hide behind.
 
 ### Compile elapsed (cold)
 
 | Compiler | Time |
 |---|---|
-| clang -O3 factorial          | **47.2 ± 1.5 ms** |
-| **karac build factorial**    | **92.1 ± 2.7 ms** |
-| **karac build nextperm**     | 94.7 ± 2.1 ms |
-| rustc -O factorial           | 103.3 ± 2.9 ms |
+| clang -O3 factorial          | **52.7 ± 1.2 ms** |
+| rustc -O factorial           | 111.8 ± 1.8 ms |
+| **karac build nextperm**     | 175.5 ± 2.3 ms |
+| **karac build factorial**    | **178.8 ± 1.8 ms** |
 
-Kāra compiles **1.12× faster than `rustc -O`** and sits at 1.95× of clang -O3 — same shape as the rest of the corpus (the pre-sizing pass adds negligible compile cost).
+Compile now favours `rustc -O`: karac is **1.60× slower than `rustc -O`** on factorial and 3.40× clang -O3 (the 2026-07-04 snapshot had karac 1.12× faster than rustc). The same flip shows across the corpus under the MIR backend (tracked as [`B-2026-10-31-41`](../../../../kara/docs/bugs-v2.md)).
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    factorial (seq)          | 32.8 KiB |
-| **kāra nextperm (seq)**       | **33.3 KiB** |
-| **kāra factorial (seq)**      | **33.4 KiB** |
-| **kāra factorial (auto-par)** | **312.2 KiB** |
-| rust factorial (seq / rayon)  | 456.2 / 454.5 KiB |
+| **kāra nextperm (seq)**       | **295.8 KiB** |
+| **kāra factorial (seq)**      | **295.8 KiB** |
+| **kāra factorial (auto-par)** | **377.1 KiB** |
+| rust factorial (seq / rayon)  | 456.3 / 454.5 KiB |
 | go   factorial (seq)          | 2434.2 KiB |
 
-Kāra seq sits within 0.6 KiB of C's no-frills floor; the auto-par binary's +279 KiB is the par-scheduler runtime.
+Kāra seq is **295.8 KiB** — 1.5× under Rust's 456.3 KiB but 9× C's 32.8 KiB; every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). The auto-par binary's +81 KiB over seq is the par-scheduler runtime.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c / kāra / rust factorial (seq) | 1.1 MiB |
-| **kāra next-perm (auto-par)** | **1.4 MiB** |
-| **kāra factorial (auto-par)** | **2.5 MiB** |
-| go   factorial (seq)          | 8.8 MiB |
+| **kāra factorial (seq)**      | **1.05 MiB** |
+| c    factorial (seq)          | 1.09 MiB |
+| rust factorial (seq)          | 1.14 MiB |
+| **kāra next-perm (auto-par)** | **1.47 MiB** |
+| **kāra factorial (auto-par)** | **2.08 MiB** |
+| go   factorial (seq)          | 8.92 MiB |
 
-Kāra seq's peak RSS matches C's 1.1 MiB (each buffer is freed inside the loop, so steady state is flat across K). The auto-par 2.5 / 1.4 MiB is the worker pool's per-thread scratch; factorial's is higher because each worker holds three live `Vec`s (now single-allocated, which also trims this from the pre-pre-sizing 2.9 MiB).
+Kāra seq's peak RSS (1.05 MiB) now sits ~48 KiB under C's 1.09 MiB (each buffer is freed inside the loop, so steady state is flat across K). The auto-par 2.08 / 1.47 MiB is the worker pool's per-thread scratch; factorial's is higher because each worker holds three live `Vec`s (now single-allocated, which also trims this from the pre-pre-sizing 2.9 MiB).
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 factorial          | 2.5 MiB |
-| **karac build factorial**    | **20.4 MiB** |
-| rustc -O factorial           | 31.2 MiB |
+| rustc -O factorial           | 31.1 MiB |
+| **karac build factorial**    | **61.1 MiB** |
 
-Kāra's compile-memory footprint is ~8× clang's and ~1.5× lower than rustc's — same shape as the rest of the corpus.
+Kāra's compile-memory footprint is ~24× clang's and ~2.0× rustc's (the 2026-07-04 snapshot had it ~1.5× *under* rustc) — same flip as compile elapsed above.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline is the codegen-vs-Rust gap. This kata gives it on **two** workloads: on the compute-bound **next-perm** solver Kāra ties Rust (77.4 vs 74.9 ms, both within ~3% of C), and on the allocation-heavy **factorial** solver Kāra is **2.36× ahead of the idiomatic Rust mirror** (43.6 vs 103.0 ms) — because karac's pre-sizing pass single-allocates the buffers the naïve `Vec::new()` Rust grows, landing Kāra within 1.32× of C — and under auto-par Kāra beats hand-written rayon on factorial (2.4×) and ties it on next-perm. C calibrates the LLVM/allocator floor, Go is the cross-runtime point, Python is the ergonomic foil. Kāra edging its semantic peer here is a compiler-optimization win, not a codegen-quality one: idiomatic-source-to-idiomatic-source, karac's automatic pre-sizing does what the Rust author would do by hand.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline is the codegen-vs-Rust gap. This kata gives it on **two** workloads: on the compute-bound **next-perm** solver Kāra edges Rust (74.4 vs 78.3 ms, and C's 77.8), and on the allocation-heavy **factorial** solver Kāra is **2.35× ahead of the idiomatic Rust mirror** (44.4 vs 104.2 ms) — because karac's pre-sizing pass single-allocates the buffers the naïve `Vec::new()` Rust grows, landing Kāra within 1.34× of C — and under auto-par Kāra beats hand-written rayon on factorial (3.2×) and trails it by 1.13× on next-perm. C calibrates the LLVM/allocator floor, Go is the cross-runtime point, Python is the ergonomic foil. Kāra edging its semantic peer here is a compiler-optimization win, not a codegen-quality one: idiomatic-source-to-idiomatic-source, karac's automatic pre-sizing does what the Rust author would do by hand.

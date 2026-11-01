@@ -72,9 +72,6 @@ bench/bench.sh
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-03 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`insert_interval.{kara,rs,c,py}`, `go-seq/main.go`, plus the par-lane `insert_interval_par.c`, `go-par/`, `rayon/`).
 
@@ -82,9 +79,9 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 Same M=8/N=16/K=1M shape as [kata #56](../56-merge-intervals/), so cross-kata wall-time comparisons stay meaningful. The key structural difference: #56's per-call cost is dominated by an O(N log N) `sort_by`; this kata's is a pure O(N) sweep, so the workload isolates the **allocation + tuple index + field-access + `Vec.push`** path with no sort-dispatch in the picture.
 
-Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumulator is the slice-1 allow-list reduction shape, so `karac build` may emit a `karac_par_reduce` dispatch by default. The bench builds two kara binaries — `KARAC_AUTO_PAR=0` for the within-lane seq comparison, default for the auto-par regime — reported in separate tables.
+Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumulator is the slice-1 allow-list reduction shape, so the default `karac build` parallelises it — verified in the emitted IR (`KARAC_MIR_LL`): the default build carries a call of `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` build does not. The bench builds both kara binaries — `KARAC_AUTO_PAR=0` for the within-lane seq comparison, default for the auto-par regime — reported in separate tables.
 
-Snapshot — Apple M5 Pro (6P+12E), Darwin 25.5.0, 2026-07-03, hyperfine `--warmup 5 --runs 30 -N`. karac 0.1.0, rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers below are from the committed [`results.json`](bench/results.json).
+Measured 2026-10-31 (`measured_at` 2026-11-01T02:19Z) — Apple M5 Pro (6P+12E), Darwin 25.6.0, hyperfine `--warmup 5`, 30 seq / 50 par runs. karac `g6697158fa` (0.9.0-dev.14057, v2/MIR backend), rustc 1.95.0, Apple clang 21.0.0, go 1.26.3. All numbers below are from the committed [`results.json`](bench/results.json) unless marked otherwise.
 
 ### Runtime — seq lane
 
@@ -92,15 +89,16 @@ All single-threaded; the kāra rows are `KARAC_AUTO_PAR=0`.
 
 | Implementation | Wall time |
 |---|---|
-| c    insert_interval (clang -O3)     | **21.7 ± 0.6 ms** |
-| **kāra insert_interval (with_capacity)** | **22.8 ± 0.8 ms** |
-| go   insert_interval                 | 39.7 ± 0.6 ms |
-| **kāra insert_interval (seq, `Vec.new()`)** | **74.8 ± 3.3 ms** |
-| rust insert_interval                 | 79.6 ± 1.8 ms |
+| c    insert_interval (clang -O3)     | **22.6 ± 1.2 ms** |
+| **kāra insert_interval (with_capacity)** | **25.2 ± 1.4 ms** |
+| **kāra insert_interval (seq, `Vec.new()`)** | **44.5 ± 1.0 ms** |
+| go   insert_interval                 | 52.2 ± 0.7 ms |
+| rust insert_interval (`overflow-checks=on`) | 79.4 ± 2.8 ms |
+| rust insert_interval                 | 80.4 ± 5.3 ms |
 
-The load-bearing result is **Kāra vs Rust on the natural idiom: 74.8 vs 79.6 ms — Kāra leads by 1.06×**, inside noise. This is an *allocation-bound* workload: with no sort, each call's cost is dominated by allocating and growing a fresh `Vec[(i64, i64)]` from empty (`Vec.new()` + `push`), and Kāra's allocator + move-elision keep it level with Rust's `Vec` doing the identical growth. This is the cleanest "Kāra ties Rust on the natural idiom" data point in the corpus precisely *because* there's no sort to route through a runtime callback. **When the output is pre-sized (`with_capacity`), Kāra reaches C parity — see § Optimization below.**
+The load-bearing result is **Kāra vs Rust on the natural idiom: 44.5 vs 80.4 ms — Kāra leads by 1.81× (Kāra/Rust 0.55×)**, and it is also ahead of Go (0.85×). Against the previous run (2026-07-28, legacy backend) that is a sharp improvement in every ratio: Kāra/Rust 0.90× → 0.55×, Kāra/C 3.42× → 1.97×, Kāra/Go 2.15× → 0.85×. This is an *allocation-bound* workload: with no sort, each call's cost is dominated by allocating and growing a fresh `Vec[(i64, i64)]` from empty (`Vec.new()` + `push`), and Kāra now does that grow-from-empty path well ahead of Rust's `Vec` doing the identical growth. Because there's no sort to route through a runtime callback, this is the cleanest "Kāra vs Rust on the natural idiom" data point in the corpus. **When the output is pre-sized (`with_capacity`), Kāra comes within 1.11× of C — see § Optimization below.**
 
-**C's 3.45× lead over `Vec.new()` is a benchmark-fairness note worth stating.** A naive C mirror that returns only the interval *count* lets clang prove the result buffer is a dead `malloc`/`free` pair and elide the allocation entirely — which clocked C at **3.7 ms (a 20× artifact)**. The committed [`insert_interval.c`](bench/insert_interval.c) forces the allocation to escape through a `volatile` sink read from the materialized buffer, so all four seq lanes genuinely allocate. C's remaining lead is real but structural: it `malloc`s the max size (`n+1`) **once**, while the `Vec.new()` kāra and rust mirrors grow from empty with reallocations. That structural gap is exactly what the pre-sized variant closes.
+**C's 1.97× lead over `Vec.new()` is a benchmark-fairness note worth stating.** A naive C mirror that returns only the interval *count* lets clang prove the result buffer is a dead `malloc`/`free` pair and elide the allocation entirely — which clocked C at **3.7 ms (a 20× artifact)** in the 2026-07-03 probe. The committed [`insert_interval.c`](bench/insert_interval.c) forces the allocation to escape through a `volatile` sink read from the materialized buffer, so all seq lanes genuinely allocate. C's remaining lead is real but structural: it `malloc`s the max size (`n+1`) **once**, while the `Vec.new()` kāra and rust mirrors grow from empty with reallocations. That structural gap is exactly what the pre-sized variant closes.
 
 ### Optimization — pre-sizing the output
 
@@ -108,11 +106,11 @@ The output length of `insert_interval` is bounded by `n + 1`, known before the s
 
 | kāra seq variant | Wall time | Peak RSS | vs C |
 |---|---|---|---|
-| `Vec.new()` (default) | 74.8 ± 3.3 ms | 1.1 MiB | 3.45× behind |
-| **`Vec.with_capacity(n+1)`** | **22.8 ± 0.8 ms** | **1.0 MiB** | **1.05× — parity** |
-| c insert_interval | 21.7 ± 0.6 ms | 1.0 MiB | — |
+| `Vec.new()` (default) | 44.5 ± 1.0 ms | 1.05 MiB | 1.97× behind |
+| **`Vec.with_capacity(n+1)`** | **25.2 ± 1.4 ms** | **1.05 MiB** | **1.11× behind** |
+| c insert_interval | 22.6 ± 1.2 ms | 1.05 MiB | — |
 
-**Pre-sizing is a 3.3× speedup (74.8 → 22.8 ms) that lands Kāra at 1.05× of C** — the entire seq gap to C was the grow-from-empty realloc tax, not codegen quality. It also shaves the peak RSS from 1.1 → 1.0 MiB by removing the doubling transient (the growing `Vec` holds both the old and new buffer alive at the final reallocation). This is the same lever [kata #153](../../101-200/153-find-minimum-in-rotated-sorted-array/) documents `Vec.with_capacity` closing. The default solution keeps `Vec.new()` for teaching clarity; pre-sizing is the drop-in a perf-conscious caller applies (and exactly what Rust's `Vec::with_capacity` would do for the rust mirror too — the tie would hold at the faster time). A possible *compiler-level* follow-on would be for karac to statically bound the push-count and emit the reservation itself, which `rustc` does not do — filed as a speculative codegen idea, not attempted.
+**Pre-sizing is a 1.77× speedup (44.5 → 25.2 ms) that lands Kāra at 1.11× of C** — most of the seq gap to C is the grow-from-empty realloc tax, not codegen quality. (The previous run had it at 2.92× and 1.17×; the MIR backend shrank the realloc tax itself, so pre-sizing now buys less.) Peak RSS no longer separates the two variants: all three rows peak at 1.05 MiB (1 098 064 bytes for both kāra builds, 1 098 040 for C), where the 2026-07-03 snapshot had `Vec.new()` a page higher (1.1 vs 1.0 MiB) from the doubling transient. This is the same lever [kata #153](../../101-200/153-find-minimum-in-rotated-sorted-array/) documents `Vec.with_capacity` closing. The default solution keeps `Vec.new()` for teaching clarity; pre-sizing is the drop-in a perf-conscious caller applies (and exactly what Rust's `Vec::with_capacity` would do for the rust mirror too). A possible *compiler-level* follow-on would be for karac to statically bound the push-count and emit the reservation itself, which `rustc` does not do — filed as a speculative codegen idea, not attempted.
 
 ### Runtime — auto-par regime
 
@@ -120,20 +118,20 @@ The `sum = sum + r.len()` reduction is auto-par-eligible:
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra insert_interval (auto-par default)** | **29.0 ± 3.0 ms** | 428 ms |
-| rust insert_interval (rayon par_iter) | 27.7 ± 4.4 ms | 453 ms |
-| go   insert_interval (goroutines) — count-only floor | 2.9 ± 0.1 ms | 10 ms |
-| c    insert_interval (pthreads) — count-only floor | 1.4 ± 0.1 ms | 4 ms |
+| **kāra insert_interval (auto-par default)** | **12.4 ± 1.4 ms** | 127 ms |
+| rust insert_interval (rayon par_iter) | 24.7 ± 4.1 ms | 351 ms |
+| go   insert_interval (goroutines) — count-only floor | 3.1 ± 0.1 ms | 10 ms |
+| c    insert_interval (pthreads) — count-only floor | 1.6 ± 0.1 ms | 4 ms |
 
-Kāra auto-par (29.0 ms) **matches Rust's hand-written rayon (27.7 ms), 1.05×** — again the apples-to-apples pair (both allocate a real `Vec` per iter, both `Vec.new()`). But the auto-par binary is only **2.6× faster than the kāra `Vec.new()` seq binary** (74.8 → 29.0 ms), well below [kata #56](../56-merge-intervals/)'s 6.7×. That gap *is* the story: with the O(N log N) sort gone, each iteration does far less work, so the fixed per-iteration parallel-dispatch overhead amortizes much worse — there's less to spread across the perf cores (User-CPU is ~15× wall). The `c`/`go` par rows are **count-only floors** (no allocation, by design — the bare-metal ceiling), which is why they sit far below the allocating lanes; they are not apples-to-apples with kāra/rust here.
+Kāra auto-par (12.4 ms) **is 1.99× faster than Rust's hand-written rayon (24.7 ms), Kāra/rayon 0.50×** — the apples-to-apples pair (both allocate a real `Vec` per iter, both `Vec.new()`), and on 0.36× of rayon's user-CPU. Against the previous run that is a sharp improvement: Kāra/rayon 1.14× → 0.50×. The auto-par binary is **3.6× faster than the kāra `Vec.new()` seq binary** (44.5 → 12.4 ms), still below [kata #56](../56-merge-intervals/)'s 6.7× (2026-07-03 figure): with the O(N log N) sort gone, each iteration does far less work, so the fixed per-iteration parallel-dispatch overhead amortizes worse — there's less to spread across the perf cores (User-CPU is ~10× wall). The `c`/`go` par rows are **count-only floors** (no allocation, by design — the bare-metal ceiling), which is why they sit far below the allocating lanes; they are not apples-to-apples with kāra/rust here.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py insert_interval` (K=100k) | 58.3 ± 2.3 ms |
+| `py insert_interval` (K=100k) | 58.3 ± 2.3 ms (last measured 2026-07-03, not re-run) |
 
-Python at K=100k is 58 ms; projecting to K=1M (~583 ms) puts it **~7.8× slower than kāra `Vec.new()` seq** (and ~26× slower than the pre-sized variant). Lighter multiple than a sort-heavy kata because CPython's per-call overhead is amortized over less native work when there's no `sorted()` to lean on.
+Python at K=100k was 58 ms; projecting to K=1M (~583 ms) puts it **~13× slower than this run's kāra `Vec.new()` seq** (and ~23× slower than the pre-sized variant) — cross-session ratios, since Python was not re-run. Lighter multiple than a sort-heavy kata because CPython's per-call overhead is amortized over less native work when there's no `sorted()` to lean on.
 
 ### Compile elapsed (cold)
 
@@ -141,47 +139,47 @@ Python at K=100k is 58 ms; projecting to K=1M (~583 ms) puts it **~7.8× slower 
 
 | Compiler | Time |
 |---|---|
-| clang -O3 insert_interval.c          | **44.2 ± 1.0 ms** |
-| **karac build insert_interval.kara** | **85.7 ± 1.6 ms** |
-| rustc -O insert_interval.rs          | 114.7 ± 1.3 ms |
+| clang -O3 insert_interval.c          | **53.9 ± 0.8 ms** |
+| rustc -O insert_interval.rs          | 127.6 ± 2.9 ms |
+| **karac build insert_interval.kara** | **178.7 ± 5.5 ms** |
 
-Kāra compiles **1.34× faster than `rustc -O`** and sits at **1.94× of clang -O3** — same shape as the rest of the corpus.
+Compile now favours `rustc -O`: karac is **1.40× slower than `rustc -O`** and **3.32× clang -O3** (the previous run had karac 1.06× faster than rustc). The same flip shows across the corpus under the MIR backend (tracked as [`B-2026-10-31-41`](../../../../kara/docs/bugs-v2.md)).
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    insert_interval (seq)           | 32.8 KiB |
-| **kāra insert_interval (seq / with_capacity)** | **33.3 KiB** |
-| **kāra insert_interval (auto-par)**  | **312.8 KiB** |
+| **kāra insert_interval (seq / with_capacity)** | **295.8 KiB** |
+| **kāra insert_interval (auto-par)**  | **377.1 KiB** |
 | rust insert_interval (seq)           | 455.7 KiB |
 | go   insert_interval (seq)           | 2434.2 KiB |
 
-Kāra seq sits at **33.3 KiB** — within 0.5 KiB of C's no-frills 32.8 KiB, because with no sort there's no `karac_vec_sort_by` runtime fallback to drag `slice::sort_by`'s panic/backtrace machinery into the link (the floor katas 15/16/56 had to `-dead_strip` away). The pre-sized variant is byte-identical (`with_capacity` is a runtime call, not extra code). The auto-par binary's +279 KiB over seq is the par-scheduler runtime, not a sort floor.
+Kāra seq is **295.8 KiB** — 1.5× under Rust's 455.7 KiB but 9× C's 32.8 KiB; every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). The pre-sized variant is the same size (302 880 bytes, though not byte-identical). The auto-par binary's +81 KiB over seq is the par-scheduler runtime, not a sort floor.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    insert_interval (seq)           | 1.0 MiB |
-| **kāra insert_interval (with_capacity)** | **1.0 MiB** |
-| **kāra insert_interval (seq, `Vec.new()`)** | **1.1 MiB** |
-| rust insert_interval (seq)           | 1.1 MiB |
-| **kāra insert_interval (auto-par)**  | **2.3 MiB** |
-| go   insert_interval (seq)           | 9.5 MiB |
+| c    insert_interval (seq)           | 1.05 MiB |
+| **kāra insert_interval (with_capacity)** | **1.05 MiB** |
+| **kāra insert_interval (seq, `Vec.new()`)** | **1.05 MiB** |
+| rust insert_interval (seq)           | 1.08 MiB |
+| **kāra insert_interval (auto-par)**  | **2.09 MiB** |
+| go   insert_interval (seq)           | 9.67 MiB |
 
-Kāra seq's peak RSS is within a page of Rust and C. The pre-sized variant trims the last page off (1.1 → 1.0 MiB) by skipping the doubling transient. The auto-par regime's 2.3 MiB is the worker pool's per-thread scratch.
+Kāra seq's peak RSS ties C's to 24 bytes (1 098 064 vs 1 098 040) and sits under Rust's 1.08 MiB; the pre-sized variant now peaks at exactly the same bytes as `Vec.new()`. The auto-par regime's 2.09 MiB is the worker pool's per-thread scratch.
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
 | clang -O3 insert_interval.c          | 2.5 MiB |
-| **karac build insert_interval.kara** | **20.2 MiB** |
 | rustc -O insert_interval.rs          | 31.0 MiB |
+| **karac build insert_interval.kara** | **61.8 MiB** |
 
-Kāra's compile-memory footprint is ~8× clang's and ~1.5× lower than rustc's on this kata — same shape as the rest of the corpus.
+Kāra's compile-memory footprint is ~24× clang's and ~2.0× rustc's on this kata (the previous run had it ~1.2× *under* rustc) — same flip as compile elapsed above.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. On this kata the **Kāra/Rust 1.06× seq tie (and 1.05× auto-par tie) is the load-bearing result** — an allocation-bound sweep with no sort, where Kāra's `Vec` allocation + move-elision land level with Rust's. C calibrates the LLVM-backend floor (and here doubled as two lessons: dead-allocation elision, § Runtime seq lane, and the pre-sizing win that reaches its parity, § Optimization), Go is the cross-runtime data point, and Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. On this kata the **Kāra/Rust 0.55× seq lead (and 0.50× auto-par lead over rayon) is the load-bearing result** — an allocation-bound sweep with no sort, where Kāra's `Vec` allocation + push path now runs well ahead of Rust's. C calibrates the LLVM-backend floor (and here doubled as two lessons: dead-allocation elision, § Runtime seq lane, and the pre-sizing win that comes within 1.11× of it, § Optimization), Go is the cross-runtime data point, and Python is the ergonomic foil.
