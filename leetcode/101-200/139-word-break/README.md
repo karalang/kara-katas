@@ -35,15 +35,17 @@ Given a string `s` and a dictionary of words, decide whether `s` can be segmente
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`2602274054`). Workload: prefix-DP word break over 2.2M random windows into a build-once string; dict is a SET (flat stamped base-A table; C hand-rolls it).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 89.5 ms | 0.74× |
-| **Kāra (codegen)** | 121.5 ms | 1.00× |
-| Rust `-O` | 123.3 ms | 1.01× |
-| Go | 159.0 ms | 1.31× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 160.9 ms | 1.32× |
+| C `clang -O3` | 101.1 ms | 0.48× |
+| Rust `-O` | 139.9 ms | 0.67× |
+| Go | 182.9 ms | 0.87× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 183.3 ms | 0.87× |
+| **Kāra (codegen)** | 209.9 ms | 1.00× |
+
+Kāra regressed on this kata: it is now 1.50× Rust `-O`, 2.08× C and 1.15× Go, where the 27 Jul 2026 legacy-backend measurement had it at 0.99×, 1.36× and 0.76×. The cause is open — see the Bug ledger below.
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -62,4 +64,6 @@ Clean first-pass dogfood: `Set[String]` + per-probe `substring` allocation + `Ve
 
 ## Bug ledger
 
-**Surfaced [`B-2026-10-28-40`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/word_break.kara` executes 2.03× legacy's instructions: MIR checks the full upper bound on `dp[j]` and `s[off+j]`, which legacy proved in range from the loop guard, and those checks push the 4-trip inner loop over LLVM's peel budget. Removing the two checks recovers 97.8% of the gap.
+**Surfaced [`B-2026-10-28-40`](../../../../kara/docs/bugs-v2.md)** (perf, fixed in kara 594852a575). On the v2/MIR backend `bench/word_break.kara` executes 2.03× legacy's instructions: MIR checks the full upper bound on `dp[j]` and `s[off+j]`, which legacy proved in range from the loop guard, and those checks push the 4-trip inner loop over LLVM's peel budget. Removing the two checks recovers 97.8% of the gap.
+
+**Surfaced [`B-2026-11-01-26`](../../../../kara/docs/bugs-v2.md)** (perf, open). After that fix, the 2026-11-01 re-bench (karac g6697158fa, `KARAC_AUTO_PAR=0`) still has the seq lane at 1.50× Rust `-O`, 2.08× C and 1.15× Go, against 0.99×, 1.36× and 0.76× on legacy. Exact counts on the M5 Pro: `bench/word_break.kara` runs 4.49G instructions against legacy dd86e3955's 2.56G (1.75×) and 835M against 542M cycles (1.54×), all of it in the DP inner loop — pure `i64` arithmetic over four `Vec`s with an early break, no allocation. Unattributed.

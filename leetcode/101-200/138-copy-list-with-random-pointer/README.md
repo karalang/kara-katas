@@ -54,15 +54,15 @@ The deep-copy is the canonical two-pass map algorithm, indexed by a stable per-n
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`342116915337`). Workload: pointer-graph deep copy of a 3000-node random-pointer list x 4K passes (build-once + punch); every language builds its native node graph (Kara shared struct + weak random, Rust Rc<RefCell>/Weak, C/Go/Py heap nodes); sink=structure checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 152.9 ms | 0.53× |
-| C `clang -O3` | 197.1 ms | 0.68× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 280.5 ms | 0.96× |
-| Rust `-O` | 284.5 ms | 0.98× |
-| **Kāra (codegen)** | 291.0 ms | 1.00× |
+| Go | 183.4 ms | 0.60× |
+| C `clang -O3` | 203.1 ms | 0.67× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 290.8 ms | 0.96× |
+| Rust `-O` | 292.7 ms | 0.96× |
+| **Kāra (codegen)** | 303.4 ms | 1.00× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
