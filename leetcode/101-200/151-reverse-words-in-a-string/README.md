@@ -41,15 +41,17 @@ The natural word-collection line `words.push(s[start..i].to_string())` surfaced 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`445176123`). Workload: reverse-words over a large multi-word byte buffer x passes, rolling-hash checksum sink.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 235.0 ms | 0.94× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 237.5 ms | 0.95× |
-| Go | 242.9 ms | 0.97× |
-| Rust `-O` | 248.5 ms | 0.99× |
-| **Kāra (codegen)** | 249.9 ms | 1.00× |
+| C `clang -O3` | 261.3 ms | 0.96× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 265.2 ms | 0.98× |
+| Go | 269.7 ms | 0.99× |
+| **Kāra (codegen)** | 271.3 ms | 1.00× |
+| Rust `-O` | 275.9 ms | 1.02× |
+
+Kāra is now 1.02× ahead of `rustc -O` and 1.02× behind the equal-safety Rust row, 1.04× behind C. Against the previous measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 1.01× → 0.98×, Kāra/C 1.06× → 1.04×, Kāra/Go 1.03× → 1.01× (every comparator also ran ~11% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -66,4 +68,4 @@ diff <(karac run reverse_words.kara) <(python3 reverse_words.py) && echo OK
 
 Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean.
 
-**Oracle-only** (no cross-language benchmark). The work is string parsing and per-word allocation; a benchmark would measure each language's stdlib string/`Vec` allocator rather than codegen — the same cross-language-fairness reason the RC/linked-list cluster is oracle-only.
+**Benchmarked since this note was written** (see § Benchmarks; it was first kept oracle-only). The work is string parsing and per-word allocation, so the benchmark measures each language's stdlib string/`Vec` allocator as much as codegen; read its ratios with that in mind.

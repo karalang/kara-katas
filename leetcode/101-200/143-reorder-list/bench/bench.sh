@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wall-clock comparison across implementations of LeetCode #233.
+# Wall-clock comparison across implementations of LeetCode #143.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
 # Seq-only kata. Requires: hyperfine, rustc, clang, go, karac.

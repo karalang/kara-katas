@@ -38,15 +38,17 @@ Modelled in the corpus's method-free style: a plain `struct MinStack { data, min
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`-20714481296260`). Workload: PRNG push/pop/getMin/top op sequence on a min-stack, accumulated getMin/top sink.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 118.9 ms | 0.90× |
-| **Kāra (codegen)** | 132.0 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 143.0 ms | 1.08× |
-| Rust `-O` | 143.7 ms | 1.09× |
-| Go | 172.2 ms | 1.30× |
+| C `clang -O3` | 133.2 ms | 0.89× |
+| **Kāra (codegen)** | 149.0 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 158.5 ms | 1.06× |
+| Rust `-O` | 161.4 ms | 1.08× |
+| Go | 193.3 ms | 1.30× |
+
+Kāra is 1.06× ahead of the equal-safety Rust row (1.08× ahead of `rustc -O`), 1.30× ahead of Go, and 1.12× behind C. Against the previous measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are unchanged: Kāra/Rust 0.92× → 0.92×, Kāra/C 1.11× → 1.12×, Kāra/Go 0.77× → 0.77× (every comparator also ran ~12% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

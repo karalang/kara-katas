@@ -40,15 +40,17 @@ The minimum lives in the *unsorted* half. Compare `nums[mid]` to `nums[hi]`:
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`37458073070`). Workload: binary-search min of many PRNG rotated-with-duplicates arrays, sum of mins sink.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 186.6 ms | 0.99× |
-| Rust `-O` | 187.1 ms | 0.99× |
-| **Kāra (codegen)** | 188.5 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 188.7 ms | 1.00× |
-| Go | 190.3 ms | 1.01× |
+| C `clang -O3` | 206.8 ms | 0.97× |
+| Rust `-O` | 208.1 ms | 0.98× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 209.7 ms | 0.98× |
+| Go | 212.7 ms | 1.00× |
+| **Kāra (codegen)** | 213.3 ms | 1.00× |
+
+Kāra is 1.03× behind C and `rustc -O`, 1.02× behind the equal-safety Rust row, and level with Go. Against the previous measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 1.01× → 1.03×, Kāra/C 1.01× → 1.03×, Kāra/Go 0.99× → 1.00× (every comparator also ran ~11% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

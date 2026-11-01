@@ -39,15 +39,17 @@ The tree sibling of the #141–#160 linked-list cluster: nodes are `Vec`-owned (
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`463109432`). Workload: iterative flip of a 50000-node left-spine tree (index pool) x 1100 punched passes; per-pass link reset + pointer rewire + rolling-checksum fold of the result.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 200.4 ms | 0.65× |
-| C `clang -O3` | 207.1 ms | 0.67× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 281.6 ms | 0.92× |
-| Go | 291.4 ms | 0.95× |
-| **Kāra (codegen)** | 307.2 ms | 1.00× |
+| Rust `-O` | 224.2 ms | 0.67× |
+| C `clang -O3` | 229.3 ms | 0.68× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 312.6 ms | 0.93× |
+| Go | 325.8 ms | 0.97× |
+| **Kāra (codegen)** | 334.9 ms | 1.00× |
+
+Kāra is last: 1.49× behind `rustc -O`, 1.46× behind C, 1.07× behind the equal-safety Rust row, 1.03× behind Go. Against the previous measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 1.53× → 1.49×, Kāra/C 1.48× → 1.46×, Kāra/Go 1.05× → 1.03× (every comparator also ran 11–12% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

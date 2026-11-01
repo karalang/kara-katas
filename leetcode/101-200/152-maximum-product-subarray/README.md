@@ -34,13 +34,22 @@ A single O(n) pass. The subtlety is the **sign flip**: multiplying by a negative
 - **`max`/`min` helpers** lowering to branchless conditional selects.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+> **Machine.** The canonical figures are the Apple M5 Pro run below ([`bench/results.json`](bench/results.json)). The container table further down is the original reference run on a shared **x86-64 Linux cloud container** (22 Jul 2026), kept as history — [`bench/results.container-x86.json`](bench/results.container-x86.json) has since been re-measured and no longer holds those figures; absolute times there are noisy, so **within-run cross-language ratios are the signal.**
 
-> **Machine.** Container-only reference run so far — a shared **x86-64 Linux cloud container** ([`bench/results.container-x86.json`](bench/results.container-x86.json)); canonical Apple-M5 numbers (`bench/results.json`) are pending a maintainer run. Absolute times are noisy on the shared host; **within-run cross-language ratios are the signal.**
+The `cur_max`/`cur_min` carry is a cross-iteration dependency chain, so the scan itself does **not** auto-parallelize; the default build does parallelize the `K = 10` outer sum over `max_product` calls (verified in the emitted IR (`KARAC_MIR_LL`): the default build carries a call of `karac_mir_task_spawn`, the `KARAC_AUTO_PAR=0` twin does not). `bench.sh` measures the seq lane only. `N = 2·10⁶` deterministic values in `{-2,-1,0,1,2}` (an LCG; only `±2` grows the product magnitude and the frequent `0`s reset it, so the longest run reaches only `~2³¹` — no overflow, so the checked-arithmetic lanes agree with wrapping C/Go **and** Python's bignum). `K = 10` outer iterations; all five mirrors print the same sink (`21474836480`).
 
-Seq-only kata — the `cur_max`/`cur_min` carry is a cross-iteration dependency chain, so the scan does **not** auto-parallelize. `N = 2·10⁶` deterministic values in `{-2,-1,0,1,2}` (an LCG; only `±2` grows the product magnitude and the frequent `0`s reset it, so the longest run reaches only `~2³¹` — no overflow, so the checked-arithmetic lanes agree with wrapping C/Go **and** Python's bignum). `K = 10` outer iterations; all five mirrors print the same sink (`21474836480`).
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine `--warmup 5 --runs 30`; `KARAC_AUTO_PAR=0`):
+
+| Run | Mean ± σ | vs kāra |
+|---|---|---|
+| c `max_product` (`clang -O3`) | 36.5 ± 0.6 ms | 1.18× ahead |
+| rust `max_product` (`-O`, wrapping) | 36.7 ± 0.5 ms | 1.17× ahead |
+| go `max_product` | 37.7 ± 0.6 ms | 1.14× ahead |
+| rust `max_product` (`overflow-checks=on`) | 42.3 ± 1.0 ms | 1.02× ahead |
+| **kāra `max_product` (codegen)** | **43.0 ± 1.2 ms** | — |
+| python `max_product` | 6349 ± 260 ms — last measured 22 Jul 2026 on the container, not re-run (scale only) | — |
+
+On the M5 Kāra is at equal-safety parity with `rust_ovf` (1.02× behind, inside one σ of each other), 1.17× behind wrapping `rustc -O` and 1.18× behind C. Against the previous M5 measurement (karac 0.1.0, legacy backend, 2026-07-27) the ratios are flat: Kāra/Rust 1.15× → 1.17×, Kāra/C 1.16× → 1.18×, Kāra/Go 1.13× → 1.14×, Kāra/`rust_ovf` 1.01× → 1.02× (every comparator also ran ~12% slower in absolute terms this session, so compare ratios, not milliseconds).
 
 ### How to run
 
@@ -51,7 +60,9 @@ brew install hyperfine    # one-time, also needs rustc, clang, go, karac
 
 ### Codegen at equal-safety parity — and ahead of `rust_ovf`
 
-Container snapshot, hyperfine `--warmup 5 --runs 30`:
+> **Note (1 Nov 2026).** "Ahead of `rust_ovf`" and the Go ranking below are the container run's. On the M5 Pro (table above) Kāra is 1.02× *behind* `rust_ovf`, and Go is 1.14× ahead of Kāra.
+
+Container snapshot (22 Jul 2026), hyperfine `--warmup 5 --runs 30`:
 
 | Run | Mean ± σ | vs kāra |
 |---|---|---|

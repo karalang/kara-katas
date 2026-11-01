@@ -35,17 +35,17 @@ A single O(n) sliding window. Grow the right edge one char at a time, recording 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`4218300`). Workload: two-pointer sliding window over a 20000-char buffer (alphabet 8), width-96 sub-ranges x 100 punched reps; per-call fixed count table (kata Map[char,i64] as a flat array, C hand-rolls the same); data-dependent left-shrink loop.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 125.5 ms | 0.51× |
-| Rust `-O` | 164.3 ms | 0.66× |
-| Go | 173.0 ms | 0.70× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 197.1 ms | 0.80× |
-| **Kāra (codegen)** | 247.8 ms | 1.00× |
+| C `clang -O3` | 139.6 ms | 0.51× |
+| Rust `-O` | 185.5 ms | 0.68× |
+| Go | 191.9 ms | 0.71× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 221.0 ms | 0.81× |
+| **Kāra (codegen)** | 271.7 ms | 1.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra trails every comparator: 1.46× behind `rustc -O` (1.51× on 2026-07-28, flat), 1.23× behind equal-safety Rust, 1.95× behind C. Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

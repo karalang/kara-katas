@@ -2,7 +2,7 @@
 # Wall-clock comparison across implementations of LeetCode #152.
 # See ../README.md § Benchmarks for what these numbers mean.
 #
-# Seq-only kata. Requires: hyperfine, rustc, clang, go, karac.
+# Seq lane only (KARAC_AUTO_PAR=0; the default build parallelizes the K=10 outer sum). Requires: hyperfine, rustc, clang, go, karac.
 
 set -euo pipefail
 cd "$(dirname "$0")"
