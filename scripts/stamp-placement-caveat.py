@@ -82,9 +82,14 @@ def main():
     marg = load_margins()
     spread = json.load(open(ROOT / "placement-spread.json"))
 
-    seen, changed, skipped = set(), [], []
+    # Decide once per kata, over every source it has: a kata with two benched
+    # sources has two spread rows, and deciding per row let the first strip
+    # the caveat the second had stamped, so each run undid the last (kata 28,
+    # 2026-10-31). The caveat stays if any source qualifies, and states the
+    # most severe one; it goes only when none does.
+    per_kata = {}
     for r in spread["results"]:
-        if "spread" not in r or r["id"] in seen:
+        if "spread" not in r:
             continue
         stem = pathlib.Path(r["source"]).stem
         cand = [v for (kid, _), v in marg.items() if kid == r["id"]]
@@ -94,33 +99,38 @@ def main():
         margin, comp, _ratio = m
         excess = r.get("excess", r["spread"]) - 1.0
         risk = excess / margin if margin > 1e-9 else float("inf")
+        qualifies = excess >= args.min_excess and risk >= args.min_risk
         readme = ROOT / pathlib.Path(r["source"]).parent.parent / "README.md"
-        if excess < args.min_excess or risk < args.min_risk:
+        per_kata.setdefault(r["id"], []).append((qualifies, risk, excess, margin, comp, readme, r["slug"]))
+
+    changed, skipped = [], []
+    for kid, rows in per_kata.items():
+        hits = [x for x in rows if x[0]]
+        readme, slug = rows[0][5], rows[0][6]
+        if not hits:
             # A re-bench can widen the margin past the placement spread; a
             # caveat stamped on the old margin is then false, so drop it.
             if readme.exists():
                 text = readme.read_text()
                 out = BLOCK_RE.sub("", text)
                 if out != text:
-                    seen.add(r["id"])
-                    changed.append((r["id"], r["slug"], excess, margin))
+                    changed.append((kid, slug, rows[0][2], rows[0][3]))
                     if not args.check:
                         readme.write_text(out)
             continue
-        seen.add(r["id"])
-
+        _, _, excess, margin, comp, readme, slug = max(hits, key=lambda x: x[1])
         if not readme.exists():
-            skipped.append((r["id"], "no README"))
+            skipped.append((kid, "no README"))
             continue
         text = readme.read_text()
         if HEADING not in text:
-            skipped.append((r["id"], "no '## Benchmarks' heading"))
+            skipped.append((kid, "no '## Benchmarks' heading"))
             continue
         stripped = BLOCK_RE.sub("", text)
         block = block_for(excess, margin, comp)
         out = stripped.replace(HEADING, "\n" + block + HEADING.lstrip("\n"), 1)
         if out != text:
-            changed.append((r["id"], r["slug"], excess, margin))
+            changed.append((kid, slug, excess, margin))
             if not args.check:
                 readme.write_text(out)
 

@@ -75,96 +75,100 @@ diff <(karac run container.kara) <(python3 container.py) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-05-31 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`container.{kara,rs,c,py}`, `go-seq/main.go`).
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`container.{kara,rs,c,py}`, `go-seq/main.go`, and the par-lane mirrors `rayon/`, `go-par/`, `container_par.c`).
 
 Per [`../../../BENCH.md`](../../../BENCH.md) § *Implicit auto-par*, this kata exercises karac's auto-par-on-reduction path: the K = 10,000,000 outer loop's `sum = sum + max_area_off(...)` accumulator is a textbook associative + commutative reduction, which the slice-1 concurrency analyzer recognizes and slice-3b codegen lowers to a `karac_par_reduce` dispatch *by default*. To honor BENCH.md's two-lane discipline (cross-lane wall-time ratios are not meaningful) the bench builds **two** kara binaries:
 
 - **`container_kara_seq`** — built with `KARAC_AUTO_PAR=0` (codegen.rs Slice 6 gate — the documented mechanism for side-by-side seq-vs-par benchmarking of the same source). The within-lane row directly comparable to rustc -O / clang -O3 / go build.
-- **`container_kara`** — default `karac build` output. Picks up auto-par dispatch (~14 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
+- **`container_kara`** — default `karac build` output. Picks up auto-par dispatch (~13 cores active on this workload). Reported separately so the production-default Kara behavior stays visible.
 
 **Workload.** N = 8 height arrays of width W = 16, all packed back-to-back in a flat `Vec[i64]` of size N·W = 128 and cycled by `k % N`. K = 10,000,000 outer iters. Heights drawn from a deterministic LCG modulo 50 — small enough to keep `min(h, h) * (hi - lo)` well inside i64 even at worst case (`49 * 15 = 735` per call), large enough that the two-pointer crawl exercises both branch directions. Sink = sum of `max_area` returns widened to i64 across K iters. All four compiled mirrors agree on `4897500000` before any timing runs; `bench.sh` fails loudly on mismatch.
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 5 --runs 30 --shell=none`:
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend; [`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T00:51Z UTC), hyperfine `--warmup 5 --runs 30 --shell=none`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| go   container | **101.0 ms ± 1.6 ms** | 99.0 ms | 99% |
-| c    container (clang -O3) | **146.5 ms ± 1.4 ms** | 144.0 ms | 99% |
-| **kāra container** (`KARAC_AUTO_PAR=0`) | **191.1 ms ± 0.4 ms** | 189.0 ms | 99% |
-| rust container (rustc -O) | **167.6 ms ± 0.2 ms** | 166.0 ms | 99% |
-| rust container (overflow-checks=on) | **190.1 ms ± 0.3 ms** | 188.0 ms | 99% |
+| go   container | **108.7 ms ± 2.0 ms** | 106.9 ms | 100% |
+| c    container (clang -O3) | **162.7 ms ± 2.2 ms** | 161.2 ms | 100% |
+| **kāra container** (`KARAC_AUTO_PAR=0`) | **213.5 ms ± 1.7 ms** | 211.4 ms | 100% |
+| rust container (rustc -O) | **187.4 ms ± 2.0 ms** | 185.7 ms | 100% |
+| rust container (overflow-checks=on) | **212.8 ms ± 1.7 ms** | 210.8 ms | 100% |
 
-**The Kāra-vs-Rust headline is the equal-safety row.** Kāra checks integer overflow by default — every `min(h, h) * (hi - lo)` is a checked multiply. `rustc -O` *silently wraps* on overflow, so the `rust -O` row is a different safety contract; comparing against it measures the overflow-check tax, not codegen quality. The apples-to-apples number is `rust -C overflow-checks=on`, which restores the same checked-arithmetic semantics Kāra ships by default. Against it Kāra is at **parity — 1.01×** (191.1 vs 190.1 ms, well inside σ). The apparent "Rust is ~12% ahead" gap against `rust -O` is almost entirely the safety tax: once Rust pays the same overflow checks Kāra does, the two-pointer kernel lands neck-and-neck. Both Rust and Kāra inline `max_area_off` into the hot loop (verified via objdump — no `max_area_off` symbol survives in either binary).
+**The Kāra-vs-Rust headline is the equal-safety row.** Kāra checks integer overflow by default — every `min(h, h) * (hi - lo)` is a checked multiply. `rustc -O` *silently wraps* on overflow, so the `rust -O` row is a different safety contract; comparing against it measures the overflow-check tax, not codegen quality. The apples-to-apples number is `rust -C overflow-checks=on`, which restores the same checked-arithmetic semantics Kāra ships by default. Against it Kāra is at **parity — 1.00×** (213.5 vs 212.8 ms, well inside σ). The apparent "Rust is ~14% ahead" gap against `rust -O` (1.14×) is almost entirely the safety tax: once Rust pays the same overflow checks Kāra does, the two-pointer kernel lands neck-and-neck. Both Rust and Kāra inlined `max_area_off` into the hot loop on the 2026-05-31 legacy build (verified via objdump then); not re-checked on MIR, where the executable exports `main` alone, so a missing symbol no longer proves inlining.
 
-Kāra trails C by **~31%** (191.1 vs 146.5 ms, C ahead, i.e. C runs 0.77× of Kāra) — clang -O3, like `rust -O`, does not check overflow on the multiply, so this gap mixes the safety tax with a per-core codegen difference on the two-pointer kernel.
+Kāra trails C by **1.31×** (213.5 vs 162.7 ms, i.e. C runs 0.76× of Kāra's time) — clang -O3, like `rust -O`, does not check overflow on the multiply, so this gap mixes the safety tax with a per-core codegen difference on the two-pointer kernel.
 
-Go is the outlier at **101.0 ms — ~47% faster than Kāra and ~31% faster than C**. Go's compiler is aggressive about both bounds-check elision (it can prove `l < r < len(heights)` survives the loop invariant) and per-call specialization across the eight distinct input cases. Same workload, same algorithm — different codegen tradeoffs. This is one of the rare LeetCode-corpus workloads where Go's straight-line speed wins on a per-core basis; kata [#10](../10-regular-expression-matching/)'s recursion-heavy regex matcher had Go trailing the Kāra/Rust/C tie by ~1.53×, and the broader corpus mean has Kāra and Rust ahead of Go.
+Go is the outlier at **108.7 ms — Kāra takes 1.96× Go's time, C 1.50×**. Go's compiler is aggressive about both bounds-check elision (it can prove `l < r < len(heights)` survives the loop invariant) and per-call specialization across the eight distinct input cases. Same workload, same algorithm — different codegen tradeoffs. This is one of the rare LeetCode-corpus workloads where Go's straight-line speed wins on a per-core basis; kata [#10](../10-regular-expression-matching/)'s recursion-heavy regex matcher had Go trailing the Kāra/Rust/C tie by ~1.53×, and the broader corpus mean has Kāra and Rust ahead of Go.
+
+**Against the previous feed (legacy backend, 2026-07-28) the seq lane is flat:** Kāra/Rust 1.13× → 1.14×, Kāra/C 1.30× → 1.31×, Kāra/Go 1.89× → 1.96×. Every comparator ran ~8–12% slower this session than on 2026-07-28 (machine state), so compare ratios, not ms.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
-Same snapshot, default `karac build` output:
+Same session, default `karac build` output against in-lane parallel comparators (`rayon::par_iter`, C pthreads, goroutines + WaitGroup over the same outer reduction), hyperfine `--runs 50`:
 
 | Implementation | Wall time | User-CPU | CPU% |
 |---|---|---|---|
-| **kāra container** (auto-par on reduction) | **12.2 ms ± 1.7 ms** | 155.0 ms | ~1270% (~12.7 cores) |
+| go   container (goroutines + WaitGroup) | **11.6 ms ± 1.3 ms** | 108.6 ms | ~950% |
+| **kāra container** (auto-par on reduction) | **13.6 ms ± 0.2 ms** | 172.6 ms | ~1300% (~13 cores) |
+| c    container (pthreads) | **14.6 ms ± 1.4 ms** | 193.0 ms | ~1330% |
+| rust container (rayon `par_iter`) | **17.0 ms ± 0.4 ms** | 239.6 ms | ~1480% |
 
-Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — the binary carries `karac_par_reduce` + `karac_reduce_combine_add_i64` + `karac_reduce_worker_0` symbols, ~12.7 cores active during the run. The wall-time win *over the seq-lane Kāra row above* is **15.7×** (191.3 / 12.2); total CPU time goes down 18% (189.0 → 155.0 ms user) net of dispatch + per-worker fixed overhead. Net: real production wall-time speedup on this workload's shape, paid for in a +263 KiB binary footprint (see § *Binary size* below).
+Karac's auto-par-on-reduction recognizes the K=10M reduction in `main` and emits a `karac_par_reduce` dispatch — verified in the emitted IR (`KARAC_MIR_LL`): the default build carries a call of `karac_mir_task_spawn` and the `KARAC_AUTO_PAR=0` twin does not; ~13 cores are active during the run. Within the par lane Kāra is **0.80× rayon's time and 0.93× C pthreads'**, and Go's goroutines lead at **1.17× faster than Kāra**. That is narrower than the 2026-07-28 feed (0.72× rayon, 0.82× C, Go 1.20× ahead): Kāra lost ~12% relative to rayon and C on a workload that is only ~14 ms end to end.
 
-**Not headlined against the C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 7× faster than go" here would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq-lane table is the within-lane codegen-quality comparison; the auto-par row is what Kāra delivers as a *language-level* choice on top of that codegen-quality baseline (no source-level annotation; the analyzer recognizes the natural serial reduction). A follow-up CR can add a true par lane (`rayon::par_iter` + goroutines variants of the outer reduction) so this number lands against in-lane parallel comparators.
+The wall-time win *over the seq-lane Kāra row above* is **15.7×** (213.5 / 13.6); total CPU time goes down 18% (211.4 → 172.6 ms user) net of dispatch + per-worker fixed overhead. Net: real production wall-time speedup on this workload's shape, paid for in a +81 KiB binary footprint over the seq build (see § *Binary size* below).
+
+**Not headlined against the seq-lane C / Rust / Go rows above.** Per BENCH.md's two-lane discipline, cross-lane wall-time ratios are not meaningful — naming "kara is 8× faster than go" by setting the auto-par row against Go's seq row would conflate per-core codegen quality with whether the comparator opted into parallelism. The seq-lane table is the within-lane codegen-quality comparison; the par table above is the in-lane parallel comparison, where Kāra gets its parallelism as a *language-level* choice (no source-level annotation; the analyzer recognizes the natural serial reduction) and the comparators write it by hand.
 
 ### Codegen vs Python
 
-CPython at K = 1M takes **553.9 ± 4.6 ms** (single-core); projected to K = 10M that's ~5.54 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~29× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~454× faster). The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
+CPython at K = 1M takes **553.9 ± 4.6 ms** (single-core; last measured 2026-05-31, not re-run — this re-bench did not set `KARA_BENCH_INCLUDE_PY`); projected to K = 10M that's ~5.54 s. Both Kāra rows beat the projection by wide margins, but the cross-lane caveat applies symmetrically: Kāra-seq vs CPython is the within-lane per-core comparison (~26× faster), and Kāra-auto-par vs CPython is the cross-lane regime comparison (~407× faster). Those ratios set the 2026-05-31 Python figure against the 2026-10-31 Kāra rows, so they are cross-session. The Python mirror is here as the ergonomic-foil data point per BENCH.md § *Comparison baselines*, not as a headline.
 
 ### Compile elapsed (cold)
 
-Snapshot — M5 Pro, 2026-05-31, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
+Same session, hyperfine `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
 
 | Workload | Kāra (`karac build`) | Rust (`rustc -O`) | C (`clang -O3`) |
 |---|---|---|---|
-| `container` | **76.1 ± 0.6 ms** | 93.5 ± 1.1 ms | 46.2 ± 0.4 ms |
+| `container` | **150.5 ± 2.0 ms** | 89.7 ± 1.2 ms | 48.5 ± 1.4 ms |
 
-Karac is **1.23× faster than rustc -O** and **1.65× slower than clang -O3**. (Compile *elapsed* is the load-confounded metric — the deterministic signals held: byte-identical binaries and the documented compile-memory floor. The shift vs 2026-05-25 is two-sided this run — karac +2.8 ms, rustc −5.0 ms — reflecting machine load, not a codegen change.) Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
+Karac is **1.68× slower than rustc -O** and **3.11× slower than clang -O3**. *(History, 2026-05-31, legacy backend: karac compiled in 76.1 ms, 1.23× faster than rustc -O and 1.65× slower than clang -O3.)* Single-file invocations only — `go build`'s first run mixes module resolution + std-lib link and isn't comparable to a single-file `rustc` / `clang` / `karac` invocation; excluded per BENCH.md.
 
 ### Binary size
 
 | Implementation | Bytes | KiB |
 |---|---|---|
-| c    container | 33,485 | 32.7 |
-| **kāra container (seq)** | **34,099** | **33.3** |
-| kāra container (auto-par) | 303,104 | 296.0 |
-| rust container | 466,330 | 455.4 |
-| go   container | 2,492,518 | 2,434.1 |
+| c    container | 33,512 | 32.7 |
+| **kāra container (seq)** | **302,920** | **295.8** |
+| kāra container (auto-par) | 386,152 | 377.1 |
+| rust container | 466,312 | 455.4 |
+| go   container | 2,492,514 | 2,434.1 |
 
-The seq-lane Kāra binary sits **within 0.6 KiB of clang's** (33.3 vs 32.7 KiB) — same C-class minimum kata [#10](../10-regular-expression-matching/#binary-size) reports, and consistent with the cross-archive LTO + DCE work (landed 2026-05-12) plus the post-`e76f42b` `__TEXT,__jittmpl` segment compaction. The auto-par variant grows +263 KiB to carry the `karac_par_reduce` machinery (per-branch trampolines + reduction-combine globals + worker-pool registration) — same +263 KiB ballast kata [#4](../4-median-of-two-sorted-arrays/#binary-size), [#8](../8-string-to-integer-atoi/#binary-size), [#9](../9-palindrome-number/#binary-size), and [#10](../10-regular-expression-matching/#binary-size) carry when their outer reductions go auto-par. Here too the ballast pays for a real within-language wall-time win.
+Every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger `B-2026-10-28-36`); the seq build here is 295.8 KiB, 1.54× under Rust's. The auto-par variant adds +81 KiB over the seq build to carry the `karac_par_reduce` machinery (per-branch trampolines + reduction-combine globals + worker-pool registration). *(History, 2026-05-31, legacy backend: the seq binary was 33.3 KiB, within 0.6 KiB of clang's, and auto-par added +263 KiB.)*
 
 ### Runtime memory (peak)
 
 | Implementation | Bytes | MiB |
 |---|---|---|
-| **kāra container (seq)** | **1,081,344** | **1.0** |
-| c    container | 1,064,960 | 1.0 |
-| rust container | 1,114,112 | 1.1 |
-| kāra container (auto-par) | 1,490,944 | 1.4 |
-| go   container | 3,048,448 | 2.8 |
+| **kāra container (seq)** | **1,081,656** | **1.0** |
+| c    container | 1,065,272 | 1.0 |
+| rust container | 1,114,424 | 1.1 |
+| kāra container (auto-par) | 1,556,912 | 1.5 |
+| go   container | 2,802,144 | 2.7 |
 
-Kāra-seq's **1.0 MiB peak sits within 16 KiB of C's** (1,081,344 vs 1,064,960) — both lowest in the lane, 32 KiB under Rust. The two-pointer matcher allocates nothing inside the loop (the 128-element `Vec[i64]` heights buffer is fixed at 1 KiB and lives across all iterations), so steady state is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.5 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets. Go's 2.9 MiB carries its GC roots + scheduler arena overhead.
+Kāra-seq's **1.0 MiB peak sits within 16 KiB of C's** (1,081,656 vs 1,065,272) — both lowest in the lane, 32 KiB under Rust. The two-pointer matcher allocates nothing inside the loop (the 128-element `Vec[i64]` heights buffer is fixed at 1 KiB and lives across all iterations), so steady state is dominated by libc + Mach-O loader overhead. Auto-par Kāra adds ~0.45 MiB for the lazy-init worker thread stacks — tunable downward via `KARAC_PAR_WORKERS` for memory-constrained targets — and still peaks below the par-lane comparators (C pthreads 1.3 MiB, rayon 2.0 MiB, goroutines 4.2 MiB). Go's seq 2.7 MiB carries its GC roots + scheduler arena overhead.
 
 ### Compile memory (cold)
 
 | Compiler | Bytes | MiB |
 |---|---|---|
-| clang -O3 container.c | 2,726,298 | 2.6 |
-| karac build container.kara | 14,050,918 | 13.4 |
-| rustc -O container.rs | 29,464,986 | 28.1 |
+| clang -O3 container.c | 2,687,264 | 2.6 |
+| rustc -O container.rs | 29,459,008 | 28.1 |
+| karac build container.kara | 60,195,392 | 57.4 |
 
-Karac peaks at **13.4 MiB** vs rustc's **28.1 MiB** (2.1× lower) and clang's **2.6 MiB** (5.2× higher). The kara number includes the auto-par recognition pass + reduction codegen, which is bounded constant work per recognized site — the seq build path would shave a small constant off but not materially change the ratio. (The +0.8 MiB vs the 2026-05-25 snapshot is the documented fixed per-compile floor from karac feature-growth — content-independent, byte-identical output, tracked benign across katas #6–#11.)
+Karac peaks at **57.4 MiB** vs rustc's **28.1 MiB** (2.0× higher) and clang's **2.6 MiB** (22× higher). The kara number includes the auto-par recognition pass + reduction codegen. *(History, 2026-05-31, legacy backend: karac peaked at 13.4 MiB, 2.1× under rustc.)*
 
 ### Numbers published here are reference data
 

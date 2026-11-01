@@ -44,11 +44,8 @@ python3 vertical.py
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`vertical.{kara,rs,c,py}`, `go-seq/main.go`).
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`vertical.{kara,rs,c,py}`, `go-seq/main.go`, and the par-lane mirrors `rayon/`, `go-par/`, `vertical_par.c`).
 
 **Workload.** M = 8 distinct test cases, each a `Vec[String]` of N = 16 strings sharing a prefix of a different length (0, 2, 4, 7, 10, 13, 16, 20). Built once into a `Vec[Vec[String]]` before the timed loop. Each case's N strings begin with the first `prefix_len` letters of the alphabet, then string `s` diverges with six copies of its signature letter (the `s`-th letter), so the strings agree on exactly `prefix_len` columns and the LCP is exactly `prefix_len`. K = 1,000,000 outer iterations rotate `idx = k % M` and call `longest_common_prefix` on that case, so the call is never loop-invariant (LLVM can't hoist it) and the input distribution sweeps the full range of prefix lengths the vertical scan can hit. The sink is the running total of every returned prefix's length = `(K / M) × (0+2+4+7+10+13+16+20)` = `125000 × 72` = **9,000,000**; all five mirrors must agree before any timing begins. This is the same shape class as kata 13 / 71 (per-iter work + one small output `String` alloc per call), so cross-kata wall-time comparisons stay meaningful.
 
@@ -56,82 +53,88 @@ Two-lane kata (BENCH.md § Implicit auto-par): the `sum = sum + r.len()` accumul
 
 ### Runtime — seq lane
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 5 --runs 30 --shell=none`. All four comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`.
+M5 Pro, measured 2026-10-31 with karac `g6697158fa` (the v2/MIR backend; [`bench/results.json`](bench/results.json) `measured_at` 2026-11-01T00:56Z UTC), hyperfine `--warmup 5 --runs 30 --shell=none`. All comparators single-threaded; the kāra row is `KARAC_AUTO_PAR=0`.
 
 | Implementation | Wall time |
 |---|---|
-| go   vertical            | **58.7 ± 1.8 ms** |
-| c    vertical (clang -O3)| 60.6 ± 3.0 ms |
-| rust vertical            | 73.0 ± 2.4 ms |
-| **kāra vertical (seq)**  | **84.3 ± 2.4 ms** |
+| go   vertical            | **65.5 ± 2.9 ms** |
+| c    vertical (clang -O3)| 72.4 ± 4.3 ms |
+| rust vertical (overflow-checks=on) | 85.2 ± 3.3 ms |
+| rust vertical            | 85.3 ± 4.8 ms |
+| **kāra vertical (seq)**  | **95.6 ± 4.3 ms** |
 
-Kāra runs **~1.2× of Rust** and **~1.4× of clang -O3** on the seq lane. The exact ratios drift batch-to-batch with comparator load variance — the 2026-05-29 snapshot read 1.12× of Rust / 1.37× of clang from byte-identical rust/c binaries, so treat the spread between those readings as measurement noise, not a code change. The workload is String-construction-heavy — every call rebuilds the prefix one `char` at a time via `String.push` over a `chars()` iterator, and the column scan calls `.bytes()` on each `Vec[String]` element per inner iteration. The gap to Rust is the per-`char` push + iterator-advance cost through the runtime's `String` machinery (Rust's `String::push` over `chars()` lowers to a tighter inlined loop); the gap to C/Go adds the absence of a raw `memcpy`-style prefix copy. These are general-runtime costs the kata exercises heavily, not per-kata regressions.
+Kāra runs **1.12× of Rust** (both `rustc -O` and the equal-safety `overflow-checks=on` row), **1.32× of clang -O3** and **1.46× of Go** on the seq lane. Against the previous feed (legacy backend, 2026-07-28: 1.01× Rust, 1.23× C, 1.40× Go) that is a slip of 1.10× relative to Rust but only 1.07× relative to C and 1.04× relative to Go — **borderline**: right at the 10% line against one comparator and inside noise against the other two, so it is not clear from this run alone that MIR is slower here. Every comparator ran 2–8% slower this session (machine state), so compare ratios, not ms. *(History: the 2026-06-05 legacy snapshot read ~1.2× of Rust / ~1.4× of clang, and 2026-05-29 read 1.12× / 1.37× from byte-identical rust/c binaries — the ratio has drifted batch-to-batch across that whole range.)* The workload is String-construction-heavy — every call rebuilds the prefix one `char` at a time via `String.push` over a `chars()` iterator, and the column scan calls `.bytes()` on each `Vec[String]` element per inner iteration. The gap to Rust is the per-`char` push + iterator-advance cost through the runtime's `String` machinery (Rust's `String::push` over `chars()` lowers to a tighter inlined loop); the gap to C/Go adds the absence of a raw `memcpy`-style prefix copy. These are general-runtime costs the kata exercises heavily, not per-kata regressions.
 
 ### Runtime — auto-par regime
 
-The `sum = sum + r.len()` reduction is auto-par-eligible; the default `karac build` recognizes it and emits a `karac_par_reduce` dispatch. NOT comparable to the single-thread rows above (BENCH.md two-lane discipline) — reported separately so the production-default Kāra behavior stays visible:
+The `sum = sum + r.len()` reduction is auto-par-eligible; the default `karac build` recognizes it and emits a `karac_par_reduce` dispatch — verified in the emitted IR (`KARAC_MIR_LL`): the default build carries a call of `karac_mir_task_spawn` and the `KARAC_AUTO_PAR=0` twin does not. NOT comparable to the single-thread rows above (BENCH.md two-lane discipline) — reported against in-lane parallel comparators (`rayon::par_iter`, C pthreads, goroutines + WaitGroup over the same outer reduction), hyperfine `--runs 50`:
 
 | Implementation | Wall time | User-CPU |
 |---|---|---|
-| **kāra vertical (auto-par default)** | **11.9 ± 1.2 ms** | 141.0 ms |
+| c    vertical (pthreads) | **11.5 ± 1.0 ms** | 135.7 ms |
+| go   vertical (goroutines + WaitGroup) | 11.8 ± 0.7 ms | 87.5 ms |
+| rust vertical (rayon `par_iter`) | 13.5 ± 1.5 ms | 180.5 ms |
+| **kāra vertical (auto-par default)** | **15.4 ± 1.4 ms** | 171.9 ms |
 
-The auto-par binary is **7.1× faster than the kāra seq binary** (84.3 → 11.9 ms), spreading the K=1M case-rotation reduction across the perf cores (~12× user-CPU-to-wall ratio on M5 Pro). This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup at the cost of the `karac_par_reduce` machinery's +262.7 KiB binary and +1.0 MiB peak RSS.
+Kāra is last in the par lane: **1.15× of rayon**, **1.35× of C pthreads**, **1.31× of Go**. Against the 2026-07-28 feed (1.06× rayon, 1.23× C, 1.49× Go) it gained on Go and slipped 8–10% against rayon and C, near the noise line on a ~15 ms workload.
+
+The auto-par binary is **6.2× faster than the kāra seq binary** (95.6 → 15.4 ms), spreading the K=1M case-rotation reduction across the cores (~11× user-CPU-to-wall ratio on M5 Pro). This is the legitimate-win case (BENCH.md kata #4 path): a real wall-time speedup at the cost of the `karac_par_reduce` machinery's +81.3 KiB binary and +1.0 MiB peak RSS.
 
 ### Runtime — Python
 
 | Run | Mean ± σ |
 |---|---|
-| `py vertical` (K=100k) | 298.6 ± 1.1 ms |
+| `py vertical` (K=100k) | 298.6 ± 1.1 ms *(last measured 2026-06-05, not re-run)* |
 
-Python at K=100k is 299 ms; projecting to the compiled mirrors' K=1M (~2.99 s) puts it **~35× slower than kāra seq** — the algorithm-dominated regime where compiled-with-codegen languages put the same lap on CPython.
+Python at K=100k is 299 ms; projecting to the compiled mirrors' K=1M (~2.99 s) puts it **~31× slower than kāra seq** (the 2026-06-05 Python figure against the 2026-10-31 kāra row, so cross-session) — the algorithm-dominated regime where compiled-with-codegen languages put the same lap on CPython.
 
 ### Compile elapsed (cold)
 
-`--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
+Same session, `--warmup 1 --runs 10 --prepare 'rm -f <artifact>' --shell=none`:
 
 | Compiler | Time |
 |---|---|
-| clang -O3 vertical.c           | **53.2 ± 0.4 ms** |
-| **karac build vertical.kara**  | **83.8 ± 0.7 ms** |
-| rustc -O vertical.rs           | 119.8 ± 1.4 ms |
+| clang -O3 vertical.c           | **57.2 ± 1.4 ms** |
+| rustc -O vertical.rs           | 118.9 ± 2.0 ms |
+| **karac build vertical.kara**  | **186.3 ± 2.3 ms** |
 
-Kāra compiles **1.43× faster than `rustc -O`** and sits at **1.57× of clang -O3** — same shape as the rest of the corpus. (The 2026-05-29 snapshot read 92.0 ± 6.4 ms for `karac build`; that reading was most likely load-inflated — kata #15, benched against the same contaminated archive, showed no comparable slowdown, so the archive's link-time cost doesn't explain the gap. Treat 83.8 ± 0.7 as the better-conditioned measurement of the same compiler.)
+Kāra compiles **1.57× slower than `rustc -O`** and sits at **3.26× of clang -O3**. *(History, 2026-06-05, legacy backend: karac compiled in 83.8 ms, 1.43× faster than `rustc -O` and 1.57× of clang -O3.)*
 
 ### Binary size
 
 | Implementation | Size |
 |---|---|
 | c    vertical            | 32.8 KiB |
-| **kāra vertical (seq)**  | **33.5 KiB** |
-| **kāra vertical (auto-par)** | **296.2 KiB** |
+| **kāra vertical (seq)**  | **295.8 KiB** |
+| **kāra vertical (auto-par)** | **377.1 KiB** |
 | rust vertical            | 455.9 KiB |
 | go   vertical            | 2434.2 KiB |
 
-The seq binary — `String` / `Vec[String]` / `Vec[Vec[String]]` runtime surface included — lands at **33.5 KiB, +672 bytes over C's hand-rolled char-buffer mirror**. The auto-par binary adds the `karac_par_reduce` worker-pool machinery (+262.7 KiB → 296.2 KiB) — well under Rust's 455.9 KiB.
+Every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB (tracked as kara ledger `B-2026-10-28-36`); the seq binary here — `String` / `Vec[String]` / `Vec[Vec[String]]` runtime surface included — is 295.8 KiB. The auto-par binary adds the `karac_par_reduce` worker-pool machinery (+81.3 KiB → 377.1 KiB) — still under Rust's 455.9 KiB. *(History, 2026-06-05, legacy backend: seq 33.5 KiB, +672 bytes over C's hand-rolled char-buffer mirror; auto-par +262.7 KiB → 296.2 KiB.)*
 
-> **Correction vs the 2026-05-29 snapshot.** That snapshot read 81.5 KiB (seq) / 361.0 KiB (auto-par): the runtime archive linked that day had been rebuilt with plain `cargo build` (rlib + staticlib co-emit defeats fat-LTO DCE), so std's ~48 KiB DWARF backtrace symbolizer survived `-dead_strip` into both kāra binaries — an identical +49,616 B on each lane. Rebuilt per the documented `cargo rustc … --crate-type staticlib` discipline, both lanes shed exactly that delta. Today's numbers are the true floor.
+> **Correction vs the 2026-05-29 snapshot.** That snapshot read 81.5 KiB (seq) / 361.0 KiB (auto-par): the runtime archive linked that day had been rebuilt with plain `cargo build` (rlib + staticlib co-emit defeats fat-LTO DCE), so std's ~48 KiB DWARF backtrace symbolizer survived `-dead_strip` into both kāra binaries — an identical +49,616 B on each lane. Rebuilt per the documented `cargo rustc … --crate-type staticlib` discipline, both lanes shed exactly that delta. The 2026-06-05 numbers were the true legacy-backend floor.
 
 ### Runtime memory (peak)
 
 | Implementation | Peak |
 |---|---|
-| c    vertical            | 1.1 MiB |
+| c    vertical            | 1.0 MiB |
 | **kāra vertical (seq)**  | **1.1 MiB** |
 | **kāra vertical (auto-par)** | **2.1 MiB** |
 | rust vertical            | 1.1 MiB |
-| go   vertical            | 8.2 MiB |
+| go   vertical            | 8.5 MiB |
 
-Kāra seq is **at parity with C and Rust** on peak RSS (1,130,784 vs 1,114,400 / 1,196,320 bytes — within two pages). The auto-par regime's 2.1 MiB is the worker pool's per-thread scratch + partials.
+Kāra seq is **at parity with C and Rust** on peak RSS (1,130,832 vs 1,098,040 / 1,114,424 bytes — within two 16-KiB pages). The auto-par regime's 2.1 MiB is the worker pool's per-thread scratch + partials, between C pthreads' 1.9 MiB and rayon's 2.5 MiB (goroutines: 10.9 MiB).
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| clang -O3 vertical.c          | 2.5 MiB |
-| **karac build vertical.kara** | **13.9 MiB** |
+| clang -O3 vertical.c          | 2.6 MiB |
 | rustc -O vertical.rs          | 29.3 MiB |
+| **karac build vertical.kara** | **61.4 MiB** |
 
-Kāra's compile-memory footprint is ~5.6× clang's and ~2.1× lower than rustc's on this kata. (+3.0 MiB vs the 2026-05-29 reading — within the content-independent karac compile-mem floor band tracked across the corpus, binaries verified against the same source.)
+Kāra's compile-memory footprint is ~24× clang's and ~2.1× higher than rustc's on this kata. *(History, 2026-06-05, legacy backend: 13.9 MiB, ~2.1× lower than rustc.)*
 
 ### Why Rust is in the harness
 
