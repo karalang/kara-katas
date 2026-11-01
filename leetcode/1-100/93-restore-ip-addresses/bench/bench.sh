@@ -14,7 +14,7 @@
 # on SIMD, an artifact). Data-dependent length keeps every engine doing honest scalar
 # work. The compute measured is the enumerate + validate inner loops. The loop-carried
 # hash is NOT a reduction karac's auto-par pass can split, so the default `karac build`
-# stays single-threaded (verified equal to KARAC_AUTO_PAR=0). EQUAL-SAFETY: karac checks
+# stays single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01). EQUAL-SAFETY: karac checks
 # integer overflow by default while `rustc -O` wraps, so a `rustc -O -C overflow-checks=on`
 # row is included as the faithful like-for-like (kata #69's discipline). Python runs a
 # smaller K (a pure-Python loop is slow) — timed separately, NOT cross-checked.

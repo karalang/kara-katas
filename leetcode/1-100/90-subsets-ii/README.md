@@ -82,25 +82,25 @@ diff <(karac run subsets_ii.kara) <(karac run subsets_ii_iterative.kara)    && e
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`subsets_ii.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> ✅ **M5-confirmed (2026-07-11).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26; karac from current `main`), replacing the earlier x86-64 cloud-container snapshot. **The win holds:** kāra is fastest of five (tied with equal-safety Rust), ahead of C, wrapping Rust, and Go on this latency-bound dedup backtracking. `bench/results.json` records the M5 host.
+> ✅ **M5-confirmed (2026-11-01).** Re-measured on the corpus's **Apple M5 Pro reference machine** (arm64, 6P+12E; clang 21 / rustc 1.95 / go 1.26) with **karac g6697158fa** (0.9.0-dev.14057, v2/MIR backend), replacing the 2026-07-11 legacy-backend run. **The win holds:** kāra is fastest of the compiled mirrors (tied with equal-safety Rust), ahead of C, wrapping Rust, and Go on this latency-bound dedup backtracking — the Kāra/Rust ratio is flat at 0.94× across the two runs. `bench/results.json` records the M5 host.
 
 **Workload.** The emit-at-every-node dedup backtracking (the ★) run as an **enumerate-and-fold** (kata [#78](../78-subsets/)'s shape): the recursion visits every **unique** subset node of a sorted multiset — **8 distinct values each repeated twice** (`[0,0,1,1,…,7,7]`), so the `i == start or nums[i] != nums[i-1]` skip rule fires throughout and the tree has **3⁸ = 6561** unique subsets (not 2¹⁶) — and folds each node's path into a threaded accumulator (no `Vec`-of-`Vec` storage, so the measured work is the **DFS recursion + the dedup test**, not allocation). Enumerated **K = 2700** times, the acc seeded with the loop index so nothing hoists. All five compiled mirrors must agree on `96157880` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (verified equal to `KARAC_AUTO_PAR=0`; `karac build --concurrency-report` finds no parallelizable region). **M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All rows single-threaded, ~99.9 % CPU. The kāra row is the in-order build (`KARAC_AUTO_PAR=0`): on v2/MIR the default `karac build` auto-parallelizes this kata (its emitted IR, `KARAC_MIR_LL`, carries a call of `@karac_mir_task_spawn`; the `KARAC_AUTO_PAR=0` twin's does not), for a 1.01× wall-time gain (556.9 vs 562.6 ms, hyperfine, 2026-11-01). **M5 Pro numbers, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| **kāra subsets_ii**                            | **500.2 ± 4.0 ms** |
-| rust subsets_ii (rustc -O, overflow-checks=on) | 500.4 ± 4.0 ms |
-| rust subsets_ii (rustc -O)                      | 532.5 ± 5.0 ms |
-| c    subsets_ii (clang -O3)                     | 536.9 ± 6.0 ms |
-| go   subsets_ii                                 | 604.0 ± 6.0 ms |
+| rust subsets_ii (rustc -O, overflow-checks=on) | 563.6 ± 5.3 ms |
+| **kāra subsets_ii**                            | **563.8 ± 5.8 ms** |
+| c    subsets_ii (clang -O3)                     | 597.8 ± 6.1 ms |
+| rust subsets_ii (rustc -O)                      | 597.9 ± 5.8 ms |
+| go   subsets_ii                                 | 677.7 ± 6.4 ms |
 
-Kāra is **fastest of five** — a dead heat with equal-safety Rust for the lead (500.2 vs 500.4 ms, within noise) and **ahead of C (1.07×), plain `rustc -O` (1.06×), and Go (1.21×)**. This recursion-bound dedup backtracking is **latency-bound** (call/return + the reused path's push/pop memory traffic stall the pipeline — C runs at IPC 1.06 here), and kāra actually pipelines it *better* (IPC 1.42): it retires 1.26× C's instructions (3.23 G vs 2.55 G) yet finishes ahead of C, because the higher IPC more than covers the extra bounds/overflow-check work — and it matches equal-safety Rust exactly (3.23 G ≈ rust_ovf 3.21 G, same IPC). Same favorable regime as siblings [#77](../77-combinations/)/[#78](../78-subsets/). Python is timed separately.
+Kāra is **tied for fastest** — a dead heat with equal-safety Rust for the lead (563.8 vs 563.6 ms, within noise) and **ahead of C (1.06×), plain `rustc -O` (1.06×), and Go (1.20×)**. This recursion-bound dedup backtracking is **latency-bound** (call/return + the reused path's push/pop memory traffic stall the pipeline). The instruction/IPC profile below was taken on the legacy backend (2026-07-11) and not re-run: C ran at IPC 1.06 here, and kāra pipelined it *better* (IPC 1.42): it retired 1.26× C's instructions (3.23 G vs 2.55 G) yet finished ahead of C, because the higher IPC more than covered the extra bounds/overflow-check work — and it matched equal-safety Rust exactly (3.23 G ≈ rust_ovf 3.21 G, same IPC). Same favorable regime as siblings [#77](../77-combinations/)/[#78](../78-subsets/). Python is timed separately.
 
-Binary 33.1 KiB (C parity), RSS ~C. See [`bench/results.json`](bench/results.json).
+Binary 302,872 B (295.8 KiB; C 33,600 B) — every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Peak RSS 1.10 MB (C 1.05 MB, Rust 1.13 MB). See [`bench/results.json`](bench/results.json).
 
 ### Why Rust is in the harness
 

@@ -11,7 +11,7 @@
 # this a pure traversal bench, not an allocation bench; the only alloc is `build`'s
 # per-iteration tree, which every mirror also pays. The loop-carried hash is NOT a
 # reduction karac's auto-par pass can split, so the default `karac build` stays
-# single-threaded (verified equal to KARAC_AUTO_PAR=0).
+# single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01).
 #
 # Node representation, matched to actual usage (build-once, read-only traverse, drop —
 # no aliasing, no mutation): Kāra `shared struct` (RC), Rust `Box<Node>` (single-owner,

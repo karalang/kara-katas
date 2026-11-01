@@ -12,7 +12,7 @@
 # `Rc<RefCell<ListNode>>` (same per-node RC overhead), Go uses a GC'd `*ListNode`, and C
 # a plain malloc/free raw-pointer list (single-owner here, the honest metal floor). The
 # loop-carried hash is NOT a reduction karac's auto-par pass can split, so the default
-# `karac build` stays single-threaded (verified equal to KARAC_AUTO_PAR=0). EQUAL-SAFETY:
+# `karac build` stays single-threaded (on v2/MIR: no karac_mir_task_spawn call in its IR, checked 2026-11-01). EQUAL-SAFETY:
 # karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is included as the faithful like-for-like (kata
 # #69's discipline). Python runs a smaller K (pure-Python is slow) — timed separately,

@@ -10,7 +10,8 @@
 # index so nothing hoists. The compute measured is the DFS recursion + the dedup test.
 # Backtracking is LATENCY-bound (call/return + path push/pop traffic), so the mirrors
 # land close. The loop-carried hash is NOT a reduction karac's auto-par pass can split,
-# so the default `karac build` stays single-threaded (verified equal to KARAC_AUTO_PAR=0).
+# on the legacy backend the default `karac build` stayed single-threaded; on v2/MIR it
+# auto-parallelizes, so the seq lane builds with KARAC_AUTO_PAR=0.
 # EQUAL-SAFETY: karac checks integer overflow by default while `rustc -O` wraps, so a
 # `rustc -O -C overflow-checks=on` row is included as the faithful like-for-like (kata
 # #69's discipline). Python runs a smaller K (a pure-Python recursion is slow) — timed
@@ -84,8 +85,11 @@ build_kara() {
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
     if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        # The seq lane is the in-order build: since kara 72ce9e026c (2026-10-26)
+        # a plain `karac build` may auto-parallelize, and on v2/MIR this kata's
+        # does (a call of karac_mir_task_spawn in its KARAC_MIR_LL IR).
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }

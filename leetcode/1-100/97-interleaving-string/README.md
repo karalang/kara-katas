@@ -49,15 +49,15 @@ with `dp[0][0] = true` and an immediate `false` when `|s1|+|s2| ≠ |s3|`.
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`940211674`). Workload: K=400000 reps of the O(|s1|*|s2|) interleaving-string 2D DP on a data-dependent case (idx=acc%12), folding each verdict into a rolling polynomial hash.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; the default build has no auto-par region — no call of `karac_mir_task_spawn` in the emitted IR, same as `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 162.8 ms | 0.80× |
-| Rust `-O` | 194.7 ms | 0.96× |
-| Go | 199.1 ms | 0.98× |
-| **Kāra (codegen)** | 202.7 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 212.3 ms | 1.05× |
+| C `clang -O3` | 186.4 ms | 0.79× |
+| Rust `-O` | 221.9 ms | 0.94× |
+| Go | 225.4 ms | 0.96× |
+| **Kāra (codegen)** | 235.6 ms | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 240.6 ms | 1.02× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -80,35 +80,32 @@ diff <(karac run interleave.kara) <(karac run interleave_rolling.kara) && echo O
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-27.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`interleave.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.5.0; `karac 0.1.0` from `main` `2916a7f6`, `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. This index-dense DP's field **compressed sharply** on the M5's wide out-of-order core and kāra's ordering rose — see the note below the table.
+> ✅ **M5 re-bench (2026-11-01).** Measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.6.0; **karac g6697158fa** (0.9.0-dev.14057, the v2/MIR backend; the legacy backend was deleted 2026-10-23), `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). The previous M5 snapshot (2026-07-27, legacy backend `karac 0.1.0`) is superseded; kāra's ratio to every comparator is flat since then (kāra/Rust 1.04× → 1.06×, kāra/C 1.25× → 1.26×, kāra/Go 1.02× → 1.05×). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. This index-dense DP's field **compressed sharply** on the M5's wide out-of-order core and kāra's ordering rose — see the note below the table.
 
 **Workload.** A single interleaving check on ≤ 24-char strings is instant, so the bench runs **K = 400,000** reps of the O(|s1|·|s2|) 2D DP. The case is **data-dependent** (`idx = acc%12`, seeded by the running hash), so the per-rep verdict can't be hoisted or CSE'd — the anti-hoist lever of [#93](../93-restore-ip-addresses/)/[#96](../96-unique-binary-search-trees/). 12 pre-generated cases (|s1|, |s2| ≈ 18–24 over a 3-letter alphabet, a mix of true interleavings and perturbed near-misses); each call fills a **fresh** boolean table (Kāra `Vec[bool]`, C `calloc`, Rust `vec!`, Go slice — matched allocate-per-call idioms) and the verdict folds into a rolling polynomial hash. All five compiled mirrors must agree on `940211674` before timing.
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded. **Apple M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99.8 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
 | Implementation | Wall time | Bounds-checked? |
 |---|---|---|
-| c    interleave (clang -O3, calloc table)          | 171.1 ± 6.3 ms | no |
-| rust interleave (rustc -O, Vec)                     | 199.1 ± 5.8 ms | elided |
-| **kāra interleave**                                 | **203.8 ± 3.3 ms** | **yes** |
-| go   interleave (slice, GC)                         | 209.6 ± 6.8 ms | **yes** |
-| rust interleave (rustc -O, overflow-checks=on)       | 218.9 ± 13.5 ms | elided |
+| c    interleave (clang -O3, calloc table)          | 186.4 ± 2.5 ms | no |
+| rust interleave (rustc -O, Vec)                     | 221.9 ± 3.4 ms | elided |
+| go   interleave (slice, GC)                         | 225.4 ± 2.7 ms | **yes** |
+| **kāra interleave**                                 | **235.6 ± 5.4 ms** | **yes** |
+| rust interleave (rustc -O, overflow-checks=on)       | 240.6 ± 5.7 ms | elided |
 
-**On the M5 the safety tax nearly vanishes — kāra rises from last (container) to 3rd, and leads the bounds-checked pack.** Every DP cell does five-plus indexed reads (`dp[up]`, `dp[left]`, `s1[i-1]`, `s2[j-1]`, `s3[i+j-1]`), so this is an almost-pure array-indexing loop. On the noisy x86 container that spread the field 2.0× wide (C 261 ms → kāra 514 ms, last) as each per-access check cost a serialized branch; the M5's wide out-of-order core **predicts and issues those branches in parallel**, compressing the whole field to a **1.28× spread** (171–219 ms). kāra now **beats Go and equal-safety Rust** (1.03× / 1.07×) and sits in a **statistical dead heat with unchecked `rustc -O`** (203.8 ± 3.3 vs 199.1 ± 5.8, overlapping ranges). Only C's check-free `calloc` table still leads, by **1.19×**.
+**On the M5 the safety tax is small — kāra rises from last (container) to 4th, and ties equal-safety Rust.** Every DP cell does five-plus indexed reads (`dp[up]`, `dp[left]`, `s1[i-1]`, `s2[j-1]`, `s3[i+j-1]`), so this is an almost-pure array-indexing loop. On the noisy x86 container that spread the field 2.0× wide (C 261 ms → kāra 514 ms, last) as each per-access check cost a serialized branch; the M5's wide out-of-order core **predicts and issues those branches in parallel**, compressing the whole field to a **1.29× spread** (186–241 ms). kāra is **1.02× ahead of equal-safety `rustc -O -C overflow-checks=on`** (235.6 ± 5.4 vs 240.6 ± 5.7, inside one σ — a tie), **1.06× behind unchecked `rustc -O`** and **1.05× behind Go**. C's check-free `calloc` table leads by **1.26×**. (The 2026-07-27 snapshot had kāra 3rd, nominally ahead of Go; that 1.02× → 1.05× move is inside this session's noise.)
 
-**The bounds-check headroom the container pointed at is mostly gone on the M5 — and the residual gap to C is not kāra-specific.** Re-running the same micro-bench ([`bench/interleave_unchecked.kara`](bench/interleave_unchecked.kara) — the hot RHS reads switched to `unsafe { …get_unchecked(i) }`, same sink `940211674`) recovers only **~4 %** on the M5 (a focused run: **202 → 194 ms**), where on the container it recovered ~30 %. And the unchecked kāra lands **exactly on `rustc -O`** (194 vs 195 ms) — codegen parity with its semantic peer — with **both still 1.19× behind C**. So the leftover gap is a *checked-language floor* (the DP's writes stay range-checked, and Rust carries the same distance to C), **not a kāra codegen deficit**; elision on the monotone DP indices would buy a few percent here, not close the gap to clang. This is the mirror image of the arithmetic-bound sibling [#96](../96-unique-binary-search-trees/), softened: where the container bracketed "compute-bound = free / index-bound = costly", the M5 shows the index-bound cost largely absorbed by the core. Go pays its slice checks too (210 ms) at **9.8 MiB** RSS vs kāra's **1.1 MiB**, and ships a **2.4 MiB** binary vs kāra's **33.3 KiB** (C parity at 32.8 KiB — the container's large kāra binary was the backtrace-symbolizer build-linkage artifact, stripped correctly here). Python (K = 20,000, a fraction of the compiled iterations, timed separately at **553 ms**, not cross-checked) is the ergonomic foil.
+**The bounds-check headroom the container pointed at is mostly gone on the M5 — and the residual gap to C is not kāra-specific.** Re-running the same micro-bench ([`bench/interleave_unchecked.kara`](bench/interleave_unchecked.kara) — the hot RHS reads switched to `unsafe { …get_unchecked(i) }`, same sink `940211674`) recovers only **~4 %** on the M5 (a focused run on the July legacy build: **202 → 194 ms**), where on the container it recovered ~30 %. And the unchecked kāra lands **exactly on `rustc -O`** (194 vs 195 ms) — codegen parity with its semantic peer — with **both still 1.19× behind C**. So the leftover gap is a *checked-language floor* (the DP's writes stay range-checked, and Rust carries the same distance to C), **not a kāra codegen deficit** (the unchecked variant was not re-run on v2/MIR 2026-11-01; those figures are the July legacy build's); elision on the monotone DP indices would buy a few percent here, not close the gap to clang. This is the mirror image of the arithmetic-bound sibling [#96](../96-unique-binary-search-trees/), softened: where the container bracketed "compute-bound = free / index-bound = costly", the M5 shows the index-bound cost largely absorbed by the core. Go pays its slice checks too (225 ms) at **10.1 MiB** RSS vs kāra's **1.08 MiB** (C 1.06 MiB, Rust 1.09 MiB). Binary size: c 32.8 KiB, **kāra 295.8 KiB**, rust 455.4 KiB, go 2.39 MiB; every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Python (K = 20,000, a fraction of the compiled iterations, timed separately at **553 ms** in an earlier run, not re-run 2026-11-01; not cross-checked) is the ergonomic foil.
 
 > **Apples-to-apples note.** All five mirrors allocate the DP table with a **single sized zero-init** (Kāra `Vec.filled(n, false)`, C `calloc`, Rust `vec![false; n]`, Go `make`) — an earlier draft built the Kāra table with an N-`push` loop, which added allocation churn the sized-alloc mirrors don't pay; that was fixed before these numbers.
 
-Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
+Compile-cold on the M5 is clang 50.0 ms < rustc 102.9 ms < **karac 140.6 ms** (2.8× clang, 1.37× rustc). Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Why Rust is in the harness
 

@@ -71,13 +71,9 @@ diff <(karac run reverse_between.kara) <(karac run reverse_between_threeptr.kara
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-11.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`reverse_between.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.5.0; `karac 0.1.0`, `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. The cross-language *ordering* itself differs between the two — see the note below the table.
+> **Machine.** Canonical numbers measured on the corpus's **Apple M5 Pro** (6P+12E, Darwin 25.6.0; karac g6697158fa (0.9.0-dev.14057, v2/MIR backend), `rustc 1.95.0`, Apple clang 21.0.0, `go 1.26.3`, hyperfine 1.20; measured 2026-11-01) — [`bench/results.json`](bench/results.json). A shared x86-64 Linux cloud-container reference run is kept alongside in [`bench/results.container-x86.json`](bench/results.container-x86.json); absolute times/sizes/RSS are **not** comparable across the two hosts (different ISA + toolchains + a noisy shared host), only within-file cross-language ratios are the signal. The cross-language *ordering* itself differs between the two — see the note below the table.
 
 **Workload.** The reverse mutates/re-links the list, so — like kata [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/) — each iteration builds a **fresh M = 200-node** list and reverses a **~100-node window** whose start shifts per iteration (`left = 1 + iter%50`, `right = left+100`, so no call hoists). For **K = 178,000** iterations (seeded by the loop index) it builds, reverses, and folds the result through a **rolling polynomial hash**. Per-iteration node allocation is part of the measured work — fair, since every mirror allocates its nodes — alongside the RC-node pointer-chase reversal. All five compiled mirrors must agree on `147795689` before timing.
 
@@ -85,25 +81,25 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **Equal safety.** Kāra checks integer overflow by default; `rustc -O` wraps silently. So alongside `rustc -O` the table includes a `rustc -O -C overflow-checks=on` row as the faithful like-for-like (kata [#69](../69-sqrtx/)'s discipline).
 
-`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build is verified equal to `KARAC_AUTO_PAR=0`). **Apple M5 Pro numbers.**
+`--warmup 5 --runs 30 --shell=none`. All single-threaded (the loop-carried sum is not a reduction the auto-par pass can split; the default build's emitted IR, `KARAC_MIR_LL`, carries no call of `@karac_mir_task_spawn`, same as its `KARAC_AUTO_PAR=0` twin — checked 2026-11-01). **Apple M5 Pro numbers, 2026-11-01.**
 
 | Implementation | Wall time |
 |---|---|
-| c    reverse_between (clang -O3, malloc list)          | 453.3 ± 12.7 ms |
-| go   reverse_between (`*Node`, GC)                     | 458.5 ± 5.5 ms |
-| **kāra reverse_between**                               | **637.5 ± 17.0 ms** |
-| rust reverse_between (rustc -O)                        | 677.8 ± 15.1 ms |
-| rust reverse_between (rustc -O, overflow-checks=on)    | 684.8 ± 10.7 ms |
+| c    reverse_between (clang -O3, malloc list)          | 515.2 ± 27.6 ms |
+| go   reverse_between (`*Node`, GC)                     | 529.0 ± 5.3 ms |
+| **kāra reverse_between**                               | **724.3 ± 19.3 ms** |
+| rust reverse_between (rustc -O)                        | 763.7 ± 37.3 ms |
+| rust reverse_between (rustc -O, overflow-checks=on)    | 764.9 ± 25.7 ms |
 
-**The headline holds: at matched reference semantics kāra beats both Rust builds** — `shared struct` vs `Rc<RefCell<ListNode>>`, kāra ~1.06–1.07× faster (the `RefCell` borrow-flag check on every node access is the gap, the same pattern as [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/)). Raw-pointer C is the floor at ~1.41× under kāra.
+**The headline holds: at matched reference semantics kāra beats both Rust builds** — `shared struct` vs `Rc<RefCell<ListNode>>`, kāra ~1.05–1.06× faster (the `RefCell` borrow-flag check on every node access is the gap, the same pattern as [#82](../82-remove-duplicates-from-sorted-list-ii/)/[#83](../83-remove-duplicates-from-sorted-list/)/[#86](../86-partition-list/)). Raw-pointer C is the floor at ~1.41× under kāra. Against the previous feed (2026-07-11, legacy backend) the ratios are flat: Kāra/Rust 0.94× → 0.95×, Kāra/C 1.41× → 1.41×, Kāra/Go 1.39× → 1.37×.
 
-**What changed from the container:** Go — the *slowest* mirror on the shared x86 container (1155 ms, last place) — is nearly tied with C on the M5, landing kāra in **3rd** here rather than 2nd. This is the alloc-bound container→M5 inversion: each iteration allocates a fresh 200-node list, and Go's GC allocator runs far better on fast native cores than on the noisy shared container (its 107 % CPU is a sliver of concurrent-GC help, not a multicore-wall-clock artifact — it wins on total CPU too, 491 vs kāra's 636 ms). But the trade is memory: kāra holds **1.0 MiB** peak RSS and a **33.9 KiB** binary against Go's **9.2 MiB** and **2.43 MiB** — ~9× less RSS and a ~74× smaller binary for a 1.39× wall-time gap. Python (K=6000, a fraction of the native iterations) is timed separately.
+**What changed from the container:** Go — the *slowest* mirror on the shared x86 container (1155 ms, last place) — is nearly tied with C on the M5, landing kāra in **3rd** here rather than 2nd. This is the alloc-bound container→M5 inversion: each iteration allocates a fresh 200-node list, and Go's GC allocator runs far better on fast native cores than on the noisy shared container (its 112 % CPU is a sliver of concurrent-GC help, not a multicore-wall-clock artifact — it wins on total CPU too, 593 ms user+system vs kāra's 722 ms). But the trade is memory: kāra holds **1.0 MiB** peak RSS and a **295.8 KiB** binary against Go's **10.0 MiB** and **2.38 MiB** — ~9.6× less RSS and a ~8.2× smaller binary for a 1.37× wall-time gap. (Every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB — this one was 33.9 KiB, ~74× under Go's — tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).) Python (K=6000, a fraction of the native iterations) is timed separately.
 
 Compile-cold, binary size, and peak-RSS records are in [`bench/results.json`](bench/results.json) (M5, canonical) and [`bench/results.container-x86.json`](bench/results.container-x86.json) (x86 reference).
 
 ### Where the gap to C comes from (perf ceiling)
 
-Profiled on the M5 (instructions retired + IPC via `/usr/bin/time -l`, disassembly via `otool -tV`). kāra retires **17.3 B instructions at 6.27 IPC** vs C's **14.8 B at 7.16** — a 1.17× instruction × 1.14× IPC ≈ 1.33× cycle gap. It is **not** what you'd first guess:
+Profiled on the M5 on the legacy backend (instructions retired + IPC via `/usr/bin/time -l`, disassembly via `otool -tV`); not re-run on v2/MIR, so the counts and disassembly below are history, though the 1.41× C gap they explain is unchanged in the 2026-11-01 run. kāra retires **17.3 B instructions at 6.27 IPC** vs C's **14.8 B at 7.16** — a 1.17× instruction × 1.14× IPC ≈ 1.33× cycle gap. It is **not** what you'd first guess:
 
 - **Not refcounting.** `karac query cost-summary` reports `rc_ops: 0`, and the `fold` inner loop (35.6M iterations) disassembles to a clean read — no per-node refcount inc/dec. kāra's ownership pass already elides the count traffic to scope boundaries.
 - **Not borrow-flag checks** (none emitted), **not the allocator** (kāra calls plain `malloc`/`free`, same as C), and **not `Option` tags** (`Option[ListNode]` is niche/null-pointer optimized — `match cur.next` compiles to a `cbnz` null check, identical to C). The only equal-safety cost is **2 overflow-check branches** in `fold` (C wraps).
