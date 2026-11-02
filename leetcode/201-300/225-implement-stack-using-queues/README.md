@@ -37,17 +37,19 @@ The underlying queue is an index-pool FIFO: a `Vec[i64]` with a `head` cursor �
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`451784582`). Workload: PRNG-driven push/pop/top sequence on the queue-backed stack (O(n) costly-push rotations).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 84.6 ms | 0.91× |
-| **Kāra (codegen)** | 92.6 ms | 1.00× |
-| Rust `-O` | 115.4 ms | 1.25× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 132.1 ms | 1.43× |
-| Go | 789.4 ms | 8.53× |
+| C `clang -O3` | 97.2 ms | 0.59× |
+| Rust `-O` | 133.4 ms | 0.81× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 150.1 ms | 0.91× |
+| **Kāra (codegen)** | 165.6 ms | 1.00× |
+| Go | 1128.8 ms | 6.81× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Against the 2026-07-28 legacy-backend run, Kāra regressed about 1.55× against Rust and C: Kāra/Rust `-O` 0.80× → 1.24×, Kāra/equal-safety Rust 0.70× → 1.10×, Kāra/C 1.09× → 1.70×, Kāra/Go 0.12× → 0.15×. In that run Kāra was ahead of both Rust rows (1.25× faster than `rustc -O`); that was true of the legacy backend on 2026-07-28 and is no longer the result — Kāra now trails both Rust rows and C, and stays well ahead of Go only. Every comparator also ran slower this session, so compare the ratios, not the milliseconds. On the v2/MIR backend the kernel executes 1.43× legacy dd86e3955's instructions and 1.61× its cycles in the queue-rotation loop, tracked as [`B-2026-11-02-2`](../../../../kara/docs/bugs-v2.md) (see [Bug ledger](#bug-ledger)).
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -60,4 +62,8 @@ diff <(karac run stack_using_queues.kara) <(python3 stack_using_queues.py) && ec
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-2`](../../../../kara/docs/bugs-v2.md)** (perf, medium, open). On the v2/MIR backend the `bench/` Kāra program executes 1.43× legacy dd86e3955's instructions and 1.61× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 0.80× to 1.24× `rustc -O`, 1.09× to 1.70× C and 0.12× to 0.15× Go. The hot loop is `stack_push`'s queue rotation — each iteration a `q_dequeue` (index read plus `head` field update) and a `q_enqueue` (`Vec` push) through a `mut ref Queue`. Measured 2026-11-02 with karac g6697158fa.

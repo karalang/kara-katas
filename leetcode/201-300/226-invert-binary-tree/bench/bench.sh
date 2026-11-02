@@ -133,7 +133,7 @@ echo
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=226 slug=invert-binary-tree group=201-300 \
     title="Invert Binary Tree" \
-    workload="N=2000-node balanced tree, K=10 outer iterations / recursive + iterative" \
+    workload="N=2000-node random BST (bit-16 LCG; depth 14, max width 602), K=10 outer iterations / recursive + iterative" \
     sink="$expected"
 
 echo "=== runtime — compiled (warmup 5 / runs 30) ==="

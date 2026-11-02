@@ -39,15 +39,15 @@ Because `*` and `/` collapse into the stack top right away while `+`/`-` only le
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`945506243`). Workload: calculate() over one big PRNG +-*/ expression run K times (precedence term-stack, truncating div).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 101.7 ms | 0.73× |
-| Rust `-O` | 121.2 ms | 0.87× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 134.4 ms | 0.96× |
-| **Kāra (codegen)** | 139.8 ms | 1.00× |
-| Go | 170.2 ms | 1.22× |
+| C `clang -O3` | 119.4 ms | 0.76× |
+| Rust `-O` | 139.5 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 156.8 ms | 0.99× |
+| **Kāra (codegen)** | 157.6 ms | 1.00× |
+| Go | 205.6 ms | 1.30× |
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -62,4 +62,4 @@ diff <(karac run basic_calculator_ii.kara) <(python3 basic_calculator_ii.py) && 
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
