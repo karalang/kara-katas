@@ -100,30 +100,30 @@ The N = 8 inputs are picked to exercise every disposition the inner state machin
 
 ### Runtime — seq lane (apples-to-apples, single-threaded)
 
-M5 Pro, 2026-11-01, hyperfine `--warmup 5 --runs 30 --shell=none`, Kāra built by karac `g6697158fa` (v2/MIR backend). Per BENCH.md's two-lane discipline, the kara binary here is built with `KARAC_AUTO_PAR=0` so the comparison is per-core codegen-quality only — directly stackable against `rustc -O`, `clang -O3`, and `go build`. Requires karac at commit [`7ef42b9`](../../../../karac-rust/) (the `String.push(char)` + `push_str` interpreter dispatch slice) or later.
+M5 Pro, 2026-11-02, hyperfine `--warmup 5 --runs 30 --shell=none`, Kāra built by karac `g96fca5370` (v2/MIR backend). Per BENCH.md's two-lane discipline, the kara binary here is built with `KARAC_AUTO_PAR=0` so the comparison is per-core codegen-quality only — directly stackable against `rustc -O`, `clang -O3`, and `go build`. Requires karac at commit [`7ef42b9`](../../../../karac-rust/) (the `String.push(char)` + `push_str` interpreter dispatch slice) or later.
 
 | Run | Mean ± σ | User |
 |---|---|---|
-| `kara simplify` (seq, KARAC_AUTO_PAR=0) | 153.4 ± 10.2 ms | 152 ms |
-| `rust simplify` | 171.4 ± 10.1 ms | 170 ms |
-| `rust simplify` (`-C overflow-checks=on`, equal-safety) | 167.9 ± 11.3 ms | 167 ms |
-| `c    simplify` | 14.1 ± 0.4 ms | 13 ms |
-| `go   simplify` | 60.3 ± 1.5 ms | 59 ms |
+| `kara simplify` (seq, KARAC_AUTO_PAR=0) | 156.6 ± 6.8 ms | 154 ms |
+| `rust simplify` | 174.4 ± 7.4 ms | 173 ms |
+| `rust simplify` (`-C overflow-checks=on`, equal-safety) | 170.7 ± 8.6 ms | 169 ms |
+| `c    simplify` | 14.0 ± 0.5 ms | 13 ms |
+| `go   simplify` | 61.0 ± 1.4 ms | 59 ms |
 
-Single-thread kara is now **ahead of Rust** — 0.90× `rustc -O` and 0.91× equal-safety Rust (both gaps about one σ) — 2.5× behind Go, and 10.9× behind C. Against the July feed (karac 0.1.0, 2026-07-28: 1.05× Rust, 3.3× Go, 14.2× C) kāra gained on every comparator by more than 10 % relative; the comparators themselves ran 0–13 % slower in this session, so read the move in ratios, not milliseconds. (Older snapshots: 2026-06-05 read kara 144.8 / rust 134.5 / c 13.1 / go 53.3 ms, 1.08× Rust; 2026-05-25 read kara 122.2 / rust 120.8 / c 13.0 / go 55.1. An earlier revision of this paragraph mis-stated the Go relationship as "2.22× ahead"; Go's `strings.Builder` + GC-arena allocator beats both heap-`String` mirrors on this shape, and kara has trailed it in every snapshot.) C's ~11× lead is the stack-allocated `char[64]` output buffer shape (no allocation per byte vs the kara/rust heap-`String::push`); on a workload where the algorithm doesn't need a heap-owned output, C will always win this lane. The kara seq picture reads as **codegen quality at or slightly ahead of Rust on a heap-String workload** — the gap to C is the cost of the algorithmic shape, not the compiler.
+Single-thread kara is now **ahead of Rust** — 0.90× `rustc -O` and 0.92× equal-safety Rust (both gaps about two σ) — 2.6× behind Go, and 11.2× behind C. That is flat against the 2026-11-01 run on karac `g6697158fa` (0.90× Rust, 2.54× Go, 10.89× C). Against the July feed (karac 0.1.0, 2026-07-28: 1.05× Rust, 3.3× Go, 14.2× C) kāra gained on every comparator by more than 10 % relative; absolute times drift between sessions with machine state, so read the move in ratios, not milliseconds. Against legacy dd86e3955, though, this lane runs 1.40× the instructions and 1.42× the cycles (exact counts, `KARAC_AUTO_PAR=0`). (Older snapshots: 2026-06-05 read kara 144.8 / rust 134.5 / c 13.1 / go 53.3 ms, 1.08× Rust; 2026-05-25 read kara 122.2 / rust 120.8 / c 13.0 / go 55.1. An earlier revision of this paragraph mis-stated the Go relationship as "2.22× ahead"; Go's `strings.Builder` + GC-arena allocator beats both heap-`String` mirrors on this shape, and kara has trailed it in every snapshot.) C's ~11× lead is the stack-allocated `char[64]` output buffer shape (no allocation per byte vs the kara/rust heap-`String::push`); on a workload where the algorithm doesn't need a heap-owned output, C will always win this lane. The kara seq picture reads as **codegen quality at or slightly ahead of Rust on a heap-String workload** — the gap to C is the cost of the algorithmic shape, not the compiler.
 
 ### Runtime — auto-par regime (kara default, multi-core)
 
-Default `karac build` output: karac's auto-par-on-reduction recognizes the `sum = sum + simplify(inputs[idx]).len()` reduction in main's K=1M loop and parallelises it — the default build's emitted IR (`KARAC_MIR_LL`) carries a call of `karac_mir_task_spawn` and the `KARAC_AUTO_PAR=0` twin's does not (re-verified with karac `g6697158fa`). Hyperfine `--warmup 10 --runs 50` to absorb worker-pool init noise. Same hardware + date as the seq lane; the three comparators parallelise the same reduction by hand.
+Default `karac build` output: karac's auto-par-on-reduction recognizes the `sum = sum + simplify(inputs[idx]).len()` reduction in main's K=1M loop and parallelises it — the default build's emitted IR (`KARAC_MIR_LL`) carries a call of `karac_mir_task_spawn` and the `KARAC_AUTO_PAR=0` twin's does not (verified with karac `g6697158fa`; the `g96fca5370` row's 13.3× User / wall shows it still dispatches). Hyperfine `--warmup 10 --runs 50` to absorb worker-pool init noise. Same hardware + date as the seq lane; the three comparators parallelise the same reduction by hand.
 
 | Run | Mean ± σ | User | User / wall |
 |---|---|---|---|
-| `c    simplify` (pthreads — metal floor) | 3.0 ± 1.7 ms | 13 ms | 4.3× |
-| `go   simplify` (goroutines + WaitGroup) | 6.3 ± 0.3 ms | 41 ms | 6.5× |
-| `kara simplify` (auto-par default) | 42.5 ± 5.0 ms | 536 ms | 12.6× |
-| `rust simplify` (rayon `par_iter`) | 46.7 ± 3.8 ms | 753 ms | 16.1× |
+| `c    simplify` (pthreads — metal floor) | 2.7 ± 0.1 ms | 13 ms | 4.9× |
+| `go   simplify` (goroutines + WaitGroup) | 6.5 ± 0.2 ms | 41 ms | 6.3× |
+| `rust simplify` (rayon `par_iter`) | 46.6 ± 4.9 ms | 733 ms | 15.7× |
+| `kara simplify` (auto-par default) | 49.3 ± 3.4 ms | 658 ms | 13.3× |
 
-Auto-par runs **0.91× rayon** — ahead of hand-written Rust parallelism with no annotation — and 6.8× behind Go's goroutines and 14× behind the C pthreads floor; the July feed read 1.04× rayon, 10.8× Go, 21.8× C, so kāra gained on every par comparator too. The ranking inside the par lane mirrors the seq lane: the heap-`String` mirrors (kāra, Rust) sit together, Go's builder and C's stack buffer far ahead. Auto-par is **3.6× faster than kara's own seq baseline** (153.4 → 42.5 ms). The User / wall ratio of 12.6× says ~12–13 cores are busy on the M5 Pro (6 P-cores + ~6 E-cores), but per-core efficiency = (152 ms seq User) / (536 ms auto-par User) = **28%** — each worker still hits the system malloc on every `simplify` call (Vec[char] snapshot + the two Vec[i64] stacks), so this lane is allocator-contention-bound, not dispatch-bound. (History: the 2026-06-05 snapshot read 21.5 ms auto-par, 6.7× over seq at 55 % per-core efficiency; the July feed already read 51.4 ms, 3.4×.) NOT directly comparable to the single-thread rows above per BENCH.md's two-lane discipline — reported separately so the production-default Kara behavior stays visible.
+Auto-par runs **1.06× rayon** — level with hand-written Rust parallelism within σ (a 2.8 ms gap against σ 3.4 and 4.9), with no annotation, but no longer ahead of it — and 7.6× behind Go's goroutines and 18.3× behind the C pthreads floor. Against the 2026-11-01 run on karac `g6697158fa` (0.91× rayon, 6.8× Go, 14.0× C) the par lane lost more than 10 % on every comparator while the seq lane stayed flat; the C row's σ on that run was 1.7 ms, so that one ratio is the softest, and the cause is not attributed. The July feed read 1.04× rayon, 10.8× Go, 21.8× C. The ranking inside the par lane mirrors the seq lane: the heap-`String` mirrors (kāra, Rust) sit together, Go's builder and C's stack buffer far ahead. Auto-par is **3.2× faster than kara's own seq baseline** (156.6 → 49.3 ms). The User / wall ratio of 13.3× says ~13 cores are busy on the M5 Pro (6 P-cores + ~7 E-cores), but per-core efficiency = (154 ms seq User) / (658 ms auto-par User) = **23%** — each worker still hits the system malloc on every `simplify` call (Vec[char] snapshot + the two Vec[i64] stacks), so this lane is allocator-contention-bound, not dispatch-bound. (History: the 2026-06-05 snapshot read 21.5 ms auto-par, 6.7× over seq at 55 % per-core efficiency; the July feed already read 51.4 ms, 3.4×; the 2026-11-01 run read 3.6× at 28 %.) NOT directly comparable to the single-thread rows above per BENCH.md's two-lane discipline — reported separately so the production-default Kara behavior stays visible.
 
 The outer loop body that lights this up:
 
@@ -156,25 +156,25 @@ which is amortized O(1) per call. Closing the gap dropped this kata's seq wall f
 
 ### Codegen vs Python
 
-Python was last measured 2026-06-05 and not re-run (the 2026-11-01 re-bench did not set `KARA_BENCH_INCLUDE_PY`). In that snapshot Python was **34.5× slower than Kāra auto-par** at the same K (742.5 ms vs 21.5 ms) and **5.13× slower than Kāra seq** (742.5 ms vs 144.8 ms). The post-fix serial-vs-serial Kāra/Python ratio widened from 3.30× (pre-fix) to ~5.1× because closing the stdlib hole halved Kāra's seq cost while CPython's per-iter cost was unchanged. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was ~2,220× because the inner body there is a few integer ops — interpreter overhead dominates a much larger fraction of CPython's cost when the per-iter work is light.
+Python was last measured 2026-06-05 and not re-run (neither the 2026-11-01 nor the 2026-11-02 re-bench set `KARA_BENCH_INCLUDE_PY`). In that snapshot Python was **34.5× slower than Kāra auto-par** at the same K (742.5 ms vs 21.5 ms) and **5.13× slower than Kāra seq** (742.5 ms vs 144.8 ms). The post-fix serial-vs-serial Kāra/Python ratio widened from 3.30× (pre-fix) to ~5.1× because closing the stdlib hole halved Kāra's seq cost while CPython's per-iter cost was unchanged. Kata [#7](../7-reverse-integer/#codegen-vs-python)'s gap was ~2,220× because the inner body there is a few integer ops — interpreter overhead dominates a much larger fraction of CPython's cost when the per-iter work is light.
 
 ### Runtime memory — seq slightly above C, auto-par +~3 MiB
 
-2026-11-01 feed:
+2026-11-02 feed:
 
 | Run | Peak RSS |
 |---|---|
-| `kara simplify` (seq) | 1.11 MiB |
-| `kara simplify` (auto-par) | 2.58 MiB |
-| `rust simplify` | 1.22 MiB |
-| `rust simplify` (rayon) | 4.69 MiB |
+| `kara simplify` (seq) | 1.14 MiB |
+| `kara simplify` (auto-par) | 3.23 MiB |
+| `rust simplify` | 1.23 MiB |
+| `rust simplify` (rayon) | 4.19 MiB |
 | `c    simplify` | 1.02 MiB |
-| `c    simplify` (pthreads) | 1.33 MiB |
-| `go   simplify` | 8.22 MiB |
-| `go   simplify` (goroutines) | 4.23 MiB |
+| `c    simplify` (pthreads) | 1.36 MiB |
+| `go   simplify` | 8.14 MiB |
+| `go   simplify` (goroutines) | 4.28 MiB |
 | `py   simplify` (last measured 2026-06-05, not re-run) | 7.0 MiB |
 
-Kara seq at 1.11 MiB stays slightly **below** Rust's 1.22 MiB — both ~0.1–0.2 MiB above C's stack-buffer baseline, the cost of the heap String/Vec churn. Auto-par adds ~1.5 MiB on top and stays under rayon's 4.69 MiB (the 06-05 snapshot read 1.2 → 3.1 MiB, +1.9; the 05-25 sample read +2.5) because each worker thread holds its own per-thread allocator state (libmalloc tcache) for the per-call allocation rate; pre-fix this delta was ~2.7 MiB so closing the O(n²) hole pulled it down marginally (the per-iter alloc count dropped from ~L+5 to ~5). Acceptable cost for the 3.6× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the worker pool isn't worth paying for. Go's 8.2 MiB reflects GC heap reservation overhead independent of the actual working set.
+Kara seq at 1.14 MiB stays slightly **below** Rust's 1.23 MiB — both ~0.1–0.2 MiB above C's stack-buffer baseline, the cost of the heap String/Vec churn. Auto-par adds ~2.1 MiB on top (~1.5 MiB on the 2026-11-01 run) and stays under rayon's 4.19 MiB (the 06-05 snapshot read 1.2 → 3.1 MiB, +1.9; the 05-25 sample read +2.5) because each worker thread holds its own per-thread allocator state (libmalloc tcache) for the per-call allocation rate; pre-fix this delta was ~2.7 MiB so closing the O(n²) hole pulled it down marginally (the per-iter alloc count dropped from ~L+5 to ~5). Acceptable cost for the 3.2× wall-clock win, and the seq lane stays available for embedded / constrained-memory targets where the worker pool isn't worth paying for. Go's 8.1 MiB reflects GC heap reservation overhead independent of the actual working set.
 
 The +2.5 MiB delta is **steady-state**, not a leak — verified by running at K=100K, 1M, 10M (RSS 3.5 / 3.6 / 4.1 MiB; only 0.7 MiB of growth across a 100× K-increase, which is steady-state allocator metadata + minor heap fragmentation). Users who need to trade parallelism for memory can dial the worker count down via `KARAC_PAR_WORKERS=N` (karac commit [`d33b389`](../../../../karac-rust/), 2026-05-25 — same ergonomic shape as `RAYON_NUM_THREADS` / `OMP_NUM_THREADS` / `GOMAXPROCS`):
 
@@ -191,21 +191,21 @@ The deeper fix — per-worker scratch buffers in `karac_par_reduce` so the worke
 
 ### Compile time and binary size
 
-M5 Pro, 2026-11-01, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
+M5 Pro, 2026-11-02, hyperfine `--warmup 1 --runs 10` with `--prepare 'rm -f <artifact>'` so each measurement is cold:
 
 | Compiler | Compile time | Binary size |
 |---|---|---|
-| `karac build simplify.kara` (auto-par default) | 180.0 ± 4.9 ms | 377.1 KiB |
-| `rustc -O simplify.rs` | 126.2 ± 2.7 ms | 455.7 KiB |
-| `clang -O3 simplify.c` | 46.9 ± 0.6 ms | 32.8 KiB |
+| `karac build simplify.kara` (auto-par default) | 178.3 ± 2.2 ms | 393.4 KiB |
+| `rustc -O simplify.rs` | 126.3 ± 2.0 ms | 455.7 KiB |
+| `clang -O3 simplify.c` | 46.3 ± 0.7 ms | 32.8 KiB |
 
-karac now compiles this kata **1.43× slower** than `rustc -O` (it was 1.46× faster in the 2026-05-25 / 06-05 snapshots) and produces an auto-par binary **1.21× smaller** than `rustc -O`'s (466,632 / 386,168 B). Clang is **3.8× faster** than karac with a **13.9× smaller binary than Rust's** — the same lower-floor C reference shape as kata [#65](../65-valid-number/#compile-time-and-binary-size). The seq-build kara binary is **295.8 KiB** (302,888 B), 1.54× smaller than Rust's; the +81 KiB delta between seq and auto-par kara binaries is the task-spawn runtime + thread-pool helpers, the cost of the 3.6× wall-clock win. Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (this kata's seq build was 33.5 KiB on legacy); that growth is tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
+karac now compiles this kata **1.41× slower** than `rustc -O` (it was 1.46× faster in the 2026-05-25 / 06-05 snapshots) and produces an auto-par binary **1.16× smaller** than `rustc -O`'s (466,632 / 402,824 B). Clang is **3.8× faster** than karac with a **13.9× smaller binary than Rust's** — the same lower-floor C reference shape as kata [#65](../65-valid-number/#compile-time-and-binary-size). The seq-build kara binary is **66.9 KiB** (68,504 B), 6.8× smaller than Rust's, down from 295.8 KiB on karac `g6697158fa`; the delta between seq and auto-par kara binaries is now +326.5 KiB (it was +81 KiB on `g6697158fa`), the size price of the 3.2× wall-clock win. Both are still over the legacy backend's size (this kata's seq build was 33.5 KiB on legacy); that growth is tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
 
-Compile memory: karac peaks at **61.8 MiB** vs rustc's **32.2 MiB** vs clang's **2.6 MiB** — ~1.9× rustc's compile-time RAM and ~24× clang's (the 06-05 snapshot had karac at 14.6 MiB, ~2.2× *under* rustc).
+Compile memory: karac peaks at **63.8 MiB** vs rustc's **32.2 MiB** vs clang's **2.6 MiB** — ~2.0× rustc's compile-time RAM and ~25× clang's (the 06-05 snapshot had karac at 14.6 MiB, ~2.2× *under* rustc).
 
 ### Why Rust, C, and Go are in the harness
 
-Same rationale as kata [#65](../65-valid-number/#why-rust-c-and-go-are-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no heap String type; Go is the **GC + builder-tuned-stdlib peer** anchoring the seq lane on the high end. The current result (2026-11-01) — **seq lane ahead of Rust (0.90× `rustc -O`, 0.91× equal-safety), 2.5× behind Go's builder-tuned stdlib, 10.9× behind C on algorithmic shape; auto-par 0.91× hand-written rayon, with a 3.6× intra-Kāra seq→par speedup; 1.21× smaller binary than Rust on auto-par (1.54× smaller on seq); 1.43× slower compile than Rust at ~1.9× its compile RAM; 1.11 MiB seq RSS (below Rust's 1.22), 2.58 MiB auto-par RSS for the worker thread pool (below rayon's 4.69)** — comes from the kata that surfaced the **O(n²) String-builder hole**, drove the `String.push(char)` + `push_str` stdlib fix in karac commit [`7ef42b9`](../../../../karac-rust/), and validated the fix end-to-end via the pre/post snapshots above. The auto-par User/wall reading (~12.6×) shows the parallel reduction spreading across the cores on a workload heavier than the DFA / arithmetic shapes of katas 7/8/65 — heap allocation per iter narrows the per-core efficiency to ~28%, but the multi-core win (3.6× over seq, ahead of rayon) is still substantial.
+Same rationale as kata [#65](../65-valid-number/#why-rust-c-and-go-are-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware) and the headline ratio for v1 is the codegen-vs-Rust gap; C is the **lower-floor reference** for "what a hand-rolled scalar baseline looks like" with no heap String type; Go is the **GC + builder-tuned-stdlib peer** anchoring the seq lane on the high end. The current result (2026-11-02) — **seq lane ahead of Rust (0.90× `rustc -O`, 0.92× equal-safety), 2.6× behind Go's builder-tuned stdlib, 11.2× behind C on algorithmic shape; auto-par 1.06× hand-written rayon, with a 3.2× intra-Kāra seq→par speedup; 1.16× smaller binary than Rust on auto-par (6.8× smaller on seq); 1.41× slower compile than Rust at ~2.0× its compile RAM; 1.14 MiB seq RSS (below Rust's 1.23), 3.23 MiB auto-par RSS for the worker thread pool (below rayon's 4.19)** — comes from the kata that surfaced the **O(n²) String-builder hole**, drove the `String.push(char)` + `push_str` stdlib fix in karac commit [`7ef42b9`](../../../../karac-rust/), and validated the fix end-to-end via the pre/post snapshots above. The auto-par User/wall reading (~13.3×) shows the parallel reduction spreading across the cores on a workload heavier than the DFA / arithmetic shapes of katas 7/8/65 — heap allocation per iter narrows the per-core efficiency to ~23%, but the multi-core win (3.2× over seq, level with rayon) is still substantial.
 
 ---
 
@@ -213,4 +213,6 @@ Same rationale as kata [#65](../65-valid-number/#why-rust-c-and-go-are-in-the-ha
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-01-17`](../../../../kara/docs/bugs-v2.md)** (perf, open). With exactly two workers (`KARAC_THREADS=2`) the auto-par binary runs 1.6–2.6× slower than with one (0.24–0.39 s against 0.15 s), on 5× the cycles for 7% more instructions; three or more workers run 0.04–0.06 s. The published par row uses the default worker count and is unaffected. Measured 1 Nov 2026 with karac g6697158fa.
+**Surfaced [`B-2026-11-01-17`](../../../../kara/docs/bugs-v2.md)** (perf, open). With exactly two workers (`KARAC_THREADS=2`) the auto-par binary runs about 2–2.9× slower than with one (0.30–0.40 s against 0.14–0.15 s), on 5.6× the cycles for 1.04× the instructions; three workers run 0.08–0.10 s, four 0.06–0.07 s and eighteen 0.04–0.05 s. On E-cores only (`taskpolicy -b`) two workers still lose, 0.77–0.89 s against 0.55–0.70 s for one, so it is not P/E asymmetry. The published par row uses the default worker count and is unaffected. Measured 2 Nov 2026 with karac g96fca5370.
+
+**Surfaced [`B-2026-11-02-23`](../../../../kara/docs/bugs-v2.md)** (perf, open). The seq lane runs 1.40× legacy dd86e3955's instructions and 1.42× its cycles, and the par lane slipped from 0.91× to 1.06× rayon between g6697158fa and g96fca5370, measured 2026-11-02.

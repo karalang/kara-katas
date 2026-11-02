@@ -54,17 +54,17 @@ Both fixes carry regression tests (`ownership::test_weak_field_read_index_assign
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`17988497295154`). Workload: insertion-sort an index-pool linked list (N nodes) x passes, position-weighted checksum sink.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g96fca5370 (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Go | 144.5 ms | 0.51× |
-| C `clang -O3` | 217.7 ms | 0.76× |
-| **Kāra (codegen)** | 285.9 ms | 1.00× |
-| Rust `-O` | 289.6 ms | 1.01× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 289.9 ms | 1.01× |
+| Go | 156.1 ms | 0.68× |
+| **Kāra (codegen)** | 229.7 ms | 1.00× |
+| C `clang -O3` | 235.1 ms | 1.02× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 313.7 ms | 1.37× |
+| Rust `-O` | 314.1 ms | 1.37× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Kāra is now level with Rust (0.99×), 1.31× behind C and 1.98× behind Go. That is a regression: the 2026-07-28 measurement (karac 0.1.0, legacy backend) had Kāra ahead of both Rust (0.72× `rustc -O`, 0.75× equal-safety) and C (0.82×), and 1.47× behind Go. Those leads are history, not a current claim — see the Bug ledger below. Single-machine snapshot (`bench/results.json`, karac g6697158fa, 2026-11-01); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Kāra is 0.73× both Rust rows, level with C (0.98×; C's row has σ 26.9 ms with a hyperfine outlier warning, 217.9–299.4 ms) and 1.47× behind Go. Against the g6697158fa run of 2026-11-01 that is a gain on every comparator (Kāra/Rust 0.99× → 0.73×, Kāra/C 1.31× → 0.98×, Kāra/Go 1.98× → 1.47×), and the 1.36× cycle excess of that run is measured fixed on g96fca5370 ([`B-2026-11-01-42`](../../../../kara/docs/bugs-v2.md)): 1.00× legacy dd86e3955's instructions and 1.00× its cycles. The 2026-07-28 measurement (karac 0.1.0, legacy backend) read 0.72× `rustc -O`, 0.75× equal-safety and 1.47× Go, which the current ratios match; its 0.82× C does not return, on equal cycle counts, because C moved against Rust and Go between those feeds (Rust/C 1.14× → 1.34×). Single-machine snapshot (`bench/results.json`, karac g96fca5370, 2026-11-02); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -81,4 +81,4 @@ Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-01-42`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend this kata's seq lane regressed against every comparator (Kāra/Rust 0.72× → 0.99×, Kāra/C 0.82× → 1.31×, Kāra/Go 1.47× → 1.98×). The MIR build retires the same instruction count as legacy dd86e3955 (1.237G vs 1.234G) but takes 1.36× its cycles.
+**Surfaced [`B-2026-11-01-42`](../../../../kara/docs/bugs-v2.md)** (perf, open). On g6697158fa (2026-11-01) this kata's seq lane regressed against every comparator (Kāra/Rust 0.72× → 0.99×, Kāra/C 0.82× → 1.31×, Kāra/Go 1.47× → 1.98×): the MIR build retired the same instruction count as legacy dd86e3955 (1.237G vs 1.234G) but took 1.36× its cycles. Measured fixed on g96fca5370 (2026-11-02): 1.00× legacy's instructions and 1.00× its cycles, 0.99× → 0.73× Rust.

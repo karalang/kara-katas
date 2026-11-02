@@ -7,7 +7,7 @@
 # reduction recognizes the per-iter `if is_valid_bytes(buf) { count += 1 }`
 # count-reduction in main's K=500k loop (each iter is independent — build a
 # fresh buffer, validate, fold the bool into a counter) and emits a
-# `karac_par_reduce` dispatch by default. We build TWO kara binaries:
+# a task-spawn dispatch (karac_mir_task_spawn) by default. We build TWO kara binaries:
 #
 #   valid_parentheses_kara_seq — KARAC_AUTO_PAR=0, single-threaded.
 #                                Within-lane comparator vs rust / c / go.
@@ -215,8 +215,8 @@ rt_end
 echo
 echo "=== runtime — auto-par regime (kara default, multi-core) ==="
 # Default `karac build` output: karac's auto-par-on-reduction recognizes
-# the K=500k count-reduction in `main` and emits a karac_par_reduce
-# dispatch. NOT directly comparable to the single-thread rows above per
+# the K=500k count-reduction in `main` and spawns tasks
+# (karac_mir_task_spawn). NOT directly comparable to the single-thread rows above per
 # BENCH.md's two-lane discipline — reported separately so the production-
 # default Kara behavior stays visible. Heavier warmup (10/50) absorbs
 # worker-pool init noise that otherwise inflates σ on short auto-par runs.

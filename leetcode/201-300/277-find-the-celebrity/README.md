@@ -200,32 +200,43 @@ O(1) memory, and timed work that is exactly the ~3n questions the algorithm asks
 64 independent instances at n = 2,500,000. Sink is the order-invariant sum of
 `(instance·1000003 + found)`; every lane prints `31970738`.
 
-**Canonical M5 run.** Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+**Canonical M5 run.** Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.8.0-dev.14217+g7310a8f94`
 (v2/MIR backend), hyperfine 30 runs. Both Kāra lanes were checked in the emitted
-IR (`KARAC_MIR_LL`): the par build of `celebrity.kara` carries a call of
-`karac_mir_task_spawn`, and the seq twin built with `KARAC_AUTO_PAR=0` does not.
+IR (`KARAC_MIR_LL`) on g7310a8f94: the par build of
+`celebrity.kara` carried a call of `karac_mir_task_spawn`, and the seq twin built
+with `KARAC_AUTO_PAR=0` did not. This run's CPU agrees: 1207% par, 99.4% seq.
 
 | SEQ lane | time | vs Kāra |
 |---|---:|---:|
-| `clang -O3` | 66.4 ms ± 0.9 | 0.51× |
-| `rustc -O` | 66.8 ms ± 0.6 | 0.51× |
-| `rustc -O -C overflow-checks=on` (equal safety) | 68.0 ms ± 1.3 | 0.52× |
-| **`karac build`, `KARAC_AUTO_PAR=0`** | **131.4 ms ± 9.5** | **1.00×** |
-| `go build` | 154.7 ms ± 6.3 | 1.18× |
+| `clang -O3` | 65.5 ms ± 1.1 | 0.50× |
+| `rustc -O` | 66.5 ms ± 1.1 | 0.51× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 68.1 ms ± 1.2 | 0.52× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **130.1 ms ± 4.2** | **1.00×** |
+| `go build` | 154.5 ms ± 5.8 | 1.19× |
 
 | PAR lane | time | vs Kāra |
 |---|---:|---:|
-| **`karac build`, `#[par_order_free]`** | **12.0 ms ± 0.5** | **1.00×** |
-| Go, goroutines + `WaitGroup` | 13.0 ms ± 0.7 | 1.09× |
-| `clang -O3` + pthreads (metal floor) | 17.7 ms ± 0.3 | 1.48× |
+| `clang -O3` + pthreads (metal floor), one thread per core | 6.2 ms ± 0.2 | 0.51× |
+| **`karac build`, `#[par_order_free]`** | **12.1 ms ± 0.3** | **1.00×** |
+| Go, goroutines + `WaitGroup` | 12.9 ms ± 0.3 | 1.06× |
 
-Flat on both lanes against the 2026-08-28 run. Seq: Kāra is 1.97× Rust (was
-1.93×), 1.98× C (was 1.94×), 1.93× equal-safety Rust and 0.85× Go (was 0.83×).
-Par: Kāra leads, at 0.67× pthreads C (was 0.66×) and 0.92× Go's goroutines (was
-0.90×), and runs 11.0× its own seq twin on 6P+12E. The Kāra binaries are
-295.8 KiB (seq) and 377.1 KiB (par), against 32.6 KiB for C; every v2/MIR Kāra
-binary is ~300–390 KB where legacy's were ~34 KB (tracked as
-[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
+Seq is flat against the g6697158fa run: Kāra is 1.96× Rust (was 1.97×; 1.93× on
+2026-08-28), 1.99× C (was 1.98×; 1.94×), 1.91× equal-safety Rust (was 1.93×) and
+0.84× Go (was 0.85×; 0.83×). Par is flat against Go's goroutines at 0.94× (was 0.92×;
+0.90×), and Kāra runs 10.7× its own seq twin on 6P+12E (was 11.0×).
+
+**Against pthreads C it is 1.96×, the first like-for-like M5 figure, and it is the
+sequential gap carried over**: 1.96× on par against 1.99× on seq, with Kāra scaling
+10.7× and C 10.6×. The earlier 0.67× (g6697158fa) and 0.66× (2026-08-28), which read
+as Kāra leading, are history: `bench/celebrity_par.c` was hard-coded to 4 threads
+against Kāra's 18 cores, so those figures were 18 cores beating a 4-thread C, not a
+floor. The mirror now takes `sysconf(_SC_NPROCESSORS_ONLN)` and C runs 10.6× its own
+seq where it ran 3.7×, so the move is the comparator gaining threads, not a Kāra
+regression.
+
+The Kāra binaries are 50.8 KiB (seq) and 377.2 KiB (par), against 32.6 KiB for C. The
+~300–390 KB seq binaries of earlier v2/MIR builds were
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md) (fixed).
 
 The container tables below are history; where they rank Kāra, the M5 figures
 above are the standing result.
@@ -261,8 +272,8 @@ place to parallelize this problem, and Kāra's own seq→par ratio is **4.6×** 
 
 **Kāra is 2.4× off equal-safety Rust here, against 1.16× on
 [#276](../276-paint-fence/).** That is a real difference between two katas and it
-is not yet explained. (Container figures. On the M5, 2026-11-02, it is 1.93× here
-against 0.97× on #276 — the gap persists.) Two hypotheses were tested and neither reproduced:
+is not yet explained. (Container figures. On the M5, 2026-11-02, it is 1.91× here
+against 0.96× on #276 — the gap persists.) Two hypotheses were tested and neither reproduced:
 
 - **Constant-divisor `%` not strength-reduced.** The kernel is modulo-heavy, but
   an isolated `(acc * k + i) % 2147483647` loop measures Kāra 0.23 s against C

@@ -25,7 +25,7 @@ Expected output (both): `true false true false true false` (one per line).
 
 > **Host:** the canonical lane is Apple M5 Pro (6P+12E),
 > [`bench/results.json`](bench/results.json), measured 2026-11-02 with karac
-> g6697158fa (0.9.0-dev.14057, the v2/MIR backend) — the file
+> g96fca5370 (0.8.0-dev.14215, the v2/MIR backend) — the file
 > `scripts/consolidate-bench.sh` feeds into the top-level chart; its tables lead
 > each subsection below. The tables labelled **x86 container snapshot** are an
 > older shared x86-64 Linux cloud container run, kept as
@@ -48,23 +48,25 @@ caveat, unlike [#290](../290-word-pattern/README.md) and
 
 ### Runtime — 30 runs, 5 warmup
 
-M5 Pro, 2026-11-02, karac g6697158fa, sequential lane (`KARAC_AUTO_PAR=0`):
+M5 Pro, 2026-11-02, karac g96fca5370, sequential lane (`KARAC_AUTO_PAR=0`):
 
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| rust | 100.9 ms ± 1.8 | 1.30× faster |
-| go | 101.6 ms ± 1.0 | 1.29× faster |
-| c | 107.9 ms ± 1.4 | 1.22× faster |
-| rust (overflow-checks=on) | 117.7 ms ± 7.8 | 1.12× faster |
-| **kāra** | **131.6 ms ± 2.2** | — |
+| rust | 101.2 ms ± 1.5 | 1.26× faster |
+| go | 103.7 ms ± 2.5 | 1.23× faster |
+| c | 108.8 ms ± 1.0 | 1.17× faster |
+| rust (overflow-checks=on) | 119.4 ms ± 5.9 | 1.07× faster |
+| **kāra** | **127.6 ms ± 1.3** | — |
 
 **Regressed on the MIR backend.** Against the 2026-07-28 M5 feed (legacy
 backend) the language ratios slipped on every comparator: Kāra/Rust `-O`
-1.08× → 1.30×, Kāra/equal-safety Rust 0.89× → 1.12×, Kāra/C 1.00× → 1.22×,
-Kāra/Go 1.06× → 1.29×. Every comparator ran 8–13% slower in absolute terms
-this session (machine state), so the ratios, not the milliseconds, are the
-measure; Kāra moved ~1.2× beyond that drift. The MIR build executes 1.11×
-legacy's instructions and 1.21× its cycles — see § Bug ledger.
+1.08× → 1.26×, Kāra/equal-safety Rust 0.89× → 1.07×, Kāra/C 1.00× → 1.17×,
+Kāra/Go 1.06× → 1.23×. Absolute times drift between sessions with machine
+state, so the ratios, not the milliseconds, are the measure; Kāra moved
+~1.17× beyond that drift. Against the earlier 2026-11-02 run on karac
+g6697158fa (1.30× Rust, 1.12× equal-safety, 1.22× C, 1.29× Go) this run is
+flat, under 10% on every comparator. The MIR build executes 1.10× legacy
+dd86e3955's instructions and 1.17× its cycles — see § Bug ledger.
 
 x86 container snapshot (history):
 
@@ -78,9 +80,9 @@ x86 container snapshot (history):
 
 ### ⚠️ At equal safety, kāra beats Rust here
 
-> *2026-11-02: no longer true on the M5. On the MIR backend Kāra is 1.12×
+> *2026-11-02: no longer true on the M5. On the MIR backend Kāra is 1.07×
 > behind `rustc -O -C overflow-checks=on` (it led 0.89× on the 2026-07-28 M5
-> feed), and overflow checks cost Rust 1.17× there, not 1.87× — see the M5
+> feed), and overflow checks cost Rust 1.18× there, not 1.87× — see the M5
 > table above and [`B-2026-11-02-3`](../../../../kara/docs/bugs-v2.md). The
 > analysis below is the x86 container snapshot.*
 
@@ -116,14 +118,14 @@ M5 Pro, 2026-11-02:
 
 | Metric | kāra | rust | c | go |
 |---|---|---|---|---|
-| Compile (cold) | 163.6 ms ± 1.7 | 99.9 ms ± 1.0 | 53.8 ms ± 1.2 | — |
-| Binary size | 295.8 KiB | 456.0 KiB | 32.8 KiB | 2434.1 KiB |
-| Runtime peak RSS | 1.7 MiB | 1.7 MiB | 1.3 MiB | 3.0 MiB |
-| Compile peak RSS | 61.0 MiB | 28.2 MiB | 2.6 MiB | — |
+| Compile (cold) | 167.4 ms ± 2.9 | 101.5 ms ± 0.9 | 54.3 ms ± 1.0 | — |
+| Binary size | 66.9 KiB | 456.0 KiB | 32.8 KiB | 2434.1 KiB |
+| Runtime peak RSS | 1.5 MiB | 1.7 MiB | 1.3 MiB | 3.0 MiB |
+| Compile peak RSS | 64.9 MiB | 28.2 MiB | 2.6 MiB | — |
 
-Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
-(this kata's was 34,432 bytes on the 2026-07-28 feed), tracked as
-[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
+The Kāra binary is 68,512 bytes, down from 295.8 KiB on karac g6697158fa and
+still about twice the legacy backend's (34,432 bytes on the 2026-07-28 feed),
+tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
 
 x86 container snapshot (history):
 
@@ -143,4 +145,4 @@ sink `420` from both Python and Rust.
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-02-3`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend the `bench/` Kāra program executes 1.11× legacy's instructions and 1.21× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 1.08× to 1.30× `rustc -O`, 1.00× to 1.22× C and 1.06× to 1.29× Go, and lost its equal-safety lead over `rustc -C overflow-checks=on` (0.89× → 1.12×). Measured 2026-11-02 with karac g6697158fa.
+**Surfaced [`B-2026-11-02-3`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend the `bench/` Kāra program executes 1.10× legacy dd86e3955's instructions and 1.17× its cycles (`KARAC_AUTO_PAR=0`): the seq lane went from 1.08× to 1.26× `rustc -O`, 1.00× to 1.17× C and 1.06× to 1.23× Go, and lost its equal-safety lead over `rustc -C overflow-checks=on` (0.89× → 1.07×). Measured 2026-11-02 with karac g96fca5370.

@@ -60,7 +60,7 @@ python3 ground_truth.py
 ## Benchmarks
 Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`max_path_sum.{kara,rs,c,py}`, `go-seq/main.go`).
 
-> **Machine.** Canonical numbers are the **Apple M5 Pro** run — [`bench/results.json`](bench/results.json), karac g6697158fa (v2/MIR backend), measured 2026-11-01. The earlier shared **x86-64 Linux cloud-container** reference run (`bench/results.container-x86.json`) is kept below as history. Absolute times/sizes/RSS are **not** comparable across hosts; only within-file cross-language ratios are the signal.
+> **Machine.** Canonical numbers are the **Apple M5 Pro** run — [`bench/results.json`](bench/results.json), karac g96fca5370 (v2/MIR backend), measured 2026-11-02. The earlier shared **x86-64 Linux cloud-container** reference run (`bench/results.container-x86.json`) is kept below as history. Absolute times/sizes/RSS are **not** comparable across hosts; only within-file cross-language ratios are the signal.
 
 **Workload.** A forest of `T = 2048` balanced trees of `N = 511` mixed-sign nodes each, built **once** into a `Vec` before the timed loop, then `max_path_sum` run over the whole forest **K = 60** times, folding a sum-of-results sink (sink = `15576480`). Pointer-chasing post-order recursion over RC nodes dominates — the build-once + punch shape keeps the optimizer from erasing the traversal.
 
@@ -68,17 +68,17 @@ Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, a
 
 **Equal safety.** Kāra checks integer overflow (and the `Option[TreeNode]` unwrap) by default; the `rustc -O -C overflow-checks=on` row is the like-for-like on overflow.
 
-**M5 Pro, 2026-11-01** — `--warmup 5 --runs 30`, all single-threaded (sink `15576480`):
+**M5 Pro, 2026-11-02** — `--warmup 5 --runs 30`, all single-threaded (sink `15576480`):
 
 | Implementation | Wall time | vs kāra | Binary | Peak RSS |
 |---|---|---|---|---|
-| c    max_path_sum (clang -O3)                    | **152.4 ± 7.6 ms** | 1.14× faster | 32.8 KiB | 33.1 MiB |
-| go   max_path_sum                                | 159.7 ± 4.2 ms | 1.09× faster | 2.4 MiB | 30.4 MiB |
-| **kāra max_path_sum (codegen)**                  | **174.1 ± 3.4 ms** | — | 295.8 KiB | 49.2 MiB |
-| rust max_path_sum (rustc -O)                     | 201.2 ± 4.0 ms | 1.16× slower | 456.2 KiB | 49.3 MiB |
-| rust max_path_sum (rustc -O, overflow-checks=on) | 204.9 ± 6.5 ms | 1.18× slower | — | — |
+| c    max_path_sum (clang -O3)                    | **147.1 ± 2.6 ms** | 1.15× faster | 32.8 KiB | 33.1 MiB |
+| go   max_path_sum                                | 155.4 ± 3.0 ms | 1.08× faster | 2.4 MiB | 30.4 MiB |
+| **kāra max_path_sum (codegen)**                  | **168.6 ± 6.1 ms** | — | 66.9 KiB | 33.1 MiB |
+| rust max_path_sum (rustc -O)                     | 193.0 ± 2.0 ms | 1.15× slower | 456.2 KiB | 49.2 MiB |
+| rust max_path_sum (rustc -O, overflow-checks=on) | 195.7 ± 4.3 ms | 1.16× slower | — | — |
 
-**On the M5, Kāra lands third — behind C and Go, ahead of both Rust rows** (0.87× of `rustc -O`, 0.85× of checked Rust). Every comparator ran 13–22% slower in this session than in the previous M5 feed (legacy karac, 2026-07-27), so the ratios carry the change: Kāra/Rust 0.94× → 0.87×, Kāra/C 1.23× → 1.14×, Kāra/Go 1.10× → 1.09× — flat (all moves under 10% relative). The Kāra binary is 302,896 B against legacy's 34,368 B: every v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Kāra's peak RSS is now level with Rust's (51.6 MB each); the legacy build read 34.8 MB, level with C, in the 2026-07-27 feed. The cause is the node header: a v2/MIR `shared` box carries a strong and a weak count (16 bytes) where legacy carried one (8), so each node is a `malloc(40)` that macOS rounds to a 48-byte block instead of 32, tracked as [`B-2026-11-01-24`](../../../../kara/docs/bugs-v2.md). Cold compile: `karac build` 122.4 ± 2.2 ms, `rustc -O` 102.3 ± 1.9 ms, `clang -O3` 48.2 ± 2.8 ms.
+**On the M5, Kāra lands third — behind C and Go, ahead of both Rust rows** (0.87× of `rustc -O`, 0.86× of checked Rust). Comparators ran 10–17% slower in this session than in the legacy feed of 2026-07-27 and Kāra's time is flat against the g6697158fa run, so the ratios carry the change: Kāra/Rust 0.94× (legacy) → 0.87× (g6697158fa) → 0.87×, Kāra/C 1.23× → 1.14× → 1.15×, Kāra/Go 1.10× → 1.09× → 1.08× — flat (all moves under 10% relative). The Kāra binary is 68,512 B against legacy's 34,368 B, tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Kāra's peak RSS is 33.1 MiB in this feed, level with C's and below Rust's 49.2 MiB. The node-header growth is measured fixed on g96fca5370 ([`B-2026-11-01-24`](../../../../kara/docs/bugs-v2.md)): the v2/MIR `shared` header is now 8 bytes and each node a `malloc(32)`, and a direct comparison reads 33.5 MiB, level with legacy's 33.6 MiB. History (2026-11-01, g6697158fa): the `shared` box carried a strong and a weak count (16 bytes), so each node was a `malloc(40)` that macOS rounded to a 48-byte block, and the same comparison read 49.7 MiB (52.1 MB). Cold compile: `karac build` 112.3 ± 2.1 ms, `rustc -O` 98.5 ± 1.6 ms, `clang -O3` 45.6 ± 0.7 ms.
 
 **Container history** (x86-64, undated snapshot; not re-run):
 
@@ -92,7 +92,7 @@ Wall-clock comparison across same-shape implementations in Kāra, Rust, C, Go, a
 | rust max_path_sum (rustc -O)                     | 1821 ± 205 ms | 3.9 MiB | 51.2 MiB |
 | rust max_path_sum (rustc -O, overflow-checks=on) | 1830 ± 231 ms | 3.9 MiB | 51.3 MiB |
 
-**On the container, Kāra landed second — behind C, ahead of Go and both Rust rows — on this pointer-chasing RC-tree traversal.** (2026-11-01: on the M5 Go is ahead of Kāra, 1.09×, and Kāra's lead over `rustc -O` is 1.16×, not ~2.4×.) Two measured findings frame the container ordering:
+**On the container, Kāra landed second — behind C, ahead of Go and both Rust rows — on this pointer-chasing RC-tree traversal.** (2026-11-02: on the M5 Go is ahead of Kāra, 1.08×, and Kāra's lead over `rustc -O` is 1.15×, not ~2.4×.) Two measured findings frame the container ordering:
 
 - **C's edge is instruction count, not magic.** A cachegrind decomposition (mini workload) reads **c 73.8 M** instructions vs **kāra 118.1 M** vs **rust(Box) 116.2 M** — clang emits ~1.6× leaner recursion codegen, which is the whole C-vs-kāra gap (kāra is 1.9× C's wall time, ≈ its instruction ratio).
 - **Kāra ≈ Rust in instructions, yet ~2× faster in wall-clock — and I can't fully explain it.** kāra and `rustc -O` emit near-identical instruction counts (118 M vs 116 M) and near-identical *modelled* cache misses, so cachegrind does **not** account for kāra's ~2.4× wall-time lead over `rustc -O`. Even an owned-`Box` Rust tree (dropping the `Rc` refcount kāra's `shared struct` carries) measures ~1.37 s here, still well behind kāra's 760 ms. The margin is a real-hardware memory-behaviour effect I did not root-cause — reported as a **measured observation, not a language-superiority claim**.
@@ -107,4 +107,4 @@ Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-01-24`](../../../../kara/docs/bugs-v2.md)** (perf, open). The v2/MIR backend's 16-byte `shared` header (strong + weak count) puts this kata's 24-byte `TreeNode` in a 48-byte macOS malloc block where legacy's 8-byte header fit 32: peak RSS 35.2 MB → 52.1 MB (1.48×) on the M5, measured 2026-11-01 against legacy dd86e3955. Not visible on Linux, where glibc gives both sizes a 48-byte chunk.
+**Surfaced [`B-2026-11-01-24`](../../../../kara/docs/bugs-v2.md)** (perf, open). History (2026-11-01, g6697158fa): the v2/MIR backend's 16-byte `shared` header (strong + weak count) put this kata's 24-byte `TreeNode` in a 48-byte macOS malloc block where legacy's 8-byte header fit 32, for peak RSS 35.2 MB → 52.1 MB (1.48×) on the M5 against legacy dd86e3955; it was not visible on Linux, where glibc gives both sizes a 48-byte chunk. Measured fixed on g96fca5370 (2026-11-02): the header is 8 bytes (`malloc(32)` per node) and peak RSS is 33.5 MiB, level with legacy's 33.6 MiB (35.2 MB).

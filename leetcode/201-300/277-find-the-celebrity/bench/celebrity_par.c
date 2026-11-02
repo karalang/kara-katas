@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define N 2500000
 #define INSTANCES 64
-#define NTHREADS 4
 
 static int knows(int64_t star, int64_t a, int64_t b) {
     if (b == star) return 1;
@@ -36,6 +36,9 @@ static void *worker(void *v) {
     return NULL;
 }
 int main(void) {
+    /* One thread per online core, as the other pthreads mirrors do: this was a
+     * hard-coded 4, against the Kara and Go lanes' full core count. */
+    int NTHREADS = (int)sysconf(_SC_NPROCESSORS_ONLN);
     pthread_t th[NTHREADS];
     struct arg args[NTHREADS];
     int per = (INSTANCES + NTHREADS - 1) / NTHREADS;

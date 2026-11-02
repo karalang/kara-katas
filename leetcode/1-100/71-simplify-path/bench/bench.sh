@@ -4,9 +4,9 @@
 #
 # Two-lane kata. The K=1M outer loop reduces via
 # `sum = sum + simplify(inputs[k % N]).len()` — karac's auto-par-on-
-# reduction recognizes the shape and emits a karac_par_reduce dispatch
-# (binary grows ~49 KiB → ~312 KiB, wall drops ~3× via multi-core
-# dispatch). Per-iter work is allocation-heavy (Vec[char] snapshot +
+# reduction recognizes the shape and spawns tasks (karac_mir_task_spawn;
+# binary 66.9 KiB seq → 393.4 KiB par on g96fca5370, wall drops ~3× via
+# multi-core dispatch). Per-iter work is allocation-heavy (Vec[char] snapshot +
 # two parallel Vec[i64] stacks + f-string append per output char), so
 # the parallel speedup is bounded by the system allocator's per-thread
 # contention — a real production characteristic that bears reporting.

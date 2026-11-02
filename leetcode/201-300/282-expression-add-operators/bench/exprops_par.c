@@ -13,8 +13,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <unistd.h>
 #define INPUTS 220
-#define NTHREADS 4
 #define NDIG 9
 
 static void make_input(int64_t idx, char *num) {
@@ -84,6 +84,9 @@ static void *worker(void *v) {
     return NULL;
 }
 int main(void) {
+    /* One thread per online core, as the other pthreads mirrors do: this was a
+     * hard-coded 4, against the Kara and Go lanes' full core count. */
+    int NTHREADS = (int)sysconf(_SC_NPROCESSORS_ONLN);
     pthread_t th[NTHREADS];
     struct arg args[NTHREADS];
     int64_t per = (INPUTS + NTHREADS - 1) / NTHREADS;

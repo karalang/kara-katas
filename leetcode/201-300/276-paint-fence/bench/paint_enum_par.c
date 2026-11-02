@@ -4,11 +4,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define N 13
 #define K 4
 #define PREFIXES (K * K)
-#define NTHREADS 4
 
 static int64_t count_prefix(int p0, int p1) {
     int c[N] = {0};
@@ -39,6 +39,9 @@ static void *worker(void *v) {
 }
 
 int main(void) {
+    /* One thread per online core, as the other pthreads mirrors do: this was a
+     * hard-coded 4, against the Kara and Go lanes' full core count. */
+    int NTHREADS = (int)sysconf(_SC_NPROCESSORS_ONLN);
     pthread_t th[NTHREADS];
     struct arg args[NTHREADS];
     int per = (PREFIXES + NTHREADS - 1) / NTHREADS;
