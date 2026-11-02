@@ -79,17 +79,44 @@ Per-item validity cannot detect missing items. A suite made only of "is each
 answer well-formed?" would have reported green on that one.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-21 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (the table immediately below) —
+> the file `scripts/consolidate-bench.sh` feeds into the top-level chart.
+> Everything after it, from the container table on, was measured on a shared
+> **x86-64 Linux cloud container** (kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json)) or in
+> dated 2026-08-21 probes; those figures are history, and only their
+> **within-file cross-language ratios** are comparable with anything.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–105% CPU.
+Every lane prints `states 2510273 checksum 320468494`.
+
+| implementation | mean | vs C |
+|---|---|---|
+| `clang -O3` | 74.2 ms ± 4.2 | 1.00× |
+| `rustc -O` | 188.8 ms ± 6.7 | 2.55× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 190.0 ms ± 3.9 | 2.56× |
+| `go build` | 386.0 ms ± 3.1 | 5.20× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **478.5 ms ± 17.8** | **6.45×** |
+
+**This lane regressed on the v2/MIR backend.** Kāra is now last: 6.45× C, 2.53×
+`rustc -O`, 2.52× the equal-safety build and 1.24× Go. Against the previous M5
+feed (2026-08-28, `karac g9b221e799`, legacy backend) every ratio roughly
+doubled — Kāra/Rust 1.25× → 2.53×, Kāra/C 3.17× → 6.45×, Kāra/Go 0.61× → 1.24×
+— while the comparators all ran 12–13% slower in absolute ms this session, so
+the move is Kāra's. The v2 build retires 1.39× legacy's instructions and 2.05×
+its cycles on this kernel; it is tracked as a same-signature instance of
+[`B-2026-10-31-38`](../../../../kara/docs/bugs-v2.md) (see the Bug ledger
+below).
+
+The Kāra binary is 295.8 KiB (302,888 B), against C's 32.9 KiB, Rust's 455.6 KiB
+and Go's 2.39 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS: Kāra 1.2 MiB,
+C 1.0, Rust 1.1, Go 9.0. Cold compile: `karac build` 127.1 ms ± 2.7 (55.6 MiB
+peak), `rustc -O` 95.8 ms (28.3 MiB), `clang -O3` 58.3 ms (2.6 MiB).
 
 40,000 boards × 64 chars × three `+` densities. Container x86_64, sink
 `states 2510273 checksum 320468494` across Kāra, C, Rust and Go.
@@ -106,6 +133,7 @@ answer well-formed?" would have reported green on that one.
 The workload is allocation-dominated — one owned string per result — so everyone
 lands in the same order of magnitude except C. Kāra is 3.25× off C and within
 7% of plain Rust.
+*(2026-11-02: no longer true on the M5 feed above — Kāra is 2.53× Rust and 6.45× C there; see [`B-2026-10-31-38`](../../../../kara/docs/bugs-v2.md).)*
 
 ### Where the 3.25× to C goes — and why three theories about it were wrong
 
@@ -226,3 +254,11 @@ language parity is a property of the *work*, not of the output — which is
 exactly why [BENCHMARKS.md](../../../BENCHMARKS.md) makes it a rule rather than
 a suggestion. The parity requirement is now stated in each mirror's header so
 the next person doesn't optimise them back apart.
+
+## Bug ledger
+
+**Surfaced [`B-2026-10-31-38`](../../../../kara/docs/bugs-v2.md)** (perf, open).
+On the v2/MIR backend this kata's sequential lane went from 1.25× to 2.53× Rust
+(3.17× → 6.45× C, 0.61× → 1.24× Go) between the 2026-08-28 and 2026-11-02 M5
+feeds, at 1.39× legacy's instructions and 2.05× its cycles. The ledger row lists
+kata 293 as a same-signature instance.

@@ -142,20 +142,25 @@ languages print `checksum 258938743`.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.9.0-dev.14057+g6697158fa` (v2/MIR backend), `KARAC_AUTO_PAR=0`, 30 runs each,
+measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| rust (`-O`) | 315.6 ms | 0.97× |
-| c (`-O3`) | 320.3 ms | 0.98× |
-| **kara** (codegen, seq) | **325.3 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 326.4 ms | 1.00× |
-| go | 356.2 ms | 1.09× |
-| python | 8.849 s | 27.2× |
+| rust (`-O`) | 357.6 ms ± 7.0 | 0.96× |
+| c (`-O3`) | 362.8 ms ± 3.5 | 0.97× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 372.2 ms ± 5.3 | 1.00× |
+| **kara** (codegen, seq) | **372.5 ms ± 7.9** | **1.00×** |
+| go | 398.5 ms ± 4.9 | 1.07× |
+| python *(last measured 2026-09-21, not re-run)* | 8.849 s | 27.2× (vs that run's Kāra) |
 
 The arm64 cluster is tighter than x86's and the standing is slightly better:
-Kāra is level with equal-safety Rust (1.00×), 1.02× behind `clang -O3` where
-x86 had it 1.09× behind, and 1.09× ahead of Go. The matched-ISA rows are
+Kāra is level with equal-safety Rust (1.00×), 1.03× behind `clang -O3` where
+x86 had it 1.09× behind, 1.04× behind `rustc -O`, and 1.07× ahead of Go. Against
+the previous M5 feed (2026-09-21, `karac g4ef50cbf3`, legacy backend) this is
+flat: Kāra/Rust 1.03× → 1.04×, Kāra/C 1.02× → 1.03×, Kāra/Go 0.91× → 0.93×, all
+under this session's 10% noise band (every comparator ran 12–14% slower in
+absolute ms this session). The matched-ISA rows are
 absent by design — `-march=x86-64-v3` has no arm64 counterpart, so the ISA
 helpers are deliberate no-ops there.
 
@@ -189,7 +194,8 @@ on every one of the 393 million grid reads that C's raw indexing does not.
   is for. The cost is the per-cell compare and the deviation loop.
 - **Not auto-parallelism.** The default build measures 667 ms against
   `KARAC_AUTO_PAR=0`'s 677, and user time tracks wall in both, so the timed
-  build is single-threaded.
+  build is single-threaded. (2026-11-02: still true — the default build's emitted IR
+  (`KARAC_MIR_LL`) carries no call of `karac_mir_task_spawn`.)
 
 ### The winner depends on the grid size, and the sign flips
 
@@ -208,13 +214,27 @@ distribution alone.
 
 ### Elsewhere
 
+Apple M5 Pro, 2026-11-02 (`bench/results.json`):
+
+| | kara | c | rust | go |
+|---|---:|---:|---:|---:|
+| binary size | 295.8 KiB | 32.7 KiB | 455.4 KiB | 2450.4 KiB |
+| compile (cold) | 122.0 ms | 46.7 ms | 92.2 ms | — |
+| peak RSS | 9.4 MiB | 7.3 MiB | 7.4 MiB | 9.8 MiB |
+
+Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
+(tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); the
+2026-09-21 M5 feed's Kāra binary was 34.4 KiB.
+
+Container x86-64, earlier snapshot (history):
+
 | | kara | c | rust | go |
 |---|---:|---:|---:|---:|
 | binary size | 341.5 KiB | 15.7 KiB | 3863.5 KiB | 2179.0 KiB |
 | compile (cold) | 413.6 ms | 106.6 ms | 167.9 ms | — |
 | peak RSS | 8.8 MiB | 7.9 MiB | 8.4 MiB | 8.1 MiB |
 
-Python's peak RSS is 14.2 MiB.
+Python's peak RSS is 14.2 MiB (not re-run 2026-11-02; the 2026-09-21 M5 feed recorded 13.4 MiB).
 
 ## Running it
 

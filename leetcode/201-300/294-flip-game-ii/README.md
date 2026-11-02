@@ -136,17 +136,43 @@ constraint, and saying so beats quietly shipping a differential that nobody
 re-runs on all four surfaces.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-22 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (the table immediately below) —
+> the file `scripts/consolidate-bench.sh` feeds into the top-level chart.
+> Everything after it, from the container table on, was measured on a shared
+> **x86-64 Linux cloud container** (kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json)) in
+> 2026-08-22 runs; those figures are history, and only their **within-file
+> cross-language ratios** are comparable with anything.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–115% CPU.
+Every lane prints `wins 521 checksum 830721512`.
+
+| lang | mean | vs C | notes |
+|---|---:|---:|---|
+| C | 190.7 ms ± 5.0 | 1.00× | hand-rolled open-addressing table |
+| Go | 237.5 ms ± 4.1 | 1.25× | `map[string]bool` |
+| **Kāra** | **353.8 ms ± 17.2** | **1.86×** | `Map[String, bool]`, SipHash-1-3 |
+| Rust (`-O`, overflow-checks=on) | 368.5 ms ± 21.4 | 1.93× | `HashMap<String, bool>` |
+| Rust (`-O`) | 371.4 ms ± 15.6 | 1.95× | |
+
+Kāra is 1.86× C and 1.49× Go, and only just ahead of both Rust builds (0.95×
+`rustc -O`, 0.96× equal-safety) — inside Rust's ±σ. **That is a regression on
+the v2/MIR backend:** against the previous M5 feed (2026-08-28,
+`karac g9b221e799`) Kāra/Rust went 0.62× → 0.95×, Kāra/C 1.18× → 1.86× and
+Kāra/Go 0.99× → 1.49×, while every comparator ran 11–15% slower in absolute ms
+this session. The v2 build retires 1.60× legacy's instructions and 1.51× its
+cycles, in the per-node `String` building and the `String`-keyed memo; filed as
+[`B-2026-11-02-11`](../../../../kara/docs/bugs-v2.md) (see the Bug ledger below).
+
+The Kāra binary is 312.1 KiB (319,576 B; 303,416 B in the 2026-08-28 feed),
+against C's 33.0 KiB, Rust's 474.8 KiB and Go's 2.39 MiB; every v2/MIR Kāra
+binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS: Kāra 2.8 MiB,
+C 2.3, Rust 2.8, Go 9.2. Cold compile: `karac build` 134.3 ms ± 3.1 (58.5 MiB
+peak), `rustc -O` 145.6 ms (42.6 MiB), `clang -O3` 62.0 ms (2.6 MiB).
 
 900 boards of length 22 across three `+` densities, each solved by memoized
 backtracking with a fresh map — roughly 1.4M lookups on 22-byte string keys.
@@ -166,6 +192,7 @@ Kāra is **1.66× faster than equal-safety Rust** here and comfortably ahead of
 Go. That is the opposite of [#293](../293-flip-game/), where the same three
 languages ran string-building and Kāra sat *behind* Rust — the workload moved
 from allocating strings to hashing them, and the ordering changed with it.
+*(2026-11-02: on the M5 feed above Kāra is level with Rust (0.95×) and behind Go (1.49×); see [`B-2026-11-02-11`](../../../../kara/docs/bugs-v2.md).)*
 
 > **Re-measured 2026-08-22**, after `B-2026-08-21-6` replaced Kāra's FxHash
 > `Map` default with keyed SipHash-1-3 (below). The first cut of this table was
@@ -261,3 +288,11 @@ So 12 is the right band, and it was the right band for a reason nobody had
 checked. The lesson is the same one the `String.push` episode taught two katas
 earlier: a plausible attribution is not a measurement, and the way to tell them
 apart is to fix the suspected cause and see whether anything moves.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-11`](../../../../kara/docs/bugs-v2.md)** (perf, open).
+On the v2/MIR backend this kata's sequential lane went from 0.62× to 0.95× Rust
+(1.18× → 1.86× C, 0.99× → 1.49× Go) between the 2026-08-28 and 2026-11-02 M5
+feeds, at 1.60× legacy's instructions and 1.51× its cycles in the per-node
+`String` building and the `String`-keyed memo.

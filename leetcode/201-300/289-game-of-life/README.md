@@ -152,16 +152,38 @@ correct; an automatic one cannot be justified without understanding what the
 bits mean.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
+**Canonical run: Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend)**, hyperfine 30 runs, `KARAC_AUTO_PAR=0` — [`bench/results.json`](bench/results.json):
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+| Lane | mean ± σ | vs kāra |
+|---|---|---|
+| c | 12.8 ms ± 0.3 | 1.37× faster |
+| **kāra** | **17.5 ms ± 0.4** | — |
+| rust | 24.9 ms ± 0.6 | 1.42× slower |
+| rust (overflow-checks=on) | 27.0 ms ± 1.7 | 1.54× slower |
+| go | 35.1 ms ± 0.8 | 2.00× slower |
+
+Kāra is 0.71× Rust (0.65× equal-safety Rust), 1.37× C and 0.50× Go. Against the
+previous M5 run (2026-08-28, `karac 0.1.0`: 0.70× Rust, 1.32× C, 0.48× Go) every
+ratio moved under 10%, so flat. The seq build carries no call of
+`karac_mir_task_spawn` in its emitted IR (`KARAC_MIR_LL`), consistent with the
+no-par-lane reading above.
+
+| Metric | kāra | rust | c | go |
+|---|---|---|---|---|
+| Compile (cold) | 132.5 ms ± 1.9 | 87.6 ms ± 2.2 | 50.8 ms ± 0.7 | — |
+| Binary size | 295.8 KiB | 455.4 KiB | 32.7 KiB | 2450.4 KiB |
+| Runtime peak RSS | 1.5 MiB | 1.5 MiB | 1.5 MiB | 3.2 MiB |
+| Compile peak RSS | 59.6 MiB | 26.3 MiB | 2.6 MiB | — |
+
+Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
+(tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this kata's
+previous M5 build (2026-08-28) was 34.2 KiB.
+
+> **Container snapshot:** an earlier shared **x86-64 Linux cloud container** run is
+> kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between the two hosts; only the
+> **within-file cross-language ratios** are.
 
 See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats. Sink is
 `pop 7497 hash 613858477` across Kāra, C, Rust and Go.

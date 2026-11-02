@@ -144,7 +144,8 @@ it makes *one* pass; a `char_count()` + two `char_at()` rewrite makes three, and
 was measured at no gain at all. The solvers keep `collect()` — readable, and
 what the spec recommends.
 
-None of this accounts for the whole gap: Kāra is 2.76× slower than Go here, and
+None of this accounts for the whole gap: Kāra is 2.76× slower than Go here (container; 2.55× seq on
+the M5, 2026-11-02), and
 the allocation closes only part of it. The rest is undiagnosed — plausibly
 String hashing and the per-query abbreviation construction, but that has not
 been measured and is not claimed.
@@ -362,17 +363,57 @@ talking. The kāra-vs-Go *seq* ratio barely moved (1.02×) for exactly that
 reason — Go's own sequential lane improved by about as much as kāra's did.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-09-13.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
+**Canonical run: Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend)**, hyperfine 30 runs — [`bench/results.json`](bench/results.json).
+3000-word dictionary built once, then 1M `is_unique` punches over a 20k-word pool;
+sink `unique 573650` in every lane.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+Sequential lane (`KARAC_AUTO_PAR=0`):
+
+| Lane | mean ± σ | vs kāra |
+|---|---|---|
+| go | 39.9 ms ± 0.7 | 2.55× faster |
+| rust (overflow-checks=on) | 56.0 ms ± 1.4 | 1.82× faster |
+| rust | 56.5 ms ± 1.3 | 1.81× faster |
+| c | 61.9 ms ± 2.5 | 1.65× faster |
+| **kāra** | **101.9 ms ± 6.9** | — |
+
+Parallel lane:
+
+| Lane | mean ± σ | vs kāra |
+|---|---|---|
+| go (goroutines) | 7.6 ms ± 0.4 | 3.11× faster |
+| **kāra (auto-par)** | **23.6 ms ± 2.7** | — |
+| c (pthreads) | 71.8 ms ± 1.4 | 3.04× slower |
+
+Kāra seq is 1.81× Rust (1.82× equal-safety Rust), 1.65× C and 2.55× Go; Kāra
+auto-par is 0.33× the pthreads C mirror (which still collapses on this host,
+71.8 ms against its own 61.9 ms sequential build, 862 ms of it in the kernel) and
+3.11× Go's goroutines. Auto-par is worth 4.31× (101.9 → 23.6 ms). Against the
+previous feed (2026-09-13, `karac 0.1.0`: seq 1.60× Rust, 1.51× C, 2.40× Go; par
+0.29× pthreads C, 2.60× Go-par) this is a ~1.1× slip in both lanes — 1.13× against
+Rust and 1.20× against Go-par, 1.09–1.14× against C. On instruction counts the
+main kernel retires 1.08× legacy's instructions, while its two control variants
+(`uniqueabbr_idxpayload.kara`, `uniqueabbr_noalloc.kara`, not in the feed) now
+retire 0.86–0.87× legacy's — faster than legacy. The par build carries a call of
+`karac_mir_task_spawn` in its emitted IR (`KARAC_MIR_LL`) and the
+`KARAC_AUTO_PAR=0` twin of the same file does not.
+
+| Metric | kāra | rust | c | go |
+|---|---|---|---|---|
+| Compile (cold) | 182.6 ms ± 1.7 | 147.9 ms ± 3.7 | 53.0 ms ± 0.6 | — |
+| Binary size | 312.1 KiB seq / 393.4 KiB par | 475.7 KiB | 33.1 KiB | 2450.6 KiB |
+| Runtime peak RSS | 2.6 MiB seq / 4.1 MiB par | 2.6 MiB | 2.0 MiB | 7.0 MiB |
+| Compile peak RSS | 63.2 MiB | 39.5 MiB | 2.5 MiB | — |
+
+Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
+(tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)); this kata's
+previous M5 builds (2026-09-13) were 296.3 KiB seq / 329.8 KiB par.
+
+> **Container snapshot:** the table below is a shared **x86-64 Linux cloud
+> container** run, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between the two hosts; only the
+> **within-file cross-language ratios** are.
 
 Container x86_64, 3000-word dictionary built once, then 1M `is_unique` punches
 over a 20k-word pool. All five implementations agree on the sink (`unique

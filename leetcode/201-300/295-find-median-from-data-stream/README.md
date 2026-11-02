@@ -179,17 +179,15 @@ check now takes the heap itself, which is the better factoring anyway — a
 heap's validity belongs to the heap, not to its owner.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-25 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (the table after the workload
+> description) — the file `scripts/consolidate-bench.sh` feeds into the
+> top-level chart. The container table and the 2026-08-25 re-measurements after
+> it were taken on a shared **x86-64 Linux cloud container** (kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json)); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 2M streamed adds, median read after every one, so the measured work is 2M
 inserts plus 2M queries against heaps that grow to 1M elements. A binary heap
@@ -201,6 +199,31 @@ across.
 All five languages produce the identical sink, `checksum 831081041`, over the
 identical 2M adds. The sink hashes **twice** the median, which is always a whole
 number, so no float formatting enters the comparison.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–102% CPU.
+
+| lang | mean | vs C | notes |
+|---|---:|---:|---|
+| C | 205.9 ms ± 2.8 | 1.00× | hand-rolled heap |
+| Go | 210.0 ms ± 3.2 | 1.02× | hand-rolled heap |
+| **Kāra** | **229.0 ms ± 3.8** | **1.11×** | hand-rolled heap |
+| Rust (`-O`, overflow-checks=on) | 296.7 ms ± 6.9 | 1.44× | equal-safety twin |
+| Rust (`-O`) | 297.3 ms ± 6.6 | 1.44× | hand-rolled heap |
+
+Kāra is 1.11× C and 1.09× Go, and **ahead of both Rust builds** (0.77× each).
+Against the previous M5 feed (2026-08-28, `karac g9b221e799`, legacy backend)
+that is a real gain on every comparator: Kāra/Rust 1.14× → 0.77×, Kāra/C 1.64× →
+1.11×, Kāra/Go 1.58× → 1.09×. Kāra's absolute time fell 295 → 229 ms in a
+session where every comparator ran 13–15% slower, so the gain
+is Kāra's.
+
+The Kāra binary is 295.8 KiB (302,896 B; 34,992 B in the 2026-08-28 feed),
+against C's 32.8 KiB, Rust's 455.7 KiB and Go's 2.39 MiB; every v2/MIR Kāra
+binary is ~300–390 KB where the legacy backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS: Kāra 31.7
+MiB, C 31.7, Rust 31.7, Go 47.0. Cold compile: `karac build` 125.6 ms ± 2.2
+(59.7 MiB peak), `rustc -O` 101.5 ms (29.9 MiB), `clang -O3` 52.3 ms (2.6 MiB).
 
 Container, x86-64, 4 cores; full numbers in
 [`bench/results.container-x86.json`](bench/results.container-x86.json). See
@@ -235,11 +258,13 @@ loss, but a focused 30-run rerun put them at 359.9 ± 36.1 and 348.0 ± 33.8 —
 gap of 12 ms against a spread of ~35 ms. This container's run-to-run variance
 is ~10%, which is larger than the effect, so the honest reading is that the two
 are indistinguishable on this workload and only C is clearly ahead.
+*(2026-11-02: no longer a tie on the M5 feed above — Kāra is 0.77× equal-safety Rust and 1.11× C there.)*
 
 That is a different result from [#294](../294-flip-game-ii/), where Kāra beat
 equal-safety Rust outright on `Map`-heavy work. Nothing contradictory: that
 workload was dominated by hashing, this one by dependent pointer-chasing
 through a heap, and the two languages trade places with the bottleneck.
+*(2026-11-02: the M5 feeds have flipped this — Kāra is 0.77× Rust here and level with it (0.95×) on #294.)*
 
 ### Every mirror hand-rolls its heap, except Python
 

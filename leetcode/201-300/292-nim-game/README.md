@@ -103,19 +103,42 @@ and exits 0, which would have made Rust look like it has no stack limit at all.
 The honest comparison is `-O0`, where the recursion actually happens.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (the table below) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. An earlier
+> shared **x86-64 Linux cloud container** snapshot is kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); its
+> figures are history, and only its **within-file cross-language ratios** are
+> comparable with anything.
 
 The closed form is one modulo, so timing it would measure the loop around it.
 The bench builds the **table** instead — a real O(n) workload with a branchy
 inner loop over a `Vec[bool]`, and the shape a reader writes before spotting the
 pattern. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology. Sink is
 `losing 5000001 checksum 107109439` across Kāra, C, Rust and Go.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–101% CPU.
+
+| implementation | mean | vs C |
+|---|---|---|
+| `clang -O3` | 53.6 ms ± 4.2 | 1.00× |
+| `go build` | 61.9 ms ± 1.4 | 1.15× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **68.2 ms ± 1.0** | **1.27×** |
+| `rustc -O` | 70.5 ms ± 0.4 | 1.31× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 71.4 ms ± 1.0 | 1.33× |
+
+Kāra is 1.27× C, 1.10× Go, and slightly ahead of both Rust builds (0.97× `rustc
+-O`, 0.96× the equal-safety build). Against the previous M5 feed (2026-08-28,
+`karac g9b221e799`, legacy backend) this is flat: Kāra/Rust 0.95× → 0.97×,
+Kāra/C 1.31× → 1.27×, Kāra/Go 1.05× → 1.10×, all under this session's 10% noise
+band (every comparator ran 12–21% slower in absolute ms this session).
+
+The Kāra binary is 295.8 KiB (302,872 B), against C's 32.7 KiB, Rust's 455.4 KiB
+and Go's 2.39 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS — dominated by
+the 20M-entry table — is Kāra 22.2 MiB, C 20.1, Rust 20.2, Go 22.6. Cold compile:
+`karac build` 112.8 ms ± 2.0 (57.3 MiB peak), `rustc -O` 85.2 ms (27.8 MiB),
+`clang -O3` 45.0 ms (2.6 MiB).
