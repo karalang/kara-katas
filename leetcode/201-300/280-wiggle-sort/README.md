@@ -136,20 +136,49 @@ done
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (first table below) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The analysis
+> after it was done on a shared **x86-64 Linux cloud container**, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 30 rounds of the greedy over a 2,000,000-element array. Every lane prints
-`565527165`. 4-core x86 container, hyperfine.
+`565527165`.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`:
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 349.7 ms ± 4.7 | 1.00× |
+| `rustc -O` | 363.3 ms ± 3.7 | 1.04× |
+| `go build` | 368.8 ms ± 4.3 | 1.05× |
+| **`karac build`** | **378.5 ms ± 4.9** | **1.08×** |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **381.9 ms ± 2.2** | **1.09×** |
+
+On the M5 Kāra ties the equal-safety build (0.99×, inside one σ) and sits
+1.08× C, 1.04× `rustc -O` and 1.03× Go. Against the previous M5 feed
+(2026-08-28, `karac g9b221e799`, legacy backend) that is flat — Kāra/C 1.08× →
+1.08×, Kāra/Rust 1.04× → 1.04×, Kāra/Go 1.02× → 1.03× (every comparator ran
+~15% slower in absolute ms this session, so quote the ratios, not the
+milliseconds). The Kāra kernel was changed on 2026-11-02 to reuse one `work`
+buffer across rounds (`Vec.filled` once, then `work[k] = src[k]`), as the C,
+Rust and Go mirrors always did; it had been building a fresh `Vec` by `push`
+every round.
+
+Kāra's binary is 295.8 KiB (302,920 B) against C's 32.7 KiB, Rust's 455.4 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 33.7 MiB for
+Kāra, 31.6 MiB for Rust and C, 34.3 MiB for Go. Cold compile: `karac build`
+118.0 ms ± 2.2 (57.5 MiB peak), `rustc -O` 87.2 ms (28.5 MiB), `clang -O3`
+46.4 ms (2.6 MiB).
+
+Container x86 run (history, `bench/results.container-x86.json`), 4-core x86
+container, hyperfine:
 
 | lane | time | vs C |
 |---|---:|---:|
@@ -169,9 +198,12 @@ measures copy-and-stream throughput far more than codegen quality. The honest
 reading is *"all five lanes are within 15% of the memory bus"*, not *"Kāra beats
 C at compiling a loop"*.
 
+*(2026-11-02: no longer the ranking — on the M5 feed above Kāra is 1.08× C, level with equal-safety Rust.)*
+
 Note also that the equal-safety penalty nearly vanishes here — Rust pays 2.4% for
 overflow checks against 64% on [#279](../279-perfect-squares/) — for the same
 reason: when you're stalled on memory, the checks are free.
+*(2026-11-02: on the M5 the penalty is 5.1%, 363.3 → 381.9 ms.)*
 
 ### Two bench-design traps this problem sets
 

@@ -124,16 +124,14 @@ gave a clear diagnostic naming the collision.
   E0218 insertions and E0219 deletions together.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (first table below) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The analysis
+> after it was done on a shared **x86-64 Linux cloud container**, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 **The wrapper is what's measured, not the source.** A drain that only calls
 `next()` measures the underlying iterator — the slot bookkeeping is two field
@@ -148,6 +146,35 @@ performance difference that is really a workload difference.
 320 rounds over 200,000 elements. Every lane prints `434217027 64000000` — the
 sink *and* the pull count.
 
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`:
+
+| lane | time | vs C |
+|---|---:|---:|
+| `rustc -O` | 601.7 ms ± 3.1 | 1.00× |
+| `clang -O3` | 602.4 ms ± 4.4 | 1.00× |
+| `go build` | 642.3 ms ± 3.9 | 1.07× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **645.2 ms ± 5.0** | **1.07×** |
+| **`karac build`** | **654.6 ms ± 6.5** | **1.09×** |
+
+**1.01× against the equal-safety comparator** (1.5%, about 1.5σ) — a tie with
+the build that does what Kāra does, while C and `rustc -O` tie each other ~9%
+ahead of Kāra; on this host the overflow checks cost Rust 7.2%. Against the previous M5
+feed (2026-08-28, `karac g9b221e799`, legacy backend) the ratios are flat:
+Kāra/Rust 1.08× → 1.09×, Kāra/C 1.08× → 1.09×, Kāra/Go 0.98× → 1.02×,
+Kāra/equal-safety 1.00× → 1.01× (every comparator ran 12–16% slower in absolute
+ms this session).
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.8 KiB, Rust's 455.4 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 4.3 MiB for
+Kāra, 4.2 MiB for Rust, 4.1 MiB for C and 11.8 MiB for Go. Cold compile:
+`karac build` 120.0 ms ± 1.1 (57.8 MiB peak), `rustc -O` 89.4 ms (29.9 MiB),
+`clang -O3` 49.0 ms (2.6 MiB).
+
+Container x86 run (history, `bench/results.container-x86.json`):
+
 | lane | time | vs C |
 |---|---:|---:|
 | **`rustc -O -C overflow-checks=on`** (equal safety) | **927.3 ms ± 5.6** | **0.98×** |
@@ -161,6 +188,7 @@ under 4% — close enough that ordering between them is not a meaningful result.
 Note that overflow-checked Rust came out *faster* than unchecked here (927 vs
 962 ms), which is a clear sign the difference is noise and layout rather than
 codegen: checks cannot make code faster.
+*(2026-11-02: on the M5 feed above the ordering is the expected one — checked Rust is 1.07× unchecked — and Kāra is the slowest compiled lane, 1.09× C.)*
 
 What the workload really exercises is struct-field access through a nested owned
 struct — `p.src.pos` on every operation — so all four are doing the same handful

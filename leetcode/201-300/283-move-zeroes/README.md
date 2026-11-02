@@ -144,20 +144,50 @@ still caught with each invariant firing alone, while the `--interp` leg goes
 58 s → 4m35s → ~20 min for lengths 6, 7 and 8.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (first table below) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The analysis
+> after it was done on a shared **x86-64 Linux cloud container**, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 60 rounds of the write-cursor pass over a 2,000,000-element array that is ~50%
 zeros. Every lane prints `661890145 120000000` — the sink *and* the write count,
 so a lane that skipped stores would be caught even if its output were right.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`:
+
+| lane | time | vs C |
+|---|---:|---:|
+| `rustc -O` | 425.4 ms ± 11.2 | 0.99× |
+| `clang -O3` | 429.6 ms ± 5.7 | 1.00× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **466.3 ms ± 10.1** | **1.09×** |
+| **`karac build`** | **469.3 ms ± 6.2** | **1.09×** |
+| `go build` | 588.6 ms ± 16.4 | 1.37× |
+
+**1.01× against the equal-safety comparator** — a tie, inside one σ. Kāra is
+1.09× C, 1.10× `rustc -O` and 0.80× Go. Against the previous M5 feed
+(2026-08-28, `karac g9b221e799`, legacy backend) that is flat — Kāra/Rust
+1.11× → 1.10×, Kāra/C 1.12× → 1.09×, Kāra/Go 0.80× → 0.80×, Kāra/equal-safety
+1.03× → 1.01× (every comparator ran 14–16% slower in absolute ms this session,
+so quote the ratios, not the milliseconds). The MIR build runs 0.92× legacy's
+instructions at 0.97× its cycles. The Kāra kernel was changed on 2026-11-02 to
+reuse one `work` buffer across rounds (`Vec.filled` once, then
+`work[k] = src[k]`), as the C, Rust and Go mirrors always did; the per-round
+`push` loop it replaced is what [Bug ledger](#bug-ledger) records.
+
+Kāra's binary is 295.8 KiB (302,920 B) against C's 32.8 KiB, Rust's 455.4 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 33.7 MiB for
+Kāra, 31.6 MiB for Rust and C, 34.4 MiB for Go. Cold compile: `karac build`
+122.7 ms ± 1.4 (58.4 MiB peak), `rustc -O` 88.6 ms (28.4 MiB), `clang -O3`
+47.3 ms (2.6 MiB).
+
+Container x86 run (history, `bench/results.container-x86.json`):
 
 | lane | time | vs C |
 |---|---:|---:|
@@ -177,7 +207,7 @@ than any of them being better at compiling a loop — the same caveat
 
 The equal-safety penalty is 5.5% here (806.7 → 851.0 ms), against 64% on
 [#279](../279-perfect-squares/). Stalled on memory, the overflow checks are
-nearly free.
+nearly free. *(2026-11-02: 9.6% on the M5, 425.4 → 466.3 ms.)*
 
 ### The refresh is load-bearing, again
 
@@ -194,3 +224,7 @@ cursor position depends on every earlier element.
 [#282](../282-expression-add-operators/) is where a fan-out was genuinely
 available and I had wrongly skipped it; here the dependency is in the algorithm,
 as in [#279](../279-perfect-squares/) through [#281](../281-zigzag-iterator/).
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-9`](../../../../kara/docs/bugs-v2.md)** (perf, open). The kata's earlier `bench/` kernel built a fresh `work` Vec by `push` every round, and on the v2/MIR backend that push loop ran 1.37× legacy dd86e3955's instructions (`KARAC_AUTO_PAR=0`), which was the whole of the seq lane's slip to 1.26× `rustc -O` in the first 2026-11-02 run. The kernel now reuses one buffer, matching the C, Rust and Go mirrors, so this kata no longer exercises the push loop and its current numbers are flat (1.10× `rustc -O`, 1.01× equal-safety Rust). Measured 2026-11-02 with karac g6697158fa.

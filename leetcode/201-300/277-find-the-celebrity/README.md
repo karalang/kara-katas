@@ -182,14 +182,11 @@ done
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
 > snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
 > The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
 > that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> and its 2026-11-02 figures are summarised in this section's M5 block. Absolute milliseconds are NOT
 > comparable between the two hosts; only the **within-file cross-language
 > ratios** are.
 
@@ -202,6 +199,36 @@ O(1) memory, and timed work that is exactly the ~3n questions the algorithm asks
 
 64 independent instances at n = 2,500,000. Sink is the order-invariant sum of
 `(instance·1000003 + found)`; every lane prints `31970738`.
+
+**Canonical M5 run.** Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs. Both Kāra lanes were checked in the emitted
+IR (`KARAC_MIR_LL`): the par build of `celebrity.kara` carries a call of
+`karac_mir_task_spawn`, and the seq twin built with `KARAC_AUTO_PAR=0` does not.
+
+| SEQ lane | time | vs Kāra |
+|---|---:|---:|
+| `clang -O3` | 66.4 ms ± 0.9 | 0.51× |
+| `rustc -O` | 66.8 ms ± 0.6 | 0.51× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 68.0 ms ± 1.3 | 0.52× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **131.4 ms ± 9.5** | **1.00×** |
+| `go build` | 154.7 ms ± 6.3 | 1.18× |
+
+| PAR lane | time | vs Kāra |
+|---|---:|---:|
+| **`karac build`, `#[par_order_free]`** | **12.0 ms ± 0.5** | **1.00×** |
+| Go, goroutines + `WaitGroup` | 13.0 ms ± 0.7 | 1.09× |
+| `clang -O3` + pthreads (metal floor) | 17.7 ms ± 0.3 | 1.48× |
+
+Flat on both lanes against the 2026-08-28 run. Seq: Kāra is 1.97× Rust (was
+1.93×), 1.98× C (was 1.94×), 1.93× equal-safety Rust and 0.85× Go (was 0.83×).
+Par: Kāra leads, at 0.67× pthreads C (was 0.66×) and 0.92× Go's goroutines (was
+0.90×), and runs 11.0× its own seq twin on 6P+12E. The Kāra binaries are
+295.8 KiB (seq) and 377.1 KiB (par), against 32.6 KiB for C; every v2/MIR Kāra
+binary is ~300–390 KB where legacy's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
+
+The container tables below are history; where they rank Kāra, the M5 figures
+above are the standing result.
 
 4-core x86 container, hyperfine. Full caveats in
 [BENCHMARKS.md](../../../BENCHMARKS.md).
@@ -234,7 +261,8 @@ place to parallelize this problem, and Kāra's own seq→par ratio is **4.6×** 
 
 **Kāra is 2.4× off equal-safety Rust here, against 1.16× on
 [#276](../276-paint-fence/).** That is a real difference between two katas and it
-is not yet explained. Two hypotheses were tested and neither reproduced:
+is not yet explained. (Container figures. On the M5, 2026-11-02, it is 1.93× here
+against 0.97× on #276 — the gap persists.) Two hypotheses were tested and neither reproduced:
 
 - **Constant-divisor `%` not strength-reduced.** The kernel is modulo-heavy, but
   an isolated `(acc * k + i) % 2147483647` loop measures Kāra 0.23 s against C

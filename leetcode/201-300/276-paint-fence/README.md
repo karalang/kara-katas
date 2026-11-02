@@ -188,17 +188,48 @@ done
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-15 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 > **Host:** the tables below are a shared **x86-64 Linux cloud container**
 > snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
 > The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
 > that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
+> and its 2026-11-02 figures are summarised directly below. Absolute milliseconds are NOT
 > comparable between the two hosts; only the **within-file cross-language
 > ratios** are.
+
+**Canonical M5 run.** Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs. Both Kāra lanes were checked in the emitted
+IR (`KARAC_MIR_LL`): the par build of `paint_enum.kara` carries a call of
+`karac_mir_task_spawn`, and the seq twin built with `KARAC_AUTO_PAR=0` does not.
+
+| SEQ lane | time | vs Kāra |
+|---|---:|---:|
+| `rustc -O` | 161.9 ms ± 2.8 | 0.97× |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **167.2 ms ± 4.0** | **1.00×** |
+| `clang -O3` | 167.7 ms ± 1.6 | 1.00× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 171.9 ms ± 3.0 | 1.03× |
+| `go build` | 409.0 ms ± 4.7 | 2.45× |
+
+| PAR lane | time | vs Kāra |
+|---|---:|---:|
+| Go, goroutines + `WaitGroup` | 30.3 ms ± 2.2 | 0.83× |
+| **`karac build`, `#[par_order_free]`** | **36.6 ms ± 16.9** | **1.00×** |
+| `clang -O3` + pthreads (metal floor) | 43.3 ms ± 0.9 | 1.18× |
+
+The seq lane is flat against the 2026-08-28 run: Kāra is 1.03× Rust (was 1.11×),
+1.00× C (was 1.05×) and 0.97× equal-safety Rust. **The par lane slipped**: Kāra
+par is 0.85× pthreads C (was 0.64×) and 1.21× Go's goroutines (was 0.89×), a
+~1.33× move against both, and it now runs 4.6× its own seq twin where it ran 6.0×.
+Its σ is 46% of the mean (14.2–51.8 ms across 30 runs). The 2026-08-28 figure
+came from `karac 0.1.0-dev.7481+g9b221e799`, whose auto-par fired on this loop;
+the last legacy build, `dd86e3955`, does not parallelize this loop at all, so
+there is no matched legacy par baseline — the loss is against that August
+build's parallel code. Tracked in the Bug ledger section below.
+
+The Kāra binaries are 295.8 KiB (seq) and 377.1 KiB (par), against 32.7 KiB for C
+(see the Bug ledger section on binary size).
+
+The container tables below are history; where they rank Kāra, the M5 figures
+above are the standing result.
 
 The **DP is not the workload.** It is O(n) and `n` cannot exceed 89 before the
 answer leaves `i64` — ninety iterations of four arithmetic ops. Benching it would
@@ -240,7 +271,8 @@ branches. Kāra opts in with one attribute; the mirrors are hand-threaded.
 | Go, goroutines + `WaitGroup` | 277.6 ms ± 6.7 | 2.40× |
 
 **Within 8% of hand-written pthreads C, from a one-line attribute** — and 3.8×
-its own sequential twin on 4 cores. The Kāra source is the sequential program
+its own sequential twin on 4 cores. (Container figures. On the M5, 2026-11-02,
+Kāra par is 0.85× pthreads C and 1.21× behind Go — see above.) The Kāra source is the sequential program
 plus `#[par_order_free]`; the C mirror needs an explicit thread pool, a per-thread
 argument struct, and a join loop.
 
@@ -266,3 +298,15 @@ materially ahead again, the chunker floor has regressed.
 The shipped lane was published at 1.02× for as long as that was the true number.
 Adopting the guard to manufacture a good row would have routed around the
 compiler gap instead of reporting it — and the row is what got it fixed.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-10`](../../../../kara/docs/bugs-v2.md)** (perf, low, open).
+The par lane runs 1.44× slower than its 2026-08-28 feed (25.5 → 36.6 ms) while
+pthreads C and Go-par moved 1.09× and 1.06×, so Kāra went from 0.64× to 0.85×
+C-par and from 0.89× to 1.21× Go-par; the seq lane held. Legacy `dd86e3955` does
+not parallelize this loop at all, so the comparison is with the 2026-08-28 build
+(`g9b221e799`), whose auto-par did fire.
+
+**Binary size: [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).** Every
+v2/MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB.

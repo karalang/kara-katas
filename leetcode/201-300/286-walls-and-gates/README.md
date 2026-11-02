@@ -162,17 +162,15 @@ with the oracle by the same amount, the oracle is what broke.
   uses.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (the two tables immediately below) —
+> the file `scripts/consolidate-bench.sh` feeds into the top-level chart. The
+> `### Sequential` and `### Parallel` subsections after them were measured on a
+> shared **x86-64 Linux cloud container**, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 Workload: 16 independent 512×512 boards, 20% walls and 1% gates, each solved
 eight times over. **Build once, punch many** — generating a board and solving it
@@ -184,6 +182,46 @@ Sink: summed finite distance plus the unreachable-cell count, both sums, so the
 par lane may finish boards in any order and must print the same two numbers.
 All five languages use a flat array with a head cursor rather than a deque, so
 the lanes measure the same data structure.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs. Every lane prints `184708992 58576`.
+
+Sequential lane (`KARAC_AUTO_PAR=0`):
+
+| implementation | mean | vs C |
+|---|---|---|
+| `clang -O3` | 223.9 ms ± 1.5 | 1.00× |
+| `rustc -O` | 230.1 ms ± 3.8 | 1.03× |
+| **`rustc -O -C overflow-checks=on`** (equal safety) | **272.9 ms ± 3.7** | **1.22×** |
+| **`karac build`, `KARAC_AUTO_PAR=0`** | **283.4 ms ± 3.5** | **1.27×** |
+| `go build` | 303.8 ms ± 2.7 | 1.36× |
+
+Parallel lane (default build, auto-par on):
+
+| implementation | mean | vs floor |
+|---|---|---|
+| `clang -O3` + pthreads (metal floor) | 22.7 ms ± 2.2 | 1.00× |
+| **`karac build`, `#[par_order_free]`** | **25.7 ms ± 1.2** | **1.14×** |
+| Go, goroutines + `WaitGroup` | 37.1 ms ± 1.1 | 1.64× |
+
+Seq: Kāra is 1.27× C, 1.23× `rustc -O` and 1.04× the equal-safety build, and
+ahead of Go (0.93×). Par: Kāra is 1.14× the pthreads floor and 0.69× Go, and
+**11.0× over its own sequential lane** on 18 cores (1222% CPU). Against the
+previous M5 feed (2026-08-28, `karac g9b221e799`, legacy backend) both lanes are
+flat: seq Kāra/Rust 1.18× → 1.23×, Kāra/C 1.22× → 1.27×, Kāra/Go 0.88× → 0.93×;
+par Kāra/C-pthreads 1.16× → 1.14×, Kāra/Go 0.74× → 0.69×, all under this
+session's 10% noise band (every seq comparator ran 14–17% slower in absolute ms
+this session, and the par comparators 8–13%). The par build carries a call of
+`karac_mir_task_spawn` in its emitted IR (`KARAC_MIR_LL`) and the
+`KARAC_AUTO_PAR=0` seq build does not — checked 2026-11-02.
+
+The seq Kāra binary is 295.8 KiB (302,880 B) and the par one 377.1 KiB, against
+C's 32.8 KiB, Rust's 455.7 KiB and Go's 2.39 MiB; every v2/MIR Kāra binary is
+~300–390 KB where the legacy backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS: seq Kāra 6.9
+MiB, Rust 6.7, C 6.6, Go 20.3; the Kāra par build peaks at 115.9 MiB (125.1 MiB
+in the 2026-08-28 feed). Cold compile: `karac build` 178.9 ms ± 2.8 (61.1 MiB
+peak), `rustc -O` 106.4 ms (29.1 MiB), `clang -O3` 53.8 ms (2.6 MiB).
 
 ### Sequential — 4-core x86 container, 30 runs
 
@@ -219,6 +257,7 @@ board loop. That speedup is a within-file ratio out of a single interleaved
 The 1.45× to the pthreads floor is real; the 6% to Go is **not** — it is inside
 the same noise gate, so the honest statement is that Kāra's auto-par and
 hand-written goroutines tie here, and that both sit meaningfully behind C.
+*(2026-11-02: on the M5 feed above they no longer tie — Kāra's par lane is 0.69× Go's and 1.14× the pthreads floor.)*
 
 The fan-out is over the outer loop because that is where the independence lives
 — inside one board the wavefront is sequential and always will be.

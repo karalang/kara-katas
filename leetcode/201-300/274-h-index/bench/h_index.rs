@@ -2,7 +2,7 @@
 // Mirrors h_index.kara algorithm-for-algorithm.
 //
 // `sort_unstable`, not `sort`: Kara's `Vec[i64].sort()` lowers to the runtime's
-// karac_vec_sort_i64_8, which delegates to Rust's `sort_unstable` (pdqsort).
+// karac_mir_sort_int (v2/MIR; karac_vec_sort_i64_8 on legacy), which delegates to Rust's `sort_unstable` (pdqsort).
 // Using stable `sort` here would compare two different algorithms and hand
 // Kara an unearned win. See ../README.md § Benchmarks.
 

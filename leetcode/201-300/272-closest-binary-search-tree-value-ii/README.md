@@ -203,27 +203,28 @@ nodes 30000 values 8..999982 targets 0..999994
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the
+canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 194.8 ± 5.8 ms | 0.93× |
-| Rust `-O` | 200.7 ± 8.5 ms | 0.96× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 203.3 ± 7.4 ms | 0.97× |
-| **Kāra (codegen)** | **209.7 ± 8.2 ms** | 1.00× |
-| Go | 213.7 ± 4.7 ms | 1.02× |
+| Rust `-O` | 222.2 ± 2.3 ms | 0.99× |
+| C `clang -O3` | 224.2 ± 1.6 ms | 1.00× |
+| **Kāra (codegen)** | **225.1 ± 3.0 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 228.1 ± 2.1 ms | 1.01× |
+| Go | 242.9 ± 2.8 ms | 1.08× |
 
-**All five languages land inside a 1.10× band** with σ of 2.2–4.2%, so most of
-the ordering here is not resolvable. Kāra is 1.08× behind C — down from the
-container's 1.13× — and **level with equal-safety Rust** at 1.03×, which is
-inside the noise and is the honest reading.
+**All five languages land inside a 1.09× band** with σ of 0.7–1.3%, and the top
+four inside 3%, so most of the ordering here is not resolvable. Kāra is level
+with C (1.00×) and with plain Rust (1.01×), **0.99× equal-safety Rust** — inside
+the noise, which is the honest reading — and 1.08× ahead of Go. Against the
+2026-08-15 run (1.04× Rust, 1.08× C, 0.98× Go) every ratio moved under 10%, so
+this is flat.
 
-The container ranked Kāra last of five; so does this host, but the spread has
-narrowed from 1.17× to 1.10× and the gap to equal-safety Rust is no longer
-outside σ. A stack-driven tree walk with a bounded window is a shape Kāra runs at
-the field's pace.
+The container ranked Kāra last of five; this host now puts it third, and the
+spread has narrowed from the container's 1.17× to 1.09×. A stack-driven tree walk
+with a bounded window is a shape Kāra runs at the field's pace.
 
 ### The x86 corroboration run
 

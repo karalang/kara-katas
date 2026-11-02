@@ -146,6 +146,28 @@ The sink checksums **every** table entry plus `least[n]`, so a lane that compute
 only the last entry, or skipped entries, would be caught. All lanes print
 `538728421`.
 
+**Canonical M5 run.** Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0` — `bench/results.json`.
+This is the first M5 feed of this workload (the earlier one measured a different
+workload, 100 punches over n in [25000, 30000)), so there is no before/after:
+
+| lane | time | vs C |
+|---|---:|---:|
+| `clang -O3` | 58.8 ms ± 1.0 | 1.00× |
+| `rustc -O` | 59.3 ms ± 0.4 | 1.01× |
+| `rustc -O -C overflow-checks=on` (equal safety) | 60.0 ms ± 1.4 | 1.02× |
+| `go build` | 60.9 ms ± 0.7 | 1.04× |
+| **`karac build`** | **87.9 ms ± 3.3** | **1.49×** |
+
+Kāra is 1.48× Rust, 1.49× C, 1.44× Go and **1.46× equal-safety Rust** — C, both
+Rust builds and Go finish inside 4% of one another, and Kāra is last. Binary size:
+Kāra 295.8 KiB, Rust 455.4 KiB, C 32.7 KiB, Go 2434.1 KiB; every v2/MIR Kāra
+binary is ~300–390 KB where legacy's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)).
+
+Shared x86-64 Linux cloud container snapshot (history; only the within-table
+ratios are comparable with the M5):
+
 | lane | time | vs C |
 |---|---:|---:|
 | `rustc -O` | 147.7 ms ± 10.3 | 0.96× |
@@ -162,6 +184,9 @@ Rust 147.7 → 242.6 ms, a 1.64× penalty on its own. The inner loop is
 and arithmetic — so the checks land on almost every operation. Comparing Kāra's
 always-checked arithmetic against `rustc -O`'s silently-wrapping default would
 attribute that 1.64× to the compiler.
+(Container figures. On the M5, 2026-11-02, overflow checks cost Rust only 1.01×
+— 60.0 vs 59.3 ms — and Kāra is 1.46× behind equal-safety Rust, so that framing
+does not carry over to this host.)
 
 ### No parallel lane, deliberately
 

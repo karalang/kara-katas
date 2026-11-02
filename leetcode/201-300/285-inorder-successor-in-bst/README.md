@@ -130,19 +130,45 @@ a `Vec` field.
   that can't blow the stack on the degenerate trees the generator builds.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
 
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Hosts.** The canonical numbers are Apple M5 Pro, in
+> [`bench/results.json`](bench/results.json) (first table below) — the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The analysis
+> after it was done on a shared **x86-64 Linux cloud container**, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json); those
+> figures are history, and only their **within-file cross-language ratios** are
+> comparable with anything.
 
 A 300,000-node BST built by random insertion, then 2,000,000 successor queries
 mixing present and absent keys. All lanes print `509248937 1999982`.
+
+**Apple M5 Pro (6P+12E), 2026-11-02**, `karac 0.9.0-dev.14057+g6697158fa`
+(v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`:
+
+| lane | time |
+|---|---:|
+| `go build` | 409.5 ms ± 6.6 |
+| **`karac build`** | **416.6 ms ± 5.6** |
+| `rustc -O` | 422.1 ms ± 7.3 |
+| `rustc -O -C overflow-checks=on` (equal safety) | 423.2 ms ± 3.9 |
+| `clang -O3` | 432.8 ms ± 2.9 |
+
+All five sit within 5.7%, and Kāra's neighbours on either side are about one σ
+away: Kāra is 0.99× `rustc -O`, 0.98× the equal-safety build, 0.96× C and 1.02×
+Go. Against the previous M5 feed (2026-08-28, `karac g9b221e799`, legacy
+backend) the ratios are flat: Kāra/Rust 0.98× → 0.99×, Kāra/C 0.96× → 0.96×,
+Kāra/Go 1.01× → 1.02× (every comparator ran 15% slower in absolute ms this
+session).
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.7 KiB, Rust's 455.8 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 16.2 MiB for
+Kāra against 8.0 MiB for Rust and C and 10.4 MiB for Go — the same 16.2 MiB the
+2026-08-28 legacy build recorded. Cold compile: `karac build` 129.4 ms ± 2.0
+(59.3 MiB peak), `rustc -O` 98.9 ms (29.5 MiB), `clang -O3` 47.2 ms (2.6 MiB).
+
+Container x86 run (history, `bench/results.container-x86.json`):
 
 | lane | time |
 |---|---:|
@@ -162,6 +188,7 @@ That also makes the equal-safety comparison uninformative in the other direction
 overflow-checked Rust came out fastest, which it cannot genuinely be. When the
 spread is noise, it shows up as impossible orderings — the same tell
 [#284](../284-peeking-iterator/) carried.
+*(2026-11-02: on the M5 feed above the checked and unchecked Rust builds tie within 0.3%, the field spans 5.7% rather than 3%, and Go is the fastest lane.)*
 
 **Build once, punch many times, and here the build really is once:** the tree is
 immutable during the timed phase and every query only reads it. Katas
