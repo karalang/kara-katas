@@ -151,14 +151,22 @@ now the most interesting thing about this kata:
 > on the isolated sort kāra's IPC has converged on driftsort's (4.29 vs 4.18),
 > so what is left is instructions executed, not how well they execute.
 
+**2026-11-02, v2/MIR backend (`karac 0.9.0-dev.14057+g6697158fa`): the gap
+reopened to 1.63×.** The blockquote above is the 2026-08-17 legacy-backend
+state. On the MIR backend Kāra/Rust went 1.27× → **1.63×** (Kāra/C 0.28× → 0.36×,
+Kāra/Go 0.16× → 0.20×) — a ~1.3× loss against every comparator, so it is the
+compiler, not the machine. The shared sort-by-start step runs 1.14–1.20× legacy's
+instructions and 1.23× its cycles; filed as [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md) (perf, open), shared with
+[#253](../253-meeting-rooms-ii/).
+
 Equal-safety makes no difference to any of this — `rustc -O` and the
-overflow-checked build sit within 0.7% of each other — so it was never a
+overflow-checked build sit within 2.3% of each other — so it was never a
 safety-tax result. It is `Vec.sort_by` against `slice::sort_by`.
 
 **The comparison that is clean is Kāra against Rust**, both using a generic
 sort-by-key with an inlined comparator. The C and Go rows are about their sorts,
-not their languages, for the reasons below — Kāra is now 2.79× ahead of the C
-row, and that is a statement about `qsort`'s indirect call, not a Kāra win.
+not their languages, for the reasons below — Kāra is 2.75× ahead of the C
+row (2026-11-02), and that is a statement about `qsort`'s indirect call, not a Kāra win.
 
 ### The x86 corroboration run
 
@@ -185,7 +193,8 @@ keeps a hand-written hash map and says so — but the row measures **`qsort`**, 
 
 On that host Kāra against Rust was 469 ms to 248 ms, ~1.9×. The M5 run first
 widened that to 3.70×, which is what made it worth chasing; the five fixes
-above then closed it to 1.29×. The x86 numbers here are the pre-fix state of a
+above then closed it to 1.29× (2026-08-17; the MIR backend reopened it to 1.63×
+on 2026-11-02, [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md)). The x86 numbers here are the pre-fix state of a
 host that was never re-measured, and are kept as the historical corroboration
 that flagged the gap — not as a current claim.
 
@@ -212,19 +221,19 @@ codegen fault before the algorithm was examined.
 
 ## Benchmarks
 
-The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`537953186`). Workload: build 120k packed attendable intervals once and shuffle them, then 20 rounds of copy + sort-by-start + adjacent-overlap scan; sink = accumulated verdict-and-span checksum.
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`537953186`). Workload: build 120k packed attendable intervals once and shuffle them, then 40 rounds of copy + sort-by-start + adjacent-overlap scan; sink = accumulated verdict-and-span checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`; `karac 0.9.0-dev.14057+g6697158fa`, v2/MIR backend):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 59.3 ms | 0.78× |
-| Rust `-O` | 59.5 ms | 0.79× |
-| **Kāra (codegen)** | 75.6 ms | 1.00× |
-| C `clang -O3` | 269.8 ms | 3.57× |
-| Go | 470.2 ms | 6.22× |
+| Rust `-O` | 65.8 ms | 0.61× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 67.3 ms | 0.63× |
+| **Kāra (codegen)** | 107.4 ms | 1.00× |
+| C `clang -O3` | 295.3 ms | 2.75× |
+| Go | 536.6 ms | 5.00× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 73f2585912e2); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -245,3 +254,10 @@ for f in meeting_rooms meeting_rooms_sweep meeting_rooms_pairwise differential; 
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend the
+benchmark's sort-by-start step runs 1.14–1.20× legacy's instructions and 1.23×
+its cycles, taking Kāra/Rust from 1.27× (legacy, 2026-08-17) to 1.63×
+(2026-11-02). Shared with [#253](../253-meeting-rooms-ii/), which sorts the same way.

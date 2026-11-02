@@ -128,22 +128,25 @@ the algorithm.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
 `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 188.6 ± 7.1 ms | 0.93× |
-| Rust `-O` | 195.1 ± 6.1 ms | 0.96× |
-| **Kāra (codegen)** | **202.9 ± 2.6 ms** | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 209.5 ± 2.2 ms | 1.03× |
-| Go | 226.1 ± 4.8 ms | 1.11× |
+| C `clang -O3` | 199.0 ± 5.1 ms | 0.84× |
+| Rust `-O` | 216.3 ± 4.6 ms | 0.91× |
+| **Kāra (codegen)** | **236.9 ± 6.5 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 238.0 ± 6.2 ms | 1.00× |
+| Go | 256.6 ± 6.6 ms | 1.08× |
 
 **Kāra sits between wrapping and checked Rust, which is the honest place for it**
-— 202.9 ms against 195.1 and 209.5. It leads equal-safety Rust by 3% and trails
-C by 8%, and the full spread across five languages is 1.20×. Note that σ here is
-1.1–3.8%, against the container's 5–21%: this host actually resolves the lane.
+— 236.9 ms against 216.3 and 238.0. It ties equal-safety Rust (1.1 ms apart on σ
+of ~6 ms) and trails C by 19%, and the full spread across five languages is
+1.29×. Against the 2026-08-15 legacy-backend run the Rust and Go ratios are flat
+(Kāra/Rust 1.04× → 1.10×, Kāra/Go 0.90× → 0.92×); only Kāra/C moved, 1.08× →
+1.19×, a borderline shift on one comparator. Note that σ here is 2.1–2.7%,
+against the container's 5–21%: this host actually resolves the lane.
 
 **The container had Kāra first; the M5 has it third, and neither is a change.**
 The container's top three (Kāra 437.9, C 446.8, Rust 500.5) sat inside σ of 25–42
@@ -151,13 +154,17 @@ ms — the ordering was never real. Here the same three separate cleanly in a
 different order. What survives both hosts is the claim the section below makes:
 on a `Vec`-push/pop-dominated workload Kāra is level with the systems languages,
 within 8% of C in one direction and ahead of equal-safety Rust in the other.
+*(2026-11-02, v2/MIR backend: 19% behind C and tied with equal-safety Rust.)*
 
 That matters against the sort story elsewhere in this corpus. The ancestor stack
-does one push and at most one pop per element, and Kāra tracks C on it — while
+does one push and at most one pop per element, and Kāra stays close to C on it
+(1.08× at the time, 1.19× on 2026-11-02) — while
 [#252](../252-meeting-rooms/) and [#253](../253-meeting-rooms-ii/), which are
 sort-dominated, are 3.70× and 2.04× behind Rust on this same host. kara
 `B-2026-08-11-28` records the sort residual as an accepted cost; nothing here
 suggests a general codegen gap, which is consistent with that row's scope.
+*(2026-11-02, v2/MIR backend: #252 and #253 read 1.63× and 1.33× behind Rust,
+tracked as [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md).)*
 
 ### The x86 corroboration run
 

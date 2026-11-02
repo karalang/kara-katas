@@ -122,7 +122,7 @@ echo
 
 bench_begin id=252 slug=meeting-rooms group=201-300 \
     title="Meeting Rooms" \
-    workload="build 120k packed attendable intervals once and shuffle them, then 20 rounds of copy + sort-by-start + adjacent-overlap scan; sink = accumulated verdict-and-span checksum" sink="$expected"
+    workload="build 120k packed attendable intervals once and shuffle them, then 40 rounds of copy + sort-by-start + adjacent-overlap scan; sink = accumulated verdict-and-span checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

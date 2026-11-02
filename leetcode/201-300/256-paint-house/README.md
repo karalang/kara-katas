@@ -99,7 +99,7 @@ Two design points:
   leave the locally-cheapest colour and neither `min2` predicts away. A uniform
   draw would let the answer degenerate towards "take each house's minimum".
 - **The table is sized to stay cache-resident** (150k × 24 B = 3.6 MB; measured
-  RSS 6.4 MiB). An earlier version used 4M houses, whose 93 MiB working set made
+  peak RSS 4.5 MiB on 2026-11-02). An earlier version used 4M houses, whose 93 MiB working set made
   the lane memory-bandwidth-bound — the wrong thing for a kata whose subject is a
   loop-carried recurrence. Rounds were raised to hold total work constant.
 
@@ -110,30 +110,35 @@ all, each house reading the previous house's three totals. That complements
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the
+canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 94.7 ± 1.6 ms | 0.91× |
-| Rust `-O` | 96.3 ± 1.4 ms | 0.92× |
-| Go | 98.1 ± 4.2 ms | 0.94× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 102.7 ± 1.8 ms | 0.99× |
-| **Kāra (codegen)** | **104.2 ± 3.4 ms** | 1.00× |
+| Go | 109.2 ± 1.6 ms | 0.93× |
+| C `clang -O3` | 109.6 ± 1.0 ms | 0.93× |
+| Rust `-O` | 109.6 ± 4.4 ms | 0.93× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 115.8 ± 4.0 ms | 0.99× |
+| **Kāra (codegen)** | **117.4 ± 2.1 ms** | 1.00× |
 
-**This lane is finally measurable, and the answer is a tie against equal-safety
-Rust** — 104.2 against 102.7 ms, 1.5%, well inside σ. The container could not
-resolve it at all: every σ there was 9–13% against a 7.3% total spread, so the
-ordering was noise by construction. Here σ is 1.5–4.3% against a 1.10× spread,
-which is tight enough to say something.
+**The answer is a tie against equal-safety Rust** — 117.4 against 115.8 ms,
+1.4%, well inside σ. The container could not resolve this lane at all: every σ
+there was 9–13% against a 7.3% total spread, so the ordering was noise by
+construction. Here σ is 0.9–4.0% against a 1.08× spread, which is tight enough
+to say something.
 
-What it says is modest and worth stating exactly. Kāra is **last of five**, 1.10×
-behind C and 1.08× behind wrapping Rust — but the entire deficit is the safety
-contract, because against the build that makes the same guarantee it is level.
-A three-way DP over a fixed table is arithmetic-dense with a loop-carried
-dependency, so overflow checks have nowhere to hide, and they cost Rust 6.6%
-(96.3 → 102.7 ms) and Kāra a statistically identical amount.
+What it says is modest and worth stating exactly. Kāra is **last of five**, 1.07×
+behind C and wrapping Rust and 1.08× behind Go — but the entire deficit is the safety contract,
+because against the build that makes the same guarantee it is level. A three-way
+DP over a fixed table is arithmetic-dense with a loop-carried dependency, so
+overflow checks have nowhere to hide, and they cost Rust 5.6% (109.6 → 115.8 ms)
+and Kāra a statistically identical amount.
+
+Against the 2026-08-15 run (`karac g50267795a`, legacy backend) every ratio is
+flat: Kāra/Rust 1.08× → 1.07×, Kāra/C 1.10× → 1.07×, Kāra/Go 1.06× → 1.08×. All
+five lanes ran 11–16% slower in absolute terms this session (machine state), so
+compare the ratios, not the milliseconds.
 
 The container-era caveat about this lane resisting measurement is retained below
 because it explains why no ranking was published from that host; it does not

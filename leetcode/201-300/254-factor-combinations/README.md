@@ -209,30 +209,36 @@ materialises like the others.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
 `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Go | 127.0 ± 0.7 ms | 0.40× |
-| C `clang -O3` | 193.8 ± 4.6 ms | 0.61× |
-| **Kāra (codegen)** | **317.0 ± 8.5 ms** | 1.00× |
-| Rust `-O` | 330.0 ± 6.9 ms | 1.04× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 334.4 ± 10.2 ms | 1.05× |
+| Go | 142.7 ± 1.4 ms | 0.60× |
+| C `clang -O3` | 214.4 ± 6.6 ms | 0.90× |
+| **Kāra (codegen)** | **237.3 ± 12.6 ms** | 1.00× |
+| Rust `-O` | 345.8 ± 14.2 ms | 1.46× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 356.4 ± 14.4 ms | 1.50× |
 
-**Kāra and Rust remain at parity, and that is the load-bearing result** — 317.0
-against 330.0 ms, with equal-safety Rust at 334.4. It held on the container and
-it holds here, which is what makes this lane evidence rather than a data point.
+**Kāra is now well ahead of Rust — 0.69× `rustc -O`, 0.67× equal-safety Rust.**
+On the 2026-08-15 legacy-backend run the two were at parity (Kāra/Rust 0.96×).
+The v2/MIR backend moved Kāra against every comparator by the same ~1.4×:
+Kāra/Rust 0.96× → **0.69×**, Kāra/C 1.64× → **1.11×**, Kāra/Go 2.50× → **1.66×**.
+That uniformity is what makes it a compiler gain rather than machine state (every
+comparator ran 5–12% slower in absolute ms this session). Kāra's σ is 5% here,
+so the ratios carry roughly ±0.05.
 
 **The Go row inverts, and the inversion is the textbook signal.** Go went from
 fourth on the container (707.5 ms, 1.01×) to **first** here by a wide margin
-(127.0 ms, 0.40×). This kata allocates a fresh `Vec[i64]` per combination across
+(142.7 ms, 0.60× Kāra on 2026-11-02; 0.40× on the 2026-08-15 legacy run). This kata allocates a fresh `Vec[i64]` per combination across
 4,005,306 combinations — a pure per-allocation workload — and per-allocation
 katas are exactly the class that inverts when the allocator gets cheap relative
 to compute (BENCHMARKS.md § Hosts). Go's bump allocator and concurrent collector
-take the whole benefit; C's `malloc` takes most of the rest. Kāra's position
-relative to *Rust* is unchanged because both pay a similar per-allocation cost.
+take the whole benefit; C's `malloc` takes most of the rest. On the legacy
+backend Kāra's position relative to *Rust* was unchanged across hosts because
+both pay a similar per-allocation cost; on the MIR backend Kāra pulls ahead of
+Rust and closes most of the distance to C (1.11×).
 
 **This lane is the control that isolates the sort residual, and the M5
 strengthens it.** kara `B-2026-08-10-9` is fixed (`50a50e8`); its shuffled-input
@@ -244,6 +250,11 @@ on [#252](../252-meeting-rooms/) and **2.04×** on
 but **no sort at all**, Kāra is level with Rust on both hosts (0.96× on the M5).
 Two sort-dominated lanes diverging while this one stays pinned is a stronger
 separation than the container alone could show.
+
+*2026-11-02 note (v2/MIR backend):* the separation still holds, in the other
+direction — this sort-free lane improved to 0.69× Rust while #252 and #253
+regressed on their sort-by-start step (1.63× and 1.33× Rust,
+[`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md)).
 
 ### The x86 corroboration run
 

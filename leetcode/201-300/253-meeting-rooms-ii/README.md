@@ -100,10 +100,18 @@ The canonical M5 table is generated from `bench/results.json` — see
 > instructions per element down to 9. Kāra here went **244.7 ms → 134.2 ms**
 > while Rust, C and Go all held still.
 
+**2026-11-02, v2/MIR backend (`karac 0.9.0-dev.14057+g6697158fa`): the gap
+reopened to 1.33×.** The blockquote above is the 2026-08-17 legacy-backend
+state. On the MIR backend Kāra/Rust went 1.09× → **1.33×** (Kāra/C 0.48× → 0.59×,
+Kāra/Go 0.29× → 0.35×) — a ~1.2× loss against every comparator, so it is the
+compiler, not the machine. The sort-by-start step this kata shares with
+[#252](../252-meeting-rooms/) runs 1.14–1.20× legacy's instructions and 1.23× its
+cycles; filed as [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md) (perf, open).
+
 The relationship the container found survives, and it is still the useful part:
 #253 *adds* a hand-rolled heap on top of #252's sort-and-scan and comes out
 relatively **better** — 1.10× against #252's 1.29×, as it was 2.04× against
-3.70× before. Extra non-sort work at parity dilutes the ratio, which is exactly
+3.70× before, and as it is 1.33× against 1.63× on the MIR backend (2026-11-02). Extra non-sort work at parity dilutes the ratio, which is exactly
 what you expect if the sort, and only the sort, is the deficit. That the
 relationship held through a 2.9× improvement in the sort is the strongest form
 of that evidence.
@@ -141,6 +149,7 @@ The chain, because four ledger rows are easy to conflate:
 | `B-2026-08-15-30` | that residual on the M5 — 2.04× here, 3.70× on #252 | **fixed** (`93ea7a86`) |
 | `B-2026-08-16-3` | the 1.80× left after routing | **fixed** (`012645a5`) |
 | `B-2026-08-16-9` | the 1.61× left after the leaf | **open** |
+| `B-2026-11-02-7` | MIR-backend sort-by-start regression, 1.33× here / 1.63× on #252 (2026-11-02) | **open** |
 
 This kata and [#252](../252-meeting-rooms/) both shuffle their input, so both
 land on the shuffled-uniform residual rather than the ordered-input case
@@ -176,17 +185,17 @@ this is a clean run over known ground rather than new.
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`819998103`). Workload: build 150k overlapping intervals once and shuffle, then 25 rounds of sort + min-heap room counting; sink = accumulated peak-room checksum.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`; `karac 0.9.0-dev.14057+g6697158fa`, v2/MIR backend):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 122.7 ms | 0.91× |
-| Rust `-O` | 124.1 ms | 0.92× |
-| **Kāra (codegen)** | 135.1 ms | 1.00× |
-| C `clang -O3` | 281.6 ms | 2.08× |
-| Go | 468.4 ms | 3.47× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 136.9 ms | 0.75× |
+| Rust `-O` | 137.6 ms | 0.75× |
+| **Kāra (codegen)** | 183.6 ms | 1.00× |
+| C `clang -O3` | 311.7 ms | 1.70× |
+| Go | 531.0 ms | 2.89× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 73f2585912e2); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -207,3 +216,10 @@ for f in min_meeting_rooms min_meeting_rooms_sweep min_meeting_rooms_events diff
     karac build $f.kara && diff <(karac run --interp $f.kara) <(./$f) && echo "$f OK"
 done
 ```
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-7`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend the
+benchmark's sort-by-start step runs 1.14–1.20× legacy's instructions and 1.23×
+its cycles, taking Kāra/Rust from 1.09× (legacy, 2026-08-17) to 1.33×
+(2026-11-02). Shared with [#252](../252-meeting-rooms/), which sorts the same way.

@@ -87,22 +87,27 @@ That turns out to be the whole story of this lane.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the
+canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| **Kāra (codegen)** | **185.7 ± 3.8 ms** | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 217.3 ± 11.7 ms | 1.17× |
-| Go | 220.1 ± 1.0 ms | 1.19× |
-| Rust `-O` | 392.6 ± 1.5 ms | 2.11× |
-| C `clang -O3` | 395.2 ± 3.2 ms | 2.13× |
+| **Kāra (codegen)** | **207.9 ± 5.2 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 242.4 ± 3.4 ms | 1.17× |
+| Go | 244.9 ± 3.8 ms | 1.18× |
+| Rust `-O` | 457.2 ± 4.7 ms | 2.20× |
+| C `clang -O3` | 469.2 ± 4.6 ms | 2.26× |
 
-**Kāra is first, ahead of equal-safety Rust by 1.17× and of C by 2.13×.** That is
-the largest Kāra lead over C anywhere in the 244–275 block, which is reason to
-distrust it rather than to headline it — so it was probed rather than published
-on its own.
+**Kāra is first, ahead of equal-safety Rust by 1.17× and of C by 2.26×.** When
+first measured (2026-08-15) that was the largest Kāra lead over C anywhere in the
+244–275 block, which is reason to distrust it rather than to headline it — so it
+was probed rather than published on its own.
+
+Against the 2026-08-15 run (`karac g50267795a`) every ratio is flat: Kāra/Rust
+0.47× → 0.45×, Kāra/C 0.47× → 0.44×, Kāra/Go 0.84× → 0.85×, Kāra/equal-safety
+Rust 0.85× → 0.86×. Every lane ran 11–19% slower in absolute terms this session
+(machine state), Kāra included, so compare the ratios.
 
 ### The arm64 probe REFUTES the x86 explanation
 
@@ -112,7 +117,8 @@ address chain, and are therefore *immune* to branch predictability. The
 discriminating test is to re-run with `target = max_sum + 1` — identical trip
 count and instructions, but a branch that is never taken and so perfectly
 predicted. On x86 the branchy builds more than halve and the branchless ones do
-not move at all. **On the M5 every build moves:**
+not move at all. **On the M5 every build moves** (probe run against the
+2026-08-15 build; the mid-band column is that run's figures, not the table above):
 
 | build | mid-band | `max_sum + 1` | speedup |
 |---|---:|---:|---:|
