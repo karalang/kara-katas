@@ -98,19 +98,21 @@ Carried over from #243: every word is 9 bytes sharing the prefix `"delta"` so no
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host — `bench/results.json`, the file `consolidate-bench.sh` feeds into the corpus charts.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (the v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host — `bench/results.json`, the file `consolidate-bench.sh` feeds into the corpus charts.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Go | 113.3 ± 3.2 ms | 0.99× |
-| **Kāra (codegen)** | **114.1 ± 4.5 ms** | 1.00× |
-| C `clang -O3` | 115.3 ± 4.1 ms | 1.01× |
-| Rust `-O` (wrapping) | 119.9 ± 3.9 ms | 1.05× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 122.3 ± 4.5 ms | 1.07× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 119.9 ± 8.6 ms | 0.99× |
+| **Kāra (codegen)** | **121.0 ± 6.5 ms** | 1.00× |
+| C `clang -O3` | 121.4 ± 5.9 ms | 1.00× |
+| Rust `-O` (wrapping) | 123.0 ± 8.5 ms | 1.02× |
+| Go | 129.1 ± 2.4 ms | 1.07× |
 
-**All five languages land within 9 ms of each other — a 7.9% spread against σ of 3–5%.** The honest reading is that this workload does not separate them. Kāra is nominally second and nominally ahead of C, and neither of those is a claim: swap the run order and the top four rows could reasonably reorder. What the lane does establish is a *ceiling* — there is no room here for a Kāra deficit to hide, because the whole field fits inside one noise band.
+Against the 2026-08-15 feed (legacy backend, karac g50267795a) the language ratios are flat: Kāra/Rust `-O` 0.95× → 0.98×, Kāra/C 0.99× → 1.00×, Kāra/Go 1.01× → 0.94×, Kāra/equal-safety Rust 0.93× → 1.01×. Every comparator ran 3–14% slower in absolute terms this session (machine state; the checked Rust row alone ran 2% faster), so compare ratios, not milliseconds. The prose below was written against the 2026-08-15 table and its conclusion holds on the new one.
 
-**Overflow checks are free here — and that is the interesting half.** Rust wrapping is 119.9 ms, checked is 122.3 ms, a 2% difference against σ ≈ 4 ms. That reproduces #243 (115.5 → 115.2 ms) and stands in contrast to [#244](../244-shortest-word-distance-ii/), where the same flag costs Rust **1.89×**. The explanation is entirely in the workload: this loop is `String`-comparison-bound with almost no arithmetic to check, while #244's merge does a subtraction, an `abs` and two comparisons per step. Kāra checks by default, so where checks are free it pays nothing, and where they aren't it has already paid — which is why its position relative to Rust swings between these two katas.
+**All five languages land within 9 ms of each other — a 7.9% spread against σ of 3–5%** (2026-11-02: 9.2 ms, a 7.7% spread against σ of 2–7%). The honest reading is that this workload does not separate them. Kāra is nominally second and nominally ahead of C, and neither of those is a claim: swap the run order and the top four rows could reasonably reorder. What the lane does establish is a *ceiling* — there is no room here for a Kāra deficit to hide, because the whole field fits inside one noise band.
+
+**Overflow checks are free here — and that is the interesting half.** Rust wrapping is 119.9 ms, checked is 122.3 ms, a 2% difference against σ ≈ 4 ms (2026-11-02: wrapping 123.0, checked 119.9 ms, inside σ ≈ 8.5 ms). That reproduces #243 (115.5 → 115.2 ms) and stands in contrast to [#244](../244-shortest-word-distance-ii/), where the same flag costs Rust **1.89×**. The explanation is entirely in the workload: this loop is `String`-comparison-bound with almost no arithmetic to check, while #244's merge does a subtraction, an `abs` and two comparisons per step. Kāra checks by default, so where checks are free it pays nothing, and where they aren't it has already paid — which is why its position relative to Rust swings between these two katas.
 
 **The family brackets what the map costs Kāra**, which is the point of having built three of them on one spine. All rows below are the M5 lane:
 
@@ -121,6 +123,8 @@ Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 
 | #244 | two map lookups + merge per query | 1.21× |
 | #127 | `String` keys inside a hash-keyed BFS | 2.61× |
 | #126 | same, wider frontier | 3.68× |
+
+*(2026-11-02, MIR backend: #243 1.04×, #245 1.00×, and #244 1.70× — the #244 row is now inflated by a map-lookup regression, [`B-2026-11-02-4`](../../../../kara/docs/bugs-v2.md), so the bracket below is the 2026-08-15 reading.)*
 
 #245 landing on top of #243 is the control that makes the other rows mean something: the extra comparison per hit costs nothing measurable, so the 1.21× at #244 is attributable to the map rather than to anything about how these katas are written. And the jump from 1.21× to 2.6–3.7× remains unexplained by map usage alone — two lookups per query cost a fifth, so whatever word-ladder is doing is a different problem.
 
@@ -138,7 +142,7 @@ Container x86-64, 2026-08-03, committed as [`bench/results.container-x86.json`](
 | **Kāra (codegen)** | **274.2 ± 9.3 ms** | 1.00× |
 | Go | 331.5 ± 14.8 ms | 1.21× |
 
-**The two hosts disagree about this kata, and the M5 is the one to believe.** On the container the field spans 1.52× and Kāra sits sixth of seven; on the M5 it spans 1.08× and Kāra sits second of five. The reordering is not a Kāra improvement — it is the container's 1.15× noise floor being nearly as wide as the entire M5 spread. A lane where the true differences are ~1% cannot be ranked on a shared container at all, which is exactly why `BENCHMARKS.md` reserves published numbers for this host. The one thing both hosts agree on is the finding that matters: **Kāra sits level with C on the map-free scan**, 1.05× there and 0.99× here.
+**The two hosts disagree about this kata, and the M5 is the one to believe.** On the container the field spans 1.52× and Kāra sits sixth of seven; on the M5 it spans 1.08× and Kāra sits second of five. The reordering is not a Kāra improvement — it is the container's 1.15× noise floor being nearly as wide as the entire M5 spread. A lane where the true differences are ~1% cannot be ranked on a shared container at all, which is exactly why `BENCHMARKS.md` reserves published numbers for this host. The one thing both hosts agree on is the finding that matters: **Kāra sits level with C on the map-free scan**, 1.05× there and 0.99× here (1.00× on 2026-11-02).
 
 ### Caveats
 

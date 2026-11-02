@@ -118,23 +118,27 @@ still carries the family's two-pointer-scan lane.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host — `bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host —
+`bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 61.0 ± 2.2 ms | 0.27× |
-| Go ‡ | 81.9 ± 1.6 ms | 0.36× |
-| Rust `-O` | 171.0 ± 3.9 ms | 0.76× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 171.2 ± 4.4 ms | 0.76× |
-| **Kāra (codegen)** | **224.8 ± 4.3 ms** | 1.00× |
+| C `clang -O3` | 67.7 ± 6.3 ms | 0.30× |
+| Go ‡ | 94.5 ± 1.2 ms | 0.42× |
+| Rust `-O` | 192.8 ± 9.4 ms | 0.86× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 199.6 ± 13.6 ms | 0.89× |
+| **Kāra (codegen)** | **224.7 ± 14.7 ms** | 1.00× |
 
-‡ Go runs at **117% CPU** (85 ms user against 81.9 ms wall) — its concurrent
-collector. Every other lane is at 99%. The Go row is not a strictly sequential
+Against the previous feed (2026-09-07) every ratio is flat: Kāra/Rust 1.20× →
+1.17×, Kāra/C 3.43× → 3.32×, Kāra/Go 2.49× → 2.38×.
+
+‡ Go runs at **133% CPU** (93.5 ms user + 32.6 ms system against 94.5 ms wall)
+— its concurrent collector. Every other lane is at 99–100%. The Go row is not a strictly sequential
 measurement and should not be ranked against the others without that attached.
 
 **This is the widest Kāra deficit in the 244–275 block, and it grew on the
-M5: 1.80× behind C on the container, 3.68× here.** That direction is the
+M5: 1.80× behind C on the container, 3.32× here (2026-11-02).** That direction is the
 opposite of its neighbours — [#244](../244-shortest-word-distance-ii/) and
 [#251](../251-flatten-2d-vector/) both *compress* on this host — and the reason
 is what the kata is made of. The closed form still enumerates both boundary
@@ -144,11 +148,11 @@ inverts when the allocator gets cheap relative to compute (BENCHMARKS.md §
 Hosts). C at `malloc` and Go at a bump allocator both take most of the benefit;
 Kāra takes least.
 
-Overflow checking costs Rust nothing here (171.0 vs 171.2 ms, inside σ) — the
+Overflow checking costs Rust nothing here (192.8 vs 199.6 ms, inside σ) — the
 closed form is combinatorial multiplication over small counts, so there is
 almost no arithmetic worth checking. Kāra's deficit is therefore not a
-safety-tax result; equal-safety Rust is 0.76× and wrapping Rust is 0.76×, the
-same number.
+safety-tax result; equal-safety Rust is 0.89× and wrapping Rust is 0.86×, a tie
+inside σ.
 
 ### The x86 corroboration run
 

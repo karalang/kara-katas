@@ -112,23 +112,25 @@ Every word is 9 bytes sharing the 5-byte prefix `"delta"`, so hashing walks the 
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host — `bench/results.json`, the file `consolidate-bench.sh` feeds into the corpus charts.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (the v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–100% CPU. This is the canonical host — `bench/results.json`, the file `consolidate-bench.sh` feeds into the corpus charts.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 60.9 ± 1.3 ms | 0.83× |
-| Rust `-O` (wrapping) | 63.3 ± 0.7 ms | 0.86× |
-| **Kāra (codegen)** | **73.6 ± 0.6 ms** | 1.00× |
-| Go | 88.4 ± 2.0 ms | 1.20× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 119.8 ± 1.1 ms | 1.63× |
+| C `clang -O3` | 69.0 ± 0.8 ms | 0.59× |
+| Rust `-O` (wrapping) | 70.7 ± 1.1 ms | 0.60× |
+| Go | 98.9 ± 1.2 ms | 0.84× |
+| **Kāra (codegen)** | **117.3 ± 1.7 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 134.4 ± 2.1 ms | 1.15× |
 
-**Kāra is 1.21× behind C and 1.63× ahead of equal-safety Rust.**
+**Kāra is 1.70× behind C, 1.19× behind Go, and 1.15× ahead of equal-safety Rust.**
+
+**Regressed on the MIR backend.** Against the 2026-08-15 feed (legacy backend, karac g50267795a) the language ratios slipped on every comparator: Kāra/Rust `-O` 1.16× → 1.66×, Kāra/C 1.21× → 1.70×, Kāra/Go 0.83× → 1.19× (Kāra fell behind Go), Kāra/equal-safety Rust 0.61× → 0.87×. Every comparator ran ~12% slower in absolute terms this session (machine state); Kāra moved ~1.4× beyond that. The MIR build executes 1.27× legacy's instructions and 1.56× its cycles, in the `Map[String, i64]` lookups — see § Bug ledger. The analysis below was written against the 2026-08-15 figures (Kāra 73.6 ms, 1.21× C, 1.16× Rust `-O`).
 
 Two things worth separating.
 
-**The map costs Kāra something, and the size of it is the finding.** This kata was written to isolate exactly that. [#243](../243-shortest-word-distance/) runs the same `String` type through a map-free linear scan and lands within **1.06×** of C; [#126](../../101-200/126-word-ladder-ii/) and [#127](../../101-200/127-word-ladder/) put the same type inside a hash-keyed BFS and land **3.68×** and **2.61×** behind. The prediction was that #244 would fall between them, and it does — **1.21×**. That is informative in a way a single number isn't: two hash lookups per query over a 256-key map cost about a fifth, so whatever makes word-ladder 2.6–3.7× is *not* simply "the map, in proportion to how much you use it." Something else is going on in those two, and this measurement does not explain it.
+**The map costs Kāra something, and the size of it is the finding.** This kata was written to isolate exactly that. [#243](../243-shortest-word-distance/) runs the same `String` type through a map-free linear scan and lands within **1.06×** of C; [#126](../../101-200/126-word-ladder-ii/) and [#127](../../101-200/127-word-ladder/) put the same type inside a hash-keyed BFS and land **3.68×** and **2.61×** behind. The prediction was that #244 would fall between them, and it does — **1.21×** (2026-08-15; 1.70× on the MIR backend, 2026-11-02, still between them but now inflated by [`B-2026-11-02-4`](../../../../kara/docs/bugs-v2.md)). That is informative in a way a single number isn't: two hash lookups per query over a 256-key map cost about a fifth, so whatever makes word-ladder 2.6–3.7× is *not* simply "the map, in proportion to how much you use it." Something else is going on in those two, and this measurement does not explain it.
 
-**Overflow checks are expensive here — and that is Rust's cost, not Kāra's.** `rustc -O` wrapping is 63.3 ms; the identical code with `-C overflow-checks=on` is 119.8 ms, an **1.89×** penalty. In #243 the same flag cost Rust nothing (115.5 → 115.2 ms), because that loop does no arithmetic worth checking. This one does: a subtraction, an `abs`, and two comparisons per merge step across 200,000 × ~156 steps, plus the sink's multiply-add. Kāra checks integer overflow **by default** and still lands at 73.6 ms — **1.16×** over wrapping Rust, against the 1.89× Rust pays for the same guarantee. The honest reading is narrow: Kāra's checked arithmetic is materially cheaper than Rust's opt-in overflow checking on an arithmetic-dense loop. It is *not* that Kāra beats Rust here — the wrapping row plainly says otherwise.
+**Overflow checks are expensive here — and that is Rust's cost, not Kāra's.** `rustc -O` wrapping is 63.3 ms; the identical code with `-C overflow-checks=on` is 119.8 ms, an **1.89×** penalty (2026-11-02: 70.7 → 134.4 ms, 1.90×). In #243 the same flag cost Rust nothing (115.5 → 115.2 ms), because that loop does no arithmetic worth checking. This one does: a subtraction, an `abs`, and two comparisons per merge step across 200,000 × ~156 steps, plus the sink's multiply-add. Kāra checks integer overflow **by default** and still lands at 73.6 ms — **1.16×** over wrapping Rust, against the 1.89× Rust pays for the same guarantee. The honest reading is narrow: Kāra's checked arithmetic is materially cheaper than Rust's opt-in overflow checking on an arithmetic-dense loop. It is *not* that Kāra beats Rust here — the wrapping row plainly says otherwise. *(2026-11-02: on the MIR backend Kāra lands 1.66× over wrapping Rust against Rust's 1.90×, so the checked-arithmetic margin has narrowed to 1.15×; the slip is the map-lookup regression, not the checks.)*
 
 ### The x86 corroboration run
 
@@ -144,11 +146,11 @@ Container x86-64, 2026-08-03, committed as [`bench/results.container-x86.json`](
 | Rust overflow-checked @ x86-64-v3 (equal-safety, ISA-matched) | 235.8 ± 7.5 ms | 1.54× |
 | Rust `-O -C overflow-checks=on` | 256.6 ± 14.6 ms | 1.68× |
 
-**The two hosts agree on the ordering and disagree on the size of the gap.** `c < rust < kāra < go < rust_ovf` is identical on both, which is what [`BENCHMARKS.md`](../../../BENCHMARKS.md) predicts for a per-access kata — the index is built once and the punch loop only reads it, so there is no per-repetition allocation for the M5's cheaper allocator to speed up. What moves is the *field width*: Kāra closes from 1.39× behind C to **1.21×**, and Rust's overflow-check penalty falls from 2.28× to 1.89×. Both are the M5's wider out-of-order core absorbing the extra checked-arithmetic and bounds-check work that the container's narrower one exposed.
+**The two hosts agree on the ordering and disagree on the size of the gap.** `c < rust < kāra < go < rust_ovf` is identical on both, which is what [`BENCHMARKS.md`](../../../BENCHMARKS.md) predicts for a per-access kata — the index is built once and the punch loop only reads it, so there is no per-repetition allocation for the M5's cheaper allocator to speed up. *(2026-11-02: the M5 ordering is now `c < rust < go < kāra < rust_ovf` — Kāra fell behind Go on the MIR backend, [`B-2026-11-02-4`](../../../../kara/docs/bugs-v2.md).)* What moves is the *field width*: Kāra closes from 1.39× behind C to **1.21×**, and Rust's overflow-check penalty falls from 2.28× to 1.89×. Both are the M5's wider out-of-order core absorbing the extra checked-arithmetic and bounds-check work that the container's narrower one exposed.
 
 ### Caveats
 
-The M5 σ spread is tight — every lane is under 2.3% — so all five rows are separable there, including the Go margin. The container lane is the looser of the two: [`BENCHMARKS.md`](../../../BENCHMARKS.md) treats it as a corroborating second host with a noise floor around 1.15×, and on that lane the Go margin (1.16×) does not clear it and should be read as a **tie**, while Kāra's 14.6 ms σ and C-v3's 15.1 ms make the two C rows indistinguishable from each other.
+The M5 σ spread is tight — every lane is under 2.3% (under 1.6% on 2026-11-02) — so all five rows are separable there, including the Go margin. The container lane is the looser of the two: [`BENCHMARKS.md`](../../../BENCHMARKS.md) treats it as a corroborating second host with a noise floor around 1.15×, and on that lane the Go margin (1.16×) does not clear it and should be read as a **tie**, while Kāra's 14.6 ms σ and C-v3's 15.1 ms make the two C rows indistinguishable from each other.
 
 On Apple silicon a program's speed also depends on where its hot loop sits modulo 64 bytes, so a local rebuild may not land on our figure — see [`BENCHMARKS.md` § Code placement](../../../BENCHMARKS.md).
 
@@ -177,3 +179,7 @@ Verified byte-identical under `karac run --interp` (tree-walk), `karac run` (JIT
 **Why this kata earns its place next to #243.** They share a merge and nothing else. #243 measures plain `String` equality in a linear scan and lands in a near dead heat across five languages, because there is almost nothing for a compiler to differentiate on. #244 moves the work into the *map*: two hash lookups and a two-pointer walk per query, with the list built once. That is the path where the corpus has repeatedly found Kāra behind — [#127](../../101-200/127-word-ladder/) and [#126](../../101-200/126-word-ladder-ii/) put Kāra 3.6× behind C with the same `String` type inside a hash-keyed BFS, while #243's map-free scan is within 1.06×. This kata isolates that difference deliberately: same problem family, same string handling, map moved from incidental to central.
 
 The empty-list convention is shared with #243 on purpose. `best` starts at the list length rather than a sentinel — the list has that many slots, so no two distinct positions can be that far apart, which makes it a genuine upper bound that doubles as the "word never appeared" answer with no separate found flag. LeetCode guarantees both words are present; the kata reports that case rather than trapping on it, which is why `["one","two","three"]` queried for `"four"` is in the test set of both katas.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-4`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend the `bench/` Kāra program executes 1.27× legacy's instructions and 1.56× its cycles (`KARAC_AUTO_PAR=0`), in the `Map[String, i64]` lookups: the seq lane went from 1.16× to 1.66× `rustc -O`, 1.21× to 1.70× C and 0.83× to 1.19× Go. Measured 2026-11-02 with karac g6697158fa.

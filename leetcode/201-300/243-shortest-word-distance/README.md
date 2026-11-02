@@ -60,17 +60,19 @@ Worth recording, because it looks like a bug and is not: bare `Slice[T]` params 
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`810985766`). Workload: build a 20,000-word list once over a 256-word vocabulary (every word 9 chars sharing a 5-char prefix, so String equality does real byte work instead of exiting early on a length or first-byte mismatch), then 2,000 punches of the one-pass two-last-seen-index scan, each for a different (word1, word2) vocabulary pair; sink is a rolling polynomial hash of the 2,000 distances, a loop-carried dependency so the punch loop is sequential by construction. NOTE: the C mirror stores {const char*, len} and compares length-then-memcmp rather than strcmp, so all five languages pay the same length-check-then-compare cost — a strcmp mirror would measure a different operation.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-29 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 114.9 ms | 0.94× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 115.2 ms | 0.95× |
-| Rust `-O` | 115.5 ms | 0.95× |
-| Go | 118.2 ms | 0.97× |
-| **Kāra (codegen)** | 121.8 ms | 1.00× |
+| C `clang -O3` | 122.3 ms | 0.96× |
+| Rust `-O` | 122.9 ms | 0.97× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 126.4 ms | 1.00× |
+| **Kāra (codegen)** | 126.8 ms | 1.00× |
+| Go | 142.1 ms | 1.12× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac f80bb80b605f); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Against the 2026-07-29 M5 feed (legacy backend) the ratios are flat: Kāra/Rust `-O` 1.05× → 1.03×, Kāra/equal-safety Rust 1.06× → 1.00×, Kāra/C 1.06× → 1.04×. Only Go moved, Kāra/Go 1.03× → 0.89×, which is Go running 20% slower this session against 6–10% for the other comparators. Compare ratios, not milliseconds, across sessions: every lane ran slower in absolute terms this session (machine state).
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -101,6 +103,8 @@ Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk
 - **Working-set size doesn't move it.** Re-sizing to 2,000 words × 20,000 punches and 500 × 80,000 — identical total work, an order of magnitude less memory touched — left every lane within 7% of where it started. An earlier reading of mine that this loop was memory-bound (CPython lands only ~5× behind, which looked like everyone waiting on the same memory) was wrong; the sizing sweep disproved it.
 
 **Overflow checks are free here** — 115.2 ms checked vs 115.5 ms wrapping, comfortably inside σ. Nothing in the loop does arithmetic worth checking, which is the honest reason, not a codegen win.
+
+*(2026-11-02: on the MIR backend Kāra is 1.04× behind C, ties equal-safety Rust at 1.00× and leads Go 0.89×; overflow checks still sit inside σ, 126.4 vs 122.9 ms. The figures below are the 2026-07-29 reading.)*
 
 **What the near-parity does and does not say.** This kata isolates plain `String` equality with no map anywhere in it, and there Kāra is 1.06× behind C and 1.03× behind Go. That is worth putting next to [#127](../../101-200/127-word-ladder/) and [#126](../../101-200/126-word-ladder-ii/), where the same `String` type inside a **hash-keyed** BFS puts Kāra 3.6× behind C and 1.75× behind Go. Those deficits therefore sit in the map/hashing path, not in `String` handling generally. It says nothing about Rust either way — Kāra is within 1.06–1.14× of equal-safety Rust on all three katas.
 

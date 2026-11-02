@@ -82,19 +82,27 @@ brew install hyperfine    # one-time, also needs rustc (rustup), clang, go
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 96–100% CPU. This is the canonical host — `bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, all lanes 97–100% CPU. This is the canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 9.5 ± 0.2 ms | 0.62× |
-| Rust `-O` | 9.8 ± 0.2 ms | 0.64× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 9.8 ± 0.2 ms | 0.64× |
-| **Kāra (codegen)** | **15.4 ± 1.4 ms** | 1.00× |
-| Go | 150.4 ± 3.0 ms | 9.79× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 10.8 ± 0.3 ms | 0.53× |
+| C `clang -O3` | 10.9 ± 0.3 ms | 0.53× |
+| Rust `-O` | 11.0 ± 0.2 ms | 0.54× |
+| **Kāra (codegen)** | **20.6 ± 0.7 ms** | 1.00× |
+| Go | 164.9 ± 3.3 ms | 8.02× |
+
+Kāra is **1.87× behind Rust `-O`** and **1.89× behind `clang -O3`**. That gap has two separate parts, each with its own ledger row:
+
+1. **~1.6× is loop unrolling — long-standing, wontfix (kara `B-2026-08-15-31`).** On the legacy backend (2026-08-15, karac g50267795a) Kāra was 1.57× behind Rust and 1.62× behind C, and the whole of that was clang unrolling a loop karac does not. The analysis in the block below is that measurement and still holds.
+2. **The rest is new on the MIR backend — open, [`B-2026-11-02-5`](../../../../kara/docs/bugs-v2.md).** The MIR build runs 1.31× legacy's instructions on this lane (0.690 G against 0.528 G; 1.12× on the `strobogrammatic_slice` variant), which moved the ratios from 1.57× to 1.87× Rust and from 1.62× to 1.89× C. Comparators ran 10–15% slower in this session than in August, so compare the ratios, not the milliseconds. See § *Bug ledger*.
 
 > **The C parity this kata reached in August was an x86 result. On arm64 Kāra
-> is 1.57× behind `clang -O3` — and the whole of that is LOOP UNROLLING, not
-> codegen quality.** Filed and pinned as kara `B-2026-08-15-31`; see § *Notes*.
+> was 1.57× behind `clang -O3` on the legacy backend (2026-08-15), and the whole
+> of that was LOOP UNROLLING, not codegen quality.** Filed and pinned as kara
+> `B-2026-08-15-31` (wontfix); see § *Notes*. The counts below are legacy's; the
+> MIR backend's extra 1.31× instructions on top is `B-2026-11-02-5`, not part of
+> this analysis.
 >
 > Retired-instruction counts (`kara/scripts/pmc.c`) settle it:
 >
@@ -144,7 +152,7 @@ Container x86-64, **re-measured 2026-08-05** on `karac` 72f9fd7d, hyperfine 30 r
 | **Kāra (codegen)** | **41.1 ± 7.5 ms** | 1.00× |
 | Go | 307.9 ± 6.3 ms | 7.50× |
 
-**The Rust gap is the one result both hosts agree on** — ~1.6× on the container, 1.61× on the M5 — and it remains the open question this kata was built to expose. The C row is where they part company, and the quoted block below is the container's story.
+**The Rust gap is the one result both hosts agree on** — ~1.6× on the container, 1.61× on the M5 in August (1.87× on 2026-11-02, the MIR backend's slip on top; see the M5 section) — and it remains the open question this kata was built to expose. The C row is where they part company, and the quoted block below is the container's story.
 
 > **Kāra is now at parity with C on this kata** *(x86-64 only — see the M5 note above)*. On minima — the stable statistic
 > here, since this run's σ is large — Kāra is **36.55 ms** to C's **35.74 ms**,
@@ -258,9 +266,9 @@ Container-x86 lane, ~1.15× noise floor per [`BENCHMARKS.md`](../../../BENCHMARK
 
 The **3%** attributed to bounds-check elimination does **not** clear that floor on its own; it is reported as a bounded effect, not a win. It is stated with confidence only because it comes from an A/B on one binary via `KARAC_BCE_INTERPROC=0` with the elision confirmed in the disassembly — the disassembly is the evidence, the 3% is just its price. The 1.23× overflow-check result *does* clear the floor and is corroborated by an independent control (the C mirror rebuilt in Kāra's shape) rather than by timing alone.
 
-**The M5 lane is now measured and is the published one.** Its σ is far tighter than the container's (0.2 ms on the C and Rust rows, 1.4 ms on Kāra's), so the 1.61× Rust gap and the 1.57× C gap both clear it comfortably. Kāra's 9% relative σ is the widest row in the table and reflects a 15 ms workload on a host where 64-byte code placement is worth a few percent — the three-rebuild minima above are the statistic to trust for the C ratio, not this table's mean.
+**The M5 lane is now measured and is the published one.** Its σ is far tighter than the container's (0.2–0.3 ms on the C and Rust rows, 0.7 ms on Kāra's, 2026-11-02), so the 1.87× Rust gap and the 1.89× C gap both clear it comfortably. Kāra's 3% relative σ is the widest row in the table and reflects a ~20 ms workload on a host where 64-byte code placement is worth a few percent — the three-rebuild minima above are the statistic to trust for the legacy C ratio, not a table's mean.
 
-The Go row is excluded from any comparative claim for the reason above; note it *widens* on the M5 (7.50× → 9.79×) purely because Kāra and C got faster while Go's compare-chain did not.
+The Go row is excluded from any comparative claim for the reason above; note it is *wider* on the M5 than on the container (7.50× there, 8.02× on 2026-11-02) because Kāra and C run this loop relatively faster on arm64 while Go's compare-chain does not.
 
 ## Running
 
@@ -272,7 +280,7 @@ karac build strobogrammatic.kara && ./strobogrammatic
 
 # Bench lane — two spellings of the same workload, same sink (325454619).
 # `bench/strobogrammatic.kara`       row by base+index — the form that exposes B-2026-08-05-21
-# `bench/strobogrammatic_slice.kara` row as a Slice view — the form at C parity
+# `bench/strobogrammatic_slice.kara` row as a Slice view — the form at C parity on x86 (not on arm64, where loop unrolling still separates them)
 cd bench && for v in strobogrammatic strobogrammatic_slice; do
     KARAC_AUTO_PAR=0 karac build $v.kara >/dev/null && ./$v
 done
@@ -291,10 +299,16 @@ diff <(karac run differential.kara) <(python3 differential.py) && echo "differen
 
 ## Notes
 
-**The Apple-silicon C gap is kara `B-2026-08-15-31`, and it is pinned: loop unrolling.** The parity this kata reached on x86-64 does not hold on arm64 — Kāra is 1.57× behind `clang -O3` — but against `clang -O3 -fno-unroll-loops` it is **1.06×**, and it is 11% ahead of `clang -O2` on cycles. The per-pair instruction sequences are identical; clang amortizes away 5 bookkeeping instructions per pair that Kāra pays. `B-2026-08-05-21` is not implicated — its elision is firing.
+**The Apple-silicon C gap is kara `B-2026-08-15-31`, and it is pinned: loop unrolling.** The parity this kata reached on x86-64 does not hold on arm64 — on the legacy backend Kāra was 1.57× behind `clang -O3` — but against `clang -O3 -fno-unroll-loops` it is **1.06×**, and it is 11% ahead of `clang -O2` on cycles. The per-pair instruction sequences are identical; clang amortizes away 5 bookkeeping instructions per pair that Kāra pays. `B-2026-08-05-21` is not implicated — its elision is firing.
 
 karac's full-unroll hint machinery (kata:37, `B-2026-06-17-7`) is live and fires in this build, but declines this loop on three deliberate gates: the converging `lo <= hi` bound is not a literal, the body calls `rotate_byte`, and the body has an early `return`. Each was calibrated on a measured regression elsewhere in the corpus, so relaxing them is a separate slice with its own sweep — the ledger row scopes it and names the katas to re-measure.
 
 Verified byte-identical under `karac run --interp` (tree-walk), `karac run` (JIT), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — with both Kāra variants agreeing with the Python mirror on the spec cases and the differential.
 
 **Why the test set looks the way it does.** Every entry earns its place against a specific wrong implementation: `"6"` and `"9"` alone catch "is this digit rotatable" (both rotate, neither is strobogrammatic); `"6996"` vs `"6009"` catch a missing reversal; `"689"` and `"69896"` catch a `lo < hi` loop that skips the odd centre; `"10501"` catches a forbidden digit hidden between legal pairs; `"18"` catches assuming self-mapping digits pair with each other. That is 26 cases chosen as counterexamples rather than as coverage — the breadth comes from the differential.
+
+## Bug ledger
+
+**Pre-existing: kara `B-2026-08-15-31`** (perf, wontfix). The ~1.6× gap to `clang -O3` on arm64 is loop unrolling: clang unrolls the converging two-pointer loop and karac's full-unroll gates decline it. Measured to a standstill on the legacy backend across three unroll strategies, none of which pays; see § *Notes*.
+
+**Surfaced [`B-2026-11-02-5`](../../../../kara/docs/bugs-v2.md)** (perf, open). Separate from the row above: on the v2/MIR backend `bench/strobogrammatic.kara` runs 1.31× legacy dd86e3955's instructions (0.690 G vs 0.528 G) and 1.24× its cycles (81 M vs 65 M); the `strobogrammatic_slice` variant runs 1.12× the instructions. The seq lane went from 1.57× to 1.87× Rust `-O` and from 1.62× to 1.89× C. Measured 2026-11-02 with karac g6697158fa, `KARAC_AUTO_PAR=0`. Unattributed.

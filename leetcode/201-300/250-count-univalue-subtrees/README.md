@@ -164,30 +164,30 @@ Sink `42226040`, reproduced exactly by the C, Rust and Go mirrors.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–100% CPU. This is
+the canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Rust `-O` | 113.1 ± 1.8 ms | 0.88× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 121.6 ± 2.5 ms | 0.94× |
-| C `clang -O3` | 124.1 ± 2.6 ms | 0.96× |
-| Go | 124.6 ± 1.5 ms | 0.97× |
-| **Kāra (codegen)** | **129.1 ± 2.0 ms** | 1.00× |
+| **Kāra (codegen)** | **109.7 ± 2.1 ms** | 1.00× |
+| Rust `-O` | 126.6 ± 1.7 ms | 1.15× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 132.2 ± 2.7 ms | 1.20× |
+| C `clang -O3` | 135.8 ± 1.0 ms | 1.24× |
+| Go | 136.7 ± 2.9 ms | 1.25× |
 
 **The M5 does what the container could not: it separates the languages.** On the
 container all five landed within a few percent with Rust's σ at 13% of its mean —
-contention, not signal — so nothing was quotable. Here σ is 1.2–2.2% across every
-row and the spread is 1.14×, which is small but now larger than the noise.
+contention, not signal — so nothing was quotable. Here σ is 0.7–2.1% across every
+row and the spread is 1.25×, larger than the noise.
 
-**Kāra is last, by 1.04× against C and 1.06× against equal-safety Rust.** Both
-gaps are real but slight, and the honest summary is that a reverse index scan
-with a loop-carried memo read runs at roughly the same speed in all five
-languages. The one row that stands apart is wrapping `rustc -O` at 0.88×, and
-the gap between it and its own checked build (113.1 → 121.6 ms, 1.08×) is larger
-than the gap between checked Rust and Kāra — so Kāra's position here is
-essentially "equal-safety Rust plus 6%", not a codegen deficit worth chasing.
+**Kāra is first, at 0.87× Rust `-O`, 0.83× equal-safety Rust, 0.81× C and 0.80×
+Go.** On the legacy backend (2026-08-15) it was last, at 1.14× Rust, 1.04× C and
+1.04× Go; the v2/MIR backend moved it ahead of every comparator. Comparators ran
+9–12% slower in this session than in August, so the ratios, not the
+milliseconds, carry that comparison. The mechanism of the gain has not been
+measured. Overflow checking costs Rust 1.04× here (126.6 → 132.2 ms), and Kāra,
+checked by default, is ahead of both Rust builds.
 
 ### The x86 corroboration run
 

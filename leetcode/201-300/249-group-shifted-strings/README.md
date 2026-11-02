@@ -138,26 +138,34 @@ correctness tool.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host — `bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host —
+`bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Go ‡ | 77.0 ± 0.8 ms | 0.26× |
-| C `clang -O3` | 182.8 ± 3.1 ms | 0.62× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 198.2 ± 4.3 ms | 0.67× |
-| Rust `-O` | 203.7 ± 5.2 ms | 0.69× |
-| **Kāra (codegen)** | **293.8 ± 5.5 ms** | 1.00× |
+| Go ‡ | 84.6 ± 1.0 ms | 0.33× |
+| C `clang -O3` | 205.7 ± 5.9 ms | 0.81× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 229.6 ± 11.5 ms | 0.90× |
+| Rust `-O` | 232.0 ± 12.1 ms | 0.91× |
+| **Kāra (codegen)** | **254.4 ± 9.6 ms** | 1.00× |
 
-‡ **Go's lead is partly a second core.** It runs at **126% CPU** — 92 ms of user
-time against 77.0 ms of wall — because its collector is concurrent, while every
-other lane sits at 99%. On user-CPU Go's margin over C narrows from 2.37× to
-1.99×. The wall-clock row is still a genuine win, but it is not a per-core one,
+**This is a regression on the MIR backend**, kara
+[`B-2026-11-02-6`](../../../../kara/docs/bugs-v2.md) (perf, open; see § *Bug
+ledger*). Against the previous feed (2026-09-07, legacy backend) Kāra went from
+0.93× to 1.10× Rust `-O`, from 1.01× to 1.24× C and from 2.34× to 3.01× Go.
+Comparators ran 4–14% slower in this session than in that one, so the ratios,
+not the milliseconds, carry the comparison.
+
+‡ **Go's lead is partly a second core.** It runs at **128% CPU** — 99 ms of user
+time plus 9 ms of system against 84.6 ms of wall — because its collector is
+concurrent, while every other lane sits at 99–100%. On user-CPU Go's margin over
+C narrows from 2.43× to 2.06×. The wall-clock row is still a genuine win, but it is not a per-core one,
 and the sequential lane is a per-core comparison.
 
 **The ordering is byte-identical to the container** — `go < c < rust_ovf < rust
-< kara` on both hosts — and the field compresses slightly, Kāra going from 1.72×
-behind C to **1.61×**. A map-insertion kata holding its shape across two very
+< kara` on both hosts — and the field compresses, Kāra going from 1.72×
+behind C to **1.24×** (2026-11-02). A map-insertion kata holding its shape across two very
 different memory subsystems is the expected result for a workload whose cost is
 per-*access* rather than per-allocation: the corpus is built once and the five
 grouping passes only read it.
@@ -166,7 +174,7 @@ grouping passes only read it.
 grouping: Go's map is tuned for string keys, while Rust's default `HashMap` uses
 SipHash for DoS resistance. That is a deliberate Rust trade-off, not a defect,
 and it means the Rust baseline here is not the "fast implementation" it usually
-is. Kāra at 1.44× equal-safety Rust is consistent with the string-building
+is. Kāra at 1.11× equal-safety Rust is consistent with the string-building
 residual #247's lane shows.
 
 Read the C row with care: unlike every other language here it has no standard
@@ -213,3 +221,7 @@ than uniform random letters. A uniform draw makes almost every word its own
 group, so the grouping path would barely execute; drawing shifts of 1–3 seeds
 per case yields 6,135 groups over 14,053 words — about 2.3 words per group — so
 collisions, not singletons, are the common case.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-6`](../../../../kara/docs/bugs-v2.md)** (perf, open). On the v2/MIR backend `bench/group_shifted.kara` runs 1.24× legacy dd86e3955's instructions (6.144 G vs 4.953 G) and 1.24× its cycles (992 M vs 799 M), in the `Map[String, Vec[String]]` grouping built with `entry(k).or_insert(Vec.new()).push(w)`. The seq lane went from 0.93× to 1.10× Rust `-O`, from 1.01× to 1.24× C and from 2.34× to 3.01× Go. The previous feed (2026-09-07) falls inside the u64 map-key miscompile window, but this kata's keys are `String`, so it stands as the baseline. Measured 2026-11-02 with karac g6697158fa, `KARAC_AUTO_PAR=0`. Unattributed.
