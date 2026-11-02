@@ -40,17 +40,19 @@ The second half is never longer than the first, so for odd length the middle nod
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`900`). Workload: is_palindrome (midpoint + in-place reverse + compare) over a 50k-node list, 1800 passes with a middle-value punch.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-27 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
-| Impl | Mean | vs Kāra |
+| Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| **Kāra (codegen)** | 237.9 ms | 1.00× |
-| C `clang -O3` | 247.0 ms | 1.04× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 248.8 ms | 1.05× |
-| Rust `-O` | 249.4 ms | 1.05× |
-| Go | 252.7 ms | 1.06× |
+| Rust `-O` | 274.7 ± 10.1 ms | 0.99× |
+| **Kāra (codegen)** | **276.9 ± 13.2 ms** | **1.00×** |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 279.1 ± 6.0 ms | 1.01× |
+| C `clang -O3` | 279.3 ± 4.1 ms | 1.01× |
+| Go | 289.5 ± 7.5 ms | 1.05× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Against the 2026-07-27 legacy-backend run (karac 0.1.0) the language ratios are flat: Kāra/Rust `-O` 0.95× → 1.01×, Kāra/equal-safety Rust 0.96× → 0.99×, Kāra/C 0.96× → 0.99×, Kāra/Go 0.94× → 0.96×. The four LLVM lanes now sit within ~2% of each other, inside Kāra's ±13 ms σ, so the order among them (Kāra first in July, second behind `rustc -O` now) is noise, not a ranking. Every comparator also ran ~10–15% slower in absolute terms this session (machine state), so compare the ratios, not the milliseconds.
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -63,4 +65,4 @@ diff <(karac run palindrome_list.kara) <(python3 palindrome_list.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

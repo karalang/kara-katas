@@ -62,24 +62,23 @@ Two things make it worth the entry. First, **the source is irrelevant** — an `
 The kata as written is unchanged by the fix; it was never contorted around the bug.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-07-30 snapshot; the feed was last measured 2026-07-31.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 The kata's inputs are seven tiny lists, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go and Python, all agreeing on the sink (`306510976`). Workload: build an 8,000-node index-pool list once, then 7,000 cycles; each cycle relinks the pool into a single list and then sweeps it repeatedly, deleting every other node by the O(1) rule until one node is left and summing the survivors after every sweep. The sink is a rolling 30-bit polynomial hash of those per-sweep sums — a loop-carried dependency, so no cycle can be reordered or dropped. 168M inner iterations per run.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-30 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| Rust `-O` | 207.5 ms | 0.99× |
-| Go | 209.8 ms | 1.00× |
-| C `clang -O3` | 210.2 ms | 1.00× |
-| **Kāra (codegen)** | 210.6 ms | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 231.3 ms | 1.10× |
+| **Kāra (codegen)** | 223.0 ms | 1.00× |
+| Rust `-O` | 231.2 ms | 1.04× |
+| Go | 231.4 ms | 1.04× |
+| C `clang -O3` | 232.6 ms | 1.04× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 255.0 ms | 1.14× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac `329b8e69d021`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Against the 2026-07-31 legacy-backend feed the language ratios are flat: Kāra/Rust `-O` 1.01× → 0.96×, Kāra/equal-safety Rust 0.91× → 0.87×, Kāra/C 1.00× → 0.96×, Kāra/Go 1.00× → 0.96×. Every comparator ran ~10–11% slower in absolute terms this session (machine state), so compare the ratios, not the milliseconds.
 
-Binary size and peak RSS from the same run: Kāra 33.5 KiB / 1.1 MiB, C 32.7 KiB / 1.1 MiB, Rust 455.4 KiB / 1.2 MiB, Go 2434.1 KiB / 2.7 MiB — Kāra lands within 0.8 KiB of the C binary.
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+
+Binary size and peak RSS from the same run: Kāra 295.8 KiB / 1.2 MiB, C 32.7 KiB / 1.1 MiB, Rust 455.4 KiB / 1.2 MiB, Go 2434.1 KiB / 2.8 MiB. Every v2/MIR Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB (this kata's was 33.5 KiB, within 0.8 KiB of the C binary), tracked as [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md). Cold compile: `clang -O3` 49.1 ms, `rustc -O` 97.6 ms, `karac build` 123.6 ms; compile peak RSS 2.6 / 30.5 / 57.3 MiB.
 
 ## Running
 
@@ -103,14 +102,14 @@ diff <(karac run delete_node_shift.kara) <(python3 delete_node.py) && echo OK
 
 Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk) and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — with both Kāra variants agreeing with the Python mirror.
 
-**A four-way dead heat, with Kāra ahead of Rust at equal safety.** Kāra, C, Go and wrapping Rust land inside 1.5% of each other; the only lane that separates is `rustc -O -C overflow-checks=on`, 10% behind the other four. Kāra pays approximately nothing for the checks Rust pays 10% for on this kernel — and the checks are real, not elided: the bench's exact accumulate shape (`pass = pass + nodes[k].val` over a pool of 2⁶² values) panics `integer overflow` under both `karac run` and `karac build`, so this is a codegen result and not skipped work.
+**Kāra slightly ahead of a three-way tie, and ahead of Rust at equal safety.** On the 2026-11-02 feed C, Go and wrapping Rust land inside 0.6% of each other and Kāra runs ~4% ahead of all three (0.96×); `rustc -O -C overflow-checks=on` is 10% behind the wrapping Rust and 1.14× Kāra. (On the 2026-07-30 snapshot the four were a dead heat inside 1.5%.) Kāra pays approximately nothing for the checks Rust pays 10% for on this kernel — and the checks are real, not elided: the bench's exact accumulate shape (`pass = pass + nodes[k].val` over a pool of 2⁶² values) panics `integer overflow` under both `karac run` and `karac build`, so this is a codegen result and not skipped work.
 
-Four checks that the measurement is a measurement:
+Four checks that the measurement is a measurement (the first three are 2026-07-30 probes on the legacy backend; the fourth was re-checked 2026-11-02):
 
 - **The vectorizable loop is not the benchmark.** The per-cycle relink is the one loop an optimizer can vectorize, and an instrumented C build puts it at **3.2%** of runtime; the other 96.8% is the delete-and-traverse pointer chase, which is serial by construction (`cur = nodes[cur].next`).
 - **It scales linearly.** Doubling and quadrupling the cycle count doubles and quadruples the time (Kāra 0.21 → 0.43 → 0.85 s), so nothing is being hoisted out.
 - **The ratio is stable across those scales.** Kāra/C held at 1.00×, 0.98× and 1.00× over 7,000 / 14,000 / 28,000 cycles, so the dead heat is a property of the code rather than of one lucky run.
-- **Auto-par never fires.** The default build and the `KARAC_AUTO_PAR=0` build are the same binary — identical SHA-256 — so the sequential lane is the whole story here and no parallel comparator is owed. The loop-carried sink is what forecloses it.
+- **Auto-par never fires.** Neither the default build nor the `KARAC_AUTO_PAR=0` build carries a call of `karac_mir_task_spawn` in the emitted IR (`KARAC_MIR_LL`, karac g6697158fa), and both link to the same 302,872-byte size, so the sequential lane is the whole story here and no parallel comparator is owed. The loop-carried sink is what forecloses it.
 
 The Python mirror uses two parallel lists rather than a node object per slot; it is the interpreted scale lane, not a codegen comparator, and the object-per-node form would measure attribute lookup instead of the algorithm. The four compiled mirrors all use the same array-of-structs pool as the Kāra version.
 

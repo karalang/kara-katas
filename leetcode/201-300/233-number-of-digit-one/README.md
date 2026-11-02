@@ -42,9 +42,6 @@ Summing that over every position gives the answer. Place values climb by `×10` 
 - **O(log n) loop** — one iteration per decimal position rather than per integer.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 One call is O(log n) — trivial — so [`bench/`](bench/) turns the kernel into a
 **division-throughput** workload: sum `count_digit_one(i)` over `i` in `0..6M`.
@@ -54,26 +51,42 @@ vectorize (hardware `idiv`, unpredictable branch) and allocates nothing — a cl
 scalar division + branch bench. All five mirrors share the algorithm and agree on
 the sink (`15533335400000`).
 
-Runtime, sequential, one x86 container run (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
-| Impl | Mean | vs Kāra |
+| Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 318.7 ms | 0.91× |
-| Rust `-O` | 346.8 ms | 0.99× |
-| **Kāra (codegen)** | **351.5 ms** | **1.00×** |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 357.9 ms | 1.02× |
-| Go | 829.3 ms | 2.36× |
-| Python (scale lane) | 8 902 ms | 25.3× |
+| C `clang -O3` | 55.6 ± 1.9 ms | 0.95× |
+| **Kāra (codegen)** | **58.2 ± 3.4 ms** | **1.00×** |
+| Rust `-O` | 58.7 ± 1.9 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 60.5 ± 8.0 ms | 1.04× |
+| Go | 76.7 ± 1.4 ms | 1.32× |
+| Python (scale lane) | 8 902 ms | last measured on the x86 container (undated snapshot), not re-run |
 
 On this division-bound scalar kernel Kāra lands **effectively tied with `rustc
--O`** (within ~1.3%) and **ahead of overflow-checked Rust** — the honest
-equal-safety comparison, since Kāra checks integer overflow by default. It trails
-C by ~10% and beats Go by 2.4×. (Contrast the memory-bound DP in
+-O`** (0.99× of its time) and **ahead of overflow-checked Rust** (0.96×) — the
+honest equal-safety comparison, since Kāra checks integer overflow by default. It
+trails C by ~5% and beats Go by 1.32×. (Contrast the memory-bound DP in
 [#221](../221-maximal-square/), where the field compresses; a pure-ALU division
-kernel is where codegen quality shows.) Binary size: C 16 KB · **Kāra 374 KB** ·
-Go 2.2 MB · Rust 4.0 MB.
+kernel is where codegen quality shows.)
 
-Single-machine snapshot (`bench/results.container-x86.json`); see
+Against the 2026-07-28 M5 run (karac 0.1.0, legacy backend) the ranking is
+unchanged and the language ratios are flat: Kāra/Rust `-O` 1.00× → 0.99×,
+Kāra/equal-safety Rust 1.00× → 0.96×, Kāra/C 1.06× → 1.05×, Kāra/Go 0.75× →
+0.76×. Every comparator also ran ~16–21% slower in absolute terms this session
+(machine state), so compare the ratios, not the milliseconds.
+
+Binary size: C 33,432 B · **Kāra 302,872 B** · Rust 466,280 B · Go 2,492,514 B.
+Every MIR Kāra binary is ~300–390 KB where legacy's were ~34 KB, tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md).
+
+> **History.** An earlier, undated x86 container snapshot put Kāra at 351.5 ms:
+> C 318.7 ms (0.91×), Rust `-O` 346.8 ms (0.99×), equal-safety Rust 357.9 ms
+> (1.02×), Go 829.3 ms (2.36×), Python 8 902 ms (25.3×); binary size there was
+> C 16 KB · Kāra 374 KB · Go 2.2 MB · Rust 4.0 MB. The container feed
+> ([`bench/results.container-x86.json`](bench/results.container-x86.json)) has
+> since been re-measured (2026-10-30); neither is the M5 result above.
+
+Single-machine snapshot (`bench/results.json`, karac g6697158fa); see
 [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology. Re-run with
 `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
@@ -88,4 +101,4 @@ diff <(karac run number_of_digit_one.kara) <(python3 number_of_digit_one.py) && 
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.

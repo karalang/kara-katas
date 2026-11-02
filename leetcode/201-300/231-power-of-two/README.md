@@ -34,17 +34,19 @@ A positive power of two has exactly **one** set bit. Subtracting 1 flips that bi
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`1269530`). Workload: is_power_of_two over a 130M-step LCG stream, masked to 0..1024 (loop-carried PRNG, count of powers).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-07-28 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g6697158fa (0.9.0-dev.14057, the v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
-| Impl | Mean | vs Kāra |
+| Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 120.0 ms | 0.83× |
-| Rust `-O` | 120.5 ms | 0.84× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 124.4 ms | 0.86× |
-| **Kāra (codegen)** | 144.0 ms | 1.00× |
-| Go | 156.0 ms | 1.08× |
+| C `clang -O3` | 138.5 ± 2.3 ms | 0.80× |
+| Rust `-O` | 140.1 ± 2.0 ms | 0.81× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 144.4 ± 2.1 ms | 0.84× |
+| **Kāra (codegen)** | **172.8 ± 3.5 ms** | **1.00×** |
+| Go | 180.6 ± 2.4 ms | 1.05× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Against the 2026-07-28 legacy-backend run (karac 0.1.0) the ranking is unchanged and the language ratios are flat: Kāra/Rust `-O` 1.20× → 1.23×, Kāra/equal-safety Rust 1.16× → 1.20×, Kāra/C 1.20× → 1.25×, Kāra/Go 0.92× → 0.96×. Every comparator also ran ~15% slower in absolute terms this session (machine state), so compare the ratios, not the milliseconds.
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 
@@ -57,4 +59,4 @@ diff <(karac run power_of_two.kara) <(python3 power_of_two.py) && echo OK
 
 ## Notes
 
-Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Oracle-only.
+Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk), and `karac build` (AOT) — including the default auto-parallelising build and `KARAC_AUTO_PAR=0` — agrees with the Python mirror, and is valgrind-clean. Benchmarked: see § Benchmarks.
