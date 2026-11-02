@@ -146,24 +146,24 @@ row, which keeps the lane about DP arithmetic rather than allocation —
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–100% CPU. This is
+the canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Rust `-O` | 119.9 ± 1.1 ms | 0.90× |
-| C `clang -O3` | 121.5 ± 2.8 ms | 0.91× |
-| **Kāra (codegen)** | **133.6 ± 1.0 ms** | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 139.7 ± 1.6 ms | 1.05× |
-| Go | 186.5 ± 5.7 ms | 1.40× |
+| C `clang -O3` | 134.7 ± 1.9 ms | 0.86× |
+| Rust `-O` | 135.0 ± 1.4 ms | 0.86× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 154.6 ± 3.1 ms | 0.99× |
+| **Kāra (codegen)** | **156.5 ± 1.7 ms** | 1.00× |
+| Go | 198.8 ± 4.0 ms | 1.27× |
 
 > **The container's headline does not survive this host, and the reversal is the
 > finding.** There Kāra was **fastest** — 1.08× ahead of plain `rustc -O`, 1.59×
-> ahead of equal-safety Rust and 1.60× ahead of C. Here it is **third**: 1.10×
-> behind C and 1.11× behind plain Rust, keeping only a 1.05× lead over the
-> equal-safety build. σ is 0.7–3.1%, so neither ordering is noise; they are
-> genuinely different results on the two hosts.
+> ahead of equal-safety Rust and 1.60× ahead of C. Here it is **fourth**: 1.16×
+> behind C and 1.16× behind plain Rust, and level with the equal-safety build
+> (1.2% behind it, inside σ of 1.1–2.0%). σ is 1.1–2.0% across the lane, so the
+> C/Rust gap is not noise; the two hosts give genuinely different results.
 >
 > The x86 lead came from a specific mechanism — recorded below — where `rustc`
 > and `clang` fully unrolled the `k = 32` reduction into ~130 conditional moves
@@ -172,10 +172,22 @@ Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
 > unrolls for a particular ISA. On arm64 the unroll evidently pays, and Kāra's
 > lead goes with it.
 >
-> The claim that **does** survive both hosts is the narrow one: Kāra is ahead of
-> equal-safety Rust (1.59× on the container, 1.05× here). Everything about
+> The claim that survives is narrower still: Kāra is **at least level with
+> equal-safety Rust** — 1.59× ahead on the container, 1.05× ahead in the
+> 2026-08-15 M5 run, 1.01× behind (a tie) on 2026-11-02. Everything about
 > beating C or unchecked Rust is x86-only and should not be quoted from this
 > kata.
+
+Against the previous M5 feed (2026-08-15, legacy backend) the ratios are flat:
+Kāra/Rust 1.11× → 1.16×, Kāra/C 1.10× → 1.16×, Kāra/Go 0.72× → 0.79×,
+Kāra/equal-safety Rust 0.96× → 1.01× — every move inside this session's 10%
+noise band (every comparator ran 7–13% slower in absolute ms this session).
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.8 KiB, Rust's 455.6 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 2.1 MiB
+against C's and Rust's 2.0 MiB and Go's 3.5 MiB.
 
 ### The x86 corroboration run
 

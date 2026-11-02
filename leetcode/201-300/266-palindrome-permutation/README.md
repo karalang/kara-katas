@@ -163,30 +163,43 @@ draw would make them ten times rarer and measure a different loop.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–100% CPU. This is
+the canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 230.7 ± 0.7 ms | 0.90× |
-| Rust `-O` | 235.5 ± 1.3 ms | 0.92× |
-| Go | 249.4 ± 1.7 ms | 0.97× |
-| **Kāra (codegen)** | **256.7 ± 8.6 ms** | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 258.8 ± 5.4 ms | 1.01× |
+| C `clang -O3` | 258.6 ± 3.3 ms | 0.93× |
+| Rust `-O` | 260.0 ± 3.0 ms | 0.93× |
+| Go | 274.0 ± 4.3 ms | 0.98× |
+| **Kāra (codegen)** | **278.5 ± 16.2 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 296.9 ± 17.2 ms | 1.07× |
 
-**Kāra's tie with equal-safety Rust holds; its lead over unchecked Rust does
-not.** Here Kāra is 256.7 ms against the checked build's 258.8 — 0.8%, a tie on
-σ of 2–3% — which is the comparison the safety contract makes fair, and it
-reproduces the container's ordering of those two. What does not reproduce is the
+**Kāra is at least level with equal-safety Rust; it does not lead unchecked
+Rust.** Here Kāra is 278.5 ms against the checked build's 296.9 — 6.2% ahead on
+means (5.6% on medians, 271.1 vs 287.3 ms), but both rows carry σ of 5.8% this
+session, so it is not a clean lead; in the 2026-08-15 run the two were a 0.8%
+tie. Either way it reproduces the container's ordering of those two, which is
+the comparison the safety contract makes fair. What does not reproduce is the
 **12.7% lead over plain `rustc -O`** the container showed: on the M5 plain Rust
-is 8.9% *ahead* of Kāra.
+is 7.1% *ahead* of Kāra.
 
-The C gap widens slightly, 5.6% → 11.1%, and the instruction-count observation
-below still explains the shape: Kāra runs 9 inner-loop instructions carrying
-three safety checks per element against C's 4 carrying none. Running 2.25× the
-instructions for 1.11× the time remains the useful summary, and it is a better
-result than the raw ratio suggests.
+The C gap is 7.7% (11.1% in the 2026-08-15 run, 5.6% on the container), and the
+instruction-count observation below (x86 disassembly, legacy backend — not
+re-checked on v2/MIR) still describes the shape: Kāra runs 9 inner-loop
+instructions carrying three safety checks per element against C's 4 carrying
+none. Running 2.25× the instructions for 1.08× the time remains the useful
+summary, and it is a better result than the raw ratio suggests.
+
+Against the previous M5 feed the ratios are flat — Kāra/Rust 1.09× → 1.07×,
+Kāra/C 1.11× → 1.08×, Kāra/Go 1.03× → 1.02× — every move inside this session's
+10% noise band (every comparator ran 10–15% slower in absolute ms this session).
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.8 KiB, Rust's 455.6 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 2.6 MiB
+against C's 2.5 MiB, Rust's 2.6 MiB and Go's 4.4 MiB.
 
 ### The x86 corroboration run
 

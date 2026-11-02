@@ -122,7 +122,7 @@ echo
 
 bench_begin id=261 slug=graph-valid-tree group=201-300 \
     title="Graph Valid Tree" \
-    workload="build one 400,000-node random tree once with shuffled edges, then 30 rounds of union-find validation; sink = accumulated component/root state" sink="$expected"
+    workload="build one 100,000-node random tree once with shuffled edges, then 240 rounds of union-find validation; sink = accumulated component/root state" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

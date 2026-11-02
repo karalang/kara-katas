@@ -131,30 +131,40 @@ four different allocation strategies and a 3× phantom result.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host —
 `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 138.2 ± 3.1 ms | 0.69× |
-| Rust `-O` | 141.4 ± 4.5 ms | 0.70× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 148.4 ± 5.0 ms | 0.74× |
-| **Kāra (codegen)** | **201.4 ± 2.8 ms** | 1.00× |
-| Go | 458.6 ± 9.7 ms | 2.28× |
+| C `clang -O3` | 149.4 ± 3.5 ms | 0.78× |
+| Rust `-O` | 152.8 ± 2.3 ms | 0.80× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 159.2 ± 3.1 ms | 0.83× |
+| **Kāra (codegen)** | **191.9 ± 3.1 ms** | 1.00× |
+| Go | 501.2 ± 5.9 ms | 2.61× |
 
 **The ordering is byte-identical to the container**, which is the strongest form
 of corroboration this corpus offers: `c < rust < rust_ovf < kara < go` on both
 hosts, with the twins tracking their bases and nothing impossible in the table.
 
-**Kāra is 1.46× behind C and 1.36× behind equal-safety Rust** — both slightly
-wider than the container's 1.28× and 1.14×. This is a `Map`/adjacency-heavy
-workload, and it sits with [#249](../249-group-shifted-strings/) (1.61×) and
-[#244](../244-shortest-word-distance-ii/) (1.21×) as the block's map lanes;
-Kāra's deficit tracks how much map work each does.
+**Kāra is 1.28× behind C and 1.21× behind equal-safety Rust** (1.26× behind plain
+`rustc -O`) — level with the container's 1.28× on C and slightly wider than its
+1.14× on Rust. That is a real gain on the 2026-08-15 legacy-backend run, told in
+ratios because every comparator ran 7–9% slower this session: Kāra/C 1.46× → 1.28×,
+Kāra/Rust 1.42× → 1.26×, Kāra/Go 0.44× → 0.38×. This is a `Map`/adjacency-heavy
+workload, and it sits with [#249](../249-group-shifted-strings/) (1.24× C) and
+[#244](../244-shortest-word-distance-ii/) (1.70× C), both also measured 2026-11-02,
+as the block's map lanes.
 
-**Go is 3.32× behind C here, the largest Go gap in the block**, up from 2.56× on
-the container. Half of it is identified below and the mechanism is unchanged.
+**Go is 3.35× behind C here**, up from 2.56× on the container — the second-largest
+Go gap in #261–#270, after [#268](../268-missing-number/)'s 5.14× (a vectorised
+fold `gc` runs scalar). Half of it is identified below and the mechanism is
+unchanged.
+
+Binary size on this host: Kāra 295.8 KiB, C 32.9 KiB, Rust 471.7 KiB, Go 2.38 MiB.
+Every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
+(kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is
+5.9 MiB for Kāra, Rust and C, 13.7 MiB for Go.
 
 ### The x86 corroboration run
 

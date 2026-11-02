@@ -124,29 +124,36 @@ lane got it wrong — see below.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`. This is the canonical host —
 `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 177.2 ± 1.1 ms | 0.83× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 191.3 ± 3.6 ms | 0.90× |
-| Rust `-O` | 193.1 ± 8.0 ms | 0.90× |
-| **Kāra (codegen)** | **213.7 ± 9.8 ms** | 1.00× |
-| Go | 238.4 ± 7.3 ms | 1.12× |
+| C `clang -O3` | 198.2 ± 3.0 ms | 0.82× |
+| Rust `-O` | 203.1 ± 2.4 ms | 0.84× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 212.1 ± 2.3 ms | 0.88× |
+| **Kāra (codegen)** | **240.7 ± 11.2 ms** | 1.00× |
+| Go | 264.0 ± 11.2 ms | 1.10× |
+
+Binary size on this host: Kāra 295.8 KiB, C 32.9 KiB, Rust 455.7 KiB, Go 2.38 MiB.
+Every MIR-backend Kāra binary is ~300–390 KB where the legacy backend's were ~34 KB
+(kara ledger [`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is
+1.1 MiB, level with Rust and C.
 
 **This host produces a table that can be read, which the container's could not.**
 Every row there was contaminated by code alignment — two impossible orderings
 (`-march=x86-64-v3` beating plain `clang -O3` by 31%, overflow-checked Rust
 beating plain `rustc -O` by 24%) traced to loop alignment rather than to
-anything about the languages. Here the two Rust builds land 1% apart in the
-correct order, and Kāra sits behind both.
+anything about the languages. Here the two Rust builds land 4% apart in the
+correct order (checks cost time, not the reverse), and Kāra sits behind both.
 
-**Kāra is 1.21× behind C and 1.12× behind equal-safety Rust.** The C gap widened
-from the container's 1.10×, but that comparison is not worth much given what the
-alignment investigation below found about that host's C rows. The claim this lane
-supports is the Rust one: a 12% deficit against the build that makes the same
+**Kāra is 1.21× behind C and 1.13× behind equal-safety Rust** (1.19× behind plain
+`rustc -O`). Against the 2026-08-15 legacy-backend run (1.21× C, 1.12× equal-safety
+Rust) that is flat: every comparator also ran 5–12% slower this session. The C gap
+widened from the container's 1.10×, but that comparison is not worth much given what
+the alignment investigation below found about that host's C rows. The claim this lane
+supports is the Rust one: a 13% deficit against the build that makes the same
 safety guarantee, on a workload that builds a permutation string per result.
 
 ### The x86 corroboration run

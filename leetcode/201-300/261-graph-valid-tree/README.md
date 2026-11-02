@@ -178,28 +178,39 @@ nicer number: at 400,000 there is no number, only noise.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99–100% CPU. This is
+the canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 197.9 ± 2.6 ms | 0.88× |
-| Rust `-O` | 201.1 ± 3.2 ms | 0.89× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 211.7 ± 5.9 ms | 0.94× |
-| **Kāra (codegen)** | **224.7 ± 4.4 ms** | 1.00× |
-| Go | 248.6 ± 2.1 ms | 1.11× |
+| C `clang -O3` | 248.6 ± 3.8 ms | 0.87× |
+| Rust `-O` | 255.2 ± 5.6 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 263.5 ± 3.3 ms | 0.92× |
+| **Kāra (codegen)** | **287.2 ± 4.3 ms** | 1.00× |
+| Go | 300.7 ± 5.0 ms | 1.05× |
 
 **Kāra keeps its place between the two Rust builds' logic but not their times.**
 On the container the six non-Go rows were a tie (7% spread, σ 2.6–4.6%); here σ
-is 1.1–2.9% and the lane separates. Kāra is **1.14× behind C** and **1.06× behind
-equal-safety Rust** — both gaps now clear the noise, where on the container
-neither did. The 6% gap between the two Rust builds survives to this host almost
-exactly (5.3% here), so the safety cost is stable and Kāra's remaining 6% over
-the checked build is codegen, not contract.
+is 1.3–2.2% and the lane separates. Kāra is **1.16× behind C** and **1.09× behind
+equal-safety Rust** — both gaps clear the noise, where on the container neither
+did. The gap between the two Rust builds is 3.2% here, so the safety cost is
+small and stable, and Kāra's remaining 9% over the checked build is codegen, not
+contract.
 
-**Go is 11% behind and remains the one clearly separable row**, down from 20% on
-the container. This lane still does not identify its cause.
+Against the previous M5 feed (2026-08-17, legacy backend) the ratios are flat:
+Kāra/C 1.08× → 1.16×, Kāra/Rust 1.06× → 1.13×, Kāra/Go 0.88× → 0.96× — every move
+inside this session's 10% noise band. (Every comparator ran 11–14% slower in
+absolute ms this session; quote the ratios, not the milliseconds.)
+
+**Go is 5% behind and is still the slowest row**, down from 11–13% in the earlier
+M5 runs and 20% on the container. This lane still does not identify its cause.
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.8 KiB, Rust's 455.6 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 4.1 MiB for
+Kāra, Rust and C alike, 5.8 MiB for Go.
 
 ### The x86 corroboration run
 
@@ -253,19 +264,19 @@ queues are all well-trodden ground in this corpus.
 
 ## Benchmarks
 
-The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`535933033`). Workload: build one 400,000-node random tree once with shuffled edges, then 30 rounds of union-find validation; sink = accumulated component/root state.
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`535933033`). Workload: build one 100,000-node random tree once with shuffled edges, then 240 rounds of union-find validation; sink = accumulated component/root state.
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-08-17 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 222.1 ms | 0.93× |
-| Rust `-O` | 226.0 ms | 0.94× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 231.3 ms | 0.97× |
-| **Kāra (codegen)** | 239.5 ms | 1.00× |
-| Go | 271.5 ms | 1.13× |
+| C `clang -O3` | 248.6 ms | 0.87× |
+| Rust `-O` | 255.2 ms | 0.89× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 263.5 ms | 0.92× |
+| **Kāra (codegen)** | 287.2 ms | 1.00× |
+| Go | 300.7 ms | 1.05× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 5c9268b1294e); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa, v2/MIR backend); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
 ## Running
 

@@ -138,51 +138,67 @@ Sized to stay cache-resident on #261's lesson: three 30,000-element arrays plus
 
 ### Runtime — Apple M5 Pro
 
-2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine 30 runs. This is the
-canonical host — `bench/results.json`. Sink `280341251`, agreed by all eight
-compiled lanes.
+2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR backend), hyperfine 30
+runs. This is the canonical host — `bench/results.json`. Sink `280341251`, agreed
+by all eight compiled lanes. The par build carries a call of
+`karac_mir_task_spawn` in its emitted IR (`KARAC_MIR_LL`) and the
+`KARAC_AUTO_PAR=0` seq twin does not.
 
 #### Sequential lane — per-core, `KARAC_AUTO_PAR=0`
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| Rust `-O -C overflow-checks=on` (equal-safety) | 225.8 ± 2.3 ms | 0.94× |
-| Go | 227.6 ± 1.4 ms | 0.94× |
-| Rust `-O` | 233.5 ± 2.9 ms | 0.97× |
-| **Kāra (codegen)** | **241.0 ± 2.0 ms** | 1.00× |
-| C `clang -O3` | 286.6 ± 3.5 ms | 1.19× |
+| **Kāra (codegen)** | **226.3 ± 3.0 ms** | 1.00× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 246.3 ± 4.1 ms | 1.09× |
+| Go | 252.2 ± 2.5 ms | 1.11× |
+| Rust `-O` | 256.5 ± 4.7 ms | 1.13× |
+| C `clang -O3` | 321.4 ± 2.9 ms | 1.42× |
 
-#### Parallel lane — 14 cores (6P+12E), cross-lane
+#### Parallel lane — 18 cores (6P+12E), cross-lane
 
 | Impl | Mean ± σ | user (ms) | CPU% | vs Kāra |
 |---|---|---|---|---|
-| Go (goroutines) | 22.1 ± 1.1 ms | 270 | 1231% | 0.82× |
-| Rust (rayon `par_iter`) | 22.1 ± 0.4 ms | 314 | 1440% | 0.82× |
-| **Kāra (`#[par_order_free]`)** | **27.1 ± 0.3 ms** | **290** | 1088% | 1.00× |
-| C (pthreads — metal floor) | 27.6 ± 0.9 ms | 387 | 1409% | 1.02× |
+| Rust (rayon `par_iter`) | 24.1 ± 0.4 ms | 316 | 1351% | 0.81× |
+| Go (goroutines) | 25.3 ± 1.4 ms | 273 | 1088% | 0.85× |
+| **Kāra (`#[par_order_free]`)** | **29.7 ± 1.3 ms** | **257** | 889% | 1.00× |
+| C (pthreads — metal floor) | 32.8 ± 1.9 ms | 390 | 1195% | 1.10× |
 
-**Both host's headline claims survive, and one gets sharper.** C is last in the
-sequential lane on this host too — **1.19× behind Kāra**, against 1.11× on the
-container — which is the `cmov` finding documented below reproducing on arm64.
-That is worth noting given that the same if-conversion story *fails* to reproduce
-in [#259](../259-3sum-smaller/) and [#275](../275-h-index-ii/); here it holds.
+(CPU% is (user + system) / wall from the hyperfine run. The M5 Pro has 18 cores,
+6P+12E; the heading's "14" predates this note.)
 
-**Kāra edges the C pthreads floor while using a quarter less CPU.** 27.1 ms
-against 27.6 ms is a tie on wall-clock, but Kāra gets there on **290 ms of user
-time against C's 387 ms** — the lowest CPU draw of the four parallel lanes
-(1088% vs 1409–1440%). The buyer-facing version: the same throughput as
-hand-written pthreads, from source with no threads in it, leaving a quarter of
-the machine free for something else.
+**Kāra now leads the sequential lane.** It is 1.09× ahead of equal-safety Rust,
+1.11× ahead of Go and 1.13× ahead of plain `rustc -O`; C is last, **1.42× behind
+Kāra**, against 1.11× on the container — the `cmov` finding documented below
+reproducing on arm64. That is worth noting given that the same if-conversion story
+*fails* to reproduce in [#259](../259-3sum-smaller/) and
+[#275](../275-h-index-ii/); here it holds. Against the 2026-08-15 legacy-backend
+run this is a real gain, told in ratios because every comparator ran 9–12% slower
+this session: Kāra/Rust 1.03× → 0.88×, Kāra/C 0.84× → 0.70×, Kāra/Go 1.06× → 0.90×.
 
-**Kāra does not lead this lane on the M5, where it did on the container.** Go and
-rayon are 1.22× ahead. The seq→par ratio is 241.0 → 27.1 ms, **8.89× on 14
-cores** — a better scaling factor than the container's 3.51× on 4, but the
-hand-tuned schedulers extract more of it here. Reported as measured; the honest
-summary is "level with the C floor, behind rayon and goroutines, cheapest in CPU."
+**Kāra beats the C pthreads floor while using a third less CPU.** 29.7 ms against
+32.8 ms is 1.10× on wall-clock, and Kāra gets there on **257 ms of user time
+against C's 390 ms** — the lowest CPU draw of the four parallel lanes (889% vs
+1088–1351%). The buyer-facing version: better than hand-written pthreads
+throughput, from source with no threads in it, leaving a third of the machine free
+for something else.
+
+**Kāra does not lead this lane on the M5, where it did on the container.** Rayon
+is 1.24× ahead and goroutines 1.18× — flat against the 2026-08-15 run (1.22×,
+1.23×). The seq→par ratio is 226.3 → 29.7 ms, **7.62× on 18 cores** — a better
+scaling factor than the container's 3.51× on 4, but the hand-tuned schedulers
+extract more of it here. Reported as measured; the honest summary is "ahead of the
+C floor, behind rayon and goroutines, cheapest in CPU."
+
+Binary size on this host: Kāra 295.8 KiB seq / 377.1 KiB par, C 32.7 / 32.9 KiB,
+Rust 455.6 / 546.5 KiB, Go 2.39 / 2.39 MiB. Every MIR-backend Kāra binary is
+~300–390 KB where the legacy backend's were ~34 KB (kara ledger
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS: Kāra 21.8 MiB
+seq / 47.8 MiB par, against Rust 3.0 / 3.8, C 2.5 / 2.8 and Go 4.2 / 5.5 MiB (the
+2026-08-15 feed had Kāra at 20.7 / 21.1 MiB).
 
 > **Cross-lane caveat.** The parallel rows are **not comparable** to the
-> sequential ones — they use 14 cores against 1. CPU% makes the distinction
-> unambiguous (seq ~99%, par 1088–1440%). Never quote an auto-par wall time
+> sequential ones — they use 18 cores against 1. CPU% makes the distinction
+> unambiguous (seq ~99%, par 889–1351%). Never quote an auto-par wall time
 > against a single-threaded comparator.
 
 ### What the x86 corroboration run shows
@@ -336,3 +352,7 @@ done
 # cross-language benchmark (needs hyperfine, rustc, clang, go)
 BENCH_OUT=results.container-x86.json bash bench/bench.sh
 ```
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-02-8`](../../../../kara/docs/bugs-v2.md)** (perf, open). The auto-par collect lowering holds the collected `parts` Vec twice at peak once there are two or more workers: this kata's par build peaks at 44-49 MiB against 22 MiB at one worker, with +12.5% instructions, both flat from 2 to 18 workers (measured 2026-11-02). The published par lane (1.24x rayon) is unaffected in time.

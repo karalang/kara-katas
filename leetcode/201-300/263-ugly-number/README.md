@@ -179,32 +179,42 @@ determined entirely by the substituted values.
 
 ### Runtime — sequential lane
 
-Apple M5 Pro (6P+12E), 2026-08-15, `karac 0.1.0-dev.6106+g50267795a`, hyperfine
-30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the canonical host —
-`bench/results.json`.
+Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa` (v2/MIR
+backend), hyperfine 30 runs, `KARAC_AUTO_PAR=0`, every lane 99% CPU. This is the
+canonical host — `bench/results.json`.
 
 | Impl | Mean ± σ | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 232.4 ± 4.0 ms | 0.99× |
-| Rust `-O` | 232.7 ± 1.3 ms | 0.99× |
-| **Kāra (codegen)** | **235.2 ± 2.8 ms** | 1.00× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 236.4 ± 4.1 ms | 1.00× |
-| Go | 257.1 ± 4.8 ms | 1.09× |
+| **Kāra (codegen)** | **254.6 ± 3.2 ms** | 1.00× |
+| Rust `-O` | 257.4 ± 2.1 ms | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 257.9 ± 2.5 ms | 1.01× |
+| C `clang -O3` | 262.6 ± 4.1 ms | 1.03× |
+| Go | 285.0 ± 4.2 ms | 1.12× |
 
 **Kāra, C and Rust are level, and this host says so more precisely than the
-container did.** The four non-Go rows span 232.4–236.4 ms — a **1.7% band** on σ
-of 0.6–1.7%. Kāra sits third by 2.8 ms, which is not a ranking; the container had
-it first by 11.5 ms, which was not one either. Both hosts agree on the finding:
-on a division-bound loop Kāra emits what C emits and runs at C speed. The
-disassembly backs it — the same seven divide instructions in the same shape, so
-there is no mechanism for a real lead in either direction.
+container did.** The four non-Go rows span 254.6–262.6 ms — a **3.1% band** on σ
+of 0.8–1.5%. Kāra prints the lowest mean, 2.8 ms ahead of Rust, which is not a
+ranking; the 2026-08-15 M5 run had it third by 2.8 ms and the container had it
+first by 11.5 ms, and neither of those was one either. Against the previous M5
+feed the ratios are flat — Kāra/Rust 1.01× → 0.99×, Kāra/C 1.01× → 0.97×,
+Kāra/Go 0.91× → 0.89×, all inside this session's 10% noise band (every
+comparator ran 9–13% slower in absolute ms this session). All hosts agree on the
+finding: on a division-bound loop Kāra runs at C speed. The x86 disassembly
+(legacy backend) backed it — the same seven divide instructions in the same
+shape, so there is no mechanism for a real lead in either direction.
 
-Overflow checking is free here (232.7 vs 236.4 ms, 1.6%), as it was on the
+Overflow checking is free here (257.4 vs 257.9 ms, 0.2%), as it was on the
 container: a `gcd` reduction has almost no arithmetic that can overflow.
 
-**Go is 9% behind**, down from 19% on the container — consistent with the
-identified cause below, since the 32-bit narrowing fast path that Go lacks is
-worth less on a core with a faster 64-bit divider.
+**Go is 12% behind**, against 9% in the previous M5 run and 19% on the container
+— consistent with the identified cause below, since the 32-bit narrowing fast
+path that Go lacks is worth less on a core with a faster 64-bit divider.
+
+Kāra's binary is 295.8 KiB (302,872 B) against C's 32.8 KiB, Rust's 455.6 KiB
+and Go's 2.38 MiB; every v2/MIR Kāra binary is ~300–390 KB where the legacy
+backend's were ~34 KB (tracked as
+[`B-2026-10-28-36`](../../../../kara/docs/bugs-v2.md)). Peak RSS is 1.0 MiB
+against C's 1.0 MiB, Rust's 1.1 MiB and Go's 2.8 MiB.
 
 ### The x86 corroboration run
 
