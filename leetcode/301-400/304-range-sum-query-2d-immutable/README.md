@@ -179,22 +179,31 @@ five languages print `checksum 950743584`.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 168.8 ms | 0.67× |
-| go | 191.1 ms | 0.76× |
-| rust (`-O`) | 193.8 ms | 0.77× |
-| **kara** (codegen, seq) | **252.0 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 282.2 ms | 1.12× |
-| python | 19.563 s | 77.6× |
+| c (`-O3`) | 190.0 ms ± 2.5 | 0.68× |
+| go | 210.9 ms ± 3.3 | 0.75× |
+| rust (`-O`) | 219.8 ms ± 3.9 | 0.78× |
+| **kara** (codegen, seq) | **281.5 ms ± 15.4** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 319.6 ms ± 16.7 | 1.14× |
+| python (last measured 2026-09-21, not re-run) | 19.563 s | 77.6× that session's kara |
 
 Both of the x86 readings below survive the host change, and the second one
-strengthens: Kāra is 1.49× behind `clang -O3` (narrower than x86's 1.74×) and
-**1.12× ahead of equal-safety Rust** (against 1.08× there). The ordering of
+strengthens: Kāra is 1.48× behind `clang -O3` (narrower than x86's 1.74×) and
+**1.14× ahead of equal-safety Rust** (against 1.08× there). The ordering of
 all five languages is identical on the two hosts, which — given how many katas
 in this batch reorder — is worth noting on its own.
+
+Flat against the 2026-09-21 run on `g4ef50cbf3`: Kāra/Rust 1.30× → 1.28×,
+Kāra/C 1.49× → 1.48×, Kāra/Go 1.32× → 1.33×.
+
+| | kara | c | rust | go |
+|---|---:|---:|---:|---:|
+| binary size | 66.9 KiB | 32.7 KiB | 455.6 KiB | 2450.4 KiB |
+| compile (cold) | 123.8 ms | 46.7 ms | 98.6 ms | — |
+| peak RSS | 5.3 MiB | 5.1 MiB | 5.2 MiB | 7.6 MiB |
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.

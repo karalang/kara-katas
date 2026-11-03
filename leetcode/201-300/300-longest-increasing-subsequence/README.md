@@ -103,18 +103,20 @@ way. All five languages print `checksum 122670492`.
 > differently here**, which is the first thing to read below.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| rust (`-O -C overflow-checks=on`, equal safety) | 289.9 ms | 0.86× |
-| rust (`-O`) | 290.1 ms | 0.86× |
-| **kara** (codegen, seq) | **336.8 ms** | **1.00×** |
-| c (`-O3`) | 385.3 ms | 1.14× |
-| go | 595.1 ms | 1.77× |
-| python | 6.598 s | 19.6× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 327.2 ms | 0.86× |
+| rust (`-O`) | 327.5 ms | 0.86× |
+| **kara** (codegen, seq) | **380.9 ms** | **1.00×** |
+| c (`-O3`) | 436.7 ms | 1.15× |
+| go | 673.0 ms | 1.77× |
+| python (last measured 2026-09-21 against that session's Kāra, not re-run) | 6.598 s | 19.6× |
 
-Kāra leads `clang -O3` by 1.14× on this host and trails Rust by 1.16×, so the
+Flat against the 2026-09-21 run on the earlier backend: Kāra/Rust is 1.16× in
+both, Kāra/C 0.87× in both. Kāra leads `clang -O3` by 1.15× on this host and
+trails Rust by 1.16×, so the
 x86 table's headline — "Kāra is the fastest mirror here" — is host-specific and
 does not hold on arm64. The reason is one source-level spelling, and it is the
 `>> 1` cliff below reading in reverse; see
@@ -258,14 +260,17 @@ character**. The kata source is deliberately left alone: switching it would
 hand the M5 lane a tie and cost the x86 lane 1.66×, and BENCHMARKS.md's rule is
 that a kata is written the natural way rather than tuned per host. Recorded
 here so the next reader of the x86 table does not carry its conclusion onto
-Apple silicon.
+Apple silicon. (Note, 2026-11-02: the v2/MIR feed still reads 1.16× Rust; this
+probe was not re-run on that backend.)
 
 ### Elsewhere
 
-| | kara | c | rust | go |
-|---|---:|---:|---:|---:|
-| binary size | 337.5 KiB | 15.7 KiB | 3862.8 KiB | 2178.5 KiB |
-| compile (cold) | 387 ms | 94 ms | 134 ms | — |
+| | | kara | c | rust | go |
+|---|---|---:|---:|---:|---:|
+| binary size | M5 | 50.9 KiB | 32.9 KiB | 455.4 KiB | 2450.4 KiB |
+| | container snapshot | 337.5 KiB | 15.7 KiB | 3862.8 KiB | 2178.5 KiB |
+| compile (cold) | M5 | 112 ms | 44 ms | 85 ms | — |
+| | container snapshot | 387 ms | 94 ms | 134 ms | — |
 
 ## Running it
 

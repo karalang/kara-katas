@@ -185,23 +185,38 @@ full `O(n^3)` scans over them, `build-once + punch`
 > even as a ratio.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| go | 120.1 ms | 0.60× |
-| c (`-O3`) | 145.2 ms | 0.73× |
-| **kara** (codegen, seq) | **200.0 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 318.9 ms | 1.60× |
-| rust (`-O`) | 319.5 ms | 1.60× |
-| python | 1.445 s | 7.2× |
+| go | 144.0 ms ± 1.6 | 0.68× |
+| c (`-O3`) | 166.3 ms ± 10.6 | 0.78× |
+| **kara** (codegen, seq) | **212.6 ms ± 10.6** | **1.00×** |
+| rust (`-O`) | 352.5 ms ± 21.6 | 1.66× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 359.4 ms ± 18.5 | 1.69× |
+| python (last measured 2026-09-21, not re-run) | 1.445 s | 7.2× that session's kara |
 
-Kāra still beats both Rust rows — by 1.60×, against 1.47× on x86 — but Go
-inverts completely: 1.15× *behind* Kāra on the container, 1.66× *ahead* here.
-The gap to `clang -O3` also widens, 2.12× → 1.38×… in Kāra's favour, because
-the fix below moved the Kāra row and not the others.
+Kāra still beats both Rust rows — by 1.66× and by 1.69× at equal safety, against
+1.47× at equal safety on x86 — but Go inverts completely: 1.15× *behind* Kāra on
+the container, 1.48× *ahead* here. That Go lead is wall-clock at 139.9% CPU: its
+user + system time is 201.4 ms against Kāra's 212.0, so on CPU time the two are
+1.05× apart. The gap to `clang -O3` is 1.28×, against 2.12× on the container,
+because the fix below moved the Kāra row and not the others.
+
+Against the 2026-09-21 run on `g4ef50cbf3`, Rust and C are flat (Kāra/Rust
+0.63× → 0.60×, Kāra/C 1.38× → 1.28×); Kāra/Go moved 1.67× → 1.48×, the one
+comparator past 10%, and that move is not attributed.
+
+| | kara | c | rust | go |
+|---|---:|---:|---:|---:|
+| binary size | 295.9 KiB | 32.9 KiB | 455.6 KiB | 2450.5 KiB |
+| compile (cold) | 188.1 ms | 63.8 ms | 124.3 ms | — |
+| peak RSS | 1.3 MiB | 1.4 MiB | 1.3 MiB | 9.8 MiB |
 
 ### The mirror reserved nothing where C and Go reserve — 346.9 ms → 200.0 ms
+
+(The milliseconds in this section are from the 2026-09-21 session; the current
+standing is the table above.)
 
 The first M5 run measured Kāra at **346.9 ms**, slowest of the four compiled
 languages. That was an asymmetry in the Kāra mirror, found by reading the three
@@ -298,6 +313,11 @@ vectorisation" story only applies where vectorisable work exists.
 
 The published table is the sequential lane and is unaffected. The differential
 moved further still — 0.069 s vs 27.5 s before, 0.06 s vs 0.07 s now.
+
+(2026-11-02: those timings predate the v2/MIR backend and have not been re-run.
+On `g7310a8f94` the default build's IR still has a call of
+`karac_mir_task_spawn`, so auto-par still fires statically here; the size of the
+win today is unmeasured.)
 
 ## Compiler findings
 

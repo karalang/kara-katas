@@ -186,23 +186,26 @@ so the measurement is the search rather than the collection.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 139.4 ms | 0.57× |
-| rust (`-O`) | 165.5 ms | 0.67× |
-| go | 230.5 ms | 0.93× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 242.4 ms | 0.98× |
-| **kara** (codegen, seq) | **246.6 ms** | **1.00×** |
-| python | 6.731 s | 27.3× |
+| c (`-O3`) | 158.8 ms | 0.57× |
+| rust (`-O`) | 189.1 ms | 0.68× |
+| go | 260.8 ms | 0.94× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 276.4 ms | 1.00× |
+| **kara** (codegen, seq) | **277.6 ms** | **1.00×** |
+| python (last measured 2026-09-21 against that session's Kāra, not re-run) | 6.731 s | 27.3× |
 
-The equal-safety reading holds on arm64 but narrows to a tie: Kāra is 1.02×
-*behind* Rust-with-checks here where x86 had it 1.05× ahead. Turning Rust's
-checks on still costs it 46% (165.5 → 242.4 ms), so the overall shape of the
+Flat against the 2026-09-21 run on the earlier backend (Kāra/Rust 1.49× → 1.47×,
+Kāra/C 1.77× → 1.75×, Kāra/Go 1.07× → 1.06×).
+
+The equal-safety reading holds on arm64 but narrows to a tie: Kāra is 1.00× of
+Rust-with-checks here (σ 3.3 ms each) where the x86 snapshot had it 1.05× ahead.
+Turning Rust's checks on still costs it 46% (189.1 → 276.4 ms), so the overall shape of the
 comparison is the same one the x86 section describes; the two languages simply
 land on top of each other rather than with Kāra in front. Against unchecked C
-the deficit widens slightly, 1.64× → 1.77×.
+the deficit widens slightly, 1.64× → 1.75×.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
@@ -217,6 +220,12 @@ Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x
 | rust (`-O -C overflow-checks=on`, equal safety) | 736.2 ms | 1.05× |
 | rust (equal safety + matched ISA) | 756.6 ms | 1.08× |
 | python | 21.249 s | 30.3× |
+
+> Note (2026-11-02): this table is the original snapshot.
+> [`bench/results.container-x86.json`](bench/results.container-x86.json) was
+> re-measured 2026-10-30 on karac `g915e6dc75` and has Rust-with-checks 1.07×
+> *ahead* of Kāra (σ 40 and 66 ms), so the "ahead of Rust at equal safety" below
+> is not reproduced there.
 
 The equal-safety row is the one to read first. Kāra checks integer overflow by
 default; `rustc -O` silently wraps. Turning Rust's checks on to match costs it
@@ -242,13 +251,17 @@ byte-at-a-time copy loops.
 
 ### Elsewhere
 
-| | kara | c | rust | go |
-|---|---:|---:|---:|---:|
-| binary size | 341.5 KiB | 15.8 KiB | 3864.1 KiB | 2179.0 KiB |
-| compile (cold) | 467.5 ms | 140.0 ms | 164.3 ms | — |
-| peak RSS | 2.5 MiB | 1.7 MiB | 2.1 MiB | 1.8 MiB |
+| | | kara | c | rust | go |
+|---|---|---:|---:|---:|---:|
+| binary size | M5 | 66.9 KiB | 32.7 KiB | 455.5 KiB | 2450.6 KiB |
+| | container snapshot | 341.5 KiB | 15.8 KiB | 3864.1 KiB | 2179.0 KiB |
+| compile (cold) | M5 | 123.8 ms | 52.4 ms | 92.5 ms | — |
+| | container snapshot | 467.5 ms | 140.0 ms | 164.3 ms | — |
+| peak RSS | M5 | 1.2 MiB | 1.0 MiB | 1.1 MiB | 2.7 MiB |
+| | container snapshot | 2.5 MiB | 1.7 MiB | 2.1 MiB | 1.8 MiB |
 
-Python's peak RSS is 8.0 MiB.
+Python's peak RSS is 8.0 MiB in the container snapshot and 7.1 MiB on the M5
+(last measured 2026-09-21, not re-run).
 
 ## Running it
 

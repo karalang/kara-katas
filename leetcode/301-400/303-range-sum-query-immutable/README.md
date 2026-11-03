@@ -157,23 +157,26 @@ languages print `checksum 1017312464`.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 294.6 ms | 0.94× |
-| rust (`-O`) | 295.0 ms | 0.94× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 308.3 ms | 0.99× |
-| go | 312.4 ms | 1.00× |
-| **kara** (codegen, seq) | **312.6 ms** | **1.00×** |
-| python | 19.176 s | 61.3× |
+| rust (`-O`) | 343.5 ms ± 5.0 | 0.93× |
+| c (`-O3`) | 345.8 ms ± 4.7 | 0.94× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 358.0 ms ± 8.9 | 0.97× |
+| go | 367.2 ms ± 5.8 | 1.00× |
+| **kara** (codegen, seq) | **368.8 ms ± 6.0** | **1.00×** |
+| python (last measured 2026-09-21, not re-run) | 19.176 s | 61.3× that session's kara |
 
-**The tightest five-language cluster in the corpus**: every compiled language
-lands within 6% of every other, and Kāra is 1.01× behind equal-safety Rust and
-1.06× behind unchecked `clang -O3`. The arm64 standing is markedly better than
+**A tight compiled cluster**: every compiled language lands within 8% of every
+other, and Kāra is 1.03× behind equal-safety Rust and 1.07× behind unchecked
+`clang -O3`, level with Go. The arm64 standing is markedly better than
 x86's, where Kāra sat 1.52× behind C — a prefix-sum scan over a contiguous
 `Vec[i64]` is close to pure memory traffic, and on this host the four compiled
 mirrors converge on the same bandwidth limit.
+
+Flat against the 2026-09-21 run on `g4ef50cbf3`: Kāra/Rust 1.06× → 1.07×,
+Kāra/C 1.06× → 1.07×, Kāra/Go 1.00× → 1.00×.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
@@ -233,13 +236,15 @@ sink.
 
 ### Elsewhere
 
+Apple M5 Pro, [`bench/results.json`](bench/results.json), measured 2026-11-02.
+
 | | kara | c | rust | go |
 |---|---:|---:|---:|---:|
-| binary size | 341.5 KiB | 15.7 KiB | 3862.6 KiB | 2178.1 KiB |
-| compile (cold) | 417.3 ms | 110.0 ms | 146.3 ms | — |
-| peak RSS | 6.9 MiB | 5.2 MiB | 5.5 MiB | 5.4 MiB |
+| binary size | 66.9 KiB | 32.7 KiB | 455.4 KiB | 2450.4 KiB |
+| compile (cold) | 114.2 ms | 44.1 ms | 83.4 ms | — |
+| peak RSS | 7.3 MiB | 4.6 MiB | 4.7 MiB | 7.0 MiB |
 
-Python's peak RSS is 25.4 MiB.
+Python's peak RSS is 24.5 MiB (last measured 2026-09-21, not re-run).
 
 ## Running it
 

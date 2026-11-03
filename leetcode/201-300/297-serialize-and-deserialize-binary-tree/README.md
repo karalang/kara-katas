@@ -164,9 +164,6 @@ never caught the class, and why the regression tests live in the ordinary E2E
 harness instead.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-26 snapshot; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
 > **Two hosts, both shown.** The headline table is the canonical Apple M5 Pro
 > lane, [`bench/results.json`](bench/results.json) — the file
@@ -185,17 +182,20 @@ would not notice. Sink: a polynomial hash over the bytes of every encoded
 string, `checksum 397546302`, identical in all five languages.
 
 **Canonical lane — Apple M5 Pro**, [`bench/results.json`](bench/results.json),
-30 runs each. This is the feed `scripts/consolidate-bench.sh` publishes:
+karac `0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured
+2026-11-02. This is the feed `scripts/consolidate-bench.sh` publishes:
 
 | lang | mean | vs C |
 |---|---:|---:|
-| Go | 436.6 ms ± 2.3 | 0.92× |
-| C `clang -O3` | 477.0 ms ± 4.0 | 1.00× |
-| Rust `-O` | 484.5 ms ± 5.9 | 1.02× |
-| Rust `-O -C overflow-checks=on` (equal safety) | 486.0 ms ± 4.6 | 1.02× |
-| **Kāra** (codegen, seq) | **841.9 ms ± 12.3** | **1.77×** |
+| Go | 493.9 ms ± 3.7 | 0.92× |
+| C `clang -O3` | 535.3 ms ± 7.2 | 1.00× |
+| Rust `-O` | 541.1 ms ± 11.7 | 1.01× |
+| Rust `-O -C overflow-checks=on` (equal safety) | 546.3 ms ± 10.2 | 1.02× |
+| **Kāra** (codegen, seq) | **804.0 ms ± 14.5** | **1.50×** |
 
-Kāra is **1.77× C**. Note that Go beats C here by 1.09×, which it does not do on
+Kāra is **1.50× C**, improved from 1.77× in the 2026-08-28 run on the earlier
+backend (Kāra/Rust 1.74× → 1.49×, Kāra/Go 1.93× → 1.63×). Note that Go beats C
+here by 1.08×, which it does not do on
 the container — a reminder that the cross-language ordering is a property of the
 host as much as of the code.
 
@@ -222,9 +222,15 @@ those numbers should be read against:
 > no branch-leaf `let`, so none of the fixes above could have touched its
 > codegen. Every figure below is likewise a median over interleaved runs.
 >
-> The 2.06× container figure and the 1.77× M5 figure are the same program on two
-> hosts, not a disagreement. Absolute milliseconds are not comparable between
-> them; only within-file ratios are, and both put the gap in the same place.
+> The 2.06× container figure and the 1.50× M5 figure are the same program on two
+> hosts and two compiler generations, not a disagreement. Absolute milliseconds
+> are not comparable between them; only within-file ratios are, and both put the
+> gap in the same place.
+>
+> Note (2026-11-02): the container table above is the original snapshot.
+> [`bench/results.container-x86.json`](bench/results.container-x86.json) was
+> re-measured 2026-10-30 on karac `g915e6dc75` and now reads Kāra 1.71× C. The
+> ablation below has not been re-run on the v2/MIR backend.
 
 ### Where the gap goes, measured (container lane)
 
@@ -274,26 +280,30 @@ writing katas.
 
 | | | kara | c | rust | go |
 |---|---|---:|---:|---:|---:|
-| binary size | M5 | 295.9 KiB | 33.1 KiB | 456.8 KiB | 2451.5 KiB |
+| binary size | M5 | 328.5 KiB | 33.1 KiB | 456.8 KiB | 2451.5 KiB |
 | | container | 345.7 KiB | 16.0 KiB | 3868.7 KiB | 2208.1 KiB |
-| peak RSS | M5 | 179.9 MiB | 19.8 MiB | 174.4 MiB | 28.6 MiB |
+| peak RSS | M5 | 215.5 MiB | 13.7 MiB | 174.3 MiB | 29.5 MiB |
 | | container | 67.5 MiB | 14.2 MiB | 25.7 MiB | 25.0 MiB |
-| compile (cold) | M5 | 116 ms | 49 ms | 114 ms | — |
+| compile (cold) | M5 | 148 ms | 58 ms | 129 ms | — |
 | | container | 475 ms | 151 ms | 276 ms | — |
 
 **The two hosts disagree about memory, and only one of them supports the
 obvious story.** On the container, Kāra's 67.5 MiB against Rust's 25.7 MiB looks
 like exactly what the tokenizer analysis predicts: ~400k owned token `String`s
-live during every deserialize. On the M5, Rust sits at 174.4 MiB — within 3% of
-Kāra — while C stays at 19.8 MiB, so whatever separates them there is not the
-`Vec[String]`. Peak RSS is measured differently enough across the two platforms
+live during every deserialize. On the M5, Rust sits at 174.3 MiB, 12.7× C's
+13.7 MiB, while holding borrowed views rather than owned tokens, so most of the
+gap to C there is not the `Vec[String]`. Kāra's 215.5 MiB is 1.24× Rust (it was
+within 3% on 2026-08-28, 179.9 against 174.4 MiB). That is the direction the
+tokenizer analysis predicts, but nothing here attributes those 41 MiB to the
+tokens. Peak RSS is measured differently enough across the two platforms
 (and Rust's allocator returns pages differently under each) that it should not
 be read as corroborating the split-allocation finding. **The runtime ablation
 and the split micro-benchmark do carry that finding; RSS does not, and this
 table previously claimed it did.**
 
-Binary size is the one row that is comparable in shape: Kāra's ~300 KiB sits
-between C's tens of kilobytes and Go's ~2.4 MiB on both hosts.
+Binary size is the one row that is comparable in shape: Kāra's 328.5 KiB on the
+M5 (345.7 KiB in the container snapshot) sits between C's tens of kilobytes and
+Go's ~2.4 MiB on both hosts.
 
 ## Running it
 

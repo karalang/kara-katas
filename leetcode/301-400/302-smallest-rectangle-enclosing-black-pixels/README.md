@@ -115,17 +115,14 @@ seed row is black by precondition, so including it cannot change the answer.
 Confirmed by diffing the two binaries' output rather than by argument.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-08-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
+> **Host:** the canonical Apple M5 Pro lane is
+> [`bench/results.json`](bench/results.json), measured 2026-11-02 on karac
+> `0.8.0-dev.14217+g7310a8f94` (v2/MIR backend); that is the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The container
+> tables further down are a shared **x86-64 Linux cloud container** snapshot,
+> kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between the two hosts; only the
+> **within-file cross-language ratios** are.
 
 One 4096² frame built **once**, then 1200 min-area queries from varying seeds —
 build-once-and-punch, so the measurement is the query and not a 16.7M-pixel
@@ -134,6 +131,49 @@ from the previous probe, so there is nothing to vectorise and nothing to hoist.
 
 Sparse on purpose: this is the regime where binary search is supposed to beat
 the O(m·n) scan. All four compiled lanes produce `checksum 312731232`.
+
+Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
+`0.8.0-dev.14217+g7310a8f94`, measured 2026-11-02. Seq lane, 30 runs each,
+`bench.sh` building Kāra with `KARAC_AUTO_PAR=0`:
+
+| lang | mean | vs kara |
+|---|---:|---:|
+| C | 249.6 ms ± 5.1 | 0.99× |
+| **Kāra** | **251.9 ms ± 6.6** | **1.00×** |
+| Rust (`-O`, overflow-checks=on) | 256.0 ms ± 5.9 | 1.02× |
+| Rust (`-O`) | 257.6 ms ± 9.2 | 1.02× |
+| Go | 265.2 ms ± 4.8 | 1.05× |
+
+All five rows sit within 7%. Against the 2026-08-28 run the ratios are flat:
+Kāra/Rust 1.02× → 0.98×, Kāra/C 1.11× → 1.01×, Kāra/Go 1.00× → 0.95×.
+
+Par lane, 25 runs each:
+
+| lang | mean | CPU | who wrote the parallelism |
+|---|---:|---:|---|
+| Go | 133.3 ms ± 2.0 | 215% | 3 goroutines + `WaitGroup`, by hand |
+| C | 150.7 ms ± 1.9 | 209% | 3 raw `pthread_create` per call, by hand |
+| **Kāra** | **254.7 ms ± 6.1** | **99.6%** | **nobody, and auto-par did not fire: this row is sequential** |
+| Rust | 267.4 ms ± 2.2 | 831% | two nested `rayon::join`, by hand |
+
+**Auto-par no longer fires on this kata.** The default build's IR has 0 calls of
+`karac_mir_task_spawn`, the par and seq binaries are both 68,552 B, and the par
+row runs at 99.6% CPU for 254.7 ms against seq's 251.9. So the par rows' move
+since 2026-08-28 (Kāra/rayon 0.74× → 0.95×, Kāra/C-par 1.29× → 1.69×,
+Kāra/Go-par 1.44× → 1.91×) is the lane going sequential. Little was given up on
+Kāra's own terms: the old par lane fired at 332% CPU for only 1.03× over its seq
+build. But the parallelism is there to take, since Go gains 1.99× and C 1.66×
+over their own seq rows here (rayon loses 1.04×). `karac query concurrency`
+still reports the four-way group on `min_area`, so the analysis sees it and
+something later declines it; which gate is not attributed. See the Bug ledger
+section below.
+
+| | kara | c | rust | go |
+|---|---:|---:|---:|---:|
+| binary size, seq | 66.9 KiB | 32.8 KiB | 455.4 KiB | 2450.5 KiB |
+| binary size, par | 66.9 KiB | 33.0 KiB | 456.2 KiB | 2451.4 KiB |
+| compile (cold) | 138.1 ms | 60.3 ms | 101.3 ms | — |
+| peak RSS, seq | 17.1 MiB | 17.1 MiB | 17.1 MiB | 19.5 MiB |
 
 Container, x86-64, 4 cores; full numbers in
 [`bench/results.container-x86.json`](bench/results.container-x86.json). See
@@ -147,6 +187,9 @@ Container, x86-64, 4 cores; full numbers in
 | Rust (`-O`) | 623.8 ms ± 15.0 | 0.96× | |
 | Rust (`-O`, target-cpu=v3) | 630.3 ms ± 8.3 | 0.97× | |
 | C | 648.2 ms ± 10.7 | 1.00× | 16 KiB binary |
+
+(2026-11-02: the ordering below is the container's. On the M5 lane C leads the
+seq table, inside noise, and Kāra is ahead of both Rust rows and Go.)
 
 **C is last here, and that is not a typo.** It is the first kata in this series
 where C is not the baseline winner, so the obvious suspicion is a handicapped C
@@ -162,6 +205,10 @@ showing than [#295](../295-find-median-from-data-stream/)'s tie against
 equal-safety Rust — different bottleneck, different ordering.
 
 ### The par lane — Kāra writes no parallel code and still wins it
+
+(2026-11-02: this section is the container snapshot and its win no longer
+stands. On the M5 lane, on `g7310a8f94`, auto-par does not fire and Go and C lead;
+see the par table above.)
 
 The seq table above is single-threaded on every row: `bench.sh` builds the Kāra
 lane with `KARAC_AUTO_PAR=0`, because timing an auto-parallelised binary against
@@ -201,6 +248,10 @@ single-threaded; these are all using four cores.
 
 #### What exactly got parallelised, and how to ask
 
+(2026-11-02: the query below still reports this group on `g7310a8f94`, but the
+default binary no longer carries it: no `__par_branch` symbols and no
+`karac_mir_task_spawn` calls.)
+
 Not a guess — `karac query concurrency` reports it. For `min_area`:
 
 ```json
@@ -233,3 +284,7 @@ Python runs the same algorithm but at **120 queries against the compiled lanes'
 a 4096-wide frame, which is precisely what CPython is worst at. Its sink
 therefore does not match the other four, by construction, and is comparable
 only to itself.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-03-2`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). The default build no longer auto-parallelizes on the v2/MIR backend (0 `karac_mir_task_spawn` calls; par 254.7 ms at 99.6% CPU against seq 251.9 ms; par and seq binaries both 68,552 B), where the 2026-08-28 build fired at 332% CPU for only a 1.03× gain. `karac query concurrency` still lists the four edge searches as `parallel_groups [0,1,2,3]`, and its `auto_par` entry says why they do not run as tasks: `min_area is recursive or reached from a loop`.

@@ -83,10 +83,11 @@ build_go_seq() {
 }
 
 # ---- par lane -------------------------------------------------------------
-# Kara's auto-par fans out the FOUR INDEPENDENT EDGE SEARCHES inside min_area
-# with no annotation — `karac query concurrency` reports
-# parallel_groups [0,1,2,3] "no data or effect dependencies". These three
-# mirrors do that same fan-out BY HAND, which is what the par lane compares.
+# `karac query concurrency` reports parallel_groups [0,1,2,3] "no data or effect
+# dependencies" on the FOUR INDEPENDENT EDGE SEARCHES inside min_area, but since
+# the v2/MIR backend auto-par declines them ("min_area is recursive or reached
+# from a loop"; B-2026-11-03-2), so the kara row below runs sequentially. These
+# three mirrors do that fan-out BY HAND, which is what the par lane compares.
 #
 # NOTE the auto-par build below deliberately does NOT set KARAC_AUTO_PAR=0 —
 # that is the whole point of the lane, and scripts/lint-par-lane.py exists to
@@ -173,7 +174,7 @@ echo
 
 bench_begin id=302 slug=smallest-rectangle-enclosing-black-pixels group=301-400 \
     title="Smallest Rectangle Enclosing Black Pixels" \
-    workload="one 4096x4096 sparse frame built once, then 20k min-area queries from varying seeds via 4-way binary search on the projections; sink = polynomial hash of the areas" sink="$expected"
+    workload="one 4096x4096 sparse frame built once, then 1200 min-area queries from varying seeds via 4-way binary search on the projections; sink = polynomial hash of the areas" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
@@ -197,7 +198,7 @@ echo "=== runtime — par lane ==="
 # above, which are all single-threaded.
 rt_begin --warmup 3 --runs 25
 rt_cmd --lang kara --approach "$STEM" --lane par --mode codegen \
-    --name "kara ${STEM} (auto-par, NO parallel code)" --cmd "./target/${STEM}_kara_par"
+    --name "kara ${STEM} (default build, NO parallel code)" --cmd "./target/${STEM}_kara_par"
 rt_cmd --lang c --approach "$STEM" --lane par --mode native \
     --name "c    ${STEM} (pthreads — metal floor)" --cmd "./target/${STEM}_c_par"
 rt_cmd --lang rust --approach "$STEM" --lane par --mode native \

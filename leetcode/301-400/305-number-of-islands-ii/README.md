@@ -167,24 +167,37 @@ union-find operations, `build-once + punch`
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 147.2 ms | 0.85× |
-| rust (`-O`) | 147.7 ms | 0.85× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 148.5 ms | 0.85× |
-| **kara** (codegen, seq) | **174.1 ms** | **1.00×** |
-| go | 188.4 ms | 1.08× |
-| python | 3.589 s | 20.6× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 167.3 ms ± 6.0 | 0.85× |
+| c (`-O3`) | 170.5 ms ± 7.6 | 0.87× |
+| rust (`-O`) | 170.9 ms ± 6.1 | 0.87× |
+| **kara** (codegen, seq) | **197.0 ms ± 5.1** | **1.00×** |
+| go | 215.0 ms ± 3.2 | 1.09× |
+| python (last measured 2026-09-21, not re-run) | 3.589 s | 20.6× that session's kara |
 
 **The equal-safety lead does not survive the host change.** On x86 Kāra is
-1.14× *ahead* of Rust-with-checks; here it is 1.17× behind, because the checks
-cost Rust essentially nothing on arm64 (147.7 → 148.5 ms, 0.5%) where they
-cost it 31% on x86 (498.1 → 650.9). The three checked and unchecked C/Rust
-rows collapse onto each other and Kāra does not join them.
+1.14× *ahead* of Rust-with-checks; here it is 1.18× behind, because the checks
+cost Rust nothing measurable on arm64 (its checked row is 2% *under* the
+unchecked one, inside σ) where they cost it 31% on x86 (498.1 → 650.9). The
+three checked and unchecked C/Rust rows collapse onto each other and Kāra does
+not join them.
+
+Flat against the 2026-09-21 run on `g4ef50cbf3`: Kāra/Rust 1.18× → 1.15×,
+Kāra/C 1.18× → 1.16×, Kāra/Go 0.92× → 0.92×.
+
+| | kara | c | rust | go |
+|---|---:|---:|---:|---:|
+| binary size | 66.9 KiB | 32.8 KiB | 455.4 KiB | 2450.4 KiB |
+| compile (cold) | 128.3 ms | 49.8 ms | 100.5 ms | — |
+| peak RSS | 2.6 MiB | 2.5 MiB | 2.6 MiB | 4.2 MiB |
 
 ### Where the 1.18× is, and where it is not — measured 2026-09-21
+
+(2026-11-02: the gap to C is now 1.16×, flat; the counters and probes below
+were not re-taken on `g7310a8f94`.)
 
 Exact counters (`scripts/pmc.c`): Kāra runs **1.80× C's instructions** but only
 **1.14× its cycles** (1.999G/0.794G against 1.109G/0.700G). This is a

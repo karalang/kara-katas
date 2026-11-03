@@ -178,24 +178,29 @@ the algorithm is *about* would never be taken.
 > the note after the M5 table takes up.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs C |
 |---|---:|---:|
-| go | 110.2 ms | 0.98× |
-| c (`-O3`) | 112.4 ms | 1.00× |
-| rust (`-O`) | 124.0 ms | 1.10× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 126.0 ms | 1.12× |
-| **kara** (codegen, seq) | **164.3 ms** | **1.46×** |
-| python | 2.513 s | 22.4× |
+| go | 121.6 ms | 0.94× |
+| c (`-O3`) | 129.0 ms | 1.00× |
+| rust (`-O`) | 144.5 ms | 1.12× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 147.3 ms | 1.14× |
+| **kara** (codegen, seq) | **170.6 ms** | **1.32×** |
+| python (last measured 2026-09-21 against that session's C, not re-run) | 2.513 s | 22.4× |
 
-**The dead tie with Rust does not survive the host change**, and that is the
-one result worth carrying forward from this run. On x86 Kāra and Rust sit at
-1.01× of each other with both 1.7× behind C; on the M5 Rust closes to 1.10× of
-C while Kāra stays at 1.46×, so the Kāra-to-Rust ratio goes **1.07× → 1.33×**.
+Kāra has gained on every compiled comparator since the 2026-09-21 run on the
+earlier backend: Kāra/Rust 1.33× → 1.18×, Kāra/C 1.46× → 1.32×, Kāra/Go 1.49× →
+1.40×.
+
+**The dead tie with Rust in the x86 snapshot does not survive the host change**,
+and that is the one result worth carrying forward from this run. In that
+snapshot Kāra and Rust sit at 1.01× of each other with both 1.7× behind C; on the
+M5 Rust closes to 1.12× of C while Kāra sits at 1.32×, so the Kāra-to-Rust ratio
+goes **1.07× → 1.18×**.
 The x86 section's reasoning below — that whatever costs Rust 1.7× costs Kāra
 the same, so the cost cannot be reference counting — is sound *on that host*
-and does not transfer: on arm64 there is now a Kāra-specific 1.33× that Rust
+and does not transfer: on arm64 there is a Kāra-specific 1.18× that Rust
 does not pay, and the section's own elimination argument no longer covers it.
 
 Not attributed here. This run measured the lane rather than diagnosing it, and
@@ -216,6 +221,11 @@ See [BENCHMARKS.md](../../../BENCHMARKS.md) for methodology and caveats.
 | rust (`-O -C overflow-checks=on`, equal safety) | 1.162 s | 1.65× |
 | **kara** (codegen, seq) | **1.201 s** | **1.71×** |
 | python | 12.096 s | 17.2× |
+
+> Note (2026-11-02): this table and the tie it reports are the original snapshot.
+> [`bench/results.container-x86.json`](bench/results.container-x86.json) was
+> re-measured 2026-10-30 on karac `g915e6dc75` and shows no tie: Kāra 2.57× C and
+> 1.95× Rust, on a noisy run (Rust σ 109 ms on a 485 ms mean).
 
 Cross-checked by interleaving all four binaries 10 times each (medians): C 0.714
 s, Go 0.748 s, Rust 1.225 s, Kāra 1.240 s. **Kāra and Rust are a dead tie —
@@ -258,15 +268,20 @@ been established is that it survives all six of those controls — not its cause
 
 ### Elsewhere
 
-| | kara | c | rust | go |
-|---|---:|---:|---:|---:|
-| binary size | 337.4 KiB | 15.8 KiB | 3863.7 KiB | 2178.6 KiB |
-| peak RSS | 50.5 MiB | 33.5 MiB | 34.1 MiB | 27.3 MiB |
-| compile (cold) | 380 ms | 99 ms | 121 ms | — |
+| | | kara | c | rust | go |
+|---|---|---:|---:|---:|---:|
+| binary size | M5 | 66.9 KiB | 32.8 KiB | 455.8 KiB | 2450.5 KiB |
+| | container snapshot | 337.4 KiB | 15.8 KiB | 3863.7 KiB | 2178.6 KiB |
+| peak RSS | M5 | 33.2 MiB | 33.2 MiB | 33.2 MiB | 30.5 MiB |
+| | container snapshot | 50.5 MiB | 33.5 MiB | 34.1 MiB | 27.3 MiB |
+| compile (cold) | M5 | 110 ms | 45 ms | 81 ms | — |
+| | container snapshot | 380 ms | 99 ms | 121 ms | — |
 
-Kāra's 50.5 MiB against 34 MiB for C and Rust is the refcount word: a
-`shared TreeNode` carries a control block that a `Node *` and a `Box<Node>` do
-not, across 1,048,575 nodes.
+On the container, Kāra's 50.5 MiB against 34 MiB for C and Rust is the refcount
+word: a `shared TreeNode` carries a control block that a `Node *` and a
+`Box<Node>` do not, across 1,048,575 nodes. On the M5 that cost does not appear:
+Kāra, C and Rust all peak at 33.2 MiB, because macOS malloc's 16-byte quantum
+gives the 24-byte and 32-byte nodes the same 32-byte slot.
 
 ## Running it
 

@@ -157,19 +157,21 @@ bulls-and-cows-shaped name.
 > even as a ratio.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14217+g7310a8f94` (v2/MIR backend), 30 runs each, measured 2026-11-02.
 
 | | mean | vs C |
 |---|---:|---:|
-| c (`-O3`) | 19.1 ms | 1.00× |
-| rust (`-O`) | 19.9 ms | 1.04× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 23.3 ms | 1.22× |
-| **kara** (codegen, seq) | **23.7 ms** | **1.24×** |
-| go | 83.9 ms | 4.39× |
-| python | 2.161 s | 113.0× |
+| c (`-O3`) | 21.9 ms | 1.00× |
+| rust (`-O`) | 22.4 ms | 1.02× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 26.5 ms | 1.21× |
+| **kara** (codegen, seq) | **27.7 ms** | **1.27×** |
+| go | 94.1 ms | 4.30× |
+| python (last measured 2026-09-21 against that session's C, not re-run) | 2.161 s | 113.0× |
 
-**Kāra ties the equal-safety Rust row at 1.02×** — the fair comparison, since
-both trap on integer overflow — and trails unchecked C by 1.24×.
+**Kāra is 1.05× behind the equal-safety Rust row** — the fair comparison, since
+both trap on integer overflow, and about one σ apart on a lane this short — and
+trails unchecked C by 1.27×. All of this is flat against the 2026-09-21 run on
+the earlier backend (equal-safety Rust 1.02× → 1.05×, C 1.24× → 1.27×).
 
 ### The third time this kata has caught a mirror asymmetry
 
@@ -213,7 +215,8 @@ published here:
   mirror asymmetry, and the row records the refutation.
 - **`B-2026-08-16-11`'s finding that equal-safety parity is exact survives**
   on this shape and this host. This kata was briefly read as refuting it; it
-  confirms it.
+  confirms it. (Note, 2026-11-02: the published spelling now reads 1.05× in the
+  table above rather than exact parity; the probe above was not re-run.)
 
 The remaining opportunity is real but is not a defect, and is tracked as
 `kara B-2026-09-21-14`: a compiler *could* canonicalise the duplicated
@@ -243,14 +246,18 @@ row as the "real" number.
 
 ### Elsewhere
 
-| | kara | c | rust | go |
-|---|---:|---:|---:|---:|
-| binary size | 337.5 KiB | 15.7 KiB | 3863.0 KiB | 2178.4 KiB |
-| peak RSS | 26.9 MiB | 25.9 MiB | 26.4 MiB | 26.5 MiB |
-| compile (cold) | 379 ms | 101 ms | 134 ms | — |
+| | | kara | c | rust | go |
+|---|---|---:|---:|---:|---:|
+| binary size | M5 | 66.9 KiB | 32.9 KiB | 455.4 KiB | 2450.4 KiB |
+| | container snapshot | 337.5 KiB | 15.7 KiB | 3863.0 KiB | 2178.4 KiB |
+| peak RSS | M5 | 25.5 MiB | 25.5 MiB | 25.5 MiB | 28.2 MiB |
+| | container snapshot | 26.9 MiB | 25.9 MiB | 26.4 MiB | 26.5 MiB |
+| compile (cold) | M5 | 115 ms | 47 ms | 88 ms | — |
+| | container snapshot | 379 ms | 101 ms | 134 ms | — |
 
-Memory is a four-way tie here — the working set is two 1.6M-element arrays that
-every language allocates identically, and unlike
+Memory is a tie between Kāra, C and Rust at 25.5 MiB on the M5, with Go 2.7 MiB
+above them, and a four-way tie in the container snapshot — the working set is two
+1.6M-element arrays that every language allocates identically, and unlike
 [#298](../298-binary-tree-longest-consecutive-sequence/) there is no refcounted
 node to pay for.
 
