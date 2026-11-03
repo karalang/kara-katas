@@ -126,6 +126,6 @@ python3 -I -B gen_kara.py
 
 ## Gaps found
 
-- B-2026-11-03-26: `karac fix` turned `levels.contains(w[2].as_str())`,
+- B-2026-11-03-28: `karac fix` turned `levels.contains(w[2].as_str())`,
   where a `ref String` is wanted, into `w[2].as_str().to_string()`, a copy
   of text the place already holds. It now drops the `.as_str()`.
