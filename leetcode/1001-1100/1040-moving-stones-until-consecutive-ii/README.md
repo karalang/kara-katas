@@ -151,16 +151,20 @@ the end of its gaps.
 
 Every arm prints the same output as `moving_stones.py` under `karac
 __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and
-under `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer)
-with no error. `karac run` and a `karac build` binary print the same
-output for every arm and the differential. `karac check
---output=json` reported nothing on any file. The release build is kara
-`864ac18628`, with runtime archives built after the last runtime change
+under `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with
+no error. `karac run` and a `karac build` binary print the same output
+for every arm and the differential. `karac check --output=json` reported
+nothing on any file. The release build is kara `8876b6f720` (built
+before a rebase beneath it that touched only the parser and
+typechecker), with runtime archives built after the last runtime change
 before it. Under `karac __mir-run` the arms take 0.56 s (★), 0.78 s
-(bsearch) and 1.1 s (gaps) to 13.6 s (set) and 102 s (iter, which
-walks every stone for each of 2000 windows in the two largest sets).
-Compiled, the harnesses run in about 10 ms (★, bsearch, gaps), 35 ms
-(set) and 50 ms (iter), three runs each. No gap turned up.
+(bsearch) and 1.1 s (gaps) to 13.6 s (set) and 102 s (iter, which walks
+every stone for each of 2000 windows in the two largest sets, over the
+corpus's 60 s cap). Compiled, the harnesses run in about 10 ms (★,
+bsearch, gaps), 35 ms (set) and 50 ms (iter), three runs each. No
+correctness gap turned up; the iterator arm's interpreter time is kara
+B-2026-11-03-9: an adaptor chain with a closure runs about 11 times the
+hand loop's time there.
 
 ## Benchmarks
 
