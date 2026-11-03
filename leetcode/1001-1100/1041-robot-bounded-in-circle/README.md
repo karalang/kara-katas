@@ -156,9 +156,9 @@ and B-2026-11-03-23):
 
 - `s.push(t.char_at(i))`, with `char_at` giving an `Option[char]`, said
   only "'push' expects a Char argument, found 'Option[char]'". A
-  mismatch whose found
-  type wraps the expected one now says to unwrap it, at a `let`, an
-  argument, `push` and the branches of an `if` or `match`.
+  mismatch whose found type wraps the expected one now says to unwrap
+  it, at a `let`, an argument, `push` and the branches of an `if` or
+  `match`.
 - `'L' => (dx, dy) = (-dy, dx),` drew a fix that drops the parentheses,
   `'L' => dx, dy = -dy, dx,`, which does not parse in a braceless arm,
   so `karac fix` refused to write the file. The fix now braces it,
