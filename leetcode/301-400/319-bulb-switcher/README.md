@@ -212,18 +212,20 @@ traffic and not their own choice of bit packing.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| **kara** (codegen, seq) | **358.2 ms** | **1.00×** |
-| go | 392.8 ms | 1.10× |
-| rust (`-O`) | 394.8 ms | 1.10× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 394.9 ms | 1.10× |
-| c (`-O3`) | 450.4 ms | 1.26× |
-| python | 29.616 s | 82.7× |
+| **kara** (codegen, seq) | **368.2 ms** | **1.00×** |
+| rust (`-O`) | 401.9 ms | 1.09× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 403.6 ms | 1.10× |
+| go | 413.3 ms | 1.12× |
+| c (`-O3`) | 462.5 ms | 1.26× |
+| python (last measured 2026-09-21, not re-run) | 29.616 s | 82.7× |
 
-**Kāra is the fastest mirror on this host — ahead of `clang -O3` by 1.26×**,
+Same feed: binary kāra 68,560 B, C 33,568 B, Rust 466,336 B, Go 2,509,202 B; peak RSS kāra 8.9 MiB, C 6.8 MiB, Rust 6.8 MiB, Go 9.1 MiB; compile kāra 110.4 ms, C 49.7 ms, Rust 83.0 ms.
+
+Flat against the previous feed. **Kāra is the fastest mirror on this host — ahead of `clang -O3` by 1.26×**,
 having been 1.02× behind it on the container. It is the only kata in the
 2026-09-21 M5 batch where Kāra finishes first outright.
 
@@ -231,10 +233,10 @@ The section above explains why this lane can produce that result without
 anything surprising happening: it is a cache-behaviour benchmark, ~97 million
 `u8` writes per pass laid down at every stride, where the arithmetic is
 incidental. Overflow checks are nearly free against that traffic — Rust's
-checked and unchecked builds are 0.03% apart here (394.8 vs 394.9 ms) — so the
+checked and unchecked builds are 0.4% apart here (401.9 vs 403.6 ms) — so the
 comparison is decided by how each compiler shapes the strided write loop, not
 by what it costs to make it safe. The strided store is also why the three
-non-C mirrors bunch within 1% of each other while C sits apart.
+non-Kāra, non-C mirrors bunch within 3% of each other while C sits apart.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container. Python is its own
 lane at 3 runs.
@@ -252,7 +254,8 @@ lane at 3 runs.
 
 Unlike kata 318 — where six of seven compiled legs finished inside 5% and the
 benchmark discriminated nothing — this workload does separate the backends.
-Kāra lands 2.0% behind clang and ahead of all three Rust legs.
+On this container Kāra landed 2.0% behind clang and ahead of all three Rust
+legs; the current M5 feed has it leading C 1.26× and every Rust leg.
 
 **The Rust gap was investigated and the obvious explanation ruled out.** The
 inner loop indexes a byte slice, so bounds checking is the natural suspect, and
@@ -292,6 +295,10 @@ clang's and 11× smaller than rustc's. Every leg's resident set is dominated by
 the six-megabyte bulb array, as it should be. Raw numbers in
 `bench/results.container-x86.json`; methodology and caveats in
 [`BENCHMARKS.md`](../../../BENCHMARKS.md).
+
+*2026-11-04 note: that table is the container snapshot. The M5 feed's binary,
+RSS and compile figures are on the "Same feed" line above; Kāra's binary is now
+68,560 B.*
 
 ## Compiler findings
 

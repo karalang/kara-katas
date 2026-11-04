@@ -132,7 +132,7 @@ echo
 # Declare the kata for the JSON feed (no-op when BENCH_JSON=0).
 bench_begin id=726 slug=number-of-atoms group=701-800 \
     title="Number of Atoms" \
-    workload="parse a 157KB valid chemical formula x 400 passes; stack-of-counts + range-fold multipliers + element-id->count map (C flat table, others hashmap)" sink="$expected"
+    workload="parse a 157KB valid chemical formula x 400 passes; stack-of-counts + range-fold multipliers + element-id->count map (C hand-rolled hash table, others hashmap)" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

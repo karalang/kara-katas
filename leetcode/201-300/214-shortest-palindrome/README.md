@@ -69,3 +69,7 @@ Verified byte-identical under `karac run` (JIT), `karac run --interp` (tree-walk
 **A high-severity auto-par soundness bug — now fixed in `karac`.** [`B-2026-07-23-20`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl): the reduction loop `while w < n { sink = sink + f(..., mut scratch, ...); w += 1 }` was parallelised on `sink`, but `scratch` is a **loop-invariant `mut ref` buffer declared outside the loop** and written every iteration inside `f`. That makes the iterations dependent, so parallel workers raced on the shared buffer — the **default** `karac build` (and `karac run`) produced nondeterministic wrong output while `KARAC_AUTO_PAR=0` stayed correct.
 
 This is the shape the corpus's A/B rule exists to catch: a run/build divergence visible only on the third surface (default auto-par), invisible to anyone testing the interpreter and a sequential build alone. The safety analysis now treats an outer-scope `mut ref` argument as a loop-carried dependence rather than a private temporary.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On g6697158fa, against legacy dd86e3955, this kata runs 1.08× the instructions (4.360G vs 4.022G) and 1.05× the cycles; the seq lane moved 0.98× → 1.10× Rust.

@@ -158,22 +158,25 @@ every mirror makes the same ones. All five print `checksum 399910461`.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| rust (`-O`) | 330.8 ms | 0.89× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 341.4 ms | 0.91× |
-| **kara** (codegen, seq) | **373.5 ms** | **1.00×** |
-| c (`-O3`) | 522.4 ms | 1.40× |
-| go | 750.2 ms | 2.01× |
-| python | 3.554 s | 9.5× |
+| rust (`-O`) | 344.9 ms | 0.86× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 345.1 ms | 0.86× |
+| **kara** (codegen, seq) | **403.1 ms** | **1.00×** |
+| c (`-O3`) | 523.9 ms | 1.30× |
+| go | 752.8 ms | 1.87× |
+| python (last measured 2026-09-21, not re-run) | 3.554 s | 9.5× |
 
-**Kāra is ahead of `clang -O3` on both hosts** — 1.40× here, 1.56× on the
-container — which is still the unusual result in this kata and the reason to
-read the C mirror's structure below before quoting it. The Rust pair tightens
-its lead slightly (1.03× → 1.09× against equal-safety Rust), so the ordering is
-identical on the two hosts and only the margins move.
+Same feed: binary kāra 336,128 B, C 33,712 B, Rust 483,600 B, Go 2,527,666 B; peak RSS kāra 7.1 MiB, C 6.6 MiB, Rust 11.9 MiB, Go 16.1 MiB; compile kāra 113.0 ms, C 46.2 ms, Rust 135.8 ms.
+
+Flat against the previous feed. **Kāra is ahead of `clang -O3` on both hosts** —
+1.30× here, 1.56× on the container — which is still the unusual result in this
+kata and the reason to read the C mirror's structure below before quoting it. It
+trails `rustc -O` and equal-safety Rust 1.17× here, where the container had it 3%
+ahead of equal-safety Rust, so the Kāra/Rust order differs between hosts. C and
+Go stay behind on both. The seq binary is 336,128 B ([ledger](#bug-ledger)).
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each. **Noisy**: σ is 8–10% on every lane in this run, wider than #314's,
@@ -195,6 +198,9 @@ the equal-safety build, all within one σ. The workload is a sort of 200,000
 values plus 200,000 binary searches and `O(log m)` tree walks per pass, so it is
 dominated by the sort and by cache-missing gathers into `ranks` and `tree`.
 
+*2026-11-04 note: that band is the container's. On the M5 feed Kāra trails both
+Rust rows 1.17×.*
+
 **C is last among the compiled lanes, and that is C's `qsort`, not the
 compiler.** The C mirror sorts with `qsort` and a comparator callback — the only
 standard sort C has — which runs ~2× slower than Rust's monomorphised `sort` and
@@ -212,3 +218,7 @@ build and `--interp`. Nothing to file: this kata's surfaces (`Vec.sort`/`dedup`,
 held. Two front-end rules bit the first draft and were the compiler being right:
 `distinct` is a reserved word, and a single-letter `const N` is Type-class by
 the naming rules, so a const needs a longer name (`LEN`).
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-31`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). The seq binary is 336,128 B on karac gd33cb285d (2026-11-04), where most katas in this batch are 52–69 KB; the root keeping it that large is not yet found.

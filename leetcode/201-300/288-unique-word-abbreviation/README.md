@@ -437,3 +437,7 @@ like-for-like one. See `BENCHMARKS.md` for the full methodology.
 Run-to-run variance in a shared container is real — an earlier run of this same
 bench ranked C ahead of Go — so treat the sub-10% separations as noise and only
 the Kāra gap as signal.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On g6697158fa, against legacy dd86e3955, this kata runs 1.08× the instructions (2.108G vs 1.960G) and 1.08× the cycles; the seq lane moved 1.60× → 1.81× Rust and the par lane 0.29× → 0.33× C-par. The `idxpayload` and `noalloc` variants are faster, at 0.86–0.87× legacy.

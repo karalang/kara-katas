@@ -166,22 +166,31 @@ has no C equivalent).
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 116.5 ms | 0.78× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 120.8 ms | 0.80× |
-| rust (`-O`) | 129.2 ms | 0.86× |
-| **kara** (codegen, seq) | **150.1 ms** | **1.00×** |
-| go | 233.5 ms | 1.55× |
-| python | 1.732 s | 11.5× |
+| c (`-O3`) | 124.4 ms | 0.70× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 131.5 ms | 0.74× |
+| rust (`-O`) | 136.9 ms | 0.77× |
+| **kara** (codegen, seq) | **178.9 ms** | **1.00×** |
+| go | 240.4 ms | 1.34× |
+| python (last measured 2026-09-21, not re-run) | 1.732 s | 11.5× |
+
+Same feed: binary kāra 68,520 B, C 33,784 B, Rust 467,416 B, Go 2,509,490 B; peak RSS kāra 14.7 MiB, C 14.7 MiB, Rust 14.7 MiB, Go 30.1 MiB; compile kāra 123.7 ms, C 49.2 ms, Rust 106.5 ms.
+
+**Worse against the previous feed:** 1.16× → 1.31× `rustc -O`, 1.29× → 1.44×
+`clang -O3`, 0.64× → 0.74× Go, with legacy dd86e3955 instructions at 1.08× and
+cycles at 1.13× ([ledger](#bug-ledger)). Kāra still leads Go 1.34× on wall time;
+Go's GC spreads across cores here, so its user CPU is 1,029 ms against Kāra's
+175 ms.
 
 Kāra gives up its equal-safety tie here: 1.02× behind Rust-with-checks on the
-container, 1.24× behind on this host, with the gap to `clang -O3` widening
-1.09× → 1.29×. Note the odd shape of the Rust pair — the *checked* build is
-1.07× **faster** than the unchecked one, on both hosts, so the equal-safety row
-is the harder target rather than the softer one here.
+container, 1.36× behind on this host, with the gap to `clang -O3` widening
+1.09× → 1.44×. Note the odd shape of the Rust pair — the *checked* build is
+**faster** than the unchecked one on both hosts (1.04× here, 1.07× on the
+container), so the equal-safety row is the harder target rather than the softer
+one here.
 
 > **Not the `vertical.kara` that `kara B-2026-09-14-28` is about.** That
 > row's subject is
@@ -271,3 +280,7 @@ behind the old spelling are filed: `karac check` passes `let v = r` on a
 `mut ref i64`, which every MIR surface refuses (kara B-2026-10-19-15),
 and plain `=` to a `mut ref i64` writes through on every surface where
 design.md says it does not (kara B-2026-10-19-16).
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On karac gd33cb285d (2026-11-04) this kata runs 1.08× the instructions and 1.13× the cycles of legacy dd86e3955 (`KARAC_AUTO_PAR=0`), and its seq lane moved 1.16× → 1.31× `rustc -O`.

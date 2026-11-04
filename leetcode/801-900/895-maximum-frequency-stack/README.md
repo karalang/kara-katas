@@ -56,29 +56,35 @@ real canonical spelling, not a contortion to dodge the bug — but it copies the
 bucket out and back, turning this problem's signature O(1) append into O(n).
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-08-28 snapshot; the feed was last measured 2026-09-05.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
-> **Host:** the tables below are a shared **x86-64 Linux cloud container**
-> snapshot, kept as [`bench/results.container-x86.json`](bench/results.container-x86.json).
-> The canonical Apple M5 Pro lane is [`bench/results.json`](bench/results.json) —
-> that is the file `scripts/consolidate-bench.sh` feeds into the top-level chart,
-> and it is current as of the date stamped above. Absolute milliseconds are NOT
-> comparable between the two hosts; only the **within-file cross-language
-> ratios** are.
-
-> **Corroborating host only.** Linux/x86-64 container numbers from
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The corpus publishes from
-> the canonical Apple-silicon feed ([`bench/results.json`](bench/results.json)), which this kata
-> now has. Read [`BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of this.
+> **Host:** the first table in each lane is the canonical **Apple M5 Pro** feed,
+> [`bench/results.json`](bench/results.json), measured 2026-11-04 on karac
+> gd33cb285d (the v2/MIR backend). That is the file
+> `scripts/consolidate-bench.sh` feeds into the top-level chart. The tables marked
+> *history* are a shared **x86-64 Linux cloud container** snapshot, kept as
+> [`bench/results.container-x86.json`](bench/results.container-x86.json): a
+> corroborating host only. Absolute milliseconds are NOT comparable between the two
+> hosts; only the **within-file cross-language ratios** are. Read
+> [`BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of this.
 
 ### Par lane — auto-par vs hand-tuned
 
 All three parallelize the **same** reduction over independent rounds. kāra got there with
 **no parallel source at all**: `karac build` recognized `checksum = checksum + round(r, steps)`
-and emitted a `karac_par_reduce` dispatch. Rust needed `rayon`'s `into_par_iter`; Go needed
-goroutine chunking, a `WaitGroup`, and a partial merge.
+and parallelized the plain loop (one `karac_mir_task_spawn` call in the emitted IR). Rust
+needed `rayon`'s `into_par_iter`; Go needed goroutine chunking, a `WaitGroup`, and a partial
+merge.
+
+| | mean | |
+|---|---:|---|
+| Rust — rayon `par_iter` | 3.3 ms ± 0.1 | 2.31× faster |
+| Go — goroutines + WaitGroup | 4.4 ms ± 0.1 | 1.77× faster |
+| **kāra — auto-par, no parallel code** | 7.7 ms ± 0.3 | — |
+
+kāra auto-par is **3.49× faster than its own sequential build** but trails both
+hand-written parallel versions. It slipped from 1.90× rayon and 1.52× Go on the
+2026-09-05 feed; see [`B-2026-11-04-33`](#bug-ledger).
+
+*History: x86-64 container, 2026-08-18.*
 
 | | mean | |
 |---|---:|---|
@@ -86,11 +92,11 @@ goroutine chunking, a `WaitGroup`, and a partial merge.
 | Go — goroutines + WaitGroup | 11.6 ms ± 1.3 | 1.16× slower |
 | Rust — rayon `par_iter` | 12.0 ms ± 1.7 | 1.20× slower |
 
-kāra auto-par is **2.7× faster than its own sequential build** and edges out both
-hand-written parallel versions.
+On that host kāra auto-par was 2.7× faster than its own sequential build and edged
+out both hand-written parallel versions.
 
-> **This ordering does not survive the M5 either.** On the canonical Apple M5 Pro
-> lane the par row is kāra 6.85 ms against rayon 3.61 ms and Go 4.52 ms — kāra is
+> **This ordering does not survive the M5 either.** On the 2026-09-05 Apple M5 Pro
+> feed the par row is kāra 6.85 ms against rayon 3.61 ms and Go 4.52 ms — kāra is
 > **1.90× behind rayon** and 1.52× behind Go, not ahead of either. The auto-par
 > lane itself is healthy on that host (**4.33×** over its own sequential twin, up
 > from 2.7×); what moved is that the seq baseline it multiplies is the one
@@ -102,14 +108,30 @@ round — so this exercises auto-par over heap-churning work rather than an arit
 
 | | mean | vs kāra |
 |---|---:|---:|
+| C `clang -O3` | 3.6 ms ± 0.1 | 7.54× faster |
+| Rust `rustc -O` | 15.3 ms ± 0.1 | 1.76× faster |
+| Rust `-C overflow-checks=on` (equal safety) | 15.6 ms ± 0.1 | 1.73× faster |
+| Go `go build` | 16.3 ms ± 0.4 | 1.65× faster |
+| kāra `karac build` | 26.9 ms ± 1.2 | — |
+
+Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, sink `3299190`.
+**kāra trails `rustc -O` (1.76×) and Go (1.65×)** on work that is almost entirely hash-map
+traffic, flat against the 2026-09-05 feed (1.85×, 1.79×). Against legacy dd86e3955
+(`KARAC_AUTO_PAR=0`) the seq build is 0.84× the instructions and 0.92× the cycles. The seq
+binary is 68,728 B; cold compile is 178.8 ms ± 12.1 against `rustc -O`'s 164.5 ms ± 2.0
+(1.09×), at 63.7 MiB against 40.8 MiB peak.
+
+*History: x86-64 container, 2026-08-18.*
+
+| | mean | vs kāra |
+|---|---:|---:|
 | C `clang -O3` | 6.6 ms ± 0.3 | 4.03× faster |
 | kāra `karac build` | 26.5 ms ± 1.0 | — |
 | Go `go build` | 27.8 ms ± 1.7 | 1.05× slower |
 | Rust `-C overflow-checks=on` (equal safety) | 34.7 ms ± 1.8 | 1.31× slower |
 | Rust `rustc -O` | 35.3 ms ± 2.6 | 1.33× slower |
 
-Workload: 120 rounds × 3,000 LCG-driven push/pop steps over a 12-value domain, sink `3299190`.
-**kāra beats `rustc -O` and edges Go** on work that is almost entirely hash-map traffic.
+On that host kāra led `rustc -O` and edged Go.
 
 > **This ordering does not survive the M5.** On the canonical Apple M5 Pro lane
 > ([`bench/results.json`](bench/results.json), measured 28 August 2026) the row above
@@ -216,8 +238,8 @@ Two caveats on the C row, both cutting against reading it as a like-for-like win
 - The C mirror hand-rolls an open-addressing table with a multiply-and-mask hash. Same
   *algorithm* — the corpus rule — but a far simpler map than Rust's SwissTable or Go's, and with
   12 distinct keys it sits entirely in L1. Closer to a floor for "what this costs with an ideal
-  map" than an ergonomic competitor. It is also single-threaded: the par-lane kāra binary (10.0
-  ms) is within striking distance of it.
+  map" than an ergonomic competitor. It is also single-threaded: the par-lane kāra binary was (10.0
+  ms) within striking distance of it on the container; on the M5 it is 2.16× behind (7.7 vs 3.6 ms).
 - An earlier draft of that mirror indexed plain arrays by value instead of hashing — a different
   data structure, so not the same algorithm. It was rewritten before these numbers were taken.
 ## Files
@@ -233,3 +255,7 @@ Two caveats on the C row, both cutting against reading it as a like-for-like win
 Verified identical across `karac run --interp`, `karac run` (JIT), `karac
 build`, and `KARAC_AUTO_PAR=0 karac build`, against the Python oracle —
 including the stress checksum `5913`.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On gd33cb285d (measured 2026-11-04) the seq lane is better than legacy dd86e3955 (0.84× instructions, 0.92× cycles), but the par lane went 6.85 → 7.72 ms on a 7 ms lane, 1.90× → 2.31× rayon and 1.52× → 1.77× Go-par. Kāra's seq-to-par gain is 3.5× against rayon's 4.6×.

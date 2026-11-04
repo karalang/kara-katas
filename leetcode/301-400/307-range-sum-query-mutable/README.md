@@ -160,23 +160,27 @@ where a destructive union-find forced a rebuild.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| rust (`-O -C overflow-checks=on`, equal safety) | 232.0 ms | 0.97× |
-| rust (`-O`) | 235.0 ms | 0.98× |
-| c (`-O3`) | 236.4 ms | 0.99× |
-| **kara** (codegen, seq) | **238.7 ms** | **1.00×** |
-| go | 278.6 ms | 1.17× |
-| python | 9.186 s | 38.5× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 232.6 ms | 0.90× |
+| c (`-O3`) | 234.2 ms | 0.90× |
+| rust (`-O`) | 236.0 ms | 0.91× |
+| **kara** (codegen, seq) | **259.4 ms** | **1.00×** |
+| go | 277.5 ms | 1.07× |
+| python (last measured 2026-09-21, not re-run) | 9.186 s | 38.5× |
 
-Four compiled languages inside 3%, with Kāra 1.01× behind `clang -O3` and
-1.03× behind equal-safety Rust — a clear improvement on x86's 1.10× and 1.07×
-respectively, and one of the two tightest lanes in the M5 batch alongside
-[#303](../303-range-sum-query-immutable/). A Fenwick tree's update and query
-are both short dependent-load chains, so the arithmetic checks have slack to
-hide in.
+Same feed: binary kāra 68,552 B, C 33,512 B, Rust 466,504 B, Go 2,509,202 B; peak RSS kāra 6.8 MiB, C 6.6 MiB, Rust 6.7 MiB, Go 9.0 MiB; compile kāra 105.8 ms, C 41.2 ms, Rust 85.0 ms.
+
+Flat against the previous feed, under the 10% threshold (1.02× → 1.10×
+`rustc -O`, 1.01× → 1.11× `clang -O3`). Kāra is 1.11× behind `clang -O3`, 1.12×
+behind equal-safety Rust and 1.07× ahead of Go; C and both Rust rows sit within
+1.5% of each other. x86 had Kāra 1.10× behind `clang -O3` and 1.07× ahead of
+equal-safety Rust, so this host shows no gain on C and loses the equal-safety
+lead. A Fenwick tree's update and query are both short dependent-load chains, so
+the arithmetic checks have slack to hide in: Rust's checked build is 0.99× its
+unchecked one here.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
@@ -195,6 +199,9 @@ Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x
 Kāra is **1.10× behind `clang -O3`** — the narrowest compiled gap of the four
 range/grid katas in this run — and ahead of Go and of equal-safety Rust in both
 its forms.
+
+*2026-11-04 note: that ranking is the container's. On the M5 feed Kāra still
+leads Go but trails equal-safety Rust 1.12×.*
 
 The trend across those four is the interesting part, because it is monotone in
 one variable: how much the loop body waits on memory.

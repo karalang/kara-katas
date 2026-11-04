@@ -7,12 +7,11 @@
 # dependency and does not admit a per-line parallel lane. BUT the bench's
 # OUTER reduction `sum = sum + pass_len(lines)` over ITERS independent passes
 # is recognized by karac's auto-par-on-reduction pass, which emits a
-# karac_par_reduce dispatch (binary grows ~83 KiB -> ~369 KiB, the par
+# karac_mir_task_spawn call (binary grows 68,544 -> 402,848 B, the par
 # machinery). Per BENCH.md's two-lane discipline the auto-par regime would
 # mask the per-core codegen-vs-rustc comparison the corpus is built around,
-# so we ship a second kara binary built with KARAC_AUTO_PAR=0 (codegen.rs
-# Slice 6 gate — short-circuits auto-par dispatch back to plain sequential
-# compile_block). The default binary is still built so the auto-par number
+# so we ship a second kara binary built with KARAC_AUTO_PAR=0.
+# The default binary is still built so the auto-par number
 # stays reported as the production regime.
 #
 # Requires: hyperfine (`brew install hyperfine`), rustc (rustup), clang,
@@ -201,7 +200,7 @@ echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned vs metal floo
 # THE differentiator. All FOUR parallelize the SAME ITERS reduction across the
 # machine's cores — but Kara's default `karac build` output got there with NO
 # parallel source (auto-par-on-reduction recognized `sum += pass_len` and emitted
-# a karac_par_reduce dispatch), while Rust needed the `rayon` crate +
+# a karac_mir_task_spawn call), while Rust needed the `rayon` crate +
 # `.into_par_iter()`, Go needed hand-written goroutine chunking + WaitGroup +
 # partial-merge, and C needed raw pthread create/join + chunk + merge. The C row
 # is the BARE-METAL FLOOR (raw OS threads, no runtime/work-stealing/GC) — it

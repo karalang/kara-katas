@@ -118,3 +118,7 @@ This lane previously read "no benchmark", on the grounds that the runtime is dom
 Which turned out to be the point. On the x86 corroboration host Kāra runs **793 ms against `rustc -O`'s 681 and equal-safety Rust's 716** — 1.17× and 1.11×. That independently reproduces the residual the compiler README already tracks ("a few string-building loops, ~1.2×"), on a workload chosen for a different reason. A lane that surfaces a known gap earns its place; recognition ([#246](../246-strobogrammatic-number/)) still carries the two-pointer-scan measurement for the pair.
 
 **The M5 lane reproduces it a third time**: on 2026-11-02 Kāra is **1.23× `rustc -O` and 1.19× equal-safety Rust**, against x86's 1.17×/1.11× — the same sign on a different ISA and allocator (it was 1.09×/1.05× on the M5 on the legacy backend, 2026-08-15; the MIR build is within 1.07× of legacy's instructions, so most of that move is comparator drift). Two hosts agreeing on a ~1.1–1.2× string-building residual is worth more than either measurement alone. `bench/results.container-x86.json` holds the x86 run; it is corroboration only (BENCHMARKS.md § Hosts).
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On g6697158fa, against legacy dd86e3955, this kata runs 1.07× the instructions (8.076G vs 7.533G) and 1.03× the cycles; the seq lane moved 1.09× → 1.23× Rust. Cycles barely moved, so the ratio move is mostly comparator drift.

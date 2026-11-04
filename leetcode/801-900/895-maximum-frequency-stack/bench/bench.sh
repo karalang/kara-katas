@@ -180,7 +180,7 @@ echo "=== runtime — PAR LANE (multi-core: auto-par vs hand-tuned) ==="
 # All three parallelize the SAME reduction over independent rounds. Kara's
 # default `karac build` got there with NO parallel source — auto-par-on-
 # reduction recognized `checksum = checksum + round(r, steps)` and emitted a
-# karac_par_reduce dispatch — while Rust needed rayon's `into_par_iter` and Go
+# karac_mir_task_spawn call — while Rust needed rayon's `into_par_iter` and Go
 # needed hand-written goroutine chunking + WaitGroup + partial merge.
 #
 # Apples-to-apples WITHIN this lane only. Per BENCH.md's two-lane discipline

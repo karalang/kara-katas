@@ -314,3 +314,9 @@ karac run  differential.kara              # agrees on all four surfaces
 python3 codec.py
 bash bench/bench.sh
 ```
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-31`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). The seq binary is 319,576 B on gd33cb285d (measured 2026-11-04), where most seq binaries in that re-bench are 52–69 KB. The root keeping the larger runtime path alive here is not yet found.
+
+**Surfaced [`B-2026-11-04-32`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Peak RSS is 233–235 MiB against Rust's 173 MiB under `/usr/bin/time -l`, 1.35×, the same on gd33cb285d and g7310a8f94 (measured 2026-11-04).

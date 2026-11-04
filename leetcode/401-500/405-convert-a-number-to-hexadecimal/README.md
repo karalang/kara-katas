@@ -70,10 +70,6 @@ emitted). #171's printing helper carries a real effect, which defeats that gate
 and exposed the bug. The fix serializes all output here too.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-06-15.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Workload: render **4M distinct values** to hex, concatenated into one growing
 buffer, then byte-checksummed (sink `2 231 199 964`). Persisting the output
 defeats allocation-elision — a per-render byte-sum lets `rustc`/`clang`/`go`
@@ -85,10 +81,12 @@ construction). Apple M5 Pro; `bench/bench.sh` (`hyperfine`).
 
 ### Seq lane — runtime (single-threaded string build)
 
-| | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
+M5 Pro, 2026-11-04, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend), `KARAC_AUTO_PAR=0`:
+
+| | C | Go | **Kāra** | Rust (`-O`) | Rust (`overflow-checks=on`) | Python |
 |---|---|---|---|---|---|---|
-| time | 16 ms | 49 ms | 236 ms | 235 ms | **305 ms** | 2049 ms |
-| vs Kāra | 18.6× faster | 6.2× faster | 1.30× faster | 1.30× faster | — | 6.7× slower |
+| time | 18.2 ± 0.7 ms | 51.1 ± 1.4 ms | **238.1 ± 29.4 ms** | 274.3 ± 12.0 ms | 276.6 ± 10.6 ms | 2049 ms *(last measured 2026-06-15, not re-run)* |
+| vs Kāra | 13.10× faster | 4.66× faster | — | 1.15× slower | 1.16× slower | not re-run |
 
 **This kata did its job twice over: it found two real codegen gaps and drove
 both fixes.** The first run trailed Rust **2.7×** (596 ms) — allocation-bound, as
@@ -112,25 +110,25 @@ Rust's total alloc-ops), instructions **−16%**, **286 → 271 ms**, at **zero
 memory cost** (macOS malloc's 16-byte quantum makes a 4- and 8-byte request the
 same chunk).
 
-Where Kāra now lands: **1.30× `rustc -O`** (1.30× at equal overflow safety) and
-**19× the C floor**. The residual is the *other* per-render allocation — the
-`String` that `to_hex` returns (Rust allocates it too) plus Rust's
-decade-hardened `String`/allocator codegen — plus C being the bare-metal floor
-that renders into a stack buffer and **never allocates per render at all** (so
-the 16× is "Kāra builds a String; C doesn't," not the same task). The last
-small-object lever is escape-analysis stack allocation of the non-escaping
-nibble buffer — tracked, lower-yield now that the realloc count matches Rust.
+Where Kāra now lands: **0.87× `rustc -O`** (0.86× at equal overflow safety), from
+1.30× on the 2026-06-15 feed, and **13.10× the C floor**. Kāra's σ is high in this run
+(12%), so read the Rust lead as a modest one. Exact instruction counts are 0.76× legacy
+dd86e3955's (`KARAC_AUTO_PAR=0`). C remains the bare-metal floor that renders into a
+stack buffer and **never allocates per render at all** (so the 13.10× is "Kāra builds a
+String; C doesn't," not the same task). The last small-object lever is escape-analysis
+stack allocation of the non-escaping nibble buffer — tracked, lower-yield now that the
+realloc count matches Rust.
 
 ### Compile, binary
 
 | | Kāra | Rust | C |
 |---|---|---|---|
-| compile elapsed | **76 ms** | 103 ms | 50 ms |
-| binary (seq) | **279 KiB** | 456 KiB | 33 KiB |
+| compile elapsed | 99.6 ms | 88.0 ms | 46.5 ms |
+| binary (seq) | **66.9 KiB** | 455.7 KiB | 32.9 KiB |
 
-Kāra's cold compile (76 ms) beats `rustc -O` (103 ms), and emits a **279 KiB**
-binary — 1.6× smaller than Rust, 8× smaller than Go (2.4 MiB). Runtime peak RSS
-(**31.4 MiB**, *below* Rust's 33.5 MiB) is dominated by the ~30 MB concatenated
+Kāra's cold compile (99.6 ms) is 1.13× `rustc -O` (88.0 ms), and it emits a **68,536 B**
+binary — 6.8× smaller than Rust, 36× smaller than Go (2.4 MiB). Runtime peak RSS
+(**33.5 MiB**, level with Rust's 33.5 MiB) is dominated by the ~30 MB concatenated
 output buffer — the per-render churn no longer inflates it now that the realloc
 count matches Rust.
 
@@ -139,7 +137,7 @@ exactly the way a token-text-building lexer does, surfaced a genuine codegen
 inefficiency (the `push_str(s[a..b])` temp-allocation — also the self-hosted
 lexer's hot path), and **two** fixes that closed most of the gap (2.7× → 1.30×
 Rust: the slice-borrow view, then the String min-cap-8 floor) ship from that
-finding. The katas exist to find Kāra's gaps and fix them on the spot — not just
+finding. On the 2026-11-04 feed Kāra reads 0.87× Rust. The katas exist to find Kāra's gaps and fix them on the spot — not just
 to win lanes.
 
 ## Kāra features exercised

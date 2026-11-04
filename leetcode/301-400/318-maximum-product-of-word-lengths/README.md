@@ -200,24 +200,30 @@ that stores cannot be turned into a pure reduction.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 352.8 ms | 0.73× |
-| rust (`-O`) | 384.4 ms | 0.80× |
-| **kara** (codegen, seq) | **483.3 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 548.6 ms | 1.14× |
-| go | 595.0 ms | 1.23× |
-| python | 7.462 s | 15.4× |
+| c (`-O3`) | 360.0 ms | 0.67× |
+| rust (`-O`) | 404.3 ms | 0.75× |
+| **kara** (codegen, seq) | **537.2 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 565.9 ms | 1.05× |
+| go | 613.1 ms | 1.14× |
+| python (last measured 2026-09-21, not re-run) | 7.462 s | 15.4× |
+
+Same feed: binary kāra 68,552 B, C 33,568 B, Rust 466,328 B, Go 2,509,410 B; peak RSS kāra 2.2 MiB, C 1.9 MiB, Rust 2.0 MiB, Go 3.7 MiB; compile kāra 112.8 ms, C 53.3 ms, Rust 95.7 ms.
+
+Within threshold against the previous feed: 1.26× → 1.33× `rustc -O`, and 0.95×
+equal-safety Rust. Legacy dd86e3955 instructions are 1.09×, cycles 1.12×
+([ledger](#bug-ledger)).
 
 **The field stops being a dead heat.** On the container every compiled mirror
 lands within 4% of every other — Kāra 1.01× behind `clang -O3`, 0.97× against
-equal-safety Rust. Here the same six programs spread over 1.7×: Kāra falls to
-1.37× behind clang while moving *ahead* of equal-safety Rust, 0.97× → 1.14×.
+equal-safety Rust. Here the same programs spread over 1.7×: Kāra falls to
+1.49× behind clang while moving *ahead* of equal-safety Rust, 1.05× here.
 Both moves are the same fact seen twice — the overflow trap costs more relative
 to this kernel on this core, and Rust-with-checks pays it harder than Kāra
-does (1.43× over its own unchecked build, against 1.01× on x86).
+does (1.40× over its own unchecked build, against 1.01× on x86).
 
 The x86 table below is the one the surrounding analysis refers to.
 
@@ -247,6 +253,9 @@ blocked by the same wall is a weak discriminator between backends, and it
 should be read as "karac's scalar codegen has no gap here", not as a
 throughput claim.
 
+*2026-11-04 note: "no gap" is the container's reading. On the M5 feed Kāra trails
+`rustc -O` 1.33× and `clang -O3` 1.49×.*
+
 Two secondary readings do survive:
 
 - **Equal-safety costs ~1%.** Kāra checks integer overflow by default and
@@ -272,9 +281,17 @@ clang's and 11× smaller than rustc's. Raw numbers in
 `bench/results.container-x86.json`; methodology and caveats in
 [`BENCHMARKS.md`](../../../BENCHMARKS.md).
 
+*2026-11-04 note: that table is the container snapshot. The M5 feed's binary,
+RSS and compile figures are on the "Same feed" line above; Kāra's binary is now
+68,552 B.*
+
 ## Compiler findings
 
 Nothing to file. Every arm type-checked on the first `karac check` except the
 demo loop in `max_product.kara`, where `let ws = cases[k];` moved out of an
 index expression; `karac fix` applied the suggested `.clone()` and the file was
 clean. No workarounds, no contorted phrasing, no `KARAC_AUTO_PAR=0`-only pass.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-33`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). On karac gd33cb285d (2026-11-04) this kata runs 1.09× the instructions and 1.12× the cycles of legacy dd86e3955 (`KARAC_AUTO_PAR=0`), with the seq lane at 1.26× → 1.33× `rustc -O`, inside the 10% threshold.

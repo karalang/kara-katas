@@ -100,15 +100,20 @@ correctness/codegen-surface probe for an open bug, not a performance claim.
 
 ### Runtime — 30 runs, 5 warmup
 
-Apple M5 Pro, karac `0.1.0-dev.8508+gc9032a670`, measured 2026-09-08.
+Apple M5 Pro, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend), measured 2026-11-04.
 
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| c | 5.3 ms ± 0.4 | **8.35× faster** |
-| go | 33.1 ms ± 0.9 | 1.33× faster |
-| rust (overflow-checks=on) | 37.2 ms ± 0.1 | 1.18× faster |
-| rust | 37.5 ms ± 0.2 | 1.17× faster |
-| **kāra** | **44.0 ms ± 1.0** | — |
+| c | 5.1 ms ± 0.1 | **5.99× faster** |
+| **kāra** | **30.5 ms ± 0.5** | — |
+| go | 34.4 ms ± 0.3 | 1.13× slower |
+| rust (overflow-checks=on) | 38.8 ms ± 0.3 | 1.27× slower |
+| rust | 39.0 ms ± 0.2 | 1.28× slower |
+
+Kāra reads 0.78× `rustc -O`, 0.79× equal-safety Rust, 0.89× Go and 5.99× C, against
+1.17×, 1.18×, 1.33× and 8.35× on the 2026-09-08 feed. Exact instruction counts are
+0.70× legacy dd86e3955's (`KARAC_AUTO_PAR=0`). The sink agrees across all five
+languages and depends on the map counts.
 
 ### The hash caveat this README used to carry is now RESOLVED — and it was right
 
@@ -127,31 +132,39 @@ old seed was a compile-time constant in the compiler's own source. So the table
 above IS the equal-hash comparison now; there is no longer a fast-hash arm to
 subtract. The `fasthash.rs` file is retained as history, not as a claim.
 
-The measured outcome at genuine parity is **1.18× behind** equal-safety Rust,
-against the old prediction of a tie. Close to that interval's edge, and a long
-way from the ~3× lead the pre-2026-08-22 numbers showed. The honest reading is
-that kāra's map is *in the same class* as `std::collections::HashMap` and
-currently slightly behind it — see kara `B-2026-09-07-53` for the corpus-wide
-measurement and `B-2026-09-07-42` for the bisect.
+The measured outcome at genuine parity on 2026-09-08 was **1.18× behind**
+equal-safety Rust, against the old prediction of a tie. Close to that interval's
+edge, and a long way from the ~3× lead the pre-2026-08-22 numbers showed. The honest
+reading then was that kāra's map is *in the same class* as
+`std::collections::HashMap` and slightly behind it — see kara `B-2026-09-07-53` for
+the corpus-wide measurement and `B-2026-09-07-42` for the bisect.
 
-**C's 8.4× lead** comes from a fixed 512-slot stack table with no allocation,
-no resizing and no rehash — still an open-addressed hash map, not a
-direct-address count table.
+**2026-11-04: "slightly behind" no longer holds, and the hash does not explain the
+change.** Kāra now reads 0.79× equal-safety Rust. This is still an equal-hash
+comparison: the emitted IR hashes through `karac.hash.word`, SipHash-1-3 under the
+per-process seed, and the Rust mirror uses the default `HashMap`.
+
+**C's 5.99× lead** no longer comes from a presized table. The mirror's old fixed
+512-slot stack table is gone: its map is now heap-allocated per call, starts at 16
+slots and grows at 75% load like the runtime's. It is still an open-addressed hash
+map rather than a direct-address count table, and it hashes with FxHash, where Kāra
+and Rust use SipHash-1-3.
 
 ### Compile, size, memory
 
 | Metric | kāra | rust | c | go |
 |---|---|---|---|---|
-| Compile (cold) | 367.1 ms ± 25.1 | 347.0 ms ± 15.3 | 140.6 ms ± 11.2 | — |
-| Binary size | **336.9 KiB** | 3886.6 KiB | 15.8 KiB | 2166.8 KiB |
-| Runtime peak RSS | 2.4 MiB | 2.2 MiB | 1.7 MiB | 5.1 MiB |
+| Compile (cold) | 130.1 ms ± 4.7 | 146.3 ms ± 1.8 | 57.6 ms ± 0.7 | — |
+| Binary size | **67.1 KiB** | 473.5 KiB | 32.8 KiB | 2434.3 KiB |
+| Runtime peak RSS | 1.3 MiB | 1.4 MiB | 1.3 MiB | 6.1 MiB |
 
-`karac build` lands within 6% of `rustc -O` here, and the binary is ~11.5×
+`karac build` takes 0.89× `rustc -O`'s time here, and the 68,736 B binary is ~7.1×
 smaller than Rust's.
 
 ### Measurement caveats
 
-- Virtualized x86-64 container; hyperfine flags outliers on several lanes even
+- Older container run only (`bench/results.container-x86.json`; σ in this M5 run
+  is under 3%). Virtualized x86-64 container; hyperfine flags outliers on several lanes even
   when idle, so the ~10–15% σ is intrinsic to the host. Read nothing into
   differences smaller than that — in particular the equal-hash lane and kāra
   are indistinguishable.

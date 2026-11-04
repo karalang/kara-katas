@@ -122,7 +122,7 @@ echo
 
 bench_begin id=332 slug=reconstruct-itinerary group=301-400 \
     title="Reconstruct Itinerary" \
-    workload="build a 1000-edge Eulerian graph once (40 cycles through JFK over ~961 airports), then 250 punches; each punch re-runs the full Hierholzer pass -- adjacency build, per-airport destination sort, recursive walk, reverse -- reading tickets from a rotated offset so the call cannot be hoisted while the sorted destinations keep the itinerary invariant; sink=position-weighted checksum of the route. NOTE: kara's adjacency build is O(degree) per edge because m[k].push(x) is rejected by codegen (ledger B-2026-07-25-5); the other four use their O(1) idiom." sink="$expected"
+    workload="build a 1000-edge Eulerian graph once (40 cycles through JFK over ~961 airports), then 250 punches; each punch re-runs the full Hierholzer pass -- adjacency build, per-airport destination sort, recursive walk, reverse -- reading tickets from a rotated offset so the call cannot be hoisted while the sorted destinations keep the itinerary invariant; sink=position-weighted checksum of the route." sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

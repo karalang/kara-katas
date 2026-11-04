@@ -57,21 +57,14 @@ Both implementations, all four surfaces, byte-identical to the oracle —
 including the empty-string and single-character edge cases.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-09-09 snapshot; the feed was last measured 2026-09-14.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-
 [`bench/`](bench/) — `bash bench/bench.sh`. Read
 [`../../../BENCHMARKS.md`](../../../BENCHMARKS.md) before quoting any of these.
 
-> **Host:** measured on the shared **x86-64 Linux cloud container**, so the run
-> is committed as `bench/results.container-x86.json`, not `results.json`. Per
-> the corpus convention, `results.json` is reserved for the canonical Apple M5
-> Pro numbers and is the only file `scripts/consolidate-bench.sh` feeds into the
-> top-level `bench-results.json`. **This kata has no M5 run yet**, so it is
-> deliberately absent from the consolidated feed rather than mixing a
-> container measurement into an M5-measured chart. Absolute times here are not
-> comparable to other katas' `results.json`; only the **within-file
-> cross-language ratios** are the signal.
+> **Host:** canonical **Apple M5 Pro**, committed as
+> [`bench/results.json`](bench/results.json) and fed into the top-level chart by
+> `scripts/consolidate-bench.sh`. The older x86-64 Linux container run is kept
+> alongside as `bench/results.container-x86.json`. Absolute times are not
+> comparable across hosts; only the **within-file cross-language ratios** are.
 
 **Workload.** Build-once + punch: a 4000-byte haystack is built once (25
 repeating chars plus a single `'z'` at the very end, so the answer sits at the
@@ -82,15 +75,20 @@ measurement. Sink = `8000000`, identical across all five languages.
 
 ### Runtime — 30 runs, 5 warmup
 
-Apple M5 Pro, karac `0.1.0-dev.8616+g4a9297ad0`, measured 2026-09-09.
+Apple M5 Pro, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend), measured 2026-11-04.
 
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
-| c | 14.0 ms ± 0.5 | **14.88× faster** |
-| go | 162.3 ms ± 1.6 | 1.28× faster |
-| rust | 182.7 ms ± 0.7 | 1.14× faster |
-| rust (overflow-checks=on) | 181.9 ms ± 0.3 | 1.14× faster |
-| **kāra** | **207.9 ms ± 5.6** | — |
+| c | 14.4 ms ± 0.3 | **8.34× faster** |
+| **kāra** | **120.1 ms ± 4.3** | — |
+| go | 163.3 ms ± 0.6 | 1.36× slower |
+| rust | 182.3 ms ± 0.8 | 1.52× slower |
+| rust (overflow-checks=on) | 183.4 ms ± 1.6 | 1.53× slower |
+
+Kāra reads 0.66× `rustc -O`, 0.66× equal-safety Rust, 0.74× Go and 8.34× C, against
+1.24×, 1.24×, 1.38× and 16.11× on the 2026-09-14 feed. Exact instruction counts are
+0.63× legacy dd86e3955's (`KARAC_AUTO_PAR=0`). The sink agrees across all five
+languages and depends on the map counts.
 
 Re-run 2026-09-09 against the typed hash entry point (`9ce695e9e`) and the
 runtime control-byte group scan (`6cc029853`): **1.14× behind equal-safety Rust,
@@ -129,20 +127,25 @@ compiler's own source, so colliding keys could be generated offline. The main
 table above is therefore the equal-hash comparison, and the `fasthash.rs` arm is
 retained as history rather than as a claim.
 
-The outcome at genuine parity is **1.14× behind** equal-safety Rust — the
-prediction was a tie, and the measurement landed just outside it on the
+The outcome at genuine parity on 2026-09-09 was **1.14× behind** equal-safety Rust —
+the prediction was a tie, and the measurement landed just outside it on the
 unfavourable side. Both the old 3.9× lead and the "72% of it is the hasher"
 decomposition are now history; what survives is the section's actual thesis,
 that kāra's map is in the same class as `std::collections::HashMap`. See kara
 `B-2026-09-07-42` (bisect) and `B-2026-09-07-53` (twelve katas, corpus-wide).
 
-**C's 15.3× lead has its own caveat.** Its map is a fixed 64-slot stack array
-that fits in L1 with no allocation, no resizing, and no rehash — a real
-implementation advantage over every heap-allocating stdlib map here. It is still
-an open-addressed hash map (not a direct-address count table, which would have
-been a different algorithm and would have flattered C further).
+**2026-11-04: Kāra now leads at that parity, and the hash does not explain the
+change.** It reads 0.66× equal-safety Rust. This is still an equal-hash comparison:
+the emitted IR hashes through `karac.hash.word`, SipHash-1-3 under the per-process
+seed, and the Rust mirror uses the default `HashMap`.
 
-**Overflow checks are free here** (562.8 vs 574.3 ms, well inside σ): this
+**C's 8.34× lead has its own caveat.** The mirror's old fixed 64-slot stack array is
+gone: its map is now heap-allocated per call, starts at 16 slots and grows at 75%
+load like the runtime's. It is still an open-addressed hash map (not a direct-address
+count table, which would have been a different algorithm and would have flattered C
+further), and it hashes with FxHash, where Kāra and Rust use SipHash-1-3.
+
+**Overflow checks are free here** (183.4 vs 182.3 ms, inside σ): this
 workload is map-dominated, not arithmetic-dominated, so the usual equal-safety
 tax does not appear. The hashing axis, not the arithmetic axis, is what matters
 for this kata.
@@ -151,18 +154,18 @@ for this kata.
 
 | Metric | kāra | rust | c | go |
 |---|---|---|---|---|
-| Compile (cold) | 377.0 ms ± 29.8 | 298.5 ms ± 7.6 | 131.9 ms ± 9.8 | — |
-| Binary size | **336.9 KiB** | 3886.7 KiB | 15.7 KiB | 2166.2 KiB |
-| Runtime peak RSS | 2.3 MiB | 2.1 MiB | 1.7 MiB | 5.6 MiB |
-| Compile peak RSS | **90.3 MiB** | 126.2 MiB | 97.2 MiB | — |
+| Compile (cold) | 123.2 ms ± 1.1 | 140.4 ms ± 3.2 | 56.4 ms ± 0.7 | — |
+| Binary size | **67.1 KiB** | 473.5 KiB | 32.8 KiB | 2434.3 KiB |
+| Runtime peak RSS | 1.2 MiB | 1.2 MiB | 1.3 MiB | 7.2 MiB |
+| Compile peak RSS | 62.5 MiB | 38.0 MiB | 2.6 MiB | — |
 
-Kāra's binary is ~11.5× smaller than Rust's and ~6.4× smaller than Go's, and it
-compiles in less memory than either rustc or clang while staying within 1.3× of
-`rustc -O` on wall time.
+Kāra's 68,720 B binary is ~7.1× smaller than Rust's and ~36× smaller than Go's. Its
+cold compile takes 0.88× `rustc -O`'s time, at 1.64× rustc's peak memory.
 
 ### Measurement caveats
 
-- Virtualized x86_64 container. hyperfine flags statistical outliers on the
+- Older container run only (`bench/results.container-x86.json`; σ in this M5 run
+  is under 4%). Virtualized x86_64 container. hyperfine flags statistical outliers on the
   kāra and C lanes **even on an idle re-run**, so the ~10% σ is intrinsic to the
   host, not interference. Means reproduced within 1–2% across two independent
   full runs, which is the reason to trust them; the σ is the reason not to read

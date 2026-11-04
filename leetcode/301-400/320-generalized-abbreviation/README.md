@@ -264,21 +264,24 @@ run can be at most 20 letters long here, so two digits always suffice.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| **kara** (codegen, seq) | **424.1 ms** | **1.00×** |
-| c (`-O3`) | 424.5 ms | 1.00× |
-| go | 438.5 ms | 1.03× |
-| rust (`-O`) | 451.4 ms | 1.06× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 451.7 ms | 1.07× |
-| python | 11.044 s | 26.0× |
+| c (`-O3`) | 436.8 ms | 1.00× |
+| **kara** (codegen, seq) | **437.7 ms** | **1.00×** |
+| go | 449.5 ms | 1.03× |
+| rust (`-O`) | 457.4 ms | 1.04× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 460.7 ms | 1.05× |
+| python (last measured 2026-09-21, not re-run) | 11.044 s | 26.0× |
 
-**Kāra ties `clang -O3` to within 0.1% and leads every other mirror**, having
-finished last of the compiled five on the container (1.17× behind C). The whole
-field compresses from 17% to 7%, and Rust's checked and unchecked builds are
-0.07% apart — on this workload the trap costs nothing, which is what makes the
+Same feed: binary kāra 68,520 B, C 33,576 B, Rust 466,328 B, Go 2,509,202 B; peak RSS kāra 1.0 MiB, C 1.0 MiB, Rust 1.1 MiB, Go 2.6 MiB; compile kāra 121.6 ms, C 47.5 ms, Rust 89.8 ms.
+
+Flat against the previous feed. **Kāra ties `clang -O3` to within 0.2% and leads
+every other mirror**, having finished last of the compiled five on the container
+(1.17× behind C). The whole field compresses from 17% to 5%, and Rust's checked
+and unchecked builds are 0.7% apart — on this workload the trap costs almost
+nothing, which is what makes the
 comparison a clean read on the integer-formatting and string-append paths the
 section above describes.
 
@@ -334,6 +337,10 @@ workload allocates one 28-byte buffer and holds no output — so the RSS column
 is measuring runtime overhead rather than the program. Raw numbers in
 `bench/results.container-x86.json`; methodology and caveats in
 [`BENCHMARKS.md`](../../../BENCHMARKS.md).
+
+*2026-11-04 note: that table is the container snapshot. The M5 feed's binary,
+RSS and compile figures are on the "Same feed" line above; Kāra's binary is now
+68,520 B.*
 
 ## Compiler findings
 

@@ -161,28 +161,31 @@ inputs are exactly what an optimiser may hoist and run once.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 151.9 ms | 0.47× |
-| rust (`-O`) | 237.8 ms | 0.74× |
-| **kara** (codegen, seq) | **322.0 ms** | **1.00×** |
-| go | 334.1 ms | 1.04× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 374.2 ms | 1.16× |
-| python | 20.274 s | 63.0× |
+| c (`-O3`) | 158.7 ms | 0.48× |
+| rust (`-O`) | 245.2 ms | 0.74× |
+| **kara** (codegen, seq) | **330.9 ms** | **1.00×** |
+| go | 345.2 ms | 1.04× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 389.7 ms | 1.18× |
+| python (last measured 2026-09-21, not re-run) | 20.274 s | 63.0× |
 
-**This lane loses ground where most of the batch gains it**: 1.20× → 2.12×
-against `clang -O3` and 1.04× → 1.35× against unchecked Rust. Kāra keeps its
-lead over equal-safety Rust (1.16×, against 1.38× on x86), so the ordering is
-unchanged and only the margins move.
+Same feed: binary kāra 68,552 B, C 33,512 B, Rust 466,488 B, Go 2,509,202 B; peak RSS kāra 4.7 MiB, C 3.3 MiB, Rust 3.4 MiB, Go 5.0 MiB; compile kāra 107.5 ms, C 45.0 ms, Rust 87.6 ms.
+
+Flat against the previous feed. **From x86 to this host, the lane loses ground
+where most of the 2026-09-21 batch gained it**: 1.20× → 2.08× against
+`clang -O3` and 1.04× → 1.35× against unchecked Rust. Kāra keeps its lead over
+equal-safety Rust (1.18×, against 1.38× on x86), so the ordering is unchanged and
+only the margins move.
 
 The cost is in the multiply-accumulate kernel, not the setup. The Kāra mirror
 does grow `a`, `b` and `c` from `Vec.new()` where Rust reserves
 (`Vec::with_capacity(cells)`, `vec![0; cells]`) and C mallocs exactly — the
 asymmetry that cost [#306](../306-additive-number/) 1.81× — but here it is
 worth nothing: a matched build (`with_capacity(n * n)` / `Vec.filled`)
-measures **325.0 ms against 321.9**, inside noise, because the build is one
+measured **325.0 ms against 321.9** on the previous compiler (not re-run), inside noise, because the build is one
 pass against 620 multiply passes. The mirror is therefore left as written, and
 the gap is the kernel's.
 
@@ -204,6 +207,9 @@ Kāra ties plain `rustc -O` (within 4%) and is comfortably ahead of Go (1.28×)
 and of **both** equal-safety Rust builds — 1.38× against `-C overflow-checks=on`,
 its largest such margin in this range.
 
+*2026-11-04 note: that tie is the container's. On the M5 feed Kāra trails
+`rustc -O` 1.35×, and leads Go 1.04× and equal-safety Rust 1.18×.*
+
 **The interesting column is the ISA one.** `c -O3` to `c -O3 -march=x86-64-v3`
 is a **1.49× jump** — far larger than the 1–3% that flag usually buys in this
 corpus. That is not noise and it is not mysterious: the inner loop is a textbook
@@ -224,7 +230,7 @@ suspect and not a finding**: this lane has no kāra-side ISA variant to compare
 against and no way to disable the checks, so nothing here distinguishes "cannot
 vectorise" from "vectorises but is limited by something else." Recorded as
 measured, on the same footing as
-[#310](../310-minimum-height-trees/)'s unexplained *win* over clang.
+[#310](../310-minimum-height-trees/)'s unexplained container-only *win* over clang.
 
 The flat row-major layout is a mirror-parity requirement rather than the kata's
 preference; [#308](../308-range-sum-query-2d-mutable/) measured nested

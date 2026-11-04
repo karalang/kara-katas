@@ -142,20 +142,22 @@ run — and it is the realistic shape anyway.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 179.7 ms | 0.83× |
-| rust (`-O`) | 181.6 ms | 0.84× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 203.8 ms | 0.94× |
-| **kara** (codegen, seq) | **215.9 ms** | **1.00×** |
-| go | 723.9 ms | 3.35× |
-| python | 14.906 s | 69.1× |
+| c (`-O3`) | 179.4 ms | 0.83× |
+| rust (`-O`) | 181.3 ms | 0.84× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 204.4 ms | 0.95× |
+| **kara** (codegen, seq) | **215.1 ms** | **1.00×** |
+| go | 741.8 ms | 3.45× |
+| python (last measured 2026-09-21, not re-run) | 14.906 s | 69.1× |
 
-Every gap narrows on this host: 1.87× → 1.20× against `clang -O3`, and
-1.39× → 1.06× against equal-safety Rust, which is close enough to call a tie.
-Go's outlier widens instead, 2.44× → 3.35×.
+Same feed: binary kāra 51,992 B, C 33,480 B, Rust 466,584 B, Go 2,509,202 B; peak RSS kāra 2.6 MiB, C 2.5 MiB, Rust 2.6 MiB, Go 4.2 MiB; compile kāra 102.4 ms, C 41.2 ms, Rust 78.0 ms.
+
+Flat against the previous feed. Every gap narrows from x86 to this host:
+1.87× → 1.20× against `clang -O3`, and 1.39× → 1.05× against equal-safety Rust.
+Go's outlier widens instead, 2.44× → 3.45×.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.

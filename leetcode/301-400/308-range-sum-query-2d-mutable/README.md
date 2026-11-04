@@ -153,23 +153,25 @@ languages print `checksum 108334916`.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 82.8 ms | 0.63× |
-| rust (`-O`) | 85.1 ms | 0.65× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 115.3 ms | 0.88× |
-| **kara** (codegen, seq) | **131.1 ms** | **1.00×** |
-| go | 147.1 ms | 1.12× |
-| python | 11.206 s | 85.5× |
+| c (`-O3`) | 83.6 ms | 0.72× |
+| rust (`-O`) | 86.0 ms | 0.74× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 115.3 ms | 0.99× |
+| **kara** (codegen, seq) | **116.0 ms** | **1.00×** |
+| go | 147.2 ms | 1.27× |
+| python (last measured 2026-09-21, not re-run) | 11.206 s | 85.5× |
 
-**The largest improvement in standing of the M5 batch.** On x86 this was the
-corpus's widest compiled gap — Kāra 2.94× behind `clang -O3` and last of the
-compiled four, behind Go. Here it is 1.58× behind clang and ahead of Go, with
-the equal-safety Rust gap down from 1.18× to 1.14×. Nothing about the kata
-changed; the 2D Fenwick's nested dependent-load chains simply cost far less
-relative to the arithmetic on this core.
+Same feed: binary kāra 68,504 B, C 33,512 B, Rust 466,504 B, Go 2,509,202 B; peak RSS kāra 6.0 MiB, C 5.9 MiB, Rust 6.0 MiB, Go 8.3 MiB; compile kāra 122.3 ms, C 43.4 ms, Rust 98.2 ms.
+
+**Improved against the previous feed:** 1.54× → 1.35× `rustc -O`, 1.58× → 1.39×
+`clang -O3`, and 1.14× → 1.01× equal-safety Rust, which is now level. On x86 this
+was the corpus's widest compiled gap — Kāra 2.94× behind `clang -O3` and last of
+the compiled four, behind Go. Here it leads Go 1.27×. Nothing about the kata
+changed between the two hosts; the 2D Fenwick's nested dependent-load chains
+simply cost far less relative to the arithmetic on this core.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.

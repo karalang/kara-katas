@@ -236,24 +236,29 @@ than in allocation.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 130.0 ms | 0.44× |
-| rust (`-O`) | 135.0 ms | 0.46× |
-| go | 231.2 ms | 0.78× |
-| **kara** (codegen, seq) | **295.8 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 296.6 ms | 1.00× |
-| python | 18.610 s | 62.9× |
+| c (`-O3`) | 131.4 ms | 0.43× |
+| rust (`-O`) | 139.6 ms | 0.46× |
+| go | 235.7 ms | 0.77× |
+| **kara** (codegen, seq) | **305.8 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 306.4 ms | 1.00× |
+| python (last measured 2026-09-21, not re-run) | 18.610 s | 62.9× |
 
-**Kāra and equal-safety Rust land on top of each other on both hosts** — 295.8
-vs 296.6 ms here, 553.2 vs 554.0 on the container. Two ISAs, two
-allocators, one ratio: 1.00×. That is as clean a demonstration as the corpus
-has that the cost is *checked arithmetic*, not either implementation of it.
+Same feed: binary kāra 68,504 B, C 33,560 B, Rust 466,488 B, Go 2,509,218 B; peak RSS kāra 1.8 MiB, C 1.7 MiB, Rust 1.8 MiB, Go 3.3 MiB; compile kāra 105.7 ms, C 46.4 ms, Rust 89.5 ms.
 
-What moves is the unchecked field: `clang -O3` goes from 1.60× ahead to 2.28×,
-and Go from 1.18× behind to 1.28× ahead. An O(n³) interval DP over a dense
+Flat against the previous feed. **Kāra and equal-safety Rust land on top of each
+other on both hosts** — 305.8 vs 306.4 ms here, 553.2 vs 554.0 on the container.
+Two ISAs, two allocators, one ratio: 1.00×. That is as clean a demonstration as
+the corpus has that the cost is *checked arithmetic*, not either implementation
+of it. So the 2.19× gap to `rustc -O` is the overflow-check cost, not the backend
+(legacy dd86e3955 cycles: 1.01×).
+
+What moves is the unchecked field: `clang -O3` goes from 1.60× ahead on the
+container to 2.33× here, and Go from 1.18× behind to 1.30× ahead, so Kāra trails
+Go 1.30×. An O(n³) interval DP over a dense
 table is pure indexed arithmetic, which is exactly where dropping the overflow
 trap buys the most.
 
@@ -276,8 +281,9 @@ Python is a correctness oracle here rather than a timed lane (it is gated behind
 run, not a hyperfine mean.
 
 **Kāra lands level with equal-safety Rust** — 553.2 ms against 554.0 ms, with
-the matched-ISA equal-safety build at 551.9 ms. Kāra beats Go by 1.18× and
-trails plain `rustc -O` by 1.32×.
+the matched-ISA equal-safety build at 551.9 ms. On this container Kāra led Go by
+1.18× and trailed plain `rustc -O` by 1.32×; the current M5 feed has it trailing
+Go 1.30× and `rustc -O` 2.19×.
 
 Read "level", not "0.1% apart", which is what this passage originally claimed.
 An independent rerun of the whole suite (2026-09-03, prompted by
@@ -326,7 +332,7 @@ checked-Rust's level.
    numbers would suggest.
 
 Recorded as measured, on the same footing as
-[#310](../310-minimum-height-trees/)'s unexplained *win* over clang.
+[#310](../310-minimum-height-trees/)'s unexplained container-only *win* over clang.
 
 ## Compiler findings
 

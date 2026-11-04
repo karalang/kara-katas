@@ -124,17 +124,19 @@ variations on already-hardened ground.
 
 ## Benchmarks
 
-The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`8381447680`). Workload: parse a 157KB valid chemical formula x 400 passes; stack-of-counts + range-fold multipliers + element-id->count map (C flat table, others hashmap).
+The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`8381447680`). Workload: parse a 157KB valid chemical formula x 400 passes; stack-of-counts + range-fold multipliers + element-id->count map (all four hash; C hand-rolls an open-addressing table).
 
-Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-09-08 (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
+Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-04, karac gd33cb285d, the v2/MIR backend (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |
 |---|---|---|
-| C `clang -O3` | 82.1 ms | 0.28× |
-| Rust `-O` | 161.3 ms | 0.55× |
-| Rust `-O -C overflow-checks=on` (equal-safety) | 169.6 ms | 0.58× |
-| Go | 253.1 ms | 0.86× |
-| **Kāra (codegen)** | 294.9 ms | 1.00× |
+| C `clang -O3` | 79.7 ms | 0.43× |
+| Rust `-O` | 158.7 ms | 0.86× |
+| Rust `-O -C overflow-checks=on` (equal-safety) | 165.9 ms | 0.90× |
+| **Kāra (codegen)** | 185.0 ms | 1.00× |
+| Go | 249.5 ms | 1.35× |
 
-Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac 8dc5a4d8baeb); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
+Kāra reads 1.17× `rustc -O`, 1.12× equal-safety Rust, 2.32× C and 0.74× Go, against 1.83×, 1.74×, 3.59× and 1.16× on the 2026-09-08 feed; exact instruction counts are 0.86× legacy dd86e3955's. The seq binary is 68,720 B.
+
+Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac gd33cb285d); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 

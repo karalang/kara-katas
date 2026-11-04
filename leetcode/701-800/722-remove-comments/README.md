@@ -116,10 +116,6 @@ code that extracts an **owned** run, the lexer's stored-token path.)*
 [`5bc5c2ec`]: ../../../../kara/
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Workload: `REPS=60`-fold synthetic C++ source (600 lines), the stripper run
 `ITERS=4000` times reducing to a surviving-char-count sink (30 960 000). Same
 **byte-indexed segment-slicing** algorithm across all five implementations.
@@ -129,21 +125,24 @@ comparison (the Kāra binary built `KARAC_AUTO_PAR=0`).
 
 ### Seq lane — runtime (single-threaded, apples-to-apples)
 
-| | Go | C | **Kāra (seq)** | Rust |
-|---|---|---|---|---|
-| time | 69.2 ms | 73.4 ms | **80.9 ms** | 80.3 ms |
-| vs Kāra | 1.17× faster | 1.10× faster | — | ~tied (1.01×) |
+M5 Pro, 2026-11-04, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend):
 
-Kāra runs **~tied with Rust** on identical code (~1.01×) and **1.10× of C**
-on a string-heavy workload. The `push_str`-borrow fix (karac `08ae0140`)
+| | Go | C | **Kāra (seq)** | Rust (`overflow-checks=on`) | Rust |
+|---|---|---|---|---|---|
+| time | 70.1 ± 1.6 ms | 79.9 ± 2.3 ms | **86.4 ± 2.2 ms** | 88.5 ± 1.5 ms | 90.0 ± 1.3 ms |
+| vs Kāra | 1.23× faster | 1.08× faster | — | 1.02× slower | 1.04× slower |
+
+Kāra runs **slightly ahead of Rust** on identical code (0.96× `rustc -O`, 0.98×
+equal-safety) and **1.08× of C** on a string-heavy workload, from 1.07× and 1.22× on
+the 2026-07-28 feed. The `push_str`-borrow fix (karac `08ae0140`)
 landed on this kata's exact hot path —
 `buffer.push_str(source[li][a..b])`, a slice of an *indexed* `Vec` element —
 shedding the per-segment temp allocation: a **load-immune −12.5 % on instructions
-retired (2.17 B → 1.90 B)**. That instruction count is the trustworthy headline
-here: this run's wall-clock board sat ~10 % below the prior run on thermal/load
-alone (every language moved together), so the within-lane ratios above — and the
-instruction count — are what carry the signal, not the absolute millisecond
-deltas. Getting here was the kata's most instructive perf lesson:
+retired (2.17 B → 1.90 B)**. That instruction count was the trustworthy headline
+for that fix: its wall-clock board sat ~10 % below the prior run on thermal/load
+alone (every language moved together), so the within-lane ratios and the
+instruction count carried the signal, not the absolute millisecond
+deltas. Getting there was the kata's most instructive perf lesson:
 
 Measured in **instructions retired** (load-immune — unlike wall-clock, it doesn't
 drift with thermal/load, so the forms compare cleanly across runs):
@@ -167,23 +166,23 @@ throwaway temp for the borrowed run (the "zero-copy" claim was aspirational). Th
 now appended through a `{ptr, len, cap: 0}` borrow view with **no allocation at
 all**, dropping the slice form to **1.90 B instructions (−12.5 % more, −45 % vs
 substring)** — and the codegen-quality gap to Rust stays closed (Kāra edges
-ahead, now level with C). Reserve `.substring()` for when the run must outlive the
+ahead, 1.08× C on the 2026-11-04 feed). Reserve `.substring()` for when the run must outlive the
 source (a stored token); for append, slice.
 
 ### Runtime memory, binary size, compile
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | **1.2 MiB** | 1.3 MiB | 1.2 MiB | 8.4 MiB |
-| binary size (seq) | 33 KiB | 456 KiB | 33 KiB | 2434 KiB |
-| compile elapsed | 94 ms | 119 ms | 52 ms | — |
-| compile peak RSS | 15.0 MiB | 31.6 MiB | 2.5 MiB | — |
+| **runtime peak RSS** | **1.2 MiB** | 1.3 MiB | 1.2 MiB | 8.5 MiB |
+| binary size (seq) | 66.9 KiB | 455.8 KiB | 32.9 KiB | 2434.2 KiB |
+| compile elapsed | 161.3 ms | 104.3 ms | 50.8 ms | — |
+| compile peak RSS | 64.3 MiB | 31.5 MiB | 2.5 MiB | — |
 
 Kāra's runtime memory is the **lowest tier** (1.2 MiB, level with C, just under
 Rust's 1.3) — the now-truly-zero-copy slice form allocates nothing per segment,
 and the earlier substring path's leak (fix #3) is moot here. The seq binary is
-33 KiB (14× smaller than Rust's 456 KiB, tied with C), and the cold compile
-(94 ms) edges `rustc -O` (119 ms).
+68,544 B (6.8× smaller than Rust's, 2.0× C's); the default auto-par binary is
+402,848 B. The cold compile takes 1.55× `rustc -O`'s time at 2.0× its peak memory.
 
 ### Par lane — auto-par vs hand-tuned parallelism (multi-core)
 
@@ -192,27 +191,27 @@ across lines → no per-line parallel lane), but the bench's outer reduction ove
 `ITERS` independent passes is embarrassingly parallel. All four parallelize that
 same reduction; the difference is what the programmer had to write:
 
+M5 Pro, 2026-11-04, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend):
+
 | | parallel code written | time |
 |---|---|---|
-| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 8.0 ms |
-| Rust + rayon | `rayon` crate + `.into_par_iter()` | 8.9 ms |
-| **Kāra (auto-par)** | **none** — the compiler emitted `karac_par_reduce` off the plain loop | **11.0 ms** |
-| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.5 ms |
+| C + pthreads *(metal floor)* | raw `pthread_create`/`join` + chunk + merge | 17.1 ± 1.8 ms |
+| Rust + rayon | `rayon` crate + `.into_par_iter()` | 17.3 ± 1.9 ms |
+| **Kāra (auto-par)** | **none** — the compiler parallelized the plain loop (one `karac_mir_task_spawn` call in the emitted IR) | **17.5 ± 1.6 ms** |
+| Go goroutines | manual chunk + `sync.WaitGroup` + merge | 24.4 ± 0.6 ms |
 
-**Kāra's auto-par lands within ~1.4× of the front of the pack — the raw-pthreads
-metal floor (8.0 ms) and rayon (8.9 ms) — and 2.2× ahead of goroutines, with no
-parallel source** (a ~7.4× speedup over its own seq binary). Here the work per
-pass is chunky (600 lines × `ITERS=4000`), so thread overhead amortizes and the
-hand-rolled C/rayon threads are genuinely the floor; Kāra has ~38% headroom to
-metal. (Contrast #394, whose fine-grained tasks invert this — Kāra's pooled
-runtime *beats* the C floor there. The C row is what makes that visible.) Per
-[`BENCH.md`]'s two-lane discipline this is multi-core, *not* comparable to the
-single-thread seq rows above.
+**Kāra's auto-par is level with the front of the pack — 1.02× the raw-pthreads metal
+floor and 1.01× rayon, all inside each other's error bars — and 1.40× ahead of
+goroutines (0.72× Go), with no parallel source** (a 4.94× speedup over its own seq
+binary). The 2026-07-28 feed read 1.21× C and 1.18× rayon. Here the work per pass is
+chunky (600 lines × `ITERS=4000`), so thread overhead amortizes. (Contrast #394, whose
+fine-grained tasks leave Kāra 1.37× behind the C floor.) Per [`BENCH.md`]'s two-lane
+discipline this is multi-core, *not* comparable to the single-thread seq rows above.
 
 **Buyer reframe.** Colorless parallelism: the speedup that costs a Rust team a
 crate + an API rewrite + data-race reasoning, a Go team hand-rolled chunk/merge,
 and a C team raw thread plumbing, Kāra delivers from the same single-threaded
-source — within ~1.4× of the metal floor. Fewer lines, fewer concurrency incidents,
+source — level with the metal floor (1.02×). Fewer lines, fewer concurrency incidents,
 near-floor throughput.
 
 [`BENCH.md`]: ../../../BENCH.md

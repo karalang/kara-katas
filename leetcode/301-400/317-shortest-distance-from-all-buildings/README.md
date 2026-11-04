@@ -179,20 +179,22 @@ run), so each pass now measures a different problem of the same size.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 499.4 ms | 0.97× |
-| **kara** (codegen, seq) | **513.2 ms** | **1.00×** |
-| rust (`-O`) | 561.6 ms | 1.09× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 565.3 ms | 1.10× |
-| go | 608.6 ms | 1.19× |
-| python | 11.814 s | 23.0× |
+| c (`-O3`) | 515.4 ms | 0.93× |
+| **kara** (codegen, seq) | **553.4 ms** | **1.00×** |
+| rust (`-O`) | 589.3 ms | 1.06× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 597.8 ms | 1.08× |
+| go | 620.9 ms | 1.12× |
+| python (last measured 2026-09-21, not re-run) | 11.814 s | 23.0× |
 
-Kāra finishes **second of the compiled five, 1.03× behind `clang -O3`** — a
-clear gain on the container's 1.26× — while keeping its lead over both Rust
-rows (1.10× against equal-safety, 1.07× on x86). Multi-source BFS over a flat
+Same feed: binary kāra 68,560 B, C 33,760 B, Rust 466,512 B, Go 2,509,234 B; peak RSS kāra 8.5 MiB, C 7.0 MiB, Rust 8.5 MiB, Go 21.4 MiB; compile kāra 148.0 ms, C 50.9 ms, Rust 118.7 ms.
+
+Flat against the previous feed. Kāra finishes **second of the compiled five,
+1.07× behind `clang -O3`** — a clear gain on the container's 1.26× — while keeping
+its lead over both Rust rows (1.08× against equal-safety, 1.07× on x86). Multi-source BFS over a flat
 grid is sequential memory traffic with a short arithmetic body, which is the
 profile that travels best to this host.
 
@@ -231,9 +233,9 @@ lanes cluster; the unchecked one is alone.
 only lane that hands those to a GC. It is also the only lane whose system time
 is a large fraction of its wall time.
 
-Peak RSS is 7.3 MiB (C), 8.7 MiB (Rust), 10.9 MiB (Kāra) and 19.8 MiB (Go)
+Container peak RSS is 7.3 MiB (C), 8.7 MiB (Rust), 10.9 MiB (Kāra) and 19.8 MiB (Go)
 against a working set of about 5.2 MiB — the grid plus five `i64` tables. The
-Kāra binary is 345 KiB, its compute floor plus the grid code; C's is 16 KiB,
+container's Kāra binary was 345 KiB, its compute floor plus the grid code; C's is 16 KiB,
 Rust's 3.9 MiB and Go's 2.2 MiB.
 
 ## Compiler findings: nothing to file

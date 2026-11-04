@@ -66,7 +66,7 @@ build_c() {
 # Kāra's checked-by-default integer semantics (design.md § Arithmetic Overflow).
 # `rustc -O` alone silently WRAPS on overflow; this `-C overflow-checks=on`
 # variant traps like Kāra. (For this allocation-bound render the safety tax is
-# small — it isolates that the gap here is allocation throughput, not checks.)
+# small — it isolates that this render's cost is allocation throughput, not checks.)
 build_rust_checked() {
     local src="$1"
     local out="target/$(basename "$src" .rs)_rschk"

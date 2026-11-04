@@ -132,22 +132,25 @@ on the last answer creates a serial dependency, so every pass must run.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 170.8 ms | 0.83× |
-| rust (`-O`) | 191.1 ms | 0.93× |
-| go | 199.9 ms | 0.98× |
-| **kara** (codegen, seq) | **204.7 ms** | **1.00×** |
-| rust (`-O -C overflow-checks=on`, equal safety) | 219.0 ms | 1.07× |
-| python | 10.238 s | 50.0× |
+| c (`-O3`) | 171.2 ms | 0.81× |
+| rust (`-O`) | 191.9 ms | 0.90× |
+| go | 206.1 ms | 0.97× |
+| **kara** (codegen, seq) | **212.1 ms** | **1.00×** |
+| rust (`-O -C overflow-checks=on`, equal safety) | 223.6 ms | 1.05× |
+| python (last measured 2026-09-21, not re-run) | 10.238 s | 50.0× |
 
-Kāra keeps its lead over equal-safety Rust (1.07×, the same margin as x86) and
-stays within 2% of Go. The row that moves is **C**, which goes from *slowest*
-compiled mirror on the container (1.17× behind Kāra) to fastest here (1.20×
-ahead) — a 1.40× swing that belongs entirely to the C mirror's own behaviour
-across the two hosts, not to anything in this comparison.
+Same feed: binary kāra 68,552 B, C 33,672 B, Rust 466,488 B, Go 2,509,202 B; peak RSS kāra 14.1 MiB, C 9.0 MiB, Rust 12.7 MiB, Go 11.2 MiB; compile kāra 132.2 ms, C 53.5 ms, Rust 107.1 ms.
+
+Flat against the previous feed. Kāra keeps its lead over equal-safety Rust
+(1.05×, against 1.07× on x86) and stays within 3% of Go. The row that moves is
+**C**, which goes from *slowest* compiled mirror on the container (1.17× behind
+Kāra) to fastest here (1.24× ahead) — a 1.45× swing that belongs entirely to the
+C mirror's own behaviour across the two hosts, not to anything in this
+comparison.
 
 Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x86.json),
 30 runs each.
@@ -163,19 +166,22 @@ Container x86-64, [`bench/results.container-x86.json`](bench/results.container-x
 | c (`-O3`) | 708.3 ms | 1.17× |
 | python | 38.965 s | 64.2× |
 
-**Kāra is faster than `clang -O3` here — the first time in this run.** Because
-that is a result favourable to kāra, it was checked harder than an unfavourable
-one would be: an independent back-to-back `hyperfine` session reproduced it
+**Kāra is not faster than `clang -O3` in the current feed: it trails 1.24× on the
+M5 (1.20× in the previous feed).** It led only on this container snapshot.
+Because that was a result favourable to kāra, it was checked harder than an
+unfavourable one would be: an independent back-to-back `hyperfine` session
+reproduced it on the container
 (kāra 605.0 ms ± 13.1 against C 723.3 ms ± 21.9), and the C mirror was rebuilt
 at `-O2` (0.70 s) and `-O3 -march=native` (0.69 s) in case `-O3` was
 pessimising. All five binaries print the same checksum, so they are doing the
 same work.
 
-**The cause is not established, and this README does not guess at one.** The
+**The cause of that container-only lead is not established, and this README does
+not guess at one.** The
 workload is dominated by two long strided passes per round — the O(n)
 degree/alive re-initialisation and the O(n) final accumulate — around a
-pointer-chasing peel, and which of those kāra's codegen handles better than
-clang's is exactly the question a timing table cannot answer. Distinguishing
+pointer-chasing peel, and which of those kāra's codegen handled better than
+clang's on that host is exactly the question a timing table cannot answer. Distinguishing
 them would need per-loop instrumentation this lane does not carry. Recorded as
 measured, on the same principle as
 [#304](../304-range-sum-query-2d-immutable/)'s refuted stride-multiply
@@ -183,8 +189,9 @@ hypothesis and [#309](../309-best-time-to-buy-and-sell-stock-with-cooldown/)'s
 unexplained loss to equal-safety Rust — the corpus is more useful with honest
 gaps in it than with plausible stories.
 
-Kāra also leads Go (1.04×) and both equal-safety Rust builds (1.07×), and
-trails only plain `rustc -O` by 2%.
+On the container Kāra also led Go (1.04×) and both equal-safety Rust builds
+(1.07×), and trailed only plain `rustc -O` by 2%. On the M5 feed it leads only
+equal-safety Rust (1.05×), and trails `rustc -O` 1.11× and Go 1.03×.
 
 ### One caveat on the layout
 

@@ -122,7 +122,7 @@ echo
 
 bench_begin id=347 slug=top-k-frequent-elements group=301-400 \
     title="Top K Frequent Elements" \
-    workload="build a 20000-element array once over ~600 distinct keys, then 300 punches; each punch mutates one element and runs the full tally + keys() walk + (count desc, key asc) insertion sort, taking k=10; sink=sum of returned keys across all punches." sink="$expected"
+    workload="build a 8000-element array once over ~200 distinct keys, then 300 punches; each punch mutates one element and runs the full tally + keys() walk + (count desc, key asc) insertion sort, taking k=10; sink=sum of returned keys across all punches." sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

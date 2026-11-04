@@ -159,28 +159,34 @@ five mirrors work on the byte buffer (bytes in, bytes out) and agree on
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 163.5 ms | 0.55× |
-| rust (`-O`) | 215.1 ms | 0.73× |
-| go | 246.5 ms | 0.83× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 246.6 ms | 0.83× |
-| **kara** (codegen, seq) | **296.3 ms** | **1.00×** |
-| python | 11.693 s | 39.5× |
+| c (`-O3`) | 170.0 ms | 0.66× |
+| rust (`-O`) | 221.9 ms | 0.86× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 250.4 ms | 0.97× |
+| go | 253.9 ms | 0.99× |
+| **kara** (codegen, seq) | **257.6 ms** | **1.00×** |
+| python (last measured 2026-09-21, not re-run) | 11.693 s | 39.5× |
 
-Kāra is last of the compiled four on both hosts, and the margins barely move:
-1.81× behind `clang -O3` here against 2.02× on the container, 1.20× behind
-equal-safety Rust against 1.13×. A stable cross-host gap like this belongs to
-the monotone-stack scan itself rather than to the allocator or the ISA.
+Same feed: binary kāra 68,520 B, C 33,656 B, Rust 466,520 B, Go 2,509,250 B; peak RSS kāra 7.0 MiB, C 4.9 MiB, Rust 4.9 MiB, Go 7.4 MiB; compile kāra 119.8 ms, C 50.4 ms, Rust 94.4 ms.
+
+**Improved against the previous feed:** 1.38× → 1.16× `rustc -O`, 1.81× → 1.52×
+`clang -O3`. Against legacy dd86e3955 it runs 1.19× the instructions in 0.83× the
+cycles: more instructions, running faster. Kāra is still last of the compiled
+lanes on both hosts, but the checked band is now tight: 1.03× behind equal-safety
+Rust (1.13× on the container) and 1.01× behind Go, both inside Kāra's own 11.7 ms
+σ. The
+margins now differ between hosts (1.52× behind `clang -O3` here, 2.02× on the
+container), so the earlier reading of a stable cross-host gap no longer holds.
 
 **The mirrors do differ at two allocation sites, and it is worth nothing here.**
 `remove_duplicate_letters` builds `last` and `on_stack` as heap `Vec`s grown by
 `push`, where Rust uses stack arrays (`[-1i64; 26]`, `[false; 26]`) and C
 uses `long long last[26]`. Rewriting them as `Array[i64, 26]` / `Array[bool,
-26]` and reserving `text` with `Vec.with_capacity(LEN)` measures **299.9 ms
-against 290.7** — no change, because the function runs `PASSES = 100` times
+26]` and reserving `text` with `Vec.with_capacity(LEN)` measured **299.9 ms
+against 290.7** on the previous compiler (not re-run) — no change, because the function runs `PASSES = 100` times
 against a 4,000,000-letter scan, so 200 small allocations are lost in the
 noise. Left as written. (The same asymmetry cost
 [#306](../306-additive-number/) 1.81×, where it sat in the inner loop — which

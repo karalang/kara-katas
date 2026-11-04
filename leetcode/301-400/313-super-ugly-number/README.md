@@ -280,20 +280,23 @@ the allocator.
 > **within-file cross-language ratios** are.
 
 Apple M5 Pro (6P+12E), [`bench/results.json`](bench/results.json), karac
-`0.1.0-dev.9423+g4ef50cbf3`, 30 runs each, measured 2026-09-21.
+`0.8.0-dev.14370+gd33cb285d` (gd33cb285d, v2/MIR backend), 30 runs each, measured 2026-11-04.
 
 | | mean | vs kara |
 |---|---:|---:|
-| c (`-O3`) | 157.0 ms | 0.88× |
-| go | 162.6 ms | 0.91× |
-| rust (`-O`) | 166.9 ms | 0.93× |
-| rust (`-O -C overflow-checks=on`, equal safety) | 173.7 ms | 0.97× |
-| **kara** (codegen, seq) | **178.7 ms** | **1.00×** |
-| python | 3.969 s | 22.2× |
+| c (`-O3`) | 158.2 ms | 0.84× |
+| go | 165.2 ms | 0.88× |
+| rust (`-O`) | 171.9 ms | 0.92× |
+| rust (`-O -C overflow-checks=on`, equal safety) | 180.0 ms | 0.96× |
+| **kara** (codegen, seq) | **187.3 ms** | **1.00×** |
+| python (last measured 2026-09-21, not re-run) | 3.969 s | 22.2× |
 
-The most host-stable lane in the batch: Kāra is **1.14× behind `clang -O3` on
-both hosts**, to two decimal places, and the whole compiled field fits in 14%.
-The equal-safety gap tightens slightly, 1.05× → 1.03×. A k-pointer merge is
+Same feed: binary kāra 68,504 B, C 33,688 B, Rust 466,312 B, Go 2,509,202 B; peak RSS kāra 1.9 MiB, C 1.8 MiB, Rust 1.8 MiB, Go 3.4 MiB; compile kāra 109.5 ms, C 46.9 ms, Rust 84.7 ms.
+
+Flat against the previous feed. Kāra is **1.18× behind `clang -O3`** (1.14× in
+both the previous M5 feed and the container snapshot), and the whole compiled
+field fits in 18%. It trails equal-safety Rust 1.04× here, where the container
+had it 1.05× ahead. A k-pointer merge is
 branch-heavy and allocation-free, so neither the allocator nor the vectoriser
 has anything to say about it — which is presumably why it travels so well.
 
@@ -321,6 +324,10 @@ equal-safety Rust, and trails unchecked `rustc -O` by 1.03× and `clang -O3` by
 one, kāra is ahead — a k-way merge is a good shape for it: the inner scan is a
 short unit-stride loop over `primes` with a data-dependent gather into `ugly`,
 and no allocation anywhere in the punch.
+
+*2026-11-04 note: that lead is the container's. On the M5 feed Kāra trails all
+four comparators: equal-safety Rust 1.04×, `rustc -O` 1.09×, Go 1.13×, `clang -O3`
+1.18×.*
 
 ### A methodology note, because the first version of this table was wrong
 
@@ -394,6 +401,11 @@ scans. What remains is ordinary task-framework overhead for regions this fine:
 the merge's inner scan is 40 elements, which is not enough work to pay for a
 dispatch, and no worker tuning changes it — the sweep was flat at every explicit
 count from 1 to 16 even before the fix.
+
+*2026-11-04 note: the table is previous-compiler history. On karac gd33cb285d the
+default build of `bench/ugly.kara` emits no call of `@karac_mir_task_spawn`, so
+auto-par does not fire on this workload and the 1.27× does not describe the
+current binary.*
 
 ## Compiler findings
 

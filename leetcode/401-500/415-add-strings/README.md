@@ -71,10 +71,6 @@ their leniency). The emit is a digit-table slice regardless — the idiomatic fo
 trusted.
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are undated; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
-
 Workload: a fixed 38-digit operand added to `decimal(k)` for **`TOTAL=500 000`**
 distinct `k`, every sum-string concatenated into one growing buffer, then
 byte-checksummed (sink `1 000 513 006`). Persisting the output defeats
@@ -87,28 +83,31 @@ auto-parallelize (seq-only by construction). Apple M5 Pro; `bench/bench.sh`
 
 ### Seq lane — runtime (single-threaded string build)
 
-| | C | Go | Rust (`-O`) | Rust (`overflow-checks=on`) | **Kāra** | Python |
-|---|---|---|---|---|---|---|
-| time | 33 ms | 134 ms | 198 ms | 202 ms | **250 ms** | 1924 ms |
-| vs Kāra | 7.6× faster | 1.87× faster | 1.27× faster | 1.24× faster | — | 7.7× slower |
+M5 Pro, 2026-11-04, karac `0.8.0-dev.14370+gd33cb285d` (gd33cb285d, the v2/MIR backend), `KARAC_AUTO_PAR=0`:
 
-**At equal overflow safety, Kāra trails Rust by 1.24×.** Kāra traps on integer
-overflow by default (design.md § Arithmetic Overflow); `rustc -O` silently wraps.
-Here that costs almost nothing — `-C overflow-checks=on` moves Rust only 198 → 202
-ms (+2 %) — because the work is **allocation-bound, not arithmetic-bound**: the
-column add is a stream of single-digit sums that never overflow, so the trap
-branches are free. At that equal-safety point Kāra sits 1.24× behind Rust (250 vs
-202 ms). The `DIGITS[d..d+1]` render rides the same now-truly-zero-copy
+| | C | Go | Rust (`-O`) | **Kāra** | Rust (`overflow-checks=on`) | Python |
+|---|---|---|---|---|---|---|
+| time | 32.8 ± 0.5 ms | 135.0 ± 2.9 ms | 201.0 ± 5.4 ms | **203.1 ± 7.3 ms** | 210.4 ± 7.5 ms | 1924 ms *(last measured 2026-06-15, not re-run)* |
+| vs Kāra | 6.19× faster | 1.50× faster | 1.01× faster | — | 1.04× slower | not re-run |
+
+**At equal overflow safety, Kāra reads 0.97× Rust, and 1.01× `rustc -O`**, from 1.16×
+`rustc -O` on the 2026-07-28 feed. Exact counts are 0.90× legacy dd86e3955's
+(`KARAC_AUTO_PAR=0`). Kāra traps on integer overflow by default (design.md § Arithmetic
+Overflow); `rustc -O` silently wraps. Here that costs little —
+`-C overflow-checks=on` moves Rust only 201 → 210 ms (+5 %) — because the work is
+**allocation-bound, not arithmetic-bound**: the column add is a stream of single-digit
+sums that never overflow. The `DIGITS[d..d+1]` render rides the same now-truly-zero-copy
 `push_str`-borrow path (karac `08ae0140`) that #722 remove-comments and #405
 convert-to-hex measured — appended through a `{ptr, len, cap: 0}` view, no temp
-per digit. C is the bare-metal floor (7.6×): it renders into a stack buffer and
-**never allocates per result at all**, so the gap is "Kāra/Rust build a `String`;
-C doesn't," not the same task.
+per digit. C is the bare-metal floor (6.19×): it renders into a stack buffer and
+**never allocates per result at all**, and its mirror keeps a running byte-sum rather
+than a growing buffer, so the gap is "Kāra/Rust build a `String`; C doesn't," not the
+same task.
 
 **No par lane — by construction (unlike its slice-partner [#722](../../701-800/722-remove-comments/)).**
 This is a string *build*: `out.push_str(r)` carries a loop-borne dependency on
 the buffer, so karac's auto-par-on-reduction pass does not fire — verified here,
-the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run
+(on gd33cb285d, 2026-11-04) the default and `KARAC_AUTO_PAR=0` binaries are **byte-identical** and both run
 single-threaded. The same property that makes the output un-elidable (you must
 build the whole buffer before observing it) also makes it un-parallelizable.
 #722's outer reduction over *independent* passes is the shape that auto-pars; an
@@ -118,26 +117,23 @@ accumulate-into-one-buffer render, like #415 and #405, is sequential.
 
 | | Kāra | Rust | C | Go |
 |---|---|---|---|---|
-| **runtime peak RSS** | 21 MiB | **21 MiB** | 1 MiB | 62 MiB |
-| binary size (seq) | **295 KiB** | 455 KiB | 33 KiB | 2434 KiB |
-| compile elapsed | **86 ms** | 111 ms | 53 ms |
+| **runtime peak RSS** | 20.6 MiB | **20.6 MiB** | 1.0 MiB | 62.2 MiB |
+| binary size (seq) | **66.9 KiB** | 455.7 KiB | 32.8 KiB | 2434.2 KiB |
+| compile elapsed | 110.1 ms | 96.7 ms | 49.0 ms | — |
 
 The honest counterpoint to #722 (where Kāra was the memory floor): here Kāra's
-peak RSS is **~at parity with Rust's** (21 vs 21 MiB). Both hold the ~19 MB output buffer,
-and the per-object slack that the
-**small-object-allocation overhead** target names
-([`phase-7-codegen.md`](../../../../kara/docs/implementation_checklist/phase-7-codegen.md),
-the same residual #405's `~1.3×` gap names) no longer separates them on memory here. The
-wall-clock gap is **1.24× behind Rust** at equal overflow safety, surfacing the
-small-object-allocation cost in speed rather than memory on this run. Compile still
-favors Kāra — cold compile 86 ms edges `rustc -O` (111 ms),
-and the 295 KiB binary is 1.5× smaller than Rust's 455 KiB.
+peak RSS is **at parity with Rust's** (20.6 MiB each). Both hold the ~19 MB output
+buffer, and the per-object slack that the **small-object-allocation overhead** target
+names ([`phase-7-codegen.md`](../../../../kara/docs/implementation_checklist/phase-7-codegen.md))
+does not separate them on memory here. Wall clock is level too (1.01× `rustc -O`, 0.97×
+at equal overflow safety), so that overhead no longer shows on speed in this run. Cold
+compile takes 1.14× `rustc -O`'s time (110.1 vs 96.7 ms), and the 68,536 B binary is
+6.8× smaller than Rust's.
 
-**Where this lands.** A clean allocation-bound string-build: Kāra trails Rust by
-1.24× on speed at equal overflow safety, beats it on compile and binary, and sits
-at parity on memory — the small-object-allocation gap surfacing exactly where the
-workload is allocation-heavy. The render is the lexer's `from_str_radix`-inverse
-glyph path, on the hardened zero-copy slice.
+**Where this lands.** A clean allocation-bound string-build: Kāra is level with Rust
+on speed at equal overflow safety and on memory, smaller on binary, and slightly behind
+on compile. The render is the lexer's `from_str_radix`-inverse glyph path, on the
+hardened zero-copy slice.
 
 ## Kāra features exercised
 
