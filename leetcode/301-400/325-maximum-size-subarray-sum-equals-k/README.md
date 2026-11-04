@@ -126,11 +126,47 @@ hash tables as much as of compilers:
   key (checked against Rust's SipHash-2-4 with the round counts swapped).
 - **Go** uses its built-in map and its own hash, and **Python** its dict.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `343512294`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| rust `-O` | 186.0 ms ± 1.8 | 1.13× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **210.2 ms ± 3.6** | **1.00×** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 229.6 ms ± 1.0 | 0.92× |
+| go `go build` | 274.0 ms ± 2.9 | 0.77× |
+| c `clang -O3` | 295.0 ms ± 1.2 | 0.71× |
+
+**Kāra is 1.13× behind `rustc -O` and ahead of equal-safety Rust (0.92×), Go
+(0.77×) and this C table (0.71×).** Overflow checks cost Rust 23% here (186.0
+→ 229.6 ms). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`, exact counts) the
+seq binary runs 0.51× the instructions.
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 54.8 ms ± 0.8 | 32.9 KiB | 22.4 MiB |
+| rust | 116.3 ms ± 0.6 | 473.7 KiB | 14.6 MiB |
+| kāra | 115.3 ms ± 2.5 | 67.1 KiB | 17.1 MiB |
+| go | — | 2450.5 KiB | 23.6 MiB |
+
+Kāra's seq binary is 68,712 B, 2.0× clang's and 7.1× smaller than rustc's. The
+default `karac build` is 2.1× clang's cold compile and 1.0× rustc's. Go's row
+ran at 103.1% CPU (user 272.1 ms), so its wall time understates its CPU.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10181+gf2907d370`, measured 2026-10-02. Python is its own lane at
@@ -158,6 +194,10 @@ itself (93 per call, not inlinable because the hasher is chosen when the map
 is constructed), and resizing costs twice hashbrown's instruction count. Python is
 unusually close because nearly all of its time is in the dict, which is C.
 
+> **Note (2026-11-04):** this ranking is container-only. On the M5 lane Kāra
+> is 1.13× `rustc -O` and ahead of equal-safety Rust and C (0.92×, 0.71×), and
+> `B-2026-10-02-39` is fixed (kara `3332de7763`).
+
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
@@ -180,7 +220,7 @@ are in `bench/results.container-x86.json`. Methodology and caveats are in
 **No correctness gaps.** All five programs were byte-identical on every
 surface from the first run.
 
-- **[`B-2026-10-02-39`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (perf, low, open): Kāra's `Map` is 1.65× Rust's
+- **[`B-2026-10-02-39`](https://github.com/karalang/kara/blob/main/docs/bug-ledger.jsonl) (perf, low, fixed in kara `3332de7763`): Kāra's `Map` is 1.65× Rust's
   `HashMap` on this growth-heavy workload**, at equal hashing, while a C
   table of the runtime's design is within 7% of Kāra. A monomorphized
   `entry(k).or_insert(v)` was prototyped (the claim currently takes the

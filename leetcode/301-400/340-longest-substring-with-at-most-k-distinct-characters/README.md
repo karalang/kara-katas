@@ -102,11 +102,48 @@ for 400 rounds. A rolling hash of every round's answer is the sink. Rust uses
 C, which has no standard map, a 128-slot open-addressing table with backward
 shift deletion.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-04, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 29.1 ms ± 0.4 | 5.92× |
+| rust `-O` | 109.3 ms ± 1.1 | 1.57× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 110.5 ms ± 1.3 | 1.56× |
+| go `go build` | 153.3 ms ± 0.7 | 1.12× |
+| **kāra `karac build`, seq** | **171.9 ms ± 5.0** | **—** |
+
+Kāra is 1.57× `rustc -O`, 1.56× equal-safety Rust and 1.12× Go. The 5.92×
+against C is not an equal-hashing comparison: the C mirror is a small
+hand-written open-addressing table of 128 slots. Against the legacy backend
+(exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.80× the
+instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.1 ms ± 0.4 | 32.9 KiB | 1.2 MiB |
+| rust | 126.7 ms ± 0.7 | 474.0 KiB | 1.6 MiB |
+| kāra | 159.3 ms ± 1.6 | 67.2 KiB | 1.5 MiB |
+| go | — | 2450.8 KiB | 8.0 MiB |
+
+`karac build` is 3.2× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 141288741`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each (Python: 3), on a 4-core x86-64 Linux container, measured
 2026-10-04, karac built from `main` at `4ed27deb7`. Python is its own lane.

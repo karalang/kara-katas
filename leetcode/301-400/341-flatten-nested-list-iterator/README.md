@@ -113,11 +113,47 @@ Int(i64), List(Vec<Nested>) }`, Go a struct with a slice, C a tagged struct
 that frees each list's array once its members are on the stack, and Python
 ints and lists.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-05, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 72.7 ms ± 0.9 | 1.33× |
+| rust `-O` | 74.6 ms ± 0.6 | 1.29× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 76.3 ms ± 0.7 | 1.26× |
+| **kāra `karac build`, seq** | **96.3 ms ± 0.8** | **—** |
+| go `go build` | 228.9 ms ± 3.5 | 0.42× |
+
+Kāra is 1.29× `rustc -O`, 1.26× equal-safety Rust and 1.33× C, and well ahead
+of Go at 0.42×. The gaps were not investigated on this host. Against the
+legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes
+0.37× the instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.5 ms ± 0.5 | 33.0 KiB | 5.4 MiB |
+| rust | 92.8 ms ± 0.3 | 457.1 KiB | 3.7 MiB |
+| kāra | 108.4 ms ± 2.6 | 66.9 KiB | 3.8 MiB |
+| go | — | 2434.3 KiB | 14.8 MiB |
+
+`karac build` is 2.1× clang's cold compile and 1.2× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 131040260`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each (Python: 3), on a 4-core x86-64 Linux container, measured
 2026-10-05, karac built from `d456e8f1f` (B-2026-10-05-16's fix before it
@@ -145,6 +181,9 @@ instructions. The rest is `pop()`: `Nested` is four words, one more than
 `while let` frees the box again (B-2026-10-05-20). The kernel makes 487,028
 such allocations over 8 rounds on top of the 125,747 list buffers that Rust
 also allocates.
+
+Note (2026-11-04): on the M5 feed Kāra is 1.26× equal-safety Rust. The
+callgrind figures above are the container's and have not been repeated.
 
 Compile time (cold, 10 runs) and artefact size:
 

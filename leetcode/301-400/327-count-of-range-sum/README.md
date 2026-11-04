@@ -126,11 +126,46 @@ one value at a random position, draws a fresh interval `[-w, w]` with `w` in
 prefix-sum array, sorted by the merge sort that does the counting. Each count
 is folded into a rolling hash, which is the sink.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `167387094`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 114.9 ms ± 0.8 | 1.24× |
+| rust `-O` | 137.1 ms ± 1.2 | 1.04× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 140.8 ms ± 0.9 | 1.01× |
+| go `go build` | 141.7 ms ± 0.9 | 1.01× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **142.6 ms ± 0.4** | **1.00×** |
+
+**Kāra is level with equal-safety Rust (1.01×) and Go (1.01×), 1.04× behind
+`rustc -O` and 1.24× behind `clang -O3`.** Overflow checks cost Rust 2.7% here
+(137.1 → 140.8 ms).
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 48.9 ms ± 0.5 | 32.8 KiB | 3.3 MiB |
+| rust | 91.4 ms ± 0.4 | 455.9 KiB | 3.6 MiB |
+| kāra | 111.4 ms ± 2.5 | 66.9 KiB | 3.6 MiB |
+| go | — | 2450.5 KiB | 15.7 MiB |
+
+Kāra's seq binary is 68,512 B, 2.0× clang's and 6.8× smaller than rustc's. The
+default `karac build` is 2.3× clang's cold compile and 1.2× rustc's. Go's row
+ran at 106.0% CPU (user 140.8 ms), so its wall time understates its CPU.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10196+gfcd99fa94` with B-2026-10-02-47's fix applied, measured
@@ -153,6 +188,10 @@ equal-safety Rust are 3 ms apart with standard deviations of 12 ms. Plain
 either, which suggests (not measured separately) that the overflow checks
 in the merge's inner loops cost about that much. The matched-ISA Rust row had outliers (± 47 ms) and should
 not be read as slower. Go is 56% behind C.
+
+> **Note (2026-11-04):** on the M5 lane Go is level with Kāra rather than
+> behind it, Rust's checks cost 2.7% rather than about 10%, and `karac build`
+> is 2.3× clang's cold compile and 1.2× rustc's rather than 15.5× and 11×.
 
 Compile time (cold, 10 runs) and artefact size:
 

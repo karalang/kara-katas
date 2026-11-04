@@ -114,11 +114,47 @@ into `7,#,#`, and one with a `#` inserted. Each of 160 punches checks one of
 them, so the work is the split and the count over about 200,000 tokens. The
 sink is a rolling hash of each answer and the string it came from.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `445967011`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 108.4 ms ± 2.0 | 1.51× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **164.0 ms ± 2.4** | **1.00×** |
+| rust `-O` | 184.5 ms ± 2.9 | 0.89× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 185.2 ms ± 1.3 | 0.89× |
+| go `go build` | 327.9 ms ± 2.1 | 0.50× |
+
+**Kāra is ahead of both Rust builds (0.89×) and Go (0.50×), and 1.51× behind
+`clang -O3`.** Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`, exact counts) the
+seq binary runs 0.16× the instructions. Peak RSS is 93.7 MiB for Kāra and 96.5
+MiB for Rust, against 37.5 MiB for Go and 9.5 MiB for C.
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 53.5 ms ± 0.7 | 32.9 KiB | 9.5 MiB |
+| rust | 103.5 ms ± 0.6 | 456.5 KiB | 96.5 MiB |
+| kāra | 119.0 ms ± 1.3 | 312.1 KiB | 93.7 MiB |
+| go | — | 2450.9 KiB | 37.5 MiB |
+
+Kāra's seq binary is 319,568 B, 9.5× clang's and 1.5× smaller than rustc's.
+The default `karac build` is 2.2× clang's cold compile and 1.1× rustc's. Go's
+row ran at 107.9% CPU (user 341.7 ms), so its wall time understates its CPU.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each (Python: 3), on a 4-core x86-64 Linux container, karac built from
 `main` at `bc22c5fe2` with this thread's three unpushed commits (none touches
@@ -145,6 +181,11 @@ borrowed `&str`, Go's `strings.Split` makes string headers that share the
 input's bytes, and C scans in place. Overflow checks cost Rust nothing here.
 This is filed as B-2026-10-03-10.
 
+> **Note (2026-11-04):** this ranking and its cause are legacy-only.
+> `B-2026-10-03-10` is fixed (kara `83cbad997f`; on v2 the tokens are views
+> and no token allocates), and on the M5 lane Kāra is 0.89× both Rust builds.
+> Python was not re-run, so the CPython comparison has no M5 figure.
+
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
@@ -166,7 +207,7 @@ Methodology and caveats are in [`BENCHMARKS.md`](../../../BENCHMARKS.md).
 **No wrong answers**, and every arm was byte-identical on every surface from
 the first run. Verifying the kata found one slowdown and one leak report:
 
-- **B-2026-10-03-10 (perf, medium, open): `for tok in s.split(",")` heap
+- **B-2026-10-03-10 (perf, medium, fixed in kara `83cbad997f`): `for tok in s.split(",")` heap
   allocates and frees every token, even when the loop only compares it.** It
   is the whole gap in the benchmark above. The runtime already has a
   non-owning string header that the element drop skips, so a split whose
@@ -185,3 +226,9 @@ the first run. Verifying the kata found one slowdown and one leak report:
 `karac check` reported nothing on any of the five programs. That says little
 about the diagnostics: the author already knows the language, which is why
 authoring like this never counts toward the machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-31`](../../../../kara/docs/bugs-v2.md)** (perf, low,
+open). The seq binary is 319,568 B, where most seq binaries on this compiler
+are 52–69 KB. Same size class as the row's katas.

@@ -113,11 +113,46 @@ again with a fresh memo. The sink is a rolling hash of each answer and the
 punched cell. Every twin walks the four neighbours by looping over a literal
 of four direction pairs, and recurses rather than keeping its own stack.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `354060968`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 48.9 ms ± 0.3 | 1.40× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 58.2 ms ± 0.7 | 1.18× |
+| rust `-O` | 59.2 ms ± 0.5 | 1.16× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **68.4 ms ± 0.9** | **1.00×** |
+| go `go build` | 97.9 ms ± 0.5 | 0.70× |
+
+**Kāra is 1.16× behind `rustc -O`, 1.18× behind equal-safety Rust and 1.40×
+behind `clang -O3`, and ahead of Go (0.70×).** Overflow checks do not separate
+the Rust builds here (59.2 and 58.2 ms).
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.0 ms ± 0.6 | 49.0 KiB | 5.0 MiB |
+| rust | 104.8 ms ± 1.6 | 455.9 KiB | 5.2 MiB |
+| kāra | 112.0 ms ± 1.3 | 66.9 KiB | 5.2 MiB |
+| go | — | 2450.5 KiB | 13.3 MiB |
+
+Kāra's seq binary is 68,520 B, 1.4× clang's and 6.8× smaller than rustc's. The
+default `karac build` is 2.5× clang's cold compile and 1.1× rustc's. Go's row
+ran at 102.3% CPU (user 97.0 ms), so its wall time understates its CPU.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each, on a 4-core x86-64 Linux container, karac built from `main`
 at `f4b946e17` with the fixes for B-2026-10-02-70 and -71 applied, measured

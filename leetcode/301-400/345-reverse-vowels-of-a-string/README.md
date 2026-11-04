@@ -111,11 +111,45 @@ into a character array and packs it back; the bench keeps the array and times
 the loop between, in every language, so the workload is the algorithm and
 not each language's string conversion.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-05, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 277.1 ms ± 0.8 | 1.02× |
+| **kāra `karac build`, seq** | **281.9 ms ± 1.3** | **—** |
+| rust `-O` | 321.8 ms ± 1.7 | 0.88× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 322.0 ms ± 1.1 | 0.88× |
+| go `go build` | 623.0 ms ± 2.0 | 0.45× |
+
+Kāra is 0.88× both Rust builds, level with C at 1.02×, and 0.45× Go. None of
+these gaps was investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 42.3 ms ± 0.6 | 32.7 KiB | 1.8 MiB |
+| rust | 79.5 ms ± 0.7 | 455.7 KiB | 1.9 MiB |
+| kāra | 99.2 ms ± 1.0 | 50.7 KiB | 1.9 MiB |
+| go | — | 2450.4 KiB | 3.4 MiB |
+
+`karac build` is 2.3× clang's cold compile and 1.2× rustc's. Kāra's binary
+is 1.5× clang's and 9.0× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 629446893`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10448+g76727438c`, measured 2026-10-05, with the timed lane built
@@ -139,6 +173,10 @@ C binary contains no vector instructions at all, so its loop is scalar. Kāra
 and Rust match it, which suggests theirs are scalar too; that was not checked
 instruction by instruction. Kata 344's swap loop, which rustc does vectorize,
 put Rust 4× ahead; nothing like that happens here.
+
+Note (2026-11-04): on the M5 feed Rust does not tie: Kāra leads it by 12% and
+C by 14%, and Go is 2.21× Kāra. Kata 344's Rust lead on this host is 2.47×,
+not 4×.
 
 Compile time (cold, 10 runs) and artefact size:
 

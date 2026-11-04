@@ -188,13 +188,46 @@ an optimizer to erase, and the inner loop carries a dependence on `best[a - c]`,
 so there is nothing to vectorise either. The C twin gains nothing from
 `x86-64-v3`, which confirms it.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`, the file
-> `scripts/consolidate-bench.sh` feeds into the top-level chart) is not
-> measured yet, and `bench-lib.sh` refuses to write it from Linux. Absolute
-> milliseconds are NOT comparable between hosts. Only the **within-file
-> cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `437809599 reached 16`,
+agreed by every row. Python and the matched-ISA twins were not run on this
+host; their last figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 106.3 ms ± 0.7 | 1.85× |
+| rust `-O` | 149.9 ms ± 3.1 | 1.31× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 194.9 ms ± 5.1 | 1.01× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **196.5 ms ± 6.0** | **1.00×** |
+| go `go build` | 210.7 ms ± 2.4 | 0.93× |
+
+**Kāra is level with equal-safety Rust (1.01×), 1.31× behind `rustc -O`, 1.85×
+behind `clang -O3`, and ahead of Go (0.93×).** The gap to `rustc -O` is mostly
+overflow checks: they cost Rust 30% here (149.9 → 194.9 ms), and that build
+lands on Kāra's row.
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.5 ms ± 1.0 | 32.9 KiB | 8.7 MiB |
+| rust | 92.4 ms ± 0.8 | 455.6 KiB | 8.8 MiB |
+| kāra | 106.5 ms ± 2.1 | 66.9 KiB | 8.8 MiB |
+| go | — | 2450.4 KiB | 11.3 MiB |
+
+Kāra's seq binary is 68,552 B, 2.0× clang's and 6.8× smaller than rustc's. The
+default `karac build` is 2.3× clang's cold compile and 1.2× rustc's.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.9471+g03b67200d`, measured 2026-09-23. Python is its own lane at

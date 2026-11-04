@@ -124,11 +124,53 @@ flag. The C and Rust twins never free the list, since the process exits right
 after; Rust's own drop of a million-node `Rc` chain would recurse once per
 node.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `933734468`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 103.3 ms ± 2.1 | 2.44× |
+| go `go build` | 200.7 ms ± 7.7 | 1.25× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **251.8 ms ± 8.9** | **1.00×** |
+| rust `-O` | 669.7 ms ± 39.3 | 0.38× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 686.0 ms ± 43.5 | 0.37× |
+
+**C is fastest, then Go, then Kāra, then Rust: Kāra is 2.44× C and 1.25× Go,
+and runs at 0.38× `rustc -O` and 0.37× equal-safety Rust.** The rows follow
+the node representation. C and Go nodes are a bare value and pointer. A Kāra
+`shared struct` is reference-counted with a borrow flag on its `mut` fields.
+The Rust mirror is `Rc<RefCell<ListNode>>`, with strong and weak counts and a
+borrow flag, and its regroup and walk loops clone an `Rc` at every step, which
+writes those counts. Peak RSS over the million nodes is 16.3 MiB for C, 20.1
+for Go, 31.7 for Kāra and 47.1 for Rust, the same order as the times. That is
+a correlation from the mirrors and the memory rows; the split between node
+size and refcount writes was not profiled.
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 42.5 ms ± 0.8 | 48.8 KiB | 16.3 MiB |
+| rust | 94.4 ms ± 0.6 | 456.1 KiB | 47.1 MiB |
+| kāra | 107.9 ms ± 1.1 | 66.9 KiB | 31.7 MiB |
+| go | — | 2450.5 KiB | 20.1 MiB |
+
+Kāra's seq binary is 68,512 B, 1.4× clang's and 6.8× smaller than rustc's. The
+default `karac build` is 2.5× clang's cold compile and 1.1× rustc's. Go's row
+ran at 103.9% CPU (user 205.0 ms), so its wall time understates its CPU.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10208+g9b394d94c` with the fixes for B-2026-10-02-57 and -60
@@ -153,6 +195,10 @@ ahead, so read the two as a tie. The peak memory below suggests why Go leads:
 a million Go nodes take 18 MiB against 32 to 33 MiB for C and Kāra and 48 MiB
 for Rust, and a denser list puts more nodes in each cache line a walk pulls
 in. That reading is inferred from the memory numbers, not measured.
+
+> **Note (2026-11-04):** on the M5 lane C is fastest, not Go (Go is 1.94× C),
+> and the rows separate rather than overlap: Kāra is 2.44× C and 0.38× `rustc
+> -O`.
 
 Compile time (cold, 10 runs) and artefact size:
 

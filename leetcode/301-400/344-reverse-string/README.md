@@ -100,11 +100,48 @@ position, reverses the whole array in place, and reads one character back at
 another random position, which is folded into a rolling hash, the sink. The
 read position is drawn after the reversal, so no compiler can skip one.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-05, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 42.3 ms ± 0.1 | 2.48× |
+| rust `-O` | 42.3 ms ± 0.1 | 2.47× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 42.4 ms ± 0.2 | 2.47× |
+| **kāra `karac build`, seq** | **104.6 ms ± 1.9** | **—** |
+| go `go build` | 112.0 ms ± 7.0 | 0.93× |
+
+Kāra is 2.47× both Rust builds and 2.48× C, and ahead of Go at 0.93×. It
+executes 4.017G instructions against 0.82G for both Rust builds and for C.
+Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) that
+count is 1.00×, so it is not a MIR regression. The gap is not attributed (see
+Bug ledger).
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 42.3 ms ± 1.0 | 32.7 KiB | 1.8 MiB |
+| rust | 79.9 ms ± 0.7 | 455.7 KiB | 1.9 MiB |
+| kāra | 100.1 ms ± 1.6 | 50.7 KiB | 1.9 MiB |
+| go | — | 2450.4 KiB | 7.5 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 1.5× clang's and 9.0× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 258295624`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10448+g76727438c`, measured 2026-10-05, with the timed lane built
@@ -130,6 +167,10 @@ here carries LLVM 21; clang and karac carry LLVM 18. That the newer
 vectorizer is what recognises the converging two-index swap is an inference
 from that difference, not something measured by building the C with a newer
 clang.
+
+Note (2026-11-04): this ranking is the container's. On the M5 feed C ties Rust
+(42.3 ms each), and Kāra is 2.48× C and 0.93× Go. The explanation here has not
+been tested on this host.
 
 Compile time (cold, 10 runs) and artefact size:
 
@@ -179,3 +220,7 @@ none in the compiled code. All four are fixed in the kara repo.
 
 The author already knows the language, so none of this counts toward the
 machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-36`](../../../../kara/docs/bugs-v2.md)** (perf, medium, open). Kata 344 executes 4.017G instructions on karac gf0017054a against 0.82G for both Rust builds and for C, for 2.47× Rust and 2.48× C. Legacy dd86e3955 (`KARAC_AUTO_PAR=0`) executes the same count (1.00×), so it is not a MIR regression. Not attributed.

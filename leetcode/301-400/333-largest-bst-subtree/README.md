@@ -125,11 +125,45 @@ back, so every punch walks the whole tree. The sink is a rolling hash of the
 answers. The Python mirror keeps the pool as three parallel lists rather than
 a list of node objects; the other three mirror the Kāra struct layout.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro
+
+30 runs each, 5 warmups, on the Apple M5 Pro (6P+12E), karac
+`0.8.0-dev.14374+gf0017054a` (v2/MIR backend), measured 2026-11-04. This is
+the kata's first M5 run and the canonical lane,
+[`bench/results.json`](bench/results.json). Sink `42385374`, agreed by every
+row. Python and the matched-ISA twins were not run on this host; their last
+figures are the container's, below.
+
+| implementation | mean | Kāra ÷ this |
+|---|---|---|
+| c `clang -O3` | 131.2 ms ± 4.7 | 1.09× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 131.3 ms ± 8.2 | 1.09× |
+| rust `-O` | 134.4 ms ± 10.1 | 1.06× |
+| **kāra `KARAC_AUTO_PAR=0 karac build`** | **143.0 ms ± 3.8** | **1.00×** |
+| go `go build` | 162.6 ms ± 2.2 | 0.88× |
+
+**Kāra is 1.06× behind `rustc -O`, 1.09× behind equal-safety Rust and `clang
+-O3`, and ahead of Go (0.88×).** The two Rust rows are noisy on this run (σ
+10.1 and 8.2 ms), and the gap to `rustc -O` is inside the first of them.
+
+Compile time (cold, 10 runs), artefact size and peak RSS:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.0 ms ± 0.8 | 32.8 KiB | 4.1 MiB |
+| rust | 91.6 ms ± 1.5 | 455.6 KiB | 5.8 MiB |
+| kāra | 106.1 ms ± 1.3 | 66.9 KiB | 5.8 MiB |
+| go | — | 2434.2 KiB | 13.8 MiB |
+
+Kāra's seq binary is 68,504 B, 2.0× clang's and 6.8× smaller than rustc's. The
+default `karac build` is 2.3× clang's cold compile and 1.2× rustc's.
+
+### Container x86-64 history
+
+> **Host:** these are x86-64 Linux cloud container figures, from
+> [`bench/results.container-x86.json`](bench/results.container-x86.json), kept as
+> history and not re-run. Absolute milliseconds are NOT comparable between hosts.
+> Only the **within-file cross-language ratios** are.
 
 30 runs each (Python: 3), on a 4-core x86-64 Linux container, karac built
 from `main` at `bc22c5fe2` with this thread's unpushed commits (none touches
@@ -155,6 +189,10 @@ that separate the languages elsewhere. That is inferred from the near-tie,
 not measured. The order of the Rust and C rows is not
 meaningful at these spreads.
 
+> **Note (2026-11-04):** on the M5 lane the compiled rows span 1.24× rather
+> than 11%, and Kāra is 1.09× behind both equal-safety Rust and C rather than
+> level with C.
+
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
@@ -179,3 +217,10 @@ correct: `distinct` is a reserved word (the parser named the
 `not`). That says little about the diagnostics: the author already knows the
 language, which is why authoring like this never counts toward the
 machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-39`](../../../../kara/docs/bugs-v2.md)** (perf, low,
+open). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`, exact counts) this kata's
+seq binary runs 1.21× the instructions and 1.01× the cycles (1.155G vs 0.952G
+instructions).

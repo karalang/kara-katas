@@ -115,11 +115,45 @@ slot is put back. The sink is a rolling hash of each answer and position.
 The C and Go mirrors carry each threshold as a value and a "set" flag, which
 is what `Option[i64]` amounts to.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-03, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 35.1 ms ± 0.2 | 1.05× |
+| **kāra `karac build`, seq** | **36.7 ms ± 0.7** | **—** |
+| rust `-O` | 38.1 ms ± 0.2 | 0.96× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 38.5 ms ± 1.3 | 0.95× |
+| go `go build` | 43.5 ms ± 0.5 | 0.84× |
+
+Kāra is 4% ahead of `rustc -O` and 5% ahead of equal-safety Rust, 5% behind C,
+and 16% ahead of Go. None of these gaps was investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 42.8 ms ± 0.7 | 32.7 KiB | 8.7 MiB |
+| rust | 77.8 ms ± 1.0 | 455.7 KiB | 10.8 MiB |
+| kāra | 98.7 ms ± 1.1 | 66.9 KiB | 10.8 MiB |
+| go | — | 2434.1 KiB | 11.1 MiB |
+
+`karac build` is 2.3× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 215681120`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each (Python: 3), on a 4-core x86-64 Linux container, karac built
 from `main` at `bc22c5fe2` with this thread's unpushed commits (none touches
@@ -142,6 +176,9 @@ compares on values streaming from memory, and the 1,000,000-value array is
 8 MB, so the scan is probably bound by memory bandwidth rather than by the
 code; that is inferred from the tie, not measured. The matched-ISA Rust row
 being slowest has not been looked into.
+
+Note (2026-11-04): on the M5 feed C leads Kāra by 5% (35.1 ms ± 0.2 against
+36.7 ms ± 0.7), so that three-way tie is a container result.
 
 Compile time (cold, 10 runs) and artefact size:
 

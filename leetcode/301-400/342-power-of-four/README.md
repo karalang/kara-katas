@@ -137,11 +137,51 @@ again. The test has no loop, so the classification pass is the whole cost.
 The count and sum of accepted values are folded into a rolling hash, which
 is the sink.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-04
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14374+gf0017054a`
+(gf0017054a, the v2/MIR backend), measured 2026-11-04, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the history
+below was last measured 2026-10-05, on the container, and not re-run. The last
+column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 26.5 ms ± 0.1 | 5.95× |
+| rust `-O` | 64.4 ms ± 0.5 | 2.45× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 154.9 ms ± 2.1 | 1.02× |
+| **kāra `karac build`, seq** | **157.8 ms ± 1.1** | **—** |
+| go `go build` | 175.8 ms ± 0.7 | 0.90× |
+
+Kāra ties equal-safety Rust at 1.02× and is ahead of Go at 0.90×, and is 2.45×
+`rustc -O` and 5.95× C. The gap to `rustc -O` is mostly overflow checks, since
+checked Rust is 2.40× plain Rust. In rustc's assembly for the two builds, `-O`
+makes the classification loop branchless (`csel`, `cinc`), while the checked
+build branches on each acceptance and carries `adds`/`b.vs` for `count += 1`
+and `sum += x`. The C gap was not investigated. Against the legacy backend
+(exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.20× the
+instructions in 1.39× the cycles (see Bug ledger).
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.3 ms ± 0.5 | 32.8 KiB | 2.9 MiB |
+| rust | 82.2 ms ± 0.5 | 455.8 KiB | 3.0 MiB |
+| kāra | 103.0 ms ± 1.5 | 66.9 KiB | 3.0 MiB |
+| go | — | 2450.4 KiB | 9.4 MiB |
+
+`karac build` is 2.3× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 207349543`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10448+g76727438c`, measured 2026-10-05. Python is its own lane at
@@ -170,6 +210,10 @@ element, and most of that is the branch on whether a value is accepted,
 which the random mix makes unpredictable: the same C build on an array of
 nothing but powers of four runs in 0.07 s instead of 0.36 s. The vector loop
 has no branch to mispredict.
+
+Note (2026-11-04): this ranking is the container's. On the M5 feed Kāra ties
+only equal-safety Rust (1.02×), `rustc -O` and `clang -O3` are 2.45× and 5.95×
+ahead of it, and there is no matched-ISA row.
 
 Compile time (cold, 10 runs) and artefact size:
 
@@ -208,3 +252,7 @@ a narrowing coercion. The message suggests `as i32` at the call, and
 `karac fix` has no edit for it. Typing the range, `-1000i32..1000001`, is
 the better fix, since the values all fit. The author already knows the
 language, so none of this counts toward the machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-04-37`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`), kata 342 executes 1.20× the instructions in 1.39× the cycles, on karac gf0017054a.

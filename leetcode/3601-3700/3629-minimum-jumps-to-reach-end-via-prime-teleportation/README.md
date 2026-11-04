@@ -41,6 +41,8 @@ Note: the LeetCode hint says "for each prime `p` dividing `nums[i]`," but the pr
 
 **Surfaced [`B-2026-06-15-3`](../../../../kara/docs/bug-ledger.md)** (auto-par compile-time blow-up, fixed `c3050fc8`). This kata's auto-parallelized reduction captured a fixed-size sieve array **by value** into the per-branch worker env; LLVM's `-O2` store-merging then scalarized the multi-KB copy and went super-linear — `karac build` ballooned to **60 s / 639 MiB** (vs ~95 ms normally). The compile-elapsed numbers below are post-fix; the fix captures array-typed reduction captures by pointer (a read-only shared input whose parent frame outlives the join).
 
+**Surfaced [`B-2026-11-04-38`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Seq peak RSS rose from 59.9 MiB to 88.9 MiB between the 2026-07-28 feed and karac gf0017054a (2026-11-04), while Rust held at 60.1 MiB.
+
 ## Running
 
 ```bash
@@ -50,27 +52,35 @@ diff <(karac run bfs_sieve.kara) <(python3 bfs_sieve.py) && echo OK
 ```
 
 ## Benchmarks
-<!-- bench-staleness -->
-> **Figures in this section are a 2026-06-05 snapshot; the feed was last measured 2026-07-28.** Where the two disagree, [`bench/results.json`](bench/results.json) and the [charts](../../../BENCHMARKS.md) are current; the numbers below are kept because the analysis around them explains *why* the shape is what it is, and that reasoning outlives the milliseconds.
-> Comparative claims below ("ahead of C", "leads Rust", ratios) were true of the snapshot and have **not** been re-verified against the current feed — treat them as historical, not as the standing result.
 
-Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, Go, and Python. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`bfs_sieve.{kara,rs,c}`, `go-seq/main.go`). The Python timing batch always runs (~1 s/run is tolerable here); only the Python *sink cross-check* is gated behind `KARA_BENCH_INCLUDE_PY=1`.
+Wall-clock + compile-cost comparison across same-shape implementations in Kāra, Rust, C, and Go, on the M5 Pro with karac `0.8.0-dev.14374+gf0017054a` (gf0017054a, the v2/MIR backend), measured 2026-11-04. Driver is [`bench/bench.sh`](bench/bench.sh); per-mirror sources sit alongside it (`bfs_sieve.{kara,rs,c}`, `go-seq/main.go`, and the par mirrors `rayon/`, `bfs_sieve_par.c`, `go-par/`). Python rows run only with `KARA_BENCH_INCLUDE_PY=1`, which this run did not set, so its figures below are labelled with their own date.
 
-**Workload.** N = 50,000 deterministically-seeded `nums` with values up to 10⁶ chosen to maximize teleport activity (every node has ≥1 prime factor); K = 50 outer iterations amortize per-process startup. The full O(cap log log cap) sieve over `cap = 10⁶` dominates wall-clock; that's intentional — the sieve + bucket build is the hot path the kata's data structure exists to support. Sink is the BFS layer count summed across iterations; all five mirrors must agree on `24350` before any timing begins.
+**Workload.** N = 50,000 deterministically-seeded `nums` with values up to 10⁶ chosen to maximize teleport activity (every node has ≥1 prime factor); K = 50 outer iterations amortize per-process startup. The full O(cap log log cap) sieve over `cap = 10⁶` dominates wall-clock; that's intentional — the sieve + bucket build is the hot path the kata's data structure exists to support. Sink is the BFS layer count summed across iterations; every compiled mirror, seq and par, must agree on `24350` before any timing begins.
 
 ### Runtime
 
-Snapshot — M5 Pro, 2026-06-05, hyperfine `--warmup 2 --runs 10 --shell=none`:
+Seq lane, M5 Pro, 2026-11-04, hyperfine `--warmup 2 --runs 10`. Kāra is the `KARAC_AUTO_PAR=0` twin:
 
-| Implementation | Wall time |
-|---|---|
-| c    bfs_sieve (clang -O3) | **1761.8 ± 104.1 ms** |
-| rust bfs_sieve            | **2389.8 ± 335.3 ms** |
-| **kāra bfs_sieve (codegen, seq)** | **4005.0 ± 107.9 ms** |
-| go   bfs_sieve            | 4136.2 ± 60.4 ms |
-| py   bfs_sieve            | 15719.7 ± 871.8 ms |
+| Implementation | Wall time | Kāra / this |
+|---|---|---|
+| c    bfs_sieve (clang -O3) | 1800.3 ± 32.1 ms | 1.02× |
+| **kāra bfs_sieve (codegen, seq)** | **1837.1 ± 36.9 ms** | — |
+| rust bfs_sieve `-O -C overflow-checks=on` (equal-safety) | 1996.0 ± 19.7 ms | 0.92× |
+| rust bfs_sieve `-O` | 2009.7 ± 28.5 ms | 0.91× |
+| go   bfs_sieve | 4176.2 ± 34.5 ms | 0.44× |
+| py   bfs_sieve (last measured 2026-06-05, not re-run) | 15719.7 ± 871.8 ms | n/a |
 
-Kāra's single-thread codegen runs **1.68× of Rust** and **2.27× of clang -O3** on the sieve + bucket + BFS hot path — it lands in the back of the compiled pack on this kata, just ahead of Go. The gap traces to two places: the `Map[i64, Vec[i64]]` bucket dispatch path (kara's per-entry probing vs rust's `HashMap::entry`) and the per-element RC-aware Vec push in the inner `factors[j].push(i)` loop. Both are general-runtime costs the kata exercises heavily; closing them tightens this gap without per-kata changes. Python is **~3.9× slower than kāra codegen** — the algorithm-dominated regime at N=50k where compiled-with-codegen languages put the same lap on CPython.
+Par lane, `--warmup 5 --runs 30`. Kāra is the default auto-parallelised build; its IR has a `@karac_mir_task_spawn` call that the `KARAC_AUTO_PAR=0` build's does not:
+
+| Implementation | Wall time | Kāra / this |
+|---|---|---|
+| rust bfs_sieve (rayon, `overflow-checks=on`, equal-safety) | 426.0 ± 9.2 ms | 1.17× |
+| rust bfs_sieve (rayon) | 431.6 ± 4.9 ms | 1.15× |
+| **kāra bfs_sieve (auto-par)** | **496.4 ± 6.0 ms** | — |
+| c    bfs_sieve (pthreads) | 840.7 ± 17.5 ms | 0.59× |
+| go   bfs_sieve (goroutines) | 1732.7 ± 28.9 ms | 0.29× |
+
+Single-threaded, Kāra is now **ahead of Rust (0.91×)**, level with C (1.02×), and well ahead of Go (0.44×). Against the previous feed (2026-07-28) those ratios were 1.11× Rust, 1.20× C and 0.54× Go. Under auto-par, Kāra is **1.15× rayon**, down from 2.13×, and ahead of hand-written pthreads C (0.59×, from 1.06×) and goroutines (0.29×, from 0.52×). Auto-par runs 3.70× faster than Kāra's own seq twin. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) the seq build executes 0.97× the instructions in 0.92× the cycles.
 
 ### Compile elapsed (cold)
 
@@ -78,47 +88,45 @@ Kāra's single-thread codegen runs **1.68× of Rust** and **2.27× of clang -O3*
 
 | Compiler | Time |
 |---|---|
-| **karac build bfs_sieve.kara** | **94.8 ± 2.2 ms** |
-| rustc -O bfs_sieve.rs          | 165.4 ± 1.2 ms |
-| clang -O3 bfs_sieve.c          | 58.6 ± 1.1 ms |
+| **karac build bfs_sieve.kara** | **208.1 ± 3.2 ms** |
+| rustc -O bfs_sieve.rs          | 150.9 ± 3.1 ms |
+| clang -O3 bfs_sieve.c          | 54.3 ± 0.6 ms |
 
-Kāra compiles this kata in **94.8 ms** — **1.74× faster than rustc -O** and within ~36 ms of clang, fast and flat with no algorithmic blowup signature. The `cap = 10⁶` const-sized data structures compile cleanly under the K=50 workload; the file is a normal single-file `karac build`, not a front-end stress.
+`karac build` (the default, auto-par build) is **1.38× rustc -O** and **3.83× clang** on this kata. On the previous feed (2026-07-28) it was 0.76× rustc.
 
 ### Binary size
 
-| Implementation | Size |
-|---|---|
-| c    bfs_sieve | 33.2 KiB |
-| **kāra bfs_sieve** | **279.1 KiB** |
-| rust bfs_sieve | 474.4 KiB |
-| go   bfs_sieve | 2434.5 KiB |
+| Implementation | Seq | Par |
+|---|---|---|
+| c    bfs_sieve | 33.2 KiB | 33.4 KiB |
+| **kāra bfs_sieve** | **67.2 KiB** | **393.5 KiB** |
+| rust bfs_sieve | 474.4 KiB | 455.2 KiB |
+| go   bfs_sieve | 2434.5 KiB | 2451.5 KiB |
 
-Kāra carries the `Map[i64, Vec[i64]]` + `Vec[Vec[i64]]` + `VecDeque[(i64, i64)]` runtime surface that the sieve + bucket + BFS algorithm requires — the 279.1 KiB sits well under Rust's 474.4 KiB despite Rust having tighter per-symbol size with `rustc -O`'s mature pipeline. The kāra binary is **post-`__TEXT,__jittmpl` segment re-scope** (karac `e76f42b`, 2026-05-25); pre-fix would have been ~294.7 KiB.
-
-All four sizes are byte-for-byte unchanged from the 2026-05-25 snapshot. On the rebuilds themselves: rust and c came back **byte-identical**; the kāra binary rebuilt at the **same size but different bytes** — it statically embeds Map/VecDeque runtime code from the runtime archive, which the June archive rebuild legitimately changed (same explanation as kata [#133](../../101-200/133-clone-graph/), and unlike the 33-KiB no-runtime-surface katas, which rebuild bit-identical across compiler reinstalls).
+Kāra's seq binary is 68,824 B, 2.0× clang's and 7.1× smaller than rustc's. The par binary is 402,952 B, 1.2× smaller than the rayon build. The seq binary was 302,536 B on the previous feed; B-2026-10-28-36 (fixed) is that history.
 
 ### Runtime memory (peak)
 
-| Implementation | Peak |
-|---|---|
-| c    bfs_sieve  | 82.0 MiB |
-| **kāra bfs_sieve (codegen)** | **59.9 MiB** |
-| rust bfs_sieve  | 60.1 MiB |
-| go   bfs_sieve  | 125.8 MiB |
-| py   bfs_sieve  | 493.6 MiB |
+| Implementation | Seq | Par |
+|---|---|---|
+| c    bfs_sieve  | 82.0 MiB | 1435.3 MiB |
+| **kāra bfs_sieve (codegen)** | **88.9 MiB** | **1396.3 MiB** |
+| rust bfs_sieve  | 60.1 MiB | 1036.2 MiB |
+| go   bfs_sieve  | 125.1 MiB | 1648.9 MiB |
+| py   bfs_sieve (last measured 2026-06-05, not re-run) | 493.6 MiB | n/a |
 
-Kāra is **at parity with Rust** and **27% under C** on peak RSS — the difference traces to kara's `Map` using a tighter chained-hash table layout than the C mirror's typedef'd `struct HashEntry[1<<20]` direct-addressed array (a hand-optimization the C mirror uses to avoid implementing chaining). The bench's working set is dominated by the `factors: Vec[Vec[i64]]` table at `cap = 10⁶` (~48 MiB the kata's commentary calls out); the remaining ~12 MiB is the bucket + BFS queue + visited flags.
+Kāra's seq peak is **1.48× Rust's** and 1.09× C's. It rose from 59.9 MiB on the previous feed while Rust held at 60.1 MiB (see Bug ledger). The par lanes all hold about 1.0–1.6 GiB: Kāra 1.36 GiB, rayon 1.01 GiB, pthreads C 1.40 GiB, goroutines 1.61 GiB. The bench's seq working set is dominated by the `factors: Vec[Vec[i64]]` table at `cap = 10⁶` (~48 MiB the kata's commentary calls out).
 
 ### Compile memory (cold)
 
 | Compiler invocation | Peak |
 |---|---|
-| **`karac build bfs_sieve.kara`** | **15.3 MiB** |
-| `rustc -O bfs_sieve.rs`          | 45.3 MiB |
+| **`karac build bfs_sieve.kara`** | **96.6 MiB** |
+| `rustc -O bfs_sieve.rs`          | 45.4 MiB |
 | `clang -O3 bfs_sieve.c`          | 2.6 MiB |
 
-Kāra's compile-memory footprint is **15.3 MiB** on this kata — ~3× under rustc's and a normal single-file band, between clang and rustc. The `cap = 10⁶` const-sized data structures compile in a flat, bounded footprint with no front-end blowup.
+Kāra's compile-memory footprint is **96.6 MiB** on this kata, 2.1× rustc's. On the previous feed it was 0.58× rustc's.
 
 ### Why Rust is in the harness
 
-Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio for v1 is the codegen-vs-Rust gap above (1.68×). C calibrates the LLVM-backend floor — though note its RSS runs 37% *above* kāra/Rust here, the cost of the mirror's direct-addressed hash array shortcut. Go is the cross-runtime data point; Python is the ergonomic foil.
+Same rationale as [`1-two-sum/README.md § Why Rust is in the harness`](../../1-100/1-two-sum/README.md#why-rust-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratios for v1 are the codegen-vs-Rust figures above (0.91× seq, 1.15× against rayon). C calibrates the LLVM-backend floor — though note its seq RSS runs 36% above Rust's here, probably the cost of the mirror's direct-addressed `bucket` array (inferred, not measured). Go is the cross-runtime data point; Python is the ergonomic foil.

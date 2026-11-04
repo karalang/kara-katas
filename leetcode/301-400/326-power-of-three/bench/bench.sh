@@ -122,7 +122,7 @@ echo
 
 bench_begin id=326 slug=power-of-three group=301-400 \
     title="Power of Three" \
-    workload="build LEN values once (powers, neighbours, random 32-bit), then PUNCHES punches: replace one value, classify the whole array; sink folds count and sum" sink="$expected"
+    workload="build 300000 values once (powers, neighbours, random 32-bit), then 40 punches: replace one value, classify the whole array; sink folds count and sum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

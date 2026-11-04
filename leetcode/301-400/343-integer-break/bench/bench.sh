@@ -122,7 +122,7 @@ echo
 
 bench_begin id=343 slug=integer-break group=301-400 \
     title="Integer Break" \
-    workload="draw LEN values of n in [2, 58] once, then PUNCHES punches: replace one value, solve every value again with the O(n^2) table; sink folds the sum of answers" sink="$expected"
+    workload="draw 20000 values of n in [2, 58] once, then 20 punches: replace one value, solve every value again with the O(n^2) table; sink folds the sum of answers" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
