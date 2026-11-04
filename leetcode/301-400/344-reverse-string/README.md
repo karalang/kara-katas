@@ -223,4 +223,4 @@ machine-fix rate.
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-04-40`](../../../../kara/docs/bugs-v2.md)** (perf, medium, open). Kata 344 executes 4.017G instructions on karac gf0017054a against 0.82G for both Rust builds and for C, for 2.47× Rust and 2.48× C. Legacy dd86e3955 (`KARAC_AUTO_PAR=0`) executes the same count (1.00×), so it is not a MIR regression. Not attributed.
+**Surfaced [`B-2026-11-04-41`](../../../../kara/docs/bugs-v2.md)** (perf, medium, open). Kata 344 executes 4.017G instructions on karac gf0017054a against 0.82G for both Rust builds and for C, for 2.47× Rust and 2.48× C. Legacy dd86e3955 (`KARAC_AUTO_PAR=0`) executes the same count (1.00×), so it is not a MIR regression. Not attributed.
