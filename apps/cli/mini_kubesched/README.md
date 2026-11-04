@@ -151,7 +151,7 @@ read back, and counted per node.
 
 ## Gaps found
 
-- B-2026-11-04-56: `m.get(k) == Some(v)` on a non-Copy value refuses
+- B-2026-11-04-61: `m.get(k) == Some(v)` on a non-Copy value refuses
   with E0208 and no edit, and `karac fix` applies E0200's `.clone()`
   inside the `Some`, which leaves the E0208 standing. The program writes
   the no-copy form, `Some(ref v)`.
