@@ -147,13 +147,18 @@ resort) to 1.2 s (iterator).
 The arms went through the Mend loop clean: `karac check` reported
 nothing on any of them as first written. Writing the ★ arm the way Rust
 does, with `use std::collections::BinaryHeap;` and `BinaryHeap::from(..)`,
-leads to two gaps that B-2026-11-04-5 already tracks, which this kata
-widens: the `use` becomes an `import` whose `::` path has no fix, and
-once `BinaryHeap::from` is written `BinaryHeap.from` the resolver says
-only "undefined name 'BinaryHeap'". Kāra's heap is `PriorityQueue`, and
-it pops the smallest first where Rust's pops the largest, so the
-faithful rewrite is `PriorityQueue.max_first_from(..)`; a rename alone
-would flip the game.
+led to two gaps that B-2026-11-04-5 tracked, which this kata widened:
+the `use` became an `import` whose `::` path had no fix, and once
+`BinaryHeap::from` was written `BinaryHeap.from` the resolver said only
+"undefined name 'BinaryHeap'". Kāra's heap is `PriorityQueue`, and it
+pops the smallest first where Rust's pops the largest, so the faithful
+rewrite is `PriorityQueue.max_first_from(..)`; a rename alone would flip
+the game. Since kara `75832f76f1`, `karac fix` deletes the `use` line
+(the heap is in the prelude) and writes `PriorityQueue.max_first_from(..)`
+for `BinaryHeap::from(..)`. The arm then stops at the next gap: the
+borrowed parameter `stones` passed where `max_first_from` takes `own
+Vec[T]` draws "expected 'Vec[T]', found 'ref Vec[i32]'" and a cascade,
+with no fix (B-2026-11-04-78).
 
 ## Benchmarks
 
