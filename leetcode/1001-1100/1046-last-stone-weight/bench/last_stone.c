@@ -1,7 +1,7 @@
 // LeetCode #1046: Last Stone Weight -- benchmark driver, C mirror of
 // last_stone.kara. C has no standard heap, so this is a largest-first
-// binary heap in an array: built bottom-up in O(n), then pop and push by
-// sifting, as the ★ arm's queue does.
+// binary heap in an array: built bottom-up in O(n), then popped and pushed
+// as the ★ arm's queue does.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,10 +31,36 @@ static void sift_up(int64_t *h, int64_t i) {
     }
 }
 
+// Floyd's pop, as the ★ arm's queue does it since kara 5bd3da78cc: the
+// last element goes to the root, the root's slot walks down to a leaf
+// along the larger child (the right one on a tie), one comparison a level,
+// and the element carried there sifts back up.
 static int64_t pop(int64_t *h, int64_t *len) {
     int64_t top = h[0];
     h[0] = h[--*len];
-    sift_down(h, *len, 0);
+    int64_t n = *len, i = 0, c = 1, t;
+    while (c + 1 < n) {
+        c += h[c] <= h[c + 1];
+        t = h[i];
+        h[i] = h[c];
+        h[c] = t;
+        i = c;
+        c = 2 * i + 1;
+    }
+    if (c + 1 == n) {
+        t = h[i];
+        h[i] = h[c];
+        h[c] = t;
+        i = c;
+    }
+    while (i > 0) {
+        int64_t p = (i - 1) / 2;
+        if (h[i] <= h[p]) break;
+        t = h[i];
+        h[i] = h[p];
+        h[p] = t;
+        i = p;
+    }
     return top;
 }
 

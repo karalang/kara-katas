@@ -168,42 +168,39 @@ the work rather than the count arm's table. It then plays the ★ arm on
 every pile three times, adding up the answers and folding each into a
 checksum. Every implementation prints `1000 piles of 3000 stones, 3
 rounds: total 1563, checksum 142150343`. Doubling the rounds doubles
-C's time (2.26 to 2.29 s against 1.11 to 1.20 s), so no compiler hoists
+C's time (1.32 to 1.41 s against 0.70 to 0.71 s), so no compiler hoists
 a game out of the round loop. A game is up to 2999 turns, each two
 pops and, unless the stones are equal, a push.
 
 Each implementation uses its standard heap: Kāra's `PriorityQueue`
 largest first, Rust's `BinaryHeap`, Go's `container/heap`, and
 Python's `heapq` on negated weights. C has none, so its mirror is a
-binary heap in an array that sifts by swapping, as Kāra's
-`PriorityQueue` does.
+binary heap in an array that pops as Kāra's `PriorityQueue` does since
+kara `5bd3da78cc`: the root's slot walks down to a leaf along the larger
+child, one comparison a level, and the element carried there sifts back
+up, as `BinaryHeap::pop` and `heapq` do.
 
 Timings on a 4-core container, eight interleaved runs of each compiled
-program and one of Python:
+program and one of Python, with kara `e809e29f62` on LLVM 22:
 
 | | time | median |
 |---|---|---|
-| Rust (`rustc -O -C overflow-checks=on`) | 0.572 to 0.672 s | 0.608 s |
-| Rust (`rustc -O`) | 0.586 to 0.690 s | 0.624 s |
-| C (`clang -O3`) | 0.898 to 1.257 s | 1.131 s |
-| Kāra (`karac build`) | 1.478 to 1.754 s | 1.578 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.542 to 1.730 s | 1.618 s |
-| Go | 2.598 to 3.207 s | 2.896 s |
-| Python | 6.0 s | |
+| Rust (`rustc -O`) | 0.623 to 0.657 s | 0.641 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.633 to 0.911 s | 0.650 s |
+| Kāra (`karac build`) | 0.670 to 0.758 s | 0.676 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.660 to 0.702 s | 0.677 s |
+| C (`clang -O3`) | 0.673 to 0.715 s | 0.688 s |
+| Go | 2.725 to 3.081 s | 2.830 s |
+| Python | 6.2 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here:
 `KARAC_AUTO_PAR_DEBUG=1` reports every loop kept in order, and its user
-time (1.54 s) matches its real time.
+time (0.65 s) is below its real time.
 
-Kāra took 2.66 times Rust's median time under overflow checks, and 1.43
-times C's. Most of the gap to Rust is the heap, not the compiler. Rust's
-`BinaryHeap::pop` moves the last element into a hole at the root, sifts
-the hole to the bottom moving one child up at each level, and then
-sifts up, which takes one comparison a level on the way down and
-moves elements rather than swapping them; Kāra's
-`PriorityQueue` swaps its way down, as the C mirror does. The same
-swapping heap written by hand in Rust, under overflow checks, takes
-1.32 to 1.39 s, against 1.53 to 1.64 s for it in Kāra and 1.12 to 1.15 s
-in C, so the compiler accounts for about 1.15 times and the heap
-algorithm for the rest. Filed as B-2026-11-04-55.
+Kāra took 1.04 times Rust's median time under overflow checks, and 0.98
+times C's. Until kara `5bd3da78cc` it took 2.66 times Rust's: its
+`PriorityQueue.pop` sifted the new root down by swapping, testing both
+children against it at every level, where Rust's `BinaryHeap::pop` walks
+to the bottom with one comparison a level and sifts back up. The
+kata filed that as B-2026-11-04-55, and the fix gives `pop` the same walk.
