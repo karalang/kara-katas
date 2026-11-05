@@ -28,7 +28,7 @@ letters that survive so far as a stack.
 | `remove_dups.kara` ★ | a `Vec[char]` stack: pop when the letter equals the top, push otherwise, then `collect` the stack into a `String`. O(n) |
 | `remove_dups_string.kara` | the answer itself as the stack: `ends_with` the letter, then `pop` or `push`. O(n) |
 | `remove_dups_inplace.kara` | the bytes rewritten in place with two indices, `b[..top]` the answer so far, then `truncate`. O(n), no second buffer |
-| `remove_dups_scan.kara` | the statement as it reads: find a pair, `remove` both letters, look again one place back. O(n^2) at worst |
+| `remove_dups_scan.kara` | the statement as it reads: find a pair, `drain` both letters, look again one place back. O(n^2) at worst |
 | `remove_dups_fold.kara` | the stack as the accumulator of `chars().fold(..)`, its last letter read with `chars().next_back()`. O(n) |
 | `differential.kara` | the five arms against the statement read literally, six properties |
 
@@ -129,8 +129,8 @@ __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 every arm and the differential. `karac check --output=json` reports
-nothing on any file. The runs used a release build of kara `75832f76f1`.
-Under `karac __mir-run` the arms take 0.7 s (in place) to 1.4 s (fold).
+nothing on any file. The runs used a release build of kara `c08132e019`.
+Under `karac __mir-run` the arms take 0.6 s (in place) to 1.3 s (scan).
 
 The arms went through the Mend loop. Written the way Rust writes them,
 four needed it:
@@ -140,15 +140,20 @@ four needed it:
 - `out.ends_with(c)` passes a `char` where Kāra takes a `Str`; `karac
   fix` writes `c.to_string()`, a one-letter string each turn.
 - `top > 0 && ..` is fixed to `and`.
-- `fold(String.new(), |mut acc, c| ..)` is refused with "'mut' is a
+- `fold(String.new(), |mut acc, c| ..)` was refused with "'mut' is a
   reserved keyword and cannot be used as an identifier" and a second
-  error at the closing `)`, with no fix. A function parameter written
-  `mut x` gets a diagnostic naming the Kāra spelling, `let mut x = x;` in
-  the body, which the fold arm uses. Filed as B-2026-11-04-76.
+  error at the closing `)`, with no fix (B-2026-11-04-76). Since kara
+  dd0d3d3fa3 the diagnostic names Kāra's spelling and `karac fix` writes
+  it: `|acc, c| { let mut acc = acc; .. }`, as the fold arm does.
 
-The scan arm takes the pair out with two calls to `remove`. Rust writes
-it `v.drain(i..i + 2);`, and Kāra's `Vec` has no `drain`: the check says
-only "no method 'drain' on type 'Vec'". Filed as B-2026-11-04-77.
+The scan arm takes the pair out as Rust does, `v.drain(i..i + 2);`. Kāra's
+`Vec` had no `drain` (B-2026-11-04-77) until kara 4e87c65465, and the arm
+took the pair out with two calls to `remove` before then. Until kara
+c1b9bab3c7 the statement drew a `must_use` warning that a discarded
+iterator "drops every adapter without running it", which is not so for
+`drain`: it removes the range at the call. And `drain` put the tail back
+one element at a time, so the arm took 29 s under `karac __mir-run`, against
+1.0 s with two `remove`s; it takes 1.3 s now.
 
 ## Benchmarks
 
