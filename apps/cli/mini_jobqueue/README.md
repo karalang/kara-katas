@@ -173,7 +173,7 @@ at the final time) gives the same queues, jobs and next id as memory
 
 ## Compiler gaps found
 
-- B-2026-11-05-13: the first draft promoted due jobs with
+- B-2026-11-05-24: the first draft promoted due jobs with
   `for j in jobs.values_mut()`, Rust's spelling, and karac answered a bare
   `no method 'values_mut' on type 'SortedMap'`. Kāra's is
   `for (_, j) in jobs.iter_mut()`; the program collects the due ids and
