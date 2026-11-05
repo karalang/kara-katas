@@ -171,7 +171,7 @@ the sequential lane. A plain `karac build` parallelizes nothing here: its
 user time (0.31 s) is below its real time.
 
 Kāra took 0.95 times Rust's median time under overflow checks, and 2.0
-times C's. Building the days takes most of every program's time: eight
-million draws of the random generator, whose multiply Kāra and Rust with
-overflow checks test on every draw. That check is the gap to C and to
-Rust without it, which run the same program in half the time.
+times C's. The gap to C is the overflow checks, by Rust's two builds: the
+same source runs twice as long with them. Most of the checked arithmetic
+is in building the days, eight million draws of the random generator,
+each a multiply and an add that Kāra and checked Rust test.
