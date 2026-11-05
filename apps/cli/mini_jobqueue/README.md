@@ -170,3 +170,14 @@ count per record kind as `KIND N` in kind order, and `replay: N jobs,
 matches memory` when replaying it from the configuration (step 2 applied
 at the final time) gives the same queues, jobs and next id as memory
 (`replay: skipped, queue is down` while down).
+
+## Compiler gaps found
+
+- B-2026-11-05-13: the first draft promoted due jobs with
+  `for j in jobs.values_mut()`, Rust's spelling, and karac answered a bare
+  `no method 'values_mut' on type 'SortedMap'`. Kāra's is
+  `for (_, j) in jobs.iter_mut()`; the program collects the due ids and
+  calls `get_mut` on each. The same bare error meets `retain`,
+  `pop_first`, `first_key_value` and the other Rust map methods, and
+  `SortedMap` has no first, last or pop of its own (a library-spec
+  question, routed to the review thread).
