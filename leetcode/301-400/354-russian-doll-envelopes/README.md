@@ -171,4 +171,6 @@ machine-fix rate.
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-06-1`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`), kata 354 executes 0.81× the instructions in 1.46× the cycles, on karac g162ee7a0e (2026-11-06); it runs 2.05× `rustc -O`.
+**Surfaced [`B-2026-11-06-1`](../../../../kara/docs/bugs-v2.md)** (perf, low, fixed in kara `d70e6d474a`). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`), kata 354 executes 0.81× the instructions in 1.46× the cycles, on karac g162ee7a0e (2026-11-06); it runs 2.05× `rustc -O`. The fix lowers an integer `cmp` as one three-way compare, so the comparator no longer branches on the less test in the sort's partition loop: on the M5, 0.954× legacy's cycles; on x86, 0.53 s against `rustc -O`'s 0.52 s.
+
+**Surfaced [`B-2026-11-06-8`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). After that fix, kata 354 on the M5 still runs 1.36× `rustc -O`'s cycles (757.1M against 556.6M, kara 4471044a8a), though it is level with Rust on x86.
