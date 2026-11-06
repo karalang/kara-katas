@@ -115,19 +115,21 @@ does: the ★ arm starting from the smallest barcode, or never finding the
 most common, and the sort arm sorting by value alone, as M10; the iter arm
 taking the least common first, as M7; and the greedy arm reading its
 answer backwards, as M14. Two fail as a pair with no kept twin: the ★ and
-sort arms filling every place in turn. Three fail in ways of their own:
-the heap arm never checking the barcode just placed, or putting the second
-back with none left, and the greedy arm avoiding the first barcode placed
-rather than the last. Two are equivalent: the sort and iter arms breaking
-ties by the larger value, which is as valid and moves the same way. Nine
-crash, each the same way on both backends: six heap edits (fewest copies
-first, the heap ordered by value, the first barcode dropped or the second
-put back late, the barcode just placed placed again, the first barcode
-compared rather than the last) empty the heap at a second pop ("called
-unwrap() on None"), and three greedy edits to the forced barcode leave
-only the barcode just placed. One does not compile: taking the even places
-from the back with `(0..n).step_by(2).rev()` is "no method 'rev' on type
-'IterStepBy'", filed as kara B-2026-11-05-35.
+sort arms filling every place in turn. Four fail in ways of their own: the
+heap arm never checking the barcode just placed, or putting the second
+back with none left, the greedy arm avoiding the first barcode placed
+rather than the last, and the iter arm taking the even places from the
+back with `(0..n).step_by(2).rev()` (P1 362, P2 62). Two are equivalent:
+the sort and iter arms breaking ties by the larger value, which is as
+valid and moves the same way. Nine crash, each the same way on both
+backends: six heap edits (fewest copies first, the heap ordered by value,
+the first barcode dropped or the second put back late, the barcode just
+placed placed again, the first barcode compared rather than the last)
+empty the heap at a second pop ("called unwrap() on None"), and three
+greedy edits to the forced barcode leave only the barcode just placed. The
+iter edit at first did not compile ("no method 'rev' on type
+'IterStepBy'", kara B-2026-11-05-35); kara `9ad19508aa` fixed it, and it
+was run again under kara `a3df76e55c`.
 
 ## Verification
 
