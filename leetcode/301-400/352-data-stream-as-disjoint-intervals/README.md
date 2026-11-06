@@ -96,11 +96,45 @@ structure, feeds it a 30,000-value stream over `0..=10000` seeded by the
 round, and folds every 3,000th report into the sink with the round number,
 so no round can be skipped or hoisted. All five print `sink 232124774`.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-06, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 202.8 ms ± 0.7 | 1.10× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 208.0 ms ± 0.7 | 1.07× |
+| rust `-O` | 209.4 ms ± 3.3 | 1.07× |
+| **kāra `karac build`, seq** | **223.5 ms ± 1.8** | **—** |
+| go `go build` | 314.3 ms ± 5.9 | 0.71× |
+
+Kāra is 1.07× both Rust builds and 1.10× C, and ahead of Go (0.71×). The gaps
+were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.9 ms ± 1.7 | 32.8 KiB | 1.6 MiB |
+| rust | 99.2 ms ± 3.7 | 456.2 KiB | 1.4 MiB |
+| kāra | 124.0 ms ± 3.5 | 67.0 KiB | 1.4 MiB |
+| go | — | 2450.4 KiB | 8.1 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.2× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 232124774`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10553+g87d927e95` (kara main with both fixes below), measured
@@ -124,6 +158,9 @@ every compiled language compiles it to much the same loop. Go is 1.57× behind, 
 on most of the vector-heavy katas. Python is 16× behind, against 40× on the
 recursion-heavy #351; its list `insert` and `del` shift in C, which probably
 accounts for some of that, though it was not measured.
+
+Note (2026-11-06): on the M5 feed Kāra is 1.07× behind equal-safety Rust and
+1.10× behind C rather than tied, and Go is 1.41× behind Kāra.
 
 Outside the harness, the ★ arm built as written takes 10.1 ms against 4.7 ms
 for the sorted-vector arm (hyperfine, 20 runs), so the `SortedMap` costs about
@@ -161,11 +198,11 @@ in the documented `SortedMap` / `SortedSet` surface, filed there.
   took 23 s, nine times its sorted-`Vec` arm. Sorted containers now share
   their storage as `Map` and `Set` already did, and the ★ arm takes 1.2 s,
   the fastest of the four.
-- **B-2026-10-06-67 (open): `SortedSet.range` is documented but missing.** The
+- **B-2026-10-06-67 (fixed in kara `368bc5f237`): `SortedSet.range` is documented but missing.** The
   design document lists it, and every surface rejects it. Corrected on
   2026-10-15: v2 now has `SortedSet.range`, but it returns a `Vec` where
   the spec gives an iterator; the frozen legacy backend still lacks it.
-- **B-2026-10-06-68 (open): the `SortedMap` table in the design document does
+- **B-2026-10-06-68 (fixed in kara `368bc5f237`): the `SortedMap` table in the design document does
   not match the implementation.** It calls `range(from, to)` half-open, while
   both backends return the inclusive `[from, to]`, and it leaves out `floor`
   and `ceiling`, the two methods this kata is built on. Narrowed on

@@ -104,10 +104,51 @@ value out of a `Map`.
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are.
+`bench/twitter.kara` and its four mirrors time the ★ arm: per-user tweet
+lists merged newest-first through a priority queue. Over 1,000 users, the
+build posts 300,000 tweets by users drawn from a linear congruential
+generator, then makes 100,000 follows. The punch asks for 300,000 news feeds
+of random users and folds each into the sink, so no feed can be skipped.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host, and this kata has
+no Python timing on any host. The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 131.5 ms ± 6.6 | 3.67× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 402.1 ms ± 28.5 | 1.20× |
+| rust `-O` | 406.2 ms ± 5.8 | 1.19× |
+| **kāra `karac build`, seq** | **483.3 ms ± 7.1** | **—** |
+| go `go build` | 859.0 ms ± 30.5 | 0.56× |
+
+Kāra is 1.19× `rustc -O`, 1.20× equal-safety Rust and 3.67× C, and ahead of Go
+(0.56×). The C mirror is not the same data structure. Its users are the dense
+ids `0..USERS`, so its per-user maps are arrays indexed by user id, a follow set
+is a growable id list beside a 1,000 × 1,000 membership matrix, and every feed
+reuses one static heap and the caller's 10-slot array. The Kāra arm and the Rust
+mirror hash every user lookup and allocate an author list, a queue and a feed
+`Vec` per call. How much of the 3.67× each part accounts for was not measured,
+and the Rust and Go gaps were not investigated. Against the legacy backend
+(exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.56× the
+instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 57.8 ms ± 1.8 | 32.9 KiB | 17.5 MiB |
+| rust | 174.8 ms ± 5.1 | 475.2 KiB | 18.2 MiB |
+| kāra | 165.8 ms ± 2.9 | 67.1 KiB | 17.0 MiB |
+| go | — | 2451.8 KiB | 25.2 MiB |
+
+`karac build` is 2.9× clang's cold compile and 0.9× rustc's. Kāra's binary
+is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`803178784`).
 
 ## Workarounds to revert
 
@@ -141,7 +182,7 @@ bug, with a comment at the site naming the row.
 - **B-2026-10-06-117 (open, codegen):** a type's associated function used
   as a value (`let f = Bag.new`, `or_insert_with(Bag.new)`) panics or fails
   `karac build`.
-- **B-2026-10-06-118 (open, typecheck):** a builtin constructor
+- **B-2026-10-06-118 (fixed in kara `1336bd92e3`, typecheck):** a builtin constructor
   (`Vec.new`, `String.new`, `Set.new`) is not accepted as a function value,
   although design.md's own example is `or_insert_with(Vec.new)`.
 - **B-2026-10-06-119 (open, codegen):** a method on a collection-valued
@@ -157,7 +198,7 @@ bug, with a comment at the site naming the row.
   `shared struct` leaks one reference per call.** See Verification.
 - **B-2026-10-06-122 (open, codegen): `o.clone().unwrap()` on an
   `Option` of a `shared struct` leaks one reference.**
-- **B-2026-10-06-87 (open, codegen, found re-probing kata 23):** a
+- **B-2026-10-06-87 (fixed in kara `cf46758bc`, codegen, found re-probing kata 23):** a
   `PriorityQueue` of tuples does not build.
 
 The author already knows the language, so none of this counts toward the

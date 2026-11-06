@@ -113,11 +113,46 @@ so no move can be skipped. Random play on a board this size never completes a
 line, so all 100 games run to a full board: 100,000,000 moves, each with its
 win check, but the check never succeeds.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-05, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **124.1 ms ± 1.3** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 132.7 ms ± 2.5 | 0.93× |
+| c `clang -O3` | 141.1 ms ± 2.1 | 0.88× |
+| rust `-O` | 148.2 ms ± 3.7 | 0.84× |
+| go `go build` | 244.7 ms ± 2.4 | 0.51× |
+
+Kāra is ahead of every comparator here: 0.84× `rustc -O`, 0.93× equal-safety
+Rust, 0.88× C and 0.51× Go. Unchecked `rustc -O` is 1.12× the checked build
+on this run. None of these gaps was investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 44.6 ms ± 1.1 | 32.8 KiB | 8.8 MiB |
+| rust | 89.2 ms ± 1.8 | 455.5 KiB | 8.8 MiB |
+| kāra | 111.7 ms ± 2.2 | 66.9 KiB | 8.7 MiB |
+| go | — | 2450.4 KiB | 11.1 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 655787991`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10448+g76727438c`, measured 2026-10-05, with the timed lane built
@@ -138,6 +173,9 @@ with `KARAC_AUTO_PAR=0`. Python is its own lane at 3 runs.
 builds and Kāra are within about two standard deviations of each other.
 Unchecked `rust -O` coming out slowest of the Rust builds is inside that
 spread, not a real ordering. Where C's 15% comes from was not investigated.
+
+Note (2026-11-06): on the M5 feed Kāra is ahead of C (0.88×) and of both Rust
+builds, and Go is 1.97× behind Kāra.
 
 Compile time (cold, 10 runs) and artefact size:
 

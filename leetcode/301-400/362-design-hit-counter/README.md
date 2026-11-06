@@ -90,10 +90,43 @@ The bench program prints `checksum 402009242` under `karac __mir-run`
 
 ## Benchmarks
 
-Not measured. The bench program is the ★ arm, which the legacy native
-build refuses (below), so there is no Kāra binary to time until the MIR
-backend compiles it. The C, Rust, Go and Python mirrors are written and
-agree on the checksum.
+The bench program makes 2,000,000 calls with the ★ arm's queue of hit
+times, each timestamp advancing by 0 to 2 seconds and one call in four a
+query. The legacy native build refuses the ★ arm (below); the v2/MIR backend
+builds it. The C, Rust, Go and Python mirrors agree on the checksum.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **11.0 ms ± 0.3** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 11.2 ms ± 0.3 | 0.98× |
+| rust `-O` | 11.2 ms ± 0.1 | 0.98× |
+| c `clang -O3` | 12.8 ms ± 0.2 | 0.86× |
+| go `go build` | 21.9 ms ± 0.4 | 0.50× |
+
+Kāra is 0.98× `rustc -O`, 0.98× equal-safety Rust, 0.86× C and 0.50× Go.
+The gaps were not investigated on this host. The legacy backend (dd86e3955) cannot compile this
+kata, so there is no legacy count.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.0 ms ± 1.5 | 32.7 KiB | 1.0 MiB |
+| rust | 86.9 ms ± 1.4 | 455.8 KiB | 1.1 MiB |
+| kāra | 110.9 ms ± 2.8 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 8.2 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.3× rustc's. Kāra's
+68,504-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 402009242`).
 
 ## Compiler findings
 

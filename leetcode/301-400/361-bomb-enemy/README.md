@@ -84,12 +84,43 @@ do its C, Rust, Go and Python mirrors.
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are. The Kāra and Rust versions copy the rows into byte vectors
+The bench program runs the cached one-pass count over 60 random 400 x 400
+grids. The Kāra build and its C, Rust, Go and Python mirrors agree on the
+printed checksum. The Kāra and Rust versions copy the rows into byte vectors
 before the pass. The C and Go versions build the grid as bytes to begin with,
 so they skip that one `O(rows * cols)` copy.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 98.1 ms ± 0.7 | 1.14× |
+| rust `-O` | 101.8 ms ± 0.7 | 1.10× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 103.5 ms ± 1.2 | 1.08× |
+| **kāra `karac build`, seq** | **111.7 ms ± 1.2** | **—** |
+| go `go build` | 152.0 ms ± 0.7 | 0.73× |
+
+Kāra is 1.10× `rustc -O`, 1.08× equal-safety Rust, 1.14× C and 0.73× Go.
+The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 48.5 ms ± 0.7 | 32.9 KiB | 1.2 MiB |
+| rust | 123.2 ms ± 3.2 | 455.6 KiB | 1.6 MiB |
+| kāra | 142.5 ms ± 2.4 | 66.9 KiB | 1.7 MiB |
+| go | — | 2450.4 KiB | 7.6 MiB |
+
+`karac build` is 2.9× clang's cold compile and 1.2× rustc's. Kāra's
+68,552-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`60 grids: 2503 enemies in total, checksum 408591223`).
 
 ## Compiler findings
 

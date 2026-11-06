@@ -122,7 +122,7 @@ echo
 
 bench_begin id=357 slug=count-numbers-with-unique-digits group=301-400 \
     title="Count Numbers with Unique Digits" \
-    workload="depth-first enumeration of every distinct-digit number in bases 2 to 11 at full width; sink=per-base counts" sink="$expected"
+    workload="depth-first enumeration of every distinct-digit number in bases 2 to 11 at full width; sink=one checksum folded over the per-base counts" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

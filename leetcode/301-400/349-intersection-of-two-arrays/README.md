@@ -98,11 +98,48 @@ Every answer's length and sum are folded into the sink, so no pair can be
 skipped. The Rust mirror uses `std::collections::HashSet`, the Go mirror a
 built-in `map`, and the C mirror a hand-written open-addressing table.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-05, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 558.0 ms ± 8.6 | 1.25× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 600.9 ms ± 3.3 | 1.16× |
+| rust `-O` | 606.3 ms ± 10.6 | 1.15× |
+| **kāra `karac build`, seq** | **696.2 ms ± 19.7** | **—** |
+| go `go build` | 970.0 ms ± 28.7 | 0.72× |
+
+Kāra is 1.15× `rustc -O`, 1.16× equal-safety Rust and 1.25× C, and ahead of Go
+(0.72×). The gaps were not investigated on this host. Against the legacy backend
+(exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.72× the
+instructions. Kāra's seq binary is 101,840 B (99.5 KiB), above the 68–69 KB of
+most seq Kāra binaries on this compiler.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.0 ms ± 1.3 | 32.9 KiB | 9.0 MiB |
+| rust | 133.5 ms ± 5.5 | 474.0 KiB | 11.1 MiB |
+| kāra | 119.6 ms ± 3.0 | 99.5 KiB | 11.0 MiB |
+| go | — | 2484.9 KiB | 21.2 MiB |
+
+`karac build` is 2.4× clang's cold compile and 0.9× rustc's. Kāra's binary
+is 3.0× clang's and 4.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 809296534`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10498+gd140f6afb` (kara main at `5ba1d7de6` plus the fixes for
@@ -127,6 +164,9 @@ other. Where Kāra's extra third goes was not investigated: the pair loop does
 three things, the copies, the set walk and the sort of the answer, and none
 of them was timed alone. Python is unusually close because its `set` of small
 integers is implemented in C.
+
+Note (2026-11-06): on the M5 feed Kāra is 1.16× behind equal-safety Rust and
+1.25× behind C, and Go is 1.39× behind Kāra.
 
 Compile time (cold, 10 runs) and artefact size:
 

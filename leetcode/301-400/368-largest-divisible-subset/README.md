@@ -91,7 +91,40 @@ arm stops with `an iterator value is not lowered yet`.
 The bench program answers 200 random sets of 1,000 distinct numbers up to
 100,000, the problem's largest size, with the ★ arm. The Kāra build and the
 C, Rust, Go and Python mirrors all print `568 numbers in the answers,
-checksum 722629395`. Timings are not taken yet; they need a quiet machine.
+checksum 722629395`.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 52.6 ms ± 1.0 | 1.03× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 53.0 ms ± 2.2 | 1.02× |
+| **kāra `karac build`, seq** | **54.0 ms ± 2.4** | **—** |
+| c `clang -O3` | 54.6 ms ± 0.5 | 0.99× |
+| go `go build` | 61.0 ms ± 0.6 | 0.88× |
+
+Kāra is 1.03× `rustc -O`, 1.02× equal-safety Rust, 0.99× C and 0.88× Go.
+The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes
+0.76× the instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.1 ms ± 0.6 | 33.2 KiB | 1.2 MiB |
+| rust | 144.9 ms ± 3.6 | 472.6 KiB | 1.4 MiB |
+| kāra | 124.8 ms ± 2.6 | 83.3 KiB | 1.4 MiB |
+| go | — | 2468.5 KiB | 7.7 MiB |
+
+`karac build` is 2.5× clang's cold compile and 0.9× rustc's. Kāra's
+85,280-byte binary is 2.5× clang's and 5.7× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`568 numbers in the answers, checksum 722629395`).
 
 ## Compiler findings
 

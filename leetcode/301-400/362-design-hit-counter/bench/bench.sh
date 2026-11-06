@@ -122,7 +122,7 @@ echo
 
 bench_begin id=362 slug=design-hit-counter group=301-400 \
     title="Design Hit Counter" \
-    workload="2,000,000 calls, timestamps advancing 0 to 2 seconds, one call in four a query; queue of hit times; sink=checksum" sink="$expected"
+    workload="2,000,000 calls, timestamps stepping forward 0 to 2 seconds a call, one call in four a query; queue of hit times; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

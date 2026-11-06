@@ -122,7 +122,7 @@ echo
 
 bench_begin id=354 slug=russian-doll-envelopes group=301-400 \
     title="Russian Doll Envelopes" \
-    workload="20 rounds of 200,000 LCG envelopes with sides in 1..=100000, sort + patience LIS; sink=sink" sink="$expected"
+    workload="20 rounds of 200,000 LCG envelopes with sides in 1..=100000, sort + patience LIS; sink=one checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

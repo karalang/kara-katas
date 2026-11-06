@@ -92,10 +92,50 @@ it at type-check. The differential takes about a minute under
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are.
+`bench/russian_doll.kara` and its four mirrors time the ★ arm's algorithm:
+sort by width ascending and height descending, then a patience-sorting
+longest increasing subsequence over the heights. Each of 20 rounds draws
+200,000 envelopes from a linear congruential generator seeded by the round,
+with sides in `1..=100000`, and folds the answer into the sink, so no round
+can be skipped or hoisted.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host, and this kata has
+no Python timing on any host. The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 127.0 ms ± 4.0 | 2.05× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 127.3 ms ± 3.9 | 2.04× |
+| **kāra `karac build`, seq** | **260.2 ms ± 6.9** | **—** |
+| c `clang -O3` | 355.3 ms ± 6.1 | 0.73× |
+| go `go build` | 2317 ms ± 26 | 0.11× |
+
+Kāra is 2.05× `rustc -O` and 2.04× equal-safety Rust, and ahead of C (0.73×) and
+Go (0.11×). Against the legacy backend (exact counts, dd86e3955,
+`KARAC_AUTO_PAR=0`) Kāra executes 0.81× the instructions but takes 1.46× the
+cycles (see Bug ledger). The Rust gap was not investigated. The mirrors do not
+sort the same way: Kāra and Rust call `sort_by` with a closure, C calls `qsort`
+with a comparator function, and Go calls `sort.SliceStable`, an in-place stable
+merge whose swaps go through a reflection-based swapper. That is the likeliest
+source of Go's 8.9×, but it was not measured.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.2 ms ± 1.8 | 32.8 KiB | 7.2 MiB |
+| rust | 127.2 ms ± 5.4 | 472.5 KiB | 14.6 MiB |
+| kāra | 138.3 ms ± 2.4 | 67.0 KiB | 12.5 MiB |
+| go | — | 2451.9 KiB | 19.8 MiB |
+
+`karac build` is 3.1× clang's cold compile and 1.1× rustc's. Kāra's binary
+is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`912696348`).
 
 ## Compiler findings
 
@@ -122,9 +162,13 @@ when they are.
   hand-written `impl Ord` for `.cmp()` and `<`.** An enum version of
   `Envelope`'s order printed `Small < Large` as true under the interpreter
   and false compiled. Fixed in kara `8eaf5220e`.
-- **B-2026-10-06-112 (open, resolve): a hand-written `impl Clone`,
+- **B-2026-10-06-112 (fixed in kara `b659d03377`, resolve): a hand-written `impl Clone`,
   `impl Default` or `impl Copy` is refused as an undefined type.** Found
   while trying every way to give `Envelope` its traits; the derives work.
 
 The author already knows the language, so none of this counts toward the
 machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-06-1`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Against legacy dd86e3955 (`KARAC_AUTO_PAR=0`), kata 354 executes 0.81× the instructions in 1.46× the cycles, on karac g162ee7a0e (2026-11-06); it runs 2.05× `rustc -O`.

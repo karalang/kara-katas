@@ -95,10 +95,49 @@ and both builds, as do its C, Rust, Go and Python mirrors.
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are.
+`bench/line_reflection.kara` and its four mirrors time the kata's set-lookup
+algorithm. Each of 400 sets of 5,000 points is built symmetric about a random
+vertical line from 2,500 random points and their images; every third set has
+one point moved by one, which almost always breaks the symmetry. The sink
+counts the sets that reflect and folds every answer into a checksum.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host, and this kata has
+no Python timing on any host. The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 13.8 ms ± 0.1 | 4.12× |
+| **kāra `karac build`, seq** | **56.8 ms ± 1.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 67.4 ms ± 1.1 | 0.84× |
+| rust `-O` | 67.8 ms ± 1.4 | 0.84× |
+| go `go build` | 77.4 ms ± 1.2 | 0.73× |
+
+Kāra is 4.12× C, and ahead of both Rust builds (0.84× each) and Go (0.73×). The
+C mirror has no standard hash set, so it builds its own per call: an
+open-addressing table sized once to at least twice the point count, so it never
+grows or rehashes, with each packed pair hashed by one splitmix64 finalizer.
+Kāra's `Set`, Rust's `HashSet` and Go's `map` start empty and grow as the 5,000
+points go in. That difference is in the source; how much of the 4.12× it
+accounts for was not measured. Against the legacy backend (exact counts,
+dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.54× the instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 48.4 ms ± 2.3 | 32.8 KiB | 1.4 MiB |
+| rust | 125.5 ms ± 4.7 | 457.5 KiB | 1.6 MiB |
+| kāra | 118.7 ms ± 2.5 | 67.1 KiB | 1.8 MiB |
+| go | — | 2450.6 KiB | 9.0 MiB |
+
+`karac build` is 2.5× clang's cold compile and 0.9× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`266 of 400 sets reflect, checksum 982136625`).
 
 ## Compiler findings
 

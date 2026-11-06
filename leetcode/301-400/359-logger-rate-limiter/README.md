@@ -90,9 +90,43 @@ under `karac __mir-run`, as do its C, Rust, Go and Python mirrors.
 
 ## Benchmarks
 
-Not measured. The legacy native build of the bench program aborts with a
-double free (below), so there is no Kāra binary to time yet. The C, Rust, Go
-and Python mirrors are written and agree on the checksum.
+The bench program makes 1,000,000 calls over 100 messages with the ★ arm,
+the clock advancing on one call in eight. When the kata was written the
+legacy native build of it aborted with a double free (below); the v2/MIR
+backend builds it. The C, Rust, Go and Python mirrors agree on the checksum.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **33.3 ms ± 0.8** | **—** |
+| rust `-O` | 43.5 ms ± 0.8 | 0.76× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 44.1 ms ± 0.9 | 0.75× |
+| go `go build` | 48.1 ms ± 1.0 | 0.69× |
+| c `clang -O3` | 48.6 ms ± 1.2 | 0.68× |
+
+Kāra is 0.76× `rustc -O`, 0.75× equal-safety Rust, 0.68× C and 0.69× Go,
+the fastest of the five. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes
+0.65× the instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 43.8 ms ± 0.6 | 32.8 KiB | 1.3 MiB |
+| rust | 110.4 ms ± 1.2 | 475.0 KiB | 1.1 MiB |
+| kāra | 108.2 ms ± 2.4 | 67.1 KiB | 1.1 MiB |
+| go | — | 2450.5 KiB | 7.1 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.0× rustc's. Kāra's
+68,760-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`558265 of 1000000 calls printed, checksum 467012428`).
 
 ## Compiler findings
 

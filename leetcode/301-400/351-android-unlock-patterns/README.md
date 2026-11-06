@@ -111,11 +111,46 @@ its round, so no call can be skipped or hoisted; all five print
 `sink 701253957`. Each mirror builds its line table and its visited flags on
 every call, as the Kāra arm does.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-06, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 305.0 ms ± 1.6 | 1.18× |
+| rust `-O` | 331.5 ms ± 2.6 | 1.08× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 337.9 ms ± 2.3 | 1.06× |
+| **kāra `karac build`, seq** | **359.0 ms ± 4.7** | **—** |
+| go `go build` | 526.6 ms ± 7.1 | 0.68× |
+
+Kāra is 1.08× `rustc -O`, 1.06× equal-safety Rust and 1.18× C, and ahead of Go
+(0.68×). The gaps were not investigated on this host. Against the legacy backend
+(exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra runs in 0.69× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.7 ms ± 1.5 | 32.8 KiB | 1.0 MiB |
+| rust | 90.5 ms ± 2.1 | 455.5 KiB | 1.1 MiB |
+| kāra | 116.0 ms ± 3.5 | 67.0 KiB | 1.1 MiB |
+| go | — | 2450.5 KiB | 4.7 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 701253957`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10502+ga703616a1` (kara main at the B-2026-10-05-108 fix),
@@ -140,6 +175,10 @@ recursive search that indexes two small `Vec`s passed by reference, so the
 cost is per call and per index. Where the extra half goes was not
 investigated. Python is 40× behind here because the work is all interpreted
 recursion, with no C-implemented container to lean on.
+
+Note (2026-11-06): on the M5 feed Kāra is 1.06× behind equal-safety Rust and
+1.18× behind C, and Go is 1.47× behind Kāra, so it is neither level with Go
+nor further behind Rust than #349 (1.16×) and #350 (0.95×) there.
 
 Compile time (cold, 10 runs) and artefact size:
 
@@ -182,7 +221,7 @@ surface runs.
   bounds" on `NUMS[2]` and segfaulted on `for x in NUMS`. The language
   forbids heap data in a module binding, so the compiler now refuses it and
   offers `Array[i64, 3]` as a fix.
-- **B-2026-10-06-43 (codegen, open): a `const` or module-level `Array` used
+- **B-2026-10-06-43 (codegen, fixed in kara `73093b0d9`): a `const` or module-level `Array` used
   directly fails to build.** With the first fix in place, a `const` array
   used directly as an index base, a `.len()` receiver or a `for` iterable
   runs under `karac run --interp`, but `karac build` stops with a codegen

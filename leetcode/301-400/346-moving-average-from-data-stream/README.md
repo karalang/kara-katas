@@ -108,11 +108,51 @@ call pushes one value and pops one. Rust uses `std::collections::VecDeque`;
 C and Go have no deque in their standard libraries, so they use a small
 growable ring with a head index, which is the same algorithm.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-05, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 19.4 ms ± 1.4 | 1.30× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 19.8 ms ± 2.6 | 1.27× |
+| **kāra `karac build`, seq** | **25.2 ms ± 0.4** | **—** |
+| c `clang -O3` | 33.3 ms ± 0.6 | 0.76× |
+| go `go build` | 39.1 ms ± 0.8 | 0.64× |
+
+Kāra is 1.30× `rustc -O` and 1.27× equal-safety Rust, and ahead of C (0.76×) and
+Go (0.64×). The gaps were not investigated on this host. Against the legacy
+backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.03× the
+instructions (0.485G against 15.455G). The 20× gap to Rust in the history below
+was measured on the legacy backend.
+
+Kāra's seq binary is 336,240 B (328.4 KiB), about five times the 68–69 KB of
+most seq Kāra binaries on this compiler (see Bug ledger).
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 48.2 ms ± 1.5 | 32.7 KiB | 1.0 MiB |
+| rust | 86.4 ms ± 3.7 | 474.8 KiB | 1.1 MiB |
+| kāra | 115.4 ms ± 6.8 | 328.4 KiB | 1.0 MiB |
+| go | — | 2450.5 KiB | 2.6 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 10.0× clang's and 1.4× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 291716447.836`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10448+g76727438c`, measured 2026-10-05, with the timed lane built
@@ -147,6 +187,9 @@ gap is the `pop_front` lowering. The kata keeps the struct, because a window
 held in a struct is how this problem is naturally written; the row stays open
 until the compiler handles it. The C and Go gap to Rust (2.4× and 3.5×) was
 not investigated.
+
+Note (2026-11-06): on the M5 feed, built by the v2/MIR backend, Kāra is 1.30×
+`rustc -O`, not 20×, and ahead of C and Go.
 
 Compile time (cold, 10 runs) and artefact size:
 
@@ -183,3 +226,7 @@ repo's ledger. The diagnostics one is fixed; the performance one is open.
 
 The author already knows the language, so none of this counts toward the
 machine-fix rate.
+
+## Bug ledger
+
+**Surfaced [`B-2026-11-06-2`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Kata 346's seq binary is 336,240 B on karac g162ee7a0e (2026-11-06), against the 68–69 KB of most seq Kāra binaries on the same compiler.

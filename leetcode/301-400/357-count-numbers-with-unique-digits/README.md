@@ -89,10 +89,43 @@ Rust, Go and Python mirrors.
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are.
+`bench/unique_digits.kara` and its four mirrors time the kata's depth-first
+search, run at full width in every base from 2 to 11: about 110 million
+calls, almost all of them in base 11. The closed form answers in `O(base)`;
+this measures the search. Each base's count is folded into a checksum, the
+sink.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host, and this kata has
+no Python timing on any host. The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 424.1 ms ± 7.2 | 1.09× |
+| rust `-O` | 460.0 ms ± 6.2 | 1.00× |
+| **kāra `karac build`, seq** | **461.7 ms ± 9.8** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 479.8 ms ± 5.7 | 0.96× |
+| go `go build` | 651.0 ms ± 7.8 | 0.71× |
+
+Kāra is level with `rustc -O` (1.00×), 1.09× C, and ahead of equal-safety
+Rust (0.96×) and Go (0.71×). The gaps were not investigated.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 40.2 ms ± 0.8 | 32.7 KiB | 1.0 MiB |
+| rust | 70.6 ms ± 0.6 | 455.4 KiB | 1.1 MiB |
+| kāra | 99.0 ms ± 3.0 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 2.6 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.4× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`bases 2 to 11: checksum 36315606`).
 
 ## Compiler findings
 

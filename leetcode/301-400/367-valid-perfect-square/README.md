@@ -85,8 +85,41 @@ All four arms print the same output as `perfect_square.py` under
 The bench program tests three million random numbers below 2^31 with the ★
 arm: the even-numbered ones are squares of roots up to 46,340 and the odd
 ones are anywhere in range. The Kāra build and the C, Rust, Go and Python
-mirrors all print `1500038 squares, checksum 430926364`. Timings are not
-taken yet; they need a quiet machine.
+mirrors all print `1500038 squares, checksum 430926364`.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 164.1 ms ± 1.2 | 1.48× |
+| rust `-O` | 193.5 ms ± 0.9 | 1.25× |
+| go `go build` | 207.9 ms ± 1.0 | 1.17× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 237.5 ms ± 3.5 | 1.02× |
+| **kāra `karac build`, seq** | **242.9 ms ± 3.5** | **—** |
+
+Kāra is 1.25× `rustc -O` but 1.02× equal-safety Rust: most of the gap to
+`rustc -O` is overflow checks, which take Rust from 193.5 ms to 237.5 ms
+when turned on. Kāra is 1.48× C and 1.17× Go; those gaps were not
+investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 42.0 ms ± 2.4 | 32.7 KiB | 1.0 MiB |
+| rust | 74.9 ms ± 1.1 | 455.4 KiB | 1.1 MiB |
+| kāra | 105.0 ms ± 2.1 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 2.7 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.4× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1500038 squares, checksum 430926364`).
 
 ## Compiler findings
 

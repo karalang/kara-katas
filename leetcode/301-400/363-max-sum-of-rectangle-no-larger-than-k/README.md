@@ -91,7 +91,39 @@ The bench program solves 20 random 100 x 100 matrices, the problem's
 largest, with `k` drawn from `[-10000, 10000]`. It uses the merge-sort arm,
 because the ★ arm does not compile yet and C has no ordered set to mirror
 it with. The Kāra build and the C, Rust, Go and Python mirrors all print
-`checksum 384035913`. Timings are not taken yet; they need a quiet machine.
+`checksum 384035913`.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 228.9 ms ± 4.5 | 1.15× |
+| rust `-O` | 243.8 ms ± 1.6 | 1.08× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 248.5 ms ± 6.7 | 1.06× |
+| **kāra `karac build`, seq** | **262.7 ms ± 2.1** | **—** |
+| go `go build` | 263.3 ms ± 2.0 | 1.00× |
+
+Kāra is 1.08× `rustc -O`, 1.06× equal-safety Rust, 1.15× C and 1.00× Go.
+The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 56.1 ms ± 1.7 | 32.9 KiB | 1.1 MiB |
+| rust | 108.7 ms ± 5.9 | 455.7 KiB | 1.4 MiB |
+| kāra | 122.7 ms ± 1.2 | 66.9 KiB | 1.3 MiB |
+| go | — | 2450.5 KiB | 9.8 MiB |
+
+`karac build` is 2.2× clang's cold compile and 1.1× rustc's. Kāra's
+68,552-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 384035913`).
 
 ## Compiler findings
 

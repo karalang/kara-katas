@@ -100,10 +100,45 @@ and they are frozen for the v2 rewrite.
 
 ## Benchmarks
 
-Not measured yet. The bench programs in `bench/` and their C, Rust, Go and
-Python mirrors are written and agree on the printed checksum, but the timings
-still have to be taken on a quiet machine. This section will carry the table
-when they are.
+`bench/rearrange.kara` and its four mirrors time the kata's heap-and-queue
+greedy on 200 strings of 50,000 letters. Each string is drawn over the first
+4 to 26 letters with a skewed draw (one letter in eight is forced to `a`, so
+the most frequent letter is often too frequent), with `k` from 1 to 8. The
+sink counts the strings that can be arranged and folds every output byte
+into a checksum.
+
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. Python was not run on this host, and this kata has
+no Python timing on any host. The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 104.5 ms ± 0.6 | 1.22× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 107.9 ms ± 1.0 | 1.18× |
+| **kāra `karac build`, seq** | **127.5 ms ± 1.1** | **—** |
+| c `clang -O3` | 143.3 ms ± 0.9 | 0.89× |
+| go `go build` | 486.8 ms ± 13.9 | 0.26× |
+
+Kāra is 1.22× `rustc -O` and 1.18× equal-safety Rust, and ahead of C (0.89×) and
+Go (0.26×). The gaps were not investigated. Against the legacy backend (exact
+counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.59× the instructions.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.4 ms ± 0.7 | 32.9 KiB | 1.2 MiB |
+| rust | 111.8 ms ± 4.3 | 455.9 KiB | 1.3 MiB |
+| kāra | 148.6 ms ± 3.3 | 67.0 KiB | 1.4 MiB |
+| go | — | 2451.4 KiB | 9.7 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`116 of 200 strings can be arranged, checksum 934979344`).
 
 ## Compiler findings
 

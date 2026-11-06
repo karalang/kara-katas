@@ -103,11 +103,46 @@ Hamiltonian cycle until a quarter of the board is eaten, and plays three full
 laps of the cycle, folding every move's result into the sink. All five print
 `sink 714297392`.
 
-> **Host:** only the x86-64 Linux cloud container lane exists so far, in
-> [`bench/results.container-x86.json`](bench/results.container-x86.json). The
-> canonical Apple M5 Pro lane (`bench/results.json`) is not measured yet, and
-> `bench-lib.sh` refuses to write it from Linux. Absolute milliseconds are NOT
-> comparable between hosts. Only the **within-file cross-language ratios** are.
+### Apple M5 Pro, 2026-11-06
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14606+g162ee7a0e`
+(g162ee7a0e, the v2/MIR backend), measured 2026-11-06, with the Kāra binary
+built `KARAC_AUTO_PAR=0`. Python was not run on this host. Its row in the
+history below was last measured 2026-10-06, on the container, and not re-run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 153.5 ms ± 1.9 | 1.03× |
+| **kāra `karac build`, seq** | **158.4 ms ± 3.4** | **—** |
+| rust `-O` | 162.3 ms ± 3.0 | 0.98× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 163.9 ms ± 3.2 | 0.97× |
+| go `go build` | 233.5 ms ± 2.8 | 0.68× |
+
+Kāra is level with C (1.03×) and both Rust builds (0.98× `rustc -O`, 0.97×
+equal-safety), and ahead of Go (0.68×). Peak RSS is about 100 MiB for C,
+Rust and Kāra alike, and 25.4 MiB for Go; that was not investigated.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.9 ms ± 1.3 | 32.8 KiB | 99.3 MiB |
+| rust | 100.2 ms ± 0.6 | 455.9 KiB | 99.6 MiB |
+| kāra | 130.0 ms ± 1.6 | 66.9 KiB | 100.9 MiB |
+| go | — | 2434.2 KiB | 25.4 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.3× rustc's. Kāra's binary
+is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`sink 714297392`).
+
+### Container x86-64 history
+
+> **Host:** these are the x86-64 Linux cloud container figures, kept as history,
+> from [`bench/results.container-x86.json`](bench/results.container-x86.json).
+> Absolute milliseconds are NOT comparable between hosts. Only the
+> **within-file cross-language ratios** are.
 
 30 runs each, 5 warmups, on a 4-core x86-64 Linux container, karac
 `0.1.0-dev.10553+g87d927e95`, measured 2026-10-06, with the timed lane built
@@ -151,6 +186,9 @@ and then stays flat; valgrind finds nothing leaked (below). The rest was not
 traced; allocator growth under repeated `push` doubling is the likeliest
 cause, but that is inferred, not measured.
 
+Note (2026-11-06): on the M5 feed Kāra's peak RSS is 1.02× C's (100.9 against
+99.3 MiB), not 2.6×, and Go is 1.47× behind Kāra rather than 2×.
+
 ## Compiler findings
 
 - **B-2026-10-06-99 (open, codegen): a `.chars()` chain whose receiver is a fresh
@@ -165,7 +203,7 @@ cause, but that is inferred, not measured.
   drove all the game types through one `fn drive[G: Snake](g: mut ref G, ..)`
   ran under `--interp` and was refused by every compiled surface. A plain
   struct or a `shared enum` in the same place builds.
-- **B-2026-10-06-74 (open), widened:** that row says the predicates of `find`
+- **B-2026-10-06-74 (fixed in kara `dd329007d3`), widened:** that row says the predicates of `find`
   and `filter` get the item by value where the design says `ref`. The same
   holds for `for x in v.iter()` and `any`: `*x` is refused, so `body.iter().any(|p| p == next)`
   is the spelling that compiles.

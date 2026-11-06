@@ -122,7 +122,7 @@ echo
 
 bench_begin id=353 slug=design-snake-game group=301-400 \
     title="Design Snake Game" \
-    workload="30 rounds x 3 laps of a Hamiltonian cycle on a 1000 x (400 + 2r) board, food 3 ahead until a quarter is eaten; sink=sink" sink="$expected"
+    workload="30 rounds x 3 laps of a Hamiltonian cycle on a 1000 x (400 + 2r) board, food 3 ahead until a quarter is eaten; sink=one checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
