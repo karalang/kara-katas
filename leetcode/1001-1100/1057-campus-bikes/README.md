@@ -146,8 +146,8 @@ __mir-run` (the v2 MIR interpreter) and `karac __mir-llvm-run`, and under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for every arm
 and the differential. `karac check --output=json` reports nothing on any
-file. The runs used a release build of kara `75f505e7a4`. Under `karac
-__mir-run` the arms take 6.4 s (sort) to 18.2 s (iter).
+file. The runs used a release build of kara `a3df76e55c`. Under `karac
+__mir-run` the arms take 5.9 s (sort) to 17.4 s (iter).
 
 The ★ arm was written in Kāra and checked clean. The other four were
 written the way Rust writes them. The sort, iter and map arms reach a clean
@@ -155,7 +155,7 @@ check through `karac fix` alone (`Vec<..>` to `Vec[..]`, `&T` to `ref T`,
 `::` to `.`, `!` to `not`, `&&` to `and`, `&` patterns dropped, `move`
 dropped, and `use std::collections::BTreeMap` deleted with `BTreeMap`
 renamed `SortedMap`). The heap arm met three gaps, two fixed in kara
-`fd27e8ad71` and `75f505e7a4`, and one filed:
+`52c81c1375` and `7b8a0de80f`, and one filed:
 
 - `Vec<(i64, usize)>`, which `karac fix` spelled `Vec[(i64, usize)]`, drew
   `i64`/`usize` coercion errors with no fix (kara B-2026-11-06-3, from kata
@@ -174,7 +174,7 @@ renamed `SortedMap`). The heap arm met three gaps, two fixed in kara
   refused with "cannot infer type parameter 'T'". `Vec.new()` and the other
   built-in collections are inferred from a later use, but a declared
   generic constructor or function whose parameter only its return type
-  names is not. Filed as kara B-2026-11-06-6; the arm writes
+  names is not. Filed as kara B-2026-11-06-7; the arm writes
   `PriorityQueue[(i64, i64, i64)]` by hand.
 
 ## Benchmarks
@@ -187,29 +187,29 @@ into 2000 growable buckets, which are allocated and freed on every call,
 and then walked in order.
 
 Timings on a 4-core container, eight interleaved runs of each compiled
-program and one of Python, with kara `75f505e7a4` on LLVM 22:
+program and one of Python, with kara `a3df76e55c` on LLVM 22:
 
 | | time | median |
 |---|---|---|
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.215 to 0.242 s | 0.220 s |
-| Kāra (`karac build`) | 0.212 to 0.236 s | 0.228 s |
-| C (`clang -O3`) | 0.365 to 0.410 s | 0.387 s |
-| Rust (`rustc -O`) | 0.376 to 0.448 s | 0.414 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.484 to 0.566 s | 0.503 s |
-| Go | 0.682 to 0.767 s | 0.739 s |
-| Python | 6.05 s | |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.207 to 0.249 s | 0.214 s |
+| Kāra (`karac build`) | 0.210 to 0.258 s | 0.215 s |
+| C (`clang -O3`) | 0.357 to 0.403 s | 0.375 s |
+| Rust (`rustc -O`) | 0.376 to 0.428 s | 0.387 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.488 to 0.512 s | 0.506 s |
+| Go | 0.704 to 0.772 s | 0.745 s |
+| Python | 5.92 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here: its
-user time (0.221 s) is below its real time.
+user time (0.209 s) is below its real time.
 
 Kāra's lead is the allocator, not the loop. C and both Rust builds spend
-0.12 to 0.17 s of each run in the kernel, with about 100000 minor page
+0.12 to 0.16 s of each run in the kernel, with about 100000 minor page
 faults: glibc gives the freed buckets back to the system at the end of each
 call and faults them in again on the next. Kāra's runtime raises glibc's
 trim and mmap thresholds before `main` (`runtime/src/lib.rs`,
 `malloc_tuning`), so the memory is kept, and the run takes about 1000
 faults. With the same thresholds set through `MALLOC_TRIM_THRESHOLD_` and
-`MALLOC_MMAP_THRESHOLD_`, C takes 0.214 s, Rust 0.245 s and Rust under
-overflow checks 0.328 s, against Kāra's 0.212 s; with
-`KARAC_MALLOC_TUNE=0`, Kāra takes 0.334 s (medians of five runs).
+`MALLOC_MMAP_THRESHOLD_`, C takes 0.210 s, Rust 0.227 s and Rust under
+overflow checks 0.330 s, against Kāra's 0.214 s; with
+`KARAC_MALLOC_TUNE=0`, Kāra takes 0.354 s (medians of five runs).
