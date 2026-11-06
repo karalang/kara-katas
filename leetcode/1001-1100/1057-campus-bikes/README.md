@@ -155,7 +155,7 @@ check through `karac fix` alone (`Vec<..>` to `Vec[..]`, `&T` to `ref T`,
 `::` to `.`, `!` to `not`, `&&` to `and`, `&` patterns dropped, `move`
 dropped, and `use std::collections::BTreeMap` deleted with `BTreeMap`
 renamed `SortedMap`). The heap arm met three gaps, two fixed in kara
-`52c81c1375` and `7b8a0de80f`, and one filed:
+`52c81c1375` and `7b8a0de80f`, and one filed and since fixed:
 
 - `Vec<(i64, usize)>`, which `karac fix` spelled `Vec[(i64, usize)]`, drew
   `i64`/`usize` coercion errors with no fix (kara B-2026-11-06-3, from kata
@@ -170,12 +170,15 @@ renamed `SortedMap`). The heap arm met three gaps, two fixed in kara
   and the heap's constructor becomes `PriorityQueue.new()` rather than the
   largest-first `PriorityQueue.max_first()`. A `Reverse` anywhere else, a
   sort key say, gets no fix and a message naming `sort_by(|a, b| b.cmp(a))`.
-- `let mut heap = PriorityQueue.new();`, fixed by the `push` after it, is
+- `let mut heap = PriorityQueue.new();`, fixed by the `push` after it, was
   refused with "cannot infer type parameter 'T'". `Vec.new()` and the other
-  built-in collections are inferred from a later use, but a declared
+  built-in collections were inferred from a later use, but a declared
   generic constructor or function whose parameter only its return type
-  names is not. Filed as kara B-2026-11-06-7; the arm writes
-  `PriorityQueue[(i64, i64, i64)]` by hand.
+  names was not. Filed as kara B-2026-11-06-7, and fixed by Thread C in kara
+  `2783b8c546`; until then the arm wrote `PriorityQueue[(i64, i64, i64)]` by
+  hand. The heap arm and the differential's copy of it now write the bare
+  `PriorityQueue.new()`, and both print the same output on every lane under
+  kara `931da0cb10`.
 
 ## Benchmarks
 
