@@ -320,3 +320,14 @@ bash bench/bench.sh
 **Surfaced [`B-2026-11-04-31`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). The seq binary is 319,576 B on gd33cb285d (measured 2026-11-04), where most seq binaries in that re-bench are 52–69 KB. The root keeping the larger runtime path alive here is not yet found.
 
 **Surfaced [`B-2026-11-04-32`](../../../../kara/docs/bugs-v2.md)** (perf, low, open). Peak RSS is 233–235 MiB against Rust's 173 MiB under `/usr/bin/time -l`, 1.35×, the same on gd33cb285d and g7310a8f94 (measured 2026-11-04).
+
+On 2026-11-06 the drop schedule found the cause in the kata, not the
+compiler: the deserializer copied every token into its own `String`
+(`s.split(",").map(|p| p.to_string()).collect()`), where the Rust mirror
+borrows (`Vec<&str>`). The ★ arm, its copy in the differential and the
+bench now keep the views, `let tokens: Vec[Str] = s.split(",").collect();`,
+as `codec_level.kara` already did. Every lane prints what it printed
+before. On the x86 container the bench went from 1.50–1.69 s and 45.8 MiB
+to 0.98–1.17 s and 31.8 MiB, against Rust's 0.94–1.14 s and 25.7 MiB
+(three runs each, peak RSS from `wait4`). The tables above predate the
+change; the row closes on an M5 re-run.
