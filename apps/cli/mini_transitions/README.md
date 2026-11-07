@@ -148,11 +148,11 @@ the replay above. `== end` prints each machine as `<name>: <state> after
 
 Two, both fixed in kara before this app landed:
 
-- B-2026-11-07-9: a part of a `shared` value held in a local
+- B-2026-11-07-12: a part of a `shared` value held in a local
   (`match m.initial { Some(i) => .. }` with `m` a handle) was refused as a
   move out of a `shared` value, by `karac check` and every backend, though
   core semantics §4.6 makes the binding a `ref`.
-- B-2026-11-07-10: a closure that matched a captured enum against dotted
+- B-2026-11-07-13: a closure that matched a captured enum against dotted
   unit variants (`Cmp.Lt => x < v`) typed as `OnceFn` on the MIR pipeline,
   so storing it in a `Fn` slot failed every run and build while `karac
   check` passed.
