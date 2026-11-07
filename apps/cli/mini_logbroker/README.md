@@ -135,16 +135,16 @@ against memory, unless the broker is down.
 
 ## Compiler gaps found
 
-- B-2026-11-06-30 (fixed): `dec(..).map_err(|_| bad.clone())?` followed
+- B-2026-11-06-36 (fixed): `dec(..).map_err(|_| bad.clone())?` followed
   by `return Err(bad)` was "moved inside a loop", with no loop. The
   record parser had cloned on the return and used a fresh literal in
   each closure.
-- B-2026-11-06-31 (fixed): `Slice[T]` had no `iter_mut`. Compaction's
+- B-2026-11-06-37 (fixed): `Slice[T]` had no `iter_mut`. Compaction's
   `part.segs[0..n - 1].iter_mut()` was `part.segs.iter_mut().take(n - 1)`.
-- B-2026-11-06-32 (open): the per-topic load task's `Result` error type
+- B-2026-11-06-38 (open): the per-topic load task's `Result` error type
   is fixed only by an annotation inside the closure
   (`let done: Result[..., String] = Ok(got); done`). Annotating the
   join result instead, as `?`'s own diagnostic suggests, fails lowering.
-- B-2026-11-06-33 (open, diagnostics): a let-chain
+- B-2026-11-06-39 (open, diagnostics): a let-chain
   (`if let Some(v) = v and ..`) gets two unrelated errors. The app nests
   the `if`, which is how Kāra writes it.
