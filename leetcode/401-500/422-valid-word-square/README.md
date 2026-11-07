@@ -124,7 +124,42 @@ row's string in every implementation. The program counts the valid
 answers and folds them into a checksum. Every implementation prints
 `6000 rounds on 500 words, 195633 letters: 4003 valid, checksum
 310447774`; a 30-round cut of the Kāra program under `karac __mir-run`
-prints the same as the C program cut the same way. Spot timings on a
+prints the same as the C program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 356.7 ms ± 17.9 | 1.43× |
+| c `clang -O3` | 365.9 ms ± 15.0 | 1.40× |
+| **kāra `karac build`, seq** | **511.9 ms ± 4.6** | **—** |
+| rust `-O` | 520.3 ms ± 4.1 | 0.98× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 522.0 ms ± 7.7 | 0.98× |
+
+Kāra is 0.98× `rustc -O`, 0.98× equal-safety Rust, 1.40× C and 1.43× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.92× the instructions in 0.98× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 54.5 ms ± 0.7 | 32.8 KiB | 3.7 MiB |
+| rust | 128.2 ms ± 1.7 | 474.4 KiB | 3.3 MiB |
+| kāra | 180.0 ms ± 2.5 | 67.0 KiB | 3.6 MiB |
+| go | — | 2450.9 KiB | 9.5 MiB |
+
+`karac build` is 3.3× clang's cold compile and 1.4× rustc's. Kāra's
+68,576-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`6000 rounds on 500 words, 195633 letters: 4003 valid, checksum 310447774`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (`bench.sh` timings need a
 quiet machine):
 

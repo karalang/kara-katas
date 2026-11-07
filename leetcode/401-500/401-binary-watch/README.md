@@ -99,7 +99,42 @@ and counts the times and their characters. Every implementation prints
 the Kāra program under `karac __mir-run` prints the same as the C
 program cut the same way. C has no string type, so its mirror formats
 each time with `snprintf` into a heap copy and frees the list after each
-call, as the other mirrors' strings are freed. Spot timings on a
+call, as the other mirrors' strings are freed.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O -C overflow-checks=on` (equal-safety) | 204.8 ms ± 2.8 | 1.19× |
+| rust `-O` | 209.8 ms ± 6.8 | 1.16× |
+| **kāra `karac build`, seq** | **243.3 ms ± 8.2** | **—** |
+| c `clang -O3` | 267.7 ms ± 5.2 | 0.91× |
+| go `go build` | 274.0 ms ± 4.5 | 0.89× |
+
+Kāra is 1.16× `rustc -O`, 1.19× equal-safety Rust, 0.91× C and 0.89× Go. The gap to Rust and C was not investigated on this host; against legacy it is the batch's one row over 1.25× the instructions, and it has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.25× the instructions in 1.42× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.3 ms ± 1.0 | 33.0 KiB | 1.2 MiB |
+| rust | 85.5 ms ± 2.6 | 456.5 KiB | 1.2 MiB |
+| kāra | 120.5 ms ± 2.4 | 83.2 KiB | 1.2 MiB |
+| go | — | 2450.5 KiB | 9.0 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.4× rustc's. Kāra's
+85,152-byte binary is 2.5× clang's and 5.5× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`50000 calls: 3272748 times, 13636421 characters`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container (`bench.sh` timings need a quiet machine):
 
 | | time |

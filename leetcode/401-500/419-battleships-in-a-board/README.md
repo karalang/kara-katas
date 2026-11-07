@@ -108,7 +108,42 @@ implementation prints `20000 rounds on a 200x200 board: total
 101025039, checksum 307155649`; a 50-round cut of the Kāra program
 under `karac __mir-run` prints the same as the C program cut the same
 way. The C mirror's cells are one-byte `char`s; Kāra's `char`, Rust's
-`char` and Go's `rune` are four bytes. Spot timings on a shared 4-core
+`char` and Go's `rune` are four bytes.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 679.7 ms ± 5.4 | 1.17× |
+| rust `-O` | 714.3 ms ± 4.9 | 1.12× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 753.3 ms ± 4.6 | 1.06× |
+| **kāra `karac build`, seq** | **797.9 ms ± 3.6** | **—** |
+| go `go build` | 861.5 ms ± 3.3 | 0.93× |
+
+Kāra is 1.12× `rustc -O`, 1.06× equal-safety Rust, 1.17× C and 0.93× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.83× the instructions in 0.99× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 55.4 ms ± 2.2 | 32.8 KiB | 1.1 MiB |
+| rust | 111.2 ms ± 1.4 | 455.6 KiB | 1.2 MiB |
+| kāra | 132.8 ms ± 2.4 | 67.0 KiB | 1.2 MiB |
+| go | — | 2450.4 KiB | 2.8 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.2× rustc's. Kāra's
+68,568-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20000 rounds on a 200x200 board: total 101025039, checksum 307155649`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (`bench.sh` timings need a quiet machine):
 
 | | time |

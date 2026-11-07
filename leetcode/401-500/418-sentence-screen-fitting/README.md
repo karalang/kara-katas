@@ -108,7 +108,42 @@ way, while the Go mirror's sentence shares the pool's strings. It folds
 the answers into a total and a checksum. Every implementation prints
 `10000 calls: total 6375987449, checksum 31545929`; a 20-call cut of
 the Kāra program under `karac __mir-run` prints the same as the C
-program cut the same way. Spot timings on a shared 4-core container,
+program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O -C overflow-checks=on` (equal-safety) | 189.2 ms ± 1.6 | 1.03× |
+| rust `-O` | 190.2 ms ± 3.1 | 1.03× |
+| c `clang -O3` | 190.2 ms ± 1.6 | 1.03× |
+| **kāra `karac build`, seq** | **195.6 ms ± 4.7** | **—** |
+| go `go build` | 198.4 ms ± 4.7 | 0.99× |
+
+Kāra is 1.03× `rustc -O`, 1.03× equal-safety Rust, 1.03× C and 0.99× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.73× the instructions in 0.99× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 51.9 ms ± 0.9 | 33.0 KiB | 1.3 MiB |
+| rust | 110.8 ms ± 3.2 | 455.9 KiB | 1.8 MiB |
+| kāra | 128.8 ms ± 2.2 | 66.9 KiB | 1.7 MiB |
+| go | — | 2450.6 KiB | 9.3 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.2× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10000 calls: total 6375987449, checksum 31545929`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container,
 three runs each (`bench.sh` timings need a quiet machine):
 
 | | time |

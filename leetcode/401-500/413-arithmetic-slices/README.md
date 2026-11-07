@@ -87,7 +87,42 @@ hoist the count out of the loop; it folds the counts into a total and a
 checksum. Every implementation prints `60000 rounds on 5000 numbers:
 total 329429860, checksum 47720820`; a 100-round cut of the Kāra
 program under `karac __mir-run` prints the same as the C program cut
-the same way. Spot timings on a shared 4-core container, two or three
+the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 73.0 ms ± 0.6 | 1.73× |
+| c `clang -O3` | 93.5 ms ± 0.5 | 1.35× |
+| **kāra `karac build`, seq** | **126.0 ms ± 6.7** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 129.6 ms ± 9.2 | 0.97× |
+| go `go build` | 258.6 ms ± 2.2 | 0.49× |
+
+Kāra is 1.73× `rustc -O`, 0.97× equal-safety Rust, 1.35× C and 0.49× Go. The gap to `rustc -O` is the cost of the overflow checks Kāra keeps on by default; C's lead was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.95× the instructions in 0.88× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.5 ms ± 0.8 | 32.8 KiB | 1.0 MiB |
+| rust | 104.8 ms ± 2.4 | 458.1 KiB | 1.2 MiB |
+| kāra | 118.1 ms ± 1.6 | 66.9 KiB | 1.2 MiB |
+| go | — | 2450.9 KiB | 2.8 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.1× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`60000 rounds on 5000 numbers: total 329429860, checksum 47720820`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, two or three
 runs each (`bench.sh` timings need a quiet machine):
 
 | | time |

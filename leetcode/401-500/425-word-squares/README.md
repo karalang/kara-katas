@@ -116,7 +116,42 @@ letters of each square into a checksum. Every implementation prints
 same as the C program cut the same way. The C mirror's map is a table
 indexed by the prefix read as a base-27 number, where the others use a
 hash map keyed by the prefix string; each implementation copies every
-square's rows out, as the Kāra program clones them. Spot timings on a
+square's rows out, as the Kāra program clones them.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 116.9 ms ± 1.2 | 3.35× |
+| go `go build` | 140.5 ms ± 2.0 | 2.79× |
+| **kāra `karac build`, seq** | **391.9 ms ± 3.6** | **—** |
+| rust `-O` | 398.5 ms ± 3.6 | 0.98× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 399.7 ms ± 3.4 | 0.98× |
+
+Kāra is 0.98× `rustc -O`, 0.98× equal-safety Rust, 3.35× C and 2.79× Go. Kāra matches Rust; the C and Go mirrors' leads (3.35× and 2.79×) were not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.88× the instructions in 0.88× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 56.4 ms ± 0.9 | 32.9 KiB | 19.5 MiB |
+| rust | 161.6 ms ± 3.3 | 478.3 KiB | 12.6 MiB |
+| kāra | 153.1 ms ± 1.0 | 67.2 KiB | 12.4 MiB |
+| go | — | 2451.3 KiB | 18.8 MiB |
+
+`karac build` is 2.7× clang's cold compile and 0.9× rustc's. Kāra's
+68,832-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20 rounds on 1000 words: 1199807 squares, checksum 616762056`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (`bench.sh` timings need a
 quiet machine):
 

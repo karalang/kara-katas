@@ -96,7 +96,42 @@ out of the loop; it counts the arrays that split and folds the answers
 into a checksum. Every array in the run splits. Every implementation
 prints `2000 rounds on 200 numbers: 2000 can be split, checksum
 503223156`; a 5-round cut of the Kāra program under `karac __mir-run`
-prints the same as the C program cut the same way. Spot timings on a
+prints the same as the C program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 285.3 ms ± 3.5 | 3.35× |
+| go `go build` | 727.5 ms ± 22.0 | 1.31× |
+| rust `-O` | 731.8 ms ± 50.1 | 1.30× |
+| **kāra `karac build`, seq** | **954.3 ms ± 50.9** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 985.3 ms ± 43.7 | 0.97× |
+
+Kāra is 1.30× `rustc -O`, 0.97× equal-safety Rust, 3.35× C and 1.31× Go. The gap to `rustc -O` is the cost of the overflow checks Kāra keeps on by default; C's 3.35× lead was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 0.97× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 56.1 ms ± 1.2 | 32.8 KiB | 1.0 MiB |
+| rust | 100.0 ms ± 0.9 | 455.6 KiB | 1.1 MiB |
+| kāra | 125.4 ms ± 3.4 | 67.0 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 7.3 MiB |
+
+`karac build` is 2.2× clang's cold compile and 1.3× rustc's. Kāra's
+68,560-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`2000 rounds on 200 numbers: 2000 can be split, checksum 503223156`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (`bench.sh` timings need a
 quiet machine):
 

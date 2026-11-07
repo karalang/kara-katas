@@ -101,7 +101,42 @@ prints `60 grids of 200 x 200: 7627607015 units of water, checksum
 prints the same as the C program cut the same way. C has no heap type,
 so its mirror carries a binary min-heap ordered as the tuples are in
 the other mirrors; Rust uses `BinaryHeap` with `Reverse`, Go
-`container/heap` and Python `heapq`. Spot timings on a shared 4-core
+`container/heap` and Python `heapq`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 154.1 ms ± 3.5 | 1.36× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 162.2 ms ± 2.8 | 1.29× |
+| c `clang -O3` | 165.9 ms ± 2.9 | 1.26× |
+| **kāra `karac build`, seq** | **209.9 ms ± 2.0** | **—** |
+| go `go build` | 366.3 ms ± 5.5 | 0.57× |
+
+Kāra is 1.36× `rustc -O`, 1.29× equal-safety Rust, 1.26× C and 0.57× Go. The 1.29× gap to equal-safety Rust matches the legacy build's 1.5× on the container; it was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.72× the instructions in 0.71× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 60.5 ms ± 1.0 | 32.9 KiB | 1.8 MiB |
+| rust | 131.6 ms ± 2.1 | 455.8 KiB | 2.2 MiB |
+| kāra | 163.6 ms ± 3.9 | 67.0 KiB | 2.0 MiB |
+| go | — | 2451.5 KiB | 9.2 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.2× rustc's. Kāra's
+68,568-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`60 grids of 200 x 200: 7627607015 units of water, checksum 593333912`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container (`bench.sh` timings need a quiet machine):
 
 | | time |

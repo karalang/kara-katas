@@ -99,7 +99,42 @@ again, so no compiler can hoist the search out of the loop; it folds
 the answers into a total and a checksum. Every implementation prints
 `50000 rounds on 10000 numbers: total 107318057620496, checksum
 811171744`; a 100-round cut of the Kāra program under `karac __mir-run`
-prints the same as the C program cut the same way. Spot timings on a
+prints the same as the C program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 277.2 ms ± 2.5 | 2.60× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 277.5 ms ± 2.9 | 2.60× |
+| go `go build` | 597.6 ms ± 28.8 | 1.21× |
+| **kāra `karac build`, seq** | **720.9 ms ± 37.2** | **—** |
+| c `clang -O3` | 822.7 ms ± 29.9 | 0.88× |
+
+Kāra is 2.60× `rustc -O`, 2.60× equal-safety Rust, 0.88× C and 1.21× Go. C runs no faster than Kāra here, so Rust's 2.60× lead (both builds) is the outlier, as on the container, where the legacy build trailed Rust 2×; it was not investigated and has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 0.92× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.0 ms ± 1.0 | 32.8 KiB | 1.1 MiB |
+| rust | 89.5 ms ± 1.0 | 455.6 KiB | 1.2 MiB |
+| kāra | 117.9 ms ± 2.6 | 66.9 KiB | 1.1 MiB |
+| go | — | 2450.4 KiB | 2.8 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.3× rustc's. Kāra's
+68,504-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`50000 rounds on 10000 numbers: total 107318057620496, checksum 811171744`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, two or three runs each (`bench.sh` timings
 need a quiet machine):
 

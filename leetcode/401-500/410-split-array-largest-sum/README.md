@@ -95,7 +95,42 @@ pieces, built from an LCG. It folds the answers into a total and a
 checksum. Every implementation prints `10000 arrays of 1000 numbers:
 total 448129277720, checksum 213918463`; a 20-array cut of the Kāra
 program under `karac __mir-run` prints the same as the C program cut
-the same way. Spot timings on a shared 4-core container, three runs
+the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **139.7 ms ± 5.8** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 149.3 ms ± 6.7 | 0.94× |
+| go `go build` | 219.9 ms ± 1.7 | 0.64× |
+| c `clang -O3` | 220.4 ms ± 1.4 | 0.63× |
+| rust `-O` | 223.6 ms ± 2.2 | 0.62× |
+
+Kāra is 0.62× `rustc -O`, 0.94× equal-safety Rust, 0.63× C and 0.64× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 0.98× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.4 ms ± 0.7 | 32.8 KiB | 1.0 MiB |
+| rust | 105.6 ms ± 1.0 | 458.1 KiB | 1.2 MiB |
+| kāra | 119.2 ms ± 1.8 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.9 KiB | 2.6 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.1× rustc's. Kāra's
+68,504-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10000 arrays of 1000 numbers: total 448129277720, checksum 213918463`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three runs
 each (`bench.sh` timings need a quiet machine):
 
 | | time |

@@ -113,7 +113,42 @@ on a 200x200 grid: 576052 cells, checksum 103984603`; a 30-round cut of
 the Kāra program under `karac __mir-run` prints the same as the C
 program cut the same way. As in the Kāra program, each call of the C
 mirror allocates its own queues, marks and answer, and the Go mirror
-uses a slice read from a moving head as its queue. Spot timings on a
+uses a slice read from a moving head as its queue.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 370.4 ms ± 1.4 | 2.78× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 488.6 ms ± 10.3 | 2.11× |
+| rust `-O` | 509.1 ms ± 13.6 | 2.02× |
+| **kāra `karac build`, seq** | **1029.5 ms ± 12.4** | **—** |
+| go `go build` | 1365.1 ms ± 50.5 | 0.75× |
+
+Kāra is 2.02× `rustc -O`, 2.11× equal-safety Rust, 2.78× C and 0.75× Go. The 2.11× gap to equal-safety Rust (the legacy build was 3× on the container) was not investigated and has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.24× the instructions in 0.20× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 83.8 ms ± 1.1 | 32.8 KiB | 1.6 MiB |
+| rust | 137.6 ms ± 2.4 | 456.1 KiB | 1.8 MiB |
+| kāra | 159.6 ms ± 3.8 | 67.0 KiB | 1.7 MiB |
+| go | — | 2450.5 KiB | 11.3 MiB |
+
+`karac build` is 1.9× clang's cold compile and 1.2× rustc's. Kāra's
+68,576-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`3000 rounds on a 200x200 grid: 576052 cells, checksum 103984603`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (`bench.sh` timings need a
 quiet machine):
 

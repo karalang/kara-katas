@@ -93,7 +93,42 @@ the answers into a total and a checksum. Every implementation prints
 a 3-round cut of the Kāra program under `karac __mir-run` prints the
 same as the C program cut the same way. With 20,000 numbers the answer
 is near 2^31 every round, which does not shorten the work: every bit
-still builds a set of every prefix. Spot timings on a shared 4-core
+still builds a set of every prefix.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 140.1 ms ± 3.5 | 5.45× |
+| **kāra `karac build`, seq** | **763.4 ms ± 15.9** | **—** |
+| rust `-O` | 769.9 ms ± 3.7 | 0.99× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 771.8 ms ± 4.1 | 0.99× |
+| go `go build` | 1188.9 ms ± 5.9 | 0.64× |
+
+Kāra is 0.99× `rustc -O`, 0.99× equal-safety Rust, 5.45× C and 0.64× Go. Kāra matches Rust; the C mirror's 5.45× lead over both was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.62× the instructions in 0.56× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 48.0 ms ± 0.8 | 32.8 KiB | 1.8 MiB |
+| rust | 120.6 ms ± 1.7 | 475.6 KiB | 3.2 MiB |
+| kāra | 126.8 ms ± 1.8 | 67.1 KiB | 3.1 MiB |
+| go | — | 2451.1 KiB | 8.6 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.1× rustc's. Kāra's
+68,728-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100 rounds on 20000 numbers: total 214748363500, checksum 147213845`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (`bench.sh` timings need a quiet machine):
 
 | | time |

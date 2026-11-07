@@ -94,7 +94,42 @@ Trees stop at 30,000 nodes because the LCG gives 15-bit numbers, and a
 parent is picked as one of them. Every implementation prints `50 trees
 of 30000 nodes, 50 rounds: total 1162500, checksum 420402371`; a 2-tree
 cut of the Kāra program under `karac __mir-run` prints the same as the
-C program cut the same way. Spot timings on a shared 4-core container
+C program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14781+g3dc7786b7`
+(g3dc7786b7, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 190.4 ms ± 3.9 | 1.83× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 201.2 ms ± 5.5 | 1.73× |
+| rust `-O` | 213.3 ms ± 15.1 | 1.63× |
+| go `go build` | 294.8 ms ± 4.9 | 1.18× |
+| **kāra `karac build`, seq** | **348.0 ms ± 16.5** | **—** |
+
+Kāra is 1.63× `rustc -O`, 1.73× equal-safety Rust, 1.83× C and 1.18× Go. The 1.73× gap to equal-safety Rust and 1.83× to C is new on this host (the container's compiled programs ran within 10% of each other, legacy included); it was not investigated and has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.97× the instructions in 1.18× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.1 ms ± 0.7 | 32.8 KiB | 1.7 MiB |
+| rust | 85.2 ms ± 0.7 | 455.8 KiB | 2.0 MiB |
+| kāra | 116.9 ms ± 1.4 | 66.9 KiB | 1.9 MiB |
+| go | — | 2450.5 KiB | 8.5 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.4× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`50 trees of 30000 nodes, 50 rounds: total 1162500, checksum 420402371`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container
 (`bench.sh` timings need a quiet machine):
 
 | | time |
