@@ -128,8 +128,44 @@ checksum. Every implementation prints `100000 systems: 799127 answered,
 checksum 609728220`; a 2,000-system cut of the Kāra program under
 `karac __mir-run` prints the same as the C program cut the same way. C
 has no map type, so its mirror carries an open-addressing table of
-heap-allocated names; the others use their own hash maps. Spot timings
-on a shared 4-core container (`bench.sh` timings need a quiet machine):
+heap-allocated names; the others use their own hash maps.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **387.4 ms ± 5.3** | **—** |
+| c `clang -O3` | 475.2 ms ± 4.7 | 0.82× |
+| go `go build` | 515.4 ms ± 7.4 | 0.75× |
+| rust `-O` | 543.1 ms ± 6.0 | 0.71× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 546.6 ms ± 6.8 | 0.71× |
+
+Kāra is 0.71× `rustc -O`, 0.71× equal-safety Rust, 0.82× C and 0.75× Go.
+The gaps were not investigated on this host. There is no legacy figure: legacy dd86e3955 cannot compile this kata.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 61.9 ms ± 0.8 | 49.2 KiB | 1.0 MiB |
+| rust | 133.0 ms ± 4.9 | 476.3 KiB | 1.3 MiB |
+| kāra | 151.1 ms ± 3.1 | 67.2 KiB | 1.4 MiB |
+| go | — | 2450.6 KiB | 10.6 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.1× rustc's. Kāra's
+68,784-byte binary is 1.4× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100000 systems: 799127 answered, checksum 609728220`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container (`bench.sh` timings need a
+quiet machine):
 
 | | time |
 |---|---|

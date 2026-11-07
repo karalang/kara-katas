@@ -97,6 +97,45 @@ own hash map, whose hashing and probing differ. It drives one set with
 insert, remove and `get_random`, which keeps about half the values in
 the set. The C, Rust, Go and Python mirrors print
 `checksum 828319335 size 100176`, and so does `karac __mir-llvm-run`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 326.1 ms ± 2.1 | 1.02× |
+| **kāra `karac build`, seq** | **331.2 ms ± 2.6** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 338.3 ms ± 4.2 | 0.98× |
+| rust `-O` | 339.1 ms ± 1.5 | 0.98× |
+| go `go build` | 429.6 ms ± 2.7 | 0.77× |
+
+Kāra is 0.98× `rustc -O`, 0.98× equal-safety Rust and 1.02× C, level with all
+three, and ahead of Go (0.77×). The legacy backend (dd86e3955) hangs on this
+kata, so there is no legacy figure.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 51.3 ms ± 2.2 | 32.8 KiB | 13.2 MiB |
+| rust | 103.0 ms ± 1.1 | 455.7 KiB | 13.2 MiB |
+| kāra | 132.9 ms ± 1.4 | 66.9 KiB | 16.7 MiB |
+| go | — | 2450.7 KiB | 16.6 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.3× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 828319335 size 100176`).
+
+### Container x86-64 history
+
+Spot timings taken on a shared 4-core x86-64 container before the first
+`bench.sh` run, kept as history. Absolute times are not comparable between hosts.
+
 On a shared 4-core container it takes 2.7 s, compile included, against
 1.1 s for `cc -O2`; these are spot timings, and `bench.sh` timings need
 a quiet machine. `karac build` (the legacy backend) prints the right

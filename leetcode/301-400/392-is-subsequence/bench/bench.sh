@@ -122,7 +122,7 @@ echo
 
 bench_begin id=392 slug=is-subsequence group=301-400 \
     title="Is Subsequence" \
-    workload="1M-letter pool, 5000 pairs of windows (s 100, t 0..10000)" sink="$expected"
+    workload="1M-letter pool, 20000 pairs of windows (s 100, t 0..10000)" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

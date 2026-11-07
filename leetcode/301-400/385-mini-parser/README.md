@@ -99,8 +99,45 @@ nested up to 5 deep, then parses it 2,000 times; each parse is walked
 for its depth, number of integers and sum, folded into a checksum. The
 Kāra program under `karac __mir-run` and the C, Rust, Go and Python
 mirrors all print
-`49038 bytes parsed 2000 times, checksum 394674954`. Spot timings on a
-shared 4-core container (`bench.sh` timings need a quiet machine):
+`49038 bytes parsed 2000 times, checksum 394674954`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 254.0 ms ± 4.0 | 1.08× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 265.4 ms ± 3.5 | 1.03× |
+| c `clang -O3` | 268.2 ms ± 5.2 | 1.02× |
+| **kāra `karac build`, seq** | **273.5 ms ± 5.9** | **—** |
+| go `go build` | 511.7 ms ± 3.2 | 0.53× |
+
+Kāra is 1.08× `rustc -O`, 1.03× equal-safety Rust, 1.02× C and 0.53× Go.
+The gaps were not investigated on this host. There is no legacy figure:
+legacy dd86e3955 cannot compile this kata.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.3 ms ± 0.5 | 33.2 KiB | 1.8 MiB |
+| rust | 101.0 ms ± 1.6 | 457.2 KiB | 1.9 MiB |
+| kāra | 124.0 ms ± 1.4 | 66.9 KiB | 2.0 MiB |
+| go | — | 2450.5 KiB | 9.3 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.2× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`49038 bytes parsed 2000 times, checksum 394674954`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container (`bench.sh` timings need a
+quiet machine):
 
 | | time |
 |---|---|

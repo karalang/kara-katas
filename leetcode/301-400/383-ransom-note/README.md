@@ -95,7 +95,48 @@ The bench program uses the ★ arm. It builds a pool of 1,000,000 random
 lowercase letters once, then checks 10,000 pairs of windows of it: a
 note of 30,000 to 69,999 letters and a magazine of 40,000 to 79,999
 (the problem allows 100,000). The windows are `Str` slices of the pool,
-so no pair copies text. The C, Rust, Go and Python mirrors print
+so no pair copies text.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 323.3 ms ± 7.8 | 1.25× |
+| c `clang -O3` | 346.3 ms ± 1.7 | 1.17× |
+| go `go build` | 390.5 ms ± 2.5 | 1.03× |
+| **kāra `karac build`, seq** | **404.0 ms ± 13.8** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 411.2 ms ± 22.9 | 0.98× |
+
+Kāra is 1.25× `rustc -O` but 0.98× equal-safety Rust: the gap to `rustc -O` is
+the cost of the overflow checks Kāra keeps on by default. It is 1.17× C, which
+was not investigated, and 1.03× Go. The legacy backend (dd86e3955) cannot
+compile this kata, so there is no legacy figure.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.3 ms ± 0.7 | 32.9 KiB | 2.0 MiB |
+| rust | 83.6 ms ± 0.4 | 455.6 KiB | 2.1 MiB |
+| kāra | 116.5 ms ± 1.8 | 83.1 KiB | 2.0 MiB |
+| go | — | 2450.4 KiB | 4.7 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.4× rustc's. Kāra's
+85,096-byte binary is 2.5× clang's and 5.5× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`6562 of 10000 can be built, checksum 138002484`).
+
+### Container x86-64 history
+
+Spot timings taken on a shared 4-core x86-64 container before the first
+`bench.sh` run, kept as history. Absolute times are not comparable between hosts.
+
+The C, Rust, Go and Python mirrors print
 `6562 of 10000 can be built, checksum 138002484`, in 0.79 s, 0.82 s and
 0.84 s on a shared 4-core container (spot timings; `bench.sh` timings
 need a quiet machine); Python takes 56 s. The legacy native build of

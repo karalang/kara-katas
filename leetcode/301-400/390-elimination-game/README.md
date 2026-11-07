@@ -92,9 +92,46 @@ The bench program uses the ★ arm on 10,000,000 values of n from an LCG,
 each between 1 and 2^30 (the problem allows up to 10^9), and folds the
 answers into a sum and a checksum. A fresh n per call keeps the compiler
 from reusing an answer. Every implementation prints
-`10000000 values of n, sum 2862843657446448, checksum 305481418`. Spot
-timings on a shared 4-core container (`bench.sh` timings need a quiet
-machine):
+`10000000 values of n, sum 2862843657446448, checksum 305481418`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 130.0 ms ± 0.6 | 3.15× |
+| c `clang -O3` | 134.2 ms ± 1.4 | 3.06× |
+| **kāra `karac build`, seq** | **410.1 ms ± 4.9** | **—** |
+| go `go build` | 476.1 ms ± 5.2 | 0.86× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 659.0 ms ± 6.0 | 0.62× |
+
+Kāra is 3.15× `rustc -O`, 0.62× equal-safety Rust, 3.06× C and 0.86× Go.
+The 3.15× to `rustc -O` is the overflow-check cost: Kāra checks integer
+overflow by default, and against the equal-safety Rust build it is 0.62×.
+The gap to C was not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 40.2 ms ± 0.9 | 32.7 KiB | 1.0 MiB |
+| rust | 71.9 ms ± 3.7 | 455.4 KiB | 1.1 MiB |
+| kāra | 105.4 ms ± 1.5 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 2.7 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.5× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10000000 values of n, sum 2862843657446448, checksum 305481418`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container (`bench.sh` timings need a
+quiet machine):
 
 | | time |
 |---|---|
@@ -109,6 +146,9 @@ Kāra checks integer overflow by default, so the fair comparison is the
 overflow-checked Rust build, which it matches. `karac __mir-llvm-run`
 also prints the right line, in 3.66 s; it JITs the MIR's IR without
 optimization passes, so that time is not a benchmark.
+
+Note (2026-11-07): on the M5, Kāra no longer just matches the overflow-checked
+Rust build; it is 0.62× its time.
 
 ## Compiler findings
 

@@ -99,8 +99,44 @@ problem allowing 10,000) once, then runs the arm over all of them 150
 times and folds the answers into a checksum. The C, Rust, Go and Python
 mirrors print `1583883 bytes in 200 listings, 150 rounds, checksum
 780154256`, and a 3-round cut of the Kāra program prints the same as the
-C program cut the same way. Spot timings on a shared 4-core container
-(`bench.sh` timings need a quiet machine):
+C program cut the same way.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 237.0 ms ± 3.9 | 1.13× |
+| rust `-O` | 244.9 ms ± 2.5 | 1.10× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 247.5 ms ± 4.6 | 1.08× |
+| **kāra `karac build`, seq** | **268.5 ms ± 4.1** | **—** |
+| go `go build` | 270.8 ms ± 5.3 | 0.99× |
+
+Kāra is 1.10× `rustc -O`, 1.08× equal-safety Rust, 1.13× C and 0.99× Go.
+The gaps were not investigated on this host. There is no legacy figure: legacy dd86e3955 cannot compile this kata.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 55.5 ms ± 0.6 | 32.9 KiB | 3.0 MiB |
+| rust | 106.2 ms ± 0.8 | 455.7 KiB | 2.8 MiB |
+| kāra | 147.3 ms ± 2.4 | 66.9 KiB | 3.7 MiB |
+| go | — | 2450.5 KiB | 8.6 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.4× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1583883 bytes in 200 listings, 150 rounds, checksum 780154256`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container (`bench.sh` timings need a
+quiet machine):
 
 | | time |
 |---|---|

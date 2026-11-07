@@ -111,7 +111,53 @@ the collection grows to 868,683 elements. The Rust mirror uses
 `std::collections::HashMap`, the Go mirror a built-in `map`, the Python
 mirror a `dict`, and the C mirror a hand-written open-addressing table,
 so the comparison includes each language's own hash map. All five print
-`checksum 52748481 size 868683`. The C mirror takes 1.4 s, Rust 1.8 s, Go 2.1 s and
+`checksum 52748481 size 868683`.
+
+`get_random` draws a position as `(seed / 65536) % len`, and `seed / 65536`
+is below 32,768, so above that size it reaches only the first 32,768
+positions. The bench's collection is far larger, so its draws are not
+uniform; every mirror draws the same way, and the program's own tests
+stay below that size.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 368.1 ms ± 18.3 | 1.27× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 370.6 ms ± 13.8 | 1.26× |
+| c `clang -O3` | 376.5 ms ± 9.7 | 1.24× |
+| **kāra `karac build`, seq** | **466.5 ms ± 18.3** | **—** |
+| go `go build` | 642.4 ms ± 25.3 | 0.73× |
+
+Kāra is 1.27× `rustc -O`, 1.26× equal-safety Rust and 1.24× C, and ahead of Go
+(0.73×). The gaps were not investigated on this host. The legacy backend
+(dd86e3955) cannot compile this kata, so there is no legacy figure.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.6 ms ± 0.5 | 32.8 KiB | 50.0 MiB |
+| rust | 131.4 ms ± 1.1 | 473.7 KiB | 51.6 MiB |
+| kāra | 132.4 ms ± 2.0 | 67.2 KiB | 53.7 MiB |
+| go | — | 2450.8 KiB | 68.4 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.0× rustc's. Kāra's
+68,792-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 52748481 size 868683`).
+
+### Container x86-64 history
+
+Spot timings taken on a shared 4-core x86-64 container before the first
+`bench.sh` run, kept as history. Absolute times are not comparable between hosts.
+
+The C mirror takes 1.4 s, Rust 1.8 s, Go 2.1 s and
 Python 30 s on a shared 4-core container; these are spot timings, and
 `bench.sh` timings need a quiet machine. The Kāra bench program was not
 run to the end: `Map.remove` is O(n) on both MIR backends
@@ -120,11 +166,8 @@ run to the end: `Map.remove` is O(n) on both MIR backends
 the mirrors grow linearly. The legacy native build cannot compile the ★
 arm (see Compiler findings).
 
-`get_random` draws a position as `(seed / 65536) % len`, and `seed / 65536`
-is below 32,768, so above that size it reaches only the first 32,768
-positions. The bench's collection is far larger, so its draws are not
-uniform; every mirror draws the same way, and the program's own tests
-stay below that size.
+Note (2026-11-07): B-2026-10-12-4 is fixed, and the Kāra bench program now runs
+to the end; see the M5 figures above.
 
 ## Compiler findings
 
@@ -146,8 +189,8 @@ the legacy backends, which are frozen, so they are not filed:
   doubling costs four times as much. Filed as B-2026-10-12-4.
 - **`or_insert_with(Vec.new)` is refused.** The library reference's own
   example for `entry`, a builtin constructor passed as a function value,
-  fails with `no associated function 'new' on type 'Vec'`; already open
-  as B-2026-10-06-118. `or_insert(Vec.new())` works and is what the arms
+  fails with `no associated function 'new' on type 'Vec'`; filed as
+  B-2026-10-06-118, since fixed. `or_insert(Vec.new())` works and is what the arms
   use.
 - **Legacy codegen has no `len` on the list `entry` hands back.** LLJIT,
   `karac build` and `KARAC_AUTO_PAR=1 karac build` refuse the ★ and

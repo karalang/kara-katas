@@ -117,7 +117,46 @@ The bench program uses the ★ arm. It builds 1,000 values once, then
 calls `shuffle` 250,000 times; each shuffle is folded into a checksum
 through a position-weighted sum of all its values, so no work can be
 skipped. Every implementation prints
-`250000 shuffles of 1000 values, checksum 926725461`. Spot timings on a
+`250000 shuffles of 1000 values, checksum 926725461`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 370.2 ms ± 1.3 | 1.11× |
+| c `clang -O3` | 379.7 ms ± 0.6 | 1.08× |
+| **kāra `karac build`, seq** | **409.1 ms ± 3.4** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 412.3 ms ± 3.6 | 0.99× |
+| go `go build` | 835.5 ms ± 2.0 | 0.49× |
+
+Kāra is 1.11× `rustc -O`, 0.99× equal-safety Rust and 1.08× C, and ahead of Go
+(0.49×). The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 44.2 ms ± 0.6 | 32.8 KiB | 1.0 MiB |
+| rust | 85.8 ms ± 0.3 | 455.4 KiB | 1.1 MiB |
+| kāra | 111.5 ms ± 1.7 | 66.9 KiB | 1.1 MiB |
+| go | — | 2450.4 KiB | 9.5 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.3× rustc's. Kāra's
+68,504-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`250000 shuffles of 1000 values, checksum 926725461`).
+
+### Container x86-64 history
+
+Spot timings taken on a shared 4-core x86-64 container before the first
+`bench.sh` run, kept as history. Absolute times are not comparable between hosts.
+
+Spot timings on a
 shared 4-core container (`bench.sh` timings need a quiet machine):
 
 | | time |

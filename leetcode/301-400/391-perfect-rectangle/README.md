@@ -118,8 +118,49 @@ reused. Every implementation prints `300 rounds over 50 tilings of 20000
 pieces: 97 perfect, checksum 27986121`. C has no set type, so its
 mirror carries an open-addressing hash set with backward-shift deletion,
 toggling corners the same way; Rust, Go and Python use their own hash
-sets. Spot timings on a shared 4-core container (`bench.sh` timings need
-a quiet machine):
+sets.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 152.4 ms ± 3.1 | 2.09× |
+| **kāra `karac build`, seq** | **317.8 ms ± 4.0** | **—** |
+| rust `-O` | 362.0 ms ± 6.0 | 0.88× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 369.2 ms ± 3.8 | 0.86× |
+| go `go build` | 389.7 ms ± 4.5 | 0.82× |
+
+Kāra is 0.88× `rustc -O`, 0.86× equal-safety Rust, 2.09× C and 0.82× Go.
+The gaps were not investigated on this host. There is no legacy figure: legacy dd86e3955 cannot compile this kata.
+
+Peak RSS is not a like-for-like comparison here: the Kāra source stores each
+rectangle as a heap `Vec[i64]`, while Rust (`[i64; 4]`) and C
+(`struct {int64_t v[4]}`) store the four values inline. That is why Kāra's
+50.0 MiB sits beside Rust's 28.6 and C's 28.5 (Go 51.4).
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 59.8 ms ± 1.2 | 49.1 KiB | 28.5 MiB |
+| rust | 135.6 ms ± 2.8 | 473.7 KiB | 28.6 MiB |
+| kāra | 147.4 ms ± 2.0 | 67.2 KiB | 50.0 MiB |
+| go | — | 2450.9 KiB | 51.4 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.1× rustc's. Kāra's
+68,768-byte binary is 1.4× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`300 rounds over 50 tilings of 20000 pieces: 97 perfect, checksum 27986121`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container (`bench.sh` timings need a
+quiet machine):
 
 | | time |
 |---|---|

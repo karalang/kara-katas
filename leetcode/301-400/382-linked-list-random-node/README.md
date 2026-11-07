@@ -104,7 +104,48 @@ a checksum: 200,000,000 node visits. The Rust mirror uses `Rc` nodes,
 as Kāra's `shared struct` is reference-counted, and clones the handle
 at each step as the Kāra walk does; C and Go use plain pointers. All
 five mirrors, `karac __mir-llvm-run` and the legacy `karac build` print
-`checksum 480076171`. Spot timings on a shared 4-core container: C
+`checksum 480076171`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 230.6 ms ± 0.9 | 1.03× |
+| rust `-O` | 238.0 ms ± 0.7 | 1.00× |
+| **kāra `karac build`, seq** | **238.0 ms ± 2.1** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 244.1 ms ± 1.5 | 0.98× |
+| go `go build` | 503.7 ms ± 1.3 | 0.47× |
+
+Kāra is 1.00× `rustc -O`, 0.98× equal-safety Rust and 1.03× C, level with all
+three, and ahead of Go (0.47×). Against the legacy backend (exact counts,
+dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.25× the instructions in 1.00× the
+cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 41.5 ms ± 0.5 | 32.7 KiB | 1.2 MiB |
+| rust | 77.6 ms ± 0.8 | 455.7 KiB | 1.6 MiB |
+| kāra | 111.1 ms ± 1.5 | 66.9 KiB | 1.4 MiB |
+| go | — | 2450.4 KiB | 2.9 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.4× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 480076171`).
+
+### Container x86-64 history
+
+Spot timings taken on a shared 4-core x86-64 container before the first
+`bench.sh` run, kept as history. Absolute times are not comparable between hosts.
+
+Spot timings on a shared 4-core container: C
 0.79 s, Rust 0.73 s, Go 1.0 s, Python 49 s, the legacy `karac build`
 0.49 s, and `karac __mir-llvm-run` 5.0 s with a debug-built `karac`'s
 compile included. `karac __mir-llvm-run` JITs the IR without LLVM's optimization

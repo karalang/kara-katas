@@ -89,10 +89,42 @@ The bench program builds 10 random 300 by 300 matrices, the problem's
 largest, and asks each for 10,000 random `k`, answered by the ★ arm.
 The C mirror keeps the matrix in one flat allocation. The C, Rust, Go
 and Python mirrors all print `checksum 157581360`, and so does
-`karac __mir-llvm-run`. `bench.sh` cannot run yet, because it builds the
-Kāra side with the legacy `karac build`, which refuses the bench program
-at the same line (see Compiler findings). Timings are not taken yet;
-they need a quiet machine.
+`karac __mir-llvm-run`. The legacy `karac build` refuses the bench program (see Compiler
+findings); `bench.sh` now builds it with the v2/MIR `karac build`.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14773+gdef97ac6a`
+(gdef97ac6a, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first measurement on this host; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **1121.4 ms ± 4.4** | **—** |
+| go `go build` | 1329.7 ms ± 4.2 | 0.84× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1342.2 ms ± 22.1 | 0.84× |
+| c `clang -O3` | 2962.2 ms ± 35.0 | 0.38× |
+| rust `-O` | 4081.7 ms ± 91.2 | 0.27× |
+
+Kāra is 0.84× equal-safety Rust and 0.84× Go. `rustc -O` is 3.0× slower than the
+checked Rust build here, so Kāra's 0.27× `rustc -O` reflects that comparator
+rather than Kāra; it was not investigated. Kāra is 0.38× C. The legacy backend
+(dd86e3955) cannot compile this kata, so there is no legacy figure.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.0 ms ± 0.5 | 32.7 KiB | 1.7 MiB |
+| rust | 92.0 ms ± 2.2 | 455.8 KiB | 2.4 MiB |
+| kāra | 126.6 ms ± 2.7 | 66.9 KiB | 1.9 MiB |
+| go | — | 2450.4 KiB | 7.6 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.4× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`checksum 157581360`).
 
 ## Compiler findings
 
