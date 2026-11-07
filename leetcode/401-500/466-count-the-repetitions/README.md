@@ -114,6 +114,40 @@ That edit is by hand, on top of the `scripts/new-bench.sh` output.
 Rust, Go and Python keep the places already seen in a hash map, like
 the ★ arm's `Map`. C has no map, and since a place is below `|s2|`, its
 mirror keeps them in an array indexed by the place, which is cheaper.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O -C overflow-checks=on` (equal-safety) | 99.6 ms ± 1.3 | 1.36× |
+| go `go build` | 117.1 ms ± 0.8 | 1.15× |
+| **kāra `karac build`, seq** | **135.1 ms ± 2.2** | **—** |
+| c `clang -O3` | 226.4 ms ± 0.7 | 0.60× |
+| rust `-O` | 254.3 ms ± 1.2 | 0.53× |
+
+Kāra is 0.53× `rustc -O`, 1.36× equal-safety Rust, 0.60× C and 1.15× Go. Kāra is ahead of `rustc -O` but 1.36× behind its overflow-checked build, which runs faster than the unchecked one here; that oddity and the gap were not investigated and have gone to the compiler's review.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 49.3 ms ± 1.0 | 33.0 KiB | 1.5 MiB |
+| rust | 137.9 ms ± 0.9 | 473.6 KiB | 1.5 MiB |
+| kāra | 146.1 ms ± 1.4 | 67.1 KiB | 1.4 MiB |
+| go | — | 2450.5 KiB | 8.2 MiB |
+
+`karac build` is 3.0× clang's cold compile and 1.1× rustc's. Kāra's
+68,736-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1000 rounds on 100 pairs: 759957187 repetitions in all, checksum 403717988`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, three runs each (two for
 Python; `bench.sh` timings need a quiet machine):
 

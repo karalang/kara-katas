@@ -107,7 +107,42 @@ and sorts its set. Every implementation prints `10 rounds on 10 sets of
 The mirrors keep the ★ arm's structure: copy, sort by right end, one
 pass. Rust's `sort_by_key` and Go's `slices.SortStableFunc` are stable sorts
 like Kāra's; C uses `qsort`, which is not, and the count does not
-depend on the order of equal ends. Spot timings on a shared 4-core
+depend on the order of equal ends.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 138.1 ms ± 2.3 | 1.14× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 149.6 ms ± 0.4 | 1.05× |
+| **kāra `karac build`, seq** | **157.0 ms ± 1.3** | **—** |
+| c `clang -O3` | 570.7 ms ± 3.3 | 0.28× |
+| go `go build` | 1303.2 ms ± 6.9 | 0.12× |
+
+Kāra is 1.14× `rustc -O`, 1.05× equal-safety Rust, 0.28× C and 0.12× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.57× the instructions in 0.29× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.9 ms ± 0.6 | 33.0 KiB | 18.0 MiB |
+| rust | 134.7 ms ± 1.5 | 472.6 KiB | 19.7 MiB |
+| kāra | 156.5 ms ± 1.9 | 67.0 KiB | 19.5 MiB |
+| go | — | 2451.2 KiB | 37.9 MiB |
+
+`karac build` is 3.4× clang's cold compile and 1.2× rustc's. Kāra's
+68,568-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10 rounds on 10 sets of 100000: 4539600 arrows, checksum 675396807`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
 quiet machine):
 

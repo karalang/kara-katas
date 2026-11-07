@@ -123,7 +123,42 @@ the values in order into a checksum. Every implementation prints
 Kāra program under `karac __mir-run` included (in 63 s).
 
 The legacy `karac build` builds this program, so `bench.sh` is the
-`scripts/new-bench.sh` output unchanged. Spot timings on a shared
+`scripts/new-bench.sh` output unchanged.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 84.6 ms ± 0.2 | 1.44× |
+| c `clang -O3` | 84.6 ms ± 0.4 | 1.44× |
+| **kāra `karac build`, seq** | **121.7 ms ± 0.5** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 123.0 ms ± 0.9 | 0.99× |
+| go `go build` | 156.2 ms ± 1.9 | 0.78× |
+
+Kāra is 1.44× `rustc -O`, 0.99× equal-safety Rust, 1.44× C and 0.78× Go. The gap to `rustc -O` is the cost of the overflow checks Kāra keeps on by default (0.99× equal-safety Rust). Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 1.00× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 41.2 ms ± 0.7 | 32.8 KiB | 1.0 MiB |
+| rust | 81.2 ms ± 3.2 | 455.4 KiB | 1.1 MiB |
+| kāra | 113.1 ms ± 4.1 | 66.9 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 2.7 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.4× rustc's. Kāra's
+68,552-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20000000 draws: 1999985 ones, 1999343 tens, checksum 339701230`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, three runs each (two for Python; `bench.sh` timings
 need a quiet machine):
 

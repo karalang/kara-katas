@@ -125,7 +125,42 @@ sticks: 292 squares, checksum 250458079`, the Kāra program under
 
 Every mirror sorts a copy of the sticks longest first and backtracks
 over four side lengths in the same order, skipping a side as long as
-one tried before it. Spot timings on a shared 4-core container, three
+one tried before it.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 203.4 ms ± 0.8 | 1.37× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 209.9 ms ± 0.9 | 1.33× |
+| c `clang -O3` | 214.6 ms ± 0.8 | 1.30× |
+| **kāra `karac build`, seq** | **278.5 ms ± 0.6** | **—** |
+| go `go build` | 440.4 ms ± 4.2 | 0.63× |
+
+Kāra is 1.37× `rustc -O`, 1.33× equal-safety Rust, 1.30× C and 0.63× Go. The 1.33× gap to equal-safety Rust was not investigated and has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.19× the instructions in 1.18× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.3 ms ± 0.6 | 49.1 KiB | 1.0 MiB |
+| rust | 123.0 ms ± 0.7 | 455.7 KiB | 1.1 MiB |
+| kāra | 135.6 ms ± 1.8 | 83.1 KiB | 1.1 MiB |
+| go | — | 2468.5 KiB | 3.2 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.1× rustc's. Kāra's
+85,112-byte binary is 1.7× clang's and 5.5× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`2000 sets of 15 sticks: 292 squares, checksum 250458079`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three
 runs each (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

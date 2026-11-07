@@ -105,7 +105,42 @@ The mirrors keep the ★ arm's structure: count the pair sums in a hash
 map, then look up the negations. Rust's `HashMap` hashes with
 SipHash-1-3, the same family as Kāra's `Map`; Go uses its built-in
 map; C has no map, so its mirror is an open-addressing table with
-linear probing and a 64-bit mixing hash, doubled when half full. Spot
+linear probing and a 64-bit mixing hash, doubled when half full.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 115.2 ms ± 2.8 | 1.68× |
+| rust `-O` | 134.5 ms ± 0.8 | 1.44× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 136.6 ms ± 0.6 | 1.42× |
+| **kāra `karac build`, seq** | **193.7 ms ± 2.1** | **—** |
+| go `go build` | 259.4 ms ± 5.7 | 0.75× |
+
+Kāra is 1.44× `rustc -O`, 1.42× equal-safety Rust, 1.68× C and 0.75× Go. The 1.42× gap to equal-safety Rust and C's 1.68× lead were not investigated and have gone to the compiler's review.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 51.2 ms ± 0.6 | 32.8 KiB | 17.5 MiB |
+| rust | 140.0 ms ± 0.8 | 473.6 KiB | 9.9 MiB |
+| kāra | 136.2 ms ± 3.2 | 67.1 KiB | 12.0 MiB |
+| go | — | 2450.5 KiB | 13.7 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.0× rustc's. Kāra's
+68,712-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10 rounds on 4 arrays of 1000: 66673855 tuples, checksum 380080746`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine):
 

@@ -105,7 +105,42 @@ The mirrors keep the ★ arm's structure, a recursive search with the
 bitmask as the memo key. Rust uses its `HashMap`, Go its `map`, and
 Python its `dict`; C has no map, so its mirror carries a small
 open-addressing table with linear probing and a 64-bit mixing hash,
-doubled when half full. Spot timings on a shared 4-core container,
+doubled when half full.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 265.3 ms ± 10.6 | 1.47× |
+| rust `-O` | 325.1 ms ± 2.6 | 1.20× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 326.1 ms ± 2.7 | 1.19× |
+| **kāra `karac build`, seq** | **389.2 ms ± 9.8** | **—** |
+| go `go build` | 408.4 ms ± 13.7 | 0.95× |
+
+Kāra is 1.20× `rustc -O`, 1.19× equal-safety Rust, 1.47× C and 0.95× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.49× the instructions in 1.00× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.6 ms ± 1.0 | 32.8 KiB | 33.3 MiB |
+| rust | 112.1 ms ± 0.7 | 457.1 KiB | 36.0 MiB |
+| kāra | 112.5 ms ± 1.6 | 67.1 KiB | 76.2 MiB |
+| go | — | 2450.6 KiB | 39.2 MiB |
+
+`karac build` is 2.4× clang's cold compile and 1.0× rustc's. Kāra's
+68,712-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10 games of 1 to 20: the first player wins 6, checksum 89737476`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container,
 three runs each (two for Python; `bench.sh` timings need a quiet
 machine):
 

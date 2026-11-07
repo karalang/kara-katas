@@ -122,7 +122,42 @@ from 50 to 100. Every implementation prints `300 rounds on 600 strings:
 Every mirror keeps one table of `(m + 1) × (n + 1)` counts per round
 (rows of a `Vec` in Rust and Go, one flat block in C), counts each
 string's zeros with a loop over its characters, and runs both budgets
-from the top down. Spot timings on a shared 4-core container, three
+from the top down.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 182.6 ms ± 1.7 | 1.92× |
+| rust `-O` | 288.8 ms ± 1.0 | 1.22× |
+| **kāra `karac build`, seq** | **351.1 ms ± 8.3** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 376.1 ms ± 3.4 | 0.93× |
+| go `go build` | 387.5 ms ± 2.7 | 0.91× |
+
+Kāra is 1.22× `rustc -O`, 0.93× equal-safety Rust, 1.92× C and 0.91× Go. Kāra trails `rustc -O` 1.22× but leads its overflow-checked build (0.93×), which runs faster than the unchecked one here; C's 1.92× lead was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.06× the instructions in 1.14× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.7 ms ± 0.6 | 49.1 KiB | 1.3 MiB |
+| rust | 111.3 ms ± 2.1 | 455.8 KiB | 1.6 MiB |
+| kāra | 134.5 ms ± 4.4 | 67.0 KiB | 1.7 MiB |
+| go | — | 2450.5 KiB | 7.8 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.2× rustc's. Kāra's
+68,560-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`300 rounds on 600 strings: 10981 chosen, checksum 402717894`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three
 runs each (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

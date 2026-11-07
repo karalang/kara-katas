@@ -101,7 +101,42 @@ cookies: 9989178 content, checksum 74623912`, the Kāra program under
 
 The mirrors keep the ★ arm's structure: copy, sort both, one pass.
 Rust's `sort` is stable like Kāra's; Go's `slices.Sort` and C's `qsort`
-are not, which cannot change a sort of plain integers. Spot timings on
+are not, which cannot change a sort of plain integers.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`
+(gfa3eab9b4, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| **kāra `karac build`, seq** | **190.4 ms ± 1.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 227.9 ms ± 2.1 | 0.84× |
+| rust `-O` | 228.3 ms ± 1.8 | 0.83× |
+| go `go build` | 1011.6 ms ± 4.0 | 0.19× |
+| c `clang -O3` | 1258.9 ms ± 4.9 | 0.15× |
+
+Kāra is 0.83× `rustc -O`, 0.84× equal-safety Rust, 0.15× C and 0.19× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 1.00× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.8 ms ± 0.8 | 32.8 KiB | 31.7 MiB |
+| rust | 118.1 ms ± 0.9 | 472.4 KiB | 55.0 MiB |
+| kāra | 114.5 ms ± 1.4 | 83.1 KiB | 31.7 MiB |
+| go | — | 2452.0 KiB | 65.0 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.0× rustc's. Kāra's
+85,120-byte binary is 2.5× clang's and 5.7× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`10 rounds on 1000000 children and 1000000 cookies: 9989178 content, checksum 74623912`).
+
+### Container x86-64 history
+
+Spot timings on
 a shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine):
 
