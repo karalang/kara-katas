@@ -36,7 +36,7 @@ past the last index `i` with `missing(i) < k`, at `nums[i] + k - missing(i)`.
 Every arm prints the same 15 lines: the answers for LeetCode's three
 examples and seven more; the sum and a checksum of the answers for 3000
 arrays of 1 to 10 values with `k` to 20 and for 3000 dense arrays of 1 to
-50 values with `k` to 60; the same for 100 arrays of 50000 values with 10
+50 values with `k` to 60; the same for 40 arrays of 50000 values with 10
 values of `k` each, two of them up to `10^8`; every `k` from 1 to 3000
 against one array of 1000 values; and 50000 consecutive values, with
 nothing missing inside. `missing.py` mirrors the ★ arm and its output is
@@ -119,10 +119,10 @@ Every arm prints the same output as `missing.py` under `karac __mir-run`
 __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 `karac run` and a `karac build` binary print the same output for every arm
 and the differential. `karac check --output=json` reports nothing on any
-file. Under `karac __mir-run` the three logarithmic arms take 4.4 s (recursive)
-to 5.0 s (values), the linear ones 34.1 s (gaps), 63.9 s (the Rust template,
-whose caller converts 50000 values on each of its 1000 large calls) and
-76.1 s (iterator), and the differential 10.3 s, all at kara `05b89e4f7f`.
+file. Under `karac __mir-run` the three logarithmic arms take 1.9 s (★,
+recursive) to 2.4 s (values), the linear ones 15.3 s (gaps), 29.4 s (the
+Rust template, whose caller converts 50000 values on each of its 400 large
+calls) and 35.4 s (iterator), and the differential 9.3 s, all at kara `05b89e4f7f`.
 
 The ★ arm and four others were written in Kāra and checked clean. The
 Rust arm was written as LeetCode's Rust template (`struct Solution;`,

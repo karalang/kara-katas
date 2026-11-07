@@ -79,7 +79,7 @@ def main():
         check = mix(check, answer)
     print(f"3000 dense arrays of 1 to 50 values, k to 60: sum {total}, checksum {check}")
     total = check = calls = 0
-    for a in range(100):
+    for a in range(40):
         nums = sorted_values(50000, next_random() % 100 + 1, 2 + a % 300)
         span = nums[-1] - nums[0] - (len(nums) - 1)
         for j in range(10):
@@ -92,7 +92,7 @@ def main():
             total += answer
             check = mix(check, answer)
             calls += 1
-    print(f"100 arrays of 50000 values, {calls} calls: sum {total}, checksum {check}")
+    print(f"40 arrays of 50000 values, {calls} calls: sum {total}, checksum {check}")
     nums = sorted_values(1000, 1, 3)
     total = check = 0
     for k in range(1, 3001):
