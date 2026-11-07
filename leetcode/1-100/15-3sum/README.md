@@ -166,3 +166,6 @@ Kāra's compile-memory footprint is ~24× clang's and ~1.6× higher than rustc's
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer (compiled, ownership-aware), so the headline ratio is the codegen-vs-Rust gap. C calibrates the LLVM-backend floor, Go is the cross-runtime data point, and Python is the ergonomic foil. On this sort-bound kata **Kāra leads Rust by ~1.01×** on the 2026-10-31 feed (inside σ) — pre-Slice-6.1 the two were tied because Kāra's runtime-callback sort dispatch (which kata 16 surfaced as the residual gap) was offsetting Kāra's allocator edge. With both compilers monomorphizing the comparator post-Slice-6.1, the allocator edge stops being offset and Kāra inches ahead. The full story — how the tie here pointed at the kata-16 trigger event — is in [kata 16's README § Sort-dispatch history](../16-3sum-closest/README.md).
+
+
+Note (2026-11-07, karac g97681763d): the seq re-run reads Kāra 1.11× `rustc -O`, 1.07× equal-safety Rust and 1.01× C, so the leads quoted here are history; par Kāra 55.8 ms against rayon's 77.2 ms.

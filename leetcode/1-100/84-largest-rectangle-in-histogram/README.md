@@ -86,6 +86,8 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 **M5 Pro numbers, karac g6697158fa, 2026-11-01.**
 
+Note (2026-11-07, karac g97681763d): the re-run reads seq Kāra 0.90× `rustc -O`, 0.86× equal-safety Rust, 1.46× C and 0.84× Go; par Kāra 37.7 ms against rayon's 36.2 ms and C's 23.0 ms.
+
 | Implementation | Wall time |
 |---|---|
 | c    largest_rectangle (clang -O3)                    | **281.4 ± 6.8 ms** |

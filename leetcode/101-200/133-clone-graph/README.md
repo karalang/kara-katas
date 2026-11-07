@@ -127,33 +127,27 @@ not the milliseconds, carry the comparison.
 > heap-allocated and growing in `d702247` (31 Jul 2026), which is a separate
 > parity correction on the map rather than on node allocation.
 
-### Runtime — par lane (explicit 18-way `par {}`) — **regressed on v2/MIR (B-2026-11-01-25)**
+### Runtime — par lane (explicit 18-way `par {}`)
 
 | Run | Mean ± σ | CPU | vs kāra |
 |---|---|---|---|
-| c    clone_bfs (pthreads) | **11.7 ± 0.5 ms** | 853% | 99.67× faster |
-| rust clone_bfs (rayon) | 40.4 ± 2.9 ms | 1117% | 28.81× faster |
-| go   clone_bfs (goroutines) | 115.4 ± 2.5 ms | 751% | 10.09× faster |
-| **kāra clone_bfs (`par {}` over `frozen`)** | **1164.9 ± 29.0 ms** | 1560% | — |
+| c    clone_bfs (pthreads) | **11.7 ± 0.6 ms** | 835% | 2.32× faster |
+| **kāra clone_bfs (`par {}` over `frozen`)** | **27.2 ± 1.1 ms** | 1167% | — |
+| rust clone_bfs (rayon) | 38.0 ± 2.3 ms | 1136% | 0.72× (kāra 1.40× faster) |
+| go   clone_bfs (goroutines) | 97.6 ± 1.8 ms | 730% | 0.28× (kāra 3.59× faster) |
 
-Same snapshot as the seq table above (M5 Pro, 18 cores, 2026-11-01, karac
-g6697158fa, hyperfine `--warmup 5 --runs 30 --shell=none`, all four printing
-the sink `500`).
+Re-measured on the M5 Pro (18 cores) on 2026-11-07, karac g97681763d,
+hyperfine `--warmup 5 --runs 30 --shell=none`, all four printing the sink
+`500`. Kāra's par build is 8.50× its own seq lane (231.1 ms), ahead of rayon
+and Go, and 2.32× behind pthreads C.
 
-**On the v2/MIR backend this lane has regressed 23× and kāra is last.** The
-2026-09-08 legacy feed read kāra 50.8 ms — 1.36× behind rayon, 4.89× behind
-pthreads C, 1.93× ahead of Go. On 2026-11-01 it reads 1164.9 ms: 28.81× behind
-rayon, 99.67× behind C, 10.09× behind Go, and **4.50× slower than kāra's own
-seq lane** (258.8 ms). The par build is still parallel — its emitted IR
-(`KARAC_MIR_LL`) carries 18 calls of `karac_mir_task_spawn`, the seq
-(`KARAC_AUTO_PAR=0`) build none — but the time goes to the kernel: 1.01 s of
-user time against **17.15 s of system time**. Every borrow-flag operation under
-the task pool goes through one process-wide locked table, so the 18 branches —
-each cloning its own graph and writing the clones' `mut` fields — serialize on
-it. Built with `KARAC_MIR_FLAGS=0` the same source runs in 0.02 s at 18 workers.
-Tracked as [`B-2026-11-01-25`](../../../../kara/docs/bugs-v2.md) (perf, high,
-open); see § Bug ledger. Everything below about this lane's standing against
-rayon and C is the legacy-backend history.
+*History (2026-11-01, g6697158fa).* This lane read 1164.9 ms on v2/MIR —
+28.81× behind rayon, 99.67× behind C and 4.50× slower than kāra's own seq
+lane — with 17.15 s of system time: every borrow-flag operation under the task
+pool went through one process-wide locked table, so the 18 branches serialized
+on it ([`B-2026-11-01-25`](../../../../kara/docs/bugs-v2.md)). The fix in kara
+57efe5bc2f removed that lock; system time is now 21.7 ms. Everything below about
+this lane's standing against rayon and C before 2026-11-07 is history.
 
 *History (2026-09-08 legacy feed).* **The rayon row was a tie and became a
 loss.** The 2026-08-08 feed read kāra 35.9 vs rayon 36.9 ms — a 1.0 ms gap
@@ -219,17 +213,17 @@ shared structure.
 
 That is an expressiveness result rather than a speed one, and the table is what
 it costs: sharing the graph instead of rebuilding it 18× buys a tie, not a lead.
-(*2026-11-01:* on v2/MIR the row is a 28.81× loss to rayon, but the cost is
-the borrow-flag table of `B-2026-11-01-25`, not the `frozen` sharing.)
+(*2026-11-07:* with `B-2026-11-01-25` fixed, the v2/MIR row is kāra 1.40×
+ahead of rayon; the 2026-11-01 28.81× loss was that borrow-flag table, not the
+`frozen` sharing.)
 The rebuild rayon pays is small — O(N·deg) once per worker against 500 BFS
 clones, order 3–4% of its work — so it does not explain the tie away in either
 direction.
 
 #### What is still missing
 
-*2026-11-01:* the standing par gap is now 99.67× and is `B-2026-11-01-25`, a
-runtime serialization rather than an allocator one; the sequential lane's C gap
-is 5.20×. The paragraph that follows describes the legacy-backend lane.
+*2026-11-07:* the standing par gap to C is 2.32× (it was 99.67× on 2026-11-01,
+before `B-2026-11-01-25` was fixed); the sequential lane's C gap is 5.00×. The paragraph that follows describes the legacy-backend lane.
 
 On the 2026-09-08 legacy feed **C was 4.89× ahead**, the same gap the sequential
 lane had (4.07×). C never refcounts *and* never allocates a `visited` node per
@@ -353,4 +347,4 @@ One new gap surfaced *by the bug-7 verification probe* (2026-06-05, filed in kar
 
 ## Bug ledger
 
-**Surfaced [`B-2026-11-01-25`](../../../../kara/docs/bugs-v2.md)** (perf, high, open). On the v2/MIR backend the par lane's 18 branches serialize on one process-wide borrow-flag table: measured 2026-11-01 on the M5, the par build takes 1.1 s at 18 workers with 17 s of system time (28.8× rayon, 4.5× slower than kāra's own seq lane), against 0.21 s on one worker; built with `KARAC_MIR_FLAGS=0` it takes 0.02 s.
+**Surfaced [`B-2026-11-01-25`](../../../../kara/docs/bugs-v2.md)** (perf, high, fixed in kara 57efe5bc2f; re-measured 2026-11-07 at 27.2 ms, 0.72× rayon). On the v2/MIR backend the par lane's 18 branches serialize on one process-wide borrow-flag table: measured 2026-11-01 on the M5, the par build takes 1.1 s at 18 workers with 17 s of system time (28.8× rayon, 4.5× slower than kāra's own seq lane), against 0.21 s on one worker; built with `KARAC_MIR_FLAGS=0` it takes 0.02 s.

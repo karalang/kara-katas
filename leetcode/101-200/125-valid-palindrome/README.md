@@ -121,6 +121,8 @@ behind `clang -O3`. That is a real gain, not session drift: every comparator ran
 0.88×, Kāra/C 1.94× → 1.56×, Kāra/Go 1.28× → 1.01×. C's lead is the tight
 classify/compare inner loop with a per-pass allocation at its leanest.
 
+Note (2026-11-07, karac g97681763d): the re-run reads seq Kāra 0.95× `rustc -O`, 0.94× equal-safety Rust, 1.67× C and 1.12× Go (behind Go now, not level); par Kāra 75.5 ms against rayon's 174.3 ms.
+
 ### Compile, binary
 
 | | Kāra | Rust | C |
