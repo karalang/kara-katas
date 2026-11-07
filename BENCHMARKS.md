@@ -365,6 +365,8 @@ per-core compiler-quality comparison.
 
 ![Runtime, sequential lane](graphs/runtime-seq.png)
 
+> **Being re-measured (2026-11-07):** 114 kata bench scripts built the "sequential" Kāra lane without `KARAC_AUTO_PAR=0`, so where the compiler auto-parallelized, that row is a parallel run compared against single-threaded Rust, C and Go. The sequential medians below are flattered by an unknown amount until the affected rows are re-benched.
+
 Recomputed 2026-11-07 from the 414-kata M5 Pro feed (419 programs, measured
 2026-10-29 to 2026-11-07 on the current MIR/LLVM compiler; 289 katas predate the
 LLVM 22 switch of 2026-11-04):
