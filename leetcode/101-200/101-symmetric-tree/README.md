@@ -94,6 +94,8 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 `--warmup 5 --runs 30 --shell=none`. All single-threaded, ~99 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01** (canonical; sink `80745775` agreed by all five mirrors before timing):
 
+Note (2026-11-07, karac g97681763d, seq lane re-benched with `KARAC_AUTO_PAR=0`): Kāra now reads 1.83× equal-safety Rust, 1.79× `rustc -O`, 1.90× C and 1.03× Go. The 2026-11-01 standing above came from a build that left auto-par on; this gap was not investigated.
+
 | Implementation | Wall time |
 |---|---|
 | rust is_symmetric (rustc -O, overflow-checks=on)     | 117.6 ± 5.9 ms |

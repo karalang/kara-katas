@@ -119,7 +119,7 @@ Net: **199 → 118 ms (1.69× faster) and 10.0 → 1.4 MiB (7× less)**, landing
 
 Note (31 Oct 2026): the Rust ratio "quoted above" has since moved — Kāra was 2.09× behind `rustc -O` already on the 8 Sep 2026 legacy feed and is 2.09× on the v2/MIR feed in the table; the move from 1.77× happened between 4 Aug and 8 Sep on the legacy backend and has not been attributed.
 
-Note (2026-11-07, karac g97681763d): the re-run's "seq" Kāra row reads 17.2 ms (0.25× `rustc -O`), but this kata's `bench.sh` builds that row without `KARAC_AUTO_PAR=0`, so since auto-par became the default it is a parallel run against single-threaded Rust. It is not a seq-lane figure; the row needs a re-bench once the script is fixed.
+Note (2026-11-07, karac g97681763d): re-benched with the seq row built `KARAC_AUTO_PAR=0` (the script left auto-par on before), Kāra reads 140.6 ms, 2.10× equal-safety Rust and 2.08× `rustc -O`. The 17.2 ms figure that briefly replaced it was a parallel run.
 
 That the backend was never the bottleneck shows in the other columns: Kāra **compiles this 1.34× faster than `rustc -O`** and ships a binary **31 % smaller than Rust's** (2.3× and 38 % on the 2026-06-08 snapshot).
 

@@ -82,6 +82,8 @@ Wall-clock + compile-cost comparison across same-shape implementations in Kāra,
 
 `--warmup 5 --runs 30 --shell=none`. Single-threaded mirrors, ~99.6 % CPU (the default build emits no call of `karac_mir_task_spawn`, verified in the emitted IR (`KARAC_MIR_LL`), same as its `KARAC_AUTO_PAR=0` twin; Go's runtime runs at 113 % CPU, 225.6 ms user). **Apple M5 Pro numbers, karac g6697158fa, 2026-11-01** (canonical; sink `483878699` agreed by all five mirrors):
 
+Note (2026-11-07, karac g97681763d, seq lane re-benched with `KARAC_AUTO_PAR=0`): Kāra now reads 1.09× equal-safety Rust, 1.10× `rustc -O`, 1.55× C and 1.76× Go, so the standing above is history.
+
 | Implementation | Wall time | Node representation |
 |---|---|---|
 | go   connect (GC `*Node`)                           | 226.6 ± 2.3 ms | `*Node` |
