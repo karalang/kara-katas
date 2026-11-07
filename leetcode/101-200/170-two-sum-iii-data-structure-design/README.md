@@ -36,6 +36,11 @@ Store a `Map[number → count]`. `add` bumps the count (O(1)). `find(value)` sca
 
 The kata's tiny fixed inputs aren't a workload, so [`bench/`](bench/) carries a scaled cross-language variant — the same algorithm and a shared deterministic PRNG in Kāra, C, Rust, Go, and Python, all agreeing on the sink (`762965`). Workload: build a 170-add sparse multiset over [0,6K) keys (~168 distinct), then 1.2M full-scan find(target) queries; sink=count of trues. NOTE: Kara/Rust/Go/Python use a hash map; C hand-rolls a direct-address count table + distinct-key list (same membership semantics)..
 
+On 2026-11-07 the Kāra bench's `find` began returning on the first pair
+found, as the C, Rust and Go twins do; it had set a flag and walked every
+key. On an x86 container its time fell from 3.7 s to 1.8 s. The numbers
+below predate the change.
+
 Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-02, karac g96fca5370 (v2/MIR backend) (hyperfine, 30 runs; `KARAC_AUTO_PAR=0`):
 
 | Impl | Mean | vs Kāra |

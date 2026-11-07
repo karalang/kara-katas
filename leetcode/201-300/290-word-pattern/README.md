@@ -38,6 +38,10 @@ Expected output (both): `true false false false true false` (one per line).
 **Canonical run: Apple M5 Pro (6P+12E), 2026-11-02, `karac 0.9.0-dev.14057+g6697158fa`
 (v2/MIR backend)**, hyperfine 30 runs, `KARAC_AUTO_PAR=0` — `bench/results.json`:
 
+On 2026-11-07 the Kāra bench stopped cloning every word: it borrows
+`ref words[i]` and clones only on insert, as the Rust twin does. The numbers
+below predate the change.
+
 | Lane | mean ± σ | vs kāra |
 |---|---|---|
 | c | 21.4 ms ± 0.4 | **6.27× faster** |

@@ -368,6 +368,11 @@ reason — Go's own sequential lane improved by about as much as kāra's did.
 3000-word dictionary built once, then 1M `is_unique` punches over a 20k-word pool;
 sink `unique 573650` in every lane.
 
+On 2026-11-07 the bench's `abbrev` became the Rust twin's: byte length,
+`bytes()` and one f-string, where it had collected `chars()` into a `Vec`
+and built the `String` with pushes and a temporary f-string. The kata's
+arms keep the `chars()` spelling. The numbers below predate the change.
+
 Sequential lane (`KARAC_AUTO_PAR=0`):
 
 | Lane | mean ± σ | vs kāra |
