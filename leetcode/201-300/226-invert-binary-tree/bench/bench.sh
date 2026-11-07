@@ -64,9 +64,11 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+    # Seq lane: auto-par is on by default, so build with it off. bench.sh is
+    # a dependency so an earlier auto-par binary is never taken as fresh.
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
@@ -175,13 +177,13 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach recursive --mode codegen \
-    --prepare 'rm -f target/recursive_kara recursive' \
+    --prepare 'rm -f target/recursive_kara.ce recursive' \
     --name 'karac build recursive.kara' \
-    --cmd 'sh -c "karac build recursive.kara >/dev/null && mv recursive target/recursive_kara"'
+    --cmd 'sh -c "karac build recursive.kara >/dev/null && mv recursive target/recursive_kara.ce"'
 ce_cmd --lang kara --approach iterative --mode codegen \
-    --prepare 'rm -f target/iterative_kara iterative' \
+    --prepare 'rm -f target/iterative_kara.ce iterative' \
     --name 'karac build iterative.kara' \
-    --cmd 'sh -c "karac build iterative.kara >/dev/null && mv iterative target/iterative_kara"'
+    --cmd 'sh -c "karac build iterative.kara >/dev/null && mv iterative target/iterative_kara.ce"'
 ce_cmd --lang rust --approach recursive --mode native \
     --prepare 'rm -f target/recursive' \
     --name 'rustc -O recursive.rs' --cmd 'rustc -O recursive.rs -o target/recursive'

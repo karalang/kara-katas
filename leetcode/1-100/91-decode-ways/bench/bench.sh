@@ -54,10 +54,12 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
+    # Seq lane: auto-par is on by default, so build with it off. bench.sh is
+    # a dependency so an earlier auto-par binary is never taken as fresh.
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
         rm -f "$stem"
-        karac build "$src" >/dev/null
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
@@ -171,9 +173,9 @@ echo "=== compile elapsed (cold) ==="
 # rustc/clang/karac invocation.
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach decode_ways --mode codegen \
-    --prepare 'rm -f target/decode_ways_kara decode_ways' \
+    --prepare 'rm -f target/decode_ways_kara.ce decode_ways' \
     --name 'karac build decode_ways.kara' \
-    --cmd 'sh -c "karac build decode_ways.kara >/dev/null && mv decode_ways target/decode_ways_kara"'
+    --cmd 'sh -c "karac build decode_ways.kara >/dev/null && mv decode_ways target/decode_ways_kara.ce"'
 ce_cmd --lang rust --approach decode_ways --mode native \
     --prepare 'rm -f target/decode_ways' \
     --name 'rustc -O decode_ways.rs' --cmd 'rustc -O decode_ways.rs -o target/decode_ways'

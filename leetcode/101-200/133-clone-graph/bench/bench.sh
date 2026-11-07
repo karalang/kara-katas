@@ -68,7 +68,7 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
         echo "compiling $src ..." >&2
         karac build "$src" >/dev/null
         mv "$stem" "$out"
@@ -117,7 +117,10 @@ isa_build_c    clone_bfs.c
 isa_build_rust clone_bfs.rs
 ovf_build_rust clone_bfs.rs
 build_c    clone_bfs.c
-build_kara clone_bfs.kara
+# clone_bfs is the seq lane, but auto-par (on by default) would
+# parallelize it: build it with auto-par off. clone_bfs_par writes its
+# parallelism itself and keeps the default.
+KARAC_AUTO_PAR=0 build_kara clone_bfs.kara
 export BENCH_NOTE="kara par lane RESTORED 2026-08-07 (kara B-2026-08-01-33). It was withdrawn while clone_bfs_par.kara did not compile — a shared struct reachable from more than one par branch was a compile error, because even pure reads race on the non-atomic refcount. The mechanism that answers it is 'frozen': a non-counting handle to a deeply-immutable shared value, so there is no refcount traffic left to race. The gate itself is unchanged and still correct. The kara par row published before that (from a stale pre-gate binary that raced, ~0.8% SIGSEGV/SIGTRAP, kara B-2026-07-28-13) was never re-measured and is not what this row is. clone_bfs_par.kara differs from clone_bfs.kara in TWO ways, both stated in its header: an index-cursor Vec worklist instead of VecDeque+pop_front (which is what the C mirror does, and which measures within noise of the deque form on the sequential lane — 181.4 vs 183.8 ms), and graph construction moved into a helper so the freeze source is uniquely bound."
 
 # --- kara par lane, restored 2026-08-07 (kara B-2026-08-01-33) -------------
@@ -210,9 +213,9 @@ echo
 echo "=== compile elapsed (cold) ==="
 ce_begin --warmup 1 --runs 10
 ce_cmd --lang kara --approach clone_bfs --mode codegen \
-    --prepare 'rm -f target/clone_bfs_kara clone_bfs' \
+    --prepare 'rm -f target/clone_bfs_kara.ce clone_bfs' \
     --name 'karac build clone_bfs.kara' \
-    --cmd 'sh -c "karac build clone_bfs.kara >/dev/null && mv clone_bfs target/clone_bfs_kara"'
+    --cmd 'sh -c "karac build clone_bfs.kara >/dev/null && mv clone_bfs target/clone_bfs_kara.ce"'
 ce_cmd --lang rust --approach clone_bfs --mode native \
     --prepare 'rm -f target/clone_bfs' \
     --name 'rustc -O clone_bfs.rs' --cmd 'rustc -O clone_bfs.rs -o target/clone_bfs'

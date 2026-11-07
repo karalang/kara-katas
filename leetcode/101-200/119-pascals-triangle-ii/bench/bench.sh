@@ -84,9 +84,11 @@ build_kara() {
     local src="$1"
     local stem="$(basename "$src" .kara)"
     local out="target/${stem}_kara"
-    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
-        echo "compiling $src ..." >&2
-        karac build "$src" >/dev/null
+    # Seq lane: auto-par is on by default, so build with it off. bench.sh is
+    # a dependency so an earlier auto-par binary is never taken as fresh.
+    if [ ! -x "$out" ] || [ "$src" -nt "$out" ] || [ bench.sh -nt "$out" ] || [ "$(command -v karac)" -nt "$out" ]; then
+        echo "compiling $src (KARAC_AUTO_PAR=0, seq lane) ..." >&2
+        KARAC_AUTO_PAR=0 karac build "$src" >/dev/null
         mv "$stem" "$out"
     fi
 }
