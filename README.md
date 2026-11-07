@@ -10,15 +10,14 @@ Single-threaded, same algorithm in every language, native binaries (`karac build
 
 ![Runtime, sequential lane — relative to Rust](graphs/runtime-seq.png)
 
-> **Being re-measured (2026-11-07):** 56 kata bench scripts built the "sequential" Kāra lane without `KARAC_AUTO_PAR=0` (fixed in 9b1f2c7c). Only kata 30 contains an auto-parallel site, so its 0.25× is a parallel run and void; the other 55 differ only in small code-shape effects. The sequential medians below hold until those 56 rows are re-benched.
 
-Across **419 programs** (414 katas, measured on an M5 Pro on the current compiler, 2026-10-29 to 2026-11-07), Kāra's median is **1.04× default Rust**, **1.17× C** and **0.94× Go**; 261 programs land within 10% of Rust. One thing to read deliberately: Kāra **checks integer overflow by default** and `rustc -O` **silently wraps** — defined behavior, but a wrong value where Kāra would trap — so the gray **Rust (default)** baseline is doing strictly less work than Kāra on overflowing arithmetic. The goldenrod **Rust (checked)** rings overlay `rustc -O -C overflow-checks=on` — the safety-matched build — on the 398 programs where it differs: there Kāra's median is **1.00×**, with 303 of 398 within 10%. It is not uniform: 21 programs are more than 2× default Rust, the worst being #163 missing ranges (10.2×), #364 (4.2×), #390 (3.2×) and #411 (3.1×); against checked Rust the worst is #170 (3.1×). The chart shows every one of those plainly. See [BENCHMARKS.md](BENCHMARKS.md) for the full caveat.
+Across **444 programs** (439 katas, measured on an M5 Pro on the current compiler, 2026-10-29 to 2026-11-07), Kāra's median is **1.03× default Rust**, **1.15× C** and **0.93× Go**; 296 programs land within 10% of Rust. One thing to read deliberately: Kāra **checks integer overflow by default** and `rustc -O` **silently wraps** — defined behavior, but a wrong value where Kāra would trap — so the gray **Rust (default)** baseline is doing strictly less work than Kāra on overflowing arithmetic. The goldenrod **Rust (checked)** rings overlay `rustc -O -C overflow-checks=on` — the safety-matched build — on the 423 programs where it differs: there Kāra's median is **1.00×**, with 343 of 423 within 10%. It is not uniform: 21 programs are more than 2× default Rust, the worst being #163 missing ranges (10.2×), #364 (4.2×), #390 (3.2×), #411 (3.1×) and #438 (3.0×); against checked Rust the worst are #414 (2.6×), #277 (2.5×) and #344 (2.5×). The chart shows every one of those plainly. See [BENCHMARKS.md](BENCHMARKS.md) for the full caveat.
 
 ## Binary size
 
 ![Binary size, sequential lane — relative to Rust, log scale](graphs/binary-seq.png)
 
-Kāra's median binary is **~296 KiB** (quartiles ~67 KiB and ~296 KiB, depending on how much runtime a program pulls in: hash maps, strings). That is above C's ~33 KiB, below Rust's ~456 KiB on every one of the 418 programs, and about **8× smaller than Go** (~2.4 MiB), which carries its runtime + GC in every binary.
+Kāra's binaries sit on two floors: **~67 KiB** for programs that link only the lean runtime, and **~296 KiB** when a program pulls in the larger runtime surface (hash maps, strings); the two are about equally common. That is above C's ~33 KiB, below Rust's ~456 KiB on every one of the 443 programs, and **8–36× smaller than Go** (~2.4 MiB), which carries its runtime + GC in every binary.
 
 ## Parallel lane — auto-par vs hand-tuned
 
@@ -37,7 +36,7 @@ Four more charts — compile time, compile memory, runtime memory, and Kāra's i
 
 - **Same algorithm, same workload** per program, across all languages. The comparison is of *compiled output and runtime quality*, not of who can write the cleverest solution.
 - These are **single-file algorithm kernels**, not whole applications. They measure codegen and runtime behavior on tight loops; they do **not** claim to predict real-world application performance.
-- **Wall-time numbers are noise-limited** (measured on a shared M5 Pro under load, across several compiler builds from 2026-10-29 on; 289 of the 414 katas predate the compiler's move to LLVM 22 on 2026-11-04) — treat them as approximate and read the *shape*, not the third digit. The deterministic metrics (binary size, peak memory) are stable run-to-run.
+- **Wall-time numbers are noise-limited** (measured on a shared M5 Pro under load, across several compiler builds from 2026-10-29 on, some before the compiler's move to LLVM 22 on 2026-11-04) — treat them as approximate and read the *shape*, not the third digit. The deterministic metrics (binary size, peak memory) are stable run-to-run.
 - Raw data for every chart lives in **[`bench-results.json`](bench-results.json)**; the measurement protocol is **[BENCH.md](BENCH.md)**.
 
 ## Reproducing
