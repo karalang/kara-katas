@@ -1853,20 +1853,6 @@ fn resample_tile(px: ref Vec[u16], base: i64, w: i64, h: i64, dx: f64, dy: f64,
     out
 }
 
-/// Register every frame against frame 0 and return per-frame offsets.
-///
-/// Split out from the stacking loop so the offsets can be computed once and
-/// reused across every tile — recomputing star detection per tile would be
-/// absurd, and detection needs the whole frame anyway (the background estimate
-/// and the star field are global properties).
-///
-/// `keep[f]` is 0 for a frame whose consensus was too weak to trust. One
-/// misaligned frame smears every star in the result; a dropped frame costs only
-/// its share of the signal-to-noise.
-/// Returns (dx, dy, keep, votes). `votes` is the raw consensus count and is
-/// what `register` reports — the harness gates on it (a frame stacked on a
-/// two-star agreement is luck, not a match), so collapsing it to the 0/1 keep
-/// flag silently defeats that check.
 // ─── Calibration ─────────────────────────────────────────────────────────────
 //
 // Three defects a real sensor puts into every sub, and none of them is noise —
@@ -2076,6 +2062,20 @@ fn compute_offsets_streaming(paths: ref Vec[String], w: i64, h: i64, nframes: i6
     (dxs, dys, keep, votes, nref, rots)
 }
 
+/// Register every frame against frame 0 and return per-frame offsets.
+///
+/// Split out from the stacking loop so the offsets can be computed once and
+/// reused across every tile — recomputing star detection per tile would be
+/// absurd, and detection needs the whole frame anyway (the background estimate
+/// and the star field are global properties).
+///
+/// `keep[f]` is 0 for a frame whose consensus was too weak to trust. One
+/// misaligned frame smears every star in the result; a dropped frame costs only
+/// its share of the signal-to-noise.
+/// Returns (dx, dy, keep, votes). `votes` is the raw consensus count and is
+/// what `register` reports — the harness gates on it (a frame stacked on a
+/// two-star agreement is luck, not a match), so collapsing it to the 0/1 keep
+/// flag silently defeats that check.
 fn compute_offsets(px: ref Vec[u16], w: i64, h: i64, nframes: i64)
     -> (Vec[f64], Vec[f64], Vec[i64], Vec[i64], Vec[f64])
 {
