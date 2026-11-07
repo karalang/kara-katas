@@ -132,10 +132,12 @@ check through `karac fix` in three rounds: the syntax (`struct
 Solution {}`, `max`, `Solution.`), then `as_bytes`, the outer `vec!` and
 the `as i64` the return no longer needs, then the inner `vec!`. One error has no fix: Rust infers
 `let mut best = 0` as `i32` from the return, and Kāra types the literal
-`i64` on the spot, so returning it as `i32` narrows. design.md § Type
-inference says a literal defaults last, after every use has had its
-chance to fix it; that is kara B-2026-11-07-3 (open), and until it is
-fixed the arm writes `let mut best: i32 = 0`.
+`i64`, so returning it as `i32` narrows. design.md § Type inference
+says a literal defaults last, after every use has had its chance to fix
+it. Kara B-2026-11-07-3 made a `let`, an operand or a push fix it, but an
+assignment (`best = max(best, dp[i][j])`, `b = y`, `b += y`) and a generic
+call's argument still do not; that is kara B-2026-11-07-57 (open), and
+until it is fixed the arm writes `let mut best: i32 = 0`.
 
 ## Benchmarks
 
