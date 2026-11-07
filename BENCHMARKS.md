@@ -365,48 +365,38 @@ per-core compiler-quality comparison.
 
 ![Runtime, sequential lane](graphs/runtime-seq.png)
 
-Kāra's cloud tracks C's closely and sits at or below the **Rust (checked)** rings
-on most programs — i.e. at parity with *safety-matched* Rust, ahead on the
-pointer/tree/backtracking kernels, with the only daylight to the gray `rust -O`
-baseline being the overflow checks Rust opts out of by default (see the baseline
-caveat above). The residual equal-safety gaps are string-building kernels,
-#1665's sort, and — since 2026-09-08 — the **map-bearing kernels**, which moved
-behind safety-matched Rust when codegen adopted SipHash-1-3 (see the withdrawal
-note in § Baseline caveat above). This chart predates that re-bench for the map
-katas.
-Go trails on most single-threaded work.
-
-Corpus-level, sequential lane, on the 249 program-rows that carry a
-safety-matched Rust twin (2026-07-28, M5 Pro):
+Recomputed 2026-11-07 from the 414-kata M5 Pro feed (419 programs, measured
+2026-10-29 to 2026-11-07 on the current MIR/LLVM compiler; 289 katas predate the
+LLVM 22 switch of 2026-11-04):
 
 | comparison | n | median | p10 | p90 | Kāra faster |
 |---|---|---|---|---|---|
-| vs Rust `-O -C overflow-checks=on` | 249 | **1.00×** | 0.74× | 1.20× | 133/249 (53%) |
-| vs C `clang -O3` | 249 | 1.18× | — | — | 43/249 (17%) |
+| vs Rust `-O -C overflow-checks=on` | 398 | **1.00×** | 0.81× | 1.21× | 179/398 (45%) |
+| vs Rust `-O` (wraps on overflow) | 419 | 1.04× | 0.81× | 1.49× | 147/419 (35%) |
+| vs C `clang -O3` | 419 | 1.17× | 0.92× | 2.33× | 85/419 (20%) |
+| vs Go `go build` | 419 | 0.94× | 0.50× | 1.49× | 257/419 (61%) |
 
 Read the median as "a coin flip against safety-matched Rust, and consistently
 behind C" — not as a headline. The p10/p90 spread is the real content: the
-distribution is wide in both directions, the tails are what the per-kata pages
-explain, and the figure still averages across compiler generations (see
-Provenance).
+distribution is wide in both directions. 21 programs are over 2× default Rust,
+worst #163 missing ranges (10.2×), #364 (4.2×), #390 (3.2×), #411 (3.1×);
+against checked Rust the worst is #170 (3.1×). The per-kata pages explain the
+tails.
 
-**This table is a 2026-07-28 snapshot and has not been recomputed since the
-2026-08-22 hash change.** Twelve of its 249 rows are map-bearing and have since
-moved against safety-matched Rust (see the withdrawal note above); nine crossed.
-The median is computed over enough rows that twelve will not move it far, but it
-has not been re-derived, so treat the `Kāra faster 133/249` count as an upper
-bound until it is.
+The earlier sections of this page (overflow-tax decomposition, the SipHash
+withdrawal, provenance) were written against the legacy compiler, deleted
+2026-10-24; read their figures as history, not as the current compiler.
 
 ## Binary size — sequential lane
 
-Stripped native binary, on disk. Log scale, because Go is ~70× the others.
+Stripped native binary, on disk. Log scale, because Go is ~74× C.
 
 ![Binary size, sequential lane](graphs/binary-seq.png)
 
-Kāra emits C-sized binaries (~33 KiB) for most programs and rises to its
-~285 KiB compute floor when it links the larger runtime surface (hash maps,
-strings). Rust sits ~14× above C; Go ~70× above, carrying its runtime + GC in
-every binary.
+Median across 418 programs: C ~33 KiB, **Kāra ~296 KiB** (quartiles ~67 KiB and
+~296 KiB, depending on how much runtime a program links: hash maps, strings),
+Rust ~456 KiB (~14× C), Go ~2.4 MiB (~74× C) with its runtime + GC in every
+binary. Kāra is smaller than Rust on all 418 and ~8× smaller than Go.
 
 ## Runtime peak memory — sequential lane
 
@@ -414,8 +404,8 @@ Peak RSS during execution.
 
 ![Runtime peak memory, sequential lane](graphs/rss-seq.png)
 
-Kāra, C, and Rust cluster at parity (~1.0×) — Kāra runs leak-free at native
-footprint. Go's GC heap pushes it to 2–8× depending on allocation pressure.
+Kāra, C, and Rust cluster at parity: median 0.99× Rust and 1.03× C (p90 1.10×
+and 1.35×) across 418 programs. Go's GC heap puts Kāra at a median 0.40× of Go.
 
 ## Compile time — cold
 
@@ -425,8 +415,9 @@ which isn't comparable to a single-file compiler invocation.
 
 ![Compile time, cold](graphs/compile-elapsed.png)
 
-Kāra's compiler is faster than `rustc -O` on every program here (~0.55–0.8×),
-sitting between clang (the LLVM single-file floor) and rustc.
+Kāra's cold compile is a median **1.30× `rustc -O`** (p10 1.07×, p90 1.62×;
+faster than rustc on 28 of 418) and 2.56× clang. The legacy compiler sat
+below rustc (~0.55–0.8×); the current compiler is slower than it was.
 
 ## Compile peak memory — cold
 
@@ -434,10 +425,17 @@ Peak RSS of the compiler process. Go omitted for the same reason as above.
 
 ![Compile peak memory, cold](graphs/compile-rss.png)
 
-Kāra compiles in ~0.3× of rustc's peak memory — again between clang and rustc,
-with no algorithmic blowup.
+Kāra's compiler peaks at a median **2.05× rustc's** memory (p90 2.30×) and
+~23× clang's. The legacy compiler sat at ~0.3× rustc; this is a regression
+of the new pipeline, stated here rather than hidden.
 
 ## Auto-parallel speedup (Kāra)
+
+> **Being re-measured (2026-11-07).** 38 of the 50 auto-par katas were measured
+> before karac 57efe5bc2f, which removed a process-wide lock every parallel task
+> contended on (B-2026-11-01-25). Their par-lane figures, including #133's, are
+> stale until the M5 re-run lands; this section and the cross-language lane
+> below will be restated from it.
 
 Kāra's compiler automatically parallelizes dependency-free reductions and maps —
 no `rayon`, no goroutines, no thread plumbing, and no data-race risk, because the

@@ -24,6 +24,8 @@ This is the one thing Kāra does that the others don't hand you for free. The ka
 
 ![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.png)
 
+> **Being re-measured (2026-11-07):** 33 of these 40 programs' Kāra figures predate a fix (karac 57efe5bc2f) that removed a lock every parallel task contended on, so the numbers below, #133's especially, are stale until the M5 re-run lands.
+
 The result across **40 programs** with a full parallel comparator set: Kāra's auto-par — **from single-threaded source, zero parallel code** — runs at a **median 1.16× of hand-tuned `rayon`**, and is **faster than `rayon` on 11** of them (best: #22 0.43×, #57 0.50×, #86 0.64×, #20 0.67×). Against Go's hand-rolled goroutines it wins on **25 of 40**. Against raw `pthread_create`/`join` C it matches or beats the metal floor on 13 (#273 0.53×, #3629 0.59×, #1 0.61×). It is **not** uniformly fast, and the misses are large: #9 is 2.1× `rayon`, #23 divide-and-conquer 5.1×, and #133 clone-graph BFS **28.8×** `rayon` (~100× C); #71 simplify is ~18× C. The chart shows every one. The point isn't "beats rayon" — it's **competitive throughput on most of these for none of the cost**: no crate, no `.into_par_iter()`, no `unsafe`/`Send`/`Sync` reasoning, no `WaitGroup`, and no data-race, goroutine-leak, or partial-merge bug class to chase. The compiler's cost gate also *declines* to parallelize loops too small to pay off, so this lane only includes katas where the reduction is heavy enough to matter.
 
 ## The rest of the picture
