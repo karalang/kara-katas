@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=1060 slug=missing-element-in-sorted-array group=1001-1100 \
-    title="All Paths from Source Lead to Destination" \
-    workload="build 20 graphs of 2000 nodes once, then every source of each; sink=checksum" sink="$expected"
+    title="Missing Element in Sorted Array" \
+    workload="50 arrays of 50000 values built once, 200000 values of k each; sink=sum + checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
