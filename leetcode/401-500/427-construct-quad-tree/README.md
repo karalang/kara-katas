@@ -140,7 +140,42 @@ merging, so a round allocates about 5,500 nodes whatever the tree's
 final size; the mirrors keep that. C mallocs every node and frees four
 merged leaves when it replaces them, Rust uses `Rc<Quad>` (the
 reference-counted handle a `shared enum` is), Go uses pointers, and
-Python tuples. Spot timings on a shared 4-core container, three runs
+Python tuples.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14787+g97681763d`
+(g97681763d, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 1297.4 ms ± 33.3 | 1.30× |
+| c `clang -O3` | 1612.3 ms ± 28.8 | 1.04× |
+| **kāra `karac build`, seq** | **1683.8 ms ± 14.7** | **—** |
+| rust `-O` | 1829.6 ms ± 34.1 | 0.92× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1834.6 ms ± 35.9 | 0.92× |
+
+Kāra is 0.92× `rustc -O`, 0.92× equal-safety Rust, 1.04× C and 1.30× Go. Kāra is ahead of Rust here; against legacy it runs 1.68× the instructions, which has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.68× the instructions in 1.60× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.4 ms ± 1.3 | 32.8 KiB | 1.1 MiB |
+| rust | 131.7 ms ± 0.8 | 474.6 KiB | 1.1 MiB |
+| kāra | 127.5 ms ± 2.2 | 66.9 KiB | 1.1 MiB |
+| go | — | 2451.1 KiB | 9.5 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.0× rustc's. Kāra's
+68,552-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20000 rounds on a 64 by 64 grid: 2120032 nodes, checksum 209247122`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three runs
 each (`bench.sh` timings need a quiet machine):
 
 | | time |

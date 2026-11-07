@@ -112,7 +112,42 @@ The mirrors keep the ★ arm's structure: Rust's nodes are
 counted, and its `HashMap` hashes with SipHash-1-3 under a random key,
 as Kāra's `Map` does; Go uses pointers and a map. C keeps the nodes in
 one array linked by index and the prefix counts in an open-addressing
-table with a multiplicative hash, cleared for each target. Spot timings
+table with a multiplicative hash, cleared for each target.
+
+### Apple M5 Pro, 2026-11-07
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.0-dev.14787+g97681763d`
+(g97681763d, the v2/MIR backend), measured 2026-11-07, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 241.4 ms ± 4.2 | 2.27× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 528.1 ms ± 11.6 | 1.04× |
+| rust `-O` | 534.0 ms ± 17.9 | 1.03× |
+| **kāra `karac build`, seq** | **547.6 ms ± 17.3** | **—** |
+| go `go build` | 606.4 ms ± 10.9 | 0.90× |
+
+Kāra is 1.03× `rustc -O`, 1.04× equal-safety Rust, 2.27× C and 0.90× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.44× the instructions in 0.68× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.5 ms ± 1.0 | 32.8 KiB | 9.8 MiB |
+| rust | 124.6 ms ± 3.8 | 474.9 KiB | 6.9 MiB |
+| kāra | 131.5 ms ± 3.2 | 67.1 KiB | 5.8 MiB |
+| go | — | 2450.6 KiB | 11.3 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.1× rustc's. Kāra's
+68,728-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`200 targets on a tree of 100000: 71159 paths, checksum 117505869`).
+
+### Container x86-64 history
+
+Spot timings
 on a shared 4-core container, three runs each (`bench.sh` timings need
 a quiet machine):
 
