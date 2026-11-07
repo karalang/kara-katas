@@ -433,11 +433,6 @@ of the new pipeline, stated here rather than hidden.
 
 ## Auto-parallel speedup (Kāra)
 
-> **Being re-measured (2026-11-07).** 38 of the 50 auto-par katas were measured
-> before karac 57efe5bc2f, which removed a process-wide lock every parallel task
-> contended on (B-2026-11-01-25). Their par-lane figures, including #133's, are
-> stale until the M5 re-run lands; this section and the cross-language lane
-> below will be restated from it.
 
 Kāra's compiler automatically parallelizes dependency-free reductions and maps —
 no `rayon`, no goroutines, no thread plumbing, and no data-race risk, because the
@@ -454,16 +449,16 @@ free — which also makes it the easiest chart to over-read, so read it carefull
   numeric kernels, simulation, per-record/per-pixel work. It does **nothing** for
   I/O-bound, tiny, or sequentially-dependent loops, and the compiler's **cost gate
   declines** to parallelize loops too small to pay off. That's exactly why #4's
-  ~hundred-nanosecond kernel earns only 3.7× while #204's heavier kernel reaches
-  13.4×, against an 18-core ceiling.
+  small kernel earns only 2.1× while #204's heavier kernel reaches 8.8×, against
+  an 18-core ceiling.
 - **The speedup is workload- and core-bound physics, not a universal multiplier**
   on your program. The honest claim is *ergonomic, safe, automatic parallelization
   where it applies* — these numbers are evidence it scales, not a promise about
   arbitrary code.
-- **This is a real distribution now (26 programs), not a teaser.** Every kata
-  whose `karac build` engages auto-par contributes a point; the spread from the
-  cost-gate floor up to ~13× against the 18-core ceiling is the spectrum, not a
-  single illustrative number.
+- **This is a real distribution now (50 programs, median 6.6×), not a teaser.**
+  Every kata whose `karac build` engages auto-par contributes a point; the spread
+  runs from #302 at 0.99× (no gain) up to #87 at ~13× against the 18-core
+  ceiling. Re-measured 2026-11-07 on karac g97681763d.
 
 ### Cross-language parallel lane
 
@@ -473,17 +468,14 @@ the headline chart in the **[README](README.md#parallel-lane--auto-par-vs-hand-t
 
 ![Runtime, auto-parallel lane — relative to Rust](graphs/runtime-par.png)
 
-**31 programs** now ship the full parallel comparator set. Across them Kāra's
-auto-par runs at a median **1.13× of hand-tuned `rayon`** (typically within
-~10–15%, with zero parallel source), is **faster than `rayon` outright on seven**
-(best #22 0.47×), wins against Go's goroutines on **24 of 31** (goroutine dispatch
-overhead swamps fine-grained reductions), and **edges or matches the raw-pthreads
-C floor on nine** of the allocation-heavy ones — for none of the engineering cost.
-A handful of string-/allocation-churn kernels trail both C and Go (worst #71
-simplify, ~8.8× of C); the chart shows them. Katas whose per-call work is too
-small for rayon/goroutine dispatch to win (parallelizing them by hand would
-*lose* to sequential) contribute only the intra-language auto-par speedup above
-and stay seq-only here. More points land automatically as parallel katas are added.
+**40 programs** ship the full parallel comparator set (re-measured 2026-11-07
+on karac g97681763d). Across them Kāra's auto-par runs at a median **1.08× of
+hand-tuned `rayon`** with zero parallel source, is **faster than `rayon` on 14**
+(best #57 0.35×), wins against Go's goroutines on **26 of 40**, and matches or
+beats the raw-pthreads C floor on **14**. The worst are #171 (2.41× `rayon`) and,
+against C, #71 simplify (~18×), #57 (~5×) and #12 (~3.6×); the chart shows them.
+Katas whose per-call work is too small for rayon/goroutine dispatch to win
+contribute only the intra-language auto-par speedup above and stay seq-only here.
 
 ## Caveats
 
