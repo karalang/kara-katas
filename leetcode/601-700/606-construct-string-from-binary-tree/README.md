@@ -136,7 +136,42 @@ Each implementation appends to one growing string, as the ★ arm does: a
 and in Python a list of parts joined at the end. Rust and Go format each
 value into a string of its own before appending it, as the arm's
 `f"{node.val}"` does; C formats it into a buffer on the stack. The Rust
-tree is LeetCode's `Option<Rc<RefCell<TreeNode>>>`. Spot timings on a
+tree is LeetCode's `Option<Rc<RefCell<TreeNode>>>`.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15046+g49f2e393f`
+(g49f2e393f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 302.0 ms ± 3.9 | 1.58× |
+| rust `-O` | 399.2 ms ± 14.0 | 1.19× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 407.4 ms ± 12.7 | 1.17× |
+| c `clang -O3` | 441.9 ms ± 12.3 | 1.08× |
+| **kāra `karac build`, seq** | **475.7 ms ± 13.2** | **—** |
+
+Kāra is 1.19× `rustc -O`, 1.17× equal-safety Rust, 1.08× C and 1.58× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.4 ms ± 3.8 | 33.0 KiB | 9.3 MiB |
+| rust | 127.1 ms ± 1.2 | 457.3 KiB | 12.2 MiB |
+| kāra | 138.2 ms ± 1.4 | 66.9 KiB | 9.1 MiB |
+| go | — | 2450.5 KiB | 21.8 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.1× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20 trees, 200 times each: 61492825 characters, checksum 478357407`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine):
 
