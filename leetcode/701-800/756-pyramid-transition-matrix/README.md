@@ -152,6 +152,8 @@ call; Rust uses `HashSet`, Go a map and Python a set.
 30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15075+g9fee2dd51`
 (g9fee2dd51, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
 `KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+These numbers predate the change below that makes `letter` return a
+`char`, so they time the version that built a `String` per letter.
 The last column is Kāra's mean over that row's mean.
 
 | implementation | mean | Kāra / this |
@@ -212,6 +214,17 @@ v2 takes about 1.5 times legacy's time, inside M2's limit of twice
 legacy. The legacy copy is a measurement only and is not in the kata,
 and new katas' benches are outside M2's frozen set in any case. The
 comparison with C and Rust waits until after M4.
+
+### `letter` returns a `char` (2026-11-08)
+
+Until 2026-11-08 every arm, the differential and the bench built each
+random letter as a one-letter `String` (`String.new()`, a `push`, then
+`push_str` into the row), a heap allocation per letter that the Rust
+(`fn letter(x: i64) -> char`) and C mirrors never make. `letter` now
+returns the `char` and the callers `push` it, as Rust does. Every arm's
+output and the bench's sink line are unchanged, and on the 4-core
+container the bench binary went from 1.61 to 1.72 s to 0.59 to 0.70 s
+over six interleaved runs, so the M5 row above overstates the gap.
 
 ## Compiler findings
 

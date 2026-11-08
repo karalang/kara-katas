@@ -143,6 +143,8 @@ Every implementation prints `100000 plates against 1000 words: answers
 30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15075+g9fee2dd51`
 (g9fee2dd51, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
 `KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+These numbers predate the change below that builds the 26-slot counts as
+`[0; 26]` arrays, so they time the `Vec` version.
 The last column is Kāra's mean over that row's mean.
 
 | implementation | mean | Kāra / this |
@@ -213,10 +215,18 @@ B-2026-10-18-51. The comparison with C and Rust waits until after M4.
 
 ## Compiler findings
 
-B-2026-10-18-51 (filed, open): v2's pre-size pass (`src/mir/presize.rs`)
-reserves room ahead of a `while i < n` counting loop's pushes but not a
-`for` loop's, so `let mut v: Vec[i64] = Vec.new(); for _ in 0..26 {
-v.push(0); }` allocates four times where the `while` spelling and legacy
-allocate once. This kata's bench, which builds such a count for every
-word it tests, is 3.2 times legacy because of it (see Benchmarks). The
-kata keeps its natural spelling.
+B-2026-10-18-51 (fixed in kara `606ffe07e2`): v2's pre-size pass
+(`src/mir/presize.rs`) reserved room ahead of a `while i < n` counting
+loop's pushes but not a `for` loop's, so `let mut v: Vec[i64] =
+Vec.new(); for _ in 0..26 { v.push(0); }` allocated four times where the
+`while` spelling and legacy allocated once. This kata's bench, which
+builds such a count for every word it tests, was 3.2 times legacy because
+of it (see Benchmarks).
+
+Since 2026-11-08 the arms, the differential and the bench build both
+26-slot counts as `let mut need = [0; 26];`, a fixed array, which is what
+the C (`int64_t need[26]`) and Rust (`[0i64; 26]`) mirrors use; the `Vec`
+version heap-allocated a count per word that the mirrors keep on the
+stack. Every arm's output and the bench's sink line are unchanged, and on
+the 4-core container the bench binary went from 0.70 to 0.79 s to 0.54 to
+0.57 s over six interleaved runs.
