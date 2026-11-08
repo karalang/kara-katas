@@ -1,0 +1,94 @@
+// LeetCode #1520: Maximum Number of Non-Overlapping Substrings -- the ★
+// arm: each letter's span is grown until it holds every occurrence of
+// every letter inside it, and is dropped if it would have to grow left.
+// Walking the letters' first occurrences left to right, a span that
+// starts after the last one taken is added, and one that starts inside it
+// (it can only be nested in it) replaces it, being shorter. O(26 n).
+
+fn max_num_of_substrings(s: String) -> Vec[String] {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let n = bytes.len();
+    let mut first: Vec[i64] = Vec.filled(26, n);
+    let mut last: Vec[i64] = Vec.filled(26, -1);
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        first[c] = first[c].min(i);
+        last[c] = i;
+    }
+    let mut spans: Vec[(i64, i64)] = Vec.new();
+    let mut right = -1;
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        if i != first[c] {
+            continue;
+        }
+        // grow the span of the letter first seen at i
+        let mut end = last[c];
+        let mut ok = true;
+        let mut j = i;
+        while j <= end {
+            let d = (bytes[j] - 97) as i64;
+            if first[d] < i {
+                ok = false;
+                break;
+            }
+            end = end.max(last[d]);
+            j += 1;
+        }
+        if not ok {
+            continue;
+        }
+        if i > right {
+            spans.push((i, end));
+        } else {
+            let k = spans.len() - 1;
+            spans[k] = (i, end);
+        }
+        right = end;
+    }
+    spans.iter().map(|(a, b)| s[a..b + 1].to_string()).collect()
+}
+
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// The answer is unique as a set; sorted, it prints the same from every arm.
+fn show(s: String) -> String {
+    let mut parts = max_num_of_substrings(s);
+    parts.sort();
+    f"[{parts.join(",")}]"
+}
+
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) -> i64 {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((97 + next_random(mut seed) % letters) as u8 as char);
+        }
+        for b in show(s).bytes() {
+            check = mix(check, b);
+        }
+    }
+    check
+}
+
+fn main() {
+    println(f"example 1, adefaddaccc -> {show("adefaddaccc")}");
+    println(f"example 2, abbaccd -> {show("abbaccd")}");
+    println(f"one letter, zzz -> {show("zzz")}");
+    println(f"nested, abacbdcd -> {show("abacbdcd")}");
+    let mut seed = 1520;
+    println(f"3000 strings of 1 to 12 over 4 letters: checksum {batch(3000, 12, 4, mut seed)}");
+    println(f"30 strings of 1 to 30000 over 26 letters: checksum {batch(30, 30000, 26, mut seed)}");
+}

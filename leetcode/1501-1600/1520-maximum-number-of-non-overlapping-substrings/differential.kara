@@ -1,0 +1,489 @@
+// LeetCode #1520: Maximum Number of Non-Overlapping Substrings -- the
+// differential.
+//
+// Five arms against the statement read literally, on 3000 strings of 1 to
+// 10 letters over 3 letters, with six properties. Answers are compared as
+// sorted lists of substrings.
+//
+// P1  the answer is the statement read literally: of all sets of
+//     non-overlapping substrings that each hold every occurrence of each
+//     of their letters, the largest, and of those the shortest in total
+// P2  the letters renamed (a to b, b to c, c to a) rename the answer
+// P3  the string reversed reverses each substring of the answer
+// P4  every substring of the answer holds all of each of its letters, and
+//     no two share a letter
+// P5  the string followed by a copy over d, e, f answers with the
+//     string's answer and the copy's
+// P6  each arm agrees with at least two of the other four
+// ---- substrings.kara: the ★ arm: spans grown left to right, added or replaced
+
+fn star_arm(s: String) -> Vec[String] {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let n = bytes.len();
+    let mut first: Vec[i64] = Vec.filled(26, n);
+    let mut last: Vec[i64] = Vec.filled(26, -1);
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        first[c] = first[c].min(i);
+        last[c] = i;
+    }
+    let mut spans: Vec[(i64, i64)] = Vec.new();
+    let mut right = -1;
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        if i != first[c] {
+            continue;
+        }
+        // grow the span of the letter first seen at i
+        let mut end = last[c];
+        let mut ok = true;
+        let mut j = i;
+        while j <= end {
+            let d = (bytes[j] - 97) as i64;
+            if first[d] < i {
+                ok = false;
+                break;
+            }
+            end = end.max(last[d]);
+            j += 1;
+        }
+        if not ok {
+            continue;
+        }
+        if i > right {
+            spans.push((i, end));
+        } else {
+            let k = spans.len() - 1;
+            spans[k] = (i, end);
+        }
+        right = end;
+    }
+    spans.iter().map(|(a, b)| s[a..b + 1].to_string()).collect()
+}
+
+// ---- substrings_end.kara: valid spans taken by earliest end
+
+fn end_arm(s: String) -> Vec[String] {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let n = bytes.len();
+    let mut first: Vec[i64] = Vec.filled(26, n);
+    let mut last: Vec[i64] = Vec.filled(26, -1);
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        if first[c] == n {
+            first[c] = i;
+        }
+        last[c] = i;
+    }
+    let mut spans: Vec[(i64, i64)] = Vec.new();
+    for c in 0..26 {
+        if last[c] < 0 {
+            continue;
+        }
+        let start = first[c];
+        let mut end = last[c];
+        let mut j = start;
+        let mut ok = true;
+        while ok and j <= end {
+            let d = (bytes[j] - 97) as i64;
+            if first[d] < start {
+                ok = false;
+            } else {
+                end = end.max(last[d]);
+                j += 1;
+            }
+        }
+        if ok {
+            spans.push((end, -start));
+        }
+    }
+    spans.sort();
+    let mut taken: Vec[String] = Vec.new();
+    let mut done = -1;
+    for (end, minus_start) in spans.iter() {
+        let start = -minus_start;
+        if start > done {
+            taken.push(s[start..end + 1].to_string());
+            done = end;
+        }
+    }
+    taken
+}
+
+// ---- substrings_closure.kara: spans closed over the letters
+
+struct Reach {
+    lo: i64,
+    hi: i64,
+}
+
+fn closure_arm(s: String) -> Vec[String] {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let n = bytes.len();
+    let mut first: Vec[i64] = Vec.filled(26, n);
+    let mut last: Vec[i64] = Vec.filled(26, -1);
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        if first[c] == n {
+            first[c] = i;
+        }
+        last[c] = i;
+    }
+    // inside[c][d]: letter d occurs within letter c's own span
+    let mut inside: Vec[Vec[bool]] = Vec.filled(26, Vec.filled(26, false));
+    for c in 0..26 {
+        if last[c] < 0 {
+            continue;
+        }
+        for i in first[c]..last[c] + 1 {
+            inside[c][(bytes[i] - 97) as i64] = true;
+        }
+    }
+    let mut spans: Vec[Reach] = Vec.new();
+    for c in 0..26 {
+        spans.push(Reach { lo: first[c], hi: last[c] });
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for c in 0..26 {
+            if last[c] < 0 {
+                continue;
+            }
+            for d in 0..26 {
+                if not inside[c][d] {
+                    continue;
+                }
+                if spans[d].lo < spans[c].lo or spans[d].hi > spans[c].hi {
+                    spans[c].lo = spans[c].lo.min(spans[d].lo);
+                    spans[c].hi = spans[c].hi.max(spans[d].hi);
+                    for e in 0..26 {
+                        if inside[d][e] and not inside[c][e] {
+                            inside[c][e] = true;
+                        }
+                    }
+                    changed = true;
+                }
+            }
+        }
+    }
+    let mut taken: Vec[(i64, i64)] = Vec.new();
+    let mut right = -1;
+    for i in 0..n {
+        let c = (bytes[i] - 97) as i64;
+        if i != first[c] or spans[c].lo != i {
+            continue;
+        }
+        if i > right {
+            taken.push((i, spans[c].hi));
+        } else {
+            let k = taken.len() - 1;
+            taken[k] = (i, spans[c].hi);
+        }
+        right = spans[c].hi;
+    }
+    taken.iter().map(|(a, b)| s[a..b + 1].to_string()).collect()
+}
+
+// ---- substrings_iter.kara: the ★ arm with iterator adapters
+
+fn grow(bytes: Vec[u8], first: Vec[i64], last: Vec[i64], start: i64) -> Option[(i64, i64)] {
+    let mut end = last[(bytes[start] - 97) as i64];
+    let mut j = start;
+    while j <= end {
+        let d = (bytes[j] - 97) as i64;
+        if first[d] < start {
+            return None;
+        }
+        end = end.max(last[d]);
+        j += 1;
+    }
+    Some((start, end))
+}
+
+fn iter_arm(s: String) -> Vec[String] {
+    let bytes: Vec[u8] = s.bytes().iter().collect();
+    let n = bytes.len();
+    let first: Vec[i64] = (0..26).map(|c| bytes.iter().position(|b| *b == (97 + c) as u8).unwrap_or(n)).collect();
+    let last: Vec[i64] = (0..26).map(|c| bytes.iter().rposition(|b| *b == (97 + c) as u8).unwrap_or(-1)).collect();
+    let spans: Vec[(i64, i64)] = (0..n)
+        .filter(|i| first[(bytes[i] - 97) as i64] == i)
+        .filter_map(|i| grow(bytes, first, last, i))
+        .fold(Vec.new(), |taken: own Vec[(i64, i64)], (a, b)| {
+            let mut taken = taken;
+            match taken.last() {
+                Some((_, right)) if a <= right => {
+                    let k = taken.len() - 1;
+                    taken[k] = (a, b);
+                }
+                _ => taken.push((a, b)),
+            }
+            taken
+        });
+    spans.iter().map(|(a, b)| s[a..b + 1].to_string()).collect()
+}
+
+// ---- substrings_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_num_of_substrings(s: String) -> Vec[String] {
+        let b = s.bytes();
+        let n = b.len();
+        let mut first = [n; 26];
+        let mut last = [0; 26];
+        for (i, c) in b.iter().enumerate() {
+            let c = (c - b'a') as i64;
+            first[c] = first[c].min(i);
+            last[c] = i;
+        }
+        let mut ans: Vec[String] = Vec.new();
+        let mut right: i64 = -1;
+        for i in 0..n {
+            let c = (b[i] - b'a') as i64;
+            if i != first[c] {
+                continue;
+            }
+            let mut end = last[c];
+            let mut ok = true;
+            let mut j = i;
+            while j <= end {
+                let d = (b[j] - b'a') as i64;
+                if first[d] < i {
+                    ok = false;
+                    break;
+                }
+                end = end.max(last[d]);
+                j += 1;
+            }
+            if not ok {
+                continue;
+            }
+            let piece = s[i..=end].to_string();
+            if i > right {
+                ans.push(piece);
+            } else {
+                ans[ans.len() - 1] = piece;
+            }
+            right = end;
+        }
+        ans
+    }
+}
+
+fn solution_arm(s: String) -> Vec[String] {
+    Solution.max_num_of_substrings(s)
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// s[i..=j] holds every occurrence of each of its letters
+fn closed(b: Vec[u8], i: i64, j: i64) -> bool {
+    for k in i..j + 1 {
+        for m in 0..b.len() {
+            if b[m] == b[k] and (m < i or m > j) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// best[i]: the most substrings in s[i..], and their least total length,
+// and the first one taken (-1 for none)
+fn literal(s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().iter().collect();
+    let n = b.len();
+    let mut count: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut total: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut take: Vec[i64] = Vec.filled(n + 1, -1);
+    for i in (0..n).rev() {
+        count[i] = count[i + 1];
+        total[i] = total[i + 1];
+        take[i] = -1;
+        for j in i..n {
+            if not closed(b, i, j) {
+                continue;
+            }
+            let c = count[j + 1] + 1;
+            let t = total[j + 1] + j - i + 1;
+            if c > count[i] or (c == count[i] and t < total[i]) {
+                count[i] = c;
+                total[i] = t;
+                take[i] = j;
+            }
+        }
+    }
+    let mut pieces: Vec[String] = Vec.new();
+    let mut i = 0;
+    while i < n {
+        if take[i] < 0 {
+            i += 1;
+        } else {
+            pieces.push(s[i..take[i] + 1].to_string());
+            i = take[i] + 1;
+        }
+    }
+    pieces.sort();
+    pieces
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, s: String) -> Vec[String] {
+    let mut answer = if k == 0 {
+        star_arm(s)
+    } else if k == 1 {
+        end_arm(s)
+    } else if k == 2 {
+        closure_arm(s)
+    } else if k == 3 {
+        iter_arm(s)
+    } else {
+        solution_arm(s)
+    };
+    answer.sort();
+    answer
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "end", "closure", "iter", "solution"][k].to_string()
+}
+
+// each letter moved by `by` within its block of three
+fn shifted(s: String, rotate: bool, by: u32) -> String {
+    s.chars().map(|c| {
+        let k = c as u32 - 97;
+        let k = if rotate { (k + 1) % 3 } else { k + by };
+        (97 + k) as u8 as char
+    }).collect()
+}
+
+fn reversed(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+fn sorted(v: own Vec[String]) -> Vec[String] {
+    let mut v = v;
+    v.sort();
+    v
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15200;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 10 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((97 + next_random(mut seed) % 3) as u8 as char);
+        }
+        let renamed = shifted(s, true, 0);
+        let copy = shifted(s, false, 3);
+        let twice = f"{s}{copy}";
+        let back = reversed(s);
+        let truth = literal(s);
+        let mut answers: Vec[Vec[String]] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, s);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            let renamed_answer: Vec[String] = sorted(answer.iter().map(|x| shifted(x, true, 0)).collect());
+            if arm(k, renamed) != renamed_answer {
+                fails[2] += 1;
+            }
+            let back_answer: Vec[String] = sorted(answer.iter().map(|x| reversed(x)).collect());
+            if arm(k, back) != back_answer {
+                fails[3] += 1;
+            }
+            let mut seen: Vec[bool] = Vec.filled(3, false);
+            for piece in answer.iter() {
+                for c in piece.chars() {
+                    let k = (c as u32 - 97) as i64;
+                    let inside = piece.chars().filter(|d| d == c).count();
+                    let everywhere = s.chars().filter(|d| d == c).count();
+                    if inside != everywhere {
+                        fails[4] += 1;
+                    }
+                }
+                let mut mine: Vec[bool] = Vec.filled(3, false);
+                for c in piece.chars() {
+                    mine[(c as u32 - 97) as i64] = true;
+                }
+                for k in 0..3 {
+                    if mine[k] and seen[k] {
+                        fails[4] += 1;
+                    }
+                    seen[k] = seen[k] or mine[k];
+                }
+            }
+            let mut both: Vec[String] = answer.clone();
+            for x in answer.iter() {
+                both.push(shifted(x, false, 3));
+            }
+            if arm(k, twice) != sorted(both) {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        for x in truth.iter() {
+            for b in x.bytes() {
+                check = mix(check, b);
+            }
+            check = mix(check, 44);
+        }
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
