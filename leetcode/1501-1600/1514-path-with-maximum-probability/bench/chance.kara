@@ -1,0 +1,67 @@
+// LeetCode #1514: Path with Maximum Probability -- the bench: 10 graphs of
+// 50000 nodes and 100000 edges built once, then 5 questions asked of each
+// by the ★ arm: Dijkstra for the largest product. Every chance is at most 1, so a path's chance
+// only falls as it grows, and the node with the largest chance found is
+// final when it leaves a largest-first queue (`F64`, since `f64` has no
+// order). O((n + m) log m).
+
+fn max_probability(n: i64, edges: Vec[(i64, i64)], succ_prob: Vec[f64], start: i64, end: i64) -> f64 {
+    let mut adjacent: Vec[Vec[(i64, f64)]] = Vec.filled(n, Vec.new());
+    for i in 0..edges.len() {
+        let (a, b) = edges[i];
+        adjacent[a].push((b, succ_prob[i]));
+        adjacent[b].push((a, succ_prob[i]));
+    }
+    let mut best: Vec[f64] = Vec.filled(n, 0.0);
+    best[start] = 1.0;
+    let mut queue: PriorityQueue[(F64, i64)] = PriorityQueue.max_first();
+    queue.push((F64.from(1.0), start));
+    while let Some((chance, node)) = queue.pop() {
+        if node == end {
+            return chance.value;
+        }
+        if chance.value < best[node] {
+            continue;
+        }
+        for (next, p) in adjacent[node].iter() {
+            let through = chance.value * p;
+            if through > best[next] {
+                best[next] = through;
+                queue.push((F64.from(through), next));
+            }
+        }
+    }
+    0.0
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1514;
+    let n = 50000;
+    let mut graphs: Vec[(Vec[(i64, i64)], Vec[f64])] = Vec.new();
+    for _ in 0..10 {
+        let mut edges: Vec[(i64, i64)] = Vec.new();
+        let mut probs: Vec[f64] = Vec.new();
+        for _ in 0..100000 {
+            let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            let b = (a + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - 1)) % n;
+            edges.push((a, b));
+            probs.push((next_random(mut seed) % 21 + 80) as f64 / 100.0);
+        }
+        graphs.push((edges, probs));
+    }
+    let mut check = 0;
+    for _ in 0..5 {
+        for (edges, probs) in graphs.iter() {
+            let start = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            let end = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            let p = max_probability(n, edges, probs, start, end);
+            check = (check * 31 + (p * 1000000000000.0 + 0.5).floor() as i64 + 1) % 1000000007;
+        }
+    }
+    println(f"50 questions over 10 graphs of 50000 nodes: checksum {check}");
+}
