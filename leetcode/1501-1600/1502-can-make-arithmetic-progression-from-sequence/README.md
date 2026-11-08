@@ -19,8 +19,8 @@ arr = [1, 2, 4]   ->  false
 | `progression_seen.kara` | no sort: the smallest and largest fix the step `(max - min) / (n - 1)`, which must divide evenly; every number must sit on a step from the smallest, no two on the same one (a `Vec[bool]`). O(n) time and space |
 | `progression_place.kara` | in place: each number swapped to its step's index `(x - min) / d` until the slot holds its owner; an equal number already there is a repeat. O(n) time, O(1) extra |
 | `progression_iter.kara` | sorted, then `zip` with itself one on (`skip(1)`) and `all` gaps equal the first |
-| `progression_solution.kara` | LeetCode's Rust template (`mut arr: Vec<i32>`, `sort`, `windows(2).all(..)`), carried by `karac fix` to one error: blocked by B-2026-11-08-11 |
-| `differential.kara` | the four arms that check against the statement read literally, six properties |
+| `progression_solution.kara` | LeetCode's Rust template (`mut arr: Vec<i32>`, `sort`, `windows(2).all(..)`), carried by `karac fix`; blocked by B-2026-11-08-11 until it was fixed |
+| `differential.kara` | the five arms against the statement read literally, six properties |
 
 Every arm prints the same 11 lines: the answers for LeetCode's two
 examples and six more, then the count of `true` and a checksum of the
@@ -32,7 +32,7 @@ byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the four arms that check and the
+`differential.kara` holds copies of the five arms and the
 statement read literally: every order of the numbers, tried until one has
 every gap equal. It checks 3000 problems of 2 to 8 numbers. Every random
 choice of a problem (the numbers, a shuffle, a map `a * x + b`) is drawn
@@ -45,12 +45,13 @@ before any arm answers.
 | P3 | every number mapped to `a * x + b` (`a` in ±1..±3, `b` in -50..50) leaves the answer |
 | P4 | a progression stays one with the next term appended |
 | P5 | two numbers always make one, and a progression's span divides evenly into `n - 1` steps |
-| P6 | each arm agrees with at least two of the other three |
+| P6 | each arm agrees with at least two of the other four |
 
-The differential prints `3000 problems: checksum 214397592, 72000 checks
-over 4 arms: 0 failures` under every lane in Verification. On a failure it
+The differential prints `3000 problems: checksum 214397592, 90000 checks
+over 5 arms: 0 failures` under every lane in Verification. On a failure it
 prints the first ten and then the count by property. The Rust-template arm
-joins it, as a fifth, once it checks.
+joined it once B-2026-11-08-11 was fixed; the mutations below were run
+with the four arms before it, and none was added for it.
 
 ## Mutation testing
 
@@ -104,7 +105,10 @@ from, so in a program written as Rust the edit is safe. The same error is
 also reported four times for the one parameter. With the parameter written
 `arr: own Vec[i32]` and `let mut arr = arr;` by hand, the arm checks
 after one more `karac fix` edit and prints the ★ arm's
-output. B-2026-11-08-11 tracks both.
+output. That was B-2026-11-08-11, fixed in kara `cdb638200` (the
+`own T` and `let mut` edit) and pinned by `0919199c6`. Run again on the
+file as it had stopped, `karac fix` makes 2 edits and then 1, and the file
+now holds what it leaves; it checks and agrees.
 
 ## Benchmarks
 
@@ -139,7 +143,7 @@ shuffled progressions, so no sort gets a presorted run.
 
 ## Verification
 
-Every arm but the Rust template prints the same output as
+Every arm prints the same output as
 `progression.py` under `karac __mir-run` (the v2 MIR interpreter),
 `karac __mir-llvm-run`, and `karac __mir-llvm-asan` (AddressSanitizer and
 LeakSanitizer) with no error. `karac run` and a `karac build` binary print
