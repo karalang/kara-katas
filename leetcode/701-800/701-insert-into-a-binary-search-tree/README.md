@@ -149,6 +149,40 @@ value is inserted: `malloc` in C, `Box` in Rust, `*TreeNode` in Go, an
 object in Python and a `shared struct` in Kāra; each tree is let go
 before the next is grown, freed by hand in C, dropped when its root is
 replaced in Rust and Kāra, and left to the collector in Go and Python.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15066+g64bba595f`
+(g64bba595f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 190.1 ms ± 0.9 | 1.11× |
+| c `clang -O3` | 210.0 ms ± 0.9 | 1.00× |
+| **kāra `karac build`, seq** | **211.0 ms ± 2.3** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 214.8 ms ± 1.6 | 0.98× |
+| rust `-O` | 217.5 ms ± 7.1 | 0.97× |
+
+Kāra is 0.97× `rustc -O`, 0.98× equal-safety Rust, 1.00× C and 1.11× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.4 ms ± 1.0 | 32.9 KiB | 6.5 MiB |
+| rust | 102.7 ms ± 1.7 | 455.9 KiB | 6.6 MiB |
+| kāra | 132.6 ms ± 2.9 | 66.9 KiB | 6.6 MiB |
+| go | — | 2450.5 KiB | 15.8 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.3× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`5 rounds of 10 trees grown to 50000: heights sum to 1895, checksum 11202880`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, eight runs of each compiled
 program and seven of the legacy copy, five of each interleaved, and two
 of Python (`bench.sh` timings need a quiet machine):

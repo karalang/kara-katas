@@ -135,7 +135,42 @@ program under `karac __mir-run` included (in 116 s).
 
 Every implementation keeps the reader as a struct, or an object in
 Python, with the array and a read count, and reads through a method or
-function that counts the call and checks the bounds. Spot timings on a
+function that counts the call and checks the bounds.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15066+g64bba595f`
+(g64bba595f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 93.1 ms ± 0.3 | 1.66× |
+| rust `-O` | 120.0 ms ± 0.2 | 1.29× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 144.4 ms ± 1.5 | 1.07× |
+| **kāra `karac build`, seq** | **154.4 ms ± 2.9** | **—** |
+| go `go build` | 157.0 ms ± 0.7 | 0.98× |
+
+Kāra is 1.29× `rustc -O`, 1.07× equal-safety Rust, 1.66× C and 0.98× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.92× the instructions in 0.90× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 45.9 ms ± 0.6 | 32.9 KiB | 8.9 MiB |
+| rust | 94.8 ms ± 0.8 | 455.8 KiB | 9.2 MiB |
+| kāra | 121.9 ms ± 1.7 | 66.9 KiB | 8.9 MiB |
+| go | — | 2450.4 KiB | 11.5 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.3× rustc's. Kāra's
+68,536-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`5 rounds of 100 arrays of 10000: 2503150 found, 125246215 reads, checksum 447585667`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, eight runs of each compiled program and ten of
 the legacy build, five of each interleaved, and two of Python
 (`bench.sh` timings need a quiet machine):

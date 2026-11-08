@@ -114,7 +114,42 @@ checksum 214711956`, the Kāra program under `karac __mir-run` included
 (in 168 s).
 
 Each implementation reads the bytes of a string it does not copy:
-`s.bytes()` in Kāra is a view, as `as_bytes()` is in Rust. Spot timings
+`s.bytes()` in Kāra is a view, as `as_bytes()` is in Rust.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15066+g64bba595f`
+(g64bba595f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 134.1 ms ± 0.4 | 1.81× |
+| rust `-O` | 135.1 ms ± 0.6 | 1.80× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 240.0 ms ± 2.5 | 1.01× |
+| **kāra `karac build`, seq** | **242.8 ms ± 3.6** | **—** |
+| go `go build` | 252.1 ms ± 1.6 | 0.96× |
+
+Kāra is 1.80× `rustc -O`, 1.01× equal-safety Rust, 1.81× C and 0.96× Go. The gap to `rustc -O` and C is the cost of the overflow checks Kāra keeps on by default (1.01× equal-safety Rust). Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.10× the instructions in 1.00× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 43.9 ms ± 0.8 | 48.8 KiB | 2.9 MiB |
+| rust | 89.7 ms ± 1.2 | 455.8 KiB | 3.5 MiB |
+| kāra | 121.1 ms ± 1.9 | 66.9 KiB | 3.4 MiB |
+| go | — | 2450.4 KiB | 8.8 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.4× rustc's. Kāra's
+68,520-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`150 rounds of 20 strings of 100000: 212508600 substrings counted, checksum 214711956`).
+
+### Container x86-64 history
+
+Spot timings
 on a shared 4-core container, eight runs of each compiled program, five
 of them interleaved, and two of Python (`bench.sh` timings need a quiet
 machine):

@@ -136,7 +136,42 @@ program under `karac __mir-run` included (in 28 s).
 Each implementation allocates its union-find array, its two tables of
 first cells and its list of shapes afresh for each grid; C grows each
 shape with `realloc` and sorts them with `qsort` and a comparison that
-orders like `Vec[i64]`. Spot timings on a shared 4-core container, eight
+orders like `Vec[i64]`.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15066+g64bba595f`
+(g64bba595f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 209.0 ms ± 5.2 | 1.25× |
+| rust `-O` | 215.0 ms ± 4.2 | 1.22× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 217.2 ms ± 4.0 | 1.21× |
+| **kāra `karac build`, seq** | **262.2 ms ± 4.5** | **—** |
+| go `go build` | 316.3 ms ± 5.9 | 0.83× |
+
+Kāra is 1.22× `rustc -O`, 1.21× equal-safety Rust, 1.25× C and 0.83× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.25× the instructions in 1.14× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 59.6 ms ± 0.5 | 49.1 KiB | 1.6 MiB |
+| rust | 150.7 ms ± 1.8 | 472.7 KiB | 2.5 MiB |
+| kāra | 164.9 ms ± 2.3 | 99.2 KiB | 2.5 MiB |
+| go | — | 2484.6 KiB | 9.4 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.1× rustc's. Kāra's
+101,624-byte binary is 2.0× clang's and 4.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`150 rounds of 40 grids of 50 by 50: 389550 distinct islands counted, checksum 57554751`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, eight
 runs of each compiled program, five of them interleaved, and two of
 Python (`bench.sh` timings need a quiet machine):
 

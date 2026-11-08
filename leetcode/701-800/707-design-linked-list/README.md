@@ -169,7 +169,42 @@ s).
 
 Every implementation allocates one node per value: C with `malloc` and
 `free`, Rust as `Option<Box<Node>>`, Go and Python as garbage-collected
-objects, and Kāra as a counted `shared struct`. Spot timings on a shared
+objects, and Kāra as a counted `shared struct`.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15066+g64bba595f`
+(g64bba595f, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 116.0 ms ± 0.4 | 1.20× |
+| rust `-O` | 118.4 ms ± 0.8 | 1.18× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 119.3 ms ± 1.1 | 1.17× |
+| go `go build` | 120.9 ms ± 0.9 | 1.15× |
+| **kāra `karac build`, seq** | **139.5 ms ± 0.5** | **—** |
+
+Kāra is 1.18× `rustc -O`, 1.17× equal-safety Rust, 1.20× C and 1.15× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.23× the instructions in 1.03× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.8 ms ± 0.7 | 32.7 KiB | 1.1 MiB |
+| rust | 89.9 ms ± 1.2 | 455.6 KiB | 1.1 MiB |
+| kāra | 126.2 ms ± 4.7 | 66.9 KiB | 1.1 MiB |
+| go | — | 2450.4 KiB | 5.6 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.4× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`5 rounds of 10 lists of 6000 calls: 119969 values left, checksum 773058780`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, eight runs of each compiled program, five of them
 interleaved, three more of C and Rust, and two of Python (`bench.sh`
 timings need a quiet machine):
