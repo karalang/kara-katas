@@ -124,7 +124,42 @@ __mir-run` included (in 215 s).
 Each implementation is the same walk a level at a time, each level a new
 list of nodes with their places. Kāra's nodes are a `shared struct`,
 Rust's `Rc<RefCell<TreeNode>>`, C's `malloc`ed, with its levels
-`malloc`ed and grown by `realloc`, and Go's and Python's collected. Spot
+`malloc`ed and grown by `realloc`, and Go's and Python's collected.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15053+g0246ca83a`
+(g0246ca83a, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 128.5 ms ± 3.6 | 1.30× |
+| **kāra `karac build`, seq** | **167.6 ms ± 16.4** | **—** |
+| rust `-O` | 172.1 ms ± 1.4 | 0.97× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 173.3 ms ± 1.5 | 0.97× |
+| go `go build` | 391.0 ms ± 5.4 | 0.43× |
+
+Kāra is 0.97× `rustc -O`, 0.97× equal-safety Rust, 1.30× C and 0.43× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 1.09× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 47.6 ms ± 0.8 | 33.0 KiB | 2.0 MiB |
+| rust | 119.3 ms ± 1.5 | 457.2 KiB | 2.4 MiB |
+| kāra | 132.1 ms ± 4.1 | 66.9 KiB | 2.0 MiB |
+| go | — | 2450.6 KiB | 9.8 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.1× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`8 trees of 3000 nodes, 20000 rounds: checksum 95934472`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine), each including growing the
 trees:

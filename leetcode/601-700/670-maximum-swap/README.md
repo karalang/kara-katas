@@ -129,7 +129,42 @@ program under `karac __mir-run` included (in 67 s).
 Each implementation reads the digits off by division and puts them back
 by multiplying. Kāra's, Rust's and Go's make a `Vec` or slice of digits
 and one of last places for each number, and Python's lists; C's are two
-small arrays on the stack, so it allocates nothing. Spot timings on a
+small arrays on the stack, so it allocates nothing.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15053+g0246ca83a`
+(g0246ca83a, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 49.9 ms ± 0.6 | 3.85× |
+| go `go build` | 106.1 ms ± 2.0 | 1.81× |
+| **kāra `karac build`, seq** | **192.3 ms ± 3.5** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 211.7 ms ± 3.9 | 0.91× |
+| rust `-O` | 212.7 ms ± 2.9 | 0.90× |
+
+Kāra is 0.90× `rustc -O`, 0.91× equal-safety Rust, 3.85× C and 1.81× Go. Kāra leads Rust; C's 3.85× lead was not investigated. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.76× the instructions in 0.70× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 44.6 ms ± 1.3 | 32.8 KiB | 1.0 MiB |
+| rust | 100.4 ms ± 1.8 | 455.6 KiB | 1.1 MiB |
+| kāra | 122.6 ms ± 1.7 | 66.9 KiB | 1.1 MiB |
+| go | — | 2450.5 KiB | 8.7 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.2× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`3000000 numbers: checksum 580996773`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine):
 

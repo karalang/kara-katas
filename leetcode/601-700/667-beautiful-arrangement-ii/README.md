@@ -121,7 +121,42 @@ checksum. Every implementation prints `n = 10000, 10000 rounds: checksum
 Each implementation is the same zigzag into a fresh array for each
 round: Kāra's and Rust's a `Vec` grown by `push`, Go's a slice grown by
 `append`, Python's a list grown by `append`, and C's one `malloc`ed
-block of `n` numbers, which never grows. Spot timings on a shared 4-core
+block of `n` numbers, which never grows.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15053+g0246ca83a`
+(g0246ca83a, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 281.4 ms ± 1.5 | 1.17× |
+| rust `-O` | 319.0 ms ± 1.1 | 1.03× |
+| **kāra `karac build`, seq** | **329.4 ms ± 1.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 340.8 ms ± 3.5 | 0.97× |
+| go `go build` | 527.8 ms ± 14.2 | 0.62× |
+
+Kāra is 1.03× `rustc -O`, 0.97× equal-safety Rust, 1.17× C and 0.62× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.17× the instructions in 1.01× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.1 ms ± 0.9 | 32.7 KiB | 1.1 MiB |
+| rust | 83.9 ms ± 1.2 | 455.7 KiB | 1.5 MiB |
+| kāra | 114.0 ms ± 1.5 | 66.9 KiB | 1.4 MiB |
+| go | — | 2450.5 KiB | 9.5 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.4× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`n = 10000, 10000 rounds: checksum 783821184`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
 quiet machine):
 

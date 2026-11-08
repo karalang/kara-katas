@@ -126,7 +126,42 @@ checksum 769201556`, the Kāra program under `karac __mir-run` included
 
 Each implementation is the same binary search, shifting insert and
 prefix scan, with its strings allocated by the generator, so this
-measures string comparison, the shifts and the allocator. Spot timings
+measures string comparison, the shifts and the allocator.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15053+g0246ca83a`
+(g0246ca83a, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 103.1 ms ± 0.5 | 1.21× |
+| c `clang -O3` | 124.3 ms ± 2.3 | 1.00× |
+| **kāra `karac build`, seq** | **124.8 ms ± 1.4** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 126.4 ms ± 2.4 | 0.99× |
+| rust `-O` | 127.0 ms ± 2.0 | 0.98× |
+
+Kāra is 0.98× `rustc -O`, 0.99× equal-safety Rust, 1.00× C and 1.21× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.85× the instructions in 0.94× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.2 ms ± 2.9 | 49.1 KiB | 1.4 MiB |
+| rust | 107.6 ms ± 1.3 | 456.2 KiB | 1.6 MiB |
+| kāra | 141.0 ms ± 1.3 | 67.0 KiB | 1.5 MiB |
+| go | — | 2450.5 KiB | 7.8 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.3× rustc's. Kāra's
+68,608-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100 rounds of 2000 inserts and 2000 sums: checksum 769201556`).
+
+### Container x86-64 history
+
+Spot timings
 on a shared 4-core container, three runs each (five more, interleaved,
 for the two Kāra rows, and two for Python; `bench.sh` timings need a
 quiet machine):

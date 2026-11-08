@@ -126,7 +126,42 @@ into a checksum. Every implementation prints `1000 dictionaries of
 program under `karac __mir-run` included (in 296 s).
 
 Each implementation is the same comparison of bytes, counting every
-difference, so this measures that inner loop. Spot timings on a shared
+difference, so this measures that inner loop.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15053+g0246ca83a`
+(g0246ca83a, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 48.7 ms ± 0.5 | 19.56× |
+| c `clang -O3` | 71.8 ms ± 0.3 | 13.27× |
+| go `go build` | 118.2 ms ± 1.2 | 8.06× |
+| **kāra `karac build`, seq** | **953.0 ms ± 9.1** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1024.9 ms ± 12.5 | 0.93× |
+
+Kāra is 19.56× `rustc -O`, 0.93× equal-safety Rust, 13.27× C and 8.06× Go. Kāra is 0.93× equal-safety Rust; `rustc -O`'s 19.56× and C's 13.27× leads are far beyond the overflow-check cost and were not investigated (likely the unchecked builds folding work away). Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.60× the instructions in 0.93× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 51.3 ms ± 0.7 | 49.1 KiB | 1.1 MiB |
+| rust | 114.7 ms ± 6.4 | 457.2 KiB | 1.3 MiB |
+| kāra | 131.8 ms ± 3.3 | 83.1 KiB | 1.1 MiB |
+| go | — | 2450.4 KiB | 8.4 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.1× rustc's. Kāra's
+85,056-byte binary is 1.7× clang's and 5.5× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1000 dictionaries of 100 words, 100000 searches, 50000 found: checksum 593838326`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, three runs each (two for Python; `bench.sh` timings
 need a quiet machine):
 
