@@ -1,0 +1,67 @@
+// LeetCode #1515: Best Position for a Service Centre -- the ★ arm:
+// ternary search twice. The sum of distances is convex, so its least value
+// along each line x = c is convex in c too: for each x tried, the best y
+// is found by a ternary search, and x by one over those. 60 rounds each
+// shrink 100 to under 10^-8.
+
+fn cost(positions: Vec[(i64, i64)], x: f64, y: f64) -> f64 {
+    let mut total = 0.0;
+    for (px, py) in positions.iter() {
+        let dx = px as f64 - x;
+        let dy = py as f64 - y;
+        total += (dx * dx + dy * dy).sqrt();
+    }
+    total
+}
+
+// The least cost along the line at `x`.
+fn best_on(positions: Vec[(i64, i64)], x: f64) -> f64 {
+    let mut lo = 0.0;
+    let mut hi = 100.0;
+    for _ in 0..60 {
+        let m1 = lo + (hi - lo) / 3.0;
+        let m2 = hi - (hi - lo) / 3.0;
+        if cost(positions, x, m1) < cost(positions, x, m2) {
+            hi = m2;
+        } else {
+            lo = m1;
+        }
+    }
+    cost(positions, x, (lo + hi) / 2.0)
+}
+
+fn get_min_dist_sum(positions: Vec[(i64, i64)]) -> f64 {
+    let mut lo = 0.0;
+    let mut hi = 100.0;
+    for _ in 0..60 {
+        let m1 = lo + (hi - lo) / 3.0;
+        let m2 = hi - (hi - lo) / 3.0;
+        if best_on(positions, m1) < best_on(positions, m2) {
+            hi = m2;
+        } else {
+            lo = m1;
+        }
+    }
+    best_on(positions, (lo + hi) / 2.0)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1515;
+    let mut check = 0;
+    for _ in 0..100 {
+        let mut positions: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..50 {
+            let x = next_random(mut seed) % 101;
+            let y = next_random(mut seed) % 101;
+            positions.push((x, y));
+        }
+        let answer = get_min_dist_sum(positions);
+        check = (check * 31 + (answer * 100.0 + 0.5).floor() as i64 + 1) % 1000000007;
+    }
+    println(f"100 sets of 50 customers on 0..100: checksum {check}");
+}

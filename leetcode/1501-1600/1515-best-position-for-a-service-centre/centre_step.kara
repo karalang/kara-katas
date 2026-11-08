@@ -1,0 +1,89 @@
+// LeetCode #1515: Best Position for a Service Centre -- a shrinking-step
+// search: from the customers' mean try a step in each of eight directions,
+// take the first that lowers the sum, and halve the step when none does,
+// down to 10^-7. (Along the axes alone the search can stop at a corner of
+// the sum that is not its least: 13.48683 for 13.48241 on one of the
+// harness's sets.)
+
+fn cost(positions: Vec[(i64, i64)], x: f64, y: f64) -> f64 {
+    let mut total = 0.0;
+    for (px, py) in positions.iter() {
+        let dx = px as f64 - x;
+        let dy = py as f64 - y;
+        total += (dx * dx + dy * dy).sqrt();
+    }
+    total
+}
+
+fn get_min_dist_sum(positions: Vec[(i64, i64)]) -> f64 {
+    let n = positions.len() as f64;
+    let mut x = 0.0;
+    let mut y = 0.0;
+    for (px, py) in positions.iter() {
+        x += px as f64;
+        y += py as f64;
+    }
+    x /= n;
+    y /= n;
+    let mut best = cost(positions, x, y);
+    let mut step = 100.0;
+    let directions = [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)];
+    while step > 0.0000001 {
+        let mut moved = false;
+        for (dx, dy) in directions.iter() {
+            let nx = x + dx * step;
+            let ny = y + dy * step;
+            let c = cost(positions, nx, ny);
+            if c < best {
+                best = c;
+                x = nx;
+                y = ny;
+                moved = true;
+                break;
+            }
+        }
+        if not moved {
+            step /= 2.0;
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` sets of 1 to `most` customers on the grid 0..=`side`; the
+// checksum takes each answer in hundredths, which every arm reaches.
+fn batch(count: i64, most: i64, side: i64, seed: mut ref i64) -> i64 {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut positions: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed) % (side + 1);
+            let y = next_random(mut seed) % (side + 1);
+            positions.push((x, y));
+        }
+        let answer = get_min_dist_sum(positions);
+        check = mix(check, (answer * 100.0 + 0.5).floor() as i64);
+    }
+    check
+}
+
+fn main() {
+    println(f"example 1 -> {get_min_dist_sum([(0, 1), (1, 0), (1, 2), (2, 1)]):.5}");
+    println(f"example 2 -> {get_min_dist_sum([(1, 1), (3, 3)]):.5}");
+    println(f"one customer -> {get_min_dist_sum([(5, 7)]):.5}");
+    println(f"a triangle -> {get_min_dist_sum([(0, 0), (100, 0), (50, 87)]):.5}");
+    let mut seed = 1515;
+    println(f"300 sets of 1 to 8 customers on 0..10: checksum {batch(300, 8, 10, mut seed)}");
+    println(f"30 sets of 1 to 50 customers on 0..100: checksum {batch(30, 50, 100, mut seed)}");
+}
