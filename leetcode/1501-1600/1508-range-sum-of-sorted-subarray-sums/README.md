@@ -24,7 +24,7 @@ The sums of `[1, 2, 3, 4]` sorted are `1, 2, 3, 3, 4, 5, 6, 7, 9, 10`.
 | `sums_heap.kara` | a `PriorityQueue` merges the `n` sorted runs of sums that start at each place: pop `right` times, add from `left` on, push the popped run's next sum. O(right log n) |
 | `sums_sort.kara` | every sum in a `Vec`, sorted, the places added. O(n^2 log n) |
 | `sums_iter.kara` | each start's running sums by `scan` over `nums[i..]`, flattened by `flat_map`, sorted, and the places taken by `skip` and `take` |
-| `sums_solution.kara` | LeetCode's Rust template (`Vec<i32>`, `n as usize`, `Vec::with_capacity`, `sort_unstable`, a slice summed), the sort arm, carried by `karac fix` to one error: B-2026-11-08-16 |
+| `sums_solution.kara` | LeetCode's Rust template (`Vec<i32>`, `n as usize`, `Vec::with_capacity`, `sort_unstable`, a slice summed), the sort arm, carried by `karac fix`; one hand edit until B-2026-11-08-16 was fixed |
 | `differential.kara` | the five arms against the statement read literally, six properties |
 
 Every arm prints the same 9 lines: LeetCode's three examples and three
@@ -102,7 +102,12 @@ wrapper. `karac fix` makes 9 edits and then 2, and leaves one error:
 coercion that may change sign. The message says to write `as i64`, but
 the diagnostic carries no fix. With
 `Vec.with_capacity((n * (n + 1) / 2) as i64)` written by hand, the arm
-checks and prints the ★ arm's output on every lane.
+checks and prints the ★ arm's output on every lane. Fixed in kara
+`20031ded3`, `d9ec6ec5f` and `c6def19fa`, with `0600aebf3`
+(B-2026-11-08-49) making the `usize` casts follow the retyped ones: run
+again on the template's spelling, `karac fix` writes `let n = n as i64;`
+and `as i64` for the slice's two bounds, and the file holds that, with no
+hand edit.
 
 ## Benchmarks
 
