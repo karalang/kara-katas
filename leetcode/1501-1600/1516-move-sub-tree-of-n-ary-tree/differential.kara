@@ -1,0 +1,437 @@
+// LeetCode #1516: Move Sub-Tree of N-Ary Tree -- the differential.
+//
+// Four arms against the statement read literally, on 3000 trees of 2 to 12
+// nodes, with six properties. Every arm changes the tree it is given, so
+// each gets a fresh copy.
+//
+// P1  the answer is the statement read literally, on parent links and
+//     sibling ranks rather than nodes
+// P2  the answer holds every node once
+// P3  p is a child of q in the answer
+// P4  every value mapped to 3 v + 7 maps the answer the same way
+// P5  when q is outside p's subtree, p's subtree keeps its shape
+// P6  each arm agrees with at least two of the other three
+
+shared struct Node {
+    val: i64,
+    mut children: Vec[Node],
+}
+
+// ---- move.kara: the ★ arm: parent walks and a splice
+// The node holding `val` as a child, if any.
+fn star_parent_of(node: Node, val: i64) -> Option[Node] {
+    for child in node.children.iter() {
+        if child.val == val {
+            return Some(node.clone());
+        }
+        let found = star_parent_of(child, val);
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+fn star_contains(node: Node, val: i64) -> bool {
+    if node.val == val {
+        return true;
+    }
+    for child in node.children.iter() {
+        if star_contains(child, val) {
+            return true;
+        }
+    }
+    false
+}
+
+fn star_arm(root: Node, p: Node, q: Node) -> Node {
+    for child in q.children.iter() {
+        if child.val == p.val {
+            return root;
+        }
+    }
+    let p_parent = star_parent_of(root, p.val);
+    if star_contains(p, q.val) {
+        // q leaves its parent and takes p's place; p goes under q
+        let q_parent = star_parent_of(root, q.val).unwrap();
+        q_parent.children.retain(|c| c.val != q.val);
+        q.children.push(p.clone());
+        match p_parent {
+            None => return q,
+            Some(parent) => {
+                let i = parent.children.iter().position(|c| c.val == p.val).unwrap();
+                parent.children[i] = q.clone();
+            }
+        }
+    } else {
+        let parent = p_parent.unwrap();
+        parent.children.retain(|c| c.val != p.val);
+        q.children.push(p.clone());
+    }
+    root
+}
+
+// ---- move_map.kara: a parent Map from one breadth-first walk
+fn map_arm(root: Node, p: Node, q: Node) -> Node {
+    let mut parent: Map[i64, Node] = Map.new();
+    let mut queue: VecDeque[Node] = VecDeque.new();
+    queue.push_back(root.clone());
+    while let Some(node) = queue.pop_front() {
+        for child in node.children.iter() {
+            parent.insert(child.val, node.clone());
+            queue.push_back(child.clone());
+        }
+    }
+    let p_parent = parent.get(p.val).cloned();
+    if let Some(pp) = p_parent {
+        if pp.val == q.val {
+            return root;
+        }
+    }
+    let mut below = false;
+    let mut up = parent.get(q.val).cloned();
+    while let Some(node) = up {
+        if node.val == p.val {
+            below = true;
+            break;
+        }
+        up = parent.get(node.val).cloned();
+    }
+    if below {
+        let q_parent = parent.get(q.val).cloned().unwrap();
+        q_parent.children.retain(|c| c.val != q.val);
+        q.children.push(p.clone());
+        match parent.get(p.val).cloned() {
+            None => return q,
+            Some(pp) => {
+                for i in 0..pp.children.len() {
+                    if pp.children[i].val == p.val {
+                        pp.children[i] = q.clone();
+                    }
+                }
+            }
+        }
+    } else {
+        let pp = parent.get(p.val).cloned().unwrap();
+        pp.children.retain(|c| c.val != p.val);
+        q.children.push(p.clone());
+    }
+    root
+}
+
+// ---- move_rebuild.kara: child lists by value, fresh nodes
+fn record(node: Node, kids: mut ref Map[i64, Vec[i64]], parent: mut ref Map[i64, i64]) {
+    let mut mine: Vec[i64] = Vec.new();
+    for child in node.children.iter() {
+        mine.push(child.val);
+        parent.insert(child.val, node.val);
+        record(child, mut kids, mut parent);
+    }
+    kids.insert(node.val, mine);
+}
+
+fn grow(val: i64, kids: Map[i64, Vec[i64]]) -> Node {
+    let children: Vec[Node] = kids[val].iter().map(|c| grow(c, kids)).collect();
+    Node { val, children }
+}
+
+fn rebuild_arm(root: Node, p: Node, q: Node) -> Node {
+    let mut kids: Map[i64, Vec[i64]] = Map.new();
+    let mut parent: Map[i64, i64] = Map.new();
+    record(root, mut kids, mut parent);
+    let (p, q) = (p.val, q.val);
+    if parent.get(p).cloned() == Some(q) {
+        return grow(root.val, kids);
+    }
+    let mut at = q;
+    let mut below = false;
+    while let Some(up) = parent.get(at) {
+        if up == p {
+            below = true;
+            break;
+        }
+        at = up;
+    }
+    let mut top = root.val;
+    if below {
+        let qp = parent[q];
+        kids[qp].retain(|c| c != q);
+        match parent.get(p) {
+            None => top = q,
+            Some(pp) => {
+                let i = kids[pp].iter().position(|c| *c == p).unwrap();
+                kids[pp][i] = q;
+            }
+        }
+    } else {
+        let pp = parent[p];
+        kids[pp].retain(|c| c != p);
+    }
+    kids[q].push(p);
+    grow(top, kids)
+}
+
+// ---- move_iter.kara: iterator adapters
+fn iter_parent_of(node: Node, val: i64) -> Option[Node] {
+    if node.children.iter().any(|c| c.val == val) {
+        return Some(node.clone());
+    }
+    node.children.iter().find_map(|c| iter_parent_of(c, val))
+}
+
+fn iter_contains(node: Node, val: i64) -> bool {
+    node.val == val or node.children.iter().any(|c| iter_contains(c, val))
+}
+
+fn iter_arm(root: Node, p: Node, q: Node) -> Node {
+    if q.children.iter().any(|c| c.val == p.val) {
+        return root;
+    }
+    let p_parent = iter_parent_of(root, p.val);
+    let mut top = root;
+    if iter_contains(p, q.val) {
+        let q_parent = iter_parent_of(p, q.val).unwrap();
+        let i = q_parent.children.iter().position(|c| c.val == q.val).unwrap();
+        q_parent.children.remove(i);
+        match p_parent {
+            Some(parent) => {
+                let j = parent.children.iter().position(|c| c.val == p.val).unwrap();
+                parent.children[j] = q.clone();
+            }
+            None => top = q.clone(),
+        }
+    } else {
+        let parent = p_parent.unwrap();
+        let j = parent.children.iter().position(|c| c.val == p.val).unwrap();
+        parent.children.remove(j);
+    }
+    q.children.push(p.clone());
+    top
+}
+
+// ---- the statement read literally ----------------------------------------
+//
+// Each node is a parent and a rank among its siblings. "Move p's subtree to
+// be the last child of q" sets p's parent to q and its rank above every
+// other; "if q is in p's subtree, first disconnect q from its parent and
+// put it where p was" gives q p's parent and p's rank. Nothing happens when
+// p is already a child of q.
+
+fn literal(vals: Vec[i64], parents: Vec[i64], p: i64, q: i64) -> String {
+    let n = vals.len();
+    let mut parent: Vec[i64] = parents.clone();
+    parent[0] = -1;
+    let mut rank: Vec[i64] = (0..n).collect();
+    if parent[p] != q {
+        let mut inside = false;
+        let mut at = q;
+        while at != -1 {
+            if at == p {
+                inside = true;
+            }
+            at = parent[at];
+        }
+        if inside {
+            parent[q] = parent[p];
+            rank[q] = rank[p];
+        }
+        parent[p] = q;
+        rank[p] = n;
+    }
+    let mut top = 0;
+    for i in 0..n {
+        if parent[i] == -1 {
+            top = i;
+        }
+    }
+    literal_show(vals, parent, rank, top)
+}
+
+fn literal_show(vals: Vec[i64], parent: Vec[i64], rank: Vec[i64], at: i64) -> String {
+    let mut kids: Vec[(i64, i64)] = Vec.new();
+    for i in 0..vals.len() {
+        if parent[i] == at {
+            kids.push((rank[i], i));
+        }
+    }
+    if kids.is_empty() {
+        return f"{vals[at]}";
+    }
+    kids.sort();
+    let parts: Vec[String] = kids.iter().map(|(_, i)| literal_show(vals, parent, rank, i)).collect();
+    f"{vals[at]}({parts.join(" ")})"
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn show(node: Node) -> String {
+    if node.children.is_empty() {
+        return f"{node.val}";
+    }
+    let parts: Vec[String] = node.children.iter().map(|c| show(c)).collect();
+    f"{node.val}({parts.join(" ")})"
+}
+
+fn build(vals: Vec[i64], parents: Vec[i64]) -> Vec[Node] {
+    let nodes: Vec[Node] = vals.iter().map(|v| Node { val: v, children: Vec.new() }).collect();
+    for i in 1..vals.len() {
+        nodes[parents[i]].children.push(nodes[i].clone());
+    }
+    nodes
+}
+
+fn walk(node: Node, seen: mut ref Vec[i64]) {
+    seen.push(node.val);
+    for child in node.children.iter() {
+        walk(child, mut seen);
+    }
+}
+
+fn holds(node: Node, val: i64) -> bool {
+    node.val == val or node.children.iter().any(|c| holds(c, val))
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, vals: Vec[i64], parents: Vec[i64], p: i64, q: i64) -> Node {
+    let nodes = build(vals, parents);
+    let (root, pn, qn) = (nodes[0].clone(), nodes[p].clone(), nodes[q].clone());
+    if k == 0 {
+        star_arm(root, pn, qn)
+    } else if k == 1 {
+        map_arm(root, pn, qn)
+    } else if k == 2 {
+        rebuild_arm(root, pn, qn)
+    } else {
+        iter_arm(root, pn, qn)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "map", "rebuild", "iter"][k].to_string()
+}
+
+fn find(node: Node, val: i64) -> Option[Node] {
+    if node.val == val {
+        return Some(node.clone());
+    }
+    node.children.iter().find_map(|c| find(c, val))
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15160;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for t in 0..problems {
+        // everything random is drawn first: values, parents, p and q
+        let n = next_random(mut seed) % 11 + 2;
+        let mut vals: Vec[i64] = Vec.new();
+        while vals.len() < n {
+            let v = next_random(mut seed) % 64;
+            if not vals.contains(v) {
+                vals.push(v);
+            }
+        }
+        let mut parents: Vec[i64] = [0];
+        for i in 1..n {
+            parents.push(next_random(mut seed) % i);
+        }
+        let p = next_random(mut seed) % n;
+        let q = (p + 1 + next_random(mut seed) % (n - 1)) % n;
+        let relabelled: Vec[i64] = vals.iter().map(|v| v * 3 + 7).collect();
+        let before = build(vals, parents);
+        let p_before = show(before[p].clone());
+        let outside = not holds(before[p].clone(), vals[q]);
+
+        let truth = literal(vals, parents, p, q);
+        let truth_relabelled = literal(relabelled, parents, p, q);
+        let mut answers: Vec[String] = Vec.new();
+        for k in 0..arms {
+            let root = arm(k, vals, parents, p, q);
+            let answer = show(root.clone());
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            let mut seen: Vec[i64] = Vec.new();
+            walk(root.clone(), mut seen);
+            seen.sort();
+            let mut want = vals.clone();
+            want.sort();
+            if seen != want {
+                fails[2] += 1;
+            }
+            match find(root.clone(), vals[q]) {
+                Some(qn) => {
+                    if not qn.children.iter().any(|c| c.val == vals[p]) {
+                        fails[3] += 1;
+                    }
+                }
+                None => fails[3] += 1,
+            }
+            if show(arm(k, relabelled, parents, p, q)) != truth_relabelled {
+                fails[4] += 1;
+            }
+            if outside {
+                match find(root.clone(), vals[p]) {
+                    Some(pn) => {
+                        if show(pn) != p_before {
+                            fails[5] += 1;
+                        }
+                    }
+                    None => fails[5] += 1,
+                }
+            }
+            answers.push(answer);
+            for r in 1..6 {
+                checks += 1;
+                if fails[r] > 0 {
+                    by_property[r] += 1;
+                    if shown < 10 {
+                        println(f"problem {t}, {arm_name(k)}: P{r}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {t}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        for b in answers[0].bytes() {
+            check = mix(check, b);
+        }
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for r in 1..7 {
+            if by_property[r] > 0 {
+                println(f"P{r}: {by_property[r]}");
+            }
+        }
+    }
+}
