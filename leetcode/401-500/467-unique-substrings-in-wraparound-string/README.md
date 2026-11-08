@@ -124,6 +124,12 @@ goes where the language does (Rust's `chars()`, Go's `range`); C reads
 bytes. Go appends with `+=`, which copies the string, as Python's `+`
 does; Rust, C and Kāra push in place.
 
+The bench keeps the 26 longest runs in a fixed array (`[0; 26]`), as
+Rust and C do; until the M5 parity pass of 2026-11-08 it built a `Vec`,
+which the compiled program kept on the stack anyway, so the timings did
+not move. The M5 tables below measured the bench
+before this change.
+
 ### Apple M5 Pro, 2026-11-07
 
 30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`

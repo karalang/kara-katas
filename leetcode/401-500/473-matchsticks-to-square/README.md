@@ -127,6 +127,13 @@ Every mirror sorts a copy of the sticks longest first and backtracks
 over four side lengths in the same order, skipping a side as long as
 one tried before it.
 
+The bench keeps the four sides in a fixed `Array[i64, 4]` (`[0; 4]`), as
+Rust, C and Go keep theirs; the ★ arm uses a `Vec`. The M5 parity pass
+of 2026-11-08 moved the bench to the array: with the `Vec` every
+`sides[s]` reloaded the header and checked the length, 9.94G
+instructions against 8.69G (callgrind, x86), and checked Rust 7.66G. The M5 tables below measured the bench
+before this change.
+
 ### Apple M5 Pro, 2026-11-07
 
 30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14833+gfa3eab9b4`

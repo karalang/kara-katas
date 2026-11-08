@@ -10,10 +10,10 @@
 // set up a chain). After each insertion every run of three or more is
 // removed, again and again until none is left.
 
-fn shrink(board: Vec[char]) -> Vec[char] {
-    let mut b = board.clone();
+fn shrink(board: own Vec[u8]) -> Vec[u8] {
+    let mut b = board;
     loop {
-        let mut kept: Vec[char] = Vec.new();
+        let mut kept: Vec[u8] = Vec.new();
         let mut removed = false;
         let mut i = 0;
         while i < b.len() {
@@ -24,9 +24,7 @@ fn shrink(board: Vec[char]) -> Vec[char] {
             if j - i >= 3 {
                 removed = true;
             } else {
-                for k in i..j {
-                    kept.push(b[k]);
-                }
+                kept.extend_from_slice(b[i..j]);
             }
             i = j;
         }
@@ -37,32 +35,20 @@ fn shrink(board: Vec[char]) -> Vec[char] {
     }
 }
 
-fn key(board: Vec[char], hand: Vec[char]) -> String {
-    let mut s = String.new();
-    for k in 0..board.len() {
-        s.push(board[k]);
-    }
-    s.push('|');
-    for k in 0..hand.len() {
-        s.push(hand[k]);
-    }
-    s
-}
-
 fn find_min_step(board: String, hand: String) -> i64 {
-    let mut first: Vec[char] = hand.chars().collect();
+    let mut first: Vec[u8] = hand.bytes().to_vec();
     first.sort();
-    let mut boards: Vec[Vec[char]] = vec![board.chars().collect()];
-    let mut hands: Vec[Vec[char]] = vec![first];
+    let mut boards: Vec[Vec[u8]] = [board.bytes().to_vec()];
+    let mut hands: Vec[Vec[u8]] = [first];
     let mut seen: Set[String] = Set.new();
     let mut steps = 0;
     while boards.len() > 0 {
         steps += 1;
-        let mut next_boards: Vec[Vec[char]] = Vec.new();
-        let mut next_hands: Vec[Vec[char]] = Vec.new();
+        let mut next_boards: Vec[Vec[u8]] = Vec.new();
+        let mut next_hands: Vec[Vec[u8]] = Vec.new();
         for s in 0..boards.len() {
-            let b = boards[s].clone();
-            let h = hands[s].clone();
+            let b = ref boards[s];
+            let h = ref hands[s];
             for t in 0..h.len() {
                 let c = h[t];
                 if t > 0 and h[t - 1] == c {
@@ -74,23 +60,25 @@ fn find_min_step(board: String, hand: String) -> i64 {
                     if not starts_run and not splits_pair {
                         continue;
                     }
-                    let mut inserted: Vec[char] = Vec.new();
-                    for k in 0..i {
-                        inserted.push(b[k]);
-                    }
+                    let mut inserted: Vec[u8] = Vec.with_capacity(b.len() + 1);
+                    inserted.extend_from_slice(b[0..i]);
                     inserted.push(c);
-                    for k in i..b.len() {
-                        inserted.push(b[k]);
-                    }
+                    inserted.extend_from_slice(b[i..b.len()]);
                     let after = shrink(inserted);
                     if after.len() == 0 {
                         return steps;
                     }
                     let mut rest = h.clone();
                     rest.remove(t);
-                    let state = key(after, rest);
-                    if not seen.contains(state) {
-                        seen.insert(state);
+                    let mut state = String.with_capacity(after.len() + rest.len() + 1);
+                    for x in after.iter() {
+                        state.push(x as char);
+                    }
+                    state.push('|');
+                    for x in rest.iter() {
+                        state.push(x as char);
+                    }
+                    if seen.insert(state) {
                         next_boards.push(after);
                         next_hands.push(rest);
                     }
@@ -114,7 +102,7 @@ fn main() {
     // 60 cases at the problem's limits: a board of 16 balls with no three
     // alike in a row and a hand of 5, from the first 2 to 4 colours, built
     // once, then each solved once.
-    let colours: Vec[char] = vec!['R', 'Y', 'B', 'G', 'W'];
+    let colours: Vec[char] = ['R', 'Y', 'B', 'G', 'W'];
     let mut boards: Vec[String] = Vec.new();
     let mut hands: Vec[String] = Vec.new();
     let mut seed: i64 = 488;

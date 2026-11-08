@@ -150,6 +150,17 @@ hash set of state strings: Rust `HashSet<String>`, Go a
 table written out by hand, since C has none (with an FNV-1a hash, where
 the others use their language's default hasher).
 
+The Kāra bench works on bytes (`Vec[u8]`) as Rust, Go and C do, where
+the ★ arm keeps `Vec[char]`. It borrows each state's board and hand,
+sizes each new board once and copies into it with `extend_from_slice`,
+and hashes each new state once (`if seen.insert(state)`). Until the M5
+parity pass of 2026-11-08 it did more than the mirrors: it cloned every
+state's board and hand and the board `shrink` took, copied with push
+loops, worked on chars, and hashed each new state twice. That cost
+1.34x checked Rust's instructions, and now costs 1.10x (4229M against
+3854M under callgrind on x86). The M5 table below measured the bench before
+this change.
+
 ### Apple M5 Pro, 2026-11-08
 
 30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`

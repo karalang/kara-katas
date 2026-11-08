@@ -112,7 +112,12 @@ Kāra program under `karac __mir-run` included (in 28 s).
 Every mirror copies the letters out (Rust `Vec<char>`, Go `[]rune`, a
 Python list, a byte copy in C, as the Kāra arm collects its chars into
 a `Vec`), fills 1 to n into a fresh array and reverses each run of Ds
-with swaps.
+with swaps. The bench fills the array as Rust does, `(1..=n).collect()`,
+sized once. The ★ arm's push loop grows it by reallocation instead,
+which costs the whole bench about 10% more instructions (888M against
+803M under callgrind). The M5 parity pass of 2026-11-08 found that and
+took it out of the bench. The M5 table below measured the bench before
+this change.
 
 ### Apple M5 Pro, 2026-11-08
 
