@@ -146,29 +146,29 @@ is copied.
 
 ### Apple M5 Pro, 2026-11-08
 
-30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
-(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15010+g2b8a45f36`
+(g2b8a45f36, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
 `KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
 The last column is Kāra's mean over that row's mean.
 
 | implementation | mean | Kāra / this |
 |---|---|---|
-| c `clang -O3` | 238.7 ms ± 0.9 | 2.08× |
-| rust `-O -C overflow-checks=on` (equal-safety) | 289.1 ms ± 1.4 | 1.72× |
-| rust `-O` | 289.4 ms ± 1.4 | 1.72× |
-| go `go build` | 398.9 ms ± 4.6 | 1.25× |
-| **kāra `karac build`, seq** | **497.0 ms ± 20.7** | **—** |
+| c `clang -O3` | 231.4 ms ± 0.9 | 1.22× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 280.1 ms ± 1.2 | 1.01× |
+| rust `-O` | 280.9 ms ± 2.1 | 1.01× |
+| **kāra `karac build`, seq** | **283.5 ms ± 9.2** | **—** |
+| go `go build` | 387.6 ms ± 5.4 | 0.73× |
 
-Kāra is 1.72× `rustc -O`, 1.72× equal-safety Rust, 2.08× C and 1.25× Go. The 1.72× gap to equal-safety Rust and C's 2.08× lead were not investigated and have gone to the compiler's review.
+Kāra is 1.01× `rustc -O`, 1.01× equal-safety Rust, 1.22× C and 0.73× Go. The gaps were not investigated on this host.
 
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
 |---|---|---|---|
-| c | 55.9 ms ± 1.0 | 32.9 KiB | 15.5 MiB |
-| rust | 157.8 ms ± 3.4 | 456.1 KiB | 12.1 MiB |
-| kāra | 161.6 ms ± 3.3 | 67.0 KiB | 9.8 MiB |
-| go | — | 2450.5 KiB | 25.1 MiB |
+| c | 53.1 ms ± 0.4 | 32.9 KiB | 15.3 MiB |
+| rust | 150.4 ms ± 3.2 | 456.1 KiB | 12.1 MiB |
+| kāra | 155.5 ms ± 2.2 | 67.0 KiB | 9.9 MiB |
+| go | — | 2450.5 KiB | 24.9 MiB |
 
 `karac build` is 2.9× clang's cold compile and 1.0× rustc's. Kāra's
 68,576-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
