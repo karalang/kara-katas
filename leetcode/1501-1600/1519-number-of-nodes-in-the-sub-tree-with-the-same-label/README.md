@@ -29,7 +29,7 @@ English letters.
 | `labels_stack.kara` | no recursion: an explicit stack gives a preorder with parents, and walking it backwards adds each node's counts into its parent's. O(26 n) |
 | `labels_euler.kara` | an Euler tour: a subtree is a contiguous run of entry times, so a node's answer is how many of its letter entered between its entry and its exit; one count per letter, read at entry and again at exit. O(n) |
 | `labels_iter.kara` | the ★ arm with iterator adapters: adjacency lists built by `fold`, the children's counts summed by `filter`, `map` and `fold`. Ran wrong until B-2026-11-08-36 was fixed: see Writing it |
-| `labels_solution.kara` | LeetCode's Rust template (`Vec<Vec<i32>>` edges, a nested `fn dfs` returning `[i32; 26]`, `usize::MAX` for no parent), carried by `karac fix`. Does not check: see Rust template |
+| `labels_solution.kara` | LeetCode's Rust template (`Vec<Vec<i32>>` edges, a nested `fn dfs` returning `[i32; 26]`, `usize::MAX` for no parent), carried by `karac fix`. Does not check (B-2026-11-08-57): see Rust template |
 | `differential.kara` | the four arms that run against the statement read literally, six properties |
 
 Every arm that runs prints the same 6 lines: LeetCode's three examples
@@ -98,15 +98,21 @@ the method and starts it with `dfs(0, usize::MAX, &adj, labels, &mut
 ans)`. `karac fix` made 29, 2, 5 and 6 edits over four passes: it lifted
 `dfs` out of the method, turned `&Vec<..>` into `ref Vec[..]`, `vec![]`
 into `Vec.filled`, and `usize` into `i64` in `dfs`'s parameters and in
-`let n = n as i64`. Six errors are left. Its callers still push
-`e[1] as usize` into the lists and pass `usize.MAX`, which no longer
-match `dfs`'s rewritten `i64` parameters; and `[0; 26]` and
-`Vec.filled(n, 0)` stay `i64` where `Array[i32, 26]` and `Vec[i32]` are
-wanted (the literal typing of B-2026-11-08-18). Five hand edits make it
-check and agree: `let mut cnt: Array[i32, 26] = ..`,
-`let mut ans: Vec[i32] = ..`, `e[0] as i64` and `e[1] as i64` in the two
-pushes, and `-1` for `usize.MAX`. The half-made `usize` to `i64` rewrite
-is B-2026-11-08-49.
+`let n = n as i64`. Six errors were left. Its callers still pushed
+`e[1] as usize` into the lists and passed `usize.MAX`, which no longer
+matched `dfs`'s rewritten `i64` parameters (B-2026-11-08-49); and `[0; 26]`
+and `Vec.filled(n, 0)` stayed `i64` where `Array[i32, 26]` and `Vec[i32]`
+are wanted.
+
+B-2026-11-08-49 is fixed (kara `0600aebf3`): run again from the `usize`
+spelling, `karac fix` writes `e[1] as i64` in the pushes and `i64.MAX` for
+the missing parent. Four errors are left, all the collection literals'
+type: `cnt[c] += 1; ans[u] = cnt[c]; cnt` with `let mut cnt = [0; 26]` in a
+function returning `Array[i32, 26]`, and `let mut ans = Vec.filled(n, 0)`
+handed to `ans: mut ref Vec[i32]`. That is B-2026-11-08-57; the message
+names the binding annotation but carries no fix. With
+`let mut cnt: Array[i32, 26]` and `let mut ans: Vec[i32]` written by hand,
+the arm checks and prints the other arms' output.
 
 ## Benchmarks
 
