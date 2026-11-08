@@ -163,3 +163,18 @@ by pushing to a `String` that grows, and keep `parent` on the stack
 (Rust's `[i64; 26]`) or in a fresh `Vec` (Kāra's `(0..26).collect()`);
 C writes each answer into one buffer allocated once, which is likely most
 of its lead over Rust (inferred from the shapes, not measured).
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the 26-slot union-find parent was `(0..26).collect()`,
+a heap vector per call where the Rust mirror uses `[i64; 26]`; the arms,
+the differential and the bench now fill a `[0; 26]` array and `find`
+borrows it as `mut ref Array[i64, 26]` (an `Array` has no
+`FromIterator`: its length is part of its type). `karac fix` also took
+the allow-level lints the files had picked up since (list literals for
+`vec![..]`, redundant `ref` on borrowed parameters, lossless casts).
+Every arm's output and the bench's sink line are byte-identical before
+and after, under `__mir-run`, `__mir-llvm-run` and `build`; five
+interleaved runs of the bench binary on the 4-core container took 1.15
+to 1.27 s before and 0.97 to 1.02 s after. Any M5 row above predates the
+change.

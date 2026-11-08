@@ -172,6 +172,20 @@ median of 1.76 s in the interleaved runs, so v2 takes 1.40 times legacy,
 though the copy's orders are not the same ones (see Verification). The
 comparison with C and Rust waits until after M4.
 
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the 26-slot letter count and the 26-slot `named` flags
+were each `Vec.new()` and 26 pushes, heap vectors per call where the C
+and Rust mirrors use stack arrays (`[0i64; 26]`, `[false; 26]`); the
+arms, the differential and the bench now write `[0; 26]` and `[false;
+26]`. `karac fix` also took the allow-level lints the files had picked
+up since (list literals for `vec![..]`, redundant `ref` on borrowed
+parameters, lossless casts). Every arm's output and the bench's sink
+line are byte-identical before and after, under `__mir-run`,
+`__mir-llvm-run` and `build`; five interleaved runs of the bench binary
+on the 4-core container took 1.57 to 1.74 s before and 1.52 to 1.57 s
+after. Any M5 row above predates the change.
+
 ## Compiler findings
 
 Nothing new in v2.

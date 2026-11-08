@@ -165,3 +165,17 @@ instructions, Rust with overflow checks 7,808 million, Rust without
 them 6,903 million and C 6,317 million. Branches are no factor: C
 mispredicts 11 thousand and v2 33 thousand, while both Rust builds
 mispredict 4.9 million, and still run as fast.
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the 60-slot remainder count was `Vec.filled(60, 0)`, a
+heap vector per call where the C and Rust mirrors use a stack array
+(`[0i64; 60]`); the arms, the differential and the bench now write `[0;
+60]` (and the durations arm `[0; 501]`). `karac fix` also took the
+allow-level lints the files had picked up since (list literals for
+`vec![..]`, redundant `ref` on borrowed parameters, lossless casts).
+Every arm's output and the bench's sink line are byte-identical before
+and after, under `__mir-run`, `__mir-llvm-run` and `build`; five
+interleaved runs of the bench binary on the 4-core container took 0.51
+to 0.54 s before and 0.53 to 0.63 s after, within the container's noise.
+Any M5 row above predates the change.
