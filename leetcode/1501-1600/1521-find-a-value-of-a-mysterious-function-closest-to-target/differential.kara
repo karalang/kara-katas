@@ -1,0 +1,291 @@
+// LeetCode #1521: Find a Value of a Mysterious Function Closest to Target
+// -- the differential.
+//
+// Five arms against the statement read literally, on 3000 arrays of 1 to
+// 10 numbers from 1 to 31 and targets from 0 to 40, with six properties.
+//
+// P1  the answer is the statement read literally: the least distance to
+//     the target of the AND of any range
+// P2  the array reversed has the same answer
+// P3  every number and the target doubled double the answer
+// P4  the answer is at least 0 and at most each number's own distance
+// P5  2^21 - 1 appended, every bit set, changes the answer only to that
+//     number's own distance when it is closer
+// P6  each arm agrees with at least two of the other four
+// ---- closest.kara: the ★ arm: the distinct ANDs ending at each place
+
+fn star_arm(arr: Vec[i64], target: i64) -> i64 {
+    let mut best = (arr[0] - target).abs();
+    let mut ends: Vec[i64] = Vec.new();
+    for x in arr.iter() {
+        let mut next: Vec[i64] = [x];
+        for v in ends.iter() {
+            let w = v & x;
+            if w != next[next.len() - 1] {
+                next.push(w);
+            }
+        }
+        for v in next.iter() {
+            best = best.min((v - target).abs());
+        }
+        ends = next;
+    }
+    best
+}
+
+// ---- closest_sparse.kara: a sparse table and a binary search from each start
+
+fn range_and(table: Vec[Vec[i64]], l: i64, r: i64) -> i64 {
+    let mut k = 0;
+    while (1 << (k + 1)) <= r - l + 1 {
+        k += 1;
+    }
+    table[k][l] & table[k][r - (1 << k) + 1]
+}
+
+fn sparse_arm(arr: Vec[i64], target: i64) -> i64 {
+    let n = arr.len();
+    let mut table: Vec[Vec[i64]] = [arr.clone()];
+    let mut k = 1;
+    while (1 << k) <= n {
+        let below = table[k - 1].clone();
+        let half = 1 << (k - 1);
+        let mut row: Vec[i64] = Vec.new();
+        for i in 0..n - (1 << k) + 1 {
+            row.push(below[i] & below[i + half]);
+        }
+        table.push(row);
+        k += 1;
+    }
+    let mut best = (arr[0] - target).abs();
+    for l in 0..n {
+        // the last r with range_and(l, r) >= target, or l - 1 if none
+        let mut lo = l;
+        let mut hi = n - 1;
+        let mut last = l - 1;
+        while lo <= hi {
+            let mid = (lo + hi) / 2;
+            if range_and(table, l, mid) >= target {
+                last = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if last >= l {
+            best = best.min(range_and(table, l, last) - target);
+        }
+        if last + 1 < n {
+            best = best.min(target - range_and(table, l, last + 1));
+        }
+    }
+    best
+}
+
+// ---- closest_bits.kara: each bit's next zero, walking starts from the right
+
+fn bits_arm(arr: Vec[i64], target: i64) -> i64 {
+    let n = arr.len();
+    let bits = 21;
+    let mut zero_at: Vec[i64] = Vec.filled(bits, n);
+    let mut best = (arr[0] - target).abs();
+    for l in (0..n).rev() {
+        for b in 0..bits {
+            if (arr[l] >> b) & 1 == 0 {
+                zero_at[b] = l;
+            }
+        }
+        let mut stops: Vec[i64] = zero_at.iter().filter(|p| p > l and p < n).collect();
+        stops.sort();
+        stops.dedup();
+        let mut value = arr[l];
+        best = best.min((value - target).abs());
+        for p in stops.iter() {
+            value = value & arr[p];
+            best = best.min((value - target).abs());
+        }
+    }
+    best
+}
+
+// ---- closest_iter.kara: the ★ arm with iterator adapters
+
+fn iter_arm(arr: Vec[i64], target: i64) -> i64 {
+    arr.iter()
+        .scan(Vec.new(), |ends: Vec[i64], x| {
+            let mut next: Vec[i64] = [x];
+            next.extend(ends.iter().map(|v| v & x));
+            next.dedup();
+            Some((next.clone(), next))
+        })
+        .flat_map(|ends| ends.into_iter())
+        .map(|v| (v - target).abs())
+        .min()
+        .unwrap()
+}
+
+// ---- closest_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn closest_to_target(arr: Vec[i32], target: i32) -> i32 {
+        let mut ans = i32.MAX;
+        let mut ends: Vec[i32] = Vec.new();
+        for x in arr.iter() {
+            let mut next: Vec[i32] = [x];
+            for v in ends.iter() {
+                let w = v & x;
+                if *next.last().unwrap() != w {
+                    next.push(w);
+                }
+            }
+            for v in next.iter() {
+                ans = ans.min((v - target).abs());
+            }
+            ends = next;
+        }
+        ans
+    }
+}
+
+fn solution_arm(arr: Vec[i64], target: i64) -> i64 {
+    Solution.closest_to_target(arr.iter().map(|x| *x as i32).collect(), target as i32) as i64
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// every (l, r): the AND of arr[l..=r], its distance to the target, the least
+fn literal(arr: Vec[i64], target: i64) -> i64 {
+    let n = arr.len();
+    let mut best = -1;
+    for l in 0..n {
+        for r in l..n {
+            let mut value = arr[l];
+            for i in l..r + 1 {
+                value = value & arr[i];
+            }
+            let distance = (value - target).abs();
+            if best < 0 or distance < best {
+                best = distance;
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, arr: Vec[i64], target: i64) -> i64 {
+    if k == 0 {
+        star_arm(arr, target)
+    } else if k == 1 {
+        sparse_arm(arr, target)
+    } else if k == 2 {
+        bits_arm(arr, target)
+    } else if k == 3 {
+        iter_arm(arr, target)
+    } else {
+        solution_arm(arr, target)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "sparse", "bits", "iter", "solution"][k].to_string()
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let all_ones = 2097151;
+    let mut seed = 15210;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 10 + 1;
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(next_random(mut seed) % 31 + 1);
+        }
+        let target = next_random(mut seed) % 41;
+        let back: Vec[i64] = arr.iter().rev().collect();
+        let doubled: Vec[i64] = arr.iter().map(|x| x * 2).collect();
+        let mut longer = arr.clone();
+        longer.push(all_ones);
+        let truth = literal(arr, target);
+        let mut answers: Vec[i64] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, arr, target);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, back, target) != answer {
+                fails[2] += 1;
+            }
+            if arm(k, doubled, target * 2) != answer * 2 {
+                fails[3] += 1;
+            }
+            if answer < 0 {
+                fails[4] += 1;
+            }
+            for x in arr.iter() {
+                if answer > (x - target).abs() {
+                    fails[4] += 1;
+                }
+            }
+            if arm(k, longer, target) != answer.min(all_ones - target) {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        check = mix(check, truth);
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
