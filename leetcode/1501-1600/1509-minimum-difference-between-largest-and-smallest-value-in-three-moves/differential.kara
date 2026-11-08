@@ -1,0 +1,261 @@
+// LeetCode #1509: Minimum Difference Between Largest and Smallest Value in
+// Three Moves -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems, with
+// six properties.
+//
+// P1  the answer is the statement read literally: the narrowest spread of
+//     the numbers left when any three of them are changed to one of the
+//     rest
+// P2  the numbers in another order leave the answer
+// P3  every number shifted by the same amount leaves the answer
+// P4  every number negated leaves the answer
+// P5  every number tripled triples the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- moves.kara: the ★ arm: sort, four ways
+fn star_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    if n <= 4 {
+        return 0;
+    }
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut best = sorted[n - 1] - sorted[0];
+    for low in 0..4 {
+        best = best.min(sorted[n - 4 + low] - sorted[low]);
+    }
+    best
+}
+
+// ---- moves_scan.kara: the four smallest and largest by insertion
+// Puts `x` into `kept` (sorted, at most four) if it is among the four
+// smallest seen.
+fn keep_low(kept: mut ref Vec[i64], x: i64) {
+    let mut at = kept.len();
+    while at > 0 and kept[at - 1] > x {
+        at -= 1;
+    }
+    if at < 4 {
+        kept.insert(at, x);
+        if kept.len() > 4 {
+            kept.pop();
+        }
+    }
+}
+
+fn scan_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    if n <= 4 {
+        return 0;
+    }
+    let mut low: Vec[i64] = Vec.new();
+    // the largest, negated, so the same insertion keeps them
+    let mut high: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        keep_low(mut low, x);
+        keep_low(mut high, -x);
+    }
+    let mut best = -high[0] - low[0];
+    for k in 0..4 {
+        best = best.min(-high[3 - k] - low[k]);
+    }
+    best
+}
+
+// ---- moves_heap.kara: two heaps of four
+fn heap_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    if n <= 4 {
+        return 0;
+    }
+    let mut smallest: PriorityQueue[i64] = PriorityQueue.max_first();
+    let mut largest: PriorityQueue[i64] = PriorityQueue.new();
+    for x in nums.iter() {
+        smallest.push(x);
+        if smallest.len() > 4 {
+            smallest.pop();
+        }
+        largest.push(x);
+        if largest.len() > 4 {
+            largest.pop();
+        }
+    }
+    // both come out in order: the low four largest first, the high four
+    // smallest first
+    let mut low: Vec[i64] = Vec.new();
+    while let Some(x) = smallest.pop() {
+        low.insert(0, x);
+    }
+    let mut high: Vec[i64] = Vec.new();
+    while let Some(x) = largest.pop() {
+        high.push(x);
+    }
+    let mut best = high[3] - low[0];
+    for k in 0..4 {
+        best = best.min(high[k] - low[k]);
+    }
+    best
+}
+
+// ---- moves_iter.kara: sorted, zip, min
+fn iter_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    if n <= 4 {
+        return 0;
+    }
+    let mut sorted = nums.clone();
+    sorted.sort();
+    sorted.iter().zip(sorted.iter().skip(n - 4)).map(|(a, b)| b - a).min().unwrap()
+}
+
+// ---- the statement read literally ----------------------------------------
+
+// Every way to choose the numbers that are not changed: when three or fewer
+// remain to change, each can take a value of the rest, so the spread is
+// that of the rest.
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    if n <= 3 {
+        return 0;
+    }
+    let mut best = -1;
+    for a in 0..n {
+        for b in a + 1..n {
+            for c in b + 1..n {
+                let mut lo = 0;
+                let mut hi = 0;
+                let mut seen = false;
+                for i in 0..n {
+                    if i == a or i == b or i == c {
+                        continue;
+                    }
+                    if seen {
+                        lo = lo.min(nums[i]);
+                        hi = hi.max(nums[i]);
+                    } else {
+                        lo = nums[i];
+                        hi = nums[i];
+                        seen = true;
+                    }
+                }
+                if best < 0 or hi - lo < best {
+                    best = hi - lo;
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, nums: Vec[i64]) -> i64 {
+    if k == 0 {
+        star_arm(nums)
+    } else if k == 1 {
+        scan_arm(nums)
+    } else if k == 2 {
+        heap_arm(nums)
+    } else {
+        iter_arm(nums)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "scan", "heap", "iter"][k].to_string()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15090;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 9 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % 41 - 20);
+        }
+        let mut shuffled = nums.clone();
+        for i in (1..n).rev() {
+            shuffled.swap(i, next_random(mut seed) % (i + 1));
+        }
+        let shift = next_random(mut seed) % 2001 - 1000;
+        let shifted: Vec[i64] = nums.iter().map(|x| x + shift).collect();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let tripled: Vec[i64] = nums.iter().map(|x| 3 * x).collect();
+
+        let truth = literal(nums);
+        let mut answers: Vec[i64] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, nums);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, shuffled) != answer {
+                fails[2] += 1;
+            }
+            if arm(k, shifted) != answer {
+                fails[3] += 1;
+            }
+            if arm(k, negated) != answer {
+                fails[4] += 1;
+            }
+            if arm(k, tripled) != 3 * answer {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        check = mix(check, answers[0]);
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
