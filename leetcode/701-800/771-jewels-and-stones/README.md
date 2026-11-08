@@ -135,6 +135,39 @@ of 50 jewels and 50 stones: 31054702 jewels in all, checksum
 uses its own map hash, Python its own hash of a string, and C a small
 open-addressing table with FNV-1a.
 
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15080+g7a9ac8e23`
+(g7a9ac8e23, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 56.5 ms ± 0.6 | 18.28× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 996.1 ms ± 6.2 | 1.04× |
+| rust `-O` | 1000.7 ms ± 9.6 | 1.03× |
+| **kāra `karac build`, seq** | **1033.9 ms ± 9.2** | **—** |
+| go `go build` | 1334.6 ms ± 11.1 | 0.77× |
+
+Kāra is 1.03× `rustc -O`, 1.04× equal-safety Rust, 18.28× C and 0.77× Go. Kāra matches Rust; C's 18.28× lead was not investigated.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.1 ms ± 1.0 | 49.0 KiB | 1.0 MiB |
+| rust | 112.3 ms ± 1.4 | 457.5 KiB | 1.2 MiB |
+| kāra | 136.9 ms ± 2.5 | 67.2 KiB | 1.2 MiB |
+| go | — | 2450.5 KiB | 9.1 MiB |
+
+`karac build` is 3.0× clang's cold compile and 1.2× rustc's. Kāra's
+68,768-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1000000 rounds of 50 jewels and 50 stones: 31054702 jewels in all, checksum 597854238`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
 need a quiet machine):

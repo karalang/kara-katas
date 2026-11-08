@@ -136,6 +136,40 @@ The bench measures a binary heap of four-field records compared by cross
 multiplication. Rust's heap is `BinaryHeap<Reverse<Fraction>>`, C's a
 hand-written binary heap, Go's `container/heap`, whose interface boxes
 each record it pushes, and Python's `heapq` over a class with `__lt__`.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15080+g7a9ac8e23`
+(g7a9ac8e23, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 393.7 ms ± 2.4 | 1.56× |
+| rust `-O` | 424.9 ms ± 3.9 | 1.44× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 489.6 ms ± 3.1 | 1.25× |
+| **kāra `karac build`, seq** | **613.1 ms ± 4.6** | **—** |
+| go `go build` | 1337.6 ms ± 6.6 | 0.46× |
+
+Kāra is 1.44× `rustc -O`, 1.25× equal-safety Rust, 1.56× C and 0.46× Go. The 1.25× gap to equal-safety Rust was not investigated and has gone to the compiler's review.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 58.2 ms ± 0.4 | 49.0 KiB | 1.8 MiB |
+| rust | 122.2 ms ± 0.8 | 455.8 KiB | 1.8 MiB |
+| kāra | 153.6 ms ± 2.2 | 67.0 KiB | 1.8 MiB |
+| go | — | 2451.5 KiB | 9.1 MiB |
+
+`karac build` is 2.6× clang's cold compile and 1.3× rustc's. Kāra's
+68,584-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`64 rounds of 1000-number arrays: terms sum to 1660242, checksum 707887771`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
 need a quiet machine):

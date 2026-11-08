@@ -130,7 +130,42 @@ The rounds make 10.5 million strings of 12 characters, each its own
 allocation, so the bench measures the recursion, building short strings
 and the allocator. Kāra and Rust build each string by pushing `char`s
 one by one, Go converts the byte buffer with `string(buf)`, C copies it
-into a `malloc`ed buffer with `memcpy`, and Python joins a list. Spot
+into a `malloc`ed buffer with `memcpy`, and Python joins a list.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15080+g7a9ac8e23`
+(g7a9ac8e23, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 169.9 ms ± 1.7 | 2.68× |
+| c `clang -O3` | 217.1 ms ± 3.0 | 2.09× |
+| rust `-O` | 421.3 ms ± 5.3 | 1.08× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 422.3 ms ± 4.5 | 1.08× |
+| **kāra `karac build`, seq** | **454.5 ms ± 3.8** | **—** |
+
+Kāra is 1.08× `rustc -O`, 1.08× equal-safety Rust, 2.09× C and 2.68× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 53.1 ms ± 0.6 | 49.4 KiB | 1.2 MiB |
+| rust | 126.4 ms ± 1.0 | 456.3 KiB | 1.4 MiB |
+| kāra | 144.7 ms ± 1.9 | 66.9 KiB | 1.4 MiB |
+| go | — | 2450.4 KiB | 9.4 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.1× rustc's. Kāra's
+68,536-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20000 rounds of 12-character strings: 10480704 permutations, checksum 520063910`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
 need a quiet machine):

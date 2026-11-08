@@ -140,7 +140,42 @@ settled and up to four pushes onto the priority queue for each,
 so the bench measures a binary heap of pairs and the neighbour checks
 around it. Rust's queue is `BinaryHeap<Reverse<(i64, i64)>>`, C's a
 hand-written binary heap of the same pairs and Go's `container/heap`,
-whose interface boxes each pair it pushes. Spot timings on a shared
+whose interface boxes each pair it pushes.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15080+g7a9ac8e23`
+(g7a9ac8e23, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 307.0 ms ± 2.9 | 1.64× |
+| rust `-O` | 317.1 ms ± 2.6 | 1.59× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 319.1 ms ± 4.7 | 1.58× |
+| **kāra `karac build`, seq** | **503.2 ms ± 3.4** | **—** |
+| go `go build` | 1084.2 ms ± 7.7 | 0.46× |
+
+Kāra is 1.59× `rustc -O`, 1.58× equal-safety Rust, 1.64× C and 0.46× Go. The 1.58× gap to equal-safety Rust was not investigated and has gone to the compiler's review.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 68.6 ms ± 1.2 | 49.2 KiB | 2.8 MiB |
+| rust | 136.9 ms ± 0.8 | 455.9 KiB | 2.7 MiB |
+| kāra | 228.7 ms ± 5.0 | 67.0 KiB | 2.9 MiB |
+| go | — | 2451.5 KiB | 9.9 MiB |
+
+`karac build` is 3.3× clang's cold compile and 1.7× rustc's. Kāra's
+68,568-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`3000 rounds of 50 x 50 grids: answers sum to 6653387, checksum 805291479`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, eight runs of each compiled program, five of them
 interleaved, and three of Python (`bench.sh` timings need a quiet
 machine):
