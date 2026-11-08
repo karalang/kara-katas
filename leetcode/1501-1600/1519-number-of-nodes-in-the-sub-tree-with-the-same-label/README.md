@@ -28,7 +28,7 @@ English letters.
 | `labels.kara` ★ | a depth-first walk from node 0 returns each subtree's count of every letter, the children's summed into the parent's; a node's answer is its own letter's count. O(26 n) |
 | `labels_stack.kara` | no recursion: an explicit stack gives a preorder with parents, and walking it backwards adds each node's counts into its parent's. O(26 n) |
 | `labels_euler.kara` | an Euler tour: a subtree is a contiguous run of entry times, so a node's answer is how many of its letter entered between its entry and its exit; one count per letter, read at entry and again at exit. O(n) |
-| `labels_iter.kara` | the ★ arm with iterator adapters: adjacency lists built by `fold`, the children's counts summed by `filter`, `map` and `fold`. **Blocked by B-2026-11-08-32**: see Writing it |
+| `labels_iter.kara` | the ★ arm with iterator adapters: adjacency lists built by `fold`, the children's counts summed by `filter`, `map` and `fold`. **Blocked by B-2026-11-08-36**: see Writing it |
 | `labels_solution.kara` | LeetCode's Rust template (`Vec<Vec<i32>>` edges, a nested `fn dfs` returning `[i32; 26]`, `usize::MAX` for no parent), carried by `karac fix`. Does not check: see Rust template |
 | `differential.kara` | the three arms that run against the statement read literally, six properties |
 
@@ -157,6 +157,6 @@ parameter `own`. It then checks. But the counting fold, `.fold(
 Vec.filled(26, 0), |total: Vec[i64], below: Vec[i64]| ..)`, checks and
 fails on both backends: the interpreter stops with `deref of non-reference
 Box` in the closure, `karac __mir-llvm-run` exits 101 with no message,
-and `karac run` ends on a segmentation fault. That is B-2026-11-08-32.
+and `karac run` ends on a segmentation fault. That is B-2026-11-08-36.
 The file is kept as `karac fix` left it; with the two parameters written
 `own Vec[i64]` it prints the same output as the other arms.
