@@ -126,6 +126,39 @@ another. Every implementation prints `400 rounds of 100 strings of
 10000 bits: 29600 one-bit endings`, the Kāra program under `karac
 __mir-run` included (in 36 s).
 
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15070+g1584bfa0b`
+(g1584bfa0b, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O -C overflow-checks=on` (equal-safety) | 370.8 ms ± 0.4 | 1.16× |
+| rust `-O` | 370.9 ms ± 0.6 | 1.16× |
+| go `go build` | 378.3 ms ± 0.9 | 1.14× |
+| c `clang -O3` | 384.4 ms ± 1.1 | 1.12× |
+| **kāra `karac build`, seq** | **430.5 ms ± 0.4** | **—** |
+
+Kāra is 1.16× `rustc -O`, 1.16× equal-safety Rust, 1.12× C and 1.14× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 43.1 ms ± 0.9 | 32.9 KiB | 8.9 MiB |
+| rust | 87.8 ms ± 0.7 | 455.4 KiB | 9.2 MiB |
+| kāra | 120.2 ms ± 2.2 | 66.9 KiB | 9.0 MiB |
+| go | — | 2450.4 KiB | 11.6 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.4× rustc's. Kāra's
+68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`400 rounds of 100 strings of 10000 bits: 29600 one-bit endings`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and two of Python (`bench.sh` timings
 need a quiet machine):

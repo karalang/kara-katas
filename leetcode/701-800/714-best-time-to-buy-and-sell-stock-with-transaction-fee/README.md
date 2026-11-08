@@ -143,6 +143,39 @@ the round, so no round repeats another's work, summing the profits.
 Every implementation prints `300 rounds of 10 walks of 100000 days: sum
 656473922`, the Kāra program under `karac __mir-run` included (in 72 s).
 
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15070+g1584bfa0b`
+(g1584bfa0b, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 467.8 ms ± 1.8 | 1.00× |
+| go `go build` | 468.0 ms ± 0.8 | 1.00× |
+| c `clang -O3` | 468.5 ms ± 4.8 | 1.00× |
+| **kāra `karac build`, seq** | **468.7 ms ± 2.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 468.8 ms ± 2.2 | 1.00× |
+
+Kāra is 1.00× `rustc -O`, 1.00× equal-safety Rust, 1.00× C and 1.00× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 1.00× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 49.7 ms ± 2.8 | 32.8 KiB | 8.7 MiB |
+| rust | 86.0 ms ± 0.8 | 456.0 KiB | 9.0 MiB |
+| kāra | 152.3 ms ± 2.8 | 66.9 KiB | 8.8 MiB |
+| go | — | 2450.4 KiB | 11.1 MiB |
+
+`karac build` is 3.1× clang's cold compile and 1.8× rustc's. Kāra's
+68,552-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`300 rounds of 10 walks of 100000 days: sum 656473922`).
+
+### Container x86-64 history
+
 Spot timings on a shared 4-core container, eight runs of each compiled
 program, five of them interleaved, and three of Python (`bench.sh`
 timings need a quiet machine):
