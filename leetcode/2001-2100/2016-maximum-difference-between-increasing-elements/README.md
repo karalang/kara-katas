@@ -21,7 +21,7 @@ nums = [1,5,2,10]  ->  9
 | `difference_suffix.kara` | a pass from the right fills the largest value after each index, and each index pairs with it. O(n) with O(n) extra |
 | `difference_fold.kara` | the ★ arm's pass as a `fold` over the pair (smallest so far, best so far). O(n) |
 | `difference_split.kara` | divide and conquer: a run's best is its halves' best or the right half's largest less the left half's smallest; each half reports (smallest, largest, best). O(n log n) |
-| `difference_solution.kara` | LeetCode's Rust template (a unit struct, `impl Solution`, `Vec<i32>`, `let mut ans = -1` raised by `ans.max(..)`, `for &x in nums.iter().skip(1)`, a `&Vec` wrapper), carried by `karac fix` to two remaining errors: blocked by B-2026-11-08-20 |
+| `difference_solution.kara` | LeetCode's Rust template (a unit struct, `impl Solution`, `Vec<i32>`, `let mut ans = -1` raised by `ans.max(..)`, `for &x in nums.iter().skip(1)`, a `&Vec` wrapper), carried by `karac fix` in two rounds |
 | `differential.kara` | the five arms that check against the statement read literally, six properties |
 
 Every arm prints the same 11 lines: the answers for LeetCode's three
@@ -32,7 +32,7 @@ the last with odds of its own, and for 6 arrays of 1000 values up to 7 to
 
 ## Differential
 
-`differential.kara` holds copies of the five arms that check and the
+`differential.kara` holds copies of the six arms and the
 statement read literally: every difference `nums[j] - nums[i]` with `i < j`
 and `nums[i] < nums[j]` listed, the largest of them, or -1 for none. It
 checks 2000 problems drawn as the harness's small arrays are. Every random
@@ -46,18 +46,17 @@ any arm answers.
 | P3 | the values reversed, each `v` turned into `21 - v`, leave the answer |
 | P4 | every value doubled doubles the answer, -1 staying -1 |
 | P5 | a value above all the others appended makes the answer that value less the smallest of the others |
-| P6 | each arm agrees with at least two of the other four |
+| P6 | each arm agrees with at least three of the other five |
 
-The differential prints `2000 problems: checksum 645619020, 60000 checks
-over 5 arms: 0 failures` under every lane in Verification. On a failure it
-prints the first ten and then the count by property. The Rust-template arm
-joins it, as a sixth, once it checks.
+The differential prints `2000 problems: checksum 645619020, 72000 checks
+over 6 arms: 0 failures` under every lane in Verification. On a failure it
+prints the first ten and then the count by property.
 
 ## Mutation testing
 
-Twenty-five edits to the differential, five to each of its arms, each run
-under `karac __mir-run` and `karac __mir-llvm-run`. Fifteen are kept, three
-to each arm. All twenty-five are killed, each fails the same way under both
+Thirty edits to the differential, five to each of its arms, each run
+under `karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept,
+three to each Kāra arm and two to the Rust arm. All thirty are killed, each fails the same way under both
 backends, none by a crash, and no two kept ones fail the same checks.
 
 | # | mutation | failures by property |
@@ -77,27 +76,32 @@ backends, none by a crash, and no two kept ones fail the same checks.
 | M13 | split: the cross pair never counted | P1 1258, P5 2000, P6 1258 |
 | M14 | split: the cross pair taken left to right | P1 985, P3 330, P5 2000, P6 985 |
 | M15 | split: the right half's best dropped | P1 330, P3 518, P5 753, P6 330 |
+| M16 | solution: the second value taken as the first smallest | P1 232, P3 404, P5 129, P6 232 |
+| M17 | solution: each rise one short | P1 1258, P4 1258, P5 2000, P6 1258 |
 
-P1 and P6 kill all fifteen, P3 and P5 ten each, and P2 and P4 one each.
+P1 and P6 kill all seventeen, P5 twelve, P3 eleven, P4 two and P2 one.
 P3 turns the array around and flips its order, which swaps the role of the
 earlier, smaller value with the later, larger one, so it sees every edit
 that treats the two ends of a pair or of the array unevenly: a smallest
 that stops moving (M2, M11), a value or a pair skipped at one end (M3, M5,
-M8), the first rise taken (M6), a best replaced by the last rise (M10), and
+M8, M16), the first rise taken (M6), a best replaced by the last rise (M10), and
 the split arm's halves or cross pair handled unevenly (M14, M15). It
 misses the edits that are their own mirror image: an equal pair counted
 (M1), a pair compared both ways (M4), and -1 read as 0 (M12). P5 appends a
 value above all the rest, whose answer is fixed by the smallest value, so
 it sees the edits that do not pair the last value with the smallest before
 it: the last value unpaired (M5), the cross pair never counted (M13), a
-largest after that never carries (M7), and the rest of the uneven ones. P2
-and P4 see only the edit that reads a value's size rather than its order,
-the largest after seeded with 20 (M9).
+largest after that never carries (M7), a rise one short (M17), and the
+rest of the uneven ones. P2 and P4 see the edit that reads a value's size
+rather than its order, the largest after seeded with 20 (M9); P4 alone
+also sees a rise one short (M17), since doubling every value doubles a
+rise but not a rise less one.
 
-The other ten fail as a kept one does, or with counts of their own. An
-equal value counted fails alike in all five arms (M1); the smallest never
-updated alike in the ★ and fold arms (M2); -1 read as 0 alike in the ★ and
-fold arms (M12); only neighbours compared (brute) as M7. The ★ arm
+The other thirteen fail as a kept one does, or with counts of their own.
+An equal value counted fails alike in all six arms (M1); the smallest never
+updated alike in the ★, fold and Rust arms (M2); -1 read as 0 alike in the
+★ and fold arms (M12); only neighbours compared (brute) as M7; the Rust arm
+keeping the last rise as the fold arm's best replaced (M10). The ★ arm
 measuring each rise from the first value, the suffix arm keeping the
 smallest after rather than the largest, and the split arm taking the run's
 smallest from its left half alone fail with counts of their own. Two drafts
@@ -107,26 +111,26 @@ fail, since a value is never above itself.
 
 ## Verification
 
-Every arm but the Rust template prints the same output as `difference.py`
+Every arm prints the same output as `difference.py`
 under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
 and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 every arm and the differential. `karac check --output=json` reports nothing
 on any of them. Under `karac __mir-run` the arms take 0.25 s (split) to
-0.86 s (brute) and the differential 1.1 s.
+0.86 s (brute) and the differential 1.3 s.
 
 The five arms were written in Kāra and checked clean, with no fix.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
-it in one round of nine edits (the struct, the `Vec<..>` types, the `&`
-pattern and the `|&x|` closure, the `&Vec` parameter, the `::` path) to
-two errors it has no fix for: `ans.max(x - mn)` is `i64` against `i32`, and
-so is the `ans` returned. Rust types `let mut ans = -1` as `i32` from the
-`max` call and the return; under the ruling in design.md §8 a method's
-receiver does not fix a literal, so `ans` stays `i64` by design. What is
-missing is a machine fix that writes `let mut ans: i32 = -1` at the
-binding, B-2026-11-08-20. With that annotation by hand the arm checks
-clean and prints the mirror's output.
+it in two rounds. The first, of nine edits, takes the struct, the
+`Vec<..>` types, the `&` pattern and the `|&x|` closure, the `&Vec`
+parameter and the `::` path, and leaves two errors: `ans.max(x - mn)` is
+`i64` against `i32`, and so is the `ans` returned. Rust types `let mut ans
+= -1` as `i32` from the `max` call and the return; under the ruling in
+design.md §8 a method's receiver does not fix a literal, so `ans` stays
+`i64` by design. When this kata was written there was no machine fix for
+it (B-2026-11-08-20); there is now, and the second round writes `let mut
+ans: i32 = -1` at the binding in one edit (kara 7ae9bc82c0).
 
 ## Benchmarks
 

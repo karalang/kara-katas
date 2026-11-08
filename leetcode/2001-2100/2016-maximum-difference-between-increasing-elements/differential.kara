@@ -1,10 +1,9 @@
 // LeetCode #2016: Maximum Difference Between Increasing Elements -- the
 // differential.
 //
-// Five arms against the statement read literally, on 2000 problems, with six
-// properties. A problem is 2 to 12 values from 1 to 20. The sixth arm,
-// LeetCode's Rust template, does not check yet (B-2026-11-08-20) and joins
-// when it does.
+// Six arms against the statement read literally, on 2000 problems, with six
+// properties. A problem is 2 to 12 values from 1 to 20. The sixth arm is
+// LeetCode's Rust template as `karac fix` carried it.
 //
 // P1  the answer is the statement read literally: every difference
 //     `nums[j] - nums[i]` with `i < j` and `nums[i] < nums[j]` listed, the
@@ -14,7 +13,7 @@
 // P4  every value doubled doubles the answer, -1 staying -1
 // P5  a value above all the others appended makes the answer that value
 //     less the smallest of the others
-// P6  each arm agrees with at least two of the other four
+// P6  each arm agrees with at least three of the other five
 
 // ---- the ★ arm: the smallest so far
 fn star_maximum_difference(nums: Vec[i64]) -> i64 {
@@ -87,8 +86,28 @@ fn split_maximum_difference(nums: Vec[i64]) -> i64 {
     split_span(nums, 0, nums.len()).2
 }
 
-// ---- the literal reading and the checks ------------------------------------
+// ---- the Rust template, as carried
+struct Solution {}
 
+impl Solution {
+    pub fn maximum_difference(nums: Vec[i32]) -> i32 {
+        let mut mn = nums[0];
+        let mut ans: i32 = -1;
+        for x in nums.iter().skip(1) {
+            if x > mn {
+                ans = ans.max(x - mn);
+            }
+            mn = mn.min(x);
+        }
+        ans
+    }
+}
+
+fn solution_maximum_difference(nums: Vec[i64]) -> i64 {
+    Solution.maximum_difference(nums.iter().map(|x| x as i32).collect()) as i64
+}
+
+// ---- the literal reading and the checks ------------------------------------
 fn literal(nums: Vec[i64]) -> i64 {
     let mut differences: Vec[i64] = Vec.new();
     for j in 0..nums.len() {
@@ -107,7 +126,8 @@ fn answer(arm: i64, nums: Vec[i64]) -> i64 {
         1 => brute_maximum_difference(nums),
         2 => suffix_maximum_difference(nums),
         3 => fold_maximum_difference(nums),
-        _ => split_maximum_difference(nums),
+        4 => split_maximum_difference(nums),
+        _ => solution_maximum_difference(nums),
     }
 }
 
@@ -140,7 +160,7 @@ fn draw(seed: mut ref i64) -> Problem {
 }
 
 fn main() {
-    let names = ["star", "brute", "suffix", "fold", "split"];
+    let names = ["star", "brute", "suffix", "fold", "split", "solution"];
     let mut seed = 2016;
     let mut problems: Vec[Problem] = Vec.new();
     for _ in 0..2000 {
@@ -162,13 +182,13 @@ fn main() {
         longer.push(prob.above);
         let smallest = nums.iter().min().cloned().unwrap();
         let mut got: Vec[i64] = Vec.new();
-        for arm in 0..5 {
+        for arm in 0..6 {
             got.push(answer(arm, nums.clone()));
         }
-        for arm in 0..5 {
+        for arm in 0..6 {
             let a = got[arm];
             let mut same = 0;
-            for other in 0..5 {
+            for other in 0..6 {
                 if other != arm and got[other] == a {
                     same += 1;
                 }
@@ -180,7 +200,7 @@ fn main() {
                 answer(arm, flipped.clone()) == a,
                 answer(arm, doubled.clone()) == twice,
                 answer(arm, longer.clone()) == prob.above - smallest,
-                same >= 2,
+                same >= 3,
             ];
             for q in 0..6 {
                 checks += 1;
@@ -194,7 +214,7 @@ fn main() {
         }
     }
     let total = by_property.iter().sum();
-    println(f"2000 problems: checksum {check}, {checks} checks over 5 arms: {total} failures");
+    println(f"2000 problems: checksum {check}, {checks} checks over 6 arms: {total} failures");
     for f in failures {
         println(f);
     }

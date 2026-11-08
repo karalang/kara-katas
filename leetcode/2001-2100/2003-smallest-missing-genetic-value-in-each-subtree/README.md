@@ -33,7 +33,7 @@ climbs.
 | `genetic_merge.kara` | every node's values in a `Set`, merged smaller into larger in reverse BFS order (`Option.take`, `swap`); a node's answer starts at its children's largest and climbs while its set holds it. O(n log² n) |
 | `genetic_euler.kara` | preorder numbers from an iterative DFS make each subtree a run `tin[u] ..= tout[u]`; a value is in the subtree when its node's number falls in the run. O(n) |
 | `genetic_bfs.kara` | a `VecDeque` BFS from each ancestor that skips the child the walk came from, values gathered in a `Set`, no visited marks. O(n) |
-| `genetic_solution.kara` | LeetCode's Rust template (`impl Solution`, `Vec<i32>`, a nested recursive `fn dfs`, `usize` indices, `match` on `position`), carried by `karac fix` to two remaining errors: blocked by B-2026-11-07-3 |
+| `genetic_solution.kara` | LeetCode's Rust template (`impl Solution`, `Vec<i32>`, a nested recursive `fn dfs`, `usize` indices, `match` on `position`), carried by `karac fix` to two remaining errors: blocked by B-2026-11-08-57 |
 | `differential.kara` | the five arms that check against the statement read literally, six properties |
 
 Every arm prints the same 9 lines: the answers for LeetCode's three
@@ -141,7 +141,10 @@ written as LeetCode's Rust template. `karac fix` carries it in six rounds
 `Vec.filled(n, 1)` takes `Vec[i64]` on the spot, so the `Vec[i32]` return
 is refused where `ans` is returned and where it returns early. Rust types
 that literal `i32` from its later uses; design.md §8 says Kāra's literals
-default last too, and B-2026-11-07-3 tracks that the checker does not yet.
+default last too. B-2026-11-07-3 made them do so (kara 87e598fee9) for a
+let, an operand and a `Vec` push, but not for the element of a
+`Vec.filled(n, 1)` that a return fixes; B-2026-11-08-57 tracks that case,
+and on kara 95006f0150 the arm still stops at the same two errors.
 The last round's edit had no fix before this kata: `(nums[u] as usize) <
 seen.len()`, with `nums` a `Vec[i32]`, was refused for mixing `usize` and
 `i64` with nothing to apply, since the fix that drops a redundant `as
