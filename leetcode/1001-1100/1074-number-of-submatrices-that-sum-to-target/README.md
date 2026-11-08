@@ -137,6 +137,15 @@ The kata found one miscompile, fixed in kara `1de47226fa` with the core pin
   returned an `i64`, so a build read garbage and the interpreter printed
   `5` for `5.0`. Both now take the slot's type. Kara B-2026-11-08-69.
 
+Probing `Entry` chains for the Rust arm found a diagnostics gap, fixed in
+kara `5fe8006173` with `tests/kata_1074_check_gaps.rs`:
+
+- **No fix for a closure whose whole body is an assignment.** Rust's
+  `m.entry(k).and_modify(|v| *v += 1)` stopped the parser at the operator
+  with "Expected `)`, found `+=`". Assignment is a statement, so a closure
+  that assigns takes a block; the error now says so and `karac fix` writes
+  `|v| { *v += 1; }`. Kara B-2026-11-08-68.
+
 Every file went through `karac fix`. In the ★ arm it dropped the `*` from
 `*target`, a tuple part bound by `for (matrix, target) in
 examples.iter()`, which is an `i64`; in the iter arm it rebound `|mut acc,
