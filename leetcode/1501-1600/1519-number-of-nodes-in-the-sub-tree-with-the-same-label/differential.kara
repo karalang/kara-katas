@@ -1,7 +1,7 @@
 // LeetCode #1519: Number of Nodes in the Sub-Tree With the Same Label --
 // the differential.
 //
-// Three arms against the statement read literally, on 2000 trees of 1 to
+// Four arms against the statement read literally, on 2000 trees of 1 to
 // 10 nodes over 3 letters, with six properties.
 //
 // P1  the answer is the statement read literally: every node counts once
@@ -11,10 +11,9 @@
 // P4  node 0's answer is how often its letter appears in the whole tree
 // P5  with every node labelled `a`, the answers are the subtree sizes,
 //     which add up to the sum over nodes of (depth + 1)
-// P6  each arm agrees with both others
+// P6  each arm agrees with at least two of the other three
 //
-// The iterator arm (B-2026-11-08-36) and the Rust template are not here:
-// neither runs as `karac fix` left it.
+// The Rust template is not here: it does not check as `karac fix` left it.
 
 // ---- labels.kara: the ★ arm: counts returned up a recursive walk
 fn star_walk(node: i64, parent: i64, adjacent: Vec[Vec[i64]], labels: Vec[u8], answer: mut ref Vec[i64]) -> Vec[i64] {
@@ -110,6 +109,33 @@ fn euler_arm(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
     answer
 }
 
+// ---- labels_iter.kara: the ★ arm with iterator adapters
+
+fn iter_walk(node: i64, parent: i64, adjacent: Vec[Vec[i64]], labels: Vec[u8], answer: mut ref Vec[i64]) -> Vec[i64] {
+    let mut counts = adjacent[node]
+        .iter()
+        .filter(|next| *next != parent)
+        .map(|next| iter_walk(next, node, adjacent, labels, mut answer))
+        .fold(Vec.filled(26, 0), |total: Vec[i64], below: Vec[i64]| total.iter().zip(below.iter()).map(|(a, b)| a + b).collect());
+    let mine = (labels[node] - 97) as i64;
+    counts[mine] += 1;
+    answer[node] = counts[mine];
+    counts
+}
+
+fn iter_arm(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let adjacent = edges.iter().fold(Vec.filled(n, Vec.new()), |lists: own Vec[Vec[i64]], (a, b)| {
+        let mut lists = lists;
+        lists[a].push(b);
+        lists[b].push(a);
+        lists
+    });
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    iter_walk(0, -1, adjacent, letters, mut answer);
+    answer
+}
+
 // ---- the statement read literally ----------------------------------------
 
 fn parents(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
@@ -163,17 +189,19 @@ fn arm(k: i64, n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
         star_arm(n, edges.clone(), labels.clone())
     } else if k == 1 {
         stack_arm(n, edges.clone(), labels.clone())
-    } else {
+    } else if k == 2 {
         euler_arm(n, edges.clone(), labels.clone())
+    } else {
+        iter_arm(n, edges.clone(), labels.clone())
     }
 }
 
 fn arm_name(k: i64) -> String {
-    ["star", "stack", "euler"][k].to_string()
+    ["star", "stack", "euler", "iter"][k].to_string()
 }
 
 fn main() {
-    let arms = 3;
+    let arms = 4;
     let problems = 2000;
     let mut seed = 15190;
     let mut check = 0;

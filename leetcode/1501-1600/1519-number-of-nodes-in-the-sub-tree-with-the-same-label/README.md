@@ -28,9 +28,9 @@ English letters.
 | `labels.kara` ★ | a depth-first walk from node 0 returns each subtree's count of every letter, the children's summed into the parent's; a node's answer is its own letter's count. O(26 n) |
 | `labels_stack.kara` | no recursion: an explicit stack gives a preorder with parents, and walking it backwards adds each node's counts into its parent's. O(26 n) |
 | `labels_euler.kara` | an Euler tour: a subtree is a contiguous run of entry times, so a node's answer is how many of its letter entered between its entry and its exit; one count per letter, read at entry and again at exit. O(n) |
-| `labels_iter.kara` | the ★ arm with iterator adapters: adjacency lists built by `fold`, the children's counts summed by `filter`, `map` and `fold`. **Blocked by B-2026-11-08-36**: see Writing it |
+| `labels_iter.kara` | the ★ arm with iterator adapters: adjacency lists built by `fold`, the children's counts summed by `filter`, `map` and `fold`. Ran wrong until B-2026-11-08-36 was fixed: see Writing it |
 | `labels_solution.kara` | LeetCode's Rust template (`Vec<Vec<i32>>` edges, a nested `fn dfs` returning `[i32; 26]`, `usize::MAX` for no parent), carried by `karac fix`. Does not check: see Rust template |
-| `differential.kara` | the three arms that run against the statement read literally, six properties |
+| `differential.kara` | the four arms that run against the statement read literally, six properties |
 
 Every arm that runs prints the same 6 lines: LeetCode's three examples
 and a one-node tree, then a checksum of the answers for 2000 trees of 1
@@ -41,7 +41,7 @@ is byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the three arms and the statement read
+`differential.kara` holds copies of the four arms and the statement read
 literally: node 0's parent links found by sweeping the edges until
 nothing changes, then every node counted once for each node on its path to
 node 0 that has its letter. It checks 2000 trees of 1 to 10 nodes over 3
@@ -54,17 +54,19 @@ letters, every random choice drawn before any arm answers.
 | P3 | every edge turned round and the edges listed backwards leave the answer |
 | P4 | node 0's answer is how often its letter appears in the whole tree |
 | P5 | with every node labelled `a`, the answers are the subtree sizes, which add up to the sum over nodes of (depth + 1) |
-| P6 | each arm agrees with both others |
+| P6 | each arm agrees with at least two of the other three |
 
-The differential prints `2000 problems: checksum 93640531, 36000 checks
-over 3 arms: 0 failures` under every lane in Verification. On a failure
+The differential prints `2000 problems: checksum 93640531, 48000 checks
+over 4 arms: 0 failures` under every lane in Verification. On a failure
 it prints the first ten and then the count by property.
 
 ## Mutation testing
 
-Twelve edits to the differential, four to each arm, each run under
-`karac __mir-run` and `karac __mir-llvm-run`. Nine are killed, each the
-same way under both backends where both finish; three survive.
+Fifteen edits to the differential, three or four to each arm, each run
+under `karac __mir-run` and `karac __mir-llvm-run`. Twelve are killed,
+each the same way under both backends where both finish; three survive.
+M1 to M9 were run when the differential held three arms (P6 then asked
+each arm to agree with both others); M10 to M12 with all four.
 
 | # | mutation | killed by |
 |---|---|---|
@@ -77,6 +79,9 @@ same way under both backends where both finish; three survive.
 | M7 | stack: a child's counts replace the parent's | P1 1157, P3 1046, P4 1059, P5 1453, P6 3471 |
 | M8 | Euler: the count read after the node's own entry | P1, P4, P5 2000 each, P6 6000 |
 | M9 | Euler: the count reset at exit | P1 614, P4 483, P5 1439, P6 1842 |
+| M10 | iter: each edge added one way only | P1 1586, P3 1794, P4 1138, P5 1586, P6 1586 |
+| M11 | iter: a child's counts dropped in the sum (`a` for `a + b`) | P1 1569, P4 1438, P5 1794, P6 1569 |
+| M12 | iter: the answer read before the node counts itself | P1, P4, P5, P6 2000 each |
 
 Two survivors are equivalent: the Euler arm starting every letter's count
 at 1 (an offset that cancels in exit less entry) and never descending
@@ -134,13 +139,13 @@ is not settled. Not traced.
 
 ## Verification
 
-The three running arms print the same output as `labels.py` under
+The four running arms print the same output as `labels.py` under
 `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them.
 Under `karac __mir-run` the arms take 1.0 to 2.4 s and the differential
-2.1 s.
+5.6 s.
 
 ## Writing it
 
@@ -157,6 +162,9 @@ parameter `own`. It then checks. But the counting fold, `.fold(
 Vec.filled(26, 0), |total: Vec[i64], below: Vec[i64]| ..)`, checks and
 fails on both backends: the interpreter stops with `deref of non-reference
 Box` in the closure, `karac __mir-llvm-run` exits 101 with no message,
-and `karac run` ends on a segmentation fault. That is B-2026-11-08-36.
-The file is kept as `karac fix` left it; with the two parameters written
-`own Vec[i64]` it prints the same output as the other arms.
+and `karac run` ends on a segmentation fault. That was B-2026-11-08-36:
+the typechecker recorded the fold's slot type for the closure, turning
+its borrowed parameters owned, while MIR built the body with borrowed
+ones. Fixed in kara `1740abdd1`; the file, as `karac fix` left it, now
+prints the same output as the other arms on every lane and joins the
+differential.
