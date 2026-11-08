@@ -105,7 +105,42 @@ The bench program uses the ★ arm. It counts every `n` from 1 to 15 in
 each of 20 rounds, with a fresh `used` array for each count. Every
 implementation prints `n from 1 to 15, 20 rounds: total 910780,
 checksum 116453033`, the Kāra program under `karac __mir-run` included
-(in 73.5 s). Spot timings on a shared 4-core container, three runs each
+(in 73.5 s).
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
+(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 315.6 ms ± 10.3 | 1.07× |
+| go `go build` | 328.4 ms ± 44.0 | 1.03× |
+| **kāra `karac build`, seq** | **336.9 ms ± 2.6** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 382.0 ms ± 1.8 | 0.88× |
+| rust `-O` | 411.5 ms ± 2.9 | 0.82× |
+
+Kāra is 0.82× `rustc -O`, 0.88× equal-safety Rust, 1.07× C and 1.03× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.24× the instructions in 0.94× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.8 ms ± 3.5 | 32.8 KiB | 1.0 MiB |
+| rust | 86.8 ms ± 1.3 | 455.5 KiB | 1.1 MiB |
+| kāra | 115.4 ms ± 1.4 | 67.0 KiB | 1.0 MiB |
+| go | — | 2450.4 KiB | 2.6 MiB |
+
+`karac build` is 2.3× clang's cold compile and 1.3× rustc's. Kāra's
+68,560-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`n from 1 to 15, 20 rounds: total 910780, checksum 116453033`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three runs each
 (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

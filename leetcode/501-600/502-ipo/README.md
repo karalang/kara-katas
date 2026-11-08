@@ -134,7 +134,42 @@ Every mirror sorts a fresh index array by capital and pushes onto a
 fresh largest-first heap for each case, as the ★ arm does: Rust
 `sort_by_key` and `BinaryHeap`, Go `slices.SortStableFunc` and
 `container/heap`, Python `sorted` and `heapq` (negated profits), and C
-`qsort` and a hand-written binary heap. Spot timings on a shared 4-core
+`qsort` and a hand-written binary heap.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
+(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 231.0 ms ± 1.7 | 1.17× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 234.9 ms ± 4.4 | 1.15× |
+| **kāra `karac build`, seq** | **269.9 ms ± 4.6** | **—** |
+| c `clang -O3` | 528.1 ms ± 6.9 | 0.51× |
+| go `go build` | 1398.2 ms ± 7.2 | 0.19× |
+
+Kāra is 1.17× `rustc -O`, 1.15× equal-safety Rust, 0.51× C and 0.19× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 52.4 ms ± 0.6 | 32.8 KiB | 94.2 MiB |
+| rust | 150.9 ms ± 1.9 | 472.8 KiB | 97.5 MiB |
+| kāra | 191.9 ms ± 1.8 | 66.9 KiB | 95.2 MiB |
+| go | — | 2451.9 KiB | 190.1 MiB |
+
+`karac build` is 3.7× clang's cold compile and 1.3× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`60 cases of 100000 projects: total capital 17833039386, checksum 726210963`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
 quiet machine):
 

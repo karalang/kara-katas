@@ -120,7 +120,42 @@ numbers in range, once. Then it checks each once. Every implementation
 prints `100000 numbers: 10000 perfect, checksum 197514648`, the Kāra
 program under `karac __mir-run` included (in 91 s).
 
-Every mirror is the same loop over `i` while `i * i <= num`. Spot
+Every mirror is the same loop over `i` while `i * i <= num`.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
+(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 284.6 ms ± 3.0 | 1.28× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 351.9 ms ± 4.5 | 1.03× |
+| **kāra `karac build`, seq** | **363.5 ms ± 22.2** | **—** |
+| c `clang -O3` | 506.5 ms ± 22.6 | 0.72× |
+| rust `-O` | 511.4 ms ± 23.2 | 0.71× |
+
+Kāra is 0.71× `rustc -O`, 1.03× equal-safety Rust, 0.72× C and 1.28× Go. The gap to `rustc -O` is the cost of the overflow checks Kāra keeps on by default (1.03× equal-safety Rust). Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.17× the instructions in 1.07× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.1 ms ± 0.9 | 32.8 KiB | 1.8 MiB |
+| rust | 87.9 ms ± 0.8 | 455.7 KiB | 1.9 MiB |
+| kāra | 116.5 ms ± 2.0 | 66.9 KiB | 1.8 MiB |
+| go | — | 2450.4 KiB | 3.6 MiB |
+
+`karac build` is 2.5× clang's cold compile and 1.3× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100000 numbers: 10000 perfect, checksum 197514648`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine):
 

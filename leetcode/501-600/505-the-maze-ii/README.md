@@ -146,7 +146,42 @@ solves each once. Every implementation prints `2000 mazes of 100 by
 Every mirror keeps a smallest-first queue of (distance, row, column)
 triples and a fresh grid of best distances for each maze: Rust a
 `BinaryHeap` of `Reverse(...)`, Go `container/heap`, Python `heapq`,
-and C a binary heap it writes itself. Spot timings on a shared 4-core
+and C a binary heap it writes itself.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
+(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 372.3 ms ± 0.6 | 1.09× |
+| **kāra `karac build`, seq** | **406.4 ms ± 3.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 418.4 ms ± 1.9 | 0.97× |
+| rust `-O` | 425.9 ms ± 1.6 | 0.95× |
+| go `go build` | 767.2 ms ± 2.7 | 0.53× |
+
+Kāra is 0.95× `rustc -O`, 0.97× equal-safety Rust, 1.09× C and 0.53× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 57.5 ms ± 2.8 | 32.9 KiB | 154.1 MiB |
+| rust | 149.6 ms ± 1.0 | 456.0 KiB | 204.5 MiB |
+| kāra | 173.8 ms ± 1.7 | 67.0 KiB | 182.6 MiB |
+| go | — | 2451.5 KiB | 422.4 MiB |
+
+`karac build` is 3.0× clang's cold compile and 1.2× rustc's. Kāra's
+68,576-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`2000 mazes of 100 by 100: the destination reached in 495, distance 64162 in all, checksum 525942359`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
 quiet machine):
 
