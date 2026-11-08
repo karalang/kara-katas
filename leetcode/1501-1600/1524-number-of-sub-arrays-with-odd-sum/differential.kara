@@ -1,0 +1,238 @@
+// LeetCode #1524: Number of Sub-arrays With Odd Sum -- the
+// differential.
+//
+// Five arms against the statement read literally, on 3000 arrays of 1 to
+// 10 numbers from 1 to 5, with six properties.
+//
+// P1  the answer is the statement read literally: every sub-array summed
+//     from scratch, the odd sums counted
+// P2  the array reversed leaves the answer
+// P3  every number raised by 2 leaves the answer
+// P4  the answer is at least the count of odd numbers and at most the
+//     count of sub-arrays
+// P5  every number doubled makes the answer 0
+// P6  each arm agrees with at least two of the other four
+
+// ---- subarrays.kara: the ★ arm: each prefix pairs with earlier ones of the other parity
+
+fn star_arm(arr: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let mut odd = 0;
+    let mut even = 1;
+    let mut sum = 0;
+    let mut answer = 0;
+    for x in arr.iter() {
+        sum += x;
+        if sum % 2 == 1 {
+            answer = (answer + even) % modulus;
+            odd += 1;
+        } else {
+            answer = (answer + odd) % modulus;
+            even += 1;
+        }
+    }
+    answer
+}
+
+// ---- subarrays_ending.kara: odd and even sums ending at each place
+
+fn ending_arm(arr: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let mut odd = 0;
+    let mut even = 0;
+    let mut answer = 0;
+    for x in arr.iter() {
+        if x % 2 == 1 {
+            let was_odd = odd;
+            odd = even + 1;
+            even = was_odd;
+        } else {
+            even += 1;
+        }
+        answer = (answer + odd) % modulus;
+    }
+    answer
+}
+
+// ---- subarrays_product.kara: odd prefixes times even prefixes
+
+fn product_arm(arr: Vec[i64]) -> i64 {
+    let mut odd = 0;
+    let mut parity = 0;
+    for x in arr.iter() {
+        parity = (parity + x) % 2;
+        odd += parity;
+    }
+    let even = arr.len() + 1 - odd;
+    odd * even % 1000000007
+}
+
+// ---- subarrays_iter.kara: the product arm with iterator adapters
+
+fn iter_arm(arr: Vec[i64]) -> i64 {
+    let odd = arr.iter()
+        .scan(0, |parity, x| {
+            let next = (parity + x) % 2;
+            Some((next, next))
+        })
+        .filter(|p| p == 1)
+        .count();
+    odd * (arr.len() + 1 - odd) % 1000000007
+}
+
+// ---- subarrays_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn num_of_subarrays(arr: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut (odd, even) = (0, 1);
+        let mut sum = 0;
+        let mut ans: i64 = 0;
+        for x in arr {
+            sum += x;
+            if sum % 2 == 1 {
+                ans += even;
+                odd += 1;
+            } else {
+                ans += odd;
+                even += 1;
+            }
+        }
+        (ans % MOD) as i32
+    }
+}
+
+fn solution_arm(arr: Vec[i64]) -> i64 {
+    Solution.num_of_subarrays(arr.iter().map(|x| *x as i32).collect()) as i64
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// every sub-array summed from scratch, the odd sums counted
+fn literal(arr: Vec[i64]) -> i64 {
+    let n = arr.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i..n {
+            let mut sum = 0;
+            for k in i..j + 1 {
+                sum += arr[k];
+            }
+            if sum % 2 == 1 {
+                count += 1;
+            }
+        }
+    }
+    count % 1000000007
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, arr: Vec[i64]) -> i64 {
+    if k == 0 {
+        star_arm(arr)
+    } else if k == 1 {
+        ending_arm(arr)
+    } else if k == 2 {
+        product_arm(arr)
+    } else if k == 3 {
+        iter_arm(arr)
+    } else {
+        solution_arm(arr)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "ending", "product", "iter", "solution"][k].to_string()
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15240;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 10 + 1;
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(next_random(mut seed) % 5 + 1);
+        }
+        let back: Vec[i64] = arr.iter().rev().collect();
+        let raised: Vec[i64] = arr.iter().map(|x| x + 2).collect();
+        let doubled: Vec[i64] = arr.iter().map(|x| x * 2).collect();
+        let odd_numbers = arr.iter().filter(|x| x % 2 == 1).count();
+        let truth = literal(arr);
+        let mut answers: Vec[i64] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, arr);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, back) != answer {
+                fails[2] += 1;
+            }
+            if arm(k, raised) != answer {
+                fails[3] += 1;
+            }
+            if answer < odd_numbers or answer > n * (n + 1) / 2 {
+                fails[4] += 1;
+            }
+            if arm(k, doubled) != 0 {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        check = mix(check, truth);
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
