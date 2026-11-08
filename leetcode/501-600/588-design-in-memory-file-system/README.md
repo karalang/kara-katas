@@ -173,7 +173,42 @@ keeps them in a `SortedMap`. C has no sorted map, so each directory
 keeps an array of entries sorted by name, found by binary search and
 grown by insertion, and each file system is freed whole after its
 script. Go and Python keep each directory's entries in a hash map and
-sort them when they are listed. Spot timings on a shared 4-core
+sort them when they are listed.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15014+g7dfd248c5`
+(g7dfd248c5, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 1181.0 ms ± 24.9 | 1.39× |
+| rust `-O` | 1224.7 ms ± 11.2 | 1.34× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1226.1 ms ± 8.0 | 1.34× |
+| go `go build` | 1434.5 ms ± 5.4 | 1.14× |
+| **kāra `karac build`, seq** | **1642.1 ms ± 18.1** | **—** |
+
+Kāra is 1.34× `rustc -O`, 1.34× equal-safety Rust, 1.39× C and 1.14× Go. The 1.34× gap to equal-safety Rust was not investigated and has gone to the compiler's review.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 61.6 ms ± 0.8 | 49.4 KiB | 3.3 MiB |
+| rust | 178.3 ms ± 1.9 | 476.4 KiB | 7.1 MiB |
+| kāra | 188.1 ms ± 4.1 | 328.3 KiB | 8.2 MiB |
+| go | — | 2485.3 KiB | 15.7 MiB |
+
+`karac build` is 3.1× clang's cold compile and 1.1× rustc's. Kāra's
+336,168-byte binary is 6.6× clang's and 1.5× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`200 scripts of 300 commands, 200 rounds: 4760200 answers, checksum 153088437`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core
 container, three runs each (two for Python; `bench.sh` timings need a
 quiet machine):
 

@@ -141,7 +141,42 @@ hasher and a `VecDeque` in Rust, a map of slices with no size hint and a
 slice for the queue in Go, and a `dict` of lists and a `deque` in
 Python. C has no hash map, so each call `calloc`s an open-addressing
 table of 131,072 slots, each holding a growable array of children,
-hashes by a 64-bit multiply and frees it all. Spot timings on a shared
+hashes by a 64-bit multiply and frees it all.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15014+g7dfd248c5`
+(g7dfd248c5, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 685.7 ms ± 3.6 | 1.34× |
+| **kāra `karac build`, seq** | **918.3 ms ± 28.2** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 959.9 ms ± 6.4 | 0.96× |
+| rust `-O` | 966.7 ms ± 11.0 | 0.95× |
+| go `go build` | 1237.4 ms ± 6.9 | 0.74× |
+
+Kāra is 0.95× `rustc -O`, 0.96× equal-safety Rust, 1.34× C and 0.74× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 57.9 ms ± 0.7 | 49.1 KiB | 23.5 MiB |
+| rust | 156.7 ms ± 0.9 | 474.0 KiB | 22.5 MiB |
+| kāra | 171.8 ms ± 3.2 | 67.2 KiB | 20.2 MiB |
+| go | — | 2450.6 KiB | 42.0 MiB |
+
+`karac build` is 3.0× clang's cold compile and 1.1× rustc's. Kāra's
+68,784-byte binary is 1.4× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20 trees of 50000 processes, 30 rounds: 7553605 killed, checksum 347966231`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, three runs each (two for Python; `bench.sh` timings
 need a quiet machine):
 

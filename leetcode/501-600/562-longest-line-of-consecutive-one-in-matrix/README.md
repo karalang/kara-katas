@@ -124,7 +124,42 @@ Every implementation allocates the three fresh rows of counts for each
 row of the matrix as the Kāra arm does: `vec!` in Rust, `make` in Go,
 `calloc` in C and lists in Python. The tall matrices make that
 allocation a large part of the work, three tiny arrays for each of
-10,000 rows. Spot timings on a shared 4-core container, three runs each
+10,000 rows.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15014+g7dfd248c5`
+(g7dfd248c5, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 681.1 ms ± 9.0 | 1.55× |
+| c `clang -O3` | 1023.1 ms ± 12.8 | 1.03× |
+| **kāra `karac build`, seq** | **1055.3 ms ± 11.7** | **—** |
+| rust `-O` | 1078.4 ms ± 15.9 | 0.98× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 1087.0 ms ± 14.5 | 0.97× |
+
+Kāra is 0.98× `rustc -O`, 0.97× equal-safety Rust, 1.03× C and 1.55× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 50.4 ms ± 0.7 | 32.8 KiB | 13.0 MiB |
+| rust | 113.2 ms ± 1.0 | 455.8 KiB | 21.1 MiB |
+| kāra | 142.4 ms ± 1.5 | 67.0 KiB | 21.1 MiB |
+| go | — | 2450.4 KiB | 42.9 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.3× rustc's. Kāra's
+68,560-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100 matrices of 10000 cells, 100 rounds: total 343700, checksum 409941977`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three runs each
 (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

@@ -126,7 +126,42 @@ random cell, and answers each once. Every implementation prints
 
 Every implementation makes a fresh grid of counts for each move, as the
 Kāra arm does: a `Vec<Vec<i64>>` in Rust, a slice of slices in Go, a
-`calloc`'d row at a time in C and a list of lists in Python. Spot
+`calloc`'d row at a time in C and a list of lists in Python.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15014+g7dfd248c5`
+(g7dfd248c5, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 321.3 ms ± 2.8 | 1.16× |
+| **kāra `karac build`, seq** | **371.3 ms ± 4.9** | **—** |
+| rust `-O` | 373.8 ms ± 5.8 | 0.99× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 375.8 ms ± 4.4 | 0.99× |
+| go `go build` | 732.2 ms ± 29.2 | 0.51× |
+
+Kāra is 0.99× `rustc -O`, 0.99× equal-safety Rust, 1.16× C and 0.51× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 0.97× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 54.4 ms ± 0.8 | 48.9 KiB | 1.3 MiB |
+| rust | 122.3 ms ± 3.4 | 455.5 KiB | 1.5 MiB |
+| kāra | 148.3 ms ± 8.9 | 66.9 KiB | 1.5 MiB |
+| go | — | 2450.4 KiB | 9.7 MiB |
+
+`karac build` is 2.7× clang's cold compile and 1.2× rustc's. Kāra's
+68,552-byte binary is 1.4× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`5000 cases up to 50 by 50 and 50 moves: total 729716617, checksum 261856686`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine):
 

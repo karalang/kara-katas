@@ -141,7 +141,42 @@ __mir-run` included (242 s).
 
 Rust's nodes are `Rc<RefCell<TreeNode>>`, LeetCode's Rust tree, counted
 as the Kāra `shared struct` is; C's are `malloc`'d and Go's and Python's
-are plain references, none of them counted. Spot timings on a shared
+are plain references, none of them counted.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15014+g7dfd248c5`
+(g7dfd248c5, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| go `go build` | 171.4 ms ± 7.8 | 1.23× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 187.9 ms ± 4.0 | 1.12× |
+| rust `-O` | 190.4 ms ± 7.1 | 1.10× |
+| c `clang -O3` | 192.2 ms ± 4.7 | 1.09× |
+| **kāra `karac build`, seq** | **210.1 ms ± 7.0** | **—** |
+
+Kāra is 1.10× `rustc -O`, 1.12× equal-safety Rust, 1.09× C and 1.23× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.44× the instructions in 0.57× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 53.4 ms ± 1.2 | 33.0 KiB | 2.4 MiB |
+| rust | 140.1 ms ± 3.6 | 473.9 KiB | 3.2 MiB |
+| kāra | 151.7 ms ± 1.8 | 66.9 KiB | 2.5 MiB |
+| go | — | 2450.6 KiB | 4.8 MiB |
+
+`karac build` is 2.8× clang's cold compile and 1.1× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20 pairs, 1000 rounds: 10000 found, checksum 595957116`).
+
+### Container x86-64 history
+
+Spot timings on a shared
 4-core container, three runs each (two for Python; `bench.sh` timings
 need a quiet machine):
 
