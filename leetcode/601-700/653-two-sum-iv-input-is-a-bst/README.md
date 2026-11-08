@@ -123,7 +123,42 @@ Each implementation walks the tree recursively into a growable array and
 moves two indices in from its ends. Kāra's nodes are a `shared struct`,
 Rust's `Rc<RefCell<TreeNode>>`, and C's and Go's plain pointers; the set
 of values already inserted is Kāra's `Set`, Rust's `HashSet`, Go's
-`map`, Python's `set`, and in C a byte per value. Spot timings on a
+`map`, Python's `set`, and in C a byte per value.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15050+g27fedd3da`
+(g27fedd3da, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 489.1 ms ± 11.3 | 1.21× |
+| **kāra `karac build`, seq** | **592.8 ms ± 29.9** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 622.1 ms ± 23.1 | 0.95× |
+| rust `-O` | 686.0 ms ± 35.5 | 0.86× |
+| go `go build` | 1024.5 ms ± 25.3 | 0.58× |
+
+Kāra is 0.86× `rustc -O`, 0.95× equal-safety Rust, 1.21× C and 0.58× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 0.57× the instructions in 0.89× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.4 ms ± 1.1 | 49.0 KiB | 9.9 MiB |
+| rust | 131.0 ms ± 1.5 | 474.3 KiB | 15.2 MiB |
+| kāra | 134.2 ms ± 2.3 | 67.1 KiB | 17.0 MiB |
+| go | — | 2450.7 KiB | 30.1 MiB |
+
+`karac build` is 2.9× clang's cold compile and 1.0× rustc's. Kāra's
+68,760-byte binary is 1.4× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`200000 values, 300 targets: 193 found, checksum 304305694`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine), each including making the tree:
 
