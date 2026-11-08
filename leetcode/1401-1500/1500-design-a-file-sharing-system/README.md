@@ -31,7 +31,7 @@ the system; at most `10^4` calls.
 | `files_scan.kara` | users in a table indexed by id, a `Set` of chunks per row: a join takes the first empty row, a request reads every row in id order, so the owners come out sorted. O(users) per request and join |
 | `files_sorted.kara` | each chunk's owners in a sorted `Vec` kept by a hand-written binary search, free ids in a `SortedSet` (`pop_first`) |
 | `files_iter.kara` | one `Map` from user to its `Set` of chunks, read with iterators: a join's id is `(1..).find(..)`, a request is `filter`, `map`, `collect`, then `sort` |
-| `files_solution.kara` | LeetCode's Rust template (`HashMap`, `BTreeSet`, `BinaryHeap<Reverse<i32>>`, `&mut self`, `if let`), carried by `karac fix` to one error: blocked by B-2026-11-08-2 |
+| `files_solution.kara` | LeetCode's Rust template (`HashMap`, `BTreeSet`, `BinaryHeap<Reverse<i32>>`, `&mut self`, `if let`), carried by `karac fix` to one error: blocked by B-2026-11-08-4 |
 | `differential.kara` | the four arms that check against the statement read literally, six properties |
 
 Every arm prints the same 5 lines: LeetCode's example, then four batches
@@ -119,7 +119,7 @@ items (`push(Reverse(id))`, `Some(Reverse(id))`) and builds a
 smallest-first `PriorityQueue`, but in the type it takes the resolver's
 did-you-mean for an unknown type, `Release` (an atomic ordering), where
 the item type alone, `i32`, is meant. With that one type written by hand
-the arm checks and prints the ★ arm's output. B-2026-11-08-2 tracks it.
+the arm checks and prints the ★ arm's output. B-2026-11-08-4 tracks it.
 
 ## Benchmarks
 
