@@ -1,0 +1,341 @@
+// LeetCode #1522: Diameter of N-Ary Tree -- the differential.
+//
+// Four arms against the statement read literally, on 3000 trees of 1 to
+// 10 nodes, each node after the first the child of a random earlier one,
+// with six properties.
+//
+// P1  the answer is the statement read literally: the most edges between
+//     any two nodes
+// P2  every node's children reversed leave the answer
+// P3  the tree hung from a random node instead leaves the answer
+// P4  the answer is at least the root's height, at most twice it, and at
+//     most the number of nodes less one
+// P5  a new root above the old one changes the answer only to the old
+//     root's height plus one, when that is longer
+// P6  each arm agrees with at least two of the other three
+
+shared struct Node {
+    val: i64,
+    children: Vec[Node],
+}
+
+// ---- diameter.kara: the ★ arm: heights by a depth-first walk, the top two kept
+
+// the height of `node`; `best` takes the longest path turning at it
+fn star_height(node: Node, best: mut ref i64) -> i64 {
+    let mut first = 0;
+    let mut second = 0;
+    for child in node.children.iter() {
+        let h = star_height(child, mut best) + 1;
+        if h > first {
+            second = first;
+            first = h;
+        } else if h > second {
+            second = h;
+        }
+    }
+    *best = (*best).max(first + second);
+    first
+}
+
+fn star_arm(root: Node) -> i64 {
+    let mut best = 0;
+    star_height(root, mut best);
+    best
+}
+
+// ---- diameter_order.kara: nodes listed parents first, heights passed up in reverse
+
+fn order_arm(root: Node) -> i64 {
+    let mut order: Vec[Node] = [root];
+    let mut parent: Vec[i64] = [-1];
+    let mut i = 0;
+    while i < order.len() {
+        let node = order[i].clone();
+        for child in node.children.iter() {
+            order.push(child.clone());
+            parent.push(i);
+        }
+        i += 1;
+    }
+    let n = order.len();
+    let mut first: Vec[i64] = Vec.filled(n, 0);
+    let mut second: Vec[i64] = Vec.filled(n, 0);
+    let mut best = 0;
+    for i in (0..n).rev() {
+        best = best.max(first[i] + second[i]);
+        let p = parent[i];
+        if p >= 0 {
+            let h = first[i] + 1;
+            if h > first[p] {
+                second[p] = first[p];
+                first[p] = h;
+            } else if h > second[p] {
+                second[p] = h;
+            }
+        }
+    }
+    best
+}
+
+// ---- diameter_bfs.kara: two breadth-first searches over the numbered tree
+
+// the farthest node from `start` and its distance
+fn bfs_farthest(adj: Vec[Vec[i64]], start: i64) -> (i64, i64) {
+    let mut dist: Vec[i64] = Vec.filled(adj.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    dist[start] = 0;
+    queue.push_back(start);
+    let mut last = start;
+    while let Some(u) = queue.pop_front() {
+        last = u;
+        for v in adj[u].iter() {
+            if dist[v] < 0 {
+                dist[v] = dist[u] + 1;
+                queue.push_back(v);
+            }
+        }
+    }
+    (last, dist[last])
+}
+
+fn bfs_arm(root: Node) -> i64 {
+    let mut adj: Vec[Vec[i64]] = [Vec.new()];
+    let mut stack: Vec[(Node, i64)] = [(root, 0)];
+    while let Some((node, id)) = stack.pop() {
+        for child in node.children.iter() {
+            let c = adj.len();
+            adj.push([id]);
+            adj[id].push(c);
+            stack.push((child.clone(), c));
+        }
+    }
+    let (end, _) = bfs_farthest(adj, 0);
+    let (_, length) = bfs_farthest(adj, end);
+    length
+}
+
+// ---- diameter_iter.kara: the ★ arm with iterator adapters
+
+// the height of `node`; `best` takes the longest path turning at it
+fn iter_height(node: Node, best: mut ref i64) -> i64 {
+    let (first, second) = node.children.iter()
+        .map(|child| iter_height(child, mut best) + 1)
+        .fold((0, 0), |(first, second), h| {
+            if h > first {
+                (h, first)
+            } else {
+                (first, second.max(h))
+            }
+        });
+    *best = (*best).max(first + second);
+    first
+}
+
+fn iter_arm(root: Node) -> i64 {
+    let mut best = 0;
+    iter_height(root, mut best);
+    best
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// the number of edges between every two nodes, found by walking each up
+// to their lowest common ancestor; the most of them
+fn literal(kids: Vec[Vec[i64]]) -> i64 {
+    let n = kids.len();
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut depth: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        for c in kids[i].iter() {
+            parent[c] = i;
+            depth[c] = depth[i] + 1;
+        }
+    }
+    let mut best = 0;
+    for a in 0..n {
+        for b in 0..n {
+            let mut u = a;
+            let mut v = b;
+            let mut edges = 0;
+            while u != v {
+                if depth[u] >= depth[v] {
+                    u = parent[u];
+                } else {
+                    v = parent[v];
+                }
+                edges += 1;
+            }
+            best = best.max(edges);
+        }
+    }
+    best
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a tree from each node's list of children; every child is numbered after
+// its parent, so building from the last node back makes children first
+fn build(vals: Vec[i64], kids: Vec[Vec[i64]]) -> Node {
+    let n = vals.len();
+    let mut made: Vec[Option[Node]] = Vec.filled(n, None);
+    for i in (0..n).rev() {
+        let children: Vec[Node] = kids[i].iter().map(|c| made[*c].clone().unwrap()).collect();
+        made[i] = Some(Node { val: vals[i], children });
+    }
+    made[0].clone().unwrap()
+}
+
+// the same tree hung from node `top`, renumbered in breadth-first order
+fn rerooted(kids: Vec[Vec[i64]], top: i64) -> Vec[Vec[i64]] {
+    let n = kids.len();
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 0..n {
+        for c in kids[i].iter() {
+            adj[i].push(c);
+            adj[c].push(i);
+        }
+    }
+    let mut number: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = [top];
+    number[top] = 0;
+    let mut i = 0;
+    while i < order.len() {
+        let u = order[i];
+        for v in adj[u].iter() {
+            if number[v] < 0 {
+                number[v] = order.len();
+                order.push(v);
+            }
+        }
+        i += 1;
+    }
+    let mut out: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for u in 0..n {
+        for v in adj[u].iter() {
+            if number[v] > number[u] {
+                out[number[u]].push(number[v]);
+            }
+        }
+    }
+    out
+}
+
+fn height(kids: Vec[Vec[i64]], i: i64) -> i64 {
+    kids[i].iter().map(|c| height(kids, c) + 1).max().unwrap_or(0)
+}
+
+fn arm(k: i64, root: Node) -> i64 {
+    if k == 0 {
+        star_arm(root)
+    } else if k == 1 {
+        order_arm(root)
+    } else if k == 2 {
+        bfs_arm(root)
+    } else {
+        iter_arm(root)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "order", "bfs", "iter"][k].to_string()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15220;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 10 + 1;
+        let mut vals: Vec[i64] = Vec.new();
+        let mut kids: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+        for i in 0..n {
+            vals.push(next_random(mut seed) % 100);
+            if i > 0 {
+                kids[next_random(mut seed) % i].push(i);
+            }
+        }
+        let top = next_random(mut seed) % n;
+        let tree = build(vals, kids);
+        let mut flipped_kids = kids.clone();
+        for list in flipped_kids.iter_mut() {
+            list.reverse();
+        }
+        let flipped = build(vals, flipped_kids);
+        let moved = build(vals, rerooted(kids, top));
+        let above = Node { val: 0, children: [tree.clone()] };
+        let tall = height(kids, 0);
+        let truth = literal(kids);
+        let mut answers: Vec[i64] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, tree);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, flipped) != answer {
+                fails[2] += 1;
+            }
+            if arm(k, moved) != answer {
+                fails[3] += 1;
+            }
+            if answer < tall or answer > 2 * tall or answer > n - 1 {
+                fails[4] += 1;
+            }
+            if arm(k, above) != answer.max(tall + 1) {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        check = mix(check, truth);
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
