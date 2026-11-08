@@ -1,0 +1,60 @@
+// LeetCode #1529: Minimum Suffix Flips -- the string as runs of equal
+// bits: every run needs a flip at its start, except a first run of 0s,
+// which is already right. O(n).
+
+fn min_flips(target: String) -> i64 {
+    let b = target.bytes();
+    let mut runs = 0;
+    let mut i = 0;
+    while i < b.len() {
+        let mut j = i;
+        while j < b.len() and b[j] == b[i] {
+            j += 1;
+        }
+        runs += 1;
+        i = j;
+    }
+    if b[0] == b'0' {
+        runs - 1
+    } else {
+        runs
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` strings of 1 to `most` bits, each with its own chance of a 1
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let ones = next_random(mut seed) % 9 + 1;
+        let mut target = String.new();
+        for _ in 0..n {
+            target.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+        }
+        check = mix(check, min_flips(target));
+    }
+    println(f"{count} strings of 1 to {most} bits: checksum {check}");
+}
+
+fn main() {
+    for target in ["10111", "101", "00000", "1", "0110"] {
+        println(f"{target} -> {min_flips(target.to_string())}");
+    }
+    let alternating: String = (0..100000).map(|i| if i % 2 == 0 { '0' } else { '1' }).collect();
+    println(f"100000 alternating 0 and 1 -> {min_flips(alternating)}");
+    let mut seed = 1529;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}
