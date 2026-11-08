@@ -1,0 +1,229 @@
+// LeetCode #1528: Shuffle String -- the differential.
+//
+// Five arms against the statement read literally, on 3000 strings of 1 to
+// 8 letters over 3 with a shuffled 0..n, and with six properties.
+//
+// P1  the answer is the statement read literally
+// P2  the answer shuffled by the inverse indices is the string again
+// P3  shuffling by p and then by q is shuffling once by q after p
+// P4  the answer has the string's letters, as many of each
+// P5  the letters renamed (a to b, b to c, c to a) rename the answer
+// P6  each arm agrees with at least two of the other four
+
+// ---- shuffle.kara: the ★ arm: each letter written where its index sends it
+
+fn star_arm(s: String, indices: Vec[i64]) -> String {
+    let b = s.bytes();
+    let mut out: Vec[u8] = Vec.filled(b.len(), 0);
+    for i in 0..b.len() {
+        out[indices[i]] = b[i];
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- shuffle_gather.kara: the indices inverted, the answer read left to right
+
+fn gather_arm(s: String, indices: Vec[i64]) -> String {
+    let b = s.bytes();
+    let mut from: Vec[i64] = Vec.filled(b.len(), 0);
+    for i in 0..b.len() {
+        from[indices[i]] = i;
+    }
+    let mut out = String.with_capacity(b.len());
+    for j in 0..b.len() {
+        out.push(b[from[j]] as char);
+    }
+    out
+}
+
+// ---- shuffle_cycles.kara: in place, cycle by cycle
+
+fn cycles_arm(s: String, indices: Vec[i64]) -> String {
+    // `bytes()` is a read-only view; `.to_vec()` makes a copy of our own
+    let mut b = s.bytes().to_vec();
+    let mut at = indices.clone();
+    for i in 0..b.len() {
+        while at[i] != i {
+            let j = at[i];
+            b.swap(i, j);
+            at.swap(i, j);
+        }
+    }
+    String.from_utf8(b).unwrap()
+}
+
+// ---- shuffle_iter.kara: pairs sorted by index
+
+fn iter_arm(s: String, indices: Vec[i64]) -> String {
+    let mut pairs: Vec[(i64, char)] = indices.iter().zip(s.chars()).collect();
+    pairs.sort();
+    pairs.iter().map(|(_, c)| c).collect()
+}
+
+// ---- shuffle_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn restore_string(s: String, indices: Vec[i32]) -> String {
+        let mut res = Vec.filled(s.len(), 0u8);
+        for (c, i) in s.bytes().iter().zip(indices.iter()) {
+            res[i as usize] = c;
+        }
+        String.from_utf8(res).unwrap()
+    }
+}
+
+fn solution_arm(s: String, indices: Vec[i64]) -> String {
+    Solution.restore_string(s, indices.iter().map(|x| *x as i32).collect())
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// "The character at the i-th position moves to indices[i]": for each place
+// of the answer, every position is asked whether its letter moves there.
+fn literal(s: String, indices: Vec[i64]) -> String {
+    let letters: Vec[char] = s.chars().collect();
+    let mut out = String.new();
+    for place in 0..letters.len() {
+        for i in 0..letters.len() {
+            if indices[i] == place {
+                out.push(letters[i]);
+            }
+        }
+    }
+    out
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn shuffled(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut p: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        p.swap(i, j);
+    }
+    p
+}
+
+fn sorted_letters(s: String) -> String {
+    let mut cs: Vec[char] = s.chars().collect();
+    cs.sort();
+    cs.iter().collect()
+}
+
+fn renamed(s: String) -> String {
+    s.chars().map(|c| if c == 'c' { 'a' } else { (c as u32 as u8 + 1) as char }).collect()
+}
+
+fn arm(k: i64, s: String, indices: Vec[i64]) -> String {
+    if k == 0 {
+        star_arm(s, indices)
+    } else if k == 1 {
+        gather_arm(s, indices)
+    } else if k == 2 {
+        cycles_arm(s, indices)
+    } else if k == 3 {
+        iter_arm(s, indices)
+    } else {
+        solution_arm(s, indices)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "gather", "cycles", "iter", "solution"][k].to_string()
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15280;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let n = next_random(mut seed) % 8 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((97 + next_random(mut seed) % 3) as u8 as char);
+        }
+        let indices = shuffled(n, mut seed);
+        let then = shuffled(n, mut seed);
+        let mut inverse: Vec[i64] = Vec.filled(n, 0);
+        for i in 0..n {
+            inverse[indices[i]] = i;
+        }
+        let both: Vec[i64] = indices.iter().map(|i| then[i]).collect();
+        let truth = literal(s.clone(), indices.clone());
+        let mut answers: Vec[String] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, s.clone(), indices.clone());
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, answer.clone(), inverse.clone()) != s {
+                fails[2] += 1;
+            }
+            if arm(k, answer.clone(), then.clone()) != arm(k, s.clone(), both.clone()) {
+                fails[3] += 1;
+            }
+            if sorted_letters(answer.clone()) != sorted_letters(s.clone()) {
+                fails[4] += 1;
+            }
+            if arm(k, renamed(s.clone()), indices.clone()) != renamed(answer.clone()) {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        for b in truth.bytes().iter() {
+            check = mix(check, *b as i64 - 96);
+        }
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
