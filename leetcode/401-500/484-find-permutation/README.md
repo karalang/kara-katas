@@ -121,31 +121,31 @@ this change.
 
 ### Apple M5 Pro, 2026-11-08
 
-30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
-(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14866+gd96014a9d`
+(gd96014a9d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
 `KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
 The last column is Kāra's mean over that row's mean.
 
 | implementation | mean | Kāra / this |
 |---|---|---|
-| c `clang -O3` | 36.4 ms ± 0.4 | 2.20× |
-| rust `-O` | 43.6 ms ± 0.6 | 1.84× |
-| rust `-O -C overflow-checks=on` (equal-safety) | 45.1 ms ± 0.5 | 1.78× |
-| go `go build` | 72.4 ms ± 0.9 | 1.11× |
-| **kāra `karac build`, seq** | **80.1 ms ± 2.7** | **—** |
+| c `clang -O3` | 36.6 ms ± 1.0 | 2.28× |
+| rust `-O` | 42.8 ms ± 0.4 | 1.96× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 44.0 ms ± 0.5 | 1.90× |
+| go `go build` | 73.6 ms ± 2.3 | 1.14× |
+| **kāra `karac build`, seq** | **83.7 ms ± 3.3** | **—** |
 
-Kāra is 1.84× `rustc -O`, 1.78× equal-safety Rust, 2.20× C and 1.11× Go. The 1.78× gap to equal-safety Rust was not investigated; with the 1.58× legacy instruction count it has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.58× the instructions in 1.72× the cycles.
+Kāra is 1.96× `rustc -O`, 1.90× equal-safety Rust, 2.28× C and 1.14× Go. The 1.90× gap to equal-safety Rust remains after the bench was brought to parity (kara-katas 8ccfc5705); it was not investigated and has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.36× the instructions in 1.62× the cycles.
 
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
 |---|---|---|---|
-| c | 49.3 ms ± 0.6 | 32.9 KiB | 4.1 MiB |
-| rust | 122.5 ms ± 1.3 | 455.6 KiB | 4.6 MiB |
-| kāra | 135.0 ms ± 1.9 | 66.9 KiB | 4.4 MiB |
+| c | 49.4 ms ± 2.6 | 32.9 KiB | 4.1 MiB |
+| rust | 119.2 ms ± 0.6 | 455.6 KiB | 4.6 MiB |
+| kāra | 137.5 ms ± 4.8 | 66.9 KiB | 4.6 MiB |
 | go | — | 2450.5 KiB | 14.1 MiB |
 
-`karac build` is 2.7× clang's cold compile and 1.1× rustc's. Kāra's
+`karac build` is 2.8× clang's cold compile and 1.2× rustc's. Kāra's
 68,528-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
 [`bench/results.json`](bench/results.json). The sink matches across the Kāra,
 Rust, C and Go builds (`200 solves of 100000 letters: 20000200 numbers, checksum 732810773`).
