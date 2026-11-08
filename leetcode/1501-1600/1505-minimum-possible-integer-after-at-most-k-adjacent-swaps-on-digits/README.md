@@ -85,10 +85,11 @@ a digit then comes out twice and another never.
 
 The other eight: the ★ arm's Fenwick query stepping down by one (P1 261,
 P5 261, P6 261), the sorted arm popping the back of a queue (P1 183, P5
-183), and the window arm leaving the last digit unshifted (P1 702, P2 696,
-P4 231, P5 1, P6 702) fail with signatures of their own but add no
-property; the ★ arm's update off by one on odd indices fails like M2's
-family; and the sorted arm spending half the cost fails as M3. Three
+183, P6 183), the ★ arm's update starting one index late on odd indices
+(P1 448, P2 421, P3 213, P6 448), and the window arm leaving the last
+digit unshifted (P1 702, P2 696, P4 231, P5 1, P6 702) fail with
+signatures of their own but add no property; the sorted arm spending half
+the cost fails as M3. Three
 survive and are equivalent: the window arm without its `left == 0` early
 stop (a window of one digit moves nothing), the window arm swapping
 `best` with `best.min(n - 1)` (always itself), and the sorted arm's
