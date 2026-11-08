@@ -20,9 +20,9 @@ form `YYYY-MM-DD`.
 | `reformat.kara` ★ | split at the spaces; the day is the first word's leading digits (`take_while`), the month its place in a table plus one (`position`), the year the last word as it is; `f"{year}-{month:02}-{day:02}"` |
 | `reformat_match.kara` | the month by a `match` on its name, and the day with whichever two-letter suffix it has stripped (`strip_suffix`) |
 | `reformat_bytes.kara` | one pass over the bytes: the day's digits until the first letter, the month from its three letters against `"JanFeb...Dec"`, the year from the last four bytes, and the answer pushed byte by byte |
-| `reformat_iter.kara` | the three words reversed (`split_whitespace().rev()`), each mapped to its field by its place, joined with dashes. Refused by `karac check`: blocked by B-2026-11-08-15 |
+| `reformat_iter.kara` | the three words reversed (`split_whitespace().rev()`), each mapped to its field by its place, joined with dashes. Refused by `karac check` until B-2026-11-08-15 was fixed |
 | `reformat_solution.kara` | LeetCode's Rust template (`Vec<&str>`, `parts[0][..len - 2].parse()`, `position(\|&m\| ..)`, `format!`), carried by `karac fix` |
-| `differential.kara` | the four arms that check against the statement read literally, six properties |
+| `differential.kara` | the five arms against the statement read literally, six properties |
 
 Every arm prints the same 10 lines: the answers for LeetCode's three
 examples and five more (the first and last days of the range, a 22nd, a
@@ -33,7 +33,7 @@ output is byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the four arms that check and the
+`differential.kara` holds copies of the five arms and the
 statement read literally: try every day and month, and take the one whose
 written form (`20th Oct `) starts the date, with the rest as the year. It
 checks 2000 dates from 1900 to 2099. Every random choice of a problem is
@@ -46,12 +46,13 @@ drawn before any arm answers.
 | P3 | the answer's fields, written back in the statement's form, are the date |
 | P4 | the next day's answer is larger, as a string |
 | P5 | the same day a year later changes only the answer's year |
-| P6 | each arm agrees with at least two of the other three |
+| P6 | each arm agrees with at least two of the other four |
 
-The differential prints `2000 problems: checksum 371941383, 48000 checks
-over 4 arms: 0 failures` under every lane in Verification. On a failure it
+The differential prints `2000 problems: checksum 371941383, 60000 checks
+over 5 arms: 0 failures` under every lane in Verification. On a failure it
 prints the first ten and then the count by property. The iterator arm
-joins it once it checks.
+joined it once B-2026-11-08-15 was fixed; the mutations below were run
+with the four arms before it, and none was added for it.
 
 ## Mutation testing
 
@@ -99,7 +100,9 @@ include the string-splitting ones, though Rust's `split_whitespace` is
 double-ended and reversing words is a common idiom. With the words
 collected first and then `words.reverse()`, the arm checks and prints the
 expected output, so `rev` is the only gap. The diagnostic gives no hint
-and `karac fix` has no edit.
+and `karac fix` has no edit. Fixed in kara `fd8d318ca`: `StrSplit` and
+`StrWords` keep a back cursor and are double-ended, and the arm checks as
+written and agrees on every lane.
 
 ## Rust template
 
@@ -142,7 +145,7 @@ language but C, which writes into one buffer.
 
 ## Verification
 
-The ★, match, bytes and Rust arms print the same output as `reformat.py`
+All five arms print the same output as `reformat.py`
 under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
 and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
