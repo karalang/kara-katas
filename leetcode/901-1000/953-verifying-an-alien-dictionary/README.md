@@ -175,3 +175,15 @@ times C's. Under valgrind's cachegrind v2 runs 3.16 billion
 instructions and 0.81 billion branches with 44.8 million mispredicted,
 Rust with overflow checks 3.02 billion, 0.66 billion and 41.8 million,
 and C 2.52 billion, 0.57 billion and 49.0 million.
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the 26-slot rank table was `Vec.filled(26, 0)`, a heap
+vector per call where the Rust mirror uses a stack array (`[0i64; 26]`);
+the arms, the differential and the bench now write `[0; 26]`. `karac
+fix` also took the allow-level lints the changed files had picked up
+since. Every arm's output and the bench's sink line are byte-identical
+before and after, under `__mir-run`, `__mir-llvm-run` and `build`,
+checked against a clean checkout; the bench's time did not move
+measurably, the allocation being small next to the work. Any M5 row
+above predates the change.

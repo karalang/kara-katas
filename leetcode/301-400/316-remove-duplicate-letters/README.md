@@ -233,3 +233,15 @@ working as intended. Nothing in `u8` arithmetic (`(c - b'a') as i64`,
 `(c as u8) + b'a'`, `u8 as char`), the 26-bit masks (`1 << c`, `& ~(1 << c)`),
 `String`'s `<`, `Vec[u8]` as a stack, or the recursion returning `String`
 gave the compiler any trouble.
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 `last` and `on_stack` were `Vec.new()` and 26 pushes,
+heap vectors per call where the C and Rust mirrors use stack arrays
+(`[-1i64; 26]`, `[false; 26]`); the arms, the differential and the bench
+now write `[-1; 26]` and `[false; 26]`. `karac fix` also took the
+allow-level lints the changed files had picked up since. Every arm's
+output and the bench's sink line are byte-identical before and after,
+under `__mir-run`, `__mir-llvm-run` and `build`, checked against a clean
+checkout; the bench's time did not move measurably, the allocation being
+small next to the work. Any M5 row above predates the change.

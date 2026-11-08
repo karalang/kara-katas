@@ -285,6 +285,19 @@ than as a soundness row.
 memory-bandwidth-shaped — 250k string headers per branch — and whether any of the
 gap is Kāra-specific is a smaller, separate question than the one this row
 answered.
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 both benches built `present`, `indeg` and `done` as
+`Vec.new()` and 26 pushes, heap vectors per solve where the Rust mirror
+uses stack arrays (`[false; 26]`, `[0i64; 26]`); the benches now write
+`[false; 26]` and `[0; 26]` (`adj` stays a `Vec`, as Rust's `vec![false;
+676]` is). `karac fix` also took the allow-level lints the changed files
+had picked up since. Every arm's output and the bench's sink line are
+byte-identical before and after, under `__mir-run`, `__mir-llvm-run` and
+`build`, checked against a clean checkout; the bench's time did not move
+measurably, the allocation being small next to the work. Any M5 row
+above predates the change.
+
 ## Kāra features exercised
 
 - **`String.bytes()`** with explicit `as i64` casts — the compiler rejects mixing

@@ -92,3 +92,15 @@ Compile-cold: clang 47.8 ms < rustc 92.1 ms < **karac 126.2 ms** (2.6× clang, 1
 ### Why Rust is in the harness
 
 Same rationale as [`1-two-sum/README.md § Why this kata is in the harness`](../1-two-sum/README.md#why-this-kata-is-in-the-harness): Rust is Kāra's semantic peer, so the headline seq ratio is the codegen-vs-Rust gap — and here it is an honest **loss**: kāra trails equal-safety `rustc -C overflow-checks=on` by 1.21× on the M5 (2026-11-01; 1.12× in July), a small, diffuse, not-yet-localized codegen gap (`B-2026-07-10-5`; the two obvious explanations were investigated at the IR level and disproven). That is exactly the value of keeping Rust in the harness — it turns a soft "kāra is fast" into a precise, tracked gap. C calibrates the metal floor (kāra 1.34× behind it), Go is the other native data point (fastest here), Python (run at 1/10 the iteration count, timed separately; last measured 2026-07-11) the ergonomic foil.
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the bench built its 4-slot `need` and `have` counts as
+`Vec.new()` and pushes, heap vectors per call where the C and Rust
+mirrors use stack arrays (`[0i64; 4]`); the bench now writes `[0; 4]`.
+`karac fix` also took the allow-level lints the changed files had picked
+up since. Every arm's output and the bench's sink line are
+byte-identical before and after, under `__mir-run`, `__mir-llvm-run` and
+`build`, checked against a clean checkout; the bench's time did not move
+measurably, the allocation being small next to the work. Any M5 row
+above predates the change.

@@ -47,6 +47,18 @@ Runtime, sequential lane on Apple M5 Pro (6P+12E), 2026-11-01, karac g6697158fa 
 
 Kāra trails every comparator: 1.46× behind `rustc -O` (1.51× on 2026-07-28, flat), 1.23× behind equal-safety Rust, 1.95× behind C. Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the bench built its count table as `Vec.new()` and
+`alphabet` pushes, a heap vector per call where the Rust mirror uses a
+stack array (`[0i64; 8]`, zeroed up to `alphabet`); the bench now does
+the same with `[0; 8]`. `karac fix` also took the allow-level lints the
+changed files had picked up since. Every arm's output and the bench's
+sink line are byte-identical before and after, under `__mir-run`,
+`__mir-llvm-run` and `build`, checked against a clean checkout; the
+bench's time did not move measurably, the allocation being small next to
+the work. Any M5 row above predates the change.
+
 ## Running
 
 ```bash

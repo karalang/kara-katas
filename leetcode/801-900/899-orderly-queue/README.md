@@ -164,3 +164,15 @@ inlined `n = 1000` into the loop and turned `% n` into multiplications
 while Rust and v2 divide on every letter; where each program spends its
 time was not profiled, so that is an inference. The comparison with C
 and Rust waits until after M4.
+
+### Fixed-size tables are arrays (2026-11-08)
+
+Until 2026-11-08 the 26-slot letter count was `Vec.filled(26, 0)`, a
+heap vector per call where the Rust mirror uses a stack array (`[0i64;
+26]`); the arms, the differential and the bench now write `[0; 26]`.
+`karac fix` also took the allow-level lints the changed files had picked
+up since. Every arm's output and the bench's sink line are
+byte-identical before and after, under `__mir-run`, `__mir-llvm-run` and
+`build`, checked against a clean checkout; the bench's time did not move
+measurably, the allocation being small next to the work. Any M5 row
+above predates the change.
