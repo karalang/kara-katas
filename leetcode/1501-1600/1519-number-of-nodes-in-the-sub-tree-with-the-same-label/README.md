@@ -106,7 +106,7 @@ wanted (the literal typing of B-2026-11-08-18). Five hand edits make it
 check and agree: `let mut cnt: Array[i32, 26] = ..`,
 `let mut ans: Vec[i32] = ..`, `e[0] as i64` and `e[1] as i64` in the two
 pushes, and `-1` for `usize.MAX`. The half-made `usize` to `i64` rewrite
-is not filed: the kata thread's ledger rows are at their cap of 10.
+is B-2026-11-08-49.
 
 ## Benchmarks
 
