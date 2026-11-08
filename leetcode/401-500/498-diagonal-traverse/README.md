@@ -117,31 +117,31 @@ Python `append`, and C an array it doubles with `realloc`.
 
 ### Apple M5 Pro, 2026-11-08
 
-30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
-(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15010+g2b8a45f36`
+(g2b8a45f36, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
 `KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
 The last column is Kāra's mean over that row's mean.
 
 | implementation | mean | Kāra / this |
 |---|---|---|
-| rust `-O` | 176.3 ms ± 2.3 | 1.34× |
-| rust `-O -C overflow-checks=on` (equal-safety) | 185.5 ms ± 3.3 | 1.27× |
-| c `clang -O3` | 207.1 ms ± 2.8 | 1.14× |
-| **kāra `karac build`, seq** | **236.1 ms ± 2.4** | **—** |
-| go `go build` | 315.5 ms ± 3.8 | 0.75× |
+| rust `-O` | 178.6 ms ± 1.9 | 1.34× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 188.4 ms ± 5.3 | 1.27× |
+| c `clang -O3` | 209.1 ms ± 2.7 | 1.15× |
+| **kāra `karac build`, seq** | **239.9 ms ± 1.1** | **—** |
+| go `go build` | 320.4 ms ± 2.9 | 0.75× |
 
-Kāra is 1.34× `rustc -O`, 1.27× equal-safety Rust, 1.14× C and 0.75× Go. The 1.27× gap to equal-safety Rust was not investigated and has gone to the compiler's review.
+Kāra is 1.34× `rustc -O`, 1.27× equal-safety Rust, 1.15× C and 0.75× Go. The 1.27× gap to equal-safety Rust was not investigated here; an arm64 profile (2026-11-08) puts it in the zigzag loop, where both arms of the up/down state machine are if-converted into one select chain and the outer `mat` header is reloaded per element. It has gone to the compiler's review.
 
 Compile time (cold, 10 runs) and artefact size:
 
 | | compile | binary | peak RSS |
 |---|---|---|---|
-| c | 50.3 ms ± 0.9 | 32.8 KiB | 11.5 MiB |
-| rust | 106.1 ms ± 0.9 | 455.9 KiB | 16.5 MiB |
-| kāra | 130.9 ms ± 2.8 | 66.9 KiB | 13.7 MiB |
+| c | 51.2 ms ± 0.8 | 32.8 KiB | 11.5 MiB |
+| rust | 107.9 ms ± 2.2 | 455.9 KiB | 16.3 MiB |
+| kāra | 135.2 ms ± 5.1 | 66.9 KiB | 13.7 MiB |
 | go | — | 2450.5 KiB | 37.5 MiB |
 
-`karac build` is 2.6× clang's cold compile and 1.2× rustc's. Kāra's
+`karac build` is 2.6× clang's cold compile and 1.3× rustc's. Kāra's
 68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
 [`bench/results.json`](bench/results.json). The sink matches across the Kāra,
 Rust, C and Go builds (`100 matrices of 10000 cells, 100 times each: checksum 397396001`).

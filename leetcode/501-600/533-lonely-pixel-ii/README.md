@@ -154,7 +154,42 @@ SipHash-1-3, the hasher Kāra's `Map` uses too; Go uses its built-in
 map, Python a dict. C has no map, so its mirror copies each row into
 a key buffer allocated at its full length and counts the keys in a
 fresh open-addressing table with FNV-1a, a much cheaper hash; Kāra,
-Rust and Go grow each key a `char` at a time. Spot timings on a
+Rust and Go grow each key a `char` at a time.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15010+g2b8a45f36`
+(g2b8a45f36, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 250.6 ms ± 1.3 | 1.99× |
+| **kāra `karac build`, seq** | **499.4 ms ± 3.2** | **—** |
+| rust `-O` | 841.8 ms ± 18.4 | 0.59× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 854.8 ms ± 25.2 | 0.58× |
+| go `go build` | 2036.6 ms ± 11.2 | 0.25× |
+
+Kāra is 0.59× `rustc -O`, 0.58× equal-safety Rust, 1.99× C and 0.25× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 80.9 ms ± 1.1 | 49.1 KiB | 1.9 MiB |
+| rust | 164.8 ms ± 0.9 | 474.5 KiB | 4.5 MiB |
+| kāra | 173.3 ms ± 2.4 | 83.4 KiB | 4.4 MiB |
+| go | — | 2450.8 KiB | 12.7 MiB |
+
+`karac build` is 2.1× clang's cold compile and 1.1× rustc's. Kāra's
+85,408-byte binary is 1.7× clang's and 5.7× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`20 pictures 200 wide, targets 1 to 8, 100 rounds: total 192000, checksum 661658600`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine):
 

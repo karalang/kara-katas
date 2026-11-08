@@ -139,7 +139,42 @@ it times the program as written now, which runs clean under `karac
 __mir-llvm-asan` too.
 
 The Rust mirror's tree is `Rc<RefCell<TreeNode>>`, the closest match to
-a `shared struct`; C and Go use plain pointers and never free. Spot
+a `shared struct`; C and Go use plain pointers and never free.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15010+g2b8a45f36`
+(g2b8a45f36, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 347.1 ms ± 2.4 | 1.36× |
+| go `go build` | 383.5 ms ± 2.4 | 1.23× |
+| **kāra `karac build`, seq** | **471.8 ms ± 4.3** | **—** |
+| rust `-O` | 476.9 ms ± 5.9 | 0.99× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 479.3 ms ± 5.6 | 0.98× |
+
+Kāra is 0.99× `rustc -O`, 0.98× equal-safety Rust, 1.36× C and 1.23× Go. The gaps were not investigated on this host. There is no legacy figure: the legacy dd86e3955 build prints a different result.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 49.9 ms ± 0.8 | 32.9 KiB | 47.2 MiB |
+| rust | 126.2 ms ± 1.5 | 473.8 KiB | 63.3 MiB |
+| kāra | 145.2 ms ± 3.6 | 66.9 KiB | 48.0 MiB |
+| go | — | 2450.5 KiB | 44.8 MiB |
+
+`karac build` is 2.9× clang's cold compile and 1.2× rustc's. Kāra's
+68,520-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100 trees of 10000 values, 50 times each: total 82384464850, checksum 951458667`).
+
+### Container x86-64 history
+
+Spot
 timings on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine):
 

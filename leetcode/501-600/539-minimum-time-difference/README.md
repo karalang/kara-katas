@@ -122,7 +122,42 @@ The mirrors parse each part the way their language reads a number from
 a string: Rust with `parse::<i64>()`, Go with `strconv.ParseInt`,
 Python with `int`, and C with a loop over the digits, since `strtoll`
 cannot stop at a length. C sorts with `qsort`, Go with `slices.Sort`,
-Rust with `sort` (stable, as Kāra's `sort` is). Spot timings on a
+Rust with `sort` (stable, as Kāra's `sort` is).
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.15010+g2b8a45f36`
+(g2b8a45f36, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 187.3 ms ± 2.9 | 1.17× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 194.9 ms ± 4.1 | 1.12× |
+| **kāra `karac build`, seq** | **219.0 ms ± 2.4** | **—** |
+| c `clang -O3` | 683.6 ms ± 3.9 | 0.32× |
+| go `go build` | 801.5 ms ± 12.6 | 0.27× |
+
+Kāra is 1.17× `rustc -O`, 1.12× equal-safety Rust, 0.32× C and 0.27× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 51.6 ms ± 0.6 | 33.0 KiB | 6.5 MiB |
+| rust | 148.7 ms ± 4.2 | 474.2 KiB | 11.2 MiB |
+| kāra | 158.9 ms ± 2.0 | 131.6 KiB | 10.1 MiB |
+| go | — | 2468.7 KiB | 17.6 MiB |
+
+`karac build` is 3.1× clang's cold compile and 1.1× rustc's. Kāra's
+134,768-byte binary is 4.0× clang's and 3.6× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`300 lists, 210949 times, 100 times each: total 30500, checksum 191494886`).
+
+### Container x86-64 history
+
+Spot timings on a
 shared 4-core container, three runs each (two for Python; `bench.sh`
 timings need a quiet machine):
 
