@@ -108,8 +108,8 @@ the sequential lane. A plain `karac build` parallelizes nothing here: its
 user time is below its real time (0.210 s and 0.226 s on one run).
 
 Kāra is 1.21x Rust under overflow checks by median. Plain `rustc -O` is
-three times faster than the checked build: with the `+=` unchecked, LLVM
-can turn the loop into branch-free code, which the checks prevent.
+three times faster than the checked build; the unchecked `+=` leaves
+LLVM freer to rework the loop, but that was not traced.
 Building the ten million chars one `push` at a time is part of every
 timing.
 
