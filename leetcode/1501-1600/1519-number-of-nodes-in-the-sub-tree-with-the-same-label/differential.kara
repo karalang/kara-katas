@@ -1,0 +1,283 @@
+// LeetCode #1519: Number of Nodes in the Sub-Tree With the Same Label --
+// the differential.
+//
+// Three arms against the statement read literally, on 2000 trees of 1 to
+// 10 nodes over 3 letters, with six properties.
+//
+// P1  the answer is the statement read literally: every node counts once
+//     for each node on its path to node 0 that has its letter
+// P2  the letters renamed (a to b, b to c, c to a) leave the answer
+// P3  every edge turned round and the edges listed backwards leave it
+// P4  node 0's answer is how often its letter appears in the whole tree
+// P5  with every node labelled `a`, the answers are the subtree sizes,
+//     which add up to the sum over nodes of (depth + 1)
+// P6  each arm agrees with both others
+//
+// The iterator arm (B-2026-11-08-32) and the Rust template are not here:
+// neither runs as `karac fix` left it.
+
+// ---- labels.kara: the ★ arm: counts returned up a recursive walk
+fn star_walk(node: i64, parent: i64, adjacent: Vec[Vec[i64]], labels: Vec[u8], answer: mut ref Vec[i64]) -> Vec[i64] {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for next in adjacent[node].iter() {
+        if next != parent {
+            let below = star_walk(next, node, adjacent, labels, mut answer);
+            for c in 0..26 {
+                counts[c] += below[c];
+            }
+        }
+    }
+    let mine = (labels[node] - 97) as i64;
+    counts[mine] += 1;
+    answer[node] = counts[mine];
+    counts
+}
+
+fn star_arm(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adjacent[a].push(b);
+        adjacent[b].push(a);
+    }
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    star_walk(0, -1, adjacent, letters, mut answer);
+    answer
+}
+
+// ---- labels_stack.kara: an explicit stack, counts added backwards
+fn stack_arm(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adjacent[a].push(b);
+        adjacent[b].push(a);
+    }
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    let mut order: Vec[i64] = Vec.new();
+    let mut stack: Vec[i64] = [0];
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[0] = true;
+    while let Some(node) = stack.pop() {
+        order.push(node);
+        for next in adjacent[node].iter() {
+            if not seen[next] {
+                seen[next] = true;
+                parent[next] = node;
+                stack.push(next);
+            }
+        }
+    }
+    let mut counts: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(26, 0));
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    for node in order.iter().rev() {
+        let mine = (letters[node] - 97) as i64;
+        counts[node][mine] += 1;
+        answer[node] = counts[node][mine];
+        let up = parent[node];
+        if up >= 0 {
+            for c in 0..26 {
+                counts[up][c] += counts[node][c];
+            }
+        }
+    }
+    answer
+}
+
+// ---- labels_euler.kara: an Euler tour, counts read at entry and exit
+fn tour(node: i64, parent: i64, adjacent: Vec[Vec[i64]], letters: Vec[u8], seen: mut ref Vec[i64], answer: mut ref Vec[i64]) {
+    let mine = (letters[node] - 97) as i64;
+    let before = seen[mine];
+    seen[mine] += 1;
+    for next in adjacent[node].iter() {
+        if next != parent {
+            tour(next, node, adjacent, letters, mut seen, mut answer);
+        }
+    }
+    answer[node] = seen[mine] - before;
+}
+
+fn euler_arm(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adjacent[a].push(b);
+        adjacent[b].push(a);
+    }
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut seen: Vec[i64] = Vec.filled(26, 0);
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    tour(0, -1, adjacent, letters, mut seen, mut answer);
+    answer
+}
+
+// ---- the statement read literally ----------------------------------------
+
+fn parents(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut parent: Vec[i64] = Vec.filled(n, -2);
+    parent[0] = -1;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (a, b) in edges.iter() {
+            if parent[a] != -2 and parent[b] == -2 {
+                parent[b] = a;
+                changed = true;
+            } else if parent[b] != -2 and parent[a] == -2 {
+                parent[a] = b;
+                changed = true;
+            }
+        }
+    }
+    parent
+}
+
+fn literal(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let parent = parents(n, edges);
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    for u in 0..n {
+        let mut v = u;
+        while v != -1 {
+            if letters[v] == letters[u] {
+                answer[v] += 1;
+            }
+            v = parent[v];
+        }
+    }
+    answer
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    if k == 0 {
+        star_arm(n, edges.clone(), labels.clone())
+    } else if k == 1 {
+        stack_arm(n, edges.clone(), labels.clone())
+    } else {
+        euler_arm(n, edges.clone(), labels.clone())
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "stack", "euler"][k].to_string()
+}
+
+fn main() {
+    let arms = 3;
+    let problems = 2000;
+    let mut seed = 15190;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first: the tree, its edges, the letters
+        let n = next_random(mut seed) % 10 + 1;
+        let mut edges: Vec[(i64, i64)] = Vec.new();
+        for i in 1..n {
+            let parent = next_random(mut seed) % i;
+            if next_random(mut seed) % 2 == 0 {
+                edges.push((parent, i));
+            } else {
+                edges.push((i, parent));
+            }
+        }
+        for i in (1..edges.len()).rev() {
+            edges.swap(i, next_random(mut seed) % (i + 1));
+        }
+        let mut labels = String.new();
+        for _ in 0..n {
+            labels.push((97 + next_random(mut seed) % 3) as u8 as char);
+        }
+        let renamed: String = labels.chars().map(|c| if c == 'c' { 'a' } else { ((c as u32 as u8) + 1) as char }).collect();
+        let mut turned: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (b, a)).collect();
+        turned.reverse();
+        let mut all_a = String.new();
+        for _ in 0..n {
+            all_a.push('a');
+        }
+        let parent = parents(n, edges);
+        let mut depths = 0;
+        for u in 0..n {
+            let mut v = u;
+            while v != -1 {
+                depths += 1;
+                v = parent[v];
+            }
+        }
+        let first = labels.bytes()[0];
+        let same = labels.bytes().iter().filter(|b| *b == first).count();
+
+        let truth = literal(n, edges, labels);
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, n, edges, labels);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, n, edges, renamed) != answer {
+                fails[2] += 1;
+            }
+            if arm(k, n, turned, labels) != answer {
+                fails[3] += 1;
+            }
+            if answer[0] != same {
+                fails[4] += 1;
+            }
+            let sizes = arm(k, n, edges, all_a);
+            if sizes.iter().sum() != depths or sizes != literal(n, edges, all_a) {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        for x in answers[0].iter() {
+            check = mix(check, *x);
+        }
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}

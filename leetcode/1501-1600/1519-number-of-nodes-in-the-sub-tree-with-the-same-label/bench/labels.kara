@@ -1,0 +1,56 @@
+// LeetCode #1519: Number of Nodes in the Sub-Tree With the Same Label --
+// the ★ arm: a depth-first walk from node 0 returns each subtree's count
+// of every letter; a node's answer is its own letter's count. O(26 n).
+
+fn walk(node: i64, parent: i64, adjacent: Vec[Vec[i64]], labels: Vec[u8], answer: mut ref Vec[i64]) -> Vec[i64] {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for next in adjacent[node].iter() {
+        if next != parent {
+            let below = walk(next, node, adjacent, labels, mut answer);
+            for c in 0..26 {
+                counts[c] += below[c];
+            }
+        }
+    }
+    let mine = (labels[node] - 97) as i64;
+    counts[mine] += 1;
+    answer[node] = counts[mine];
+    counts
+}
+
+fn count_sub_trees(n: i64, edges: Vec[(i64, i64)], labels: String) -> Vec[i64] {
+    let mut adjacent: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        adjacent[a].push(b);
+        adjacent[b].push(a);
+    }
+    let letters: Vec[u8] = labels.bytes().iter().collect();
+    let mut answer: Vec[i64] = Vec.filled(n, 0);
+    walk(0, -1, adjacent, letters, mut answer);
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 200000;
+    let mut seed = 1519;
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    for i in 1..n {
+        edges.push(((next_random(mut seed) * 32768 + next_random(mut seed)) % i, i));
+    }
+    let mut labels = String.new();
+    for _ in 0..n {
+        labels.push((97 + next_random(mut seed) % 26) as u8 as char);
+    }
+    let mut check = 0;
+    for _ in 0..5 {
+        for x in count_sub_trees(n, edges, labels).iter() {
+            check = (check * 31 + *x + 1) % 1000000007;
+        }
+    }
+    println(f"5 passes over a tree of 200000 nodes: checksum {check}");
+}
