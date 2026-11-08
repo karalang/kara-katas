@@ -142,7 +142,42 @@ Every mirror keeps two binary heaps and a hash map of counts for the
 numbers that have left: Rust `BinaryHeap` (with `Reverse`) and
 `HashMap`, Go `container/heap` and a map, Python `heapq` and a dict,
 and in C a heap and an open-addressing table written out by hand,
-since C has neither. Spot timings on a shared 4-core container, three
+since C has neither.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
+(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 149.9 ms ± 2.6 | 2.17× |
+| rust `-O` | 233.6 ms ± 3.1 | 1.39× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 234.7 ms ± 2.5 | 1.38× |
+| **kāra `karac build`, seq** | **324.5 ms ± 9.2** | **—** |
+| go `go build` | 640.2 ms ± 11.2 | 0.51× |
+
+Kāra is 1.39× `rustc -O`, 1.38× equal-safety Rust, 2.17× C and 0.51× Go. The 1.38× gap to equal-safety Rust was not investigated and has gone to the compiler's review. There is no legacy figure: the legacy dd86e3955 build prints a different result.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 57.7 ms ± 0.6 | 49.1 KiB | 91.8 MiB |
+| rust | 191.2 ms ± 3.5 | 473.7 KiB | 92.5 MiB |
+| kāra | 167.8 ms ± 2.0 | 67.1 KiB | 71.8 MiB |
+| go | — | 2451.8 KiB | 128.6 MiB |
+
+`karac build` is 2.9× clang's cold compile and 0.9× rustc's. Kāra's
+68,744-byte binary is 1.4× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1998001 windows: checksum 326442419`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three
 runs each (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

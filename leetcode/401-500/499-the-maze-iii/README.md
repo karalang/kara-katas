@@ -165,7 +165,42 @@ The mirrors keep the ★ arm's queue of (distance, instructions, row,
 column) pairs, each entry owning its own copy of its instructions:
 Rust a `BinaryHeap` of `Reverse(...)` with `String`s, Go
 `container/heap`, Python `heapq`, and C a binary heap it writes
-itself, comparing with `strcmp`, of `malloc`ed strings. Spot timings
+itself, comparing with `strcmp`, of `malloc`ed strings.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
+(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 240.6 ms ± 2.2 | 1.07× |
+| **kāra `karac build`, seq** | **258.7 ms ± 4.9** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 317.0 ms ± 1.6 | 0.82× |
+| rust `-O` | 327.1 ms ± 6.8 | 0.79× |
+| go `go build` | 395.1 ms ± 4.1 | 0.65× |
+
+Kāra is 0.79× `rustc -O`, 0.82× equal-safety Rust, 1.07× C and 0.65× Go. The gaps were not investigated on this host.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 70.6 ms ± 1.3 | 33.1 KiB | 11.0 MiB |
+| rust | 151.9 ms ± 2.9 | 473.1 KiB | 103.1 MiB |
+| kāra | 208.0 ms ± 3.1 | 67.0 KiB | 92.1 MiB |
+| go | — | 2451.6 KiB | 213.0 MiB |
+
+`karac build` is 2.9× clang's cold compile and 1.4× rustc's. Kāra's
+68,608-byte binary is 2.0× clang's and 7.1× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`1000 mazes of 100 by 100: the hole reached in 718, 23118 instructions in all, checksum 486756249`).
+
+### Container x86-64 history
+
+Spot timings
 on a shared 4-core container, three runs each (two for Python;
 `bench.sh` timings need a quiet machine):
 

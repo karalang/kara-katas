@@ -144,7 +144,42 @@ Every mirror takes the same float root with the C library's `pow` (Rust
 converts the number to text and back with the language's own routines
 (`snprintf` and `strtoll` in C). Most of the time is the up to 61 calls
 to `pow` per value, which is likely why the compiled rows land together
-(inferred, not profiled). Spot timings on a shared 4-core container,
+(inferred, not profiled).
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
+(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| rust `-O` | 147.0 ms ± 0.9 | 1.03× |
+| c `clang -O3` | 148.2 ms ± 1.2 | 1.02× |
+| **kāra `karac build`, seq** | **151.6 ms ± 1.7** | **—** |
+| rust `-O -C overflow-checks=on` (equal-safety) | 152.0 ms ± 1.0 | 1.00× |
+| go `go build` | 194.5 ms ± 1.3 | 0.78× |
+
+Kāra is 1.03× `rustc -O`, 1.00× equal-safety Rust, 1.02× C and 0.78× Go. The gaps were not investigated on this host. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes about the same number of instructions in 0.99× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 49.2 ms ± 0.9 | 32.9 KiB | 1.0 MiB |
+| rust | 103.9 ms ± 2.1 | 456.7 KiB | 1.1 MiB |
+| kāra | 141.7 ms ± 2.8 | 67.0 KiB | 1.1 MiB |
+| go | — | 2452.0 KiB | 4.6 MiB |
+
+`karac build` is 2.9× clang's cold compile and 1.4× rustc's. Kāra's
+68,560-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`50000 values: bases add up to 24865112 (mod 1000 each), checksum 46384329`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container,
 three runs each (two for Python; `bench.sh` timings need a quiet
 machine):
 

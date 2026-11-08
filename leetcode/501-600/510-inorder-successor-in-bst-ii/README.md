@@ -158,7 +158,42 @@ Every mirror keeps the parent link beside the two children: C, Go and
 Python a plain pointer or reference, and Rust a `Weak` in an
 `Rc<RefCell<Node>>`, the closest match to a `shared struct` with a
 `weak` field, so each step up upgrades it, as each read of a Kāra
-`weak` field does. Spot timings on a shared 4-core container, three
+`weak` field does.
+
+### Apple M5 Pro, 2026-11-08
+
+30 runs each, 5 warmups, on the Apple M5 Pro, karac `0.8.1-dev.14863+gda99ff05d`
+(gda99ff05d, the v2/MIR backend), measured 2026-11-08, with the Kāra binary built
+`KARAC_AUTO_PAR=0`. This is the kata's first M5 measurement; Python was not run.
+The last column is Kāra's mean over that row's mean.
+
+| implementation | mean | Kāra / this |
+|---|---|---|
+| c `clang -O3` | 516.4 ms ± 9.6 | 1.70× |
+| go `go build` | 561.3 ms ± 9.6 | 1.56× |
+| **kāra `karac build`, seq** | **875.9 ms ± 6.9** | **—** |
+| rust `-O` | 888.1 ms ± 7.6 | 0.99× |
+| rust `-O -C overflow-checks=on` (equal-safety) | 909.6 ms ± 12.7 | 0.96× |
+
+Kāra is 0.99× `rustc -O`, 0.96× equal-safety Rust, 1.70× C and 1.56× Go. Kāra matches Rust; against legacy it runs 1.43× the instructions in 1.18× the cycles, which has gone to the compiler's review. Against the legacy backend (exact counts, dd86e3955, `KARAC_AUTO_PAR=0`) Kāra executes 1.43× the instructions in 1.18× the cycles.
+
+Compile time (cold, 10 runs) and artefact size:
+
+| | compile | binary | peak RSS |
+|---|---|---|---|
+| c | 46.6 ms ± 1.0 | 32.7 KiB | 39.6 MiB |
+| rust | 133.1 ms ± 1.4 | 456.9 KiB | 70.6 MiB |
+| kāra | 145.7 ms ± 2.3 | 66.9 KiB | 55.3 MiB |
+| go | — | 2450.6 KiB | 52.1 MiB |
+
+`karac build` is 3.1× clang's cold compile and 1.1× rustc's. Kāra's
+68,512-byte binary is 2.0× clang's and 6.8× smaller than rustc's. Raw numbers are in
+[`bench/results.json`](bench/results.json). The sink matches across the Kāra,
+Rust, C and Go builds (`100 trees of 10000 nodes, 50 times each: 5000 without a successor, checksum 974699157`).
+
+### Container x86-64 history
+
+Spot timings on a shared 4-core container, three
 runs each (two for Python; `bench.sh` timings need a quiet machine):
 
 | | time |

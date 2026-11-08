@@ -27,7 +27,7 @@ if [ "${BENCH_JSON:-1}" = "1" ]; then
     require jq      "brew install jq"
     require python3 "python3 ships with macOS; or 'brew install python'"
 fi
-ROOT="$(cd ../../../../.. && pwd)"
+ROOT="$(cd ../../../.. && pwd)"
 . "$ROOT/scripts/bench-lib.sh"
 
 mkdir -p target
