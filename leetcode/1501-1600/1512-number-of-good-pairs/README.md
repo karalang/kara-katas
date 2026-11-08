@@ -19,7 +19,7 @@ nums = [1, 2, 3]           ->  0
 | `pairs_map.kara` | the same walk with the counts in a `Map`, so any values do. O(n) |
 | `pairs_sort.kara` | sorted, equal numbers sit in runs, and a run of `r` makes `r (r - 1) / 2` pairs. O(n log n) |
 | `pairs_iter.kara` | the counts by `fold` into a `Map`, then each count's pairs summed over `values()` (a sum, so the map's order does not show) |
-| `pairs_solution.kara` | LeetCode's Rust template (`HashMap::new()`, `for &x in nums.iter()`, `count.entry(x).or_insert(0)`), the ★ arm's walk, carried by `karac fix`. It checks and runs under the interpreter, and crashes compiled: B-2026-11-08-18 |
+| `pairs_solution.kara` | LeetCode's Rust template (`HashMap::new()`, `for &x in nums.iter()`, `count.entry(x).or_insert(0)`), the ★ arm's walk, carried by `karac fix`. It checks and runs under the interpreter, and crashes compiled: B-2026-11-08-19 |
 | `differential.kara` | the four arms that run on every lane against the statement read literally, six properties |
 
 Every arm prints the same 8 lines: LeetCode's three examples and two
@@ -81,7 +81,7 @@ The other five: the ★ arm counting twice per number (P1 2506, P4 3000, P5
 `c (c + 1) / 2` (both as M1), the iterator arm's `(c - 1)^2` (as M5), and
 the sort arm's `run * run / 2` (as M6).
 
-## Rust template: B-2026-11-08-18
+## Rust template: B-2026-11-08-19
 
 The Rust arm was written as LeetCode's Rust template plus a thin `i64`
 wrapper. `karac fix` makes 9 edits, then 1 and 1 (`HashMap::new()` to

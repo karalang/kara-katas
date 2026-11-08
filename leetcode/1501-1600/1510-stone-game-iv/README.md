@@ -24,7 +24,7 @@ n = 17  ->  false
 | `stones.kara` ★ | a pile wins for the player to move when some square taken leaves a pile that loses; the table filled from the empty pile, which loses, upward, each pile stopping at its first winning move. O(n sqrt n) |
 | `stones_push.kara` | pushed forward: each pile that loses makes every pile a square above it a win; a pile no losing pile reaches loses. O(n sqrt n) |
 | `stones_iter.kara` | iterators: the squares up to each pile by `(1..).map(..).take_while(..)`, and the pile wins if `any` of them leaves a losing pile |
-| `stones_solution.kara` | LeetCode's Rust template (`n as usize`, `vec![false; n + 1]`, `let mut k = 1; while k * k <= i`), the ★ arm, carried by `karac fix` to three errors: B-2026-11-08-16 and B-2026-11-08-17 |
+| `stones_solution.kara` | LeetCode's Rust template (`n as usize`, `vec![false; n + 1]`, `let mut k = 1; while k * k <= i`), the ★ arm, carried by `karac fix` to three errors: B-2026-11-08-16 and B-2026-11-08-18 |
 | `differential.kara` | the three arms that check against the statement read literally, six properties |
 
 Every arm prints the same 9 lines: the answer for LeetCode's three
@@ -88,7 +88,7 @@ its squares off by `k - 1` (as M3), and the push arm stepping `k` by
 doubling (as M8). One survives and is equivalent: the ★ arm without its
 `break` (a pile marked a win stays one).
 
-## Rust template: B-2026-11-08-16 and B-2026-11-08-17
+## Rust template: B-2026-11-08-16 and B-2026-11-08-18
 
 The Rust arm was written as LeetCode's Rust template plus a thin `i64`
 wrapper. `karac fix` makes 2 edits and then 1 (`vec![false; n + 1]` to
@@ -96,7 +96,7 @@ wrapper. `karac fix` makes 2 edits and then 1 (`vec![false; n + 1]` to
 `Vec.filled(n + 1, false)` with `n: usize` is B-2026-11-08-16 (a `usize`
 length is refused and the `as i64` the message asks for has no fix).
 `let mut k = 1; while k * k <= i { .. dp[i - k * k] .. }` with `i: usize`
-is B-2026-11-08-17: the literal stays an `i64`, so the comparison and the
+is B-2026-11-08-18: the literal stays an `i64`, so the comparison and the
 subtraction mix `i64` and `usize`, though the same literal bound by `let`
 is fixed to `i32` or `u32` by such a use. With `let mut k: usize = 1;`
 and `Vec.filled((n + 1) as i64, false)` written by hand, the arm checks
