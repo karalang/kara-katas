@@ -126,9 +126,11 @@ check through `karac fix` in two rounds: the syntax (`struct Solution
 `Solution.`), then the bridge's `as i64` the widening return no longer
 needs. One error has no fix, the one kata 1062 met: Rust infers `let mut
 ans = 0` as `i32` from the `ans += stack.len() as i32` and the return,
-and Kāra types the literal `i64`, so returning it as `i32` narrows. The
-`+=` is one of the shapes of kara B-2026-11-07-57 (open), and until it
-is fixed the arm writes `let mut ans: i32 = 0`.
+and Kāra types the literal `i64`, so returning it as `i32` narrows.
+Kara B-2026-11-07-57 made an assignment fix a literal, but by its ruling
+a compound assignment's operand does not, so this error stays; what is
+missing is its fix, the annotation (kara B-2026-11-08-20, open). Until
+then the arm writes `let mut ans: i32 = 0`.
 
 ## Benchmarks
 

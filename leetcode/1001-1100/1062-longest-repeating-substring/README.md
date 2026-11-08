@@ -130,14 +130,13 @@ written around (kara `acf4607cbd`, `tests/kata_1062_check_gaps.rs`):
 The Rust arm was written as LeetCode's Rust template and reaches a clean
 check through `karac fix` in three rounds: the syntax (`struct
 Solution {}`, `max`, `Solution.`), then `as_bytes`, the outer `vec!` and
-the `as i64` the return no longer needs, then the inner `vec!`. One error has no fix: Rust infers
-`let mut best = 0` as `i32` from the return, and Kāra types the literal
-`i64`, so returning it as `i32` narrows. design.md § Type inference
-says a literal defaults last, after every use has had its chance to fix
-it. Kara B-2026-11-07-3 made a `let`, an operand or a push fix it, but an
-assignment (`best = max(best, dp[i][j])`, `b = y`, `b += y`) and a generic
-call's argument still do not; that is kara B-2026-11-07-57 (open), and
-until it is fixed the arm writes `let mut best: i32 = 0`.
+the `as i64` the return no longer needs, then the inner `vec!`. Rust
+infers `let mut best = 0` as `i32` from the return. Kāra typed the
+literal `i64` until kara B-2026-11-07-57 (fixed in b85cf41506): an
+assignment (`best = max(best, dp[i][j])`) and a generic call's argument
+now fix a literal, as design.md § Type inference asks, so the arm keeps
+Rust's untyped `let mut best = 0`. Until that fix it wrote
+`let mut best: i32 = 0` by hand.
 
 ## Benchmarks
 
