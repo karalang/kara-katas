@@ -1,9 +1,8 @@
 // LeetCode #1505: Minimum Possible Integer After at Most K Adjacent Swaps On
 // Digits -- the differential.
 //
-// Three arms against the statement read literally, on 2000 problems, with
-// six properties. The iterator arm (B-2026-11-08-12) and LeetCode's Rust
-// template (B-2026-11-08-13) do not check yet and join when they do.
+// Five arms against the statement read literally, on 2000 problems, with
+// six properties.
 //
 // P1  the answer is the statement read literally: the least number that
 //     at most k adjacent swaps reach, by breadth-first search (up to 6
@@ -12,7 +11,7 @@
 // P3  one more swap allowed never makes the answer larger
 // P4  with k at least n (n - 1) / 2 the answer is the digits sorted
 // P5  the answer is at most k adjacent swaps from the number
-// P6  each arm agrees with at least one of the other two
+// P6  each arm agrees with at least two of the other four
 
 // ---- swaps.kara: the ★ arm: per-digit queues and a Fenwick tree
 fn taken_before(tree: Vec[i64], i: i64) -> i64 {
@@ -136,6 +135,68 @@ fn sorted_arm(num: String, k: i64) -> String {
     out
 }
 
+// ---- swaps_iter.kara: the window greedy with iterators
+fn iter_arm(num: String, k: i64) -> String {
+    let mut digits = num.bytes().to_vec();
+    let n = digits.len();
+    let mut left = k;
+    for i in 0..n {
+        let end = n.min(i + left + 1);
+        let (offset, _) = digits[i..end].iter().enumerate().min_by_key(|(_, d)| *d).unwrap();
+        let d = digits.remove(i + offset);
+        digits.insert(i, d);
+        left -= offset;
+    }
+    String.from_utf8(digits).unwrap()
+}
+
+// ---- swaps_solution.kara: LeetCode's Rust template as karac fix left it
+struct Solution {}
+
+impl Solution {
+    pub fn min_integer(num: String, k: i32) -> String {
+        let s = num.bytes();
+        let n = s.len();
+        let mut pos: Vec[Vec[i64]] = Vec.filled(10, Vec.new());
+        for i in (0..n).rev() {
+            pos[(s[i] - b'0') as usize].push(i);
+        }
+        let mut bit = Vec.filled(n + 1, 0i32);
+        let mut k = k;
+        let mut ans = String.with_capacity(n);
+        for _ in 0..n {
+            for d in 0..10 {
+                if let Some(i) = pos[d].last().cloned() {
+                    // `: i32` until B-2026-11-07-57: `before += bit[j]` does not fix the literal's type
+                    let mut before: i32 = 0;
+                    let mut j = i;
+                    while j > 0 {
+                        before += bit[j];
+                        j -= j & j.wrapping_neg();
+                    }
+                    let cost = i as i32 - before;
+                    if cost <= k {
+                        k -= cost;
+                        pos[d].pop();
+                        let mut j = i + 1;
+                        while j <= n {
+                            bit[j] += 1;
+                            j += j & j.wrapping_neg();
+                        }
+                        ans.push((b'0' + d as u8) as char);
+                        break;
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(num: String, k: i64) -> String {
+    Solution.min_integer(num, k.min(1000000000) as i32)
+}
+
 // ---- the statement read literally: every number k adjacent swaps reach
 fn literal(num: String, k: i64) -> String {
     let mut seen: Set[String] = Set.new();
@@ -179,13 +240,17 @@ fn arm(a: i64, num: String, k: i64) -> String {
         star_arm(num.clone(), k)
     } else if a == 1 {
         window_arm(num.clone(), k)
-    } else {
+    } else if a == 2 {
         sorted_arm(num.clone(), k)
+    } else if a == 3 {
+        iter_arm(num.clone(), k)
+    } else {
+        solution_arm(num.clone(), k)
     }
 }
 
 fn arm_name(a: i64) -> String {
-    ["star", "window", "sorted"][a].to_string()
+    ["star", "window", "sorted", "iter", "solution"][a].to_string()
 }
 
 // The adjacent swaps that turn `from` into `to`: each digit of `to` taken
@@ -213,7 +278,7 @@ fn swaps_between(from: String, to: String) -> i64 {
 }
 
 fn main() {
-    let arms = 3;
+    let arms = 5;
     let problems = 2000;
     let mut seed = 15050;
     let mut check = 0;
@@ -275,7 +340,7 @@ fn main() {
                 }
             }
             checks += 1;
-            if agree < 1 {
+            if agree < 2 {
                 by_property[6] += 1;
                 if shown < 10 {
                     println(f"problem {p}, {arm_name(a)}: P6");

@@ -22,21 +22,20 @@ has no leading zeros; `1 <= k <= 10^9`.
 | `swaps.kara` ★ | greedily, each place takes the smallest digit whose nearest copy can be brought there with the swaps left. Bringing the copy at original index `i` costs `i` less the digits already taken from before it, counted by a Fenwick tree; each digit's indices wait in a queue. O(10 n log n) |
 | `swaps_window.kara` | the greedy by hand: each place looks at the next `k + 1` digits, takes the first copy of the smallest, and rotates it to the front, spending one swap per digit it passes. O(n min(n, k)) |
 | `swaps_sorted.kara` | the ★ arm's greedy with the taken indices in a sorted `Vec`, the count before an index by binary search, and each digit's indices in a `VecDeque`. O(n) per insert |
-| `swaps_iter.kara` | the window greedy with iterators: the window's smallest by `enumerate().min_by_key(..)` (the first of equals), then `remove` and `insert`. Refused by `karac check`: blocked by B-2026-11-08-12 |
-| `swaps_solution.kara` | LeetCode's Rust template (`as_bytes`, `vec![Vec::new(); 10]`, `if let Some(&i) = pos[d].last()`, `wrapping_neg`), the ★ arm's greedy, carried by `karac fix` to one error: blocked by B-2026-11-08-13 |
-| `differential.kara` | the three arms that check against the statement read literally, six properties |
+| `swaps_iter.kara` | the window greedy with iterators: the window's smallest by `enumerate().min_by_key(..)` (the first of equals), then `remove` and `insert`. Refused by `karac check` until B-2026-11-08-12 was fixed |
+| `swaps_solution.kara` | LeetCode's Rust template (`as_bytes`, `vec![Vec::new(); 10]`, `if let Some(&i) = pos[d].last()`, `wrapping_neg`), the ★ arm's greedy, carried by `karac fix`; blocked by B-2026-11-08-13 until it was fixed |
+| `differential.kara` | the five arms against the statement read literally, six properties |
 
 Every arm prints the same 11 lines: the answers for LeetCode's five
 examples and three more, then a checksum of every digit of every answer
 for 3000 numbers of 1 to 8 digits (`k` up to 30), 300 of 1 to 200 (`k` up
 to 3000), and 3 of 1 to 1500 (`k` up to 10^6), each drawn from the first
 1 to 10 digits. `swaps.py` mirrors the ★ arm and its output is
-byte-identical; `swaps_iter.kara` prints it too under `karac __mir-run`,
-which does not stop at the check's refusal.
+byte-identical.
 
 ## Differential
 
-`differential.kara` holds copies of the three arms that check and the
+`differential.kara` holds copies of the five arms and the
 statement read literally: a breadth-first search over every number at
 most `k` adjacent swaps reach, keeping the least. It checks 2000 problems
 of 1 to 6 digits with `k` up to 8. Every random choice of a problem is
@@ -49,12 +48,14 @@ drawn before any arm answers.
 | P3 | one more swap allowed never makes the answer larger |
 | P4 | with `k` at least `n (n - 1) / 2` the answer is the digits sorted |
 | P5 | the answer is at most `k` adjacent swaps from the number |
-| P6 | each arm agrees with at least one of the other two |
+| P6 | each arm agrees with at least two of the other four |
 
-The differential prints `2000 problems: checksum 480984163, 36000 checks
-over 3 arms: 0 failures` under every lane in Verification. On a failure it
+The differential prints `2000 problems: checksum 480984163, 60000 checks
+over 5 arms: 0 failures` under every lane in Verification. On a failure it
 prints the first ten and then the count by property. The iterator and Rust
-arms join it once they check.
+arms joined it once B-2026-11-08-12 and -13 were fixed; the mutations
+below were run with the three arms before them, when P6 asked each arm to
+agree with at least one of the other two, and none was added for them.
 
 ## Mutation testing
 
@@ -104,8 +105,11 @@ borrowed as `Slice[T]` at that line, at `digits.remove(..)` and
 `digits.insert(..)`. Nothing holds the borrow: `offset` is an `i64` and
 the `_` binds nothing. Measured on a five-line program: the refusal needs
 both the range slice and the tuple pattern. `v.iter()` for `v[0..3].iter()`,
-or `.unwrap().0` for the pattern, checks. `karac __mir-run` accepts the
-arm and prints the expected output, so only the front-end checker objects.
+or `.unwrap().0` for the pattern, checks. `karac __mir-run` accepted the
+arm and printed the expected output, so only the front-end checker
+objected. Fixed in kara `edc6b01e2` (a `let` that destructures a slice
+read keeps the slice borrowed only through the parts that still borrow
+it); the arm checks as written and agrees on every lane.
 
 ## Rust template: B-2026-11-08-13
 
@@ -117,7 +121,10 @@ the `Option<&usize>`; without it `i` is a reference into `pos[d]`, and
 the later `pos[d].pop()` is refused (E0516, no fix). The edit that keeps
 the meaning is `pos[d].last().cloned()`. With that written by hand (and
 `before: i32` until B-2026-11-07-57, as in kata 1504), `karac fix` makes 8
-more edits and the arm checks and prints the ★ arm's output.
+more edits and the arm checks and prints the ★ arm's output. Fixed in
+kara `f4b3b2a3b`: the `&` sigil's fix now writes `.cloned()` on the
+scrutinee. Run on the Rust spelling again, `karac fix` writes
+`if let Some(i) = pos[d].last().cloned()`, and the file holds that.
 
 ## Benchmarks
 
@@ -148,7 +155,7 @@ million digits is part of every timing.
 
 ## Verification
 
-The ★, window and sorted arms print the same output as `swaps.py` under
+All five arms print the same output as `swaps.py` under
 `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`, and
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
