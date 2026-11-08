@@ -1,0 +1,168 @@
+// LeetCode #1523: Count Odd Numbers in an Interval Range -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 intervals
+// with both ends in 0 to 30, with six properties.
+//
+// P1  the answer is the statement read literally: the odd numbers from
+//     low to high, walked and counted
+// P2  the interval moved up by 2 leaves the answer
+// P3  the interval cut in two at a random place: the two answers sum to it
+// P4  the answer and the interval moved up by 1's answer sum to its length
+// P5  the interval from 2 low to 2 high holds high - low odd numbers
+// P6  each arm agrees with at least two of the other three
+
+// ---- count.kara: the ★ arm: odd numbers up to high less those below low
+
+fn star_arm(low: i64, high: i64) -> i64 {
+    (high + 1) / 2 - low / 2
+}
+
+// ---- count_parity.kara: half the steps, and one more when an end is odd
+
+fn parity_arm(low: i64, high: i64) -> i64 {
+    let extra = if low % 2 == 1 or high % 2 == 1 { 1 } else { 0 };
+    (high - low) / 2 + extra
+}
+
+// ---- count_ends.kara: from the first odd number to the last
+
+fn ends_arm(low: i64, high: i64) -> i64 {
+    let first = low | 1;
+    let last = if high % 2 == 0 { high - 1 } else { high };
+    if first > last {
+        0
+    } else {
+        (last - first) / 2 + 1
+    }
+}
+
+// ---- count_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_odds(low: i32, high: i32) -> i32 {
+        let n = high - low + 1;
+        if n % 2 == 1 and (low & 1) == 1 {
+            n / 2 + 1
+        } else {
+            n / 2
+        }
+    }
+}
+
+fn solution_arm(low: i64, high: i64) -> i64 {
+    Solution.count_odds(low as i32, high as i32) as i64
+}
+
+// ---- the statement read literally -----------------------------------------
+
+// every number from low to high, walked, the odd ones counted
+fn literal(low: i64, high: i64) -> i64 {
+    (low..=high).filter(|x| x % 2 == 1).count()
+}
+
+// ---- the differential -----------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, low: i64, high: i64) -> i64 {
+    if k == 0 {
+        star_arm(low, high)
+    } else if k == 1 {
+        parity_arm(low, high)
+    } else if k == 2 {
+        ends_arm(low, high)
+    } else {
+        solution_arm(low, high)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "parity", "ends", "solution"][k].to_string()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15230;
+    let mut check = 0;
+    let mut checks = 0;
+    let mut by_property: Vec[i64] = Vec.filled(7, 0);
+    let mut shown = 0;
+    for p in 0..problems {
+        // everything random is drawn first
+        let a = next_random(mut seed) % 31;
+        let b = next_random(mut seed) % 31;
+        let low = a.min(b);
+        let high = a.max(b);
+        let cut = low + next_random(mut seed) % (high - low + 1);
+        let truth = literal(low, high);
+        let mut answers: Vec[i64] = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, low, high);
+            let mut fails: Vec[i64] = Vec.filled(7, 0);
+            if answer != truth {
+                fails[1] += 1;
+            }
+            if arm(k, low + 2, high + 2) != answer {
+                fails[2] += 1;
+            }
+            let split = if cut < high { arm(k, low, cut) + arm(k, cut + 1, high) } else { answer };
+            if split != answer {
+                fails[3] += 1;
+            }
+            if answer + arm(k, low + 1, high + 1) != high - low + 1 {
+                fails[4] += 1;
+            }
+            if arm(k, 2 * low, 2 * high) != high - low {
+                fails[5] += 1;
+            }
+            answers.push(answer);
+            for q in 1..6 {
+                checks += 1;
+                if fails[q] > 0 {
+                    by_property[q] += 1;
+                    if shown < 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q}");
+                        shown += 1;
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                by_property[6] += 1;
+                if shown < 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                    shown += 1;
+                }
+            }
+        }
+        check = mix(check, truth);
+    }
+    let failures = by_property.iter().sum();
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+    if failures > 0 {
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                println(f"P{q}: {by_property[q]}");
+            }
+        }
+    }
+}
