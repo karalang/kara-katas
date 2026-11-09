@@ -137,7 +137,7 @@ differential 9.3 s; on kara 3dcd076373.
 The text arm was first written with Rust's `sentence.match_indices(" ")`
 for the spaces, and refused: Kāra's strings have no `match_indices` (nor
 `char_indices`), and the error, "no method 'match_indices' on type
-'String'", names nothing to write instead. That is kara B-2026-11-09-51.
+'String'", names nothing to write instead. That is kara B-2026-11-09-57.
 The arm takes the positions from `chars().enumerate()` instead, which
 counts characters, the same as bytes for the sentence's lowercase letters.
 
