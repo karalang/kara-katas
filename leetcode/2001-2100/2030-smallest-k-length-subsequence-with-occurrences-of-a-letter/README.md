@@ -100,16 +100,16 @@ kept ones fail the same checks.
 P1 and P6 kill all seventeen, P2 and P5 twelve each, P3 seven and P4 one.
 P2 lowers `repetition`, which frees a place the tighter demand held for a
 copy of `letter`; an edit that holds the wrong places (an equal character
-popped, M1; the largest taken, M13) is seen there as well as by P1. P3
-asks for the whole string, so it sees the edits that refuse a place the
-whole length needs: the last place that leaves room refused (M4), a
-position at the start passed over (M7), the window not moved past the
-place taken (M14). P5 feeds the answer back, and an answer short of
-`letter` is not a valid problem, so it sees the edits that keep too few
-copies (M2, M3, M8, M12, M15 among them). P4 moves the alphabet up, which only an arm
-that walks the characters in order can tell from the original: with no
-`a` left in the moved string, the lists arm stopping at the first
-character with no position (M9) stops before it takes anything.
+popped, M1; the largest taken, M13) is seen there as well as by P1. P3 asks
+for the whole string, so it sees the edits that refuse a place the whole
+length needs: the last place that leaves room refused (M4), a position at
+the start passed over (M7), the window not moved past the place taken
+(M14). P5 feeds the answer back, and an answer short of `letter` is not a
+valid problem, so it sees the edits that keep too few copies (M2, M3, M8,
+M12, M15 among them). P4 moves the alphabet up, which only an arm that
+walks the characters in order can tell from the original: with no `a` left
+in the moved string, the lists arm stopping at the first character with no
+position (M9) stops before it takes anything.
 
 The other thirteen fail as a kept one does, or with counts of their own.
 An equal character popped (string), and the last of equals taken (scan)

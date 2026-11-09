@@ -95,26 +95,27 @@ P1, P3, P4 and P6 kill all seventeen, P2 fifteen and P5 nine. P2 reverses
 the array, so it misses exactly the edits whose wrong answer is itself
 symmetric: the query including the current sum (M7) and the left count
 taken from index 0 (M10). M7 counts the subarrays with at least as many 1s
-as 0s, which reversing leaves alone. P5 turns the first 0 into a 1 and asks only for
-a rise, so it sees the edits that can lower an answer as a bit is raised:
-a step that reads the count at the wrong sum (M1, M2), the count below
-never lowered (M6), the Fenwick and segment trees walked wrongly (M8, M9,
-M13 to M15), and a run of two left unsorted (M12).
+as 0s, which reversing leaves alone. P5 turns the first 0 into a 1 and asks
+only for a rise, so it sees the edits that can lower an answer as a bit is
+raised: a step that reads the count at the wrong sum (M1, M2), the count
+below never lowered (M6), the Fenwick and segment trees walked wrongly (M8,
+M9, M13 to M15), and a run of two left unsorted (M12).
 
 The other thirteen fail as a kept one does, or with counts of their own.
 The Rust arm's count at the new sum fails as M1, the map arm's step down
 before moving as M2, and the Rust arm's running count never lowered as M6.
 Four edits fail with exactly M7's counts: a 0 leaving the sum where it was
 (★), an equal left sum counted as below and a 1 worth 2 in the sums
-(merge), and the range below including the current leaf (segment tree).
-The second and fourth count `>=` as M7 does; the other two reach the same
-counts on these 1500 arrays by another road. The empty prefix never counted fails alike in the ★,
-map, Fenwick and Rust arms; a 0 moving the Fenwick sum up and the segment
-tree's leaf never updated fail with counts of their own. Three drafts
-changed no answer and were replaced: a sum not yet seen read as 1 on a
-step up (the current sum is always seen), a Fenwick add stopping one node
-short (the highest sum is added last and never asked about), and the
-segment tree's root never updated (no query reads the root).
+(merge), and the range below including the current leaf (segment tree). The
+second and fourth count `>=` as M7 does; the other two reach the same
+counts on these 1500 arrays by another road. The empty prefix never counted
+fails alike in the ★, map, Fenwick and Rust arms; a 0 moving the Fenwick
+sum up and the segment tree's leaf never updated fail with counts of their
+own. Three drafts changed no answer and were replaced: a sum not yet seen
+read as 1 on a step up (the current sum is always seen), a Fenwick add
+stopping one node short (the highest sum is added last and never asked
+about), and the segment tree's root never updated (no query reads the
+root).
 
 ## Verification
 

@@ -112,14 +112,15 @@ place early in the simulate arm) all fail as M1; the ★ arm's every `X` a
 move fails as M10; the ★ and Rust arms' last place never looked at and an
 `X` in the last place ignored fail as M8; the fold arm's first place taken
 as covered, the dp arm's answer read one place in and the Rust arm's first
-place skipped fail as M2. The find arm's last place never searched (P1
-189, P2 155) and the fold arm counting an `O` at a free first place (P1
-499, P3 1001) fail with counts of their own. Two Rust drafts were
-replaced. Its last place never examined failed as M8, which left the arm
-no failure of its own. And "a move near the end counted twice", written `ans += if i + 3 >= s.len() { 2 } else { 1 }`,
-did not check: an `if` of two literals beside `ans` fixes the binding at
-`i64` (design.md § Type inference), and the method's `i32` return then
-refuses it, the shape B-2026-11-08-20 asks a machine fix for.
+place skipped fail as M2. The find arm's last place never searched (P1 189,
+P2 155) and the fold arm counting an `O` at a free first place (P1 499, P3
+1001) fail with counts of their own. Two Rust drafts were replaced. Its
+last place never examined failed as M8, which left the arm no failure of
+its own. And "a move near the end counted twice", written `ans += if i + 3
+>= s.len() { 2 } else { 1 }`, did not check: an `if` of two literals beside
+`ans` fixes the binding at `i64` (design.md § Type inference), and the
+method's `i32` return then refuses it, the shape B-2026-11-08-20 asks a
+machine fix for.
 
 ## Verification
 

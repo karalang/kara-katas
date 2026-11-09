@@ -116,15 +116,15 @@ only the first time (M9 to M11).
 
 The other fourteen fail as a kept one does, or with counts of their own.
 The brute and ends arms letting a string pair with itself fail as M1; the
-sorted arm counting a string paired with itself once and skipping a
-prefix that is its own rest fail as M2; the Rust arm counting a repeated
-string once and the ★ arm doing the same fail alike (P1 494, P3 994).
-With counts of their own: the ★ arm's last cut never tried (P1 338), the brute arm's pairs
-with `i` before `j` only (P1 631), the ends arm's second string tested as
-a prefix (P1 392) and lengths compared with one to spare (P1 653), the
-seen arm's string counted before its own pairs (P1 994) and prefix half
-only for the first string (P1 256), the sorted arm's counts of the rest
-ignored (P1 122), and the Rust arm's cut one digit early (P1 158).
+sorted arm counting a string paired with itself once and skipping a prefix
+that is its own rest fail as M2; the Rust arm counting a repeated string
+once and the ★ arm doing the same fail alike (P1 494, P3 994). With counts
+of their own: the ★ arm's last cut never tried (P1 338), the brute arm's
+pairs with `i` before `j` only (P1 631), the ends arm's second string
+tested as a prefix (P1 392) and lengths compared with one to spare (P1
+653), the seen arm's string counted before its own pairs (P1 994) and
+prefix half only for the first string (P1 256), the sorted arm's counts of
+the rest ignored (P1 122), and the Rust arm's cut one digit early (P1 158).
 
 Five drafts were replaced. Four survived, all equivalent: the brute arm
 joining each pair the other way round (every ordered pair is tried, so

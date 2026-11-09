@@ -185,8 +185,9 @@ sequential lane. A plain `karac build` parallelizes nothing here: its user
 time (0.510 s) is not above its real time (0.518 s).
 
 The sequential Kāra program is 1.04x Rust under overflow checks and 0.32x
-C. When this kata was written it was 2.46x (kara 64bba595f2) Rust: Kāra sent a Vec of
-pairs to the runtime's generic merge sort, which called the comparison
-through a pointer, where Rust monomorphizes its stable sort. That was
-B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of non-integer
-elements now runs an emitted merge sort with the comparison in line.
+C. When this kata was written it was 2.46x (kara 64bba595f2) Rust: Kāra
+sent a Vec of pairs to the runtime's generic merge sort, which called the
+comparison through a pointer, where Rust monomorphizes its stable sort.
+That was B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of
+non-integer elements now runs an emitted merge sort with the comparison in
+line.

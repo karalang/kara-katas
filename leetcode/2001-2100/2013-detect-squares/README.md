@@ -128,12 +128,13 @@ draws a `y` of 1000.
 
 ## Verification
 
-Every arm prints the same output as `squares.py` under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
-and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-every arm and the differential. `karac check --output=json` reports nothing
-on any of them. Under `karac __mir-run` the arms take 0.14 s (columns) to
-0.27 s (★) and the differential 8.6 s.
+Every arm prints the same output as `squares.py` under `karac __mir-run`
+(the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error. `karac
+run` and a `karac build` binary print the same output for every arm and the
+differential. `karac check --output=json` reports nothing on any of them.
+Under `karac __mir-run` the arms take 0.14 s (columns) to 0.27 s (★) and
+the differential 8.6 s.
 
 The five arms were written in Kāra and checked clean. The ★ arm first kept
 a full 1001 by 1001 grid per structure, which took 45 s under the

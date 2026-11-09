@@ -112,12 +112,12 @@ both fail P1 and P6 266 times; the push arm with its row count unchecked
 fails as the Rust arm's shape checked against `n` alone (P1 340, P5 410).
 The ★ arm's rows in reverse order (P1, P2, P6 182), its whole array as one
 row when `n` is 1 (P1, P6 32), and the push arm pushing a value after its
-check (P1, P6 285) fail with counts of their own. Three drafts were replaced, all equivalent: an
-index edit that wrote the first row twice and was then overwritten by the
-original line, a push edit that rebuilt the fresh row as empty by a
-roundabout way, and an iter edit `by_ref().take(n + 1).take(n)`, which
-never skips a value because the outer `take(n)` stops pulling after `n`,
-exactly as Rust's iterators do.
+check (P1, P6 285) fail with counts of their own. Three drafts were
+replaced, all equivalent: an index edit that wrote the first row twice and
+was then overwritten by the original line, a push edit that rebuilt the
+fresh row as empty by a roundabout way, and an iter edit `by_ref().take(n +
+1).take(n)`, which never skips a value because the outer `take(n)` stops
+pulling after `n`, exactly as Rust's iterators do.
 
 ## Verification
 

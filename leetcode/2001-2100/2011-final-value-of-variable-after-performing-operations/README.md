@@ -94,18 +94,18 @@ the last step kept (M12), and a decrement resetting `X` to 0 (M13).
 The other fifteen fail as a kept one does. Every arm can get a single form
 wrong, and each form has one signature: `X++` wrong fails alike in the ★,
 count, middle, fold, table and Rust arms (six edits); `++X` wrong in the ★,
-middle, fold and table arms; `--X` wrong in the fold and table arms; `X--` wrong in the ★ and Rust arms. Starting at 1 fails alike
-in the ★ and Rust arms; a first operation dropped in the middle and fold
-arms; the downs never subtracted, a decrement of 2 and a decrement's step of
-0 alike (P4 1500, P5 770); and every operation subtracted fails as the
-middle character compared with `X`. Two drafts were replaced. The Rust
-arm's first operation dropped, `operations.iter().skip(1).fold(0, ..)` in
-a function returning `i32`, was refused by the checker: the literal `0`
-took `i64` where it was written, though `iter().fold(0, ..)` and a range's
-`fold(0, ..)` take `i32` from the return (B-2026-11-08-44, fixed in kara
-af14c52dbd; the edit now checks and fails as the middle and fold arms'
-first operation dropped). The table arm's `--X`
-stepped by 2 duplicated another edit's signature.
+middle, fold and table arms; `--X` wrong in the fold and table arms; `X--`
+wrong in the ★ and Rust arms. Starting at 1 fails alike in the ★ and Rust
+arms; a first operation dropped in the middle and fold arms; the downs
+never subtracted, a decrement of 2 and a decrement's step of 0 alike (P4
+1500, P5 770); and every operation subtracted fails as the middle character
+compared with `X`. Two drafts were replaced. The Rust arm's first operation
+dropped, `operations.iter().skip(1).fold(0, ..)` in a function returning
+`i32`, was refused by the checker: the literal `0` took `i64` where it was
+written, though `iter().fold(0, ..)` and a range's `fold(0, ..)` take `i32`
+from the return (B-2026-11-08-44, fixed in kara af14c52dbd; the edit now
+checks and fails as the middle and fold arms' first operation dropped). The
+table arm's `--X` stepped by 2 duplicated another edit's signature.
 
 ## Verification
 

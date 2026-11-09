@@ -54,10 +54,11 @@ prints the first ten and then the count by property.
 
 ## Mutation testing
 
-Thirty edits to the differential, five to each of its arms, each run
-under `karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept,
-three to each Kāra arm and two to the Rust arm. All thirty are killed, each fails the same way under both
-backends, none by a crash, and no two kept ones fail the same checks.
+Thirty edits to the differential, five to each of its arms, each run under
+`karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept, three to
+each Kāra arm and two to the Rust arm. All thirty are killed, each fails
+the same way under both backends, none by a crash, and no two kept ones
+fail the same checks.
 
 | # | mutation | failures by property |
 |---|---|---|

@@ -98,14 +98,15 @@ every mask as a palindrome and the iterator arm's ordered pairs allowed to
 overlap fail as M1 and as the pairs arm's overlapping pairs do; that last
 signature is shared three ways (pairs, iterator, peel ignoring overlap).
 The ★ arm's DP adding one for a match fails as M11; the iterator arm's
-palindrome test against the letters unreversed as M1; the peel arm sorted shortest first as M10. The
-pairs arm counting only masks below the top position and the submask arm's
-`full` missing its top position fail alike, and the submask arm's `within`
-never starting from its own length fails with counts of its own. Two first
-drafts survived every check and were replaced, both equivalent: the ★ arm
-never picking the last position (the left-out side picks it, and the
-product is symmetric), and the iterator arm's length `count_ones().min(m)`
-(a mask is never below its count of ones).
+palindrome test against the letters unreversed as M1; the peel arm sorted
+shortest first as M10. The pairs arm counting only masks below the top
+position and the submask arm's `full` missing its top position fail alike,
+and the submask arm's `within` never starting from its own length fails
+with counts of its own. Two first drafts survived every check and were
+replaced, both equivalent: the ★ arm never picking the last position (the
+left-out side picks it, and the product is symmetric), and the iterator
+arm's length `count_ones().min(m)` (a mask is never below its count of
+ones).
 
 ## Verification
 
