@@ -1,9 +1,8 @@
 // LeetCode #2003: Smallest Missing Genetic Value in Each Subtree -- the
 // differential.
 //
-// Five arms against the statement read literally, on 1500 problems, with six
-// properties. The sixth arm, LeetCode's Rust template, does not check yet
-// (B-2026-11-07-3) and joins when it does.
+// Six arms against the statement read literally, on 1500 problems, with six
+// properties.
 //
 // P1  each answer is the statement read literally: the node's subtree
 //     collected by its own DFS, then the smallest positive value missing
@@ -11,7 +10,7 @@
 // P3  a parent's answer is at least each child's
 // P4  a node off the chain from the node holding 1 to the root answers 1
 // P5  the root answers the smallest positive value missing from all of nums
-// P6  each arm agrees with at least two of the other four on every node
+// P6  each arm agrees with at least three of the other five on every node
 
 // ---- genetic.kara: the ★ arm: marks up the chain from the node holding 1, recursively
 fn mark_star(u: i64, children: Vec[Vec[i64]], nums: Vec[i64], seen: mut ref Vec[bool], visited: mut ref Vec[bool]) {
@@ -223,6 +222,56 @@ fn bfs_arm(parents: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
     answer
 }
 
+// ---- genetic_solution.kara: LeetCode's Rust template, carried by `karac fix`
+
+struct Solution {}
+
+fn rust_dfs(u: i64, children: ref Vec[Vec[i64]], nums: ref Vec[i32], seen: mut ref Vec[bool], visited: mut ref Vec[bool]) {
+    visited[u] = true;
+    if (nums[u] as i64) < seen.len() {
+        seen[nums[u] as usize] = true;
+    }
+    for c in ref children[u] {
+        if not visited[c] {
+            rust_dfs(c, children, nums, mut seen, mut visited);
+        }
+    }
+}
+
+impl Solution {
+    pub fn smallest_missing_value_subtree(parents: Vec[i32], nums: Vec[i32]) -> Vec[i32] {
+        let n = parents.len();
+        let mut ans = Vec.filled(n, 1);
+        let one = match nums.iter().position(|x| x == 1) {
+            Some(i) => i,
+            None => return ans,
+        };
+        let mut children = Vec.filled(n, Vec.new());
+        for i in 1..n {
+            children[parents[i] as usize].push(i);
+        }
+        let mut seen = Vec.filled(n + 2, false);
+        let mut visited = Vec.filled(n, false);
+        let mut missing = 1;
+        let mut u = one as i32;
+        while u != -1 {
+            rust_dfs(u, children, nums, mut seen, mut visited);
+            while seen[missing] {
+                missing += 1;
+            }
+            ans[u as usize] = missing as i32;
+            u = parents[u as usize];
+        }
+        ans
+    }
+}
+
+fn rust_arm(parents: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let p: Vec[i32] = parents.iter().map(|x| x as i32).collect();
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.smallest_missing_value_subtree(p, v).iter().map(|x| x as i64).collect()
+}
+
 // ---- the literal reading and the checks ------------------------------------
 
 fn literal(parents: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
@@ -255,7 +304,8 @@ fn answer(arm: i64, parents: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
         1 => stack_arm(parents, nums),
         2 => merge_arm(parents, nums),
         3 => euler_arm(parents, nums),
-        _ => bfs_arm(parents, nums),
+        4 => bfs_arm(parents, nums),
+        _ => rust_arm(parents, nums),
     }
 }
 
@@ -295,7 +345,7 @@ fn draw(seed: mut ref i64) -> Problem {
 }
 
 fn main() {
-    let names = ["star", "stack", "merge", "euler", "bfs"];
+    let names = ["star", "stack", "merge", "euler", "bfs", "rust"];
     let mut seed = 2003;
     let mut problems: Vec[Problem] = Vec.new();
     for _ in 0..1500 {
@@ -334,10 +384,10 @@ fn main() {
             global += 1;
         }
         let mut got: Vec[Vec[i64]] = Vec.new();
-        for arm in 0..5 {
+        for arm in 0..6 {
             got.push(answer(arm, prob.parents.clone(), prob.nums.clone()));
         }
-        for arm in 0..5 {
+        for arm in 0..6 {
             let a = got[arm].clone();
             let moved = answer(arm, moved_parents.clone(), moved_nums.clone());
             let mut renumbered = true;
@@ -357,12 +407,12 @@ fn main() {
             let mut agree = true;
             for i in 0..n {
                 let mut same = 0;
-                for other in 0..5 {
+                for other in 0..6 {
                     if other != arm and got[other][i] == a[i] {
                         same += 1;
                     }
                 }
-                if same < 2 {
+                if same < 3 {
                     agree = false;
                 }
             }
@@ -379,7 +429,7 @@ fn main() {
         }
     }
     let total = by_property.iter().sum();
-    println(f"1500 problems: checksum {check}, {checks} checks over 5 arms: {total} failures");
+    println(f"1500 problems: checksum {check}, {checks} checks over 6 arms: {total} failures");
     if total > 0 {
         for f in failures.iter() {
             println(f);

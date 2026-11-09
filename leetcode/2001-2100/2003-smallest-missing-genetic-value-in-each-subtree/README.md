@@ -33,8 +33,8 @@ climbs.
 | `genetic_merge.kara` | every node's values in a `Set`, merged smaller into larger in reverse BFS order (`Option.take`, `swap`); a node's answer starts at its children's largest and climbs while its set holds it. O(n log² n) |
 | `genetic_euler.kara` | preorder numbers from an iterative DFS make each subtree a run `tin[u] ..= tout[u]`; a value is in the subtree when its node's number falls in the run. O(n) |
 | `genetic_bfs.kara` | a `VecDeque` BFS from each ancestor that skips the child the walk came from, values gathered in a `Set`, no visited marks. O(n) |
-| `genetic_solution.kara` | LeetCode's Rust template (`impl Solution`, `Vec<i32>`, a nested recursive `fn dfs`, `usize` indices, `match` on `position`), carried by `karac fix` to two remaining errors: blocked by B-2026-11-08-57 |
-| `differential.kara` | the five arms that check against the statement read literally, six properties |
+| `genetic_solution.kara` | LeetCode's Rust template (`impl Solution`, `Vec<i32>`, a nested recursive `fn dfs`, `usize` indices, `match` on `position`), carried by `karac fix` in six rounds |
+| `differential.kara` | the six arms against the statement read literally, six properties |
 
 Every arm prints the same 9 lines: the answers for LeetCode's three
 examples and four more; then the sum and a checksum of the answers for 2000
@@ -44,8 +44,8 @@ and the cases in between, with and without a value above `n`).
 
 ## Differential
 
-`differential.kara` holds copies of the five arms that check and the
-statement read literally: for each node, the nodes whose chain of parents
+`differential.kara` holds copies of the six arms and the statement read
+literally: for each node, the nodes whose chain of parents
 reaches it, then the smallest positive value missing from theirs. It checks
 1500 trees of 1 to 14 nodes, each parent among the 1 to 5 nodes before it,
 the values a shuffle of `1..n + extra` for `extra` up to 2. Every random
@@ -59,18 +59,17 @@ any arm answers.
 | P3 | a parent's answer is at least each child's |
 | P4 | a node off the chain from the node holding 1 to the root answers 1 |
 | P5 | the root answers the smallest positive value missing from all of `nums` |
-| P6 | each arm agrees with at least two of the other four on every node |
+| P6 | each arm agrees with at least three of the other five on every node |
 
-The differential prints `1500 problems: checksum 475751248, 45000 checks
-over 5 arms: 0 failures` under every lane in Verification. On a failure it
-prints the first ten and then the count by property. The Rust-template arm
-joins it, as a sixth, once it checks.
+The differential prints `1500 problems: checksum 475751248, 54000 checks
+over 6 arms: 0 failures` under every lane in Verification. On a failure it
+prints the first ten and then the count by property.
 
 ## Mutation testing
 
-Twenty-five edits to the differential, five to each of its arms, each run
-under `karac __mir-run` and `karac __mir-llvm-run`. Fifteen are kept, three
-to each arm. All twenty-five are killed, each fails the same way under both
+Thirty edits to the differential, five to each of its arms, each run
+under `karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept,
+three to each Kāra arm and two to the Rust arm. All thirty are killed, each fails the same way under both
 backends, none by a crash, and no two kept ones fail the same checks.
 
 | # | mutation | failures by property |
@@ -90,12 +89,18 @@ backends, none by a crash, and no two kept ones fail the same checks.
 | M13 | bfs: the chain climbed two links at a time | P1 1011, P3 1011, P5 587, P6 1011 |
 | M14 | bfs: the present set cleared at every step | P1 592, P5 592, P6 592 |
 | M15 | bfs: the node holding 1 taken as the last with value 1 or 2 | P1 165, P2 270, P6 165 |
+| M16 | rust: only children numbered above their parent followed | P2 764 |
+| M17 | rust: a node off the chain answering 0 | P1 1365, P4 1365, P5 215, P6 1365 |
 
-P1 and P6 kill all fifteen, P5 twelve, P3 five, P2 four and P4 one. P4
-sees only M7, the one edit that lets an answer above 1 reach a node off the
-chain: every other arm's edit acts on the chain itself, and off it each arm
-leaves the 1 it started with. P2 sees the edits that depend on which child
-comes first (M2, M8, M12) or which node is found first (M15). P3 sees the
+P1 and P6 kill sixteen, P5 thirteen, P2 five, P3 five and P4 two. P4
+sees M7, the one edit that lets an answer above 1 reach a node off the
+chain, and M17, which changes the answer every arm starts with: every other
+arm's edit acts on the chain itself, and off it each arm leaves the 1 it
+started with. P2 sees the edits that depend on which child comes first
+(M2, M8, M12), which node is found first (M15), or how the nodes are
+numbered (M16). M16 is the only edit P2 alone kills: every drawn parent
+comes before its child, so a child numbered below its parent appears only
+once the nodes are renumbered. P3 sees the
 edits that cut the chain short, leaving a parent at 1 above a child that
 climbed.
 
@@ -107,7 +112,10 @@ marked, the stack arm's value cap one too low and the BFS arm's values from
 arm's run ending at its own number fail alike. The Euler arm reading the
 chain from the root's child fails as M1, the stack arm's own value left out
 as M10, and the BFS arm skipping every ancestor's children with counts of
-its own.
+its own. Of the Rust arm's other three, the chain stopped below the root
+fails as M1, and the walk started at the root and the last three values
+left unmarked each with counts of their own.
+
 Seven first drafts survived every check or did not count, and were
 replaced. Five are equivalent: the ★ arm restarting the missing value at 1
 per node (the marks only grow, so it climbs back to the same place), the
@@ -127,13 +135,15 @@ not a gap: no body-dependent precision is allowed.
 
 ## Verification
 
-Every arm but the Rust template prints the same output as `genetic.py`
+Every arm prints the same output as `genetic.py`
 under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
 and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 every arm and the differential. `karac check --output=json` reports
 nothing on any of them. Under `karac __mir-run` the arms take 0.97 s (★)
-to 2.07 s (merge) and the differential 1.01 s.
+to 2.07 s (merge) and the differential 1.01 s, before the Rust arm
+joined; on a debug karac at kara 7a9ac8e23f the Rust arm takes 5.1 s and
+the six-arm differential 4.0 s.
 
 The five arms were written in Kāra and checked clean. The Rust arm was
 written as LeetCode's Rust template. `karac fix` carries it in six rounds
@@ -143,8 +153,9 @@ is refused where `ans` is returned and where it returns early. Rust types
 that literal `i32` from its later uses; design.md §8 says Kāra's literals
 default last too. B-2026-11-07-3 made them do so (kara 87e598fee9) for a
 let, an operand and a `Vec` push, but not for the element of a
-`Vec.filled(n, 1)` that a return fixes; B-2026-11-08-57 tracks that case,
-and on kara 95006f0150 the arm still stops at the same two errors.
+`Vec.filled(n, 1)` that a return fixes; B-2026-11-08-57 made that case
+fixed by its use too (kara 8da3c36f75), and the arm now checks clean with
+no further round and passes every lane.
 The last round's edit had no fix before this kata: `(nums[u] as usize) <
 seen.len()`, with `nums` a `Vec[i32]`, was refused for mixing `usize` and
 `i64` with nothing to apply, since the fix that drops a redundant `as
