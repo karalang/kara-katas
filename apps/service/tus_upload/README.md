@@ -57,7 +57,7 @@ dropped.
 Compiler gaps this app found (both fixed in kara):
 - `text?` on a borrowed `Option[String]` parameter was refused as "'?'
   operator requires `Result` or `Option`, found 'ref Option[String]'", with
-  no fix. It now gets the same `.clone()` repair as `??` (B-2026-11-09-35).
+  no fix. It now gets the same `.clone()` repair as `??` (B-2026-11-09-43).
 - The program's own `Response` is also what the client returns, and the
   compiled client wrote only two of its three fields, so the program
   crashed freeing the unwritten `headers` (B-2026-11-09-34).
