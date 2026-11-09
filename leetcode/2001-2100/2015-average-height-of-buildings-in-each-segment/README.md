@@ -26,8 +26,8 @@ buildings = [[1,2,1],[5,6,1]]               ->  [[1,2,1],[5,6,1]]
 | `average_diff.kara` | the starts and ends sorted and `dedup`ped, each building's change put at its positions' indices by `binary_search` into two difference arrays, whose prefix sums describe each stretch. O(n log n) |
 | `average_brute.kara` | the positions cut the street into stretches no building begins or ends inside; each stretch scans every building for those over it, and a second pass joins. O(n^2) |
 | `average_heap.kara` | the buildings sorted by start, a `PriorityQueue` of (end, height) for those standing; the walk moves to the next start or the earliest end, whichever comes first. O(n log n) |
-| `average_solution.kara` | LeetCode's Rust template (a unit struct, `impl Solution`, a `BTreeMap<i32, (i64, i32)>` of changes through `entry().or_insert()`, `ans.last_mut()` in a guarded `match`, `Vec<Vec<i32>>`, a `&Vec` wrapper), carried by `karac fix` to two remaining errors: blocked by B-2026-11-08-46 and B-2026-11-08-21 |
-| `differential.kara` | the five arms that check against the statement read literally, six properties |
+| `average_solution.kara` | LeetCode's Rust template (a unit struct, `impl Solution`, a `BTreeMap<i32, (i64, i32)>` of changes through `entry().or_insert()`, `ans.last_mut()` in a guarded `match`, `Vec<Vec<i32>>`, a `&Vec` wrapper), carried by `karac fix` in five rounds to a clean check |
+| `differential.kara` | the six arms against the statement read literally, six properties |
 
 Every arm prints the same 10 lines: the answers for LeetCode's three
 examples and five more; then the number of segments and a checksum for
@@ -37,7 +37,7 @@ of 2000 buildings over 1000 to 99000000 positions. `average.py` mirrors the
 
 ## Differential
 
-`differential.kara` holds copies of the five arms that check and the
+`differential.kara` holds copies of the six arms and the
 statement read literally: each unit stretch `[x, x + 1)` from 0 to 200
 given the average of the buildings over it, stretches with none left out,
 and neighbours with the same average joined. It checks 1500 problems of 1
@@ -52,18 +52,20 @@ before any arm answers.
 | P3 | every position moved along by the same amount moves every segment |
 | P4 | the street read the other way, position `p` turned into `100 - p`, turns the answer round |
 | P5 | every building listed twice leaves the answer |
-| P6 | each arm agrees with at least two of the other four |
+| P6 | each arm agrees with at least three of the other five |
 
-The differential prints `1500 problems: checksum 363489651, 45000 checks
-over 5 arms: 0 failures` under every lane in Verification. On a failure it
-prints the first ten and then the count by property. The Rust-template arm
-joins it, as a sixth, once it checks.
+The differential prints `1500 problems: checksum 363489651, 54000 checks
+over 6 arms: 0 failures` under every lane in Verification. On a failure it
+prints the first ten and then the count by property.
 
 ## Mutation testing
 
-Twenty-five edits to the differential, five to each of its arms, each run
-under `karac __mir-run` and `karac __mir-llvm-run`. Fifteen are kept, three
-to each arm. All twenty-five are killed, each fails the same way under both
+Thirty edits to the differential, five to each of its arms, each run under
+`karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept, three to
+each Kāra arm and two to the Rust-template arm, which joined the
+differential as its sixth arm once it checked; the other fifteen's counts
+were the same on the six-arm differential as on the five. All thirty are
+killed, each fails the same way under both
 backends, none by a crash, and no two kept ones fail the same checks.
 
 | # | mutation | failures by property |
@@ -83,53 +85,59 @@ backends, none by a crash, and no two kept ones fail the same checks.
 | M13 | heap: the next start always taken first | P1 970, P4 516, P6 970 |
 | M14 | heap: the buildings never sorted | P1 1116, P2 1105, P4 1251, P5 1273, P6 1116 |
 | M15 | heap: the average over the heap and one more | P1 1491, P5 761, P6 1491 |
+| M16 | solution: a stretch with no building kept | P1 1500, P3 1463, P4 1500, P6 1500 |
+| M17 | solution: the segment start never moved | P1 1473, P3 1463, P4 1500, P6 1473 |
 
-P1 and P6 kill all fifteen, P4 nine, P5 six, P2 two and P3 one. P4 reads
-the street from the other end, which turns each building's start into an
-end, so it sees every edit that treats the two ends of a building, or the
-two sides of a position, unevenly: an end that takes nothing off (M1, M7),
-a stretch described from the wrong side of its change (M4), a building
+P1 and P6 kill all seventeen, P4 eleven, P5 six, P3 three and P2 two. P4
+reads the street from the other end, which turns each building's start into
+an end, so it sees every edit that treats the two ends of a building, or
+the two sides of a position, unevenly: an end that takes nothing off (M1,
+M7), a stretch described from the wrong side of its change (M4), a building
 counted past its end (M11), the walk taking a start before an end (M13),
-and the first position skipped (M9). It misses the edits that are their
-own mirror image: an average rounded up (M3), an empty stretch kept (M8),
-and the edits to the count alone (M2, M10, M12, M15). P5 lists every
-building twice, which leaves every average alone but doubles every count
-and sum, so it sees the edits that read a count or a sum by its size
-rather than as a ratio: the sum without the count (M12), a stretch under
-one building (M10), one more than the heap holds (M15), a change replaced
-rather than added to (M5), and one event applied per position (M2). P2
-sees only the two edits that let the input's order through: a change
-replaced, which keeps whichever building came last (M5), and the heap arm
-unsorted (M14). P3 moves the street along, and sees only the walk that
-starts its first stretch at position 0 rather than at the first change
-(M4).
+the first position skipped (M9), and the Rust arm's edits that start the
+street at 0 (M16, M17). It misses the edits that are their own mirror
+image: an average rounded up (M3), an empty stretch kept (M8), and the
+edits to the count alone (M2, M10, M12, M15). P5 lists every building
+twice, which leaves every average alone but doubles every count and sum, so
+it sees the edits that read a count or a sum by its size rather than as a
+ratio: the sum without the count (M12), a stretch under one building (M10),
+one more than the heap holds (M15), a change replaced rather than added to
+(M5), and one event applied per position (M2). P2 sees only the two edits
+that let the input's order through: a change replaced, which keeps
+whichever building came last (M5), and the heap arm unsorted (M14). P3
+moves the street along, and sees only the edits that start the first
+stretch at position 0 rather than at the first change: the map arm's walk
+(M4), the Rust arm's stretch with no building kept, whose first is the
+empty stretch from 0, and its segment start never moved (M16, M17).
 
-The other ten fail as a kept one does, or with counts of their own. An
-end's height not taken off fails alike in the ★ and heap arms (M1); the
-map arm's joined segment keeping its old end and the diff arm's joined
-segment ending at the old stretch fail alike (P1 1035, P4 759), and a
-stretch never joined (★) fails P1 1035 alone; joining across a gap
-fails alike in the ★ and brute arms, P1 412; the diff arm's end marked one
-position late fails as M11; the map arm dropping the last segment when a
-new one starts and the heap arm letting a building go one position early
-fail with counts of their own. Five drafts were replaced. The diff arm
-never deduplicating its positions, the brute arm counting a building that
-covers only a stretch's start, and the heap arm letting only one ending
-building go per step never fail: a stretch of no length adds nothing, no
-building ends inside a stretch, and the next step lets the rest go. The
-brute arm's last stretch dropped by `windows(2).take(..)` was refused by
-the checker (`take` is an iterator method, and `windows` returns a `Vec`),
-and was rewritten as a bound on the stretch's right end.
+The other thirteen fail as a kept one does, or with counts of their own.
+The Rust arm's end never taken off the count fails as M7, and its average
+rounded up as M3. An end's height not taken off fails alike in the ★ and
+heap arms (M1); the map arm's joined segment keeping its old end and the
+diff arm's joined segment ending at the old stretch fail alike (P1 1035, P4
+759), and a stretch never joined (★, and the Rust arm's segment never
+joined) fails P1 1035 alone; joining across a gap fails alike in the ★ and
+brute arms, P1 412; the diff arm's end marked one position late fails as
+M11; the map arm dropping the last segment when a new one starts and the
+heap arm letting a building go one position early fail with counts of their
+own. Five drafts were replaced. The diff arm never deduplicating its
+positions, the brute arm counting a building that covers only a stretch's
+start, and the heap arm letting only one ending building go per step never
+fail: a stretch of no length adds nothing, no building ends inside a
+stretch, and the next step lets the rest go. The brute arm's last stretch
+dropped by `windows(2).take(..)` was refused by the checker (`take` is an
+iterator method, and `windows` returns a `Vec`), and was rewritten as a
+bound on the stretch's right end.
 
 ## Verification
 
-Every arm but the Rust template prints the same output as `average.py`
-under `karac __mir-run` (the v2 MIR interpreter), `karac __mir-llvm-run`,
-and `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
-error. `karac run` and a `karac build` binary print the same output for
-every arm and the differential. `karac check --output=json` reports nothing
-on any of them. Under `karac __mir-run` the arms take 0.38 s (★) to 5.2 s
-(brute) and the differential 5.0 s.
+Every arm prints the same output as `average.py` under `karac __mir-run`
+(the v2 MIR interpreter), `karac __mir-llvm-run`, and `karac
+__mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error. `karac
+run` and a `karac build` binary print the same output for every arm and the
+differential. `karac check --output=json` reports nothing on any of them.
+Under `karac __mir-run` the arms take 0.38 s (★) to 5.2 s (brute) and the
+differential 6.2 s, on kara 991c45adcd.
 
 The five arms were written in Kāra. The brute arm's
 `flat_map(|(start, end, _)| [start, end])` drew one fix: Kāra's `flat_map`
@@ -137,21 +145,21 @@ takes a closure that returns an `Iterator`, and the array literal became
 `[start, end].into_iter()`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
-it in three rounds (32, 2 and 6 edits: the `use`, the struct, the
-`Vec<..>` and `BTreeMap<..>` types, `BTreeMap` to `SortedMap`, the `::`
-paths, `vec![..]`, `&&`, the `&` patterns and the `&Vec` parameter, the
-tuple `let (mut sum, mut cnt)`, and the casts an `i32` no longer needs)
-to two errors it has no fix for. `match ans.last_mut() { Some(last) if
-last[1] == prev && last[2] == avg => last[1] = pos, _ => ans.push(..) }`
-is refused, since a `Vec` has no `last_mut`; the message says to write
-through an index, with no machine fix (B-2026-11-08-46). And `let mut prev =
-0; .. prev = pos;` leaves `prev` an `i64` where Rust types it `i32` from
-the assignment, so `ans.push([prev, pos, avg])` mixes the two
-(B-2026-11-08-21: an assignment now fixes a literal's type, but `prev` is
-first read as an element of a collection literal, which settles it before
-the `Vec[i32]` slot is reached). With
-`prev: i32` and the `match` written through an index by hand, the arm
-checks clean and prints the mirror's output.
+it in five rounds (32, 2, 7, 1 and 1 edits) to a clean check. The first
+three are the `use`, the struct, the `Vec<..>` and `BTreeMap<..>` types,
+`BTreeMap` to `SortedMap`, the `::` paths, `vec![..]`, `&&`, the `&`
+patterns and the `&Vec` parameter, the tuple `let (mut sum, mut cnt)`, the
+casts an `i32` no longer needs, and `let mut prev = 0` to `prev: i32`; the
+fourth rewrites `match ans.last_mut() { Some(last) if last[1] == prev &&
+last[2] == avg => last[1] = pos, _ => ans.push(..) }` through an index, as
+`if ans.len() > 0 and .. { ans[ans.len() - 1][1] = pos; } else { .. }`,
+since a `Vec` has no `last_mut`; the fifth drops a `ref` from the adapter's
+parameter, which borrows already. Until kara 3af0db7bb7 (B-2026-11-08-46)
+the `last_mut` rewrite had no machine fix, and until b07678a0f8
+(B-2026-11-08-21) `prev`, first read as an element of the collection
+literal `[prev, pos, avg]`, kept `i64` however the `Vec[i32]` it was pushed
+into typed it; the arm then stopped at those two errors and stayed out of
+the differential.
 
 ## Benchmarks
 
@@ -180,8 +188,9 @@ sequential lane. A plain `karac build` parallelizes nothing here: its user
 time (0.419 s) is not above its real time (0.433 s).
 
 The sequential Kāra program is 1.07x Rust under overflow checks and 0.41x
-C. When this kata was written it was 2.07x (kara 64bba595f2) Rust: Kāra sent a Vec of
-tuples to the runtime's generic merge sort, which called the comparison
-through a pointer, where Rust monomorphizes its stable sort. That was
-B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of non-integer
-elements now runs an emitted merge sort with the comparison in line.
+C. When this kata was written it was 2.07x (kara 64bba595f2) Rust: Kāra
+sent a Vec of tuples to the runtime's generic merge sort, which called the
+comparison through a pointer, where Rust monomorphizes its stable sort.
+That was B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of
+non-integer elements now runs an emitted merge sort with the comparison in
+line.
