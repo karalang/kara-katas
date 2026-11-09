@@ -56,6 +56,6 @@ By hand, following the diagnostic's own advice:
 
 Compiler gaps this app found (fixed in kara):
 - `Json` had no `.clone()`, and the refusal advised adding
-  `#[derive(Clone)]` to the library's declaration (B-2026-11-09-45).
+  `#[derive(Clone)]` to the library's declaration (B-2026-11-09-48).
 - `[("event", s("push")), ..].to_vec()` passed to a `Vec[(Str, Json)]`
-  parameter was refused as a `Vec[(String, Json)]` (B-2026-11-09-46).
+  parameter was refused as a `Vec[(String, Json)]` (B-2026-11-09-49).
