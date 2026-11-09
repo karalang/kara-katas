@@ -226,6 +226,20 @@ cachegrind it runs 9.4 billion instructions against Rust's 7.4 and C's
 instructions go, and why it is still ahead of Rust in time, was not
 traced. The comparison with C and Rust waits until after M4.
 
+### The key clones dropped (2026-11-09)
+
+The ★ arm and the bench passed each pair's words to `number` and each
+sentence word to `ids.get` as `.clone()`s, copies the Rust mirror does
+not make: a parameter borrows by default, so `number(.., p.0)` and
+`ids.get(sentence1[i])` need no copy. The one copy left is the word
+`number` puts into the map, as Rust's `w.to_string()` does. Under
+cachegrind on the x86 container the bench ran 8.92 billion instructions
+before and 6.99 billion after, against 7.25 billion for `rustc -O`.
+Every arm, the differential and the bench print the same output as
+before under `karac __mir-run`, `__mir-llvm-run`, `__mir-llvm-asan`,
+`karac run` and a `karac build` binary, and the timings above predate
+the change.
+
 ## Compiler findings
 
 None new.
