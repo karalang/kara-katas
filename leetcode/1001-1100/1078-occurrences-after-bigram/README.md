@@ -130,7 +130,7 @@ arm and the differential. `karac check --output=json` reports nothing on
 any file. Under `karac __mir-run` the arms take 0.6 s to 2.1 s (the zip
 arm the slowest) and the differential 25.7 s.
 
-The kata found one diagnostics gap, fixed in kara with
+The kata found one diagnostics gap, fixed in kara `e9cca2f951` with
 `tests/kata_1078_slice_hint.rs`:
 
 - **`.slice(a, b)` on a `Vec` got a bare "no method".** The
