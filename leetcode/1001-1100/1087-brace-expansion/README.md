@@ -133,16 +133,23 @@ arm and the differential. `karac check --output=json` reports nothing on
 any file. Under `karac __mir-run` the differential takes 6 s.
 
 The arms found no compiler gap; the bench found the performance one
-below. Every file went through `karac fix`, which changed nothing
-outside the Rust arm. The Rust arm reaches a clean check in three rounds
-and gives the text the arm holds: first the syntax (`struct Solution
-{}`, `<>` to `[]`, `::` to `.`, `Self::` to `Solution.`, `&str` to
-`Str`, `&Vec` to `ref Vec`, `&mut T` to `mut ref T`, `for &c in
-&groups[i]` to `for c in ref groups[i]`, and the first call's `&groups,
-0, &mut cur, &mut res` to `groups, 0, mut cur, mut res`); then
-`vec![chars[i]]` to `[chars[i]]`, `usize` to `i64`, and `mut` at the
-recursive call's `cur` and `res`; then the `ref` dropped from `groups`,
-as a parameter borrows unless it says otherwise.
+below, and adding the kata to kara's corpus found one in `karac fmt`,
+which wrote the harness's `let group = ...` as `let r#group = ...`: its
+own copy of the keyword table still held the words made
+contextual since 2026-10-07. It now asks the lexer, so `group` stays as
+written (kara B-2026-11-09-52, pinned by
+`tests/kata_1087_fmt_soft_words.rs`).
+
+Every file went through `karac fix`, which changed nothing outside the
+Rust arm. The Rust arm reaches a clean check in three rounds and gives
+the text the arm holds: first the syntax (`struct Solution {}`, `<>` to
+`[]`, `::` to `.`, `Self::` to `Solution.`, `&str` to `Str`, `&Vec` to
+`ref Vec`, `&mut T` to `mut ref T`, `for &c in &groups[i]` to `for c in
+ref groups[i]`, and the first call's `&groups, 0, &mut cur, &mut res` to
+`groups, 0, mut cur, mut res`); then `vec![chars[i]]` to `[chars[i]]`,
+`usize` to `i64`, and `mut` at the recursive call's `cur` and `res`;
+then the `ref` dropped from `groups`, as a parameter borrows unless it
+says otherwise.
 
 ## Benchmarks
 
@@ -192,4 +199,4 @@ the walk itself about 26% more, and most of the rest in glibc's slow
 path, where 14.8 million of Kāra's mallocs land against 2.7 million of
 Rust's, and in `malloc_consolidate`, which Rust never reaches. Which of
 Kāra's allocator calls empties the fast bins is not measured; kara
-B-2026-11-09-43 records the profile.
+B-2026-11-09-51 records the profile.
