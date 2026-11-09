@@ -168,24 +168,25 @@ sorting 20000 events. Every implementation prints `500 calls: sum
 events per call, as the Kāra program does.
 
 Timings on a 4-core container, eight interleaved runs of each compiled
-program and one of Python, with kara `64bba595f2` on LLVM 22:
+program and one of Python, with kara `6a852dc7b7` on LLVM 22:
 
 | | time | median |
 |---|---|---|
-| Rust (`rustc -O -C overflow-checks=on`) | 0.441 to 0.495 s | 0.462 s |
-| Rust (`rustc -O`) | 0.449 to 0.528 s | 0.472 s |
-| Kāra (`karac build`) | 1.089 to 1.184 s | 1.106 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.097 to 1.168 s | 1.136 s |
-| C (`clang -O3`) | 1.486 to 1.563 s | 1.516 s |
-| Go | 1.943 to 2.139 s | 2.017 s |
+| Rust (`rustc -O`) | 0.454 to 0.566 s | 0.465 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.458 to 0.648 s | 0.485 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.492 to 0.543 s | 0.505 s |
+| Kāra (`karac build`) | 0.497 to 0.561 s | 0.518 s |
+| C (`clang -O3`) | 1.517 to 1.582 s | 1.563 s |
+| Go | 1.983 to 2.268 s | 2.075 s |
 | Python | 6.2 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`, the
 sequential lane. A plain `karac build` parallelizes nothing here: its user
-time (1.097 s) is not above its real time (1.106 s).
+time (0.510 s) is not above its real time (0.518 s).
 
-The sequential Kāra program is 2.46x Rust under overflow checks and 0.75x
-C. Rust is about two and a half times as fast here because of the sort:
-Kāra sends a Vec of pairs to the runtime's generic merge sort, which calls
-the comparison through a pointer, where Rust monomorphizes its stable sort.
-That is B-2026-11-08-85; a `Vec[i64]` sort keeps pace with Rust.
+The sequential Kāra program is 1.04x Rust under overflow checks and 0.32x
+C. When this kata was written it was 2.46x (kara 64bba595f2) Rust: Kāra sent a Vec of
+pairs to the runtime's generic merge sort, which called the comparison
+through a pointer, where Rust monomorphizes its stable sort. That was
+B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of non-integer
+elements now runs an emitted merge sort with the comparison in line.

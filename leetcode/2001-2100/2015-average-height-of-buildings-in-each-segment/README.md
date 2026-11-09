@@ -163,24 +163,25 @@ segments, checksum 457485271`. Every language builds and sorts the events
 per call, as the Kāra program does.
 
 Timings on a 4-core container, eight interleaved runs of each compiled
-program and one of Python, with kara `64bba595f2` on LLVM 22:
+program and one of Python, with kara `6a852dc7b7` on LLVM 22:
 
 | | time | median |
 |---|---|---|
-| Rust (`rustc -O`) | 0.373 to 0.431 s | 0.385 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.374 to 0.442 s | 0.407 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.799 to 0.895 s | 0.841 s |
-| Kāra (`karac build`) | 0.819 to 0.875 s | 0.841 s |
-| C (`clang -O3`) | 1.024 to 1.147 s | 1.055 s |
-| Go | 1.352 to 1.456 s | 1.412 s |
-| Python | 5.9 s | |
+| Rust (`rustc -O`) | 0.380 to 0.410 s | 0.400 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.381 to 0.472 s | 0.412 s |
+| Kāra (`karac build`) | 0.421 to 0.472 s | 0.433 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.422 to 0.465 s | 0.441 s |
+| C (`clang -O3`) | 1.059 to 1.182 s | 1.070 s |
+| Go | 1.406 to 1.497 s | 1.456 s |
+| Python | 5.8 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`, the
 sequential lane. A plain `karac build` parallelizes nothing here: its user
-time (0.818 s) is not above its real time (0.841 s).
+time (0.419 s) is not above its real time (0.433 s).
 
-The sequential Kāra program is 2.07x Rust under overflow checks and 0.80x
-C. Rust is about twice as fast here because of the sort: Kāra sends a Vec
-of tuples to the runtime's generic merge sort, which calls the comparison
-through a pointer, where Rust monomorphizes its stable sort. That is
-B-2026-11-08-85; a `Vec[i64]` sort keeps pace with Rust.
+The sequential Kāra program is 1.07x Rust under overflow checks and 0.41x
+C. When this kata was written it was 2.07x (kara 64bba595f2) Rust: Kāra sent a Vec of
+tuples to the runtime's generic merge sort, which called the comparison
+through a pointer, where Rust monomorphizes its stable sort. That was
+B-2026-11-08-85, fixed by kara d308599fbb: a plain `sort()` of non-integer
+elements now runs an emitted merge sort with the comparison in line.
