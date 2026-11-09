@@ -135,7 +135,7 @@ fi
 echo "sink (kara/rust/rust_ovf/c/go): $expected"
 echo
 
-bench_begin id=77 slug=subsets group=1-100 \
+bench_begin id=78 slug=subsets group=1-100 \
     title="Subsets" \
     workload="K=1500 backtracking enumerations of C(16,8)=12870 subsets, per-leaf fold / polynomial-hash sink" \
     sink="$expected"

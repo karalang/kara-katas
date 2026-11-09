@@ -137,7 +137,7 @@ fi
 echo "sink (kara/rust/rust_ovf/c/go): $expected"
 echo
 
-bench_begin id=119 slug=triangle group=101-200 \
+bench_begin id=120 slug=triangle group=101-200 \
     title="Triangle" \
     workload="build one Vec[Vec[i64]] triangle of N=200 rows once, then run the O(N^2) bottom-up min-path DP dp[k]=triangle[i][k]+min(dp[k],dp[k+1]) K=20000 times with a data-dependent seed (seed=acc%97, non-uniform base perturbation), folding every result — the rolling-1D min-DP over read-only nested indexing regime" \
     sink="$expected"

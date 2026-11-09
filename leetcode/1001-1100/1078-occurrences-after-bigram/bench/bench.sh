@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=1078 slug=occurrences-after-bigram group=1001-1100 \
-    title="Number of Submatrices That Sum to Target" \
-    workload="30 matrices of 100 by 100 built once, cells -3 to 3; each counted for targets -5, 0 and 7 by row pairs and a hash map of running totals; sink=count + checksum" sink="$expected"
+    title="Occurrences After Bigram" \
+    workload="100 texts of up to 1000 characters built once over 12 words; 300 rounds of 800 bigrams, 6 of 8 a bigram of the text, answered by splitting at spaces into views; sink=words found + checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
