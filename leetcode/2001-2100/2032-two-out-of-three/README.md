@@ -148,7 +148,7 @@ three times as the template's arguments. That checks clean and then stops
 at lowering, "an expression whose type does not lower
 (UnsolvedParam("C"))": a closure's `collect()` takes nothing from the type
 its result is later used at, and a Kāra closure cannot declare its return
-type, so nothing fixes `C`. B-2026-11-09-34 tracks it; the adapter collects
+type, so nothing fixes `C`. B-2026-11-09-40 tracks it; the adapter collects
 each array into an annotated `let`.
 
 ## Benchmarks

@@ -146,7 +146,7 @@ For the runs arm, Rust's `chunk_by(|a, b| a == b)` on the pieces was tried
 first. `karac fix` rewrote it to `c.iter().chunk_by(..)`, as for an
 iterator adaptor called on a `Vec`, and that is refused in turn: no
 iterator in the library has `chunk_by`, and the `|a, b|` closure adds a
-"cannot compare" of two unknowns. B-2026-11-09-31 tracks the method and the
+"cannot compare" of two unknowns. B-2026-11-09-37 tracks the method and the
 fix that points at it. The arm measures each run itself.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries

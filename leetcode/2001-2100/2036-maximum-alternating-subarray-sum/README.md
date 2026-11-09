@@ -140,16 +140,16 @@ The same arm then met a wrong answer that was on main already. `m.map_or(x,
 |k: i64| k + 1)` with `x: ref i64` solved `map_or`'s `U` as `ref i64` while
 the closure returned an `i64`: the interpreter stopped on "deref of
 non-reference", and the build read the value as an address
-(B-2026-11-09-29). A scalar `ref` handed to a parameter that a function
+(B-2026-11-09-35). A scalar `ref` handed to a parameter that a function
 argument returns is now solved as the value. `v.iter().fold(None, |acc:
 Option[i64], x| Some(x))` built and printed an address before; it is now
 refused, since its tail is an `Option[ref i64]` (kara 5a9b370550,
-`tests/kata_2036_fold_inference.rs`); B-2026-11-09-30 asks for it to read
+`tests/kata_2036_fold_inference.rs`); B-2026-11-09-36 asks for it to read
 the scalar as its value, as `Some(x)` against an `Option[i64]` slot does
 elsewhere. The fix also turned up a crash on main already: a closure that
 only passes its parameter on, as in `ap(1, |x| { println("a"); x })` for
 `ap[F: Fn(i64) -> i64]`, checks clean and then stops every backend at MIR
-validation with its parameter typed `()` (B-2026-11-09-33).
+validation with its parameter typed `()` (B-2026-11-09-39).
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
 it in two rounds (three edits, then one) to a clean check: `Vec<i32>` to

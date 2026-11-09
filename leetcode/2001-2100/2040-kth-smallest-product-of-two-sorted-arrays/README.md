@@ -29,7 +29,7 @@ product falls as `b` grows), and for `a = 0` all of them or none.
 | `product_pointers.kara` | the same search, each count by two pointers: the positive `a`s walked so that `x / a` only grows (downward when `x >= 0`, upward when not), the negative ones so that the suffix's first index only moves right; `filter(..).cloned().collect()` splits the signs. O((n + m) log V) |
 | `product_division.kara` | the bounds by division: `b <= floor(x / a)` for a positive `a`, `b >= -floor(x / -a)` for a negative one, both by `div_euclid`, each found by a hand-written search for the first value above it. O(n log m log V) |
 | `product_signs.kara` | the sign groups first: the negative, zero and positive products counted from the groups' sizes, which says where the `k`-th lies; `0` answered at once, or a `Signs` struct's two groups searched over one side of zero only, `let mut (groups, rank, lo, hi) = if .. { .. } else { .. }`. O(n log m log V) |
-| `product_iter.kara` | the count as `nums1.iter().map(..).sum()` in a closure, the search a `(lo, hi)` pair halved in a `loop` by `(lo, hi) = if .. { (lo, mid) } else { (mid + 1, hi) }`: blocked by B-2026-11-09-32 |
+| `product_iter.kara` | the count as `nums1.iter().map(..).sum()` in a closure, the search a `(lo, hi)` pair halved in a `loop` by `(lo, hi) = if .. { (lo, mid) } else { (mid + 1, hi) }`: blocked by B-2026-11-09-38 |
 | `product_solution.kara` | LeetCode's Rust template (`impl Solution`, `Vec<i32>`, a closure `\|x: i64\| -> i64`, `for &a in &nums1`, `partition_point(\|&b\| ..)`, `as i64` throughout, `-10_000_000_000i64`), carried by `karac fix` in two rounds to a clean check |
 | `differential.kara` | the five arms that check against the statement read literally, six properties |
 
@@ -132,7 +132,7 @@ E_ASSIGN_TARGET_NOT_PLACE, whose advice is to drop the parentheses; `karac
 fix` has no edit for it, and `lo, hi = if ..` is then a parse error ("2
 target(s) but 1 value(s)"), since a parallel assignment takes only a
 literal list of values on the right. A tuple value has no way into two
-places at once; B-2026-11-09-32 tracks it. Before that, `karac fix` removed the
+places at once; B-2026-11-09-38 tracks it. Before that, `karac fix` removed the
 closure's `-> i64`, which Kāra does not write.
 
 The signs arm's `let (mut groups, mut rank, mut lo, mut hi)` became `let
