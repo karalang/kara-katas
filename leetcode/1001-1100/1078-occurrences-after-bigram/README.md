@@ -139,7 +139,7 @@ The kata found one diagnostics gap, fixed in kara with
   "no method 'slice' on type 'Vec'". The library's run of elements is the
   range index `v[a..b]`, a `Slice[T]`. The error now says so for a `Vec`,
   an array or a slice, and `karac fix` writes `words[0..cut]` when both
-  bounds are an integer literal or a name. Kara B-2026-11-09-7.
+  bounds are an integer literal or a name. Kara B-2026-11-09-17.
 
 Every file went through `karac fix`. In the harness it removed the
 `-> String` from a closure (`|seed: mut ref i64| -> String { .. }`, Rust's
