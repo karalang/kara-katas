@@ -1,0 +1,73 @@
+// LeetCode #2110: Number of Smooth Descent Periods of a Stock -- a
+// `struct Streak` that sees the prices one at a time: it holds the last
+// price, the current run and the running total, and its `see` method
+// (`mut ref self`) extends or restarts the run. The first price starts
+// it through `Streak.new`. O(n).
+
+struct Streak {
+    last: i64,
+    run: i64,
+    total: i64,
+}
+
+impl Streak {
+    fn new(first: i64) -> Streak {
+        Streak { last: first, run: 1, total: 1 }
+    }
+
+    fn see(mut ref self, price: i64) {
+        self.run = if self.last - price == 1 { self.run + 1 } else { 1 };
+        self.total += self.run;
+        self.last = price;
+    }
+}
+
+fn get_descent_periods(prices: Vec[i64]) -> i64 {
+    let mut streak = Streak.new(prices[0]);
+    for p in prices.iter().skip(1) {
+        streak.see(p);
+    }
+    streak.total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one long descent, a
+    // rise, and a repeated price splitting a descent
+    let examples = [
+        [3, 2, 1, 4].to_vec(),
+        [8, 6, 7, 7].to_vec(),
+        [1].to_vec(),
+        [5, 4, 3, 2, 1].to_vec(),
+        [1, 2, 3].to_vec(),
+        [3, 2, 2, 1].to_vec(),
+    ];
+    for prices in examples.iter() {
+        println(f"{prices} -> {get_descent_periods(prices)}");
+    }
+    // 3000 random arrays of 1 to 40 prices from 1 to 5, so that steps of
+    // exactly one down are common
+    let mut seed = 2110;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let prices: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 5 + 1).collect();
+        let got = get_descent_periods(prices);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 arrays: {total} periods, checksum {check}");
+    // the constraints' largest, 10^5 prices: one descent from 10^5 to 1,
+    // and a saw of descents of 1000 each
+    let falling: Vec[i64] = (0..100000).map(|i| 100000 - i).collect();
+    let saw: Vec[i64] = (0..100000).map(|i| 1000 - i % 1000).collect();
+    println(f"one descent -> {get_descent_periods(falling)}");
+    println(f"a saw of 1000s -> {get_descent_periods(saw)}");
+}

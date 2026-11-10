@@ -1,0 +1,50 @@
+// LeetCode #2110: Number of Smooth Descent Periods of a Stock -- the
+// benchmark, descent.kara's ★ arm: the descent run's length up to each
+// day, summed. 20 arrays of 10^5 prices, each falling by one with odds of
+// three in four and jumping up by 0 to 19 otherwise, are built once; each
+// is then counted 10 times, one price raised by one before each count so
+// that no count repeats the one before.
+
+fn get_descent_periods(prices: Vec[i64]) -> i64 {
+    let mut run = 1;
+    let mut total = 1;
+    for i in 1..prices.len() {
+        if prices[i - 1] - prices[i] == 1 {
+            run += 1;
+        } else {
+            run = 1;
+        }
+        total += run;
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2110;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut p = 5000000;
+        let mut prices: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            prices.push(p);
+            p = if next_random(mut seed) % 4 != 0 { p - 1 } else { p + next_random(mut seed) % 20 };
+        }
+        arrays.push(prices);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..10 {
+        for a in 0..20 {
+            arrays[a][round * 9973] += 1;
+            let got = get_descent_periods(arrays[a]);
+            total += got;
+            check = (check * 31 + got) % 1000000007;
+        }
+    }
+    println(f"200 counts: {total} periods, checksum {check}");
+}

@@ -1,0 +1,232 @@
+// LeetCode #2110: Number of Smooth Descent Periods of a Stock -- the
+// differential. The six arms, against the statement read literally: every
+// first and last day, each step between them checked to fall by exactly
+// one. 300 random arrays of 1 to 10 prices from 1 to 4; then 30 of up to
+// 120 prices from 1 to 3; then 30 of up to 120 that fall by one at each
+// step and jump otherwise, 15 with odds of four in five for a fall and 15
+// with odds of 59 in 60; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least `n` and at most `n * (n + 1) / 2`
+// P3  every price raised by 7: the same answer
+// P4  the prices reversed, each `p` made `200000 - p`: the same answer
+// P5  a price 5 above the last appended: the answer plus one
+// P6  each arm agrees with at least three of the other five
+
+// ---- descent.kara: the ★ arm, the run up to each day
+fn star_get_descent_periods(prices: Vec[i64]) -> i64 {
+    let mut run = 1;
+    let mut total = 1;
+    for i in 1..prices.len() {
+        if prices[i - 1] - prices[i] == 1 {
+            run += 1;
+        } else {
+            run = 1;
+        }
+        total += run;
+    }
+    total
+}
+
+// ---- descent_runs.kara: whole runs
+fn runs_get_descent_periods(prices: Vec[i64]) -> i64 {
+    let n = prices.len();
+    let mut total = 0;
+    let mut start = 0;
+    while start < n {
+        let mut end = start + 1;
+        while end < n and prices[end - 1] - prices[end] == 1 {
+            end += 1;
+        }
+        let len = end - start;
+        total += len * (len + 1) / 2;
+        start = end;
+    }
+    total
+}
+
+// ---- descent_scan.kara: `windows`, `scan` and `sum`
+fn scan_get_descent_periods(prices: Vec[i64]) -> i64 {
+    let later: i64 = prices
+        .windows(2).iter()
+        .scan(1, |run, w| {
+            let next = if w[0] - w[1] == 1 { run + 1 } else { 1 };
+            Some((next, next))
+        })
+        .sum();
+    later + 1
+}
+
+// ---- descent_table.kara: a table of periods ending each day
+fn table_get_descent_periods(prices: Vec[i64]) -> i64 {
+    let n = prices.len();
+    let mut ending = Vec.filled(n, 1);
+    for i in 1..n {
+        if prices[i - 1] == prices[i] + 1 {
+            ending[i] = ending[i - 1] + 1;
+        }
+    }
+    ending.iter().sum()
+}
+
+// ---- descent_struct.kara: a `Streak`
+struct StructStreak {
+    last: i64,
+    run: i64,
+    total: i64,
+}
+
+impl StructStreak {
+    fn new(first: i64) -> StructStreak {
+        StructStreak { last: first, run: 1, total: 1 }
+    }
+
+    fn see(mut ref self, price: i64) {
+        self.run = if self.last - price == 1 { self.run + 1 } else { 1 };
+        self.total += self.run;
+        self.last = price;
+    }
+}
+
+fn struct_get_descent_periods(prices: Vec[i64]) -> i64 {
+    let mut streak = StructStreak.new(prices[0]);
+    for p in prices.iter().skip(1) {
+        streak.see(p);
+    }
+    streak.total
+}
+
+// ---- descent_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn get_descent_periods(prices: Vec[i32]) -> i64 {
+        prices
+            .chunk_by(|a, b| a - b == 1).iter()
+            .map(|run| {
+                let len = run.len();
+                len * (len + 1) / 2
+            })
+            .sum()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_get_descent_periods(prices: Vec[i64]) -> i64 {
+    SolutionSolution.get_descent_periods(prices.iter().map(|p| p as i32).collect())
+}
+
+// ---- the statement read literally
+
+fn literal(prices: Vec[i64]) -> i64 {
+    let n = prices.len();
+    let mut count = 0;
+    for first in 0..n {
+        for last in first..n {
+            let mut smooth = true;
+            for k in first + 1..=last {
+                if prices[k - 1] - prices[k] != 1 {
+                    smooth = false;
+                }
+            }
+            if smooth {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, prices: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_get_descent_periods(prices),
+        1 => runs_get_descent_periods(prices),
+        2 => scan_get_descent_periods(prices),
+        3 => table_get_descent_periods(prices),
+        4 => struct_get_descent_periods(prices),
+        _ => solution_get_descent_periods(prices),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "runs", "scan", "table", "struct", "solution"];
+    let mut seed = 2110;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let prices: Vec[i64] = if t < 300 {
+            let n = next_random(mut seed) % 10 + 1;
+            (0..n).map(|_| next_random(mut seed) % 4 + 1).collect()
+        } else if t < 330 {
+            let n = next_random(mut seed) % 120 + 1;
+            (0..n).map(|_| next_random(mut seed) % 3 + 1).collect()
+        } else {
+            let n = next_random(mut seed) % 120 + 1;
+            let mut p = 1000;
+            let mut v: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                v.push(p);
+                let odds = if t < 345 { 5 } else { 60 };
+                p = if next_random(mut seed) % odds != 0 { p - 1 } else { p + next_random(mut seed) % 20 };
+            }
+            v
+        };
+        problems.push(prices);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for prices in problems.iter() {
+        let truth = literal(prices);
+        check = (check * 31 + truth) % 1000000007;
+        let n = prices.len();
+        let raised: Vec[i64] = prices.iter().map(|p| p + 7).collect();
+        let mut turned: Vec[i64] = prices.iter().map(|p| 200000 - p).collect();
+        turned.reverse();
+        let mut longer = prices.clone();
+        longer.push(prices[n - 1] + 5);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, prices)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= n and x <= n * (n + 1) / 2,
+                answer(arm, raised) == x,
+                answer(arm, turned) == x,
+                answer(arm, longer) == x + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{prices} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
