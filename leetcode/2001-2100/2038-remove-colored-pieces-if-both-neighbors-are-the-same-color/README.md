@@ -33,7 +33,7 @@ first to run out unless she has more.
 |---|---|
 | `colors.kara` ★ | the pieces collected into a `Vec[char]`, every interior piece whose neighbours share its color counted for its player. O(n) |
 | `colors_windows.kara` | `windows(3)` over the pieces and a closure `moves(color)` counting the windows that are all one color, called for `'A'` and `'B'`. O(n) |
-| `colors_runs.kara` | run lengths: one scan measures each run, which gives its player `(len - 2).max(0)` moves. O(n) |
+| `colors_runs.kara` | run lengths: `chunk_by(\|a, b\| a == b)` cuts the pieces into runs, and each run gives its player `(len - 2).max(0)` moves. O(n) |
 | `colors_bytes.kara` | `bytes()` read in place, `b'A'` compared, one balance counting Alice's moves up and Bob's down. O(n) |
 | `colors_fold.kara` | one `fold((None, None, 0, 0), \|(before, last, alice, bob), c\| ..)` over the chars, the two pieces before this one carried as `Option`s and compared with `Some(c)`. O(n) |
 | `colors_solution.kara` | LeetCode's Rust template (`impl Solution`, `as_bytes()`, `let (mut a, mut b)`, `&&`, an index loop to `len().saturating_sub(1)`), carried by `karac fix` in two rounds to a clean check |
@@ -69,9 +69,9 @@ the first ten and then the count by property.
 
 ## Mutation testing
 
-Thirty edits to the differential, five to each of its arms, each run under
+Thirty-one edits to the differential, five or six to each of its arms, each run under
 `karac __mir-run` and `karac __mir-llvm-run`. Seventeen are kept, three to
-each Kāra arm and two to the Rust-template arm. All thirty are killed, each
+each Kāra arm and two to the Rust-template arm. All thirty-one are killed, each
 fails the same way under both backends, none by a crash, and no two kept
 ones fail the same checks.
 
@@ -84,8 +84,8 @@ ones fail the same checks.
 | M5 | windows: windows of four counted | P1 115, P6 115 |
 | M6 | windows: Alice's moves weighed against her own | P1 314, P6 314 |
 | M7 | runs: a short run's negative moves counted (`.max(0)` dropped) | P1 273, P4 72, P5 416, P6 273 |
-| M8 | runs: runs cut at four pieces | P1 2, P6 2 |
-| M9 | runs: the piece after each run skipped | P1 52, P2 88, P6 52 |
+| M8 | runs: pieces grouped where neighbours differ (`!=` for `==` in `chunk_by`) | P1 481, P2 243, P4 2, P5 319, P6 481 |
+| M9 | runs: the first run left out | P1 184, P2 212, P6 184 |
 | M10 | bytes: Bob's moves never counted | P1 85, P3 111, P6 85 |
 | M11 | bytes: a triple's ends compared without its middle | P1 124, P5 205, P6 124 |
 | M12 | bytes: Alice's moves counted twice | P1 43, P3 45, P6 43 |
@@ -95,31 +95,34 @@ ones fail the same checks.
 | M16 | solution: Alice winning a tie (`>=` for `>`) | P1 881, P3 881, P5 1500, P6 881 |
 | M17 | solution: a triple's ends compared without its middle | P1 186, P4 133, P5 224, P6 186 |
 
-P1 and P6 kill all seventeen, P5 eight, P3 five, P2 three and P4 three. P2
+P1 and P6 kill all seventeen, P5 nine, P3 five, P2 four and P4 four. P2
 sees the edits that treat the two ends of the row differently: the last
-triple skipped (M3), a piece skipped after each run (M9), and `A`s
-imagined before the row (M14). P3 sees the edits that favour one color, so
+triple skipped (M3), the first run left out (M9), and `A`s
+imagined before the row (M14); and runs grouped by differing neighbours
+(M8), each credited to its first piece, which reversing the row changes. P3 sees the edits that favour one color, so
 that a row and its swap can both be Alice's: Bob's moves dropped or Alice's
 doubled (M10, M12), every `A` a move (M15), phantom `A`s (M14), and a tie
 handed to Alice (M16). P4 sees the edits under which one more `A` can cost
 Alice: with the colors swapped, a longer run of `A`s is a move for Bob (M2);
 with negative moves counted, an `A` added to a row of `B`s is a run of one
-and a move lost (M7); and with only a triple's ends compared, doubling the
+and a move lost (M7); with runs grouped by differing neighbours, an
+added piece regroups the row (M8); and with only a triple's ends compared, doubling the
 `A` in `BAB` removes the pattern the edit counted for her (M17). P5 sees
 the edits that find moves in a row that has none: a triple with one
-matching neighbour or a pair (M1, M4), a `.max(0)` dropped so Bob's single
+matching neighbour or a pair (M1, M4), runs grouped wrongly (M8), a
+`.max(0)` dropped so Bob's single
 pieces count against him (M7), a triple's ends alone (M11, M17), phantom
 or free `A` moves (M14, M15), and the tie that a row with no moves is
 (M16).
 
-The other thirteen fail as a kept one does. The first triple skipped in
+The other fourteen fail as a kept one does. The first triple skipped in
 the ★ and bytes arms fails as the windows arm's first piece dropped. Alice
 winning a tie fails alike in the ★, windows and bytes arms and as M16. The
 colors' moves swapped in the runs and Rust arms fail as M2. A run giving
 `len - 1` moves, and the fold arm's triple wanting only the last piece or
 carrying this piece as the one before, all count pairs, and fail as M4.
 The Rust arm's last triple skipped fails as M3 and its Bob counted twice as
-M13. One first draft survived and was replaced: the windows arm counting a
+M13, and the runs arm's runs of `B` cut into single pieces fails as M10. One first draft survived and was replaced: the windows arm counting a
 window with any piece of the color, `any` for `all`. A mixed window then
 counts for both players and cancels, so the comparison is the true one.
 
@@ -144,10 +147,11 @@ handed `last`, the second part's `Option[?B]`, to the first part's
 
 For the runs arm, Rust's `chunk_by(|a, b| a == b)` on the pieces was tried
 first. `karac fix` rewrote it to `c.iter().chunk_by(..)`, as for an
-iterator adaptor called on a `Vec`, and that is refused in turn: no
-iterator in the library has `chunk_by`, and the `|a, b|` closure adds a
-"cannot compare" of two unknowns. B-2026-11-09-37 tracks the method and the
-fix that points at it. The arm measures each run itself.
+iterator adaptor called on a `Vec`, and that was refused in turn: no
+iterator in the library had `chunk_by`, and the `|a, b|` closure added a
+"cannot compare" of two unknowns. That was B-2026-11-09-37, fixed in kara
+`7842702532` with `Slice.chunk_by`, which a `Vec` reaches; the arm is back
+to `chunk_by`. Until then it measured each run with a scan of its own.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
 it in two rounds (four edits, then one) to a clean check: `let (mut alice,

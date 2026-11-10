@@ -32,7 +32,7 @@ first rows that fit, each a step of at most `k / 2` words.
 | `separate_memo.kara` | a memoized recursion over where the rest starts, its widths from prefix sums of the word lengths, each rest kept in a `Vec[Option[i64]]` |
 | `separate_forward.kara` | dynamic programming from the front: `paid[j]` is the least cost of the first `j` words in rows all paid for, each row grown backwards from its end; the answer is the least `paid[s]` over each start `s` of a free last row that fits |
 | `separate_dijkstra.kara` | a shortest path over the places between words, a row from one to another an edge costing `(k - width)^2`, or nothing when it ends the sentence; a `PriorityQueue` of (cost so far, place), cheapest first |
-| `separate_text.kara` | the table from the end, measured in the text: each word's start found from the spaces in `chars().enumerate()`, a row as wide as the text from its first word's start to the space before the next row; each entry a `filter` and `map` over the row ends that fit, folded with `min` |
+| `separate_text.kara` | the table from the end, measured in the text: each word's start one past a space `match_indices(" ")` finds, a row as wide as the text from its first word's start to the space before the next row; each entry a `filter` and `map` over the row ends that fit, folded with `min` |
 | `separate_solution.kara` | LeetCode's Rust template (`sentence.split(' ')` into word lengths `as i32`, a `vec![i32::MAX; n + 1]` table filled from the end, an inner `for` that `break`s once a row is too wide), carried by `karac fix` in two rounds to a clean check |
 | `differential.kara` | the six arms against the statement read literally, six properties |
 
@@ -135,11 +135,14 @@ Under `karac __mir-run` the arms take 0.7 s (★) to 4.7 s (text), and the
 differential 9.3 s; on kara 3dcd076373.
 
 The text arm was first written with Rust's `sentence.match_indices(" ")`
-for the spaces, and refused: Kāra's strings have no `match_indices` (nor
+for the spaces, and refused: Kāra's strings had no `match_indices` (nor
 `char_indices`), and the error, "no method 'match_indices' on type
-'String'", names nothing to write instead. That is kara B-2026-11-09-57.
-The arm takes the positions from `chars().enumerate()` instead, which
-counts characters, the same as bytes for the sentence's lowercase letters.
+'String'", named nothing to write instead. That was kara B-2026-11-09-57,
+fixed in kara `758eca16fe`, and the arm is back to `match_indices`. Until
+then it took the positions from `chars().enumerate()`, which count
+characters, the same as bytes for the sentence's lowercase letters; the
+differential and the six mutations to the arm gave the same results
+either way.
 
 The other four Kāra arms met no compiler gap and checked as written.
 
