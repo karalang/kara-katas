@@ -1,0 +1,102 @@
+// LeetCode #2102: Sequentially Ordinal Rank Tracker -- the ★ arm's
+// benchmark: 20 runs of 4 * 10^4 calls, the constraints' largest, each
+// 20000 adds of unique names of 1 to 10 letters with scores of 1 to 10^5
+// and 20000 gets, a get drawn half the time while there are more adds
+// than gets. Two heaps of a `Place` with its own `Ord`; every name
+// returned goes into the checksum.
+
+struct Place {
+    score: i64,
+    name: String,
+}
+
+impl PartialEq for Place {
+    fn eq(self, other: Place) -> bool {
+        self.score == other.score and self.name == other.name
+    }
+}
+
+impl Eq for Place {}
+
+impl PartialOrd for Place {
+    fn partial_cmp(self, other: Place) -> Option[Ordering] {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Place {
+    // greater is better
+    fn cmp(self, other: Place) -> Ordering {
+        self.score.cmp(other.score).then(other.name.cmp(self.name))
+    }
+}
+
+struct SORTracker {
+    served: PriorityQueue[Place],
+    waiting: PriorityQueue[Place],
+}
+
+impl SORTracker {
+    fn new() -> SORTracker {
+        SORTracker { served: PriorityQueue.new(), waiting: PriorityQueue.max_first() }
+    }
+
+    fn add(mut ref self, name: own String, score: i64) {
+        self.served.push(Place { score, name });
+        let worst = self.served.pop().unwrap();
+        self.waiting.push(worst);
+    }
+
+    fn get(mut ref self) -> String {
+        let best = self.waiting.pop().unwrap();
+        let name = best.name.clone();
+        self.served.push(best);
+        name
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2102;
+    let mut gets = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let mut taken: Set[String] = Set.new();
+        let mut tracker = SORTracker.new();
+        let mut added = 0;
+        let mut asked = 0;
+        while asked < 20000 {
+            if added < 20000 and (asked == added or next_random(mut seed) % 2 == 0) {
+                let name = loop {
+                    let mut name = String.new();
+                    let len = next_random(mut seed) % 10 + 1;
+                    for _ in 0..len {
+                        name.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+                    }
+                    if taken.insert(name.clone()) {
+                        break name;
+                    }
+                };
+                tracker.add(name, wide_random(mut seed) % 100000 + 1);
+                added += 1;
+            } else {
+                let name = tracker.get();
+                asked += 1;
+                gets += 1;
+                for b in name.bytes() {
+                    check = (check * 31 + b) % 1000000007;
+                }
+                check = (check * 31 + 7) % 1000000007;
+            }
+        }
+    }
+    println(f"20 runs: {gets} gets, checksum {check}");
+}
