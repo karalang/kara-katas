@@ -1,0 +1,309 @@
+// LeetCode #2107: Number of Unique Flavors After Sharing K Candies --
+// the differential. The six arms, against the statement read literally:
+// every run of `k` consecutive candies is given away in turn and the
+// flavors left among the rest counted. 300 random rows of 1 to 12
+// candies of 1 to 5 flavors, sharing 0 to all; then 30 of 1 to 300
+// candies of up to 10^5 flavors; then 30 of 1 to 300 candies of 1 to 3
+// flavors; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at most the flavors among all the candies, and at
+//     least that less `k`
+// P3  the candies reversed: the same answer
+// P4  every flavor `c` renamed `100001 - c`: the same answer
+// P5  one candy fewer shared: an answer no smaller
+// P6  each arm agrees with at least three of the other five
+
+// ---- flavors.kara: the ★ arm, a `Map` window
+fn star_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut kept: Map[i64, i64] = Map.new();
+    for c in candies.iter() {
+        kept[c] = kept.get(c).unwrap_or(0) + 1;
+    }
+    for c in candies[..k].iter() {
+        kept[c] -= 1;
+    }
+    let mut distinct = kept.values().filter(|n| n > 0).count();
+    let mut best = distinct;
+    for i in k..candies.len() {
+        kept[candies[i]] -= 1;
+        if kept[candies[i]] == 0 {
+            distinct -= 1;
+        }
+        kept[candies[i - k]] += 1;
+        if kept[candies[i - k]] == 1 {
+            distinct += 1;
+        }
+        best = best.max(distinct);
+    }
+    best
+}
+
+// ---- flavors_array.kara: counts in a flat array
+fn array_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut count = Vec.filled(100001, 0);
+    let mut distinct = 0;
+    for c in candies.iter() {
+        if count[c] == 0 {
+            distinct += 1;
+        }
+        count[c] += 1;
+    }
+    let mut start = 0;
+    let mut best = 0;
+    while start + k <= candies.len() {
+        if start == 0 {
+            for j in 0..k {
+                count[candies[j]] -= 1;
+                if count[candies[j]] == 0 {
+                    distinct -= 1;
+                }
+            }
+        } else {
+            let back = candies[start - 1];
+            if count[back] == 0 {
+                distinct += 1;
+            }
+            count[back] += 1;
+            let gone = candies[start + k - 1];
+            count[gone] -= 1;
+            if count[gone] == 0 {
+                distinct -= 1;
+            }
+        }
+        best = best.max(distinct);
+        start += 1;
+    }
+    best
+}
+
+// ---- flavors_spans.kara: first and last places, a difference array
+fn spans_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let n = candies.len();
+    let mut first: Map[i64, i64] = Map.new();
+    let mut last: Map[i64, i64] = Map.new();
+    for (i, c) in candies.iter().enumerate() {
+        if not first.contains_key(c) {
+            first[c] = i;
+        }
+        last[c] = i;
+    }
+    let starts = n - k + 1;
+    let mut lost = Vec.filled(starts + 1, 0);
+    for (c, f) in first.iter() {
+        let l = last[c];
+        let from = (l - k + 1).max(0);
+        let to = f.min(starts - 1);
+        if from <= to {
+            lost[from] += 1;
+            lost[to + 1] -= 1;
+        }
+    }
+    let mut running = 0;
+    let mut fewest = n;
+    for s in 0..starts {
+        running += lost[s];
+        fewest = fewest.min(running);
+    }
+    first.len() - fewest
+}
+
+// ---- flavors_struct.kara: a `Jar`
+struct StructJar {
+    counts: Map[i64, i64],
+    present: i64,
+}
+
+impl StructJar {
+    fn new() -> StructJar {
+        StructJar { counts: Map.new(), present: 0 }
+    }
+
+    fn add(mut ref self, flavor: i64) {
+        let n = self.counts.get(flavor).unwrap_or(0);
+        if n == 0 {
+            self.present += 1;
+        }
+        self.counts.insert(flavor, n + 1);
+    }
+
+    fn remove(mut ref self, flavor: i64) {
+        let n = self.counts.get(flavor).unwrap_or(0);
+        if n == 1 {
+            self.present -= 1;
+        }
+        self.counts.insert(flavor, n - 1);
+    }
+}
+
+fn struct_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut kept = StructJar.new();
+    for (i, c) in candies.iter().enumerate() {
+        if i >= k {
+            kept.add(c);
+        }
+    }
+    let mut best = kept.present;
+    for i in k..candies.len() {
+        kept.add(candies[i - k]);
+        kept.remove(candies[i]);
+        best = best.max(kept.present);
+    }
+    best
+}
+
+// ---- flavors_fold.kara: one `fold`
+fn fold_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut kept: Map[i64, i64] = Map.new();
+    for c in (k..candies.len()).map(|i| candies[i]) {
+        kept[c] = kept.get(c).unwrap_or(0) + 1;
+    }
+    let present = kept.len();
+    let (_, _, best) = (k..candies.len()).fold((kept, present, present), |state, i| {
+        let mut (kept, present, best) = state;
+        let back = candies[i - k];
+        let back_n = kept.get(back).unwrap_or(0);
+        if back_n == 0 {
+            present += 1;
+        }
+        kept[back] = back_n + 1;
+        let gone = candies[i];
+        kept[gone] -= 1;
+        if kept[gone] == 0 {
+            present -= 1;
+        }
+        (kept, present, best.max(present))
+    });
+    best
+}
+
+// ---- flavors_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn share_candies(candies: Vec[i32], k: i32) -> i32 {
+        let k = k as i64;
+        let mut cnt: Map[i32, i32] = Map.new();
+        for c in candies[k..] {
+            *cnt.entry(c).or_insert(0) += 1;
+        }
+        let mut ans = cnt.len() as i32;
+        for i in k..candies.len() {
+            *cnt.entry(candies[i - k]).or_insert(0) += 1;
+            let e = cnt.get_mut(candies[i]).unwrap();
+            *e -= 1;
+            if *e == 0 {
+                cnt.remove(candies[i]);
+            }
+            ans = ans.max(cnt.len() as i32);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_share_candies(candies: Vec[i64], k: i64) -> i64 {
+    SolutionSolution.share_candies(candies.iter().map(|c| c as i32).collect(), k as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(candies: Vec[i64], k: i64) -> i64 {
+    let n = candies.len();
+    let mut best = 0;
+    for s in 0..=n - k {
+        let mut kept: Set[i64] = Set.new();
+        for i in 0..n {
+            if i < s or i >= s + k {
+                kept.insert(candies[i]);
+            }
+        }
+        best = best.max(kept.len());
+    }
+    best
+}
+
+fn answer(arm: i64, candies: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_share_candies(candies, k),
+        1 => array_share_candies(candies, k),
+        2 => spans_share_candies(candies, k),
+        3 => struct_share_candies(candies, k),
+        4 => fold_share_candies(candies, k),
+        _ => solution_share_candies(candies, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "array", "spans", "struct", "fold", "solution"];
+    let mut seed = 2107;
+    let mut problems: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let (n, flavors) = if t < 300 {
+            (next_random(mut seed) % 12 + 1, next_random(mut seed) % 5 + 1)
+        } else if t < 330 {
+            (next_random(mut seed) % 300 + 1, 100000)
+        } else {
+            (next_random(mut seed) % 300 + 1, next_random(mut seed) % 3 + 1)
+        };
+        let candies: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % flavors + 1).collect();
+        let k = next_random(mut seed) % (n + 1);
+        problems.push((candies, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (candies, k) in problems.iter() {
+        let truth = literal(candies, k);
+        check = (check * 31 + truth) % 1000000007;
+        let all_set: Set[i64] = candies.iter().collect();
+        let all = all_set.len();
+        let mut reversed = candies.clone();
+        reversed.reverse();
+        let renamed: Vec[i64] = candies.iter().map(|c| 100001 - c).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, candies, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x <= all and x >= all - k,
+                answer(arm, reversed, k) == x,
+                answer(arm, renamed, k) == x,
+                k == 0 or answer(arm, candies, k - 1) >= x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{candies} sharing {k} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} rows: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

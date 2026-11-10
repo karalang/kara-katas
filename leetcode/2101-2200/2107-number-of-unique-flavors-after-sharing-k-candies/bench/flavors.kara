@@ -1,0 +1,55 @@
+// LeetCode #2107: Number of Unique Flavors After Sharing K Candies -- the
+// benchmark, flavors.kara's ★ arm: a `Map` of the kept flavors' counts,
+// the shared window sliding right one candy at a time. 20 rows of 10^5
+// candies of up to 5000 flavors are built once; each is then shared 5
+// times, up to 10^5 candies at a time.
+
+fn share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut kept: Map[i64, i64] = Map.new();
+    for c in candies.iter() {
+        kept[c] = kept.get(c).unwrap_or(0) + 1;
+    }
+    for c in candies[..k].iter() {
+        kept[c] -= 1;
+    }
+    let mut distinct = kept.values().filter(|n| n > 0).count();
+    let mut best = distinct;
+    for i in k..candies.len() {
+        kept[candies[i]] -= 1;
+        if kept[candies[i]] == 0 {
+            distinct -= 1;
+        }
+        kept[candies[i - k]] += 1;
+        if kept[candies[i - k]] == 1 {
+            distinct += 1;
+        }
+        best = best.max(distinct);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2107;
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let flavors = next_random(mut seed) % 5000 + 1;
+        let candies: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % flavors + 1).collect();
+        rows.push(candies);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for candies in rows.iter() {
+        for _ in 0..5 {
+            let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100001;
+            let got = share_candies(candies, k);
+            total += got;
+            check = (check * 31 + got) % 1000000007;
+        }
+    }
+    println(f"100 shares: {total} flavors kept, checksum {check}");
+}

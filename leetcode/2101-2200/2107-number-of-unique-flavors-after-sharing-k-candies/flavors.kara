@@ -1,0 +1,78 @@
+// LeetCode #2107: Number of Unique Flavors After Sharing K Candies --
+// the ★ arm. A `Map` counts every flavor kept; the first `k` candies are
+// taken out of it, and the window of shared candies slides right one
+// candy at a time, the candy leaving the window kept again and the one
+// entering it given away, the number of flavors with a count above zero
+// tracked as it goes. O(n).
+
+fn share_candies(candies: Vec[i64], k: i64) -> i64 {
+    let mut kept: Map[i64, i64] = Map.new();
+    for c in candies.iter() {
+        kept[c] = kept.get(c).unwrap_or(0) + 1;
+    }
+    for c in candies[..k].iter() {
+        kept[c] -= 1;
+    }
+    let mut distinct = kept.values().filter(|n| n > 0).count();
+    let mut best = distinct;
+    for i in k..candies.len() {
+        kept[candies[i]] -= 1;
+        if kept[candies[i]] == 0 {
+            distinct -= 1;
+        }
+        kept[candies[i - k]] += 1;
+        if kept[candies[i - k]] == 1 {
+            distinct += 1;
+        }
+        best = best.max(distinct);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: every candy given, one
+    // flavor only, every flavor once with one given, and a flavor that
+    // only a window in the middle takes away
+    let examples = [
+        ([1, 2, 2, 3, 4, 3].to_vec(), 3),
+        ([2, 2, 2, 2, 3, 3].to_vec(), 2),
+        ([2, 4, 5].to_vec(), 0),
+        ([1, 2, 3].to_vec(), 3),
+        ([7, 7, 7, 7].to_vec(), 2),
+        ([1, 2, 3, 4, 5].to_vec(), 1),
+        ([1, 2, 9, 9, 1, 2].to_vec(), 2),
+    ];
+    for (candies, k) in examples.iter() {
+        println(f"{candies} sharing {k} -> {share_candies(candies, k)}");
+    }
+    // 3000 random rows of 1 to 40 candies of 1 to 8 flavors, sharing 0
+    // to all of them
+    let mut seed = 2107;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let flavors = next_random(mut seed) % 8 + 1;
+        let candies: Vec[i64] = (0..n).map(|_| next_random(mut seed) % flavors + 1).collect();
+        let k = next_random(mut seed) % (n + 1);
+        let got = share_candies(candies, k);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 rows: {total} flavors kept, checksum {check}");
+    // the constraints' largest, 10^5 candies: 1000 flavors in turn
+    // sharing half, every flavor once sharing all but one, and every
+    // flavor once sharing 777
+    let cycled: Vec[i64] = (0..100000).map(|i| i % 1000 + 1).collect();
+    let distinct: Vec[i64] = (1..=100000).collect();
+    println(f"cycled -> {share_candies(cycled, 50000)}");
+    println(f"distinct, all but one -> {share_candies(distinct, 99999)}");
+    println(f"distinct, 777 -> {share_candies(distinct, 777)}");
+}
