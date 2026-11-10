@@ -1,0 +1,94 @@
+// LeetCode #2108: Find First Palindromic String in the Array -- each
+// word reversed with `chars().rev().collect()` into a new `String` and
+// compared with the word itself. O(total letters), with a copy of each
+// word tried.
+
+fn first_palindrome(words: Vec[String]) -> String {
+    for w in words.iter() {
+        let reversed: String = w.chars().rev().collect();
+        if reversed == w {
+            return w.clone();
+        }
+    }
+    String.new()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` words of 1 to `longest` letters from the first `letters` of the
+// alphabet: few letters and short words make many palindromes
+fn draw(n: i64, longest: i64, letters: i64, seed: mut ref i64) -> Vec[String] {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..n {
+        let len = next_random(mut seed) % longest + 1;
+        let mut w = String.new();
+        for _ in 0..len {
+            w.push(alphabet[next_random(mut seed) % letters]);
+        }
+        words.push(w);
+    }
+    words
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one word of one letter,
+    // an even palindrome after an odd near-miss, a palindrome only at the
+    // end, and the same palindrome twice
+    let examples = [
+        ["abc", "car", "ada", "racecar", "cool"].to_vec(),
+        ["notapalindrome", "racecar"].to_vec(),
+        ["def", "ghi"].to_vec(),
+        ["z"].to_vec(),
+        ["abca", "abba", "aba"].to_vec(),
+        ["ab", "ba", "abc", "cbc"].to_vec(),
+        ["xyx", "xyx"].to_vec(),
+    ];
+    for e in examples.iter() {
+        let words: Vec[String] = e.iter().map(|w| w.to_string()).collect();
+        println(f"{words} -> \"{first_palindrome(words)}\"");
+    }
+    // 3000 random lists of 1 to 20 words of 1 to 6 letters from the first
+    // 2 to 5 letters
+    let mut seed = 2108;
+    let mut found = 0;
+    let mut letters_total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let longest = next_random(mut seed) % 6 + 1;
+        let letters = next_random(mut seed) % 4 + 2;
+        let words = draw(n, longest, letters, mut seed);
+        let got = first_palindrome(words);
+        if got.len() > 0 {
+            found += 1;
+        }
+        letters_total += got.len();
+        check = (check * 31 + got.len()) % 1000000007;
+        for c in got.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"3000 lists: {found} with a palindrome, {letters_total} letters, checksum {check}");
+    // the constraints' largest, 100 words of 100 letters: only the last a
+    // palindrome, and then none
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut big: Vec[String] = Vec.new();
+    for i in 0..99 {
+        let mut w = String.new();
+        for _ in 0..99 {
+            w.push(alphabet[i % 26]);
+        }
+        w.push(alphabet[(i + 1) % 26]);
+        big.push(w);
+    }
+    big.push("a" + "b".repeat(98) + "a");
+    println(f"largest, the last -> {first_palindrome(big).len()} letters");
+    big[99] = "a" + "b".repeat(98) + "c";
+    println(f"largest, none -> \"{first_palindrome(big)}\"");
+}
