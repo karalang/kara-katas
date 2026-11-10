@@ -66,7 +66,7 @@ is drawn before any arm answers.
 
 | | property |
 |---|---|
-| P1 | the answer at the capacity drawn is whether the fullest the literal car gets fits it, and the smallest capacity the arm accepts (by binary search) is that fullest |
+| P1 | the answer at the capacity drawn is whether the fullest the literal car gets fits it |
 | P2 | more seats never hurt: refused one seat below the literal fullest, accepted at it and at 10^5 |
 | P3 | the trips in another order (reversed and rotated) give the same answer |
 | P4 | every stop moved on by the same amount, and the road then driven backwards (stop s read as 1000 - s), gives the same answer |
@@ -91,21 +91,21 @@ same checks.
 
 | # | mutation | failures by property |
 |---|---|---|
-| M1 | ★: a full car refused | P1 1431, P2 2000 |
-| M2 | ★: passengers off a stop early | P1 313, P2 313, P5 4, P6 85 |
-| M3 | ★: only one stop's change counted | P1 1621, P2 1621, P4 89, P6 40 |
-| M4 | events: never sorted | P1 1365, P2 1365, P5 23 |
-| M5 | events: one fit is enough (`any` for `all`) | P1 1990, P2 1990, P6 2000 |
-| M6 | heap: trips by drop-off stop | P1 574, P2 574, P3 8, P4 62, P5 22 |
-| M7 | heap: nobody ever gets off | P1 1365, P2 1365, P5 96 |
-| M8 | heap: the latest drop-off first | P1 818, P2 818, P5 51 |
-| M9 | map: a drop-off overwrites its stop | P1 204, P2 204, P3 69, P4 96, P5 39, P6 3 |
-| M10 | map: a pickup overwrites its stop | P1 1230, P2 1230, P3 328, P4 369, P5 190, P6 10 |
-| M11 | map: one passenger over allowed | P1 1990, P2 1990, P6 97 |
-| M12 | pickups: a trip not aboard at its pickup | P1 1990, P2 1990, P4 39, P5 80, P6 897 |
-| M13 | pickups: drop-off stops checked | P1 1532, P2 1532, P4 92, P5 301, P6 738 |
-| M14 | pickups: the first trip's pickup not checked | P1 310, P2 310, P3 60, P4 17, P5 139 |
-| M15 | solution: pickups before drop-offs at a stop | P1 667, P2 667, P5 105 |
+| M1 | ★: a full car refused | P1 99, P2 2000 |
+| M2 | ★: passengers off a stop early | P1 55, P2 313, P5 4, P6 85 |
+| M3 | ★: only one stop's change counted | P1 539, P2 1621, P4 89, P6 40 |
+| M4 | events: never sorted | P1 633, P2 1365, P5 23 |
+| M5 | events: one fit is enough (`any` for `all`) | P1 1213, P2 1990, P6 2000 |
+| M6 | heap: trips by drop-off stop | P1 71, P2 574, P3 8, P4 62, P5 22 |
+| M7 | heap: nobody ever gets off | P1 689, P2 1365, P5 96 |
+| M8 | heap: the latest drop-off first | P1 332, P2 818, P5 51 |
+| M9 | map: a drop-off overwrites its stop | P1 21, P2 204, P3 69, P4 96, P5 39, P6 3 |
+| M10 | map: a pickup overwrites its stop | P1 478, P2 1230, P3 328, P4 369, P5 190, P6 10 |
+| M11 | map: one passenger over allowed | P1 97, P2 1990, P6 97 |
+| M12 | pickups: a trip not aboard at its pickup | P1 604, P2 1990, P4 39, P5 80, P6 897 |
+| M13 | pickups: drop-off stops checked | P1 464, P2 1532, P4 92, P5 301, P6 738 |
+| M14 | pickups: the first trip's pickup not checked | P1 158, P2 310, P3 60, P4 17, P5 139 |
+| M15 | solution: pickups before drop-offs at a stop | P1 108, P2 667, P5 105 |
 
 P1 and P2 catch all fifteen, P5 eleven, P6 eight, P4 seven and P3 four.
 The properties that compare an arm only with itself, P3 to P6, catch
@@ -117,18 +117,18 @@ pickups arm skipping its first trip (M14). M2 is the hardest for the
 properties: getting off a stop early only matters where the stop before
 a drop-off is the fullest, and P5 sees it 4 times in 2000, P6 85.
 
-Of the fifteen not kept, thirteen fail exactly as a kept edit: M1 is also
-the events arm counting a drop-off as a pickup, the map arm counting it
-so, the pickups arm refusing a full car and the solution arm doing the
-same; M2 is also the ★ and solution arms putting passengers on a stop
-late; M4 is also the events arm checking each change and not the total
-and the heap arm keying a trip by its pickup (each sees one trip at a
-time); M5 is also the solution arm sorting by the change alone and
-counting the changes the wrong way; M15 is also the events arm dropping
-off after the pickups, the heap arm not freeing a drop-off at the
-pickup stop, and the pickups arm keeping a trip aboard at its drop-off.
-The other two fail in ways of their own but were not needed: the ★ arm
-adding a passenger at every stop and the map arm at every pickup.
+Of the fifteen not kept, eleven fail exactly as a kept edit: M1 is also
+the pickups arm and the solution arm refusing a full car; M2 is also
+the ★ and solution arms putting passengers on a stop late; M4 is also
+the events arm checking each change and not the total and the heap arm
+keying a trip by its pickup (each sees one trip at a time); M5 is also
+the solution arm sorting by the change alone and counting the changes
+the wrong way; M15 is also the events arm dropping off after the
+pickups, the heap arm not freeing a drop-off at the pickup stop, and
+the pickups arm keeping a trip aboard at its drop-off. The other four
+fail in ways of their own but were not needed: the ★ arm adding a
+passenger at every stop, the map arm at every pickup, and the events
+and map arms counting a drop-off as a pickup.
 
 ## Verification
 
