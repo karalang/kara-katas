@@ -1,0 +1,88 @@
+// LeetCode #2109: Adding Spaces to a String -- LeetCode's Rust template
+// (`s: String`, `spaces: Vec<i32>` to `String`): `String::with_capacity`,
+// each piece between spaces pushed with `push_str(&s[last..sp])` over
+// `for &sp in spaces.iter()`, `sp as usize`. Carried by `karac fix`. The
+// adapter below hands the harness's places to it as `i32`.
+
+impl Solution {
+    pub fn add_spaces(s: String, spaces: Vec[i32]) -> String {
+        let mut ans = String.with_capacity(s.len() + spaces.len());
+        let mut last = 0;
+        for sp in spaces.iter() {
+            let sp = sp as i64;
+            ans.push_str(s[last..sp]);
+            ans.push(' ');
+            last = sp;
+        }
+        ans.push_str(s[last..]);
+        ans
+    }
+}
+
+struct Solution {}
+
+fn add_spaces(s: String, spaces: Vec[i64]) -> String {
+    Solution.add_spaces(s, spaces.iter().map(|p| p as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one space at the
+    // start, one before the last letter, and one letter with its space
+    let examples = [
+        ("LeetcodeHelpsMeLearn", [8, 13, 15].to_vec()),
+        ("icodeinpython", [1, 5, 7, 9].to_vec()),
+        ("spacing", [0, 1, 2, 3, 4, 5, 6].to_vec()),
+        ("Kara", [0].to_vec()),
+        ("Kara", [3].to_vec()),
+        ("x", [0].to_vec()),
+    ];
+    for (s, spaces) in examples.iter() {
+        println(f"\"{s}\" {spaces} -> \"{add_spaces(s.to_string(), spaces)}\"");
+    }
+    // 3000 random strings of 1 to 30 letters of either case, a space
+    // before each letter with odds of one in three, and at least one
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+    let mut seed = 2109;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let mut s = String.new();
+        let mut spaces: Vec[i64] = Vec.new();
+        for i in 0..n {
+            s.push(letters[next_random(mut seed) % 52]);
+            if next_random(mut seed) % 3 == 0 {
+                spaces.push(i);
+            }
+        }
+        if spaces.is_empty() {
+            spaces.push(next_random(mut seed) % n);
+        }
+        let got = add_spaces(s, spaces);
+        total += got.len();
+        for c in got.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"3000 strings: {total} characters, checksum {check}");
+    // the constraints' largest, 3 * 10^5 letters: a space before every
+    // one, and before every thousandth
+    let mut s = String.new();
+    for i in 0..300000 {
+        s.push(letters[i % 52]);
+    }
+    let every: Vec[i64] = (0..300000).collect();
+    let thousandth: Vec[i64] = (0..300).map(|i| i * 1000).collect();
+    let spaced = add_spaces(s, every);
+    println(f"every letter -> {spaced.len()} characters, {spaced.chars().filter(|c| c == ' ').count()} spaces");
+    let spaced = add_spaces(s, thousandth);
+    let tail: String = spaced.chars().skip(spaced.len() - 12).collect();
+    println(f"every thousandth -> {spaced.len()} characters, ends \"{tail}\"");
+}
