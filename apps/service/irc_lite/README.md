@@ -54,14 +54,14 @@ By hand:
 - `let params: String = m.params.iter().map(|x| f"[{x}]").collect();` in
   `show` is Rust's `FromIterator<String> for String`. A Kāra `String`
   gathers `char`s (library/iterators.md), so the `.kara` collects a
-  `Vec[String]` and joins it. The refusal now says so (B-2026-11-10-30).
+  `Vec[String]` and joins it. The refusal now says so (B-2026-11-10-34).
 
 Found while writing it:
 - `serve(srv, id, conn: TcpStream)` hands `conn` to `BufReader.new`, as
   Rust's owned parameter does. The parameter borrows in Kāra, and the call
   got E0297 "not a `ref TcpStream`" with no fix, where any other `own`
   parameter gets the refusal and the fix that writes `own`
-  (B-2026-11-10-29).
+  (B-2026-11-10-33).
 
 `Channel` and `Server` shadow prelude types of the same name; check warns,
 and the program means its own.
