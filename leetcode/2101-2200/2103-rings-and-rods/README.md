@@ -155,8 +155,8 @@ a cast `i32` widens without, and `bit` given `: u8`.
 That last edit is new. Rust infers `bit`'s type from the `|=` into a
 `u8` array; Kāra types a `let` bound to a `match` of bare literals at
 the default `i64` at once, before any later use can fix it (kara
-REMROW, the binding half of B-2026-11-10-6, whose operand half is
-fixed), so the `|=` would narrow and was rejected. The rejection already named the narrowing but
+B-2026-11-10-49, the binding half of B-2026-11-10-6, whose operand half
+is fixed), so the `|=` would narrow and was rejected. The rejection already named the narrowing but
 not why `bit` was an `i64`, and offered no edit: the explanation of a
 defaulted literal looked only at a literal bound directly. It now looks
 through a `match` or an `if` whose every branch is a literal, says that
