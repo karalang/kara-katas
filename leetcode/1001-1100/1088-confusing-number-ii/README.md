@@ -161,7 +161,7 @@ overflow-checked Rust programs are also built at `-march=x86-64-v3`:
 | C (`clang -O3`) | 0.837 to 0.953 s | 0.863 s |
 | C (`clang -O3 -march=x86-64-v3`) | 0.844 to 0.936 s | 0.880 s |
 | Kāra (`KARAC_AUTO_PAR=0 karac build`) | 1.015 to 1.184 s | 1.065 s |
-| Kāra (`karac build`, before B-2026-11-09-57's fix) | 1.157 to 1.245 s | 1.223 s |
+| Kāra (`karac build`, before B-2026-11-10-1's fix) | 1.157 to 1.245 s | 1.223 s |
 | Rust (`rustc -O`) | 1.354 to 1.555 s | 1.450 s |
 | Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 1.569 to 1.811 s | 1.649 s |
 | Rust (`rustc -O -C overflow-checks=on`) | 1.611 to 1.858 s | 1.677 s |
@@ -181,6 +181,16 @@ checksum), and a plain `karac build` ran on one core (user 1.205 s of
 1.223 s real), yet it was 15% slower than the sequential build and its
 binary differed. With nothing to run as tasks, the build kept the
 lowering that records the candidates, which ends a block between every
-statement to delimit them. It now lowers the program in order, and the
-plain build's binary is byte-identical to the `KARAC_AUTO_PAR=0` one
-(kara B-2026-11-09-57, pinned by `tests/kata_1088_auto_par_in_order.rs`).
+statement to delimit them, and skips the passes that make a list of
+literals a static table and presize a vector before its pushes (turning
+the table pass off in the sequential build changes nothing measurable
+here). It now lowers
+the program in order, and the plain build's binary is byte-identical to
+the `KARAC_AUTO_PAR=0` one (kara B-2026-11-10-1, pinned by
+`tests/kata_1088_auto_par_in_order.rs`). Running the table pass on
+plain builds found a bug the sequential lane already had: a `Vec` of
+literals written through `as_slice_mut()` or a range view passed `mut
+v[a..b]` was taken for a constant, since both borrowed it read-only, and
+a compiled program crashed sorting it (kara B-2026-11-10-2). The range
+view still borrows read-only, which keeps the borrow checker from seeing
+it write (kara B-2026-11-10-4, open).
