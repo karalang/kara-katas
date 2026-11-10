@@ -1,0 +1,456 @@
+// LeetCode #2071: Maximum Number of Tasks You Can Assign -- the
+// differential. The six arms, against the statement read literally: every
+// way of giving tasks to workers tried, each task left undone or given to
+// a worker not yet used who is able, with a pill if one is left and the
+// worker needs it, and the most tasks done kept. 300 random problems of 1
+// to 6 tasks and 1 to 6 workers, strengths up to 20, pills up to the
+// workers and a pill's strength up to 20; then 20 whose every worker is
+// weaker than every task and 20 with pills of strength 0; every one drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the tasks and the workers in reverse order leave the answer
+// P3  one more pill, or a pill one stronger, never lowers the answer
+// P4  every strength doubled, a pill's too, leaves the answer
+// P5  the answer is at most the tasks and at most the workers, at least
+//     the answer with no pills and at most that and the pills
+// P6  each arm agrees with at least three of the other five
+
+// ---- tasks.kara: the ★ arm, a binary search, the waiting tasks in a `VecDeque`
+fn star_can_do(tasks: Vec[i64], workers: Vec[i64], k: i64, pills: i64, strength: i64) -> bool {
+    let mut left = pills;
+    let mut waiting: VecDeque[i64] = VecDeque.new();
+    let mut next = 0;
+    for w in workers[workers.len() - k..].iter() {
+        while next < k and tasks[next] <= w + strength {
+            waiting.push_back(tasks[next]);
+            next += 1;
+        }
+        match waiting.front() {
+            None => return false,
+            Some(easiest) if easiest <= w => {
+                waiting.pop_front();
+            }
+            Some(_) => {
+                if left == 0 {
+                    return false;
+                }
+                left -= 1;
+                waiting.pop_back();
+            }
+        }
+    }
+    true
+}
+
+fn star_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut tasks = tasks.clone();
+    let mut workers = workers.clone();
+    tasks.sort();
+    workers.sort();
+    let mut (lo, hi) = (0, tasks.len().min(workers.len()));
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if star_can_do(tasks, workers, mid, pills, strength) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- tasks_multiset.kara: hardest task first, the workers a `SortedMap` of counts
+fn multiset_take(pool: mut ref SortedMap[i64, i64], w: i64) {
+    let left = pool.get(w).unwrap() - 1;
+    if left == 0 {
+        pool.remove(w);
+    } else {
+        pool.insert(w, left);
+    }
+}
+
+fn multiset_can_do(tasks: Vec[i64], workers: Vec[i64], k: i64, pills: i64, strength: i64) -> bool {
+    let mut pool: SortedMap[i64, i64] = SortedMap.new();
+    for w in workers[workers.len() - k..].iter() {
+        let have = pool.get(w).unwrap_or(0);
+        pool.insert(w, have + 1);
+    }
+    let mut left = pills;
+    for t in tasks[..k].iter().rev() {
+        let (strongest, _) = pool.last().unwrap();
+        if strongest >= t {
+            multiset_take(mut pool, strongest);
+            continue;
+        }
+        if left == 0 {
+            return false;
+        }
+        match pool.ceiling(t - strength) {
+            Some((w, _)) => {
+                multiset_take(mut pool, w);
+                left -= 1;
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
+fn multiset_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut tasks = tasks.clone();
+    let mut workers = workers.clone();
+    tasks.sort();
+    workers.sort();
+    let mut (lo, hi) = (0, tasks.len().min(workers.len()));
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if multiset_can_do(tasks, workers, mid, pills, strength) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- tasks_free.kara: hardest task first, a sorted `Vec` with next-free links
+fn free_free_from(next: mut ref Vec[i64], at: i64) -> i64 {
+    let mut i = at;
+    while next[i] != i {
+        next[i] = next[next[i]];
+        i = next[i];
+    }
+    i
+}
+
+fn free_can_do(tasks: Vec[i64], workers: Vec[i64], k: i64, pills: i64, strength: i64) -> bool {
+    let pool: Vec[i64] = workers[workers.len() - k..].to_vec();
+    // `next[i]` leads to a free worker at or above `i`; `k` is past the end
+    let mut next: Vec[i64] = (0..=k).collect();
+    let mut taken = Vec.filled(k, false);
+    let mut top = k - 1;
+    let mut left = pills;
+    for t in tasks[..k].iter().rev() {
+        while taken[top] {
+            top -= 1;
+        }
+        let chosen = if pool[top] >= t {
+            top
+        } else {
+            if left == 0 {
+                return false;
+            }
+            left -= 1;
+            let i = free_free_from(mut next, pool.partition_point(|w| w + strength < t));
+            if i == k {
+                return false;
+            }
+            i
+        };
+        taken[chosen] = true;
+        next[chosen] = chosen + 1;
+    }
+    true
+}
+
+fn free_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut tasks = tasks.clone();
+    let mut workers = workers.clone();
+    tasks.sort();
+    workers.sort();
+    let mut (lo, hi) = (0, tasks.len().min(workers.len()));
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if free_can_do(tasks, workers, mid, pills, strength) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- tasks_partition.kara: `partition_point` over the counts, a `Vec` as a deque
+fn partition_can_do(tasks: Vec[i64], workers: Vec[i64], k: i64, pills: i64, strength: i64) -> bool {
+    let mut left = pills;
+    let mut waiting: Vec[i64] = Vec.new();
+    let mut head = 0;
+    let mut next = 0;
+    for w in workers[workers.len() - k..].iter() {
+        while next < k and tasks[next] <= w + strength {
+            waiting.push(tasks[next]);
+            next += 1;
+        }
+        if head == waiting.len() {
+            return false;
+        }
+        if waiting[head] <= w {
+            head += 1;
+        } else if left > 0 {
+            left -= 1;
+            waiting.pop();
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn partition_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut tasks = tasks.clone();
+    let mut workers = workers.clone();
+    tasks.sort();
+    workers.sort();
+    let counts: Vec[i64] = (1..=tasks.len().min(workers.len())).collect();
+    counts.partition_point(|k| partition_can_do(tasks, workers, k, pills, strength))
+}
+
+// ---- tasks_pool.kara: a `struct Pool` over a `SortedSet` of pairs
+struct PoolPool {
+    workers: SortedSet[(i64, i64)],
+}
+
+impl PoolPool {
+    fn of(strengths: Slice[i64]) -> PoolPool {
+        let mut workers: SortedSet[(i64, i64)] = SortedSet.new();
+        for (i, w) in strengths.iter().enumerate() {
+            workers.insert((w, i));
+        }
+        PoolPool { workers: workers }
+    }
+
+    fn strongest(self) -> i64 {
+        let (w, _) = self.workers.max().unwrap();
+        w
+    }
+
+    fn take_strongest(mut ref self) {
+        self.workers.pop_last();
+    }
+
+    // gives a task to the weakest worker of at least `least`, if any
+    fn take_at_least(mut ref self, least: i64) -> bool {
+        let found = self.workers.range_inclusive((least, 0), (i64.MAX, i64.MAX)).next().cloned();
+        match found {
+            Some(pair) => {
+                self.workers.remove(pair);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+fn pool_can_do(tasks: Vec[i64], workers: Vec[i64], k: i64, pills: i64, strength: i64) -> bool {
+    let mut pool = PoolPool.of(workers[workers.len() - k..]);
+    let mut left = pills;
+    for t in tasks[..k].iter().rev() {
+        if pool.strongest() >= t {
+            pool.take_strongest();
+        } else if left > 0 and pool.take_at_least(t - strength) {
+            left -= 1;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn pool_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut tasks = tasks.clone();
+    let mut workers = workers.clone();
+    tasks.sort();
+    workers.sort();
+    let mut (lo, hi) = (0, tasks.len().min(workers.len()));
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if pool_can_do(tasks, workers, mid, pills, strength) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- tasks_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn max_task_assign(tasks: own Vec[i32], workers: own Vec[i32], pills: i32, strength: i32) -> i32 {
+        let mut tasks = tasks;
+        let mut workers = workers;
+        tasks.sort();
+        workers.sort();
+        let (n, m) = (tasks.len(), workers.len());
+        let check = |k: i64| {
+            let mut p = pills;
+            let mut dq: VecDeque[i32] = VecDeque.new();
+            let mut i = 0;
+            for j in m - k..m {
+                while i < k and tasks[i] <= workers[j] + strength {
+                    dq.push_back(tasks[i]);
+                    i += 1;
+                }
+                if dq.is_empty() {
+                    return false;
+                }
+                if *dq.front().unwrap() <= workers[j] {
+                    dq.pop_front();
+                } else if p > 0 {
+                    p -= 1;
+                    dq.pop_back();
+                } else {
+                    return false;
+                }
+            }
+            true
+        };
+        let mut (lo, hi) = (0, n.min(m));
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2;
+            if check(mid) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let ts: Vec[i32] = tasks.iter().map(|t| t as i32).collect();
+    let ws: Vec[i32] = workers.iter().map(|w| w as i32).collect();
+    Solution.max_task_assign(ts, ws, pills as i32, strength as i32) as i64
+}
+
+// ---- the statement read literally
+
+fn most_from(tasks: Vec[i64], workers: Vec[i64], at: i64, used: mut ref Vec[bool], pills: i64, strength: i64) -> i64 {
+    if at == tasks.len() {
+        return 0;
+    }
+    let mut best = most_from(tasks, workers, at + 1, mut used, pills, strength);
+    for j in 0..workers.len() {
+        if used[j] {
+            continue;
+        }
+        let able = workers[j] >= tasks[at];
+        let with_pill = not able and pills > 0 and workers[j] + strength >= tasks[at];
+        if able or with_pill {
+            used[j] = true;
+            let left = if with_pill { pills - 1 } else { pills };
+            best = best.max(1 + most_from(tasks, workers, at + 1, mut used, left, strength));
+            used[j] = false;
+        }
+    }
+    best
+}
+
+fn literal(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let mut used = Vec.filled(workers.len(), false);
+    most_from(tasks, workers, 0, mut used, pills, strength)
+}
+
+fn answer(arm: i64, tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    match arm {
+        0 => star_max_task_assign(tasks, workers, pills, strength),
+        1 => multiset_max_task_assign(tasks, workers, pills, strength),
+        2 => free_max_task_assign(tasks, workers, pills, strength),
+        3 => partition_max_task_assign(tasks, workers, pills, strength),
+        4 => pool_max_task_assign(tasks, workers, pills, strength),
+        _ => solution_max_task_assign(tasks, workers, pills, strength),
+    }
+}
+
+// ---- problems
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn strengths(n: i64, low: i64, high: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        out.push(low + next_random(mut seed) % (high - low + 1));
+    }
+    out
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    let names = ["star", "multiset", "free", "partition", "pool", "solution"];
+    let mut seed = 2071;
+    let mut problems: Vec[(Vec[i64], Vec[i64], i64, i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 6 + 1;
+        let m = next_random(mut seed) % 6 + 1;
+        let (tasks, workers) = if t >= 300 and t < 320 {
+            (strengths(n, 11, 20, mut seed), strengths(m, 0, 10, mut seed))
+        } else {
+            (strengths(n, 0, 20, mut seed), strengths(m, 0, 20, mut seed))
+        };
+        let pills = next_random(mut seed) % (m + 1);
+        let strength = if t >= 320 { 0 } else { next_random(mut seed) % 21 };
+        problems.push((tasks, workers, pills, strength));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (tasks, workers, pills, strength) in problems.iter() {
+        let truth = literal(tasks, workers, pills, strength);
+        check = (check * 31 + truth) % 1000000007;
+        let tasks_back: Vec[i64] = tasks.iter().rev().collect();
+        let workers_back: Vec[i64] = workers.iter().rev().collect();
+        let tasks_twice: Vec[i64] = tasks.iter().map(|t| 2 * t).collect();
+        let workers_twice: Vec[i64] = workers.iter().map(|w| 2 * w).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tasks, workers, pills, strength)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let bare = answer(arm, tasks, workers, 0, strength);
+            let verdicts = [
+                x == truth,
+                answer(arm, tasks_back, workers_back, pills, strength) == x,
+                answer(arm, tasks, workers, pills + 1, strength) >= x and answer(arm, tasks, workers, pills, strength + 1) >= x,
+                answer(arm, tasks_twice, workers_twice, pills, 2 * strength) == x,
+                x <= tasks.len() and x <= workers.len() and x >= bare and x <= bare + pills,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(tasks)} {show(workers)} {pills} pills of {strength} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} problems: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

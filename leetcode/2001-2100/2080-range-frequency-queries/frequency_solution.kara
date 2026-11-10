@@ -1,0 +1,108 @@
+// LeetCode #2080: Range Frequency Queries -- LeetCode's Rust template
+// (`use std::collections::HashMap`, a `HashMap<i32, Vec<usize>>` filled
+// through `entry(..).or_default()`, `&self` and `i32` arguments,
+// `partition_point(|&p| ..)`, `map_or`), carried by `karac fix`. The
+// adapter below hands the harness's queries to it.
+
+
+struct RangeFreqQuery {
+    pos: Map[i32, Vec[i64]],
+}
+
+impl RangeFreqQuery {
+    fn new(arr: Vec[i32]) -> Self {
+        let mut pos: Map[i32, Vec[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            pos.entry(v).or_insert(Vec.new()).push(i);
+        }
+        RangeFreqQuery { pos }
+    }
+
+    fn query(self, left: i32, right: i32, value: i32) -> i32 {
+        let (l, r) = (left as i64, right as i64);
+        self.pos.get(value).map_or(0, |v| {
+            (v.partition_point(|p| p <= r) - v.partition_point(|p| p < l)) as i32
+        })
+    }
+}
+
+struct Adapter {
+    inner: RangeFreqQuery,
+}
+
+impl Adapter {
+    fn new(arr: Vec[i64]) -> Adapter {
+        Adapter { inner: RangeFreqQuery.new(arr.iter().map(|v| v as i32).collect()) }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        self.inner.query(left as i32, right as i32, value as i32) as i64
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+// each query `(left, right, value)` answered by a fresh `RangeFreqQuery`
+fn answers(arr: own Vec[i64], queries: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    let rfq = Adapter.new(arr);
+    queries.iter().map(|(l, r, v)| rfq.query(l, r, v)).collect()
+}
+
+fn main() {
+    // LeetCode's example, then a few more
+    let examples: Vec[(Vec[i64], Vec[(i64, i64, i64)])] = [
+        ([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56].to_vec(), [(1, 2, 4), (0, 11, 33)].to_vec()),
+        ([1].to_vec(), [(0, 0, 1), (0, 0, 2)].to_vec()),
+        ([5, 5, 5, 5].to_vec(), [(0, 3, 5), (1, 2, 5), (3, 3, 5), (0, 3, 4)].to_vec()),
+        ([1, 2, 1, 2, 1, 2].to_vec(), [(0, 5, 1), (1, 4, 2), (2, 2, 2), (5, 5, 2)].to_vec()),
+        ([7, 1, 7, 1, 7].to_vec(), [(0, 4, 7), (1, 3, 7), (0, 0, 1), (4, 4, 7)].to_vec()),
+    ].to_vec();
+    for (arr, queries) in examples.iter() {
+        let qs: Vec[String] = queries.iter().map(|(l, r, v)| f"({l},{r},{v})").collect();
+        println(f"{show(arr)}, [{qs.join(",")}] -> {show(answers(arr.clone(), queries))}");
+    }
+    // 300 random arrays of 1 to 200 values up to 3, 30 or 10^4, each asked
+    // 50 queries for a value up to one more than the largest
+    let mut seed = 2080;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 200 + 1;
+        let top = [3, 30, 10000][next_random(mut seed) % 3];
+        let arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let mut queries: Vec[(i64, i64, i64)] = Vec.new();
+        for _ in 0..50 {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            let value = if next_random(mut seed) % 2 == 0 { arr[next_random(mut seed) % n] } else { next_random(mut seed) % (top + 1) + 1 };
+            queries.push((a.min(b), a.max(b), value));
+        }
+        for a in answers(arr, queries).iter() {
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"300 arrays: sum {total}, checksum {check}");
+    // the largest array the constraints allow, 10^5 values up to 100, and
+    // 200 queries over at least half of it
+    let arr: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100 + 1).collect();
+    let mut queries: Vec[(i64, i64, i64)] = Vec.new();
+    for _ in 0..200 {
+        let a = next_random(mut seed) % 50000;
+        let b = 50000 + next_random(mut seed) % 50000;
+        queries.push((a, b, next_random(mut seed) % 100 + 1));
+    }
+    let big = answers(arr, queries);
+    let sum: i64 = big.iter().sum();
+    println(f"100000 values, 200 queries: sum {sum}");
+}

@@ -1,0 +1,297 @@
+// LeetCode #2070: Most Beautiful Item for Each Query -- the
+// differential. The six arms, against the statement read literally: for
+// each query, every item looked at, and the greatest beauty among those
+// whose price is at most the query kept, 0 if there is none. 300 random
+// shops of 1 to 8 items and 1 to 8 queries, prices, beauties and queries
+// up to 10; then 20 whose every item has one price, and 20 whose every
+// query is an item's price, one less or one more; every one drawn before
+// any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  the items in reverse order and the queries reversed give the
+//     answers reversed
+// P3  one more item never lowers an answer
+// P4  every query one higher never lowers its answer
+// P5  every answer is 0 when the query affords no item, and otherwise
+//     the beauty of an item it affords
+// P6  each arm agrees with at least three of the other five
+
+// ---- beauty.kara: the ★ arm, prefix bests and `partition_point`
+fn star_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = items.clone();
+    sorted.sort_by_key(|item| item[0]);
+    let mut best: Vec[i64] = Vec.new();
+    let mut most = 0;
+    for item in sorted.iter() {
+        most = most.max(item[1]);
+        best.push(most);
+    }
+    queries.iter().map(|q| {
+        let end = sorted.partition_point(|item| item[0] <= q);
+        if end == 0 { 0 } else { best[end - 1] }
+    }).collect()
+}
+
+// ---- beauty_sweep.kara: the queries sorted, one sweep over the items
+fn sweep_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = items.clone();
+    sorted.sort_by_key(|item| item[0]);
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|k| queries[k]);
+    let mut answers = Vec.filled(queries.len(), 0);
+    let mut next = 0;
+    let mut most = 0;
+    for k in order.iter() {
+        while next < sorted.len() and sorted[next][0] <= queries[k] {
+            most = most.max(sorted[next][1]);
+            next += 1;
+        }
+        answers[k] = most;
+    }
+    answers
+}
+
+// ---- beauty_floor.kara: a `SortedMap` of prefix bests, `floor`
+fn floor_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut at: SortedMap[i64, i64] = SortedMap.new();
+    for item in items.iter() {
+        let best = at.get(item[0]).map(|b| b.max(item[1])).unwrap_or(item[1]);
+        at.insert(item[0], best);
+    }
+    let mut upto: SortedMap[i64, i64] = SortedMap.new();
+    let mut most = 0;
+    for (price, beauty) in at.iter() {
+        most = most.max(beauty);
+        upto.insert(price, most);
+    }
+    queries.iter().map(|q| upto.floor(q).map(|(_, b)| b).unwrap_or(0)).collect()
+}
+
+// ---- beauty_stairs.kara: a staircase of `Item`s, a binary search written out
+#[derive(Copy, Clone)]
+struct StairsItem {
+    price: i64,
+    beauty: i64,
+}
+
+fn stairs_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut all: Vec[StairsItem] = items.iter().map(|v| StairsItem { price: v[0], beauty: v[1] }).collect();
+    all.sort_by_key(|item| item.price);
+    let mut stairs: Vec[StairsItem] = Vec.new();
+    for item in all.iter() {
+        if stairs.is_empty() or item.beauty > stairs[stairs.len() - 1].beauty {
+            stairs.push(item);
+        }
+    }
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        // the first step `q` cannot afford
+        let mut (lo, hi) = (0, stairs.len());
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if stairs[mid].price <= q {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        answers.push(if lo == 0 { 0 } else { stairs[lo - 1].beauty });
+    }
+    answers
+}
+
+// ---- beauty_peek.kara: two sorted streams, `peekable` and `next_if`
+fn peek_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = items.clone();
+    sorted.sort_by_key(|item| item[0]);
+    let mut asked: Vec[(i64, i64)] = queries.iter().enumerate().map(|(k, q)| (q, k)).collect();
+    asked.sort();
+    let mut stream = sorted.into_iter().peekable();
+    let mut answers = Vec.filled(queries.len(), 0);
+    let mut most = 0;
+    for (q, k) in asked.iter() {
+        while let Some(item) = stream.next_if(|item| item[0] <= q) {
+            most = most.max(item[1]);
+        }
+        answers[k] = most;
+    }
+    answers
+}
+
+// ---- beauty_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_beauty(items: own Vec[Vec[i32]], queries: Vec[i32]) -> Vec[i32] {
+        let mut items = items;
+        items.sort();
+        let n = items.len();
+        let mut best = Vec.filled(n, 0i32);
+        let mut m: i32 = 0;
+        for i in 0..n {
+            m = m.max(items[i][1]);
+            best[i] = m;
+        }
+        queries
+            .iter()
+            .map(|q| {
+                let idx = items.partition_point(|it| it[0] <= q);
+                if idx == 0 { 0 } else { best[idx - 1] }
+            })
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let its: Vec[Vec[i32]] = items.iter().map(|it| it.iter().map(|x| x as i32).collect()).collect();
+    let qs: Vec[i32] = queries.iter().map(|q| q as i32).collect();
+    Solution.maximum_beauty(its, qs).iter().map(|a| a as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut answers: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut best = 0;
+        for item in items.iter() {
+            if item[0] <= q and item[1] > best {
+                best = item[1];
+            }
+        }
+        answers.push(best);
+    }
+    answers
+}
+
+fn answer(arm: i64, items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_maximum_beauty(items, queries),
+        1 => sweep_maximum_beauty(items, queries),
+        2 => floor_maximum_beauty(items, queries),
+        3 => stairs_maximum_beauty(items, queries),
+        4 => peek_maximum_beauty(items, queries),
+        _ => solution_maximum_beauty(items, queries),
+    }
+}
+
+// ---- shops
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn show_items(items: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = items.iter().map(|it| show(it)).collect();
+    f"[{parts.join(", ")}]"
+}
+
+// is every answer in `after` at least the one in `before`?
+fn never_lower(before: Vec[i64], after: Vec[i64]) -> bool {
+    before.len() == after.len() and (0..before.len()).all(|k| after[k] >= before[k])
+}
+
+// is every answer 0 or the beauty of an item its query affords, and 0
+// exactly when it affords none?
+fn plausible(items: Vec[Vec[i64]], queries: Vec[i64], answers: Vec[i64]) -> bool {
+    if answers.len() != queries.len() {
+        return false;
+    }
+    for k in 0..queries.len() {
+        let q = queries[k];
+        let affords = items.iter().any(|it| it[0] <= q);
+        let found = items.iter().any(|it| it[0] <= q and it[1] == answers[k]);
+        if affords != found or (not affords and answers[k] != 0) {
+            return false;
+        }
+    }
+    true
+}
+
+fn main() {
+    let names = ["star", "sweep", "floor", "stairs", "peek", "solution"];
+    let mut seed = 2070;
+    let mut shops: Vec[(Vec[Vec[i64]], Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 8 + 1;
+        let m = next_random(mut seed) % 8 + 1;
+        let one_price = next_random(mut seed) % 10 + 1;
+        let mut items: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let price = next_random(mut seed) % 10 + 1;
+            let beauty = next_random(mut seed) % 10 + 1;
+            items.push([if t >= 300 and t < 320 { one_price } else { price }, beauty].to_vec());
+        }
+        let mut queries: Vec[i64] = Vec.new();
+        for _ in 0..m {
+            let q = next_random(mut seed) % 10 + 1;
+            let near = items[next_random(mut seed) % n][0] + next_random(mut seed) % 3 - 1;
+            queries.push(if t >= 320 { near.max(1) } else { q });
+        }
+        let extra = [next_random(mut seed) % 10 + 1, next_random(mut seed) % 10 + 1].to_vec();
+        shops.push((items, queries, extra));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (items, queries, extra) in shops.iter() {
+        let truth = literal(items, queries);
+        for a in truth.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        let items_back: Vec[Vec[i64]] = items.iter().rev().cloned().collect();
+        let queries_back: Vec[i64] = queries.iter().rev().collect();
+        let mut more = items.clone();
+        more.push(extra.clone());
+        let higher: Vec[i64] = queries.iter().map(|q| q + 1).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, items, queries)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let back: Vec[i64] = answer(arm, items_back, queries_back).iter().rev().collect();
+            let more_answers = answer(arm, more, queries);
+            let higher_answers = answer(arm, items, higher);
+            let verdicts = [
+                x == truth,
+                back == x,
+                never_lower(x, more_answers),
+                never_lower(x, higher_answers),
+                plausible(items, queries, x),
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show_items(items)} {show(queries)} arm {names[arm]}: P{p + 1} fails, answers {show(x)}, literal {show(truth)}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{shops.len()} shops: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

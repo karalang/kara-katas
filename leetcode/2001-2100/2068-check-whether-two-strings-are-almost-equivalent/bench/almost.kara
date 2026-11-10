@@ -1,0 +1,50 @@
+// LeetCode #2068: Check Whether Two Strings are Almost Equivalent -- the
+// ★ arm's benchmark: every pair of 1500 words of 100 letters, each a
+// common word of `a`, `b` and `c` with up to 30 letters changed.
+
+fn check_almost_equivalent(word1: String, word2: String) -> bool {
+    let mut diff: Array[i64, 26] = [0; 26];
+    for b in word1.bytes().iter() {
+        diff[(b - b'a') as i64] += 1;
+    }
+    for b in word2.bytes().iter() {
+        diff[(b - b'a') as i64] -= 1;
+    }
+    diff.iter().all(|d| d.abs() <= 3)
+}
+
+// ---- bench ----------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let letters: Vec[char] = "abc".chars().collect();
+    let mut seed = 2068;
+    let mut base: Vec[char] = Vec.new();
+    for _ in 0..100 {
+        base.push(letters[next_random(mut seed) % 3]);
+    }
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..1500 {
+        let mut word = base.clone();
+        for _ in 0..next_random(mut seed) % 31 {
+            let i = next_random(mut seed) % 100;
+            word[i] = letters[next_random(mut seed) % 3];
+        }
+        words.push(word.iter().collect());
+    }
+    let mut yes = 0;
+    let mut check = 0;
+    for i in 0..1500 {
+        for j in i + 1..1500 {
+            if check_almost_equivalent(words[i], words[j]) {
+                yes += 1;
+                check = (check * 31 + i * 1500 + j) % 1000000007;
+            }
+        }
+    }
+    println(f"1124250 pairs: {yes} almost equivalent, checksum {check}");
+}

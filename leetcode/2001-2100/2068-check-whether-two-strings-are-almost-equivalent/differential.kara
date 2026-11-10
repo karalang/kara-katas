@@ -1,0 +1,271 @@
+// LeetCode #2068: Check Whether Two Strings are Almost Equivalent -- the
+// differential. The six arms, against the statement read literally: for
+// each of the 26 letters, its count in each word found by a walk over
+// that word, and the words almost equivalent when no two counts are more
+// than 3 apart. 300 random pairs of 1 to 40 letters from 1 to 6 kinds,
+// the second a fresh word or the first with 0 to 24 letters changed,
+// drawn as the harness draws them; then 20 from all 26 letters and 20
+// pairs whose one letter differs by exactly 3 or 4; every one drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the words swapped have the same answer
+// P3  the letters renamed in a cycle (`a` to `b`, ..., `z` to `a`) leave
+//     the answer
+// P4  the same letter added to both words, and either word reversed,
+//     leave the answer
+// P5  a word is almost equivalent to itself, and not to a word of as many
+//     letters with four more of some letter than it
+// P6  each arm agrees with at least three of the other five
+
+// ---- almost.kara: the ★ arm, one `Array[i64, 26]` of differences
+fn star_check_almost_equivalent(word1: String, word2: String) -> bool {
+    let mut diff: Array[i64, 26] = [0; 26];
+    for b in word1.bytes().iter() {
+        diff[(b - b'a') as i64] += 1;
+    }
+    for b in word2.bytes().iter() {
+        diff[(b - b'a') as i64] -= 1;
+    }
+    diff.iter().all(|d| d.abs() <= 3)
+}
+
+// ---- almost_map.kara: the differences in a `Map[char, i64]`
+fn map_check_almost_equivalent(word1: String, word2: String) -> bool {
+    let mut diff: Map[char, i64] = Map.new();
+    for c in word1.chars() {
+        diff[c] = diff.get(c).unwrap_or(0) + 1;
+    }
+    for c in word2.chars() {
+        diff[c] = diff.get(c).unwrap_or(0) - 1;
+    }
+    diff.values().all(|d| d >= -3 and d <= 3)
+}
+
+// ---- almost_sorted.kara: both words sorted, walked a run at a time
+fn sorted_run_of(letters: Vec[char], from: i64, c: char) -> i64 {
+    let mut end = from;
+    while end < letters.len() and letters[end] == c {
+        end += 1;
+    }
+    end - from
+}
+
+fn sorted_check_almost_equivalent(word1: String, word2: String) -> bool {
+    let mut a: Vec[char] = word1.chars().collect();
+    let mut b: Vec[char] = word2.chars().collect();
+    a.sort();
+    b.sort();
+    let mut (i, j) = (0, 0);
+    while i < a.len() or j < b.len() {
+        let c = if j == b.len() or (i < a.len() and a[i] < b[j]) { a[i] } else { b[j] };
+        let (x, y) = (sorted_run_of(a, i, c), sorted_run_of(b, j, c));
+        if (x - y).abs() > 3 {
+            return false;
+        }
+        i += x;
+        j += y;
+    }
+    true
+}
+
+// ---- almost_each.kara: one letter of the alphabet at a time, `filter` and `count`
+fn each_check_almost_equivalent(word1: String, word2: String) -> bool {
+    "abcdefghijklmnopqrstuvwxyz".chars().all(|c| {
+        let x = word1.chars().filter(|d| d == c).count();
+        let y = word2.chars().filter(|d| d == c).count();
+        (x - y).abs() <= 3
+    })
+}
+
+// ---- almost_fold.kara: a `zip` of the bytes folded into the differences
+fn fold_check_almost_equivalent(word1: String, word2: String) -> bool {
+    let diff = word1.bytes().iter().zip(word2.bytes().iter()).fold(Vec.filled(26, 0), |acc, (x, y)| {
+        let mut next = acc;
+        next[(x - b'a') as i64] += 1;
+        next[(y - b'a') as i64] -= 1;
+        next
+    });
+    diff.iter().map(|d| d.abs()).max().unwrap_or(0) <= 3
+}
+
+// ---- almost_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn check_almost_equivalent(word1: String, word2: String) -> bool {
+        let mut cnt = [0i32; 26];
+        for c in word1.chars() {
+            cnt[(c as u32 as u8 - b'a') as usize] += 1;
+        }
+        for c in word2.chars() {
+            cnt[(c as u32 as u8 - b'a') as usize] -= 1;
+        }
+        cnt.iter().all(|x| x.abs() <= 3)
+    }
+}
+
+struct Solution {}
+
+fn solution_check_almost_equivalent(word1: String, word2: String) -> bool {
+    Solution.check_almost_equivalent(word1, word2)
+}
+
+// ---- the statement read literally
+
+fn literal(word1: String, word2: String) -> bool {
+    let a: Vec[char] = word1.chars().collect();
+    let b: Vec[char] = word2.chars().collect();
+    for c in "abcdefghijklmnopqrstuvwxyz".chars() {
+        let mut x = 0;
+        for d in a.iter() {
+            if d == c {
+                x += 1;
+            }
+        }
+        let mut y = 0;
+        for d in b.iter() {
+            if d == c {
+                y += 1;
+            }
+        }
+        if x - y > 3 or y - x > 3 {
+            return false;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, word1: String, word2: String) -> bool {
+    match arm {
+        0 => star_check_almost_equivalent(word1.clone(), word2.clone()),
+        1 => map_check_almost_equivalent(word1.clone(), word2.clone()),
+        2 => sorted_check_almost_equivalent(word1.clone(), word2.clone()),
+        3 => each_check_almost_equivalent(word1.clone(), word2.clone()),
+        4 => fold_check_almost_equivalent(word1.clone(), word2.clone()),
+        _ => solution_check_almost_equivalent(word1.clone(), word2.clone()),
+    }
+}
+
+// ---- pairs
+
+// every letter one on in the alphabet, `z` to `a`
+fn renamed(word: String) -> String {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    word.chars().map(|c| alphabet[(c as i64 - 'a' as i64 + 1) % 26]).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word_of(n: i64, k: i64, seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        out.push(letters[next_random(mut seed) % k]);
+    }
+    out
+}
+
+fn changed(word: String, changes: i64, k: i64, seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut out: Vec[char] = word.chars().collect();
+    for _ in 0..changes {
+        let i = next_random(mut seed) % out.len();
+        out[i] = letters[next_random(mut seed) % k];
+    }
+    out.iter().collect()
+}
+
+fn main() {
+    let names = ["star", "map", "sorted", "each", "fold", "solution"];
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2068;
+    let mut pairs: Vec[(String, String, i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 40 + 1;
+        let k = if t < 300 { next_random(mut seed) % 6 + 1 } else { 26 };
+        let a = word_of(n, k, mut seed);
+        let b = if t >= 320 {
+            // one letter 3 or 4 more in the second word, the rest the same
+            let extra = 3 + next_random(mut seed) % 2;
+            let c = alphabet[next_random(mut seed) % 26];
+            let mut b = a.clone();
+            let mut a2 = a.clone();
+            for _ in 0..extra {
+                b.push(c);
+                a2.push(alphabet[(c as i64 - 'a' as i64 + 1 + next_random(mut seed) % 25) % 26]);
+            }
+            pairs.push((a2, b, next_random(mut seed)));
+            continue;
+        } else if next_random(mut seed) % 2 == 0 {
+            word_of(n, k, mut seed)
+        } else {
+            changed(a.clone(), next_random(mut seed) % 25, k, mut seed)
+        };
+        pairs.push((a, b, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut yes = 0;
+    for (a, b, pick) in pairs.iter() {
+        let truth = literal(a.clone(), b.clone());
+        if truth {
+            yes += 1;
+        }
+        check = (check * 2 + if truth { 1 } else { 0 }) % 1000000007;
+        let c = alphabet[pick % 26];
+        let mut a_more = a.clone();
+        a_more.push(c);
+        let mut b_more = b.clone();
+        b_more.push(c);
+        let a_back: String = a.chars().rev().collect();
+        let mut four = a.clone();
+        let mut fours = a.clone();
+        for _ in 0..4 {
+            four.push(c);
+            fours.push(alphabet[(c as i64 - 'a' as i64 + 1 + pick / 26 % 25) % 26]);
+        }
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, a.clone(), b.clone())).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, b.clone(), a.clone()) == x,
+                answer(arm, renamed(a.clone()), renamed(b.clone())) == x,
+                answer(arm, a_more.clone(), b_more.clone()) == x and answer(arm, a_back.clone(), b.clone()) == x,
+                answer(arm, a.clone(), a.clone()) and not answer(arm, fours.clone(), four.clone()),
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{a} {b} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{pairs.len()} pairs: {yes} almost equivalent, checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,505 @@
+// LeetCode #2074: Reverse Nodes in Even Length Groups -- the
+// differential. The six arms, against the statement read literally: each
+// place's group found by counting groups of 1, 2, 3, ... nodes, the last
+// group as long as the list leaves it, and a place in a group of even
+// length given the value at its mirror in that group. 300 random lists of
+// 1 to 40 values below 2, 3 or 10; then 20 whose length is a sum 1 + 2 +
+// ... + k, so the last group is whole, and 20 one longer; every one drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer's answer is the list again
+// P3  the list of places 0 to n - 1 is answered with places each in its
+//     own group, and a place in a group of odd length where it was
+// P4  the answer holds the list's values, as many of each
+// P5  the answer for the whole groups at the front is the front of the
+//     answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- groups.kara: the ★ arm, each even group turned round in place
+shared struct StarNode {
+    val: i64,
+    mut next: Option[StarNode],
+}
+
+fn star_reverse_even_length_groups(head: Option[StarNode]) -> Option[StarNode] {
+    let Some(first) = head else {
+        return None;
+    };
+    // the first group is the head alone, and one node is never turned
+    let mut before = first;
+    let mut want = 2;
+    while let Some(start) = before.next {
+        let mut len = 0;
+        let mut end = start;
+        let mut cur = Some(start);
+        while len < want {
+            let Some(node) = cur else {
+                break;
+            };
+            len += 1;
+            end = node;
+            cur = node.next;
+        }
+        if len % 2 == 0 {
+            let mut turned = end.next;
+            let mut rest = Some(start);
+            for _ in 0..len {
+                let node = rest.unwrap();
+                rest = node.next;
+                node.next = turned;
+                turned = Some(node);
+            }
+            before.next = turned;
+            before = start;
+        } else {
+            before = end;
+        }
+        want += 1;
+    }
+    Some(first)
+}
+
+// ---- groups_values.kara: the values in a `Vec`, `reverse()` on each even group's range
+shared struct ValuesNode {
+    val: i64,
+    mut next: Option[ValuesNode],
+}
+
+fn values_reverse_even_length_groups(head: Option[ValuesNode]) -> Option[ValuesNode] {
+    let mut values: Vec[i64] = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        values.push(node.val);
+        cur = node.next;
+    }
+    let n = values.len();
+    let mut start = 0;
+    let mut want = 1;
+    while start < n {
+        let end = (start + want).min(n);
+        if (end - start) % 2 == 0 {
+            values[start..end].reverse();
+        }
+        start = end;
+        want += 1;
+    }
+    let mut out: Option[ValuesNode] = None;
+    for v in values.iter().rev() {
+        out = Some(ValuesNode { val: v, next: out });
+    }
+    out
+}
+
+// ---- groups_swap.kara: the links kept, the values swapped through a `Vec` of handles
+shared struct SwapNode {
+    mut val: i64,
+    mut next: Option[SwapNode],
+}
+
+fn swap_reverse_even_length_groups(head: Option[SwapNode]) -> Option[SwapNode] {
+    let mut cur = head;
+    let mut want = 1;
+    while cur.is_some() {
+        let mut group: Vec[SwapNode] = Vec.new();
+        while group.len() < want {
+            let Some(node) = cur else {
+                break;
+            };
+            group.push(node);
+            cur = node.next;
+        }
+        if group.len() % 2 == 0 {
+            let len = group.len();
+            for i in 0..len / 2 {
+                let (a, b) = (group[i], group[len - 1 - i]);
+                a.val, b.val = b.val, a.val;
+            }
+        }
+        want += 1;
+    }
+    head
+}
+
+// ---- groups_rec.kara: a group a call, the rest regrouped first
+shared struct RecNode {
+    val: i64,
+    mut next: Option[RecNode],
+}
+
+// the first `want` values of `list`, and the list after them
+fn rec_take(list: Option[RecNode], want: i64) -> (Vec[i64], Option[RecNode]) {
+    let mut taken: Vec[i64] = Vec.new();
+    let mut cur = list;
+    while taken.len() < want {
+        match cur {
+            Some(node) => {
+                taken.push(node.val);
+                cur = node.next;
+            }
+            None => break,
+        }
+    }
+    (taken, cur)
+}
+
+fn rec_regroup(list: Option[RecNode], want: i64) -> Option[RecNode] {
+    if list.is_none() {
+        return None;
+    }
+    let (group, rest) = rec_take(list, want);
+    let mut out = rec_regroup(rest, want + 1);
+    let even = group.len() % 2 == 0;
+    for i in 0..group.len() {
+        // built back to front: the group's last value first, or its first
+        let v = if even { group[i] } else { group[group.len() - 1 - i] };
+        out = Some(RecNode { val: v, next: out });
+    }
+    out
+}
+
+fn rec_reverse_even_length_groups(head: Option[RecNode]) -> Option[RecNode] {
+    rec_regroup(head, 1)
+}
+
+// ---- groups_iter.kara: a `Groups` iterator folded into the values
+shared struct IterNode {
+    val: i64,
+    mut next: Option[IterNode],
+}
+
+struct IterGroups {
+    cur: Option[IterNode],
+    want: i64,
+}
+
+impl Iterator for IterGroups {
+    type Item = Vec[i64];
+
+    fn next(mut ref self) -> Option[Vec[i64]] {
+        let mut group: Vec[i64] = Vec.new();
+        while group.len() < self.want {
+            let Some(node) = self.cur else {
+                break;
+            };
+            group.push(node.val);
+            self.cur = node.next;
+        }
+        self.want += 1;
+        if group.is_empty() { None } else { Some(group) }
+    }
+}
+
+fn iter_reverse_even_length_groups(head: Option[IterNode]) -> Option[IterNode] {
+    let groups = IterGroups { cur: head, want: 1 };
+    let values = groups.fold(Vec.new(), |acc: own Vec[i64], group| {
+        let mut acc = acc;
+        if group.len() % 2 == 0 {
+            acc.extend(group.iter().rev());
+        } else {
+            acc.extend(group.iter());
+        }
+        acc
+    });
+    let mut out: Option[IterNode] = None;
+    for v in values.iter().rev() {
+        out = Some(IterNode { val: v, next: out });
+    }
+    out
+}
+
+// ---- groups_solution.kara: LeetCode's Rust template, carried by `karac fix`
+// Definition for singly-linked list.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct SolutionNode {
+    pub val: i32,
+    pub next: Option[SolutionNode],
+}
+
+impl SolutionNode {
+    #[inline]
+    fn new(val: i32) -> Self {
+        SolutionNode { next: None, val }
+    }
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn reverse_even_length_groups(head: Option[SolutionNode]) -> Option[SolutionNode] {
+        let mut vals = Vec.new();
+        let mut cur = ref head;
+        while let Some(node) = cur {
+            vals.push(node.val);
+            cur = ref node.next;
+        }
+        let n = vals.len();
+        let mut (i, k) = (0, 1);
+        while i < n {
+            let end = (i + k).min(n);
+            if (end - i) % 2 == 0 {
+                vals[i..end].reverse();
+            }
+            i = end;
+            k += 1;
+        }
+        let mut ans = None;
+        for v in vals.iter().rev() {
+            let mut node = SolutionNode.new(v);
+            node.next = ans;
+            ans = Some(node);
+        }
+        ans
+    }
+}
+
+fn solution_reverse_even_length_groups(head: Option[SolutionNode]) -> Option[SolutionNode] {
+    Solution.reverse_even_length_groups(head)
+}
+
+// ---- the lists through each arm
+
+fn star_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[StarNode] = None;
+    for v in values.iter().rev() {
+        head = Some(StarNode { val: v, next: head });
+    }
+    let mut cur = star_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    while let Some(node) = cur {
+        got.push(node.val);
+        cur = node.next;
+    }
+    got
+}
+
+fn values_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[ValuesNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ValuesNode { val: v, next: head });
+    }
+    let mut cur = values_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    while let Some(node) = cur {
+        got.push(node.val);
+        cur = node.next;
+    }
+    got
+}
+
+fn swap_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[SwapNode] = None;
+    for v in values.iter().rev() {
+        head = Some(SwapNode { val: v, next: head });
+    }
+    let mut cur = swap_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    while let Some(node) = cur {
+        got.push(node.val);
+        cur = node.next;
+    }
+    got
+}
+
+fn rec_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[RecNode] = None;
+    for v in values.iter().rev() {
+        head = Some(RecNode { val: v, next: head });
+    }
+    let mut cur = rec_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    while let Some(node) = cur {
+        got.push(node.val);
+        cur = node.next;
+    }
+    got
+}
+
+fn iter_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[IterNode] = None;
+    for v in values.iter().rev() {
+        head = Some(IterNode { val: v, next: head });
+    }
+    let mut cur = iter_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    while let Some(node) = cur {
+        got.push(node.val);
+        cur = node.next;
+    }
+    got
+}
+
+fn solution_answer(values: Vec[i64]) -> Vec[i64] {
+    let mut head: Option[SolutionNode] = None;
+    for v in values.iter().rev() {
+        head = Some(SolutionNode { val: v as i32, next: head });
+    }
+    let out = solution_reverse_even_length_groups(head);
+    let mut got: Vec[i64] = Vec.new();
+    let mut cur = ref out;
+    while let Some(node) = cur {
+        got.push(node.val as i64);
+        cur = ref node.next;
+    }
+    got
+}
+
+fn answer(arm: i64, values: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_answer(values),
+        1 => values_answer(values),
+        2 => swap_answer(values),
+        3 => rec_answer(values),
+        4 => iter_answer(values),
+        _ => solution_answer(values),
+    }
+}
+
+// ---- the statement read literally
+
+fn literal(values: Vec[i64]) -> Vec[i64] {
+    let n = values.len();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        // group g holds the places from g (g - 1) / 2 on
+        let mut g = 1;
+        while g * (g + 1) / 2 <= i {
+            g += 1;
+        }
+        let start = g * (g - 1) / 2;
+        let len = g.min(n - start);
+        if len % 2 == 0 {
+            out.push(values[start + (start + len - 1 - i)]);
+        } else {
+            out.push(values[i]);
+        }
+    }
+    out
+}
+
+// ---- lists
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+// the group of place `i`, its first place and its length, in a list of `n`
+fn group_of(i: i64, n: i64) -> (i64, i64, i64) {
+    let mut g = 1;
+    while g * (g + 1) / 2 <= i {
+        g += 1;
+    }
+    let start = g * (g - 1) / 2;
+    (g, start, g.min(n - start))
+}
+
+// does each place stay in its own group, and in place in an odd group?
+fn in_own_group(moved: Vec[i64]) -> bool {
+    let n = moved.len();
+    for i in 0..n {
+        let p = moved[i];
+        if p < 0 or p >= n {
+            return false;
+        }
+        let (g, _, len) = group_of(i, n);
+        let (h, _, _) = group_of(p, n);
+        if g != h or (len % 2 == 1 and p != i) {
+            return false;
+        }
+    }
+    true
+}
+
+fn sorted(v: Vec[i64]) -> Vec[i64] {
+    let mut s = v.clone();
+    s.sort();
+    s
+}
+
+fn main() {
+    let names = ["star", "values", "swap", "rec", "iter", "solution"];
+    let mut seed = 2074;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..340 {
+        let k = next_random(mut seed) % 8 + 1;
+        let top = [2, 3, 10][next_random(mut seed) % 3];
+        let n = if t < 300 {
+            next_random(mut seed) % 40 + 1
+        } else if t < 320 {
+            k * (k + 1) / 2
+        } else {
+            k * (k + 1) / 2 + 1
+        };
+        let mut values: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            values.push(next_random(mut seed) % top);
+        }
+        lists.push(values);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for values in lists.iter() {
+        let truth = literal(values);
+        for v in truth.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        let places: Vec[i64] = (0..values.len()).collect();
+        // the longest front of whole groups
+        let mut whole = 0;
+        let mut g = 1;
+        while whole + g <= values.len() {
+            whole += g;
+            g += 1;
+        }
+        let front: Vec[i64] = values[..whole].to_vec();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, values)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let moved = answer(arm, places);
+            let front_x: Vec[i64] = if x.len() >= whole { x[..whole].to_vec() } else { x.clone() };
+            let verdicts = [
+                x == truth,
+                answer(arm, x) == values,
+                in_own_group(moved),
+                sorted(x) == sorted(values),
+                answer(arm, front) == front_x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(values)} arm {names[arm]}: P{p + 1} fails, answer {show(x)}, literal {show(truth)}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

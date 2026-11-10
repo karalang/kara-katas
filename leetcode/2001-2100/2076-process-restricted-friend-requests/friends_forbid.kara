@@ -1,0 +1,123 @@
+// LeetCode #2076: Process Restricted Friend Requests -- each group as a
+// value: a `struct Group` of its members and a `Set` of the people its
+// members may never be friends with, and every person's group in a
+// `Vec`. A request is refused if one group's members meet the other's
+// forbidden set; otherwise the smaller group is moved into the larger,
+// members and forbidden people both. O(m · n) set looks, n log n moves.
+
+struct Group {
+    members: Vec[i64],
+    forbidden: Set[i64],
+}
+
+fn friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut groups: Vec[Group] = (0..n).map(|i| Group { members: [i].to_vec(), forbidden: Set.new() }).collect();
+    for r in restrictions.iter() {
+        groups[r[0]].forbidden.insert(r[1]);
+        groups[r[1]].forbidden.insert(r[0]);
+    }
+    let mut owner: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let mut (big, small) = (owner[request[0]], owner[request[1]]);
+        if big == small {
+            answers.push(true);
+            continue;
+        }
+        if groups[big].members.len() < groups[small].members.len() {
+            let t = big;
+            big = small;
+            small = t;
+        }
+        let refused = groups[small].members.iter().any(|p| groups[big].forbidden.contains(p));
+        if not refused {
+            let moved = mem.take(mut groups[small].members);
+            let banned = mem.take(mut groups[small].forbidden);
+            for p in moved.iter() {
+                owner[p] = big;
+            }
+            groups[big].members.extend(moved);
+            groups[big].forbidden.extend(banned);
+        }
+        answers.push(not refused);
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` pairs of two different people of `n`
+fn random_pairs(n: i64, count: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let a = next_random(mut seed) % n;
+        let b = (a + 1 + next_random(mut seed) % (n - 1)) % n;
+        pairs.push([a, b].to_vec());
+    }
+    pairs
+}
+
+fn show_pairs(pairs: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = pairs.iter().map(|p| f"[{p[0]},{p[1]}]").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn show_answers(answers: Vec[bool]) -> String {
+    let parts: Vec[String] = answers.iter().map(|a| f"{a}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn fold(answers: Vec[bool], check: i64) -> (i64, i64) {
+    let mut c = check;
+    let mut yes = 0;
+    for a in answers.iter() {
+        let bit = if a { 1 } else { 0 };
+        yes += bit;
+        c = (c * 3 + bit + 1) % 1000000007;
+    }
+    (yes, c)
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = [
+        (3, [[0, 1].to_vec()].to_vec(), [[0, 2].to_vec(), [2, 1].to_vec()].to_vec()),
+        (3, [[0, 1].to_vec()].to_vec(), [[1, 2].to_vec(), [0, 2].to_vec()].to_vec()),
+        (5, [[0, 1].to_vec(), [1, 2].to_vec(), [2, 3].to_vec()].to_vec(),
+            [[0, 4].to_vec(), [1, 2].to_vec(), [3, 1].to_vec(), [3, 4].to_vec()].to_vec()),
+        (2, Vec.new(), [[0, 1].to_vec(), [1, 0].to_vec()].to_vec()),
+        (2, [[1, 0].to_vec()].to_vec(), [[0, 1].to_vec(), [0, 1].to_vec()].to_vec()),
+        (4, [[0, 3].to_vec()].to_vec(), [[0, 1].to_vec(), [2, 3].to_vec(), [1, 2].to_vec(), [0, 2].to_vec(), [1, 3].to_vec()].to_vec()),
+        (6, [[0, 5].to_vec(), [1, 4].to_vec()].to_vec(),
+            [[0, 1].to_vec(), [4, 5].to_vec(), [2, 3].to_vec(), [1, 2].to_vec(), [3, 4].to_vec(), [0, 3].to_vec(), [2, 5].to_vec()].to_vec()),
+    ].to_vec();
+    for (n, restrictions, requests) in examples.iter() {
+        let answers = friend_requests(n, restrictions, requests);
+        println(f"n = {n}, {show_pairs(restrictions)}, {show_pairs(requests)} -> {show_answers(answers)}");
+    }
+    // 300 random problems of 2 to 60 people, 0 to 40 restrictions and 1 to
+    // 80 requests
+    let mut seed = 2076;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 59 + 2;
+        let restrictions = random_pairs(n, next_random(mut seed) % 41, mut seed);
+        let requests = random_pairs(n, next_random(mut seed) % 80 + 1, mut seed);
+        let (yes, c) = fold(friend_requests(n, restrictions, requests), check);
+        total += yes;
+        check = c;
+    }
+    println(f"300 problems: {total} accepted, checksum {check}");
+    // the largest the constraints allow: 1000 people, 1000 restrictions and
+    // 1000 requests
+    let restrictions = random_pairs(1000, 1000, mut seed);
+    let requests = random_pairs(1000, 1000, mut seed);
+    let (yes, c) = fold(friend_requests(1000, restrictions, requests), 0);
+    println(f"1000 people: {yes} accepted, checksum {c}");
+}

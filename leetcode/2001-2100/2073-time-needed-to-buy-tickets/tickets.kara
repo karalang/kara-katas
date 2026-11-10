@@ -1,0 +1,63 @@
+// LeetCode #2073: Time Needed to Buy Tickets -- the ★ arm. Each second one
+// person buys one ticket, so the time is the tickets bought before person
+// `k` has all theirs. Someone ahead of `k` in the line buys on every
+// round `k` does, up to `tickets[k]` of them; someone behind buys only
+// on the rounds before `k`'s last, up to `tickets[k] - 1`. O(n).
+
+fn time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let want = tickets[k];
+    let mut time = 0;
+    for (i, t) in tickets.iter().enumerate() {
+        time += if i <= k { t.min(want) } else { t.min(want - 1) };
+    }
+    time
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    // LeetCode's two examples, then a few more
+    let examples: Vec[(Vec[i64], i64)] = [
+        ([2, 3, 2].to_vec(), 2),
+        ([5, 1, 1, 1].to_vec(), 0),
+        ([1].to_vec(), 0),
+        ([100].to_vec(), 0),
+        ([1, 1, 1, 1].to_vec(), 3),
+        ([3, 3, 3].to_vec(), 1),
+        ([84, 49, 5, 24, 70, 77, 87, 8].to_vec(), 3),
+    ].to_vec();
+    for (tickets, k) in examples.iter() {
+        println(f"{show(tickets)}, k = {k} -> {time_required_to_buy(tickets, k)}");
+    }
+    // 2000 lines of 1 to 100 people wanting up to 1, 10 or 100 tickets, and
+    // a random place in the line asked about
+    let mut seed = 2073;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let top = [1, 10, 100][next_random(mut seed) % 3];
+        let mut tickets: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            tickets.push(next_random(mut seed) % top + 1);
+        }
+        let k = next_random(mut seed) % n;
+        let a = time_required_to_buy(tickets, k);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 lines: sum {total}, checksum {check}");
+    // the largest the constraints allow: 100 people of 100 tickets, the last
+    let full = Vec.filled(100, 100);
+    println(f"100 people of 100, the last -> {time_required_to_buy(full, 99)}");
+}

@@ -1,0 +1,41 @@
+// LeetCode #2063: Vowels of All Substrings -- benchmark of the ★ arm
+// (../vowels.kara): one text of 140000 letters, each a vowel with chance
+// 40 in 100, and 200 windows of 100000 letters cut from it at a random
+// place among its first 32768, each answered on its own.
+
+fn count_vowels(word: String) -> i64 {
+    let n = word.len();
+    let mut total = 0;
+    for (i, c) in word.chars().enumerate() {
+        if "aeiou".contains(c.to_string()) {
+            total += (i + 1) * (n - i);
+        }
+    }
+    total
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let others: Vec[char] = "bcdxyz".chars().collect();
+    let mut seed = 2063;
+    let mut text = String.new();
+    for _ in 0..140000 {
+        if next_random(mut seed) % 100 < 40 {
+            text.push(vowels[next_random(mut seed) % 5]);
+        } else {
+            text.push(others[next_random(mut seed) % 6]);
+        }
+    }
+    let mut check = 0;
+    for _ in 0..200 {
+        let start = next_random(mut seed);
+        let a = count_vowels(text.slice(start, start + 100000).to_string());
+        check = (check * 31 + a % 1000000007) % 1000000007;
+    }
+    println(f"200 windows: checksum {check}");
+}

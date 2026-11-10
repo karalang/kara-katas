@@ -1,0 +1,56 @@
+// LeetCode #2077: Paths in Maze That Lead to Same Room -- the ★ arm's
+// benchmark (maze.kara): 30 mazes of 1000 rooms and about 38000
+// corridors, each corridor to a room up to 60 on, answered by the ★ arm:
+// each room's rooms above it a `Set`, and every corridor's triangles the
+// size of its two rooms' sets' intersection.
+
+fn number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let mut up: Vec[Set[i64]] = (0..=n).map(|_| Set.new()).collect();
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        up[a].insert(b);
+    }
+    let mut count = 0;
+    for a in 1..=n {
+        for b in up[a].iter() {
+            count += up[a].intersection(up[b]).len();
+        }
+    }
+    count
+}
+
+// ---- benchmark -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_maze(n: i64, count: i64, near: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut seen: Set[i64] = Set.new();
+    let mut corridors: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let a = next_random(mut seed) % n + 1;
+        let step = next_random(mut seed) % near.min(n - 1) + 1;
+        let b = (a - 1 + step) % n + 1;
+        let key = a.min(b) * 100000 + a.max(b);
+        if not seen.contains(key) {
+            seen.insert(key);
+            corridors.push(if next_random(mut seed) % 2 == 0 { [a, b].to_vec() } else { [b, a].to_vec() });
+        }
+    }
+    corridors
+}
+
+fn main() {
+    let mut seed = 2077;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..30 {
+        let corridors = random_maze(1000, 60000, 60, mut seed);
+        let a = number_of_paths(1000, corridors);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"30 mazes: sum {total}, checksum {check}");
+}

@@ -1,0 +1,348 @@
+// LeetCode #2062: Count Vowel Substrings of a String -- the differential.
+// The six arms, against the statement read literally: every substring
+// taken out whole, kept when each of its letters is a vowel and each of
+// the five vowels is among them. 300 random words of 1 to 40 letters,
+// then 40 of vowels only and 20 with one vowel never used; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the word reversed has the same answer
+// P3  a consonant put in at any place makes the answer the two sides'
+//     answers added
+// P4  the vowels renamed in a cycle (`a` to `e`, ..., `u` to `a`) leave
+//     the answer
+// P5  a vowel added at the end never lowers the answer, and a consonant
+//     leaves it
+// P6  each arm agrees with at least three of the other five
+
+// ---- vowels.kara: the ★ arm, every start, the vowels met in a `Set`
+fn star_is_vowel(c: char) -> bool {
+    "aeiou".contains(c.to_string())
+}
+
+fn star_count_vowel_substrings(word: String) -> i64 {
+    let letters: Vec[char] = word.chars().collect();
+    let mut count = 0;
+    for i in 0..letters.len() {
+        let mut met: Set[char] = Set.new();
+        for j in i..letters.len() {
+            if not star_is_vowel(letters[j]) {
+                break;
+            }
+            met.insert(letters[j]);
+            if met.len() == 5 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- vowels_window.kara: one pass, the last place of each vowel in a `Map`
+fn window_count_vowel_substrings(word: String) -> i64 {
+    let mut last: Map[char, i64] = Map.new();
+    let mut run_start = 0;
+    let mut count = 0;
+    for (j, c) in word.chars().enumerate() {
+        match c {
+            'a' | 'e' | 'i' | 'o' | 'u' => {
+                last[c] = j;
+                if last.len() == 5 {
+                    let earliest = last.values().min().unwrap();
+                    count += earliest - run_start + 1;
+                }
+            }
+            _ => {
+                last.clear();
+                run_start = j + 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- vowels_atmost.kara: at most five different vowels less at most four
+fn atmost_vowel_index(c: char) -> i64 {
+    match c {
+        'a' => 0,
+        'e' => 1,
+        'i' => 2,
+        'o' => 3,
+        'u' => 4,
+        _ => -1,
+    }
+}
+
+fn atmost_at_most(letters: Vec[char], k: i64) -> i64 {
+    let mut held = [0, 0, 0, 0, 0].to_vec();
+    let mut different = 0;
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..letters.len() {
+        let v = atmost_vowel_index(letters[right]);
+        if v < 0 {
+            held = [0, 0, 0, 0, 0].to_vec();
+            different = 0;
+            left = right + 1;
+            continue;
+        }
+        if held[v] == 0 {
+            different += 1;
+        }
+        held[v] += 1;
+        while different > k {
+            let w = atmost_vowel_index(letters[left]);
+            held[w] -= 1;
+            if held[w] == 0 {
+                different -= 1;
+            }
+            left += 1;
+        }
+        total += right - left + 1;
+    }
+    total
+}
+
+fn atmost_count_vowel_substrings(word: String) -> i64 {
+    let letters: Vec[char] = word.chars().collect();
+    atmost_at_most(letters, 5) - atmost_at_most(letters, 4)
+}
+
+// ---- vowels_mask.kara: every start, the vowels met as bits
+fn mask_bit(c: u8) -> Option[u8] {
+    match c {
+        b'a' => Some(1),
+        b'e' => Some(2),
+        b'i' => Some(4),
+        b'o' => Some(8),
+        b'u' => Some(16),
+        _ => None,
+    }
+}
+
+fn mask_count_vowel_substrings(word: String) -> i64 {
+    let bytes = word.bytes();
+    let mut count = 0;
+    for i in 0..bytes.len() {
+        let mut mask: u8 = 0;
+        for j in i..bytes.len() {
+            let Some(b) = mask_bit(bytes[j]) else {
+                break;
+            };
+            mask |= b;
+            if mask == 0b11111 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- vowels_runs.kara: inclusion and exclusion over each run of vowels
+fn runs_pairs_avoiding(run: Slice[char], cut: Vec[char]) -> i64 {
+    let mut total = 0;
+    let mut piece = 0;
+    for c in run.iter() {
+        if cut.contains(c) {
+            total += piece * (piece + 1) / 2;
+            piece = 0;
+        } else {
+            piece += 1;
+        }
+    }
+    total + piece * (piece + 1) / 2
+}
+
+fn runs_count_vowel_substrings(word: String) -> i64 {
+    let vowels = ['a', 'e', 'i', 'o', 'u'];
+    let letters: Vec[char] = word.chars().collect();
+    let mut count = 0;
+    for run in letters.chunk_by(|x, y| vowels.contains(x) == vowels.contains(y)) {
+        if not vowels.contains(run[0]) {
+            continue;
+        }
+        for s in 0..32 {
+            let cut: Vec[char] = (0..5).filter(|v| s >> v & 1 == 1).map(|v| vowels[v]).collect();
+            let sign = if cut.len() % 2 == 0 { 1 } else { -1 };
+            count += sign * runs_pairs_avoiding(run, cut);
+        }
+    }
+    count
+}
+
+// ---- vowels_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct Solution {}
+
+impl Solution {
+    pub fn count_vowel_substrings(word: String) -> i32 {
+        let s: Vec[char] = word.chars().collect();
+        let is_vowel = |c: char| "aeiou".contains(c.to_string());
+        let mut ans: i32 = 0;
+        let mut start = 0;
+        let mut left = 0;
+        let mut cnt: Map[char, i32] = Map.new();
+        for (r, c) in s.iter().enumerate() {
+            if not is_vowel(c) {
+                cnt.clear();
+                start = r + 1;
+                left = r + 1;
+                continue;
+            }
+            *cnt.entry(c).or_insert(0) += 1;
+            while cnt.len() == 5 {
+                let lc = s[left];
+                let e = cnt.get_mut(lc).unwrap();
+                *e -= 1;
+                if *e == 0 {
+                    cnt.remove(lc);
+                }
+                left += 1;
+            }
+            ans += (left - start) as i32;
+        }
+        ans
+    }
+}
+
+fn solution_count_vowel_substrings(word: String) -> i64 {
+    Solution.count_vowel_substrings(word)
+}
+
+// ---- the statement read literally
+
+fn literal(word: String) -> i64 {
+    let mut count = 0;
+    for i in 0..word.len() {
+        for j in i + 1..word.len() + 1 {
+            let sub = word.slice(i, j);
+            let only_vowels = sub.chars().all(|c| "aeiou".contains(c.to_string()));
+            let every_vowel = ["a", "e", "i", "o", "u"].iter().all(|v| sub.contains(v));
+            if only_vowels and every_vowel {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, word: String) -> i64 {
+    match arm {
+        0 => star_count_vowel_substrings(word),
+        1 => window_count_vowel_substrings(word),
+        2 => atmost_count_vowel_substrings(word),
+        3 => mask_count_vowel_substrings(word),
+        4 => runs_count_vowel_substrings(word),
+        _ => solution_count_vowel_substrings(word),
+    }
+}
+
+// ---- words
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters, each a vowel from `vowels` with chance `p` in 100, else
+// one of `xyz`
+fn word_of(n: i64, p: i64, vowels: String, seed: mut ref i64) -> String {
+    let vs: Vec[char] = vowels.chars().collect();
+    let others: Vec[char] = "xyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < p {
+            out.push(vs[next_random(mut seed) % vs.len()]);
+        } else {
+            out.push(others[next_random(mut seed) % 3]);
+        }
+    }
+    out
+}
+
+fn renamed(word: String) -> String {
+    word.chars().map(|c| match c {
+        'a' => 'e',
+        'e' => 'i',
+        'i' => 'o',
+        'o' => 'u',
+        'u' => 'a',
+        _ => c,
+    }).collect()
+}
+
+fn main() {
+    let names = ["star", "window", "atmost", "mask", "runs", "solution"];
+    let mut seed = 2062;
+    // each word with the place P3 cuts it at and the vowel P5 adds
+    let mut words: Vec[(String, i64, i64)] = Vec.new();
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 40 + 1;
+        let p = next_random(mut seed) % 51 + 50;
+        let w = word_of(n, p, "aeiou", mut seed);
+        words.push((w, next_random(mut seed), next_random(mut seed)));
+    }
+    for _ in 0..40 {
+        let n = next_random(mut seed) % 40 + 5;
+        let w = word_of(n, 100, "aeiou", mut seed);
+        words.push((w, next_random(mut seed), next_random(mut seed)));
+    }
+    let fours = ["eiou", "aiou", "aeou", "aeiu", "aeio"];
+    for t in 0..20 {
+        let n = next_random(mut seed) % 40 + 1;
+        let w = word_of(n, 90, fours[t % 5], mut seed);
+        words.push((w, next_random(mut seed), next_random(mut seed)));
+    }
+    let vowels = ["a", "e", "i", "o", "u"];
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (w, cut, add) in words.iter() {
+        let truth = literal(w);
+        check = (check * 31 + truth) % 1000000007;
+        let back: String = w.chars().rev().collect();
+        let at = cut % (w.len() + 1);
+        let (before, after) = (w.slice(0, at), w.slice(at, w.len()));
+        let split = f"{before}x{after}";
+        let longer = f"{w}{vowels[add % 5]}";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, w)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, back) == x,
+                answer(arm, split) == answer(arm, before.to_string()) + answer(arm, after.to_string()),
+                answer(arm, renamed(w)) == x,
+                answer(arm, longer) >= x and answer(arm, f"{w}y") == x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{w} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{words.len()} words: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

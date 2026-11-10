@@ -1,0 +1,257 @@
+// LeetCode #2079: Watering Plants -- the differential. The six arms,
+// against the statement read literally: the places the gardener stands,
+// in order, the river `-1` first, then each plant, with a visit to the
+// river put before any plant the can cannot cover, and the steps the sum
+// of the distances between one place and the next. 300 random gardens of
+// 1 to 12 plants, the can holding 1 to 10; then 20 whose every plant
+// wants the full can, and 20 whose can holds the whole row; every one
+// drawn before any arm answers.
+//
+// P1  the steps are the statement read literally
+// P2  every plant's want and the can three times as big give the same
+//     steps
+// P3  the steps are at least `n`, at most `n²`, and `n` more an even
+//     number
+// P4  a can that holds the whole row walks `n` steps, and plants each
+//     wanting the full can walk `n²`
+// P5  one more plant, wanting what the middle plant wants, adds one
+//     step, or `2n + 1`
+// P6  each arm agrees with at least three of the other five
+
+// ---- water.kara: the ★ arm, a step a plant and `2 · i` a refill
+fn star_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let mut steps = 0;
+    let mut can = capacity;
+    for (i, need) in plants.iter().enumerate() {
+        if can < need {
+            steps += 2 * i;
+            can = capacity;
+        }
+        steps += 1;
+        can -= need;
+    }
+    steps
+}
+
+// ---- water_walk.kara: the walk itself, a unit at a time
+fn walk_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let mut (at, can, steps) = (-1, capacity, 0);
+    for next in 0..plants.len() {
+        if can < plants[next] {
+            while at > -1 {
+                at -= 1;
+                steps += 1;
+            }
+            can = capacity;
+            while at < next - 1 {
+                at += 1;
+                steps += 1;
+            }
+        }
+        at += 1;
+        steps += 1;
+        can -= plants[next];
+    }
+    steps
+}
+
+// ---- water_fold.kara: one `fold` carrying `(steps, water left)`
+fn fold_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let (steps, _) = plants.iter().enumerate().fold((0, capacity), |(steps, can), (i, need)| {
+        if can < need {
+            (steps + 2 * i + 1, capacity - need)
+        } else {
+            (steps + 1, can - need)
+        }
+    });
+    steps
+}
+
+// ---- water_trips.kara: the runs one can covers
+fn trips_trip_starts(plants: Slice[i64], capacity: i64) -> Vec[i64] {
+    let mut starts: Vec[i64] = Vec.new();
+    let mut used = 0;
+    for i in 0..plants.len() {
+        if used + plants[i] > capacity {
+            starts.push(i);
+            used = 0;
+        }
+        used += plants[i];
+    }
+    starts
+}
+
+fn trips_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let back: i64 = trips_trip_starts(plants[..], capacity).iter().map(|s| 2 * s).sum();
+    plants.len() + back
+}
+
+// ---- water_struct.kara: a `struct Gardener` with `walk_to` and `water`
+struct Gardener {
+    at: i64,
+    capacity: i64,
+    can: i64,
+    steps: i64,
+}
+
+impl Gardener {
+    fn walk_to(mut ref self, place: i64) {
+        self.steps += (place - self.at).abs();
+        self.at = place;
+    }
+
+    fn water(mut ref self, place: i64, need: i64) {
+        if self.can < need {
+            self.walk_to(-1);
+            self.can = self.capacity;
+        }
+        self.walk_to(place);
+        self.can -= need;
+    }
+}
+
+fn struct_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let mut g = Gardener { at: -1, capacity, can: capacity, steps: 0 };
+    for (i, need) in plants.iter().enumerate() {
+        g.water(i, need);
+    }
+    g.steps
+}
+
+// ---- water_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn watering_plants(plants: Vec[i32], capacity: i32) -> i32 {
+        let mut ans: i32 = 0;
+        let mut water = capacity;
+        for (i, need) in plants.iter().enumerate() {
+            if water >= need {
+                ans += 1;
+                water -= need;
+            } else {
+                ans += (2 * i + 1) as i32;
+                water = capacity - need;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let p32: Vec[i32] = plants.iter().map(|p| p as i32).collect();
+    Solution.watering_plants(p32, capacity as i32) as i64
+}
+
+// ---- the statement read literally
+
+fn literal(plants: Vec[i64], capacity: i64) -> i64 {
+    let mut places = [-1].to_vec();
+    let mut can = capacity;
+    for i in 0..plants.len() {
+        if can < plants[i] {
+            places.push(-1);
+            can = capacity;
+        }
+        places.push(i);
+        can -= plants[i];
+    }
+    let mut steps = 0;
+    for k in 1..places.len() {
+        steps += (places[k] - places[k - 1]).abs();
+    }
+    steps
+}
+
+fn answer(arm: i64, plants: Vec[i64], capacity: i64) -> i64 {
+    match arm {
+        0 => star_watering_plants(plants, capacity),
+        1 => walk_watering_plants(plants, capacity),
+        2 => fold_watering_plants(plants, capacity),
+        3 => trips_watering_plants(plants, capacity),
+        4 => struct_watering_plants(plants, capacity),
+        _ => solution_watering_plants(plants, capacity),
+    }
+}
+
+// ---- gardens
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "walk", "fold", "trips", "struct", "solution"];
+    let mut seed = 2079;
+    let mut gardens: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 12 + 1;
+        let capacity = next_random(mut seed) % 10 + 1;
+        let mut plants: Vec[i64] = (0..n).map(|_| next_random(mut seed) % capacity + 1).collect();
+        if t >= 300 and t < 320 {
+            plants = Vec.filled(n, capacity);
+        }
+        let whole: i64 = plants.iter().sum();
+        gardens.push((plants, if t >= 320 { whole } else { capacity }));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (plants, capacity) in gardens.iter() {
+        let n = plants.len();
+        let truth = literal(plants, capacity);
+        check = (check * 31 + truth) % 1000000007;
+        let tripled: Vec[i64] = plants.iter().map(|p| 3 * p).collect();
+        let whole: i64 = plants.iter().sum();
+        let full = Vec.filled(n, capacity);
+        let mut longer = plants.clone();
+        longer.push(plants[n / 2]);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, plants, capacity)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let added = answer(arm, longer.clone(), capacity) - x;
+            let verdicts = [
+                x == truth,
+                answer(arm, tripled.clone(), 3 * capacity) == x,
+                x >= n and x <= n * n and (x - n) % 2 == 0,
+                answer(arm, plants, whole) == n and answer(arm, full.clone(), capacity) == n * n,
+                added == 1 or added == 2 * n + 1,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(plants)}, capacity {capacity} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{gardens.len()} gardens: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

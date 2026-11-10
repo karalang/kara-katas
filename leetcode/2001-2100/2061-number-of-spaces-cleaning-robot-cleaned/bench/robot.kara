@@ -1,0 +1,82 @@
+// LeetCode #2061: Number of Spaces Cleaning Robot Cleaned -- benchmark of
+// the ★ arm (../robot.kara): 600 spiral rooms of 200 to 300 by 200 to
+// 300, walls set so the robot winds inward along a corridor and cleans
+// about half the room before its loop closes at the middle.
+
+const DR: Array[i64, 4] = [0, 1, 0, -1];
+const DC: Array[i64, 4] = [1, 0, -1, 0];
+
+fn number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (room.len(), room[0].len());
+    let mut seen = Vec.filled(m * n * 4, false);
+    let mut cleaned = Vec.filled(m * n, false);
+    let mut count = 0;
+    let mut (r, c, d) = (0, 0, 0);
+    while not seen[(r * n + c) * 4 + d] {
+        seen[(r * n + c) * 4 + d] = true;
+        if not cleaned[r * n + c] {
+            cleaned[r * n + c] = true;
+            count += 1;
+        }
+        let (nr, nc) = (r + DR[d], c + DC[d]);
+        if nr >= 0 and nr < m and nc >= 0 and nc < n and room[nr][nc] == 0 {
+            r = nr;
+            c = nc;
+        } else {
+            d = (d + 1) % 4;
+        }
+    }
+    count
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// walls that turn the robot inward: up the left side it stops two rows
+// below where it last went right, and so on round
+fn spiral(m: i64, n: i64) -> Vec[Vec[i64]] {
+    let mut room: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        room.push(Vec.filled(n, 0));
+    }
+    let mut (top, left, bottom, right) = (0, 0, m - 1, n - 1);
+    loop {
+        if top + 2 > bottom {
+            break;
+        }
+        room[top + 1][left] = 1;
+        top += 2;
+        if left + 2 > right {
+            break;
+        }
+        room[top][right - 1] = 1;
+        right -= 2;
+        if bottom - 2 < top {
+            break;
+        }
+        room[bottom - 1][right] = 1;
+        bottom -= 2;
+        if right - 2 < left {
+            break;
+        }
+        room[bottom][left + 1] = 1;
+        left += 2;
+    }
+    room
+}
+
+fn main() {
+    let mut seed = 2061;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..600 {
+        let m = next_random(mut seed) % 101 + 200;
+        let n = next_random(mut seed) % 101 + 200;
+        let a = number_of_clean_rooms(spiral(m, n));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"600 rooms: {total} cleaned, checksum {check}");
+}

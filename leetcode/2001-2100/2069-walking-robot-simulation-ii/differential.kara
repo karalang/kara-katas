@@ -1,0 +1,639 @@
+// LeetCode #2069: Walking Robot Simulation II -- the differential. The
+// six arms, against the statement read literally: the robot moved one
+// cell at a time for every unit of every step, turning counter-clockwise
+// whenever the next cell is off the grid, with nothing cut short. 300
+// random robots of 2 to 8 by 2 to 8 with 1 to 30 calls of steps up to 60;
+// then 20 of 2 to 3 by 2 to 3 with steps up to 1000, and 20 whose steps
+// are whole loops of the edge, one less or one more; every one drawn
+// before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  every step a whole loop of the edge longer leaves every answer
+// P3  every step split in two leaves every answer, the extra step's
+//     `null` aside
+// P4  every position is a cell on the grid's edge
+// P5  before any step the robot is at (0, 0) facing east, and after a
+//     step of one whole loop at (0, 0) facing south
+// P6  each arm agrees with at least three of the other five
+
+// ---- robot.kara: the ★ arm, the robot as its place on the loop of the edge
+struct StarRobot {
+    width: i64,
+    height: i64,
+    at: i64,
+    moved: bool,
+}
+
+impl StarRobot {
+    fn new(width: i64, height: i64) -> StarRobot {
+        StarRobot { width: width, height: height, at: 0, moved: false }
+    }
+
+    fn step(mut ref self, num: i64) {
+        self.moved = true;
+        self.at = (self.at + num) % (2 * (self.width + self.height) - 4);
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        let (w, h, at) = (self.width - 1, self.height - 1, self.at);
+        if at <= w {
+            [at, 0].to_vec()
+        } else if at <= w + h {
+            [w, at - w].to_vec()
+        } else if at <= 2 * w + h {
+            [2 * w + h - at, h].to_vec()
+        } else {
+            [0, 2 * w + 2 * h - at].to_vec()
+        }
+    }
+
+    fn get_dir(self) -> String {
+        let (w, h, at) = (self.width - 1, self.height - 1, self.at);
+        let dir = if at == 0 {
+            if self.moved { "South" } else { "East" }
+        } else if at <= w {
+            "East"
+        } else if at <= w + h {
+            "North"
+        } else if at <= 2 * w + h {
+            "West"
+        } else {
+            "South"
+        };
+        dir.to_string()
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn star_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = StarRobot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- robot_table.kara: every cell of the loop laid out in a table once
+const TABLE_DX: Array[i64, 4] = [1, 0, -1, 0];
+const TABLE_DY: Array[i64, 4] = [0, 1, 0, -1];
+const TABLE_NAMES: Array[Str, 4] = ["East", "North", "West", "South"];
+
+struct TableRobot {
+    cells: Vec[(i64, i64, i64)],
+    at: i64,
+    moved: bool,
+}
+
+impl TableRobot {
+    fn new(width: i64, height: i64) -> TableRobot {
+        let mut cells: Vec[(i64, i64, i64)] = Vec.new();
+        let mut (x, y, d) = (0, 0, 0);
+        for _ in 0..2 * (width + height) - 4 {
+            if x + TABLE_DX[d] < 0 or x + TABLE_DX[d] >= width or y + TABLE_DY[d] < 0 or y + TABLE_DY[d] >= height {
+                d = (d + 1) % 4;
+            }
+            x += TABLE_DX[d];
+            y += TABLE_DY[d];
+            cells.push((x, y, d));
+        }
+        // the last cell pushed is (0, 0), reached facing south
+        cells.rotate_right(1);
+        TableRobot { cells: cells, at: 0, moved: false }
+    }
+
+    fn step(mut ref self, num: i64) {
+        self.moved = true;
+        self.at = (self.at + num) % self.cells.len();
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        let (x, y, _) = self.cells[self.at];
+        [x, y].to_vec()
+    }
+
+    fn get_dir(self) -> String {
+        let (_, _, d) = self.cells[self.at];
+        if self.moved { TABLE_NAMES[d].to_string() } else { "East".to_string() }
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn table_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = TableRobot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- robot_walk.kara: a cell at a time, `num` cut to the loop's length
+struct WalkRobot {
+    width: i64,
+    height: i64,
+    x: i64,
+    y: i64,
+    dx: i64,
+    dy: i64,
+}
+
+impl WalkRobot {
+    fn new(width: i64, height: i64) -> WalkRobot {
+        WalkRobot { width: width, height: height, x: 0, y: 0, dx: 1, dy: 0 }
+    }
+
+    fn step(mut ref self, num: i64) {
+        let around = 2 * (self.width + self.height) - 4;
+        let mut left = num % around;
+        if left == 0 {
+            left = around;
+        }
+        while left > 0 {
+            let (nx, ny) = (self.x + self.dx, self.y + self.dy);
+            if nx < 0 or nx >= self.width or ny < 0 or ny >= self.height {
+                self.dx, self.dy = -self.dy, self.dx;
+            } else {
+                self.x = nx;
+                self.y = ny;
+                left -= 1;
+            }
+        }
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        [self.x, self.y].to_vec()
+    }
+
+    fn get_dir(self) -> String {
+        match (self.dx, self.dy) {
+            (1, 0) => "East".to_string(),
+            (0, 1) => "North".to_string(),
+            (-1, 0) => "West".to_string(),
+            _ => "South".to_string(),
+        }
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn walk_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = WalkRobot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- robot_sides.kara: a side at a time, an `enum Facing`
+enum SidesFacing {
+    East,
+    North,
+    West,
+    South,
+}
+
+impl SidesFacing {
+    fn turned(self) -> SidesFacing {
+        match self {
+            SidesFacing.East => SidesFacing.North,
+            SidesFacing.North => SidesFacing.West,
+            SidesFacing.West => SidesFacing.South,
+            SidesFacing.South => SidesFacing.East,
+        }
+    }
+
+    fn name(self) -> String {
+        match self {
+            SidesFacing.East => "East".to_string(),
+            SidesFacing.North => "North".to_string(),
+            SidesFacing.West => "West".to_string(),
+            SidesFacing.South => "South".to_string(),
+        }
+    }
+}
+
+struct SidesRobot {
+    width: i64,
+    height: i64,
+    x: i64,
+    y: i64,
+    facing: SidesFacing,
+}
+
+impl SidesRobot {
+    fn new(width: i64, height: i64) -> SidesRobot {
+        SidesRobot { width: width, height: height, x: 0, y: 0, facing: SidesFacing.East }
+    }
+
+    // the cells ahead before the edge
+    fn room(self) -> i64 {
+        match self.facing {
+            SidesFacing.East => self.width - 1 - self.x,
+            SidesFacing.North => self.height - 1 - self.y,
+            SidesFacing.West => self.x,
+            SidesFacing.South => self.y,
+        }
+    }
+
+    fn step(mut ref self, num: i64) {
+        let around = 2 * (self.width + self.height) - 4;
+        let mut left = (num - 1) % around + 1;
+        while left > 0 {
+            let room = self.room();
+            if room == 0 {
+                self.facing = self.facing.turned();
+                continue;
+            }
+            let go = room.min(left);
+            match self.facing {
+                SidesFacing.East => self.x += go,
+                SidesFacing.North => self.y += go,
+                SidesFacing.West => self.x -= go,
+                SidesFacing.South => self.y -= go,
+            }
+            left -= go;
+        }
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        [self.x, self.y].to_vec()
+    }
+
+    fn get_dir(self) -> String {
+        self.facing.name()
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn sides_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = SidesRobot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- robot_coords.kara: the cell and its way kept, a round trip through the loop
+struct CoordsRobot {
+    width: i64,
+    height: i64,
+    x: i64,
+    y: i64,
+    dir: String,
+}
+
+// a cell on the edge to its place on the loop, from (0, 0) going east
+fn coords_place_of(width: i64, height: i64, x: i64, y: i64) -> i64 {
+    let (w, h) = (width - 1, height - 1);
+    match (x, y) {
+        (_, 0) => x,
+        (_, _) if x == w => w + y,
+        (_, _) if y == h => w + h + (w - x),
+        _ => 2 * w + h + (h - y),
+    }
+}
+
+// a place on the loop to its cell and the way the robot faces there; the
+// loop's start, reached by walking, faces south
+fn coords_cell_of(width: i64, height: i64, at: i64) -> (i64, i64, String) {
+    let (w, h) = (width - 1, height - 1);
+    if at == 0 {
+        (0, 0, "South".to_string())
+    } else if at <= w {
+        (at, 0, "East".to_string())
+    } else if at <= w + h {
+        (w, at - w, "North".to_string())
+    } else if at <= 2 * w + h {
+        (2 * w + h - at, h, "West".to_string())
+    } else {
+        (0, 2 * w + 2 * h - at, "South".to_string())
+    }
+}
+
+impl CoordsRobot {
+    fn new(width: i64, height: i64) -> CoordsRobot {
+        CoordsRobot { width: width, height: height, x: 0, y: 0, dir: "East".to_string() }
+    }
+
+    fn step(mut ref self, num: i64) {
+        let around = 2 * (self.width + self.height) - 4;
+        let at = (coords_place_of(self.width, self.height, self.x, self.y) + num) % around;
+        let (x, y, dir) = coords_cell_of(self.width, self.height, at);
+        self.x = x;
+        self.y = y;
+        self.dir = dir;
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        [self.x, self.y].to_vec()
+    }
+
+    fn get_dir(self) -> String {
+        self.dir.clone()
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn coords_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = CoordsRobot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- robot_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct SolutionRobot {
+    w: i32,
+    h: i32,
+    pos: i32,
+    moved: bool,
+}
+
+impl SolutionRobot {
+    fn new(width: i32, height: i32) -> Self {
+        SolutionRobot { w: width, h: height, pos: 0, moved: false }
+    }
+
+    fn step(mut ref self, num: i32) {
+        self.moved = true;
+        let p = 2 * (self.w + self.h) - 4;
+        self.pos = (self.pos + num) % p;
+    }
+
+    fn get_pos(self) -> Vec[i32] {
+        let (w, h, p) = (self.w, self.h, self.pos);
+        if p < w {
+            [p, 0]
+        } else if p < w + h - 1 {
+            [w - 1, p - w + 1]
+        } else if p < 2 * w + h - 2 {
+            [2 * w + h - 3 - p, h - 1]
+        } else {
+            [0, 2 * (w + h) - 4 - p]
+        }
+    }
+
+    fn get_dir(self) -> String {
+        let (w, h, p) = (self.w, self.h, self.pos);
+        if p == 0 {
+            if self.moved { "South" } else { "East" }
+        } else if p < w {
+            "East"
+        } else if p < w + h - 1 {
+            "North"
+        } else if p < 2 * w + h - 2 {
+            "West"
+        } else {
+            "South"
+        }
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn solution_answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = SolutionRobot.new(width as i32, height as i32);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num as i32);
+                out.push("null");
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- the statement read literally
+
+fn literal(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let names = ["East", "North", "West", "South"];
+    let steps = [(1, 0), (0, 1), (-1, 0), (0, -1)];
+    let mut (x, y, d) = (0, 0, 0);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        if call == 0 {
+            for _ in 0..num {
+                loop {
+                    let (dx, dy) = steps[d];
+                    if x + dx >= 0 and x + dx < width and y + dy >= 0 and y + dy < height {
+                        x += dx;
+                        y += dy;
+                        break;
+                    }
+                    d = (d + 1) % 4;
+                }
+            }
+            out.push("null".to_string());
+        } else if call == 1 {
+            out.push(f"[{x}, {y}]");
+        } else {
+            out.push(names[d].to_string());
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    match arm {
+        0 => star_answers(width, height, calls),
+        1 => table_answers(width, height, calls),
+        2 => walk_answers(width, height, calls),
+        3 => sides_answers(width, height, calls),
+        4 => coords_answers(width, height, calls),
+        _ => solution_answers(width, height, calls),
+    }
+}
+
+// ---- robots
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` calls: a step of 1 to `most` cells with chance 1 in 2, else
+// `getPos` or `getDir`
+fn calls_of(count: i64, most: i64, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let mut calls: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..count {
+        let kind = next_random(mut seed) % 4;
+        if kind < 2 {
+            calls.push((0, (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1));
+        } else {
+            calls.push((kind - 1, 0));
+        }
+    }
+    calls
+}
+
+// a position's answer, `[x, y]`, on the edge of the grid
+fn on_edge(answer: String, width: i64, height: i64) -> bool {
+    let inner = answer.slice(1, answer.len() - 1);
+    let parts: Vec[i64] = inner.split(", ").map(|p| i64.parse(p).unwrap_or(-1)).collect();
+    let (x, y) = (parts[0], parts[1]);
+    x >= 0 and x < width and y >= 0 and y < height and (x == 0 or y == 0 or x == width - 1 or y == height - 1)
+}
+
+fn show(calls: Vec[(i64, i64)]) -> String {
+    let parts: Vec[String] = calls.iter().map(|(c, n)| if c == 0 { f"step {n}" } else if c == 1 { "pos".to_string() } else { "dir".to_string() }).collect();
+    parts.join(" ")
+}
+
+fn main() {
+    let names = ["star", "table", "walk", "sides", "coords", "solution"];
+    let mut seed = 2069;
+    let mut robots: Vec[(i64, i64, Vec[(i64, i64)], i64)] = Vec.new();
+    for t in 0..340 {
+        let (width, height) = if t < 300 {
+            (next_random(mut seed) % 7 + 2, next_random(mut seed) % 7 + 2)
+        } else {
+            (next_random(mut seed) % 2 + 2, next_random(mut seed) % 2 + 2)
+        };
+        let count = next_random(mut seed) % 30 + 1;
+        let around = 2 * (width + height) - 4;
+        let mut calls = calls_of(count, if t < 300 { 60 } else { 1000 }, mut seed);
+        if t >= 320 {
+            calls = calls.iter().map(|(c, n)| if c == 0 { (0, around * (n % 3 + 1) + n % 3 - 1) } else { (c, n) }).collect();
+        }
+        robots.push((width, height, calls, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (width, height, calls, pick) in robots.iter() {
+        let truth = literal(width, height, calls);
+        for a in truth.iter() {
+            for b in a.bytes().iter() {
+                check = (check * 131 + b as i64) % 1000000007;
+            }
+            check = (check * 131 + 10) % 1000000007;
+        }
+        let around = 2 * (width + height) - 4;
+        let longer: Vec[(i64, i64)] = calls.iter().map(|(c, n)| if c == 0 { (0, n + around * (pick % 3 + 1)) } else { (c, n) }).collect();
+        // each step of n as a step of 1 to n - 1 cells and the rest; a step
+        // of one cell stays whole
+        let mut split: Vec[(i64, i64)] = Vec.new();
+        let mut extra: Vec[bool] = Vec.new();
+        for (c, n) in calls.iter() {
+            if c == 0 and n > 1 {
+                let first = pick % (n - 1) + 1;
+                split.push((0, first));
+                extra.push(true);
+                split.push((0, n - first));
+            } else {
+                split.push((c, n));
+            }
+            extra.push(false);
+        }
+        let start = [(2, 0), (1, 0), (0, around), (1, 0), (2, 0)].to_vec();
+        let start_want = ["East", "[0, 0]", "null", "[0, 0]", "South"];
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, width, height, calls)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let split_got = answer(arm, width, height, split);
+            let mut kept: Vec[String] = Vec.new();
+            for k in 0..split_got.len() {
+                if not extra[k] {
+                    kept.push(split_got[k].clone());
+                }
+            }
+            let start_got = answer(arm, width, height, start);
+            let verdicts = [
+                x == truth,
+                answer(arm, width, height, longer) == x,
+                kept == x,
+                (0..calls.len()).all(|k| calls[k].0 != 1 or on_edge(x[k].clone(), width, height)),
+                (0..5).all(|k| start_got[k] == start_want[k]),
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{width} x {height}, {show(calls)} arm {names[arm]}: P{p + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{robots.len()} robots: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,72 @@
+// LeetCode #2076: Process Restricted Friend Requests -- the ★ arm's
+// benchmark (friends.kara): 400 problems of 1000 people, 1000
+// restrictions and 1000 requests, each answered by the ★ arm's
+// union-find, every restriction tried against a request between two
+// groups.
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let a = find(mut parent, request[0]);
+        let b = find(mut parent, request[1]);
+        let mut allowed = true;
+        if a != b {
+            for r in restrictions.iter() {
+                let x = find(mut parent, r[0]);
+                let y = find(mut parent, r[1]);
+                if (x == a and y == b) or (x == b and y == a) {
+                    allowed = false;
+                    break;
+                }
+            }
+            if allowed {
+                parent[a] = b;
+            }
+        }
+        answers.push(allowed);
+    }
+    answers
+}
+
+// ---- benchmark -------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_pairs(n: i64, count: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let a = next_random(mut seed) % n;
+        let b = (a + 1 + next_random(mut seed) % (n - 1)) % n;
+        pairs.push([a, b].to_vec());
+    }
+    pairs
+}
+
+fn main() {
+    let mut seed = 2076;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..400 {
+        let restrictions = random_pairs(1000, 1000, mut seed);
+        let requests = random_pairs(1000, 1000, mut seed);
+        for a in friend_requests(1000, restrictions, requests).iter() {
+            let bit = if a { 1 } else { 0 };
+            total += bit;
+            check = (check * 3 + bit + 1) % 1000000007;
+        }
+    }
+    println(f"400 problems: {total} accepted, checksum {check}");
+}

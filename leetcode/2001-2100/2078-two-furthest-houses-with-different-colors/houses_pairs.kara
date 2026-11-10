@@ -1,0 +1,81 @@
+// LeetCode #2078: Two Furthest Houses With Different Colors -- every pair:
+// each house `i` against every house after it, and the greatest `j - i`
+// of a pair that differs kept. O(n²).
+
+fn max_distance(colors: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for i in 0..colors.len() {
+        for j in i + 1..colors.len() {
+            if colors[i] != colors[j] {
+                best = best.max(j - i);
+            }
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a street of `n` houses of `kinds` colors (0 to 100), drawn until two
+// differ
+fn random_street(n: i64, kinds: i64, seed: mut ref i64) -> Vec[i64] {
+    loop {
+        let base = next_random(mut seed) % (101 - kinds + 1);
+        let colors: Vec[i64] = (0..n).map(|_| base + next_random(mut seed) % kinds).collect();
+        if colors.iter().any(|c| c != colors[0]) {
+            return colors;
+        }
+    }
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[Vec[i64]] = [
+        [1, 1, 1, 6, 1, 1, 1].to_vec(),
+        [1, 8, 3, 8, 3].to_vec(),
+        [0, 1].to_vec(),
+        [4, 4, 4, 4, 7].to_vec(),
+        [7, 4, 4, 4, 4].to_vec(),
+        [2, 3, 3, 3, 2].to_vec(),
+        [5, 5, 9, 9, 5, 5].to_vec(),
+    ].to_vec();
+    for colors in examples.iter() {
+        println(f"{show(colors)} -> {max_distance(colors)}");
+    }
+    // 3000 random streets of 2 to 100 houses of 2, 3 or 100 colors, and
+    // streets of one color but for one house
+    let mut seed = 2078;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..3000 {
+        let n = next_random(mut seed) % 99 + 2;
+        let kinds = [2, 3, 100][next_random(mut seed) % 3];
+        let colors = if t % 4 == 3 {
+            let mut v = Vec.filled(n, 50);
+            v[next_random(mut seed) % n] = 51;
+            v
+        } else {
+            random_street(n, kinds, mut seed)
+        };
+        let a = max_distance(colors);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"3000 streets: sum {total}, checksum {check}");
+    // the largest the constraints allow: 100 houses, one color but the
+    // middle two
+    let mut wide = Vec.filled(100, 0);
+    wide[49] = 100;
+    wide[50] = 100;
+    println(f"100 houses, the middle two apart -> {max_distance(wide)}");
+}

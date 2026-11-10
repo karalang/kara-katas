@@ -1,0 +1,127 @@
+// LeetCode #2069: Walking Robot Simulation II -- the edge laid out once:
+// a table of every cell of the loop round the grid, in the order the
+// robot meets them from (0, 0), each with the way the robot faces there,
+// built by walking it with `const` steps and turning at each corner. The
+// robot is its place in the table, and the one exception, (0, 0) before
+// any step, is a flag.
+
+const DX: Array[i64, 4] = [1, 0, -1, 0];
+const DY: Array[i64, 4] = [0, 1, 0, -1];
+const NAMES: Array[Str, 4] = ["East", "North", "West", "South"];
+
+struct Robot {
+    cells: Vec[(i64, i64, i64)],
+    at: i64,
+    moved: bool,
+}
+
+impl Robot {
+    fn new(width: i64, height: i64) -> Robot {
+        let mut cells: Vec[(i64, i64, i64)] = Vec.new();
+        let mut (x, y, d) = (0, 0, 0);
+        for _ in 0..2 * (width + height) - 4 {
+            if x + DX[d] < 0 or x + DX[d] >= width or y + DY[d] < 0 or y + DY[d] >= height {
+                d = (d + 1) % 4;
+            }
+            x += DX[d];
+            y += DY[d];
+            cells.push((x, y, d));
+        }
+        // the last cell pushed is (0, 0), reached facing south
+        cells.rotate_right(1);
+        Robot { cells: cells, at: 0, moved: false }
+    }
+
+    fn step(mut ref self, num: i64) {
+        self.moved = true;
+        self.at = (self.at + num) % self.cells.len();
+    }
+
+    fn get_pos(self) -> Vec[i64] {
+        let (x, y, _) = self.cells[self.at];
+        [x, y].to_vec()
+    }
+
+    fn get_dir(self) -> String {
+        let (_, _, d) = self.cells[self.at];
+        if self.moved { NAMES[d].to_string() } else { "East".to_string() }
+    }
+}
+
+// the calls in LeetCode's form: 0 a step of `num`, 1 `getPos`, 2 `getDir`
+fn answers(width: i64, height: i64, calls: Vec[(i64, i64)]) -> Vec[String] {
+    let mut robot = Robot.new(width, height);
+    let mut out: Vec[String] = Vec.new();
+    for (call, num) in calls.iter() {
+        match call {
+            0 => {
+                robot.step(num);
+                out.push("null".to_string());
+            }
+            1 => {
+                let p = robot.get_pos();
+                out.push(f"[{p[0]}, {p[1]}]");
+            }
+            _ => out.push(robot.get_dir()),
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` calls: a step of 1 to `most` cells with chance 1 in 2, else
+// `getPos` or `getDir`
+fn calls_of(count: i64, most: i64, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let mut calls: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..count {
+        let kind = next_random(mut seed) % 4;
+        if kind < 2 {
+            calls.push((0, (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1));
+        } else {
+            calls.push((kind - 1, 0));
+        }
+    }
+    calls
+}
+
+fn checksum(answers: Vec[String]) -> i64 {
+    let mut check = 0;
+    for a in answers.iter() {
+        for b in a.bytes().iter() {
+            check = (check * 131 + b as i64) % 1000000007;
+        }
+        check = (check * 131 + 10) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's example, then a robot walked round its edge exactly
+    let example = [(0, 2), (0, 2), (1, 0), (2, 0), (0, 2), (0, 1), (0, 4), (1, 0), (2, 0)].to_vec();
+    println(f"6 x 3: {answers(6, 3, example).join(" ")}");
+    let round = [(2, 0), (0, 14), (1, 0), (2, 0), (0, 13), (1, 0), (2, 0), (0, 1), (1, 0), (2, 0)].to_vec();
+    println(f"5 x 4: {answers(5, 4, round).join(" ")}");
+    // 300 robots of 2 to 12 by 2 to 12, 1 to 40 calls of steps up to 60
+    // or up to 100000
+    let mut seed = 2069;
+    let mut check = 0;
+    for _ in 0..300 {
+        let width = next_random(mut seed) % 11 + 2;
+        let height = next_random(mut seed) % 11 + 2;
+        let count = next_random(mut seed) % 40 + 1;
+        let most = [60, 100000][next_random(mut seed) % 2];
+        let calls = calls_of(count, most, mut seed);
+        check = (check * 31 + checksum(answers(width, height, calls))) % 1000000007;
+    }
+    println(f"300 robots: checksum {check}");
+    // the largest the constraints allow: 100 x 100, 10000 calls
+    let calls = calls_of(10000, 100000, mut seed);
+    let last = answers(100, 100, calls);
+    println(f"100 x 100, 10000 calls: checksum {checksum(last)}, last {last[last.len() - 2]} {last[last.len() - 1]}");
+}

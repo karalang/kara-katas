@@ -1,0 +1,252 @@
+// LeetCode #2063: Vowels of All Substrings -- the differential. The six
+// arms, against the statement read literally: every substring taken out
+// whole and its vowels counted one by one. 300 random words of 1 to 40
+// letters, then 20 of vowels only, 20 with none and 20 of 41 to 120
+// letters; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the word reversed has the same answer
+// P3  a consonant added at the end adds `i + 1` for each vowel at `i`
+// P4  every vowel made `a` and every consonant `z` leave the answer
+// P5  a consonant made a vowel raises the answer, and no answer passes
+//     `n · (n + 1) · (n + 2) / 6`, every letter of every substring
+// P6  each arm agrees with at least three of the other five
+
+// ---- vowels.kara: the ★ arm, each vowel's count of substrings
+fn star_count_vowels(word: String) -> i64 {
+    let n = word.len();
+    let mut total = 0;
+    for (i, c) in word.chars().enumerate() {
+        if "aeiou".contains(c.to_string()) {
+            total += (i + 1) * (n - i);
+        }
+    }
+    total
+}
+
+// ---- vowels_ending.kara: a running count by where substrings end
+fn ending_count_vowels(word: String) -> i64 {
+    let mut ending_here = 0;
+    let mut total = 0;
+    for (i, b) in word.bytes().iter().enumerate() {
+        if b == b'a' or b == b'e' or b == b'i' or b == b'o' or b == b'u' {
+            ending_here += i + 1;
+        }
+        total += ending_here;
+    }
+    total
+}
+
+// ---- vowels_prefix.kara: from prefix counts built by `scan`
+fn prefix_count_vowels(word: String) -> i64 {
+    let n = word.len();
+    let mut before: Vec[i64] = [0].to_vec();
+    let counts: Vec[i64] = word
+        .chars()
+        .scan(0, |seen, c| {
+            let seen = if "aeiou".contains(c.to_string()) { seen + 1 } else { seen };
+            Some((seen, seen))
+        })
+        .collect();
+    before.extend(counts);
+    let mut total = 0;
+    for k in 0..n + 1 {
+        total += k * before[k] - (n - k) * before[k];
+    }
+    total
+}
+
+// ---- vowels_halves.kara: divide and conquer
+fn halves_vowels_in(letters: Slice[char], l: i64, r: i64) -> i64 {
+    if r - l == 1 {
+        return if halves_is_vowel(letters[l]) { 1 } else { 0 };
+    }
+    let m = (l + r) / 2;
+    let mut crossing = 0;
+    for i in l..m {
+        if halves_is_vowel(letters[i]) {
+            crossing += (i - l + 1) * (r - m);
+        }
+    }
+    for j in m..r {
+        if halves_is_vowel(letters[j]) {
+            crossing += (m - l) * (r - j);
+        }
+    }
+    halves_vowels_in(letters, l, m) + halves_vowels_in(letters, m, r) + crossing
+}
+
+fn halves_is_vowel(c: char) -> bool {
+    match c {
+        'a' | 'e' | 'i' | 'o' | 'u' => true,
+        _ => false,
+    }
+}
+
+fn halves_count_vowels(word: String) -> i64 {
+    let letters: Vec[char] = word.chars().collect();
+    halves_vowels_in(letters, 0, letters.len())
+}
+
+// ---- vowels_each.kara: one vowel at a time, by `match_indices`
+fn each_count_vowels(word: String) -> i64 {
+    let n = word.len();
+    ["a", "e", "i", "o", "u"]
+        .iter()
+        .map(|v| word.match_indices(v).map(|(i, _)| (i + 1) * (n - i)).sum())
+        .sum()
+}
+
+// ---- vowels_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_vowels(word: String) -> i64 {
+        let n = word.len();
+        word.chars()
+            .enumerate()
+            .filter(|(_, c)| "aeiou".contains(c.to_string()))
+            .map(|(i, _)| (i + 1) * (n - i))
+            .sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_count_vowels(word: String) -> i64 {
+    Solution.count_vowels(word)
+}
+
+// ---- the statement read literally
+
+fn literal(word: String) -> i64 {
+    let mut total = 0;
+    for i in 0..word.len() {
+        for j in i + 1..word.len() + 1 {
+            total += word.slice(i, j).chars().filter(|c| "aeiou".contains(c.to_string())).count();
+        }
+    }
+    total
+}
+
+fn answer(arm: i64, word: String) -> i64 {
+    match arm {
+        0 => star_count_vowels(word),
+        1 => ending_count_vowels(word),
+        2 => prefix_count_vowels(word),
+        3 => halves_count_vowels(word),
+        4 => each_count_vowels(word),
+        _ => solution_count_vowels(word),
+    }
+}
+
+// ---- words
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word_of(n: i64, p: i64, seed: mut ref i64) -> String {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let others: Vec[char] = "bcdxyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < p {
+            out.push(vowels[next_random(mut seed) % 5]);
+        } else {
+            out.push(others[next_random(mut seed) % 6]);
+        }
+    }
+    out
+}
+
+fn main() {
+    let names = ["star", "ending", "prefix", "halves", "each", "solution"];
+    let mut seed = 2063;
+    // each word with the place P5 tries to make a vowel
+    let mut words: Vec[(String, i64)] = Vec.new();
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 40 + 1;
+        let p = next_random(mut seed) % 101;
+        let w = word_of(n, p, mut seed);
+        words.push((w, next_random(mut seed)));
+    }
+    for t in 0..60 {
+        let (n, p) = if t < 20 {
+            (next_random(mut seed) % 40 + 1, 100)
+        } else if t < 40 {
+            (next_random(mut seed) % 40 + 1, 0)
+        } else {
+            (next_random(mut seed) % 80 + 41, next_random(mut seed) % 101)
+        };
+        let w = word_of(n, p, mut seed);
+        words.push((w, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (w, pick) in words.iter() {
+        let truth = literal(w);
+        check = (check * 31 + truth) % 1000000007;
+        let n = w.len();
+        let letters: Vec[char] = w.chars().collect();
+        let back: String = letters.iter().rev().collect();
+        let mut gained = 0;
+        for i in 0..n {
+            if "aeiou".contains(letters[i].to_string()) {
+                gained += i + 1;
+            }
+        }
+        let plain: String = letters.iter().map(|c| if "aeiou".contains(c.to_string()) { 'a' } else { 'z' }).collect();
+        let consonants: Vec[i64] = (0..n).filter(|i| not "aeiou".contains(letters[i].to_string())).collect();
+        let raised = if consonants.is_empty() {
+            None
+        } else {
+            let at = consonants[pick % consonants.len()];
+            Some(f"{w.slice(0, at)}e{w.slice(at + 1, n)}")
+        };
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, w)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let rises = match raised {
+                Some(ref r) => answer(arm, r) > x,
+                None => true,
+            };
+            let verdicts = [
+                x == truth,
+                answer(arm, back) == x,
+                answer(arm, f"{w}x") == x + gained,
+                answer(arm, plain) == x,
+                rises and x <= n * (n + 1) * (n + 2) / 6,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{w} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{words.len()} words: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

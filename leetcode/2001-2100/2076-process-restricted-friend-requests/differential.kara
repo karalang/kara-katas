@@ -1,0 +1,387 @@
+// LeetCode #2076: Process Restricted Friend Requests -- the differential.
+// The six arms, against the statement read literally: the friendships
+// made so far kept as a graph, and each request tried by adding its edge
+// and flooding the graph from every person, refused if a restriction's two
+// people are then reached from one another. 300 random problems of 2 to
+// 12 people, 0 to 10 restrictions and 1 to 16 requests; then 20 with many
+// restrictions and 20 of 2 to 4 people asking again and again; every one
+// drawn before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  every pair written the other way round gives the same answers
+// P3  every request made twice in a row is answered twice: a repeat
+//     changes nothing
+// P4  a request between two restricted people is refused, and with no
+//     restrictions every request is accepted
+// P5  the first half of the requests is answered with the first half of
+//     the answers
+// P6  each arm agrees with at least three of the other five
+
+// ---- friends.kara: the ★ arm, a union-find with path halving
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let a = star_find(mut parent, request[0]);
+        let b = star_find(mut parent, request[1]);
+        let mut allowed = true;
+        if a != b {
+            for r in restrictions.iter() {
+                let x = star_find(mut parent, r[0]);
+                let y = star_find(mut parent, r[1]);
+                if (x == a and y == b) or (x == b and y == a) {
+                    allowed = false;
+                    break;
+                }
+            }
+            if allowed {
+                parent[a] = b;
+            }
+        }
+        answers.push(allowed);
+    }
+    answers
+}
+
+// ---- friends_label.kara: quick-find, every person's group label
+fn label_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let (a, b) = (label[request[0]], label[request[1]]);
+        let refused = a != b
+            and restrictions.iter().any(|r| {
+                let (x, y) = (label[r[0]], label[r[1]]);
+                (x == a and y == b) or (x == b and y == a)
+            });
+        if not refused and a != b {
+            for l in label.iter_mut() {
+                if *l == b {
+                    *l = a;
+                }
+            }
+        }
+        answers.push(not refused);
+    }
+    answers
+}
+
+// ---- friends_forbid.kara: each group's members and forbidden people, smaller into larger
+struct ForbidGroup {
+    members: Vec[i64],
+    forbidden: Set[i64],
+}
+
+fn forbid_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut groups: Vec[ForbidGroup] = (0..n).map(|i| ForbidGroup { members: [i].to_vec(), forbidden: Set.new() }).collect();
+    for r in restrictions.iter() {
+        groups[r[0]].forbidden.insert(r[1]);
+        groups[r[1]].forbidden.insert(r[0]);
+    }
+    let mut owner: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let mut (big, small) = (owner[request[0]], owner[request[1]]);
+        if big == small {
+            answers.push(true);
+            continue;
+        }
+        if groups[big].members.len() < groups[small].members.len() {
+            let t = big;
+            big = small;
+            small = t;
+        }
+        let refused = groups[small].members.iter().any(|p| groups[big].forbidden.contains(p));
+        if not refused {
+            let moved = mem.take(mut groups[small].members);
+            let banned = mem.take(mut groups[small].forbidden);
+            for p in moved.iter() {
+                owner[p] = big;
+            }
+            groups[big].members.extend(moved);
+            groups[big].forbidden.extend(banned);
+        }
+        answers.push(not refused);
+    }
+    answers
+}
+
+// ---- friends_dsu.kara: a `struct Dsu`, recursive `find`, union by size
+struct ArmDsu {
+    parent: Vec[i64],
+    size: Vec[i64],
+}
+
+impl ArmDsu {
+    fn new(n: i64) -> ArmDsu {
+        ArmDsu { parent: (0..n).collect(), size: Vec.filled(n, 1) }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        if self.parent[x] != x {
+            let root = self.find(self.parent[x]);
+            self.parent[x] = root;
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, a: i64, b: i64) {
+        let mut (a, b) = (self.find(a), self.find(b));
+        if a == b {
+            return;
+        }
+        if self.size[a] < self.size[b] {
+            let t = a;
+            a = b;
+            b = t;
+        }
+        self.parent[b] = a;
+        self.size[a] += self.size[b];
+    }
+}
+
+fn dsu_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut dsu = ArmDsu.new(n);
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let (a, b) = (dsu.find(request[0]), dsu.find(request[1]));
+        let mut allowed = true;
+        for r in restrictions.iter() {
+            let (x, y) = (dsu.find(r[0]), dsu.find(r[1]));
+            if a != b and ((x == a and y == b) or (x == b and y == a)) {
+                allowed = false;
+                break;
+            }
+        }
+        if allowed {
+            dsu.union(a, b);
+        }
+        answers.push(allowed);
+    }
+    answers
+}
+
+// ---- friends_trial.kara: each union tried in a copy of the parents
+fn trial_root(parent: Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        x = parent[x];
+    }
+    x
+}
+
+fn trial_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        let mut trial = parent.clone();
+        let (a, b) = (trial_root(trial, request[0]), trial_root(trial, request[1]));
+        trial[a] = b;
+        let broken = restrictions.iter().any(|r| trial_root(trial, r[0]) == trial_root(trial, r[1]));
+        if not broken {
+            parent = trial;
+        }
+        answers.push(not broken);
+    }
+    answers
+}
+
+// ---- friends_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_find(p: mut ref Vec[usize], x: usize) -> usize {
+    if p[x] != x {
+        let px = p[x];
+        p[x] = solution_find(mut p, px);
+    }
+    p[x]
+}
+
+impl Solution {
+    pub fn friend_requests(n: i32, restrictions: Vec[Vec[i32]], requests: Vec[Vec[i32]]) -> Vec[bool] {
+        let mut p: Vec[usize] = (0..n as usize).collect();
+        let mut ans = Vec.with_capacity(requests.len());
+        for req in requests.iter() {
+            let (u, v) = (solution_find(mut p, req[0] as usize), solution_find(mut p, req[1] as usize));
+            if u == v {
+                ans.push(true);
+                continue;
+            }
+            let mut ok = true;
+            for r in restrictions.iter() {
+                let (x, y) = (solution_find(mut p, r[0] as usize), solution_find(mut p, r[1] as usize));
+                if (x == u and y == v) or (x == v and y == u) {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                p[u] = v;
+            }
+            ans.push(ok);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_friend_requests(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let r32: Vec[Vec[i32]] = restrictions.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect();
+    let q32: Vec[Vec[i32]] = requests.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect();
+    Solution.friend_requests(n as i32, r32, q32)
+}
+
+// ---- the statement read literally
+
+// every person's component in the graph of `edges`, by flooding
+fn components(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut comp = Vec.filled(n, -1);
+    for start in 0..n {
+        if comp[start] >= 0 {
+            continue;
+        }
+        comp[start] = start;
+        let mut stack = [start].to_vec();
+        while let Some(p) = stack.pop() {
+            for (a, b) in edges.iter() {
+                let other = if a == p { b } else if b == p { a } else { -1 };
+                if other >= 0 and comp[other] < 0 {
+                    comp[other] = start;
+                    stack.push(other);
+                }
+            }
+        }
+    }
+    comp
+}
+
+fn literal(n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    let mut answers: Vec[bool] = Vec.new();
+    for request in requests.iter() {
+        edges.push((request[0], request[1]));
+        let comp = components(n, edges);
+        let ok = restrictions.iter().all(|r| comp[r[0]] != comp[r[1]]);
+        if not ok {
+            edges.pop();
+        }
+        answers.push(ok);
+    }
+    answers
+}
+
+fn answer(arm: i64, n: i64, restrictions: Vec[Vec[i64]], requests: Vec[Vec[i64]]) -> Vec[bool] {
+    match arm {
+        0 => star_friend_requests(n, restrictions, requests),
+        1 => label_friend_requests(n, restrictions, requests),
+        2 => forbid_friend_requests(n, restrictions, requests),
+        3 => dsu_friend_requests(n, restrictions, requests),
+        4 => trial_friend_requests(n, restrictions, requests),
+        _ => solution_friend_requests(n, restrictions, requests),
+    }
+}
+
+// ---- problems
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_pairs(n: i64, count: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let a = next_random(mut seed) % n;
+        let b = (a + 1 + next_random(mut seed) % (n - 1)) % n;
+        pairs.push([a, b].to_vec());
+    }
+    pairs
+}
+
+fn swapped(pairs: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    pairs.iter().map(|p| [p[1], p[0]].to_vec()).collect()
+}
+
+fn show(pairs: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = pairs.iter().map(|p| f"[{p[0]},{p[1]}]").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "label", "forbid", "dsu", "trial", "solution"];
+    let mut seed = 2076;
+    let mut problems: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for t in 0..340 {
+        let n = if t >= 320 { next_random(mut seed) % 3 + 2 } else { next_random(mut seed) % 11 + 2 };
+        let r = if t >= 300 and t < 320 { next_random(mut seed) % 20 + 10 } else { next_random(mut seed) % 11 };
+        let m = next_random(mut seed) % 16 + 1;
+        let restrictions = random_pairs(n, r, mut seed);
+        let requests = random_pairs(n, m, mut seed);
+        problems.push((n, restrictions, requests));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, restrictions, requests) in problems.iter() {
+        let truth = literal(n, restrictions, requests);
+        for a in truth.iter() {
+            check = (check * 3 + if a { 2 } else { 1 }) % 1000000007;
+        }
+        check = (check * 31 + truth.len()) % 1000000007;
+        let half: Vec[Vec[i64]] = requests[0..requests.len() / 2].to_vec();
+        let restricted: Vec[bool] = requests.iter().map(|q| restrictions.iter().any(|r| (r[0] == q[0] and r[1] == q[1]) or (r[0] == q[1] and r[1] == q[0]))).collect();
+        let got: Vec[Vec[bool]] = (0..6).map(|arm| answer(arm, n, restrictions, requests)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            // every request made twice in a row
+            let twice: Vec[Vec[i64]] = requests.iter().flat_map(|q| [q.clone(), q.clone()].to_vec().into_iter()).collect();
+            let doubled: Vec[bool] = x.iter().flat_map(|a| [a, a].to_vec().into_iter()).collect();
+            let free = answer(arm, n, Vec.new(), requests).iter().all(|a| a);
+            let no_restricted = (0..x.len()).all(|i| not (restricted[i] and x[i]));
+            let verdicts = [
+                x == truth,
+                answer(arm, n, swapped(restrictions), swapped(requests)) == x,
+                answer(arm, n, restrictions, twice) == doubled,
+                no_restricted and free,
+                answer(arm, n, restrictions, half.clone()) == x[0..half.len()].to_vec(),
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n = {n}, {show(restrictions)}, {show(requests)} arm {names[arm]}: P{p + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} problems: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

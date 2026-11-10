@@ -1,0 +1,89 @@
+// LeetCode #2070: Most Beautiful Item for Each Query -- a `SortedMap` from
+// each price to the best beauty at it or below: first the best at each
+// price, then a walk up the prices in key order carrying the best so
+// far. A query's answer is the entry at `floor(q)`, the largest price it
+// affords, or 0 when there is none. O((n + m) log n).
+
+fn maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut at: SortedMap[i64, i64] = SortedMap.new();
+    for item in items.iter() {
+        let best = at.get(item[0]).map(|b| b.max(item[1])).unwrap_or(item[1]);
+        at.insert(item[0], best);
+    }
+    let mut upto: SortedMap[i64, i64] = SortedMap.new();
+    let mut most = 0;
+    for (price, beauty) in at.iter() {
+        most = most.max(beauty);
+        upto.insert(price, most);
+    }
+    queries.iter().map(|q| upto.floor(q).map(|(_, b)| b).unwrap_or(0)).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to `top`, from 30 random bits
+fn up_to(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1
+}
+
+fn items_of(n: i64, top: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        items.push([up_to(top, mut seed), up_to(top, mut seed)].to_vec());
+    }
+    items
+}
+
+fn queries_of(m: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut queries: Vec[i64] = Vec.new();
+    for _ in 0..m {
+        queries.push(up_to(top, mut seed));
+    }
+    queries
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn checksum(answers: Vec[i64]) -> i64 {
+    answers.iter().fold(0, |check, a| (check * 31 + a) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(Vec[Vec[i64]], Vec[i64])] = [
+        ([[1, 2].to_vec(), [3, 2].to_vec(), [2, 4].to_vec(), [5, 6].to_vec(), [3, 5].to_vec()].to_vec(), [1, 2, 3, 4, 5, 6].to_vec()),
+        ([[1, 2].to_vec(), [1, 2].to_vec(), [1, 3].to_vec(), [1, 4].to_vec()].to_vec(), [1].to_vec()),
+        ([[10, 1000].to_vec()].to_vec(), [5].to_vec()),
+        ([[5, 1].to_vec(), [5, 9].to_vec(), [7, 3].to_vec()].to_vec(), [4, 5, 6, 7, 1000000000].to_vec()),
+        ([[1000000000, 1000000000].to_vec(), [1, 1].to_vec()].to_vec(), [999999999, 1000000000].to_vec()),
+    ].to_vec();
+    for (items, queries) in examples.iter() {
+        println(f"{items.len()} items, {show(queries)} -> {show(maximum_beauty(items, queries))}");
+    }
+    // 300 shops of 1 to 50 items and 1 to 50 queries, prices, beauties
+    // and queries up to 10, 1000 or 1000000000
+    let mut seed = 2070;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 50 + 1;
+        let m = next_random(mut seed) % 50 + 1;
+        let top = [10, 1000, 1000000000][next_random(mut seed) % 3];
+        let items = items_of(n, top, mut seed);
+        let queries = queries_of(m, top, mut seed);
+        check = (check * 31 + checksum(maximum_beauty(items, queries))) % 1000000007;
+    }
+    println(f"300 shops: checksum {check}");
+    // the largest the constraints allow: 100000 items, 100000 queries
+    let items = items_of(100000, 1000000000, mut seed);
+    let queries = queries_of(100000, 1000000000, mut seed);
+    let answers = maximum_beauty(items, queries);
+    println(f"100000 items, 100000 queries: checksum {checksum(answers)}, sum {answers.iter().sum()}");
+}

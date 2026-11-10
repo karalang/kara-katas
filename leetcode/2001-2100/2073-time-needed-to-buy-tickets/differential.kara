@@ -1,0 +1,248 @@
+// LeetCode #2073: Time Needed to Buy Tickets -- the differential. The six
+// arms, against the statement read literally: the line kept as a list,
+// each second the front person buying one ticket and going to the back of
+// the line, or leaving it with their last, until person `k` leaves. 300
+// random lines of 1 to 12 people wanting up to 1, 3 or 10 tickets; then
+// 20 where everyone wants the same and 20 with `k` at the back; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the people ahead of `k` reversed, and those behind reversed, leave
+//     the answer
+// P3  one more person at the back wanting `t` adds the least of `t` and
+//     one fewer than `k` wants
+// P4  `k` wanting one more ticket never lowers the answer and adds at most
+//     the line's length
+// P5  the answer is at least what `k` wants plus the people ahead, and at
+//     most all the tickets
+// P6  each arm agrees with at least three of the other five
+
+// ---- tickets.kara: the ★ arm, each person's tickets bought before `k` is done
+fn star_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let want = tickets[k];
+    let mut time = 0;
+    for (i, t) in tickets.iter().enumerate() {
+        time += if i <= k { t.min(want) } else { t.min(want - 1) };
+    }
+    time
+}
+
+// ---- tickets_queue.kara: the line itself, a `VecDeque`
+fn queue_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let mut line: VecDeque[(i64, i64)] = tickets.iter().enumerate().collect();
+    let mut time = 0;
+    loop {
+        let (place, left) = line.pop_front().unwrap();
+        time += 1;
+        if left > 1 {
+            line.push_back((place, left - 1));
+        } else if place == k {
+            return time;
+        }
+    }
+}
+
+// ---- tickets_rounds.kara: round by round over a copy of the wants
+fn rounds_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let mut left = tickets.clone();
+    let mut time = 0;
+    loop {
+        for i in 0..left.len() {
+            if left[i] == 0 {
+                continue;
+            }
+            left[i] -= 1;
+            time += 1;
+            if i == k and left[i] == 0 {
+                return time;
+            }
+        }
+    }
+}
+
+// ---- tickets_fold.kara: the line `split_at` `k`, each half a `map` and a `sum`
+fn fold_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let want = tickets[k];
+    let (front, back) = tickets.split_at(k + 1);
+    let ahead: i64 = front.iter().map(|t| t.min(want)).sum();
+    let behind: i64 = back.iter().map(|t| t.min(want - 1)).sum();
+    ahead + behind
+}
+
+// ---- tickets_struct.kara: a `struct Line` with a method `serve`
+struct Line {
+    left: Vec[i64],
+    front: i64,
+}
+
+impl Line {
+    fn new(tickets: Vec[i64]) -> Line {
+        Line { left: tickets.clone(), front: 0 }
+    }
+
+    // sells one ticket to the front person and returns who it was
+    fn serve(mut ref self) -> i64 {
+        while self.left[self.front] == 0 {
+            self.front = (self.front + 1) % self.left.len();
+        }
+        let who = self.front;
+        self.left[who] -= 1;
+        self.front = (who + 1) % self.left.len();
+        who
+    }
+
+    fn done(self, who: i64) -> bool {
+        self.left[who] == 0
+    }
+}
+
+fn struct_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let mut line = Line.new(tickets);
+    let mut time = 0;
+    loop {
+        let who = line.serve();
+        time += 1;
+        if who == k and line.done(k) {
+            return time;
+        }
+    }
+}
+
+// ---- tickets_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn time_required_to_buy(tickets: Vec[i32], k: i32) -> i32 {
+        let k = k as i64;
+        let target = tickets[k];
+        tickets
+            .iter()
+            .enumerate()
+            .map(|(i, t)| if i <= k { t.min(target) } else { t.min(target - 1) })
+            .sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_time_required_to_buy(tickets: Vec[i64], k: i64) -> i64 {
+    let ts: Vec[i32] = tickets.iter().map(|t| t as i32).collect();
+    Solution.time_required_to_buy(ts, k as i32) as i64
+}
+
+// ---- the statement read literally
+
+fn literal(tickets: Vec[i64], k: i64) -> i64 {
+    // the line as (place, tickets still wanted), front first
+    let mut line: Vec[(i64, i64)] = Vec.new();
+    for i in 0..tickets.len() {
+        line.push((i, tickets[i]));
+    }
+    let mut seconds = 0;
+    loop {
+        let (place, left) = line.remove(0);
+        seconds += 1;
+        if left - 1 > 0 {
+            line.push((place, left - 1));
+        } else if place == k {
+            return seconds;
+        }
+    }
+}
+
+fn answer(arm: i64, tickets: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_time_required_to_buy(tickets, k),
+        1 => queue_time_required_to_buy(tickets, k),
+        2 => rounds_time_required_to_buy(tickets, k),
+        3 => fold_time_required_to_buy(tickets, k),
+        4 => struct_time_required_to_buy(tickets, k),
+        _ => solution_time_required_to_buy(tickets, k),
+    }
+}
+
+// ---- lines
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    let names = ["star", "queue", "rounds", "fold", "struct", "solution"];
+    let mut seed = 2073;
+    let mut lines: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [1, 3, 10][next_random(mut seed) % 3];
+        let same = next_random(mut seed) % top + 1;
+        let mut tickets: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let want = next_random(mut seed) % top + 1;
+            tickets.push(if t >= 300 and t < 320 { same } else { want });
+        }
+        let k = if t >= 320 { n - 1 } else { next_random(mut seed) % n };
+        lines.push((tickets, k, next_random(mut seed) % 10 + 1));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (tickets, k, extra) in lines.iter() {
+        let truth = literal(tickets, k);
+        check = (check * 31 + truth) % 1000000007;
+        let n = tickets.len();
+        let want = tickets[k];
+        let mut mirrored: Vec[i64] = tickets[..k].iter().rev().collect();
+        mirrored.push(want);
+        mirrored.extend(tickets[k + 1..].iter().rev());
+        let mut longer = tickets.clone();
+        longer.push(extra);
+        let mut more = tickets.clone();
+        more[k] += 1;
+        let all: i64 = tickets.iter().sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tickets, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let raised = answer(arm, more, k);
+            let verdicts = [
+                x == truth,
+                answer(arm, mirrored, k) == x,
+                answer(arm, longer, k) == x + extra.min(want - 1),
+                raised >= x and raised <= x + n,
+                x >= want + k and x <= all,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(tickets)}, k = {k} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lines.len()} lines: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

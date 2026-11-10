@@ -1,0 +1,114 @@
+// LeetCode #2071: Maximum Number of Tasks You Can Assign -- LeetCode's
+// Rust template (`use std::collections::VecDeque`, `mut tasks:
+// Vec<i32>`, a `check` closure `|k: usize| -> bool` over a
+// `VecDeque<i32>` with `*dq.front().unwrap()`, `usize` places, the binary
+// search `(lo + hi + 1) / 2`), carried by `karac fix`. The adapter below
+// hands the harness's problems to it.
+
+
+impl Solution {
+    pub fn max_task_assign(tasks: own Vec[i32], workers: own Vec[i32], pills: i32, strength: i32) -> i32 {
+        let mut tasks = tasks;
+        let mut workers = workers;
+        tasks.sort();
+        workers.sort();
+        let (n, m) = (tasks.len(), workers.len());
+        let check = |k: i64| {
+            let mut p = pills;
+            let mut dq: VecDeque[i32] = VecDeque.new();
+            let mut i = 0;
+            for j in m - k..m {
+                while i < k and tasks[i] <= workers[j] + strength {
+                    dq.push_back(tasks[i]);
+                    i += 1;
+                }
+                if dq.is_empty() {
+                    return false;
+                }
+                if *dq.front().unwrap() <= workers[j] {
+                    dq.pop_front();
+                } else if p > 0 {
+                    p -= 1;
+                    dq.pop_back();
+                } else {
+                    return false;
+                }
+            }
+            true
+        };
+        let mut (lo, hi) = (0, n.min(m));
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2;
+            if check(mid) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo as i32
+    }
+}
+
+struct Solution {}
+
+fn max_task_assign(tasks: Vec[i64], workers: Vec[i64], pills: i64, strength: i64) -> i64 {
+    let ts: Vec[i32] = tasks.iter().map(|t| t as i32).collect();
+    let ws: Vec[i32] = workers.iter().map(|w| w as i32).collect();
+    Solution.max_task_assign(ts, ws, pills as i32, strength as i32) as i64
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` strengths from `low` to `high`, from 30 random bits
+fn strengths(n: i64, low: i64, high: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        out.push(low + (next_random(mut seed) * 32768 + next_random(mut seed)) % (high - low + 1));
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's four examples, then a few more
+    let examples: Vec[(Vec[i64], Vec[i64], i64, i64)] = [
+        ([3, 2, 1].to_vec(), [0, 3, 3].to_vec(), 1, 1),
+        ([5, 4].to_vec(), [0, 0, 0].to_vec(), 1, 5),
+        ([10, 15, 30].to_vec(), [0, 10, 10, 10, 10].to_vec(), 3, 10),
+        ([5, 9, 8, 5, 9].to_vec(), [1, 6, 4, 2, 6].to_vec(), 1, 5),
+        ([1].to_vec(), [0].to_vec(), 0, 5),
+        ([1].to_vec(), [0].to_vec(), 1, 1),
+        ([4, 4, 4].to_vec(), [1, 2, 3, 4, 5].to_vec(), 2, 2),
+        ([1000000000].to_vec(), [0, 999999999].to_vec(), 1, 1),
+    ].to_vec();
+    for (tasks, workers, pills, strength) in examples.iter() {
+        println(f"{tasks.len()} tasks, {workers.len()} workers, {pills} pills of {strength} -> {max_task_assign(tasks, workers, pills, strength)}");
+    }
+    // 300 problems of 1 to 40 tasks and workers, strengths up to 20 or
+    // 1000000000, pills up to the workers, a pill's strength up to the
+    // largest
+    let mut seed = 2071;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let n = next_random(mut seed) % 40 + 1;
+        let m = next_random(mut seed) % 40 + 1;
+        let top = [20, 1000000000][next_random(mut seed) % 2];
+        let tasks = strengths(n, 0, top, mut seed);
+        let workers = strengths(m, 0, top, mut seed);
+        let pills = next_random(mut seed) % (m + 1);
+        let strength = (next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1);
+        let a = max_task_assign(tasks, workers, pills, strength);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"300 problems: sum {total}, checksum {check}");
+    // the largest the constraints allow: 50000 tasks and workers
+    let tasks = strengths(50000, 0, 1000000000, mut seed);
+    let workers = strengths(50000, 0, 1000000000, mut seed);
+    println(f"50000 tasks, 50000 workers, 1000 pills of 10000000 -> {max_task_assign(tasks, workers, 1000, 10000000)}");
+}

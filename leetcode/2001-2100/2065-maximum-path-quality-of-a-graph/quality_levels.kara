@@ -1,0 +1,104 @@
+// LeetCode #2065: Maximum Path Quality of a Graph -- breadth first, one
+// edge at a time: every walk so far is kept whole, as the node it stands
+// at, the time it has taken and the `SortedSet` of nodes it has visited,
+// and each round extends every walk by each edge that keeps within the
+// time. A walk's quality is the sum of its set's values; the answer is
+// the best over the walks standing at 0, of every round.
+
+fn maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut start: SortedSet[i64] = SortedSet.new();
+    start.insert(0);
+    let mut walks: Vec[(i64, i64, SortedSet[i64])] = [(0, 0, start)].to_vec();
+    let mut best = 0;
+    while not walks.is_empty() {
+        let mut longer: Vec[(i64, i64, SortedSet[i64])] = Vec.new();
+        for (node, time, visited) in walks.iter() {
+            if node == 0 {
+                best = best.max(visited.iter().map(|v| values[v]).sum());
+            }
+            for (next, t) in adj[node].iter() {
+                if time + t <= max_time {
+                    let mut more = visited.clone();
+                    more.insert(next);
+                    longer.push((next, time + t, more));
+                }
+            }
+        }
+        walks = longer;
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` nodes, values up to `top`, about `m` edges of time 10 to 50, each
+// from a node to one of the next three, no node with more than four edges
+// and no edge twice
+fn graph_of(n: i64, m: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let mut values: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        values.push((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1));
+    }
+    let mut degree = Vec.filled(n, 0);
+    let mut seen: Set[(i64, i64)] = Set.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let u = next_random(mut seed) % n;
+        let v = (u + 1 + next_random(mut seed) % 3) % n;
+        let t = next_random(mut seed) % 41 + 10;
+        let key = (u.min(v), u.max(v));
+        if u != v and degree[u] < 4 and degree[v] < 4 and not seen.contains(key) {
+            seen.insert(key);
+            degree[u] += 1;
+            degree[v] += 1;
+            edges.push([u, v, t].to_vec());
+        }
+    }
+    (values, edges)
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(Vec[i64], Vec[Vec[i64]], i64)] = [
+        ([0, 32, 10, 43].to_vec(), [[0, 1, 10].to_vec(), [1, 2, 15].to_vec(), [0, 3, 10].to_vec()].to_vec(), 49),
+        ([5, 10, 15, 20].to_vec(), [[0, 1, 10].to_vec(), [1, 2, 10].to_vec(), [0, 3, 10].to_vec()].to_vec(), 30),
+        ([1, 2, 3, 4].to_vec(), [[0, 1, 10].to_vec(), [1, 2, 11].to_vec(), [2, 3, 12].to_vec(), [1, 3, 13].to_vec()].to_vec(), 50),
+        ([0, 1, 2].to_vec(), [[1, 2, 10].to_vec()].to_vec(), 10),
+        ([7].to_vec(), Vec.new(), 10),
+        ([1, 100].to_vec(), [[0, 1, 50].to_vec()].to_vec(), 99),
+        ([1, 100].to_vec(), [[0, 1, 50].to_vec()].to_vec(), 100),
+    ].to_vec();
+    for (values, edges, max_time) in examples.iter() {
+        println(f"{values.len()} nodes, {edges.len()} edges, {max_time} -> {maximal_path_quality(values, edges, max_time)}");
+    }
+    // 400 graphs of 1 to 30 nodes, 0 to 60 edges tried, values up to 10 or
+    // 100000000, time 10 to 100
+    let mut seed = 2065;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..400 {
+        let n = next_random(mut seed) % 30 + 1;
+        let m = next_random(mut seed) % 61;
+        let top = [10, 100000000][next_random(mut seed) % 2];
+        let (values, edges) = graph_of(n, m, top, mut seed);
+        let max_time = next_random(mut seed) % 91 + 10;
+        let a = maximal_path_quality(values, edges, max_time);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"400 graphs: sum {total}, checksum {check}");
+    // the constraints' largest: 1000 nodes, 2000 edges tried, time 100
+    let (values, edges) = graph_of(1000, 2000, 100000000, mut seed);
+    println(f"1000 nodes, {edges.len()} edges, 100 -> {maximal_path_quality(values, edges, 100)}");
+}

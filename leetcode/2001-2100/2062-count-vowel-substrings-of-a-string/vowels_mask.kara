@@ -1,0 +1,79 @@
+// LeetCode #2062: Count Vowel Substrings of a String -- every start, the
+// vowels met as bits of a `u8`: `bit` gives a vowel's bit and `None` for
+// a consonant, which ends the inner loop at its `let .. else`; an end
+// counts once the mask is `0b11111`. O(n²).
+
+fn bit(c: u8) -> Option[u8] {
+    match c {
+        b'a' => Some(1),
+        b'e' => Some(2),
+        b'i' => Some(4),
+        b'o' => Some(8),
+        b'u' => Some(16),
+        _ => None,
+    }
+}
+
+fn count_vowel_substrings(word: String) -> i64 {
+    let bytes = word.bytes();
+    let mut count = 0;
+    for i in 0..bytes.len() {
+        let mut mask: u8 = 0;
+        for j in i..bytes.len() {
+            let Some(b) = bit(bytes[j]) else {
+                break;
+            };
+            mask |= b;
+            if mask == 0b11111 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters, each a vowel with chance `p` in 100, else one of `xyz`
+fn word_of(n: i64, p: i64, seed: mut ref i64) -> String {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let others: Vec[char] = "xyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < p {
+            out.push(vowels[next_random(mut seed) % 5]);
+        } else {
+            out.push(others[next_random(mut seed) % 3]);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples = ["aeiouu", "unicornarihan", "cuaieuouac", "bbaeixoubb", "a", "aeiou",
+        "uoiea", "aaeeiioouu", "xaeioux", "aeioaeiouaeiou"];
+    for w in examples.iter() {
+        println(f"{w} -> {count_vowel_substrings(w.to_string())}");
+    }
+    // 500 words of 1 to 100 letters, vowels with chance 50 to 100 in 100
+    let mut seed = 2062;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 100 + 1;
+        let p = next_random(mut seed) % 51 + 50;
+        let a = count_vowel_substrings(word_of(n, p, mut seed));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"500 words: sum {total}, checksum {check}");
+    // a word of 100 vowels, then `aeiou` twenty times
+    println(f"100 vowels -> {count_vowel_substrings(word_of(100, 100, mut seed))}");
+    println(f"aeiou x 20 -> {count_vowel_substrings("aeiou".repeat(20))}");
+}

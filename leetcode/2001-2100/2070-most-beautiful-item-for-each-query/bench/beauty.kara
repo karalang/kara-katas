@@ -1,0 +1,51 @@
+// LeetCode #2070: Most Beautiful Item for Each Query -- benchmark of the ★
+// arm (../beauty.kara): 20 shops of the constraints' largest size, 100000
+// items and 100000 queries each, prices, beauties and queries up to 10^9.
+
+fn maximum_beauty(items: Vec[Vec[i64]], queries: Vec[i64]) -> Vec[i64] {
+    let mut sorted = items.clone();
+    sorted.sort_by_key(|item| item[0]);
+    let mut best: Vec[i64] = Vec.new();
+    let mut most = 0;
+    for item in sorted.iter() {
+        most = most.max(item[1]);
+        best.push(most);
+    }
+    queries.iter().map(|q| {
+        let end = sorted.partition_point(|item| item[0] <= q);
+        if end == 0 { 0 } else { best[end - 1] }
+    }).collect()
+}
+
+// ---- bench ----------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 1 to `top`, from 30 random bits
+fn up_to(top: i64, seed: mut ref i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1
+}
+
+fn main() {
+    let mut seed = 2070;
+    let mut sum = 0;
+    let mut check = 0;
+    for _ in 0..20 {
+        let mut items: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..100000 {
+            items.push([up_to(1000000000, mut seed), up_to(1000000000, mut seed)].to_vec());
+        }
+        let mut queries: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            queries.push(up_to(1000000000, mut seed));
+        }
+        for a in maximum_beauty(items, queries).iter() {
+            sum += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"20 shops: sum {sum}, checksum {check}");
+}

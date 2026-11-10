@@ -1,0 +1,237 @@
+// LeetCode #2078: Two Furthest Houses With Different Colors -- the
+// differential. The six arms, against the statement read literally: every
+// pair of houses `i < j` looked at, and the greatest `j - i` of a pair of
+// different colors kept. 300 random streets of 2 to 12 houses of 2, 3 or
+// 100 colors; then 20 of one color but for one house, and 20 of two
+// colors in two runs; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the street reversed gives the same answer
+// P3  the colors renamed, `c` to `100 - c`, give the same answer
+// P4  a house of a new color added at either end gives the length of the
+//     street
+// P5  the street cut short by a house at either end, if two of its
+//     houses still differ, answers no more
+// P6  each arm agrees with at least three of the other five
+
+// ---- houses.kara: the ★ arm, a scan in from each end
+fn star_max_distance(colors: Vec[i64]) -> i64 {
+    let n = colors.len();
+    let mut j = n - 1;
+    while colors[j] == colors[0] {
+        j -= 1;
+    }
+    let mut i = 0;
+    while colors[i] == colors[n - 1] {
+        i += 1;
+    }
+    j.max(n - 1 - i)
+}
+
+// ---- houses_pairs.kara: every pair
+fn pairs_max_distance(colors: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for i in 0..colors.len() {
+        for j in i + 1..colors.len() {
+            if colors[i] != colors[j] {
+                best = best.max(j - i);
+            }
+        }
+    }
+    best
+}
+
+// ---- houses_find.kara: `rposition` and `position`
+fn find_max_distance(colors: Vec[i64]) -> i64 {
+    let (first, last) = (colors[0], colors[colors.len() - 1]);
+    let far = colors.iter().rposition(|c| c != first).unwrap();
+    let near = colors.iter().position(|c| c != last).unwrap();
+    far.max(colors.len() - 1 - near)
+}
+
+// ---- houses_width.kara: widest first, `windows(d + 1)` and `any`
+fn width_max_distance(colors: Vec[i64]) -> i64 {
+    let n = colors.len();
+    for d in (1..n).rev() {
+        if colors[..].windows(d + 1).iter().any(|w| w[0] != w[d]) {
+            return d;
+        }
+    }
+    0
+}
+
+// ---- houses_spans.kara: each color's first and last house in a `SortedMap`
+struct Reach {
+    first: i64,
+    last: i64,
+}
+
+fn spans_max_distance(colors: Vec[i64]) -> i64 {
+    let mut spans: SortedMap[i64, Reach] = SortedMap.new();
+    for (i, c) in colors.iter().enumerate() {
+        match spans.get_mut(c) {
+            Some(s) => s.last = i,
+            None => {
+                spans.insert(c, Reach { first: i, last: i });
+            }
+        }
+    }
+    let mut best = 0;
+    for (a, x) in spans.iter() {
+        for (b, y) in spans.iter() {
+            if a != b {
+                best = best.max(y.last - x.first);
+            }
+        }
+    }
+    best
+}
+
+// ---- houses_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn max_distance(colors: Vec[i32]) -> i32 {
+        let n = colors.len();
+        let mut ans = 0;
+        for j in (0..n).rev() {
+            if colors[j] != colors[0] {
+                ans = j;
+                break;
+            }
+        }
+        for i in 0..n {
+            if colors[i] != colors[n - 1] {
+                ans = max(ans, n - 1 - i);
+                break;
+            }
+        }
+        ans as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_max_distance(colors: Vec[i64]) -> i64 {
+    let c32: Vec[i32] = colors.iter().map(|c| c as i32).collect();
+    Solution.max_distance(c32)
+}
+
+// ---- the statement read literally
+
+fn literal(colors: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for i in 0..colors.len() {
+        for j in 0..colors.len() {
+            if i < j and colors[i] != colors[j] and j - i > best {
+                best = j - i;
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, colors: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_distance(colors),
+        1 => pairs_max_distance(colors),
+        2 => find_max_distance(colors),
+        3 => width_max_distance(colors),
+        4 => spans_max_distance(colors),
+        _ => solution_max_distance(colors),
+    }
+}
+
+// ---- streets
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mixed(colors: Slice[i64]) -> bool {
+    colors.iter().any(|c| c != colors[0])
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "pairs", "find", "width", "spans", "solution"];
+    let mut seed = 2078;
+    let mut streets: Vec[Vec[i64]] = Vec.new();
+    while streets.len() < 340 {
+        let t = streets.len();
+        let n = next_random(mut seed) % 11 + 2;
+        let kinds = [2, 3, 100][next_random(mut seed) % 3];
+        let mut colors: Vec[i64] = (0..n).map(|_| next_random(mut seed) % kinds).collect();
+        if t >= 300 and t < 320 {
+            colors = Vec.filled(n, 7);
+            colors[next_random(mut seed) % n] = 8;
+        } else if t >= 320 {
+            let cut = next_random(mut seed) % (n - 1) + 1;
+            colors = (0..n).map(|i| if i < cut { 3 } else { 4 }).collect();
+        }
+        if mixed(colors[..]) {
+            streets.push(colors);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for colors in streets.iter() {
+        let n = colors.len();
+        let truth = literal(colors);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = colors.iter().rev().cloned().collect();
+        let renamed: Vec[i64] = colors.iter().map(|c| 100 - c).collect();
+        let mut longer = colors.clone();
+        longer.push(101);
+        let mut longer_front = [101].to_vec();
+        longer_front.extend(colors.clone());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, colors)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let shorter_back = colors[..n - 1].to_vec();
+            let shorter_front = colors[1..].to_vec();
+            let no_more = (not mixed(shorter_back[..]) or answer(arm, shorter_back) <= x)
+                and (not mixed(shorter_front[..]) or answer(arm, shorter_front) <= x);
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, renamed) == x,
+                answer(arm, longer) == n and answer(arm, longer_front) == n,
+                no_more,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(colors)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{streets.len()} streets: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

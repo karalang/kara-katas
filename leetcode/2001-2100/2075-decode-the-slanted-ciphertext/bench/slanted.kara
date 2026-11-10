@@ -1,0 +1,48 @@
+// LeetCode #2075: Decode the Slanted Ciphertext -- benchmark of the ★ arm
+// (../slanted.kara): 40 grids of the constraints' largest size, 10^6
+// characters each in 1 to 1000 rows, built once and decoded.
+
+fn decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let text = encoded_text.bytes();
+    let cols = text.len() / rows;
+    let mut plain = String.new();
+    for c in 0..cols {
+        let mut r = 0;
+        while r < rows and c + r < cols {
+            plain.push(text[r * cols + c + r] as char);
+            r += 1;
+        }
+    }
+    plain.trim_end().to_string()
+}
+
+// ---- bench ----------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz      ".chars().collect();
+    let mut seed = 2075;
+    let mut grids: Vec[(String, i64)] = Vec.new();
+    for g in 0..40 {
+        let rows = [1, 2, 10, 100, 1000][g % 5];
+        let mut text = String.new();
+        for _ in 0..1000000 / rows * rows {
+            text.push(letters[next_random(mut seed) % 32]);
+        }
+        grids.push((text, rows));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for (text, rows) in grids.iter() {
+        let plain = decode_ciphertext(text, rows);
+        total += plain.len();
+        for b in plain.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+    }
+    println(f"40 grids: {total} characters, checksum {check}");
+}

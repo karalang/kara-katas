@@ -1,0 +1,129 @@
+// LeetCode #2061: Number of Spaces Cleaning Robot Cleaned -- the robot as
+// a value: an `enum Facing` that turns clockwise and names its step, and a
+// `struct Robot` of row, column and facing, `Copy`, `Eq` and `Hash`, so
+// the states met are a `Set[Robot]`. The cells cleaned are counted from
+// a `Map` of each cell to the facings the robot stood on it with.
+
+#[derive(Copy, Eq, Hash, Clone, PartialEq)]
+enum Facing {
+    Right,
+    Down,
+    Left,
+    Up,
+}
+
+impl Facing {
+    fn turned(self) -> Facing {
+        match self {
+            Facing.Right => Facing.Down,
+            Facing.Down => Facing.Left,
+            Facing.Left => Facing.Up,
+            Facing.Up => Facing.Right,
+        }
+    }
+
+    fn step(self) -> (i64, i64) {
+        match self {
+            Facing.Right => (0, 1),
+            Facing.Down => (1, 0),
+            Facing.Left => (0, -1),
+            Facing.Up => (-1, 0),
+        }
+    }
+}
+
+#[derive(Copy, Eq, Hash, Clone, PartialEq)]
+struct Robot {
+    row: i64,
+    col: i64,
+    facing: Facing,
+}
+
+impl Robot {
+    fn next(self, room: Vec[Vec[i64]]) -> Robot {
+        let (dr, dc) = self.facing.step();
+        let (r, c) = (self.row + dr, self.col + dc);
+        if r >= 0 and r < room.len() and c >= 0 and c < room[r].len() and room[r][c] == 0 {
+            Robot { row: r, col: c, facing: self.facing }
+        } else {
+            Robot { row: self.row, col: self.col, facing: self.facing.turned() }
+        }
+    }
+}
+
+fn number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let mut met: Set[Robot] = Set.new();
+    let mut stood: Map[(i64, i64), Vec[Facing]] = Map.new();
+    let mut robot = Robot { row: 0, col: 0, facing: Facing.Right };
+    while not met.contains(robot) {
+        met.insert(robot);
+        stood.entry((robot.row, robot.col)).or_insert(Vec.new()).push(robot.facing);
+        robot = robot.next(room);
+    }
+    stood.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an `m` by `n` room, each cell an object with chance `p` in 100, the
+// top-left cell always empty
+fn room_of(m: i64, n: i64, p: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut room: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 100 < p { 1 } else { 0 });
+        }
+        room.push(row);
+    }
+    room[0][0] = 0;
+    room
+}
+
+fn show(room: Vec[Vec[i64]]) -> String {
+    let mut rows: Vec[String] = Vec.new();
+    for row in room.iter() {
+        let cells: Vec[String] = row.iter().map(|x| f"{x}").collect();
+        rows.push(cells.join(""));
+    }
+    f"[{rows.join(", ")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[0, 0, 0].to_vec(), [1, 1, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0, 1, 0].to_vec(), [1, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0, 0, 0].to_vec(), [0, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0].to_vec()].to_vec(),
+        [[0, 0, 1, 0].to_vec()].to_vec(),
+        [[0].to_vec(), [0].to_vec(), [0].to_vec()].to_vec(),
+        [[0, 1].to_vec(), [0, 0].to_vec()].to_vec(),
+        [[0, 0, 0, 0].to_vec(), [0, 1, 1, 0].to_vec(), [0, 0, 0, 0].to_vec(), [1, 0, 0, 0].to_vec()].to_vec(),
+    ].to_vec();
+    for room in examples.iter() {
+        println(f"{show(room)} -> {number_of_clean_rooms(room)}");
+    }
+    // 500 rooms of 1 to 12 by 1 to 12, objects with chance 0 to 50 in 100
+    let mut seed = 2061;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..500 {
+        let m = next_random(mut seed) % 12 + 1;
+        let n = next_random(mut seed) % 12 + 1;
+        let p = next_random(mut seed) % 51;
+        let a = number_of_clean_rooms(room_of(m, n, p, mut seed));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"500 rooms: sum {total}, checksum {check}");
+    // 4 rooms of 300 by 300, objects with chance 0, 1, 3 and 10 in 100
+    for p in [0, 1, 3, 10] {
+        println(f"300 x 300, {p} in 100 -> {number_of_clean_rooms(room_of(300, 300, p, mut seed))}");
+    }
+}

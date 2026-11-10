@@ -1,0 +1,70 @@
+// LeetCode #2074: Reverse Nodes in Even Length Groups -- benchmark of the
+// ★ arm (../groups.kara): 2000 rounds, each a fresh list of 10000 values
+// turned group by group in place and folded into a checksum, 20 million
+// nodes built, relinked and freed.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn reverse_even_length_groups(head: Option[ListNode]) -> Option[ListNode] {
+    let Some(first) = head else {
+        return None;
+    };
+    let mut before = first;
+    let mut want = 2;
+    while let Some(start) = before.next {
+        let mut len = 0;
+        let mut end = start;
+        let mut cur = Some(start);
+        while len < want {
+            let Some(node) = cur else {
+                break;
+            };
+            len += 1;
+            end = node;
+            cur = node.next;
+        }
+        if len % 2 == 0 {
+            let mut turned = end.next;
+            let mut rest = Some(start);
+            for _ in 0..len {
+                let node = rest.unwrap();
+                rest = node.next;
+                node.next = turned;
+                turned = Some(node);
+            }
+            before.next = turned;
+            before = start;
+        } else {
+            before = end;
+        }
+        want += 1;
+    }
+    Some(first)
+}
+
+// ---- bench ----------------------------------------------------------------
+
+fn build(m: i64, round: i64) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    let mut j = m - 1;
+    while j >= 0 {
+        head = Some(ListNode { val: (j * 7919 + round) % 100001, next: head });
+        j -= 1;
+    }
+    head
+}
+
+fn main() {
+    let mut check = 0;
+    for r in 0..2000 {
+        let mut cur = reverse_even_length_groups(build(10000 + r % 7, r));
+        while let Some(node) = cur {
+            check = (check * 31 + node.val) % 1000000007;
+            cur = node.next;
+        }
+    }
+    println(f"2000 rounds: checksum {check}");
+}

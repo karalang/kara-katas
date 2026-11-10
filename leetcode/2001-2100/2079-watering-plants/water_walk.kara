@@ -1,0 +1,71 @@
+// LeetCode #2079: Watering Plants -- the walk itself: the gardener's place
+// moved one unit at a time, `-1` the river, every step counted, back to
+// the river and out again whenever the next plant wants more than the can
+// holds. O(steps), at most about n².
+
+fn watering_plants(plants: Vec[i64], capacity: i64) -> i64 {
+    let mut (at, can, steps) = (-1, capacity, 0);
+    for next in 0..plants.len() {
+        if can < plants[next] {
+            while at > -1 {
+                at -= 1;
+                steps += 1;
+            }
+            can = capacity;
+            while at < next - 1 {
+                at += 1;
+                steps += 1;
+            }
+        }
+        at += 1;
+        steps += 1;
+        can -= plants[next];
+    }
+    steps
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(Vec[i64], i64)] = [
+        ([2, 2, 3, 3].to_vec(), 5),
+        ([1, 1, 1, 4, 2, 3].to_vec(), 4),
+        ([7, 7, 7, 7, 7, 7, 7].to_vec(), 8),
+        ([5].to_vec(), 5),
+        ([3, 3, 3].to_vec(), 3),
+        ([1, 2, 3, 4, 5].to_vec(), 100),
+        ([4, 1, 1, 4, 2, 2].to_vec(), 6),
+    ].to_vec();
+    for (plants, capacity) in examples.iter() {
+        println(f"{show(plants)}, capacity = {capacity} -> {watering_plants(plants, capacity)}");
+    }
+    // 2000 random gardens of 1 to 100 plants, the can holding 1 to 50 and
+    // each plant wanting up to the can
+    let mut seed = 2079;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let capacity = next_random(mut seed) % 50 + 1;
+        let plants: Vec[i64] = (0..n).map(|_| next_random(mut seed) % capacity + 1).collect();
+        let a = watering_plants(plants, capacity);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 gardens: sum {total}, checksum {check}");
+    // the largest the constraints allow: 1000 plants of up to 10^6, a can
+    // of 10^6
+    let plants: Vec[i64] = (0..1000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 1).collect();
+    println(f"1000 plants -> {watering_plants(plants, 1000000)}");
+}

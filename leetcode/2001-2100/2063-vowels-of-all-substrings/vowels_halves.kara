@@ -1,0 +1,80 @@
+// LeetCode #2063: Vowels of All Substrings -- divide and conquer: the
+// substrings of `l..r` are those of each half and those crossing the
+// middle `m`. A crossing substring starts in `l..m` and ends in `m..r`,
+// so a vowel at `i` in the left half lies in `(i - l + 1) · (r - m)` of
+// them, and one at `j` in the right half in `(m - l) · (r - j)`.
+// O(n log n), recursion depth log n.
+
+fn vowels_in(letters: Slice[char], l: i64, r: i64) -> i64 {
+    if r - l == 1 {
+        return if is_vowel(letters[l]) { 1 } else { 0 };
+    }
+    let m = (l + r) / 2;
+    let mut crossing = 0;
+    for i in l..m {
+        if is_vowel(letters[i]) {
+            crossing += (i - l + 1) * (r - m);
+        }
+    }
+    for j in m..r {
+        if is_vowel(letters[j]) {
+            crossing += (m - l) * (r - j);
+        }
+    }
+    vowels_in(letters, l, m) + vowels_in(letters, m, r) + crossing
+}
+
+fn is_vowel(c: char) -> bool {
+    match c {
+        'a' | 'e' | 'i' | 'o' | 'u' => true,
+        _ => false,
+    }
+}
+
+fn count_vowels(word: String) -> i64 {
+    let letters: Vec[char] = word.chars().collect();
+    vowels_in(letters, 0, letters.len())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters, each a vowel with chance `p` in 100, else one of `bcdxyz`
+fn word_of(n: i64, p: i64, seed: mut ref i64) -> String {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let others: Vec[char] = "bcdxyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < p {
+            out.push(vowels[next_random(mut seed) % 5]);
+        } else {
+            out.push(others[next_random(mut seed) % 6]);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples = ["aba", "abc", "ltcd", "a", "b", "aeiou", "zzzzz", "noosabasboosa"];
+    for w in examples.iter() {
+        println(f"{w} -> {count_vowels(w.to_string())}");
+    }
+    // 500 words of 1 to 300 letters, vowels with chance 0 to 100 in 100
+    let mut seed = 2063;
+    let mut check = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 300 + 1;
+        let p = next_random(mut seed) % 101;
+        check = (check * 31 + count_vowels(word_of(n, p, mut seed))) % 1000000007;
+    }
+    println(f"500 words: checksum {check}");
+    // the largest the constraints allow: 100000 letters, all vowels, then
+    // vowels with chance 40 in 100
+    println(f"100000 vowels -> {count_vowels(word_of(100000, 100, mut seed))}");
+    println(f"100000 letters -> {count_vowels(word_of(100000, 40, mut seed))}");
+}

@@ -1,0 +1,69 @@
+// LeetCode #2065: Maximum Path Quality of a Graph -- benchmark of the ★ arm
+// (../quality.kara): 1000 graphs of 1000 nodes, 2000 edges tried, each from
+// a node to one of the next three and of time 10 or 11, and the time 100,
+// so that walks run to 10 edges through nodes of up to four.
+
+fn walk(adj: Vec[Vec[(i64, i64)]], values: Vec[i64], max_time: i64, node: i64, time: i64, quality: i64, visits: mut ref Vec[i64], best: mut ref i64) {
+    if node == 0 {
+        *best = (*best).max(quality);
+    }
+    for (next, t) in adj[node].iter() {
+        if time + t <= max_time {
+            visits[next] += 1;
+            let gain = if visits[next] == 1 { values[next] } else { 0 };
+            walk(adj, values, max_time, next, time + t, quality + gain, mut visits, mut best);
+            visits[next] -= 1;
+        }
+    }
+}
+
+fn maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut visits = Vec.filled(n, 0);
+    visits[0] = 1;
+    let mut best = 0;
+    walk(adj, values, max_time, 0, 0, values[0], mut visits, mut best);
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2065;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = 1000;
+        let mut values: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            values.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000001);
+        }
+        let mut degree = Vec.filled(n, 0);
+        let mut seen: Set[(i64, i64)] = Set.new();
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..2000 {
+            let u = next_random(mut seed) % n;
+            let v = (u + 1 + next_random(mut seed) % 3) % n;
+            let t = next_random(mut seed) % 2 + 10;
+            let key = (u.min(v), u.max(v));
+            if degree[u] < 4 and degree[v] < 4 and not seen.contains(key) {
+                seen.insert(key);
+                degree[u] += 1;
+                degree[v] += 1;
+                edges.push([u, v, t].to_vec());
+            }
+        }
+        let a = maximal_path_quality(values, edges, 100);
+        total += a;
+        check = (check * 31 + a % 1000000007) % 1000000007;
+    }
+    println(f"1000 graphs: sum {total}, checksum {check}");
+}

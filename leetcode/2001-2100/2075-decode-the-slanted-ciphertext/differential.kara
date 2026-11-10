@@ -1,0 +1,293 @@
+// LeetCode #2075: Decode the Slanted Ciphertext -- the differential. The
+// six arms, against the statement read literally: every cell of the grid
+// given its diagonal, its column less its row, and its place down that
+// diagonal, its row; the cells on a diagonal that starts in the top row
+// sorted by diagonal and then by place, read out, and the trailing spaces
+// dropped. 300 random grids of 1 to 6 rows and 0 to 12 columns of letters
+// and spaces; then 20 with more rows than columns and 20 of spaces but
+// for one letter; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer written down the diagonals of a blank grid of the same
+//     shape agrees with the text at every cell it writes
+// P3  the text read as one row is the text with its trailing spaces
+//     dropped
+// P4  the answer ends in no space, is no longer than the diagonals, and
+//     holds no letter more often than the text
+// P5  the cells below the first diagonal changed leave the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- slanted.kara: the ★ arm, each diagonal read by place
+fn star_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let text = encoded_text.bytes();
+    let cols = text.len() / rows;
+    let mut plain = String.new();
+    for c in 0..cols {
+        let mut r = 0;
+        while r < rows and c + r < cols {
+            plain.push(text[r * cols + c + r] as char);
+            r += 1;
+        }
+    }
+    plain.trim_end().to_string()
+}
+
+// ---- slanted_grid.kara: the grid as rows of `chunks`, walked by row and column
+fn grid_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let chars: Vec[char] = encoded_text.chars().collect();
+    let cols = chars.len() / rows;
+    if cols == 0 {
+        return String.new();
+    }
+    let grid: Vec[Vec[char]] = chars.chunks(cols).iter().map(|row| row.to_vec()).collect();
+    let mut plain = String.new();
+    for c in 0..cols {
+        let mut (r, k) = (0, c);
+        while r < rows and k < cols {
+            plain.push(grid[r][k]);
+            r += 1;
+            k += 1;
+        }
+    }
+    while plain.ends_with(" ") {
+        plain.pop();
+    }
+    plain
+}
+
+// ---- slanted_iter.kara: one `flat_map` over the diagonals
+fn iter_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let text = encoded_text.bytes();
+    let cols = text.len() / rows;
+    let plain: String = (0..cols)
+        .flat_map(|c| (0..rows).take_while(|r| c + r < cols).map(|r| r * cols + c + r))
+        .map(|i| text[i] as char)
+        .collect();
+    plain.trim_end().to_string()
+}
+
+// ---- slanted_step.kara: each diagonal a `step_by(cols + 1)` over the text
+fn step_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let text = encoded_text.bytes();
+    let cols = text.len() / rows;
+    let mut out: Vec[u8] = Vec.new();
+    for c in 0..cols {
+        for i in (c..text.len()).step_by(cols + 1).take(rows.min(cols - c)) {
+            out.push(text[i]);
+        }
+    }
+    while out.last().cloned() == Some(b' ') {
+        out.pop();
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- slanted_struct.kara: a `struct Grid` with `at` and `diagonal`
+struct StructGrid {
+    cells: Vec[u8],
+    rows: i64,
+    cols: i64,
+}
+
+impl StructGrid {
+    fn at(self, r: i64, c: i64) -> Option[u8] {
+        if r < self.rows and c < self.cols { Some(self.cells[r * self.cols + c]) } else { None }
+    }
+
+    fn diagonal(self, c: i64, into: mut ref String) {
+        let mut r = 0;
+        while let Some(b) = self.at(r, c + r) {
+            into.push(b as char);
+            r += 1;
+        }
+    }
+}
+
+fn struct_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let cells: Vec[u8] = encoded_text.bytes().to_vec();
+    let cols = cells.len() / rows;
+    let grid = StructGrid { cells, rows, cols };
+    let mut plain = String.new();
+    for c in 0..cols {
+        grid.diagonal(c, mut plain);
+    }
+    plain.trim_end().to_string()
+}
+
+// ---- slanted_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn decode_ciphertext(encoded_text: String, rows: i32) -> String {
+        let rows = rows as i64;
+        let s = encoded_text.bytes();
+        let cols = s.len() / rows;
+        let mut res = String.with_capacity(s.len());
+        for c in 0..cols {
+            let mut (i, j) = (0, c);
+            while i < rows and j < cols {
+                res.push(s[i * cols + j] as char);
+                i += 1;
+                j += 1;
+            }
+        }
+        res.trim_end().to_string()
+    }
+}
+
+struct Solution {}
+
+fn solution_decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    Solution.decode_ciphertext(encoded_text.to_string(), rows as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(text: Str, rows: i64) -> String {
+    let cells: Vec[char] = text.chars().collect();
+    let cols = cells.len() / rows;
+    // (diagonal, place down it, character) for every cell on a diagonal
+    // that starts in the top row
+    let mut on: Vec[(i64, i64, char)] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            if c >= r {
+                on.push((c - r, r, cells[r * cols + c]));
+            }
+        }
+    }
+    on.sort_by_key(|t| (t.0, t.1));
+    let mut plain: String = on.iter().map(|t| t.2).collect();
+    while plain.ends_with(" ") {
+        plain.pop();
+    }
+    plain
+}
+
+fn answer(arm: i64, text: Str, rows: i64) -> String {
+    match arm {
+        0 => star_decode_ciphertext(text, rows),
+        1 => grid_decode_ciphertext(text, rows),
+        2 => iter_decode_ciphertext(text, rows),
+        3 => step_decode_ciphertext(text, rows),
+        4 => struct_decode_ciphertext(text, rows),
+        _ => solution_decode_ciphertext(text, rows),
+    }
+}
+
+// ---- grids
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// does `plain`, written down the diagonals of a blank grid, agree with
+// `text` at every cell it writes?
+fn rewrites(plain: Str, text: Str, rows: i64) -> bool {
+    let cells: Vec[char] = text.chars().collect();
+    let cols = cells.len() / rows;
+    let letters: Vec[char] = plain.chars().collect();
+    let mut k = 0;
+    for c in 0..cols {
+        for r in 0..rows {
+            if c + r < cols and k < letters.len() {
+                if letters[k] != cells[r * cols + c + r] {
+                    return false;
+                }
+                k += 1;
+            }
+        }
+    }
+    k == letters.len()
+}
+
+// does every letter of `plain` occur in `text` at least as often?
+fn letters_of(plain: Str, text: Str) -> bool {
+    let mut counts: Map[char, i64] = Map.new();
+    for ch in text.chars() {
+        counts[ch] = counts.get(ch).cloned().unwrap_or(0) + 1;
+    }
+    for ch in plain.chars() {
+        let left = counts.get(ch).cloned().unwrap_or(0);
+        if left == 0 {
+            return false;
+        }
+        counts[ch] = left - 1;
+    }
+    true
+}
+
+fn main() {
+    let names = ["star", "grid", "iter", "step", "struct", "solution"];
+    let mut seed = 2075;
+    let mut grids: Vec[(String, i64)] = Vec.new();
+    for t in 0..340 {
+        let rows = next_random(mut seed) % 6 + 1;
+        let wide = next_random(mut seed) % 13;
+        let cols = if t >= 300 and t < 320 { wide % rows } else { wide };
+        let alphabet: Vec[char] = ["ab ", "abcdefgh  ", "    x"][next_random(mut seed) % 3].chars().collect();
+        let lone = next_random(mut seed) % (rows * cols + 1);
+        let mut text = String.new();
+        for i in 0..rows * cols {
+            let ch = alphabet[next_random(mut seed) % alphabet.len()];
+            text.push(if t >= 320 { if i == lone { 'q' } else { ' ' } } else { ch });
+        }
+        grids.push((text, rows));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (text, rows) in grids.iter() {
+        let truth = literal(text, rows);
+        for b in truth.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        check = (check * 31 + truth.len()) % 1000000007;
+        let cols = text.len() / rows;
+        let reach: i64 = (0..cols).map(|c| rows.min(cols - c)).sum();
+        // the cells below the first diagonal, each made a `z`
+        let mut below = String.new();
+        for (i, ch) in text.chars().enumerate() {
+            below.push(if i % cols.max(1) < i / cols.max(1) { 'z' } else { ch });
+        }
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, text, rows)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                rewrites(x, text, rows),
+                answer(arm, text, 1) == text.trim_end().to_string(),
+                not x.ends_with(" ") and x.len() <= reach and letters_of(x, text),
+                answer(arm, below, rows) == x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{text}\" rows {rows} arm {names[arm]}: P{p + 1} fails, answer \"{x}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{grids.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

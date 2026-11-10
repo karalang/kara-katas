@@ -1,0 +1,407 @@
+// LeetCode #2065: Maximum Path Quality of a Graph -- the differential. The
+// six arms, against the statement read literally: every walk from node 0
+// written out as its list of nodes, one edge longer each round while it
+// keeps within the time, and of those that end at 0, the best sum of the
+// values of the different nodes on it. 300 random graphs of 1 to 8 nodes,
+// edges between any two with no node on more than four, times 10 to 50;
+// then 20 with every edge 10 and the time 60; every one drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the nodes other than 0 numbered backwards have the same answer
+// P3  ten more time never lowers the answer
+// P4  an edge taken away never raises the answer
+// P5  the answer is at least node 0's value and at most all values added
+// P6  each arm agrees with at least three of the other five
+
+// ---- quality.kara: the ★ arm, a recursive search with visit counts
+fn star_walk(adj: Vec[Vec[(i64, i64)]], values: Vec[i64], max_time: i64, node: i64, time: i64, quality: i64, visits: mut ref Vec[i64], best: mut ref i64) {
+    if node == 0 {
+        *best = (*best).max(quality);
+    }
+    for (next, t) in adj[node].iter() {
+        if time + t <= max_time {
+            visits[next] += 1;
+            let gain = if visits[next] == 1 { values[next] } else { 0 };
+            star_walk(adj, values, max_time, next, time + t, quality + gain, mut visits, mut best);
+            visits[next] -= 1;
+        }
+    }
+}
+
+fn star_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut visits = Vec.filled(n, 0);
+    visits[0] = 1;
+    let mut best = 0;
+    star_walk(adj, values, max_time, 0, 0, values[0], mut visits, mut best);
+    best
+}
+
+// ---- quality_stack.kara: the search on a stack of frames
+#[derive(Copy, Clone)]
+struct Frame {
+    node: i64,
+    time: i64,
+    quality: i64,
+    edge: i64,
+}
+
+fn stack_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut visits = Vec.filled(n, 0);
+    visits[0] = 1;
+    let mut best = values[0];
+    let mut stack = [Frame { node: 0, time: 0, quality: values[0], edge: 0 }].to_vec();
+    while not stack.is_empty() {
+        let top = stack.len() - 1;
+        let (node, time, quality, edge) = (stack[top].node, stack[top].time, stack[top].quality, stack[top].edge);
+        if edge == adj[node].len() {
+            stack.pop();
+            visits[node] -= 1;
+            continue;
+        }
+        stack[top].edge += 1;
+        let (next, t) = adj[node][edge];
+        if time + t <= max_time {
+            visits[next] += 1;
+            let reached = quality + if visits[next] == 1 { values[next] } else { 0 };
+            if next == 0 {
+                best = best.max(reached);
+            }
+            stack.push(Frame { node: next, time: time + t, quality: reached, edge: 0 });
+        }
+    }
+    best
+}
+
+// ---- quality_prune.kara: pruned by the shortest way home
+fn prune_shortest_home(adj: Vec[Vec[(i64, i64)]]) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), i64.MAX);
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    dist[0] = 0;
+    queue.push((0, 0));
+    while let Some((d, node)) = queue.pop() {
+        if d > dist[node] {
+            continue;
+        }
+        for (next, t) in adj[node].iter() {
+            if d + t < dist[next] {
+                dist[next] = d + t;
+                queue.push((d + t, next));
+            }
+        }
+    }
+    dist
+}
+
+fn prune_walk(adj: Vec[Vec[(i64, i64)]], values: Vec[i64], home: Vec[i64], left: i64, node: i64, quality: i64, seen: mut ref Vec[bool]) -> i64 {
+    let mut best = if node == 0 { quality } else { 0 };
+    for (next, t) in adj[node].iter() {
+        if t + home[next] <= left {
+            let first = not seen[next];
+            seen[next] = true;
+            let gain = if first { values[next] } else { 0 };
+            best = best.max(prune_walk(adj, values, home, left - t, next, quality + gain, mut seen));
+            if first {
+                seen[next] = false;
+            }
+        }
+    }
+    best
+}
+
+fn prune_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let home = prune_shortest_home(adj);
+    let mut seen = Vec.filled(n, false);
+    seen[0] = true;
+    prune_walk(adj, values, home, max_time, 0, values[0], mut seen)
+}
+
+// ---- quality_levels.kara: every walk kept, a round per edge
+fn levels_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        adj[e[0]].push((e[1], e[2]));
+        adj[e[1]].push((e[0], e[2]));
+    }
+    let mut start: SortedSet[i64] = SortedSet.new();
+    start.insert(0);
+    let mut walks: Vec[(i64, i64, SortedSet[i64])] = [(0, 0, start)].to_vec();
+    let mut best = 0;
+    while not walks.is_empty() {
+        let mut longer: Vec[(i64, i64, SortedSet[i64])] = Vec.new();
+        for (node, time, visited) in walks.iter() {
+            if node == 0 {
+                best = best.max(visited.iter().map(|v| values[v]).sum());
+            }
+            for (next, t) in adj[node].iter() {
+                if time + t <= max_time {
+                    let mut more = visited.clone();
+                    more.insert(next);
+                    longer.push((next, time + t, more));
+                }
+            }
+        }
+        walks = longer;
+    }
+    best
+}
+
+// ---- quality_struct.kara: the search as a struct with a `mut ref self` method
+struct Edge {
+    to: i64,
+    time: i64,
+}
+
+struct Search {
+    adj: Vec[Vec[Edge]],
+    values: Vec[i64],
+    max_time: i64,
+    visits: Vec[i64],
+    best: i64,
+}
+
+impl Search {
+    fn walk(mut ref self, node: i64, time: i64, quality: i64) {
+        if node == 0 and quality > self.best {
+            self.best = quality;
+        }
+        for k in 0..self.adj[node].len() {
+            let (to, t) = (self.adj[node][k].to, self.adj[node][k].time);
+            if time + t > self.max_time {
+                continue;
+            }
+            self.visits[to] += 1;
+            let gain = if self.visits[to] == 1 { self.values[to] } else { 0 };
+            self.walk(to, time + t, quality + gain);
+            self.visits[to] -= 1;
+        }
+    }
+}
+
+fn struct_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let n = values.len();
+    let mut adj: Vec[Vec[Edge]] = Vec.new();
+    for _ in 0..n {
+        adj.push(Vec.new());
+    }
+    for e in edges.iter() {
+        adj[e[0]].push(Edge { to: e[1], time: e[2] });
+        adj[e[1]].push(Edge { to: e[0], time: e[2] });
+    }
+    let mut visits = Vec.filled(n, 0);
+    visits[0] = 1;
+    let mut search = Search { adj: adj, values: values.clone(), max_time: max_time, visits: visits, best: 0 };
+    search.walk(0, 0, values[0]);
+    search.best
+}
+
+// ---- quality_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_dfs(u: usize, time: i32, sum: i32, max_time: i32, values: Slice[i32], g: Vec[Vec[(usize, i32)]], cnt: mut ref Vec[i32], ans: mut ref i32) {
+    if u == 0 {
+        *ans = (*ans).max(sum);
+    }
+    for (v, t) in ref g[u] {
+        if time + t <= max_time {
+            cnt[v] += 1;
+            let add = if cnt[v] == 1 { values[v] } else { 0 };
+            solution_dfs(v, time + t, sum + add, max_time, values, g, mut cnt, mut ans);
+            cnt[v] -= 1;
+        }
+    }
+}
+
+impl Solution {
+    pub fn maximal_path_quality(values: Vec[i32], edges: Vec[Vec[i32]], max_time: i32) -> i32 {
+        let n = values.len();
+        let mut g = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (u, v, t) = (e[0] as usize, e[1] as usize, e[2]);
+            g[u].push((v, t));
+            g[v].push((u, t));
+        }
+        let mut cnt = Vec.filled(n, 0i32);
+        cnt[0] = 1;
+        let mut ans: i32 = 0;
+        solution_dfs(0, 0, values[0], max_time, values, g, mut cnt, mut ans);
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximal_path_quality(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let vs: Vec[i32] = values.iter().map(|v| v as i32).collect();
+    let es: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.maximal_path_quality(vs, es, max_time as i32) as i64
+}
+
+// ---- the statement read literally
+
+fn literal(values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    let mut walks: Vec[(Vec[i64], i64)] = [([0].to_vec(), 0)].to_vec();
+    let mut best = 0;
+    while not walks.is_empty() {
+        let mut longer: Vec[(Vec[i64], i64)] = Vec.new();
+        for (nodes, time) in walks.iter() {
+            let last = nodes[nodes.len() - 1];
+            if last == 0 {
+                let mut different: Vec[i64] = Vec.new();
+                for v in nodes.iter() {
+                    if not different.contains(v) {
+                        different.push(v);
+                    }
+                }
+                best = best.max(different.iter().map(|v| values[v]).sum());
+            }
+            for e in edges.iter() {
+                let other = if e[0] == last { e[1] } else if e[1] == last { e[0] } else { -1 };
+                if other >= 0 and time + e[2] <= max_time {
+                    let mut more = nodes.clone();
+                    more.push(other);
+                    longer.push((more, time + e[2]));
+                }
+            }
+        }
+        walks = longer;
+    }
+    best
+}
+
+fn answer(arm: i64, values: Vec[i64], edges: Vec[Vec[i64]], max_time: i64) -> i64 {
+    match arm {
+        0 => star_maximal_path_quality(values, edges, max_time),
+        1 => stack_maximal_path_quality(values, edges, max_time),
+        2 => prune_maximal_path_quality(values, edges, max_time),
+        3 => levels_maximal_path_quality(values, edges, max_time),
+        4 => struct_maximal_path_quality(values, edges, max_time),
+        _ => solution_maximal_path_quality(values, edges, max_time),
+    }
+}
+
+// ---- graphs
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn graph_of(n: i64, m: i64, top: i64, low: i64, high: i64, seed: mut ref i64) -> (Vec[i64], Vec[Vec[i64]]) {
+    let mut values: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        values.push((next_random(mut seed) * 32768 + next_random(mut seed)) % (top + 1));
+    }
+    let mut degree = Vec.filled(n, 0);
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let u = next_random(mut seed) % n;
+        let v = next_random(mut seed) % n;
+        let t = low + next_random(mut seed) % (high - low + 1);
+        let fresh = edges.iter().all(|e| not (e[0] == u and e[1] == v) and not (e[0] == v and e[1] == u));
+        if u != v and degree[u] < 4 and degree[v] < 4 and fresh {
+            degree[u] += 1;
+            degree[v] += 1;
+            edges.push([u, v, t].to_vec());
+        }
+    }
+    (values, edges)
+}
+
+fn main() {
+    let names = ["star", "stack", "prune", "levels", "struct", "solution"];
+    let mut seed = 2065;
+    let mut graphs: Vec[(Vec[i64], Vec[Vec[i64]], i64, i64)] = Vec.new();
+    for t in 0..320 {
+        let n = next_random(mut seed) % 8 + 1;
+        let m = next_random(mut seed) % 15;
+        let top = [10, 100000000][next_random(mut seed) % 2];
+        let (values, edges, max_time) = if t < 300 {
+            let (values, edges) = graph_of(n, m, top, 10, 50, mut seed);
+            (values, edges, next_random(mut seed) % 91 + 10)
+        } else {
+            let (values, edges) = graph_of(n, m, top, 10, 10, mut seed);
+            (values, edges, 60)
+        };
+        graphs.push((values, edges, max_time, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (values, edges, max_time, pick) in graphs.iter() {
+        let n = values.len();
+        let truth = literal(values, edges, max_time);
+        check = (check * 31 + truth % 1000000007) % 1000000007;
+        // P2: node k for k >= 1 renamed n - k
+        let rename = |k: i64| if k == 0 { 0 } else { n - k };
+        let mut renamed_values = Vec.filled(n, 0);
+        for k in 0..n {
+            renamed_values[rename(k)] = values[k];
+        }
+        let renamed_edges: Vec[Vec[i64]] = edges.iter().map(|e| [rename(e[0]), rename(e[1]), e[2]].to_vec()).collect();
+        let fewer: Vec[Vec[i64]] = if edges.is_empty() {
+            Vec.new()
+        } else {
+            let gone = pick % edges.len();
+            (0..edges.len()).filter(|k| k != gone).map(|k| edges[k].clone()).collect()
+        };
+        let all: i64 = values.iter().sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, values, edges, max_time)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, renamed_values, renamed_edges, max_time) == x,
+                answer(arm, values, edges, max_time + 10) >= x,
+                answer(arm, values, fewer, max_time) <= x,
+                x >= values[0] and x <= all,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} nodes, {edges.len()} edges, {max_time} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{graphs.len()} graphs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,148 @@
+// LeetCode #2060: Check if an Original String Exists Given Two Encoded
+// Strings -- LeetCode's Rust template (`s1.as_bytes()`, a nested `fn dfs`
+// taking `&[u8]` slices and a `&mut HashSet<(usize, usize, i32)>`, `usize`
+// places and an `i32` lead, `is_ascii_digit` and `(c - b'0') as i32`),
+// carried by `karac fix`. The adapter below hands the harness's strings to
+// it.
+
+
+struct Solution {}
+
+fn dfs(a: Slice[u8], b: Slice[u8], i: i64, j: i64, diff: i32, seen: mut ref Set[(i64, i64, i32)]) -> bool {
+    if i == a.len() and j == b.len() {
+        return diff == 0;
+    }
+    if not seen.insert((i, j, diff)) {
+        return false;
+    }
+    if i < a.len() and a[i].is_ascii_digit() {
+        let mut num: i32 = 0;
+        let mut k = i;
+        while k < a.len() and a[k].is_ascii_digit() {
+            num = num * 10 + (a[k] - b'0');
+            k += 1;
+            if dfs(a, b, k, j, diff + num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if j < b.len() and b[j].is_ascii_digit() {
+        let mut num: i32 = 0;
+        let mut k = j;
+        while k < b.len() and b[k].is_ascii_digit() {
+            num = num * 10 + (b[k] - b'0');
+            k += 1;
+            if dfs(a, b, i, k, diff - num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if diff > 0 {
+        return j < b.len() and dfs(a, b, i, j + 1, diff - 1, mut seen);
+    }
+    if diff < 0 {
+        return i < a.len() and dfs(a, b, i + 1, j, diff + 1, mut seen);
+    }
+    i < a.len() and j < b.len() and a[i] == b[j] and dfs(a, b, i + 1, j + 1, 0, mut seen)
+}
+
+impl Solution {
+    pub fn possibly_equals(s1: String, s2: String) -> bool {
+        let mut seen = Set.new();
+        dfs(s1.bytes(), s2.bytes(), 0, 0, 0, mut seen)
+    }
+}
+
+fn possibly_equals(s1: String, s2: String) -> bool {
+    Solution.possibly_equals(s1, s2)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `k` of the alphabet
+fn letters(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+// Some pieces of `orig` replaced by their lengths, no digit run longer
+// than three and no length with a 0 in it.
+fn encode(orig: String, seed: mut ref i64) -> String {
+    let mut out = String.new();
+    let mut run = 0;
+    let mut i = 0;
+    while i < orig.len() {
+        let piece = (next_random(mut seed) % 12 + 1).min(orig.len() - i);
+        let text = f"{piece}";
+        if next_random(mut seed) % 2 == 0 and not text.contains("0") and run + text.len() <= 3 {
+            out.push_str(text);
+            run += text.len();
+        } else {
+            out.push_str(orig.slice(i, i + piece));
+            run = 0;
+        }
+        i += piece;
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's four examples, then a few more
+    let examples = [
+        ("internationalization", "i18n"),
+        ("l123e", "44"),
+        ("a5b", "c5b"),
+        ("112s", "g841"),
+        ("ab", "a2"),
+        ("1", "z"),
+        ("a", "b"),
+        ("98u8v8v8v89u888u998v88u98v88u9v99u989v8u", "9v898u98v888v89v998u98v9v888u9v899v998u9"),
+    ];
+    for (s1, s2) in examples.iter() {
+        println(f"{s1}, {s2} -> {possibly_equals(s1.to_string(), s2.to_string())}");
+    }
+    // 3000 pairs, each encoding a string of 1 to 40 letters from 1 to 3 of
+    // the alphabet: the same string, another of its length, or the string
+    // with one letter dropped or added
+    let mut seed = 2060;
+    let mut possible = 0;
+    let mut check = 0;
+    for t in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let k = next_random(mut seed) % 3 + 1;
+        let orig = letters(n, k, mut seed);
+        let mut other = if t % 3 == 0 {
+            orig.clone()
+        } else if t % 3 == 1 {
+            letters(n, k, mut seed)
+        } else {
+            let at = next_random(mut seed) % n;
+            if next_random(mut seed) % 2 == 0 {
+                f"{orig.slice(0, at)}{orig.slice(at + 1, n)}"
+            } else {
+                f"{orig}{letters(1, k, mut seed)}"
+            }
+        };
+        if other.is_empty() {
+            other = letters(1, k, mut seed);
+        }
+        let s1 = encode(orig, mut seed);
+        let s2 = encode(other, mut seed);
+        let ok = possibly_equals(s1, s2);
+        if ok {
+            possible += 1;
+        }
+        check = (check * 31 + if ok { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 pairs: {possible} possible, checksum {check}");
+}

@@ -1,0 +1,75 @@
+// LeetCode #2075: Decode the Slanted Ciphertext -- the ★ arm. The text is
+// a grid of `rows` rows read row after row, and the original runs down
+// its diagonals from left to right: the diagonal from column `c` takes
+// row `r` at column `c + r`, while that is still in the grid. Its padding
+// is the spaces at the end, trimmed. O(n).
+
+fn decode_ciphertext(encoded_text: Str, rows: i64) -> String {
+    let text = encoded_text.bytes();
+    let cols = text.len() / rows;
+    let mut plain = String.new();
+    for c in 0..cols {
+        let mut r = 0;
+        while r < rows and c + r < cols {
+            plain.push(text[r * cols + c + r] as char);
+            r += 1;
+        }
+    }
+    plain.trim_end().to_string()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a grid of `rows` rows of `cols` characters from `alphabet`, read row
+// after row
+fn random_text(rows: i64, cols: i64, alphabet: Str, seed: mut ref i64) -> String {
+    let letters: Vec[char] = alphabet.chars().collect();
+    let mut text = String.new();
+    for _ in 0..rows * cols {
+        text.push(letters[next_random(mut seed) % letters.len()]);
+    }
+    text
+}
+
+fn checksum(s: Str) -> i64 {
+    s.bytes().iter().fold(0, |check, b| (check * 31 + b as i64) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(String, i64)] = [
+        ("ch   ie   pr", 3),
+        ("iveo    eed   l te   olc", 4),
+        ("coding", 1),
+        (" b  ac", 2),
+        ("", 5),
+        ("a  b  c ", 2),
+        ("abcd", 4),
+    ].to_vec();
+    for (text, rows) in examples.iter() {
+        println(f"\"{text}\", rows = {rows} -> \"{decode_ciphertext(text, rows)}\"");
+    }
+    // 400 grids of 1 to 8 rows and 0 to 30 columns of letters and spaces
+    let mut seed = 2075;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..400 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 31;
+        let alphabet = ["ab ", "abcdefgh  ", "    x"][next_random(mut seed) % 3].clone();
+        let text = random_text(rows, cols, alphabet, mut seed);
+        let plain = decode_ciphertext(text, rows);
+        total += plain.len();
+        check = (check * 31 + checksum(plain)) % 1000000007;
+    }
+    println(f"400 grids: {total} characters, checksum {check}");
+    // the largest the constraints allow: 10^6 characters in 1000 rows
+    let text = random_text(1000, 1000, "abcdefghijklmnopqrstuvwxyz     ", mut seed);
+    let plain = decode_ciphertext(text, 1000);
+    println(f"1000 rows of 1000: {plain.len()} characters, checksum {checksum(plain)}");
+}

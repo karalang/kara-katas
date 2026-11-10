@@ -1,0 +1,444 @@
+// LeetCode #2061: Number of Spaces Cleaning Robot Cleaned -- the
+// differential. The six arms, against the statement read literally: the
+// robot moved once at a time, every state it has been in kept in a list
+// and each new one looked for in all of it, the cells it stood on counted
+// once each. 300 random rooms of 1 to 8 by 1 to 8, then 40 of a single row
+// or column, 20 with no objects at all, and 40 whose first row and column
+// are blocked early, where the robot often comes to its loop by a turn;
+// every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least 1 and at most the number of empty cells
+// P3  an empty cell the robot never stands on, made an object, leaves the
+//     answer
+// P4  a row of objects added below and a column of them to the right
+//     leave the answer
+// P5  the answer is at least the empty cells the first row starts with,
+//     and the empty cells straight below the last of them
+// P6  each arm agrees with at least three of the other five
+
+// ---- robot.kara: the ★ arm, one move at a time, states and cells in `Vec[bool]`s
+const STAR_DR: Array[i64, 4] = [0, 1, 0, -1];
+const STAR_DC: Array[i64, 4] = [1, 0, -1, 0];
+
+fn star_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (room.len(), room[0].len());
+    let mut seen = Vec.filled(m * n * 4, false);
+    let mut cleaned = Vec.filled(m * n, false);
+    let mut count = 0;
+    let mut (r, c, d) = (0, 0, 0);
+    while not seen[(r * n + c) * 4 + d] {
+        seen[(r * n + c) * 4 + d] = true;
+        if not cleaned[r * n + c] {
+            cleaned[r * n + c] = true;
+            count += 1;
+        }
+        let (nr, nc) = (r + STAR_DR[d], c + STAR_DC[d]);
+        if nr >= 0 and nr < m and nc >= 0 and nc < n and room[nr][nc] == 0 {
+            r = nr;
+            c = nc;
+        } else {
+            d = (d + 1) % 4;
+        }
+    }
+    count
+}
+
+// ---- robot_runs.kara: a straight run at a time, the turning states in a `Set`
+fn runs_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (room.len(), room[0].len());
+    let free = |r: i64, c: i64| r >= 0 and r < m and c >= 0 and c < n and room[r][c] == 0;
+    let steps = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut starts: Set[(i64, i64, i64)] = Set.new();
+    let mut cleaned: Set[(i64, i64)] = Set.new();
+    let mut (r, c, d) = (0, 0, 0);
+    while not starts.contains((r, c, d)) {
+        starts.insert((r, c, d));
+        cleaned.insert((r, c));
+        let (dr, dc) = steps[d];
+        while free(r + dr, c + dc) {
+            r += dr;
+            c += dc;
+            cleaned.insert((r, c));
+        }
+        d = (d + 1) % 4;
+    }
+    cleaned.len()
+}
+
+// ---- robot_bounded.kara: no states kept, `4 · m · n` moves taken
+fn bounded_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let m = room.len();
+    let n = room[0].len();
+    let mut cleaned: Set[(i64, i64)] = Set.new();
+    let mut r = 0;
+    let mut c = 0;
+    let mut dr = 0;
+    let mut dc = 1;
+    for _ in 0..4 * m * n {
+        cleaned.insert((r, c));
+        let nr = r + dr;
+        let nc = c + dc;
+        if 0 <= nr and nr < m and 0 <= nc and nc < n and room[nr][nc] == 0 {
+            r = nr;
+            c = nc;
+        } else {
+            // a quarter turn clockwise: right to down, down to left, ...
+            dr, dc = dc, -dr;
+        }
+    }
+    cleaned.len()
+}
+
+// ---- robot_floyd.kara: the loop found by tortoise and hare
+fn floyd_step(room: Vec[Vec[i64]], s: (i64, i64, i64)) -> (i64, i64, i64) {
+    let (r, c, d) = s;
+    let (nr, nc) = match d {
+        0 => (r, c + 1),
+        1 => (r + 1, c),
+        2 => (r, c - 1),
+        _ => (r - 1, c),
+    };
+    if nr >= 0 and nr < room.len() and nc >= 0 and nc < room[0].len() and room[nr][nc] == 0 {
+        (nr, nc, d)
+    } else {
+        (r, c, (d + 1) % 4)
+    }
+}
+
+fn floyd_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let start = (0, 0, 0);
+    // the hare twice as fast: they meet inside the loop
+    let mut slow = floyd_step(room, start);
+    let mut fast = floyd_step(room, floyd_step(room, start));
+    while slow != fast {
+        slow = floyd_step(room, slow);
+        fast = floyd_step(room, floyd_step(room, fast));
+    }
+    // from the start and the meeting place at one speed, they meet where
+    // the loop begins
+    let mut mu = 0;
+    slow = start;
+    while slow != fast {
+        slow = floyd_step(room, slow);
+        fast = floyd_step(room, fast);
+        mu += 1;
+    }
+    let mut lambda = 1;
+    fast = floyd_step(room, slow);
+    while slow != fast {
+        fast = floyd_step(room, fast);
+        lambda += 1;
+    }
+    let mut cleaned: Vec[Vec[bool]] = Vec.new();
+    for row in room.iter() {
+        cleaned.push(Vec.filled(row.len(), false));
+    }
+    let mut count = 0;
+    let mut s = start;
+    for _ in 0..mu + lambda {
+        let (r, c, _) = s;
+        if not cleaned[r][c] {
+            cleaned[r][c] = true;
+            count += 1;
+        }
+        s = floyd_step(room, s);
+    }
+    count
+}
+
+// ---- robot_struct.kara: the robot as a `Copy` struct, a `Set[Robot]`
+#[derive(Copy, Eq, Hash, Clone, PartialEq)]
+enum Facing {
+    Right,
+    Down,
+    Left,
+    Up,
+}
+
+impl Facing {
+    fn turned(self) -> Facing {
+        match self {
+            Facing.Right => Facing.Down,
+            Facing.Down => Facing.Left,
+            Facing.Left => Facing.Up,
+            Facing.Up => Facing.Right,
+        }
+    }
+
+    fn step(self) -> (i64, i64) {
+        match self {
+            Facing.Right => (0, 1),
+            Facing.Down => (1, 0),
+            Facing.Left => (0, -1),
+            Facing.Up => (-1, 0),
+        }
+    }
+}
+
+#[derive(Copy, Eq, Hash, Clone, PartialEq)]
+struct Robot {
+    row: i64,
+    col: i64,
+    facing: Facing,
+}
+
+impl Robot {
+    fn next(self, room: Vec[Vec[i64]]) -> Robot {
+        let (dr, dc) = self.facing.step();
+        let (r, c) = (self.row + dr, self.col + dc);
+        if r >= 0 and r < room.len() and c >= 0 and c < room[r].len() and room[r][c] == 0 {
+            Robot { row: r, col: c, facing: self.facing }
+        } else {
+            Robot { row: self.row, col: self.col, facing: self.facing.turned() }
+        }
+    }
+}
+
+fn struct_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let mut met: Set[Robot] = Set.new();
+    let mut stood: Map[(i64, i64), Vec[Facing]] = Map.new();
+    let mut robot = Robot { row: 0, col: 0, facing: Facing.Right };
+    while not met.contains(robot) {
+        met.insert(robot);
+        stood.entry((robot.row, robot.col)).or_insert(Vec.new()).push(robot.facing);
+        robot = robot.next(room);
+    }
+    stood.len()
+}
+
+// ---- robot_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn number_of_clean_rooms(room: Vec[Vec[i32]]) -> i32 {
+        let m = room.len();
+        let n = room[0].len();
+        let dirs = [(0i32, 1i32), (1, 0), (0, -1), (-1, 0)];
+        let mut visited = Vec.filled(m, Vec.filled(n, 0u8));
+        let mut (r, c, d) = (0usize, 0usize, 0usize);
+        let mut ans = 0;
+        loop {
+            if visited[r][c] == 0 {
+                ans += 1;
+            }
+            if visited[r][c] & (1 << d) != 0 {
+                break;
+            }
+            visited[r][c] |= 1 << d;
+            let nr = r as i32 + dirs[d].0;
+            let nc = c as i32 + dirs[d].1;
+            if nr >= 0 and nr < m as i32 and nc >= 0 and nc < n as i32 and room[nr as usize][nc as usize] == 0 {
+                r = nr as usize;
+                c = nc as usize;
+            } else {
+                d = (d + 1) % 4;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_clean_rooms(room: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = room.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.number_of_clean_rooms(rows)
+}
+
+// ---- the statement read literally
+
+// the cells the robot stands on, each once, in the order it first does
+fn walk(room: Vec[Vec[i64]]) -> Vec[(i64, i64)] {
+    let (m, n) = (room.len(), room[0].len());
+    let mut states: Vec[(i64, i64, i64)] = Vec.new();
+    let mut cells: Vec[(i64, i64)] = Vec.new();
+    let mut state = (0, 0, 0);
+    while not states.contains(state) {
+        states.push(state);
+        let (r, c, d) = state;
+        if not cells.contains((r, c)) {
+            cells.push((r, c));
+        }
+        let (nr, nc) = if d == 0 {
+            (r, c + 1)
+        } else if d == 1 {
+            (r + 1, c)
+        } else if d == 2 {
+            (r, c - 1)
+        } else {
+            (r - 1, c)
+        };
+        state = if 0 <= nr and nr < m and 0 <= nc and nc < n and room[nr][nc] == 0 {
+            (nr, nc, d)
+        } else {
+            (r, c, (d + 1) % 4)
+        };
+    }
+    cells
+}
+
+fn answer(arm: i64, room: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_number_of_clean_rooms(room),
+        1 => runs_number_of_clean_rooms(room),
+        2 => bounded_number_of_clean_rooms(room),
+        3 => floyd_number_of_clean_rooms(room),
+        4 => struct_number_of_clean_rooms(room),
+        _ => solution_number_of_clean_rooms(room),
+    }
+}
+
+// ---- rooms
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn room_of(m: i64, n: i64, p: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut room: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 100 < p { 1 } else { 0 });
+        }
+        room.push(row);
+    }
+    room[0][0] = 0;
+    room
+}
+
+fn show(room: Vec[Vec[i64]]) -> String {
+    let mut rows: Vec[String] = Vec.new();
+    for row in room.iter() {
+        let cells: Vec[String] = row.iter().map(|x| f"{x}").collect();
+        rows.push(cells.join(""));
+    }
+    f"[{rows.join(", ")}]"
+}
+
+fn main() {
+    let names = ["star", "runs", "bounded", "floyd", "struct", "solution"];
+    let mut seed = 2061;
+    let mut rooms: Vec[(Vec[Vec[i64]], i64)] = Vec.new();
+    for _ in 0..300 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let p = next_random(mut seed) % 51;
+        let room = room_of(m, n, p, mut seed);
+        rooms.push((room, next_random(mut seed)));
+    }
+    for t in 0..40 {
+        let len = next_random(mut seed) % 12 + 1;
+        let p = next_random(mut seed) % 40;
+        let room = if t % 2 == 0 { room_of(1, len, p, mut seed) } else { room_of(len, 1, p, mut seed) };
+        rooms.push((room, next_random(mut seed)));
+    }
+    for _ in 0..20 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let room = room_of(m, n, 0, mut seed);
+        rooms.push((room, next_random(mut seed)));
+    }
+    // the first row and column blocked early, so the robot often comes to
+    // its loop by a turn, partway round it
+    for _ in 0..40 {
+        let m = next_random(mut seed) % 5 + 4;
+        let n = next_random(mut seed) % 5 + 4;
+        let p = next_random(mut seed) % 16;
+        let mut room = room_of(m, n, p, mut seed);
+        room[1][0] = 1;
+        room[0][next_random(mut seed) % (n - 2) + 2] = 1;
+        rooms.push((room, next_random(mut seed)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (room, pick) in rooms.iter() {
+        let (m, n) = (room.len(), room[0].len());
+        let cells = walk(room);
+        let truth = cells.len();
+        check = (check * 31 + truth) % 1000000007;
+        let mut empty = 0;
+        let mut untouched: Vec[(i64, i64)] = Vec.new();
+        for r in 0..m {
+            for c in 0..n {
+                if room[r][c] == 0 {
+                    empty += 1;
+                    if not cells.contains((r, c)) {
+                        untouched.push((r, c));
+                    }
+                }
+            }
+        }
+        // P3's room: one untouched cell an object
+        let blocked = if untouched.is_empty() {
+            None
+        } else {
+            let (r, c) = untouched[pick % untouched.len()];
+            let mut b = room.clone();
+            b[r][c] = 1;
+            Some(b)
+        };
+        // P4's room: a row of objects below, a column to the right
+        let mut walled: Vec[Vec[i64]] = Vec.new();
+        for row in room.iter() {
+            let mut w = row.clone();
+            w.push(1);
+            walled.push(w);
+        }
+        walled.push(Vec.filled(n + 1, 1));
+        // P5's floor: the first row's run, then straight down from its end
+        let mut run = 0;
+        while run < n and room[0][run] == 0 {
+            run += 1;
+        }
+        let mut down = 0;
+        while down + 1 < m and room[down + 1][run - 1] == 0 {
+            down += 1;
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, room)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let kept = match blocked {
+                Some(ref b) => answer(arm, b) == x,
+                None => true,
+            };
+            let verdicts = [
+                x == truth,
+                x >= 1 and x <= empty,
+                kept,
+                answer(arm, walled) == x,
+                x >= run + down,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(room)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{rooms.len()} rooms: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

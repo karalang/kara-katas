@@ -1,0 +1,81 @@
+// LeetCode #2064: Minimized Maximum of Products Distributed to Any Store
+// -- LeetCode's Rust template (`n: i32`, `quantities: Vec<i32>`, the
+// bounds from `*quantities.iter().max().unwrap()`, `l + (r - l) / 2`, the
+// need summed as `i32` over `|&q|`), carried by `karac fix`. The adapter
+// below hands the harness's problems to it.
+
+impl Solution {
+    pub fn minimized_maximum(n: i32, quantities: Vec[i32]) -> i32 {
+        let mut (l, r) = (1i32, *quantities.iter().max().unwrap());
+        while l < r {
+            let m = l + (r - l) / 2;
+            let need: i32 = quantities.iter().map(|q| (q + m - 1) / m).sum();
+            if need <= n {
+                r = m;
+            } else {
+                l = m + 1;
+            }
+        }
+        l
+    }
+}
+
+struct Solution {}
+
+fn minimized_maximum(n: i64, quantities: Vec[i64]) -> i64 {
+    let qs: Vec[i32] = quantities.iter().map(|q| q as i32).collect();
+    Solution.minimized_maximum(n as i32, qs) as i64
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(qs: Vec[i64]) -> String {
+    let parts: Vec[String] = qs.iter().map(|q| f"{q}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[(i64, Vec[i64])] = [
+        (6, [11, 6].to_vec()),
+        (7, [15, 10, 10].to_vec()),
+        (1, [100000].to_vec()),
+        (3, [1, 1, 1].to_vec()),
+        (5, [1, 1, 1].to_vec()),
+        (100000, [100000].to_vec()),
+        (4, [7, 7].to_vec()),
+        (10, [1, 2, 3, 4, 5].to_vec()),
+    ].to_vec();
+    for (n, qs) in examples.iter() {
+        println(f"n = {n}, {show(qs)} -> {minimized_maximum(n, qs)}");
+    }
+    // 500 problems of 1 to 20 types, quantities from 1 to 1, 10, 1000 or
+    // 100000, and from as many stores as types to ten times as many
+    let mut seed = 2064;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..500 {
+        let m = next_random(mut seed) % 20 + 1;
+        let top = [1, 10, 1000, 100000][next_random(mut seed) % 4];
+        let mut qs: Vec[i64] = Vec.new();
+        for _ in 0..m {
+            qs.push((next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1);
+        }
+        let n = m + next_random(mut seed) % (9 * m + 1);
+        let a = minimized_maximum(n, qs);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"500 problems: sum {total}, checksum {check}");
+    // the constraints' largest: 100000 stores, 50000 types
+    let mut qs: Vec[i64] = Vec.new();
+    for _ in 0..50000 {
+        qs.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+    }
+    println(f"n = 100000, 50000 types -> {minimized_maximum(100000, qs)}");
+}

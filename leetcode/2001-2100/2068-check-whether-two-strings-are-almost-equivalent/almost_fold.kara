@@ -1,0 +1,69 @@
+// LeetCode #2068: Check Whether Two Strings are Almost Equivalent -- the
+// words are as long as each other, so they are walked together: a `zip`
+// of their bytes folded into a `Vec` of differences, each pair moving
+// one letter up and one down, and the largest difference either way, by
+// `map` and `max`, at most 3.
+
+fn check_almost_equivalent(word1: String, word2: String) -> bool {
+    let diff = word1.bytes().iter().zip(word2.bytes().iter()).fold(Vec.filled(26, 0), |acc, (x, y)| {
+        let mut next = acc;
+        next[(x - b'a') as i64] += 1;
+        next[(y - b'a') as i64] -= 1;
+        next
+    });
+    diff.iter().map(|d| d.abs()).max().unwrap_or(0) <= 3
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `k` of the alphabet
+fn word_of(n: i64, k: i64, seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        out.push(letters[next_random(mut seed) % k]);
+    }
+    out
+}
+
+// `word` with `changes` of its letters each replaced by one of the first
+// `k` letters
+fn changed(word: String, changes: i64, k: i64, seed: mut ref i64) -> String {
+    let letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut out: Vec[char] = word.chars().collect();
+    for _ in 0..changes {
+        let i = next_random(mut seed) % out.len();
+        out[i] = letters[next_random(mut seed) % k];
+    }
+    out.iter().collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples = [("aaaa", "bccb"), ("abcdeef", "abaaacc"), ("cccddabba", "babababab"), ("a", "b"), ("aaa", "bbb"), ("aaaa", "aaab"), ("zzzzzzzz", "zzzzaaaa"), ("abc", "cba")];
+    for (a, b) in examples.iter() {
+        println(f"{a} {b} -> {check_almost_equivalent(a.to_string(), b.to_string())}");
+    }
+    // 1000 pairs of 1 to 100 letters from 1 to 26 kinds: the second a
+    // fresh word, or the first with 0 to 24 letters changed
+    let mut seed = 2068;
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let k = next_random(mut seed) % 26 + 1;
+        let a = word_of(n, k, mut seed);
+        let b = if next_random(mut seed) % 2 == 0 { word_of(n, k, mut seed) } else { changed(a.clone(), next_random(mut seed) % 25, k, mut seed) };
+        let ok = check_almost_equivalent(a, b);
+        if ok {
+            yes += 1;
+        }
+        check = (check * 2 + if ok { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"1000 pairs: {yes} almost equivalent, checksum {check}");
+}

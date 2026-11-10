@@ -1,0 +1,318 @@
+// LeetCode #2080: Range Frequency Queries -- the differential. The six
+// arms, against the statement read literally: for a query every place of
+// the array looked at, and counted when it lies between `left` and
+// `right` and holds `value`. 300 random arrays of 1 to 20 values up to 2,
+// 3 or 10, each asked 12 queries; then 20 of one value, and 20 of values
+// all different; every one drawn before any arm answers.
+//
+// P1  each count is the statement read literally
+// P2  the counts for one range, over every value in the array, add up to
+//     the range's length
+// P3  a range cut in two at its middle counts the sum of its halves
+// P4  the array reversed counts the same in the range reversed
+// P5  a value not in the array counts 0, and a one-place range counts 1
+//     for its own value
+// P6  each arm agrees with at least three of the other five
+
+// ---- frequency.kara: the ★ arm, each value's places and `partition_point`
+struct StarRfq {
+    places: Map[i64, Vec[i64]],
+}
+
+impl StarRfq {
+    fn new(arr: Vec[i64]) -> StarRfq {
+        let mut places: Map[i64, Vec[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            places.entry(v).or_insert(Vec.new()).push(i);
+        }
+        StarRfq { places }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        match self.places.get(value) {
+            Some(at) => at.partition_point(|p| p <= right) - at.partition_point(|p| p < left),
+            None => 0,
+        }
+    }
+}
+
+// ---- frequency_scan.kara: no index, a `filter` over the slice
+struct ScanRfq {
+    arr: Vec[i64],
+}
+
+impl ScanRfq {
+    fn new(arr: own Vec[i64]) -> ScanRfq {
+        ScanRfq { arr }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        self.arr[left..=right].iter().filter(|v| v == value).count()
+    }
+}
+
+// ---- frequency_pairs.kara: sorted `(value, place)` pairs
+struct PairsRfq {
+    pairs: Vec[(i64, i64)],
+}
+
+impl PairsRfq {
+    fn new(arr: Vec[i64]) -> PairsRfq {
+        let mut pairs: Vec[(i64, i64)] = arr.iter().enumerate().map(|(i, v)| (v, i)).collect();
+        pairs.sort();
+        PairsRfq { pairs }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        let from = self.pairs.partition_point(|p| p < (value, left));
+        let to = self.pairs.partition_point(|p| p <= (value, right));
+        to - from
+    }
+}
+
+// ---- frequency_tree.kara: each value's places in a `SortedSet`
+struct TreeRfq {
+    places: Map[i64, SortedSet[i64]],
+}
+
+impl TreeRfq {
+    fn new(arr: Vec[i64]) -> TreeRfq {
+        let mut places: Map[i64, SortedSet[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            places.entry(v).or_insert(SortedSet.new()).insert(i);
+        }
+        TreeRfq { places }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        match self.places.get(value) {
+            Some(at) => at.range_inclusive(left, right).count(),
+            None => 0,
+        }
+    }
+}
+
+// ---- frequency_search.kara: the binary search written out
+fn search_first_at_least(places: Slice[i64], x: i64) -> i64 {
+    let mut (lo, hi) = (0, places.len());
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if places[mid] < x {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+struct SearchRfq {
+    places: Map[i64, Vec[i64]],
+}
+
+impl SearchRfq {
+    fn new(arr: Vec[i64]) -> SearchRfq {
+        let mut places: Map[i64, Vec[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            places.entry(v).or_insert(Vec.new()).push(i);
+        }
+        SearchRfq { places }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        match self.places.get(value) {
+            Some(at) => search_first_at_least(at[..], right + 1) - search_first_at_least(at[..], left),
+            None => 0,
+        }
+    }
+}
+
+// ---- frequency_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct SolutionRangeFreqQuery {
+    pos: Map[i32, Vec[i64]],
+}
+
+impl SolutionRangeFreqQuery {
+    fn new(arr: Vec[i32]) -> Self {
+        let mut pos: Map[i32, Vec[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            pos.entry(v).or_insert(Vec.new()).push(i);
+        }
+        SolutionRangeFreqQuery { pos }
+    }
+
+    fn query(self, left: i32, right: i32, value: i32) -> i32 {
+        let (l, r) = (left as i64, right as i64);
+        self.pos.get(value).map_or(0, |v| {
+            (v.partition_point(|p| p <= r) - v.partition_point(|p| p < l)) as i32
+        })
+    }
+}
+
+struct SolutionAdapter {
+    inner: SolutionRangeFreqQuery,
+}
+
+impl SolutionAdapter {
+    fn new(arr: Vec[i64]) -> SolutionAdapter {
+        SolutionAdapter { inner: SolutionRangeFreqQuery.new(arr.iter().map(|v| v as i32).collect()) }
+    }
+
+    fn query(self, left: i64, right: i64, value: i64) -> i64 {
+        self.inner.query(left as i32, right as i32, value as i32) as i64
+    }
+}
+
+// ---- the statement read literally
+
+fn literal(arr: Vec[i64], left: i64, right: i64, value: i64) -> i64 {
+    let mut count = 0;
+    for i in 0..arr.len() {
+        if left <= i and i <= right and arr[i] == value {
+            count += 1;
+        }
+    }
+    count
+}
+
+// each query `(left, right, value)` answered by a fresh object of arm `arm`
+fn answer(arm: i64, arr: Vec[i64], queries: Vec[(i64, i64, i64)]) -> Vec[i64] {
+    match arm {
+        0 => {
+            let o = StarRfq.new(arr);
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+        1 => {
+            let o = ScanRfq.new(arr.clone());
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+        2 => {
+            let o = PairsRfq.new(arr);
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+        3 => {
+            let o = TreeRfq.new(arr);
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+        4 => {
+            let o = SearchRfq.new(arr);
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+        _ => {
+            let o = SolutionAdapter.new(arr);
+            queries.iter().map(|(l, r, v)| o.query(l, r, v)).collect()
+        }
+    }
+}
+
+// ---- arrays
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "scan", "pairs", "tree", "search", "solution"];
+    let mut seed = 2080;
+    let mut problems: Vec[(Vec[i64], Vec[(i64, i64, i64)])] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 20 + 1;
+        let top = [2, 3, 10][next_random(mut seed) % 3];
+        let mut arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        if t >= 300 and t < 320 {
+            arr = Vec.filled(n, 4);
+        } else if t >= 320 {
+            arr = (0..n).map(|i| 3 * i + 1).collect();
+        }
+        let mut queries: Vec[(i64, i64, i64)] = Vec.new();
+        for _ in 0..12 {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            let value = if next_random(mut seed) % 2 == 0 { arr[next_random(mut seed) % n] } else { next_random(mut seed) % (top + 1) + 1 };
+            queries.push((a.min(b), a.max(b), value));
+        }
+        problems.push((arr, queries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (arr, queries) in problems.iter() {
+        let n = arr.len();
+        let truth: Vec[i64] = queries.iter().map(|(l, r, v)| literal(arr, l, r, v)).collect();
+        for t in truth.iter() {
+            check = (check * 31 + t) % 1000000007;
+        }
+        // every value of the array, and one not in it, over the first range
+        let (l0, r0, _) = queries[0];
+        let mut values: Vec[i64] = arr.clone();
+        values.sort();
+        values.dedup();
+        let every: Vec[(i64, i64, i64)] = values.iter().map(|v| (l0, r0, v)).collect();
+        // each query's range cut at its middle
+        let mut halves: Vec[(i64, i64, i64)] = Vec.new();
+        for (l, r, v) in queries.iter() {
+            let m = (l + r) / 2;
+            halves.push((l, m, v));
+            halves.push(if l == r { (l, r, v) } else { (m + 1, r, v) });
+        }
+        let reversed: Vec[i64] = arr.iter().rev().cloned().collect();
+        let mirrored: Vec[(i64, i64, i64)] = queries.iter().map(|(l, r, v)| (n - 1 - r, n - 1 - l, v)).collect();
+        let mut own: Vec[(i64, i64, i64)] = (0..n).map(|i| (i, i, arr[i])).collect();
+        own.push((0, n - 1, 0));
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, arr.clone(), queries)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let summed: i64 = answer(arm, arr.clone(), every).iter().sum();
+            let split = answer(arm, arr.clone(), halves);
+            let split_ok = (0..queries.len()).all(|k| {
+                let (l, r, _) = queries[k];
+                let second = if l == r { 0 } else { split[2 * k + 1] };
+                split[2 * k] + second == x[k]
+            });
+            let own_got = answer(arm, arr.clone(), own);
+            let own_ok = (0..n).all(|i| own_got[i] == 1) and own_got[n] == 0;
+            let verdicts = [
+                x == truth,
+                summed == r0 - l0 + 1,
+                split_ok,
+                answer(arm, reversed.clone(), mirrored) == x,
+                own_ok,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(arr)} arm {names[arm]}: P{p + 1} fails, answers {show(x)}, literal {show(truth)}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

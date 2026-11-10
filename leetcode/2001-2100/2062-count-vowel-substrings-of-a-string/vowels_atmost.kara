@@ -1,0 +1,98 @@
+// LeetCode #2062: Count Vowel Substrings of a String -- as a difference:
+// the substrings of vowels only with at most five different vowels, less
+// those with at most four. Each count is a sliding window: a `Vec` of how
+// many of each vowel the window holds, its left end moved on while it
+// holds more than `k` different ones, and every substring ending at the
+// right end and starting in the window counted. O(n).
+
+fn vowel_index(c: char) -> i64 {
+    match c {
+        'a' => 0,
+        'e' => 1,
+        'i' => 2,
+        'o' => 3,
+        'u' => 4,
+        _ => -1,
+    }
+}
+
+fn at_most(letters: Vec[char], k: i64) -> i64 {
+    let mut held = [0, 0, 0, 0, 0].to_vec();
+    let mut different = 0;
+    let mut left = 0;
+    let mut total = 0;
+    for right in 0..letters.len() {
+        let v = vowel_index(letters[right]);
+        if v < 0 {
+            held = [0, 0, 0, 0, 0].to_vec();
+            different = 0;
+            left = right + 1;
+            continue;
+        }
+        if held[v] == 0 {
+            different += 1;
+        }
+        held[v] += 1;
+        while different > k {
+            let w = vowel_index(letters[left]);
+            held[w] -= 1;
+            if held[w] == 0 {
+                different -= 1;
+            }
+            left += 1;
+        }
+        total += right - left + 1;
+    }
+    total
+}
+
+fn count_vowel_substrings(word: String) -> i64 {
+    let letters: Vec[char] = word.chars().collect();
+    at_most(letters, 5) - at_most(letters, 4)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters, each a vowel with chance `p` in 100, else one of `xyz`
+fn word_of(n: i64, p: i64, seed: mut ref i64) -> String {
+    let vowels: Vec[char] = "aeiou".chars().collect();
+    let others: Vec[char] = "xyz".chars().collect();
+    let mut out = String.new();
+    for _ in 0..n {
+        if next_random(mut seed) % 100 < p {
+            out.push(vowels[next_random(mut seed) % 5]);
+        } else {
+            out.push(others[next_random(mut seed) % 3]);
+        }
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples = ["aeiouu", "unicornarihan", "cuaieuouac", "bbaeixoubb", "a", "aeiou",
+        "uoiea", "aaeeiioouu", "xaeioux", "aeioaeiouaeiou"];
+    for w in examples.iter() {
+        println(f"{w} -> {count_vowel_substrings(w.to_string())}");
+    }
+    // 500 words of 1 to 100 letters, vowels with chance 50 to 100 in 100
+    let mut seed = 2062;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 100 + 1;
+        let p = next_random(mut seed) % 51 + 50;
+        let a = count_vowel_substrings(word_of(n, p, mut seed));
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"500 words: sum {total}, checksum {check}");
+    // a word of 100 vowels, then `aeiou` twenty times
+    println(f"100 vowels -> {count_vowel_substrings(word_of(100, 100, mut seed))}");
+    println(f"aeiou x 20 -> {count_vowel_substrings("aeiou".repeat(20))}");
+}

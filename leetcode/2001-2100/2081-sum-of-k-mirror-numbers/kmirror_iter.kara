@@ -1,0 +1,81 @@
+// LeetCode #2081: Sum of k-Mirror Numbers -- an iterator. `Palindromes`
+// holds a length and the next first half, and its `next()` gives the
+// base-10 palindromes in increasing order; the answer is that stream
+// filtered to the base-`k` palindromes, `take(n)` of them `sum()`med. A
+// number's base-`k` digits are a palindrome when they `zip` with their
+// own `rev()` and `all` pairs agree.
+
+struct Palindromes {
+    length: i64,
+    half: i64,
+}
+
+impl Palindromes {
+    fn new() -> Palindromes {
+        Palindromes { length: 1, half: 1 }
+    }
+}
+
+impl Iterator for Palindromes {
+    type Item = i64;
+
+    fn next(mut ref self) -> Option[i64] {
+        let width = (self.length + 1) / 2;
+        if self.half == 10.pow(width as u32) {
+            self.length += 1;
+            self.half = 10.pow(((self.length + 1) / 2 - 1) as u32);
+        }
+        let h = self.half;
+        self.half += 1;
+        let mut p = h;
+        let mut rest = if self.length % 2 == 1 { h / 10 } else { h };
+        while rest > 0 {
+            p = p * 10 + rest % 10;
+            rest /= 10;
+        }
+        Some(p)
+    }
+}
+
+fn is_mirror(x: i64, k: i64) -> bool {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut y = x;
+    while y > 0 {
+        digits.push(y % k);
+        y /= k;
+    }
+    digits.iter().zip(digits.iter().rev()).all(|(a, b)| a == b)
+}
+
+fn k_mirror(k: i64, n: i64) -> i64 {
+    Palindromes.new().filter(|p| is_mirror(p, k)).take(n).sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [(2, 5), (3, 7), (7, 17), (4, 10), (9, 1), (6, 20), (8, 15)];
+    for (k, n) in examples.iter() {
+        println(f"k = {k}, n = {n} -> {k_mirror(k, n)}");
+    }
+    // every base, n from 1 to 20
+    let mut total = 0;
+    let mut check = 0;
+    for k in 2..10 {
+        for n in 1..21 {
+            let a = k_mirror(k, n);
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"160 answers: sum {total}, checksum {check}");
+    // the constraints' largest n, in every base
+    let largest: Vec[i64] = (2..10).map(|k| k_mirror(k, 30)).collect();
+    println(f"n = 30: {show(largest)}");
+}

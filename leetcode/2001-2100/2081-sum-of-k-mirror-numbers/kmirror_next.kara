@@ -1,0 +1,84 @@
+// LeetCode #2081: Sum of k-Mirror Numbers -- palindrome to palindrome.
+// `next_palindrome(p)` gives the smallest base-10 palindrome above `p`:
+// its first half plus one, written back onto itself, or `10^len + 1` when
+// the half was all nines. A number is tried in base `k` by reversing it
+// there, `r = r * k + y % k`, and comparing.
+
+fn digit_count(x: i64) -> i64 {
+    let mut count = 0;
+    let mut y = x;
+    while y > 0 {
+        count += 1;
+        y /= 10;
+    }
+    count
+}
+
+fn next_palindrome(p: i64) -> i64 {
+    let len = digit_count(p);
+    let keep = (len + 1) / 2;
+    let half = p / 10.pow((len - keep) as u32) + 1;
+    if half == 10.pow(keep as u32) {
+        return 10.pow(len as u32) + 1;
+    }
+    let mut q = half;
+    let mut rest = if len % 2 == 1 { half / 10 } else { half };
+    while rest > 0 {
+        q = q * 10 + rest % 10;
+        rest /= 10;
+    }
+    q
+}
+
+fn reversed_in(x: i64, k: i64) -> i64 {
+    let mut r = 0;
+    let mut y = x;
+    while y > 0 {
+        r = r * k + y % k;
+        y /= k;
+    }
+    r
+}
+
+fn k_mirror(k: i64, n: i64) -> i64 {
+    let mut sum = 0;
+    let mut found = 0;
+    let mut p = 1;
+    while found < n {
+        if reversed_in(p, k) == p {
+            sum += p;
+            found += 1;
+        }
+        p = next_palindrome(p);
+    }
+    sum
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [(2, 5), (3, 7), (7, 17), (4, 10), (9, 1), (6, 20), (8, 15)];
+    for (k, n) in examples.iter() {
+        println(f"k = {k}, n = {n} -> {k_mirror(k, n)}");
+    }
+    // every base, n from 1 to 20
+    let mut total = 0;
+    let mut check = 0;
+    for k in 2..10 {
+        for n in 1..21 {
+            let a = k_mirror(k, n);
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"160 answers: sum {total}, checksum {check}");
+    // the constraints' largest n, in every base
+    let largest: Vec[i64] = (2..10).map(|k| k_mirror(k, 30)).collect();
+    println(f"n = 30: {show(largest)}");
+}

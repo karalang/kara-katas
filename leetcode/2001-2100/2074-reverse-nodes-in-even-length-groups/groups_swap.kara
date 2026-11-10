@@ -1,0 +1,103 @@
+// LeetCode #2074: Reverse Nodes in Even Length Groups -- the links left
+// alone and the values moved instead: each group's nodes gathered into a
+// `Vec` of handles to them, and in an even-length group the values of
+// the first and last, the second and second last, and so on, swapped
+// with a parallel assignment. O(n).
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+fn reverse_even_length_groups(head: Option[ListNode]) -> Option[ListNode] {
+    let mut cur = head;
+    let mut want = 1;
+    while cur.is_some() {
+        let mut group: Vec[ListNode] = Vec.new();
+        while group.len() < want {
+            let Some(node) = cur else {
+                break;
+            };
+            group.push(node);
+            cur = node.next;
+        }
+        if group.len() % 2 == 0 {
+            let len = group.len();
+            for i in 0..len / 2 {
+                let (a, b) = (group[i], group[len - 1 - i]);
+                a.val, b.val = b.val, a.val;
+            }
+        }
+        want += 1;
+    }
+    head
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn values_of(head: Option[ListNode]) -> Vec[i64] {
+    let mut out = Vec.new();
+    let mut cur = head;
+    while let Some(node) = cur {
+        out.push(node.val);
+        cur = node.next;
+    }
+    out
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(", ")}]"
+}
+
+fn checksum(v: Vec[i64]) -> i64 {
+    v.iter().fold(0, |check, x| (check * 31 + x) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's three examples, then a few more
+    let examples: Vec[Vec[i64]] = [
+        [5, 2, 6, 3, 9, 1, 7, 3, 8, 4].to_vec(),
+        [1, 1, 0, 6].to_vec(),
+        [1, 1, 0, 6, 5].to_vec(),
+        [7].to_vec(),
+        [1, 2].to_vec(),
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].to_vec(),
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].to_vec(),
+    ].to_vec();
+    for values in examples.iter() {
+        println(f"{show(values)} -> {show(values_of(reverse_even_length_groups(build(values))))}");
+    }
+    // 500 random lists of 1 to 200 values up to 10^5
+    let mut seed = 2074;
+    let mut check = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 200 + 1;
+        let mut values: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            values.push(next_random(mut seed) % 100001);
+        }
+        check = (check * 31 + checksum(values_of(reverse_even_length_groups(build(values))))) % 1000000007;
+    }
+    println(f"500 lists: checksum {check}");
+    // the largest the constraints allow: 100000 values
+    let mut values: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        values.push(next_random(mut seed) % 100001);
+    }
+    let out = values_of(reverse_even_length_groups(build(values)));
+    println(f"100000 values: checksum {checksum(out)}, first {out[0]}, last {out[out.len() - 1]}");
+}

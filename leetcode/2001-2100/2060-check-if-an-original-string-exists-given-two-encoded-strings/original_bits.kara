@@ -1,0 +1,170 @@
+// LeetCode #2060: Check if an Original String Exists Given Two Encoded
+// Strings -- the forward cells as bitsets: each cell's leads -999..=999
+// are bits 0..=1998 of 32 `u64` words, lead `d` at bit `d + 999`. A digit
+// run's number shifts a whole cell's leads up (for `s1`) or down (for
+// `s2`) at once; a letter paying off a lead shifts the positive or the
+// negative half by one.
+
+const WORDS: i64 = 32;
+const ZERO: i64 = 999;
+
+// `dst[at..at + WORDS] |= src << by` (down for a negative `by`), bits
+// shifted past either end dropped
+fn shift_or(dst: mut ref Vec[u64], at: i64, src: Slice[u64], by: i64) {
+    let (w, b) = (by.abs() / 64, by.abs() % 64);
+    for t in 0..WORDS {
+        // the source words that land in word t
+        let (hi, lo) = if by >= 0 { (t - w, t - w - 1) } else { (t + w, t + w + 1) };
+        let mut word: u64 = 0;
+        if hi >= 0 and hi < WORDS {
+            word |= if by >= 0 { src[hi] << b } else { src[hi] >> b };
+        }
+        if b > 0 and lo >= 0 and lo < WORDS {
+            word |= if by >= 0 { src[lo] >> (64 - b) } else { src[lo] << (64 - b) };
+        }
+        dst[at + t] |= word;
+    }
+}
+
+fn possibly_equals(s1: String, s2: String) -> bool {
+    let a: Vec[char] = s1.chars().collect();
+    let b: Vec[char] = s2.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    let cell = |i: i64, j: i64| (i * (m + 1) + j) * WORDS;
+    let mut bits: Vec[u64] = Vec.filled((n + 1) * (m + 1) * WORDS, 0);
+    let (zw, zb) = (ZERO / 64, ZERO % 64);
+    bits[cell(0, 0) + zw] = 1 << zb;
+    for i in 0..=n {
+        for j in 0..=m {
+            let here: Vec[u64] = bits[cell(i, j)..cell(i, j) + WORDS].to_vec();
+            if i < n and a[i].is_ascii_digit() {
+                let mut num = 0;
+                let mut k = i;
+                while k < n and a[k].is_ascii_digit() {
+                    num = num * 10 + a[k].to_digit(10).unwrap();
+                    k += 1;
+                    shift_or(mut bits, cell(k, j), here, num);
+                }
+            } else if j < m and b[j].is_ascii_digit() {
+                let mut num = 0;
+                let mut k = j;
+                while k < m and b[k].is_ascii_digit() {
+                    num = num * 10 + b[k].to_digit(10).unwrap();
+                    k += 1;
+                    shift_or(mut bits, cell(i, k), here, -num);
+                }
+            } else {
+                // the leads above zero, and those below it
+                let mut above = here.clone();
+                let mut below = here.clone();
+                for t in 0..WORDS {
+                    if t < zw {
+                        above[t] = 0;
+                    } else if t > zw {
+                        below[t] = 0;
+                    }
+                }
+                above[zw] &= ~((2 << zb) - 1);
+                below[zw] &= (1 << zb) - 1;
+                if j < m {
+                    shift_or(mut bits, cell(i, j + 1), above, -1);
+                }
+                if i < n {
+                    shift_or(mut bits, cell(i + 1, j), below, 1);
+                }
+                if i < n and j < m and a[i] == b[j] and here[zw] & (1 << zb) != 0 {
+                    bits[cell(i + 1, j + 1) + zw] |= 1 << zb;
+                }
+            }
+        }
+    }
+    bits[cell(n, m) + zw] & (1 << zb) != 0
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `k` of the alphabet
+fn letters(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+// Some pieces of `orig` replaced by their lengths, no digit run longer
+// than three and no length with a 0 in it.
+fn encode(orig: String, seed: mut ref i64) -> String {
+    let mut out = String.new();
+    let mut run = 0;
+    let mut i = 0;
+    while i < orig.len() {
+        let piece = (next_random(mut seed) % 12 + 1).min(orig.len() - i);
+        let text = f"{piece}";
+        if next_random(mut seed) % 2 == 0 and not text.contains("0") and run + text.len() <= 3 {
+            out.push_str(text);
+            run += text.len();
+        } else {
+            out.push_str(orig.slice(i, i + piece));
+            run = 0;
+        }
+        i += piece;
+    }
+    out
+}
+
+fn main() {
+    // LeetCode's four examples, then a few more
+    let examples = [
+        ("internationalization", "i18n"),
+        ("l123e", "44"),
+        ("a5b", "c5b"),
+        ("112s", "g841"),
+        ("ab", "a2"),
+        ("1", "z"),
+        ("a", "b"),
+        ("98u8v8v8v89u888u998v88u98v88u9v99u989v8u", "9v898u98v888v89v998u98v9v888u9v899v998u9"),
+    ];
+    for (s1, s2) in examples.iter() {
+        println(f"{s1}, {s2} -> {possibly_equals(s1.to_string(), s2.to_string())}");
+    }
+    // 3000 pairs, each encoding a string of 1 to 40 letters from 1 to 3 of
+    // the alphabet: the same string, another of its length, or the string
+    // with one letter dropped or added
+    let mut seed = 2060;
+    let mut possible = 0;
+    let mut check = 0;
+    for t in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let k = next_random(mut seed) % 3 + 1;
+        let orig = letters(n, k, mut seed);
+        let mut other = if t % 3 == 0 {
+            orig.clone()
+        } else if t % 3 == 1 {
+            letters(n, k, mut seed)
+        } else {
+            let at = next_random(mut seed) % n;
+            if next_random(mut seed) % 2 == 0 {
+                f"{orig.slice(0, at)}{orig.slice(at + 1, n)}"
+            } else {
+                f"{orig}{letters(1, k, mut seed)}"
+            }
+        };
+        if other.is_empty() {
+            other = letters(1, k, mut seed);
+        }
+        let s1 = encode(orig, mut seed);
+        let s2 = encode(other, mut seed);
+        let ok = possibly_equals(s1, s2);
+        if ok {
+            possible += 1;
+        }
+        check = (check * 31 + if ok { 2 } else { 1 }) % 1000000007;
+    }
+    println(f"3000 pairs: {possible} possible, checksum {check}");
+}

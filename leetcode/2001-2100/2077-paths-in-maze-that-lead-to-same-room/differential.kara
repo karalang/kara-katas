@@ -1,0 +1,297 @@
+// LeetCode #2077: Paths in Maze That Lead to Same Room -- the
+// differential. The six arms, against the statement read literally: every
+// three rooms `a < b < c` looked at, and counted when all three of their
+// corridors are in the maze. 300 random mazes of 2 to 12 rooms and up to
+// 40 corridors; then 20 with every corridor, and 20 with none or one;
+// every one drawn before any arm answers.
+//
+// P1  the confusion score is the statement read literally
+// P2  the corridors listed backwards, each written the other way round,
+//     give the same score
+// P3  the rooms numbered backwards give the same score
+// P4  a new corridor raises the score by the rooms both its ends reach
+// P5  two copies of the maze side by side score twice as much
+// P6  each arm agrees with at least three of the other five
+
+// ---- maze.kara: the ★ arm, each room's rooms above it a `Set`, intersected
+fn star_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let mut up: Vec[Set[i64]] = (0..=n).map(|_| Set.new()).collect();
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        up[a].insert(b);
+    }
+    let mut count = 0;
+    for a in 1..=n {
+        for b in up[a].iter() {
+            count += up[a].intersection(up[b]).len();
+        }
+    }
+    count
+}
+
+// ---- maze_matrix.kara: an adjacency matrix, every room above a corridor looked up
+fn matrix_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let mut joined: Vec[Vec[bool]] = Vec.filled(n + 1, Vec.filled(n + 1, false));
+    for c in corridors.iter() {
+        joined[c[0]][c[1]] = true;
+        joined[c[1]][c[0]] = true;
+    }
+    let mut count = 0;
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        for third in b + 1..=n {
+            if joined[a][third] and joined[b][third] {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- maze_bits.kara: bitsets of `u64` words, `&` and `count_ones()`
+fn bits_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let words = n / 64 + 1;
+    let mut up: Vec[Vec[u64]] = Vec.filled(n + 1, Vec.filled(words, 0u64));
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        up[a][b / 64] |= 1u64 << (b % 64);
+    }
+    let mut count = 0;
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        for w in 0..words {
+            count += (up[a][w] & up[b][w]).count_ones();
+        }
+    }
+    count
+}
+
+// ---- maze_merge.kara: sorted lists, walked with two cursors
+fn merge_shared(xs: Slice[i64], ys: Slice[i64]) -> i64 {
+    let mut (i, j, both) = (0, 0, 0);
+    while i < xs.len() and j < ys.len() {
+        if xs[i] < ys[j] {
+            i += 1;
+        } else if xs[i] > ys[j] {
+            j += 1;
+        } else {
+            both += 1;
+            i += 1;
+            j += 1;
+        }
+    }
+    both
+}
+
+fn merge_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let mut up: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for c in corridors.iter() {
+        up[c[0].min(c[1])].push(c[0].max(c[1]));
+    }
+    for rooms in up.iter_mut() {
+        rooms.sort();
+    }
+    corridors
+        .iter()
+        .map(|c| merge_shared(up[c[0].min(c[1])][..], up[c[0].max(c[1])][..]))
+        .sum()
+}
+
+// ---- maze_pairs.kara: every pair of a room's rooms above it, in a `Set` of tuples
+fn pairs_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let mut joined: Set[(i64, i64)] = Set.new();
+    let mut up: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for c in corridors.iter() {
+        let (a, b) = (c[0].min(c[1]), c[0].max(c[1]));
+        joined.insert((a, b));
+        up[a].push(b);
+    }
+    let mut count = 0;
+    for rooms in up.iter() {
+        for (i, x) in rooms.iter().enumerate() {
+            for y in rooms[i + 1..].iter() {
+                if joined.contains((x.min(y), x.max(y))) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- maze_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn number_of_paths(n: i32, corridors: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut adj = Vec.filled(n + 1, Set.new());
+        for c in ref corridors {
+            let (a, b) = (c[0] as i64, c[1] as i64);
+            adj[a].insert(b);
+            adj[b].insert(a);
+        }
+        let mut ans = 0;
+        for c in ref corridors {
+            let (a, b) = (c[0] as i64, c[1] as i64);
+            ans += adj[a].intersection(adj[b]).len();
+        }
+        (ans / 3) as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_paths(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let c32: Vec[Vec[i32]] = corridors.iter().map(|c| c.iter().map(|x| x as i32).collect()).collect();
+    Solution.number_of_paths(n as i32, c32) as i64
+}
+
+// ---- the statement read literally
+
+fn literal(n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    let joined = |x: i64, y: i64| corridors.iter().any(|c| (c[0] == x and c[1] == y) or (c[0] == y and c[1] == x));
+    let mut count = 0;
+    for a in 1..=n {
+        for b in a + 1..=n {
+            for c in b + 1..=n {
+                if joined(a, b) and joined(b, c) and joined(a, c) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, n: i64, corridors: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_number_of_paths(n, corridors),
+        1 => matrix_number_of_paths(n, corridors),
+        2 => bits_number_of_paths(n, corridors),
+        3 => merge_number_of_paths(n, corridors),
+        4 => pairs_number_of_paths(n, corridors),
+        _ => solution_number_of_paths(n, corridors),
+    }
+}
+
+// ---- mazes
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_maze(n: i64, count: i64, near: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut seen: Set[i64] = Set.new();
+    let mut corridors: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..count {
+        let a = next_random(mut seed) % n + 1;
+        let step = next_random(mut seed) % near.min(n - 1) + 1;
+        let b = (a - 1 + step) % n + 1;
+        let key = a.min(b) * 100000 + a.max(b);
+        if not seen.contains(key) {
+            seen.insert(key);
+            corridors.push(if next_random(mut seed) % 2 == 0 { [a, b].to_vec() } else { [b, a].to_vec() });
+        }
+    }
+    corridors
+}
+
+fn show(corridors: Vec[Vec[i64]]) -> String {
+    let parts: Vec[String] = corridors.iter().map(|c| f"[{c[0]},{c[1]}]").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "matrix", "bits", "merge", "pairs", "solution"];
+    let mut seed = 2077;
+    let mut mazes: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 11 + 2;
+        if t >= 300 and t < 320 {
+            let mut all: Vec[Vec[i64]] = Vec.new();
+            for a in 1..=n {
+                for b in a + 1..=n {
+                    all.push(if next_random(mut seed) % 2 == 0 { [a, b].to_vec() } else { [b, a].to_vec() });
+                }
+            }
+            mazes.push((n, all));
+        } else {
+            let count = if t >= 320 { next_random(mut seed) % 2 } else { next_random(mut seed) % 41 };
+            let near = [3, 10, 12][next_random(mut seed) % 3];
+            mazes.push((n, random_maze(n, count, near, mut seed)));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, corridors) in mazes.iter() {
+        let truth = literal(n, corridors);
+        check = (check * 31 + truth) % 1000000007;
+        let flipped: Vec[Vec[i64]] = corridors.iter().rev().map(|c| [c[1], c[0]].to_vec()).collect();
+        let backwards: Vec[Vec[i64]] = corridors.iter().map(|c| [n + 1 - c[0], n + 1 - c[1]].to_vec()).collect();
+        let mut doubled = corridors.clone();
+        for c in corridors.iter() {
+            doubled.push([c[0] + n, c[1] + n].to_vec());
+        }
+        let joined = |x: i64, y: i64| corridors.iter().any(|c| (c[0] == x and c[1] == y) or (c[0] == y and c[1] == x));
+        // the first two rooms with no corridor between them, if any, and
+        // the rooms both reach
+        let mut gap: Option[(i64, i64)] = None;
+        for a in 1..=n {
+            for b in a + 1..=n {
+                if gap.is_none() and not joined(a, b) {
+                    gap = Some((a, b));
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, corridors)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let rises = match gap {
+                Some((a, b)) => {
+                    let both = (1..=n).filter(|c| joined(a, c) and joined(b, c)).count();
+                    let mut more = corridors.clone();
+                    more.push([b, a].to_vec());
+                    answer(arm, n, more) == x + both
+                }
+                None => true,
+            };
+            let verdicts = [
+                x == truth,
+                answer(arm, n, flipped) == x,
+                answer(arm, n, backwards) == x,
+                rises,
+                answer(arm, 2 * n, doubled) == 2 * x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n = {n}, {show(corridors)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{mazes.len()} mazes: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

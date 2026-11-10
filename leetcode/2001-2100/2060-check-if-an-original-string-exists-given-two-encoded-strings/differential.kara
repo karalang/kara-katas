@@ -1,0 +1,595 @@
+// LeetCode #2060: Check if an Original String Exists Given Two Encoded
+// Strings -- the differential. The six arms, against the statement read
+// literally: every way each string's digit runs can be read, each written
+// out as letters and wildcards, and some pair of them the same length and
+// agreeing wherever both have a letter. 600 pairs, each encoding a string
+// of 1 to 14 letters as the harness does, then 40 whose numbers run to
+// 300, so that a lead passes 64 either way; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the two strings swapped have the same answer
+// P3  both strings reversed, each digit run kept as written, have the
+//     same answer
+// P4  the same new letter put in front of both strings leaves the answer
+// P5  a letter of `s1` with no digit beside it, made `1`, never turns a
+//     yes into a no
+// P6  each arm agrees with at least three of the other five
+
+// ---- original.kara: the ★ arm, a search over (place, place, lead) with a `Set`
+fn star_possibly_equals(s1: String, s2: String) -> bool {
+    let a: Vec[char] = s1.chars().collect();
+    let b: Vec[char] = s2.chars().collect();
+    let mut seen: Set[(i64, i64, i64)] = Set.new();
+    star_search(a, b, 0, 0, 0, mut seen)
+}
+
+fn star_search(a: Vec[char], b: Vec[char], i: i64, j: i64, lead: i64, seen: mut ref Set[(i64, i64, i64)]) -> bool {
+    if i == a.len() and j == b.len() {
+        return lead == 0;
+    }
+    if seen.contains((i, j, lead)) {
+        return false;
+    }
+    seen.insert((i, j, lead));
+    if i < a.len() and a[i].is_ascii_digit() {
+        let mut num = 0;
+        let mut k = i;
+        while k < a.len() and a[k].is_ascii_digit() {
+            num = num * 10 + a[k].to_digit(10).unwrap();
+            k += 1;
+            if star_search(a, b, k, j, lead + num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if j < b.len() and b[j].is_ascii_digit() {
+        let mut num = 0;
+        let mut k = j;
+        while k < b.len() and b[k].is_ascii_digit() {
+            num = num * 10 + b[k].to_digit(10).unwrap();
+            k += 1;
+            if star_search(a, b, i, k, lead - num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if lead > 0 {
+        return j < b.len() and star_search(a, b, i, j + 1, lead - 1, mut seen);
+    }
+    if lead < 0 {
+        return i < a.len() and star_search(a, b, i + 1, j, lead + 1, mut seen);
+    }
+    i < a.len() and j < b.len() and a[i] == b[j] and star_search(a, b, i + 1, j + 1, 0, mut seen)
+}
+
+// ---- original_table.kara: the search on a stack, the states seen in a `Vec[bool]`
+fn table_possibly_equals(s1: String, s2: String) -> bool {
+    let a = s1.bytes();
+    let b = s2.bytes();
+    let (n, m) = (a.len(), b.len());
+    let at = |i: i64, j: i64, lead: i64| (i * (m + 1) + j) * 1999 + lead + 999;
+    let mut seen: Vec[bool] = Vec.filled((n + 1) * (m + 1) * 1999, false);
+    let mut stack: Vec[(i64, i64, i64)] = [(0, 0, 0)].to_vec();
+    seen[at(0, 0, 0)] = true;
+    while let Some((i, j, lead)) = stack.pop() {
+        if i == n and j == m {
+            if lead == 0 {
+                return true;
+            }
+            continue;
+        }
+        let mut next: Vec[(i64, i64, i64)] = Vec.new();
+        if i < n and a[i].is_ascii_digit() {
+            let mut num = 0;
+            let mut k = i;
+            while k < n and a[k].is_ascii_digit() {
+                num = num * 10 + (a[k] - b'0');
+                k += 1;
+                next.push((k, j, lead + num));
+            }
+        } else if j < m and b[j].is_ascii_digit() {
+            let mut num = 0;
+            let mut k = j;
+            while k < m and b[k].is_ascii_digit() {
+                num = num * 10 + (b[k] - b'0');
+                k += 1;
+                next.push((i, k, lead - num));
+            }
+        } else if lead > 0 {
+            if j < m {
+                next.push((i, j + 1, lead - 1));
+            }
+        } else if lead < 0 {
+            if i < n {
+                next.push((i + 1, j, lead + 1));
+            }
+        } else if i < n and j < m and a[i] == b[j] {
+            next.push((i + 1, j + 1, 0));
+        }
+        for (x, y, d) in next.iter() {
+            if not seen[at(x, y, d)] {
+                seen[at(x, y, d)] = true;
+                stack.push((x, y, d));
+            }
+        }
+    }
+    false
+}
+
+// ---- original_tokens.kara: tokens first, every state's answer in a `Map`
+enum Token {
+    Letter(char),
+    Lengths(Vec[i64]),
+}
+
+// every sum the run's digits make, split into numbers in every way
+fn tokens_sums(digits: Slice[char]) -> Vec[i64] {
+    if digits.is_empty() {
+        return [0].to_vec();
+    }
+    let mut out: Vec[i64] = Vec.new();
+    let mut num = 0;
+    for k in 0..digits.len() {
+        num = num * 10 + digits[k].to_digit(10).unwrap();
+        for rest in tokens_sums(digits[k + 1..digits.len()]).iter() {
+            if not out.contains(num + rest) {
+                out.push(num + rest);
+            }
+        }
+    }
+    out
+}
+
+fn tokens_tokens(s: String) -> Vec[Token] {
+    let chars: Vec[char] = s.chars().collect();
+    let mut out: Vec[Token] = Vec.new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_digit() {
+            let mut k = i;
+            while k < chars.len() and chars[k].is_ascii_digit() {
+                k += 1;
+            }
+            out.push(Token.Lengths(tokens_sums(chars[i..k])));
+            i = k;
+        } else {
+            out.push(Token.Letter(chars[i]));
+            i += 1;
+        }
+    }
+    out
+}
+
+fn tokens_possibly_equals(s1: String, s2: String) -> bool {
+    let a = tokens_tokens(s1);
+    let b = tokens_tokens(s2);
+    let mut memo: Map[(i64, i64, i64), bool] = Map.new();
+    tokens_walk(a, b, 0, 0, 0, mut memo)
+}
+
+fn tokens_walk(a: Vec[Token], b: Vec[Token], i: i64, j: i64, lead: i64, memo: mut ref Map[(i64, i64, i64), bool]) -> bool {
+    if let Some(known) = memo.get((i, j, lead)) {
+        return known;
+    }
+    let answer = match (a.get(i), b.get(j)) {
+        (None, None) => lead == 0,
+        (Some(Token.Lengths(ls)), _) => ls.iter().any(|l| tokens_walk(a, b, i + 1, j, lead + l, mut memo)),
+        (_, Some(Token.Lengths(ls))) => ls.iter().any(|l| tokens_walk(a, b, i, j + 1, lead - l, mut memo)),
+        (_, Some(Token.Letter(_))) if lead > 0 => tokens_walk(a, b, i, j + 1, lead - 1, mut memo),
+        (Some(Token.Letter(_)), _) if lead < 0 => tokens_walk(a, b, i + 1, j, lead + 1, mut memo),
+        (Some(Token.Letter(x)), Some(Token.Letter(y))) => lead == 0 and x == y and tokens_walk(a, b, i + 1, j + 1, 0, mut memo),
+        _ => false,
+    };
+    memo[(i, j, lead)] = answer;
+    answer
+}
+
+// ---- original_forward.kara: every reachable lead, cell by cell
+fn forward_digit_run(s: Slice[char], from: i64) -> Vec[(i64, i64)] {
+    // each (end, number) a run of digits starting at `from` reads as
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    let mut num = 0;
+    let mut k = from;
+    while k < s.len() and s[k].is_ascii_digit() {
+        num = num * 10 + s[k].to_digit(10).unwrap();
+        k += 1;
+        out.push((k, num));
+    }
+    out
+}
+
+fn forward_possibly_equals(s1: String, s2: String) -> bool {
+    let a: Vec[char] = s1.chars().collect();
+    let b: Vec[char] = s2.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    let mut leads: Vec[Vec[Set[i64]]] = Vec.new();
+    for _ in 0..=n {
+        let mut row: Vec[Set[i64]] = Vec.new();
+        for _ in 0..=m {
+            row.push(Set.new());
+        }
+        leads.push(row);
+    }
+    leads[0][0].insert(0);
+    for i in 0..=n {
+        for j in 0..=m {
+            let here: Vec[i64] = leads[i][j].iter().cloned().collect();
+            for lead in here.iter() {
+                if i < n and a[i].is_ascii_digit() {
+                    for (k, num) in forward_digit_run(a, i).iter() {
+                        leads[k][j].insert(lead + num);
+                    }
+                } else if j < m and b[j].is_ascii_digit() {
+                    for (k, num) in forward_digit_run(b, j).iter() {
+                        leads[i][k].insert(lead - num);
+                    }
+                } else if lead > 0 and j < m {
+                    leads[i][j + 1].insert(lead - 1);
+                } else if lead < 0 and i < n {
+                    leads[i + 1][j].insert(lead + 1);
+                } else if lead == 0 and i < n and j < m and a[i] == b[j] {
+                    leads[i + 1][j + 1].insert(0);
+                }
+            }
+        }
+    }
+    leads[n][m].contains(0)
+}
+
+// ---- original_bits.kara: the cells as bitsets, a run's number a shift
+const WORDS: i64 = 32;
+const ZERO: i64 = 999;
+
+// `dst[at..at + WORDS] |= src << by` (down for a negative `by`), bits
+// shifted past either end dropped
+fn bits_shift_or(dst: mut ref Vec[u64], at: i64, src: Slice[u64], by: i64) {
+    let (w, b) = (by.abs() / 64, by.abs() % 64);
+    for t in 0..WORDS {
+        // the source words that land in word t
+        let (hi, lo) = if by >= 0 { (t - w, t - w - 1) } else { (t + w, t + w + 1) };
+        let mut word: u64 = 0;
+        if hi >= 0 and hi < WORDS {
+            word |= if by >= 0 { src[hi] << b } else { src[hi] >> b };
+        }
+        if b > 0 and lo >= 0 and lo < WORDS {
+            word |= if by >= 0 { src[lo] >> (64 - b) } else { src[lo] << (64 - b) };
+        }
+        dst[at + t] |= word;
+    }
+}
+
+fn bits_possibly_equals(s1: String, s2: String) -> bool {
+    let a: Vec[char] = s1.chars().collect();
+    let b: Vec[char] = s2.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    let cell = |i: i64, j: i64| (i * (m + 1) + j) * WORDS;
+    let mut bits: Vec[u64] = Vec.filled((n + 1) * (m + 1) * WORDS, 0);
+    let (zw, zb) = (ZERO / 64, ZERO % 64);
+    bits[cell(0, 0) + zw] = 1 << zb;
+    for i in 0..=n {
+        for j in 0..=m {
+            let here: Vec[u64] = bits[cell(i, j)..cell(i, j) + WORDS].to_vec();
+            if i < n and a[i].is_ascii_digit() {
+                let mut num = 0;
+                let mut k = i;
+                while k < n and a[k].is_ascii_digit() {
+                    num = num * 10 + a[k].to_digit(10).unwrap();
+                    k += 1;
+                    bits_shift_or(mut bits, cell(k, j), here, num);
+                }
+            } else if j < m and b[j].is_ascii_digit() {
+                let mut num = 0;
+                let mut k = j;
+                while k < m and b[k].is_ascii_digit() {
+                    num = num * 10 + b[k].to_digit(10).unwrap();
+                    k += 1;
+                    bits_shift_or(mut bits, cell(i, k), here, -num);
+                }
+            } else {
+                // the leads above zero, and those below it
+                let mut above = here.clone();
+                let mut below = here.clone();
+                for t in 0..WORDS {
+                    if t < zw {
+                        above[t] = 0;
+                    } else if t > zw {
+                        below[t] = 0;
+                    }
+                }
+                above[zw] &= ~((2 << zb) - 1);
+                below[zw] &= (1 << zb) - 1;
+                if j < m {
+                    bits_shift_or(mut bits, cell(i, j + 1), above, -1);
+                }
+                if i < n {
+                    bits_shift_or(mut bits, cell(i + 1, j), below, 1);
+                }
+                if i < n and j < m and a[i] == b[j] and here[zw] & (1 << zb) != 0 {
+                    bits[cell(i + 1, j + 1) + zw] |= 1 << zb;
+                }
+            }
+        }
+    }
+    bits[cell(n, m) + zw] & (1 << zb) != 0
+}
+
+// ---- original_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct Solution {}
+
+fn solution_dfs(a: Slice[u8], b: Slice[u8], i: i64, j: i64, diff: i32, seen: mut ref Set[(i64, i64, i32)]) -> bool {
+    if i == a.len() and j == b.len() {
+        return diff == 0;
+    }
+    if not seen.insert((i, j, diff)) {
+        return false;
+    }
+    if i < a.len() and a[i].is_ascii_digit() {
+        let mut num: i32 = 0;
+        let mut k = i;
+        while k < a.len() and a[k].is_ascii_digit() {
+            num = num * 10 + (a[k] - b'0');
+            k += 1;
+            if solution_dfs(a, b, k, j, diff + num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if j < b.len() and b[j].is_ascii_digit() {
+        let mut num: i32 = 0;
+        let mut k = j;
+        while k < b.len() and b[k].is_ascii_digit() {
+            num = num * 10 + (b[k] - b'0');
+            k += 1;
+            if solution_dfs(a, b, i, k, diff - num, mut seen) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if diff > 0 {
+        return j < b.len() and solution_dfs(a, b, i, j + 1, diff - 1, mut seen);
+    }
+    if diff < 0 {
+        return i < a.len() and solution_dfs(a, b, i + 1, j, diff + 1, mut seen);
+    }
+    i < a.len() and j < b.len() and a[i] == b[j] and solution_dfs(a, b, i + 1, j + 1, 0, mut seen)
+}
+
+impl Solution {
+    pub fn possibly_equals(s1: String, s2: String) -> bool {
+        let mut seen = Set.new();
+        solution_dfs(s1.bytes(), s2.bytes(), 0, 0, 0, mut seen)
+    }
+}
+
+fn solution_possibly_equals(s1: String, s2: String) -> bool {
+    Solution.possibly_equals(s1, s2)
+}
+
+// ---- the statement read literally
+
+// every reading of `s`, a wildcard `?` for each letter a number stands for
+fn readings(s: Vec[char], from: i64) -> Vec[Vec[char]] {
+    if from == s.len() {
+        return [Vec.new()].to_vec();
+    }
+    let mut out: Vec[Vec[char]] = Vec.new();
+    if not s[from].is_ascii_digit() {
+        for rest in readings(s, from + 1).iter() {
+            let mut r = [s[from]].to_vec();
+            r.extend(rest.iter().cloned());
+            out.push(r);
+        }
+        return out;
+    }
+    // the run's first number, `from..k`, then whatever follows it
+    let mut num = 0;
+    let mut k = from;
+    while k < s.len() and s[k].is_ascii_digit() {
+        num = num * 10 + s[k].to_digit(10).unwrap();
+        k += 1;
+        for rest in readings(s, k).iter() {
+            let mut r: Vec[char] = Vec.filled(num, '?');
+            r.extend(rest.iter().cloned());
+            out.push(r);
+        }
+    }
+    out
+}
+
+fn literal(s1: String, s2: String) -> bool {
+    let r1 = readings(s1.chars().collect(), 0);
+    let r2 = readings(s2.chars().collect(), 0);
+    r1.iter().any(|x| r2.iter().any(|y| x.len() == y.len() and (0..x.len()).all(|p| x[p] == '?' or y[p] == '?' or x[p] == y[p])))
+}
+
+fn answer(arm: i64, s1: String, s2: String) -> bool {
+    match arm {
+        0 => star_possibly_equals(s1, s2),
+        1 => table_possibly_equals(s1, s2),
+        2 => tokens_possibly_equals(s1, s2),
+        3 => forward_possibly_equals(s1, s2),
+        4 => bits_possibly_equals(s1, s2),
+        _ => solution_possibly_equals(s1, s2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(n: i64, k: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn encode(orig: String, seed: mut ref i64) -> String {
+    let mut out = String.new();
+    let mut run = 0;
+    let mut i = 0;
+    while i < orig.len() {
+        let piece = (next_random(mut seed) % 12 + 1).min(orig.len() - i);
+        let text = f"{piece}";
+        if next_random(mut seed) % 2 == 0 and not text.contains("0") and run + text.len() <= 3 {
+            out.push_str(text);
+            run += text.len();
+        } else {
+            out.push_str(orig.slice(i, i + piece));
+            run = 0;
+        }
+        i += piece;
+    }
+    out
+}
+
+// `orig` written as one or two letters, then a number for the next 20 to
+// 300 letters, and so on: long runs of letters as numbers, every run of
+// digits one number
+fn encode_long(orig: String, seed: mut ref i64) -> String {
+    let mut out = String.new();
+    let mut i = 0;
+    while i < orig.len() {
+        let few = (next_random(mut seed) % 2 + 1).min(orig.len() - i);
+        out.push_str(orig.slice(i, i + few));
+        i += few;
+        if i < orig.len() {
+            let mut piece = (next_random(mut seed) % 281 + 20).min(orig.len() - i);
+            while f"{piece}".contains("0") {
+                piece -= 1;
+            }
+            out.push_str(f"{piece}");
+            i += piece;
+        }
+    }
+    out
+}
+
+// the string backwards, each digit run kept as written
+fn reversed(s: String) -> String {
+    let chars: Vec[char] = s.chars().collect();
+    let mut pieces: Vec[String] = Vec.new();
+    let mut i = 0;
+    while i < chars.len() {
+        let mut k = i + 1;
+        if chars[i].is_ascii_digit() {
+            while k < chars.len() and chars[k].is_ascii_digit() {
+                k += 1;
+            }
+        }
+        pieces.push(chars[i..k].iter().collect());
+        i = k;
+    }
+    let backwards: Vec[String] = pieces.iter().rev().cloned().collect();
+    backwards.join("")
+}
+
+fn main() {
+    let names = ["star", "table", "tokens", "forward", "bits", "solution"];
+    let mut seed = 2060;
+    let mut pairs: Vec[(String, String, i64)] = Vec.new();
+    for t in 0..600 {
+        let n = next_random(mut seed) % 14 + 1;
+        let k = next_random(mut seed) % 3 + 1;
+        let orig = letters(n, k, mut seed);
+        let mut other = if t % 3 == 0 {
+            orig.clone()
+        } else if t % 3 == 1 {
+            letters(n, k, mut seed)
+        } else {
+            let at = next_random(mut seed) % n;
+            if next_random(mut seed) % 2 == 0 {
+                f"{orig.slice(0, at)}{orig.slice(at + 1, n)}"
+            } else {
+                f"{orig}{letters(1, k, mut seed)}"
+            }
+        };
+        if other.is_empty() {
+            other = letters(1, k, mut seed);
+        }
+        let s1 = encode(orig, mut seed);
+        let s2 = encode(other, mut seed);
+        // which letter of `s1` P5 makes `1`
+        let pick = next_random(mut seed);
+        pairs.push((s1, s2, pick));
+    }
+    for t in 0..40 {
+        let n = next_random(mut seed) % 500 + 40;
+        let orig = letters(n, 2, mut seed);
+        let other = if t % 2 == 0 { orig.clone() } else { f"{orig}{letters(1, 2, mut seed)}" };
+        let s1 = encode_long(orig, mut seed);
+        let s2 = encode_long(other, mut seed);
+        let pick = next_random(mut seed);
+        pairs.push((s1, s2, pick));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s1, s2, pick) in pairs.iter() {
+        let truth = literal(s1.clone(), s2.clone());
+        check = (check * 31 + if truth { 2 } else { 1 }) % 1000000007;
+        let chars: Vec[char] = s1.chars().collect();
+        let lone: Vec[i64] = (0..chars.len())
+            .filter(|p| not chars[p].is_ascii_digit()
+                and (p == 0 or not chars[p - 1].is_ascii_digit())
+                and (p + 1 == chars.len() or not chars[p + 1].is_ascii_digit()))
+            .collect();
+        let wild = if lone.is_empty() {
+            None
+        } else {
+            let p = lone[pick % lone.len()];
+            Some(f"{s1.slice(0, p)}1{s1.slice(p + 1, s1.len())}")
+        };
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, s1.clone(), s2.clone())).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let widened = match wild {
+                Some(ref w) => not x or answer(arm, w.clone(), s2.clone()),
+                None => true,
+            };
+            let verdicts = [
+                x == truth,
+                answer(arm, s2.clone(), s1.clone()) == x,
+                answer(arm, reversed(s1.clone()), reversed(s2.clone())) == x,
+                answer(arm, f"z{s1}", f"z{s2}") == x,
+                widened,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s1}, {s2} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"640 pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}
