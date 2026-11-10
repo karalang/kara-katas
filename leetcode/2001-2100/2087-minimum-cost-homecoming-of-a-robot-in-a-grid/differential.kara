@@ -1,0 +1,263 @@
+// LeetCode #2087: Minimum Cost Homecoming of a Robot in a Grid -- the
+// differential. The six arms, against the statement read literally: the
+// cheapest path over the grid's cells, every move up, down, left or right
+// paying for the row or column it enters, found by relaxing every cell's
+// best cost until none falls. 300 random grids of 1 to 6 rows and columns,
+// costs up to 20; then 20 whose robot starts at home, and 20 of one row;
+// every one drawn before any arm answers.
+//
+// P1  the cost is the statement read literally
+// P2  the way back costs the way home less home's row and column, and
+//     more the start's
+// P3  the grid transposed, rows for columns, costs the same
+// P4  every row's cost raised by 7 costs 7 more for each row between
+// P5  the rows mirrored, the last first, costs the same
+// P6  each arm agrees with at least three of the other five
+
+// ---- homecoming.kara: the ★ arm, two ranges summed
+// The cost of entering every place after `from` up to `to`, either way.
+fn star_walk(costs: Vec[i64], from: i64, to: i64) -> i64 {
+    if from < to {
+        costs[from + 1..=to].iter().sum()
+    } else {
+        costs[to..from].iter().sum()
+    }
+}
+
+fn star_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    star_walk(row_costs, start_pos[0], home_pos[0]) + star_walk(col_costs, start_pos[1], home_pos[1])
+}
+
+// ---- homecoming_walk.kara: the robot walked home a step at a time
+fn walk_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    let mut (row, col) = (start_pos[0], start_pos[1]);
+    let mut spent = 0;
+    let row_step = (home_pos[0] - row).signum();
+    while row != home_pos[0] {
+        row += row_step;
+        spent += row_costs[row];
+    }
+    let col_step = (home_pos[1] - col).signum();
+    while col != home_pos[1] {
+        col += col_step;
+        spent += col_costs[col];
+    }
+    spent
+}
+
+// ---- homecoming_prefix.kara: prefix sums, a difference each way
+fn prefix_prefix(costs: Vec[i64]) -> Vec[i64] {
+    let mut before: Vec[i64] = Vec.with_capacity(costs.len() + 1);
+    before.push(0);
+    for c in costs.iter() {
+        let last = before[before.len() - 1];
+        before.push(last + c);
+    }
+    before
+}
+
+// The places after `from` up to `to`, or from `to` up to before `from`.
+fn prefix_entered(before: Vec[i64], from: i64, to: i64) -> i64 {
+    if from <= to {
+        before[to + 1] - before[from + 1]
+    } else {
+        before[from] - before[to]
+    }
+}
+
+fn prefix_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    prefix_entered(prefix_prefix(row_costs), start_pos[0], home_pos[0]) + prefix_entered(prefix_prefix(col_costs), start_pos[1], home_pos[1])
+}
+
+// ---- homecoming_filter.kara: the places between kept by `filter`
+fn filter_axis(costs: Vec[i64], from: i64, to: i64) -> i64 {
+    let (low, high) = (from.min(to), from.max(to));
+    costs.iter().enumerate().filter(|(i, _)| i >= low and i <= high and i != from).map(|(_, c)| c).sum()
+}
+
+fn filter_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    filter_axis(row_costs, start_pos[0], home_pos[0]) + filter_axis(col_costs, start_pos[1], home_pos[1])
+}
+
+// ---- homecoming_struct.kara: a `struct Axis` with `toll(from, to)`
+struct Axis {
+    costs: Vec[i64],
+}
+
+impl Axis {
+    fn toll(self, from: i64, to: i64) -> i64 {
+        if from < to {
+            (from + 1..to + 1).map(|i| self.costs[i]).sum()
+        } else {
+            (to..from).rev().map(|i| self.costs[i]).sum()
+        }
+    }
+}
+
+fn axis_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    let rows = Axis { costs: row_costs.clone() };
+    let cols = Axis { costs: col_costs.clone() };
+    rows.toll(start_pos[0], home_pos[0]) + cols.toll(start_pos[1], home_pos[1])
+}
+
+// ---- homecoming_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn min_cost(start_pos: Vec[i32], home_pos: Vec[i32], row_costs: Vec[i32], col_costs: Vec[i32]) -> i32 {
+        let mut (r, c) = (start_pos[0], start_pos[1]);
+        let (hr, hc) = (home_pos[0], home_pos[1]);
+        let mut ans: i32 = 0;
+        while r != hr {
+            r += if hr > r { 1 } else { -1 };
+            ans += row_costs[r as usize];
+        }
+        while c != hc {
+            c += if hc > c { 1 } else { -1 };
+            ans += col_costs[c as usize];
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_narrow(v: Vec[i64]) -> Vec[i32] {
+    v.iter().map(|x| x as i32).collect()
+}
+
+fn solution_min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    Solution.min_cost(solution_narrow(start_pos), solution_narrow(home_pos), solution_narrow(row_costs), solution_narrow(col_costs))
+}
+
+// ---- the statement read literally
+
+fn literal(start: Vec[i64], home: Vec[i64], rows: Vec[i64], cols: Vec[i64]) -> i64 {
+    let (m, n) = (rows.len(), cols.len());
+    let none = 1000000000;
+    let mut best: Vec[i64] = Vec.filled(m * n, none);
+    best[start[0] * n + start[1]] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..m {
+            for c in 0..n {
+                let here = best[r * n + c];
+                if here == none {
+                    continue;
+                }
+                for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let (nr, nc) = (r + dr, c + dc);
+                    if nr < 0 or nr >= m or nc < 0 or nc >= n {
+                        continue;
+                    }
+                    let toll = if dr != 0 { rows[nr] } else { cols[nc] };
+                    if here + toll < best[nr * n + nc] {
+                        best[nr * n + nc] = here + toll;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    best[home[0] * n + home[1]]
+}
+
+fn answer(arm: i64, start: Vec[i64], home: Vec[i64], rows: Vec[i64], cols: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_cost(start, home, rows, cols),
+        1 => walk_min_cost(start, home, rows, cols),
+        2 => prefix_min_cost(start, home, rows, cols),
+        3 => filter_min_cost(start, home, rows, cols),
+        4 => axis_min_cost(start, home, rows, cols),
+        _ => solution_min_cost(start, home, rows, cols),
+    }
+}
+
+// ---- grids
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn pair(a: i64, b: i64) -> Vec[i64] {
+    let mut v: Vec[i64] = Vec.new();
+    v.push(a);
+    v.push(b);
+    v
+}
+
+fn main() {
+    let names = ["star", "walk", "prefix", "filter", "axis", "solution"];
+    let mut seed = 2087;
+    let mut grids: Vec[(Vec[i64], Vec[i64], Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..340 {
+        let m = if t >= 320 { 1 } else { next_random(mut seed) % 6 + 1 };
+        let n = next_random(mut seed) % 6 + 1;
+        let rows: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 21).collect();
+        let cols: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 21).collect();
+        let start = pair(next_random(mut seed) % m, next_random(mut seed) % n);
+        let home = if t >= 300 and t < 320 { start.clone() } else { pair(next_random(mut seed) % m, next_random(mut seed) % n) };
+        grids.push((start, home, rows, cols));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (start, home, rows, cols) in grids.iter() {
+        let m = rows.len();
+        let truth = literal(start, home, rows, cols);
+        check = (check * 31 + truth) % 1000000007;
+        let start_t = pair(start[1], start[0]);
+        let home_t = pair(home[1], home[0]);
+        let raised: Vec[i64] = rows.iter().map(|c| c + 7).collect();
+        let between = (start[0] - home[0]).abs();
+        let mirrored: Vec[i64] = rows.iter().rev().cloned().collect();
+        let start_m = pair(m - 1 - start[0], start[1]);
+        let home_m = pair(m - 1 - home[0], home[1]);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, start, home, rows, cols)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let back = answer(arm, home, start, rows, cols);
+            let verdicts = [
+                x == truth,
+                back == x - rows[home[0]] - cols[home[1]] + rows[start[0]] + cols[start[1]],
+                answer(arm, start_t, home_t, cols, rows) == x,
+                answer(arm, start, home, raised, cols) == x + 7 * between,
+                answer(arm, start_m, home_m, mirrored, cols) == x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(start)} {show(home)} {show(rows)} {show(cols)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{grids.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

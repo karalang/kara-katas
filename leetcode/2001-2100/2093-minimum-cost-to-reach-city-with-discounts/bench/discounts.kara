@@ -1,0 +1,66 @@
+// LeetCode #2093: Minimum Cost to Reach City With Discounts -- the ★ arm's
+// benchmark: 60 maps of 20000 cities, each joined to three others ahead of
+// it, tolls up to 100000, asked with 0, 2, ..., 22 discounts in turn, each
+// by the Dijkstra over (city, used) states with a `PriorityQueue`.
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (a, b, toll) in highways.iter() {
+        roads[a].push((b, toll));
+        roads[b].push((a, toll));
+    }
+    let k = discounts + 1;
+    let mut best: Vec[i64] = Vec.filled(n * k, i64.MAX);
+    let mut heap: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    best[0] = 0;
+    heap.push((0, 0, 0));
+    while let Some((cost, city, used)) = heap.pop() {
+        if city == n - 1 {
+            return cost;
+        }
+        if cost > best[city * k + used] {
+            continue;
+        }
+        for (other, toll) in roads[city].iter() {
+            let full = cost + toll;
+            if full < best[other * k + used] {
+                best[other * k + used] = full;
+                heap.push((full, other, used));
+            }
+            if used < discounts {
+                let half = cost + toll / 2;
+                if half < best[other * k + used + 1] {
+                    best[other * k + used + 1] = half;
+                    heap.push((half, other, used + 1));
+                }
+            }
+        }
+    }
+    -1
+}
+
+fn main() {
+    let mut seed = 2093;
+    let n = 20000;
+    let mut total = 0;
+    let mut check = 0;
+    for g in 0..60 {
+        let mut highways: Vec[(i64, i64, i64)] = Vec.new();
+        for a in 0..n {
+            for base in [1, 1667, 3333] {
+                let b = (a + base + next_random(mut seed) % 1666) % n;
+                let toll = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100001;
+                highways.push((a, b, toll));
+            }
+        }
+        let c = minimum_cost(n, highways, g % 12 * 2);
+        total += c;
+        check = (check * 31 + c + 2) % 1000000007;
+    }
+    println(f"60 answers: sum {total}, checksum {check}");
+}

@@ -1,0 +1,183 @@
+// LeetCode #2096: Step-By-Step Directions From a Binary Tree Node to
+// Another -- by the lowest common ancestor: a recursive `lca` gives back
+// the node under which both values lie (or the one value it found), then
+// `depth_of` counts the start's depth below it and `steps_to` writes the
+// destination's way down from it. O(n).
+
+fn lca(node: Option[TreeNode], p: i64, q: i64) -> Option[TreeNode] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    let left = lca(n.left, p, q);
+    let right = lca(n.right, p, q);
+    match (left, right) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+fn depth_of(node: Option[TreeNode], target: i64) -> i64 {
+    let Some(n) = node else {
+        return -1;
+    };
+    if n.val == target {
+        return 0;
+    }
+    let below = depth_of(n.left, target).max(depth_of(n.right, target));
+    if below < 0 { -1 } else { below + 1 }
+}
+
+fn steps_to(node: Option[TreeNode], target: i64) -> Option[String] {
+    let n = node?;
+    if n.val == target {
+        return Some(String.new());
+    }
+    if let Some(rest) = steps_to(n.left, target) {
+        return Some(f"L{rest}");
+    }
+    steps_to(n.right, target).map(|rest| f"R{rest}")
+}
+
+fn get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let top = lca(root, start_value, dest_value);
+    let ups = depth_of(top, start_value);
+    let mut out = "U".repeat(ups);
+    out.push_str(steps_to(top, dest_value).unwrap());
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none.
+fn parse(text: Str) -> Option[TreeNode] {
+    let inner = text.strip_prefix("[").unwrap().strip_suffix("]").unwrap();
+    let items: Vec[Option[i64]] = inner.split(",").map(|s| if s == "null" { None } else { Some(i64.parse(s).unwrap()) }).collect();
+    let root = leaf(items[0].unwrap());
+    let mut queue: Vec[TreeNode] = [root].to_vec();
+    let mut head = 0;
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(v) = items[i] {
+            let child = leaf(v);
+            node.left = Some(child);
+            queue.push(child);
+        }
+        i += 1;
+        if i < items.len() {
+            if let Some(v) = items[i] {
+                let child = leaf(v);
+                node.right = Some(child);
+                queue.push(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// `n` nodes holding 1 to `n` in a random order, each after the first hung
+// below a random earlier one: from it, a random side is taken down until a
+// free one is found
+fn random_tree(n: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        values.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = nodes[wide_random(mut seed) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+fn main() {
+    // LeetCode's two examples, then five more
+    let examples = [
+        ("[5,1,2,3,null,6,4]", 3, 6),
+        ("[2,1]", 2, 1),
+        ("[2,1]", 1, 2),
+        ("[1,2,3,4,5,6,7]", 4, 5),
+        ("[1,2,3,4,5,6,7]", 7, 4),
+        ("[1,2,null,3,null,4]", 1, 4),
+        ("[1,null,2,null,3,4]", 4, 2),
+    ];
+    for (text, s, t) in examples.iter() {
+        println(f"{text} from {s} to {t} -> \"{get_directions(parse(text), s, t)}\"");
+    }
+    // 2000 random trees of 2 to 60 nodes, each asked between two of them
+    let mut seed = 2096;
+    let mut steps = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 59 + 2;
+        let root = random_tree(n, mut seed);
+        let s = next_random(mut seed) % n + 1;
+        let t = (s + next_random(mut seed) % (n - 1)) % n + 1;
+        let way = get_directions(root, s, t);
+        steps += way.len();
+        for c in way.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+        check = (check * 31 + 1) % 1000000007;
+    }
+    println(f"2000 trees: {steps} steps, checksum {check}");
+    // the constraints' largest: 100000 nodes in a random tree, and in a
+    // chain of left children from 1 down to 100000
+    let n = 100000;
+    let root = random_tree(n, mut seed);
+    let s = wide_random(mut seed) % n + 1;
+    let t = (s + wide_random(mut seed) % (n - 1)) % n + 1;
+    let way = get_directions(root, s, t);
+    let ups = way.chars().filter(|c| c == 'U').count();
+    println(f"100000 random nodes: {way.len()} steps, {ups} up");
+    let chain: Vec[TreeNode] = (1..n + 1).map(|v| leaf(v)).collect();
+    for i in 1..n {
+        chain[i - 1].left = Some(chain[i]);
+    }
+    let down = get_directions(Some(chain[0]), 1, n);
+    let up = get_directions(Some(chain[0]), n, 2);
+    println(f"a chain of 100000: {down.len()} steps down, {up.len()} up, ends \"{down.slice(down.len() - 3, down.len())}\" \"{up.slice(0, 3)}\"");
+}

@@ -158,7 +158,7 @@ and the basek arm write (B-2026-10-29-36).
 The iter arm met the other: it tested the digits with Rust's
 `digits.iter().eq(digits.iter().rev())`, and Kāra's iterators have no
 `eq`. Adding one to the library's `Iterator` broke `==` in its other
-generic bodies, so it is filed as ROWID, and the arm writes
+generic bodies, so it is filed as B-2026-11-10-26, and the arm writes
 `zip(..).all(..)`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries

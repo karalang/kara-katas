@@ -1,0 +1,502 @@
+// LeetCode #2096: Step-By-Step Directions From a Binary Tree Node to
+// Another -- the differential. The six arms, against the statement read
+// literally: the shortest string of `U`, `L` and `R` that, walked from the
+// start, reaches the destination, found by trying every string in order of
+// length. 300 random trees of 2 to 8 nodes; then 20 chains of 6 to 8
+// nodes, each step down a random side; then 20 random trees of 9 or 10
+// nodes; each with a random start and destination, every one drawn before
+// any arm answers.
+//
+// P1  the directions are the statement read literally
+// P2  the way back has the ups and downs counted the other way round: as
+//     many `U` as the way there has `L` and `R`, and as many `L` and `R`
+//     as it has `U`
+// P3  every `U` comes before every `L` and `R`
+// P4  the tree mirrored, every node's children swapped, gives the
+//     directions with `L` and `R` swapped
+// P5  the directions, walked from the start, end at the destination
+// P6  each arm agrees with at least three of the other five
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+// LeetCode's TreeNode for the Rust template's arm: an `i32` value.
+shared struct RustTreeNode {
+    val: i32,
+    mut left: Option[RustTreeNode],
+    mut right: Option[RustTreeNode],
+}
+
+fn to_rust(node: Option[TreeNode]) -> Option[RustTreeNode] {
+    let n = node?;
+    Some(RustTreeNode { val: n.val as i32, left: to_rust(n.left), right: to_rust(n.right) })
+}
+
+// ---- directions.kara: the ★ arm, both ways from the root, the common start dropped
+fn star_way_to(node: Option[TreeNode], target: i64, way: mut ref String) -> bool {
+    let Some(n) = node else {
+        return false;
+    };
+    if n.val == target {
+        return true;
+    }
+    way.push('L');
+    if star_way_to(n.left, target, mut way) {
+        return true;
+    }
+    way.pop();
+    way.push('R');
+    if star_way_to(n.right, target, mut way) {
+        return true;
+    }
+    way.pop();
+    false
+}
+
+fn star_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let mut from = String.new();
+    let mut to = String.new();
+    star_way_to(root, start_value, mut from);
+    star_way_to(root, dest_value, mut to);
+    let a: Vec[char] = from.chars().collect();
+    let b: Vec[char] = to.chars().collect();
+    let mut common = 0;
+    while common < a.len() and common < b.len() and a[common] == b[common] {
+        common += 1;
+    }
+    let mut out = "U".repeat(a.len() - common);
+    for c in b[common..].iter() {
+        out.push(c);
+    }
+    out
+}
+
+// ---- directions_parents.kara: parents and depths in `Map`s, both ends climbing
+fn parents_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let mut parent: Map[i64, i64] = Map.new();
+    let mut step: Map[i64, char] = Map.new();
+    let mut depth: Map[i64, i64] = Map.new();
+    let mut queue: VecDeque[TreeNode] = VecDeque.new();
+    if let Some(r) = root {
+        depth.insert(r.val, 0);
+        queue.push_back(r);
+    }
+    while let Some(node) = queue.pop_front() {
+        let d = depth[node.val];
+        for (child, side) in [(node.left, 'L'), (node.right, 'R')] {
+            if let Some(c) = child {
+                parent.insert(c.val, node.val);
+                step.insert(c.val, side);
+                depth.insert(c.val, d + 1);
+                queue.push_back(c);
+            }
+        }
+    }
+    let mut (a, b) = (start_value, dest_value);
+    let mut ups = 0;
+    let mut downs: Vec[char] = Vec.new();
+    while depth[a] > depth[b] {
+        a = parent[a];
+        ups += 1;
+    }
+    while depth[b] > depth[a] {
+        downs.push(step[b]);
+        b = parent[b];
+    }
+    while a != b {
+        a = parent[a];
+        ups += 1;
+        downs.push(step[b]);
+        b = parent[b];
+    }
+    let mut out = "U".repeat(ups);
+    for c in downs.iter().rev() {
+        out.push(c);
+    }
+    out
+}
+
+// ---- directions_lca.kara: a recursive lowest common ancestor
+fn lca_lca(node: Option[TreeNode], p: i64, q: i64) -> Option[TreeNode] {
+    let n = node?;
+    if n.val == p or n.val == q {
+        return Some(n);
+    }
+    let left = lca_lca(n.left, p, q);
+    let right = lca_lca(n.right, p, q);
+    match (left, right) {
+        (Some(_), Some(_)) => Some(n),
+        (Some(l), None) => Some(l),
+        (None, r) => r,
+    }
+}
+
+fn lca_depth_of(node: Option[TreeNode], target: i64) -> i64 {
+    let Some(n) = node else {
+        return -1;
+    };
+    if n.val == target {
+        return 0;
+    }
+    let below = lca_depth_of(n.left, target).max(lca_depth_of(n.right, target));
+    if below < 0 { -1 } else { below + 1 }
+}
+
+fn lca_steps_to(node: Option[TreeNode], target: i64) -> Option[String] {
+    let n = node?;
+    if n.val == target {
+        return Some(String.new());
+    }
+    if let Some(rest) = lca_steps_to(n.left, target) {
+        return Some(f"L{rest}");
+    }
+    lca_steps_to(n.right, target).map(|rest| f"R{rest}")
+}
+
+fn lca_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let top = lca_lca(root, start_value, dest_value);
+    let ups = lca_depth_of(top, start_value);
+    let mut out = "U".repeat(ups);
+    out.push_str(lca_steps_to(top, dest_value).unwrap());
+    out
+}
+
+// ---- directions_stack.kara: one walk with an explicit stack of ways
+fn stack_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let mut stack: Vec[(TreeNode, String)] = Vec.new();
+    if let Some(r) = root {
+        stack.push((r, String.new()));
+    }
+    let mut from: Option[String] = None;
+    let mut to: Option[String] = None;
+    while let Some((node, way)) = stack.pop() {
+        if node.val == start_value {
+            from = Some(way.clone());
+        }
+        if node.val == dest_value {
+            to = Some(way.clone());
+        }
+        if from.is_some() and to.is_some() {
+            break;
+        }
+        if let Some(r) = node.right {
+            stack.push((r, f"{way}R"));
+        }
+        if let Some(l) = node.left {
+            stack.push((l, f"{way}L"));
+        }
+    }
+    let (from, to) = (from.unwrap(), to.unwrap());
+    let shared = from.chars().zip(to.chars()).take_while(|(x, y)| x == y).count();
+    let mut out = "U".repeat(from.len() - shared);
+    out.push_str(to.slice(shared, to.len()));
+    out
+}
+
+// ---- directions_graph.kara: a `struct Roads` searched breadth first
+struct RoadsRoads {
+    near: Map[i64, Vec[(i64, char)]],
+}
+
+impl RoadsRoads {
+    fn of(root: Option[TreeNode]) -> RoadsRoads {
+        let mut near: Map[i64, Vec[(i64, char)]] = Map.new();
+        let mut todo: Vec[TreeNode] = Vec.new();
+        if let Some(r) = root {
+            near.insert(r.val, Vec.new());
+            todo.push(r);
+        }
+        while let Some(node) = todo.pop() {
+            for (child, side) in [(node.left, 'L'), (node.right, 'R')] {
+                if let Some(c) = child {
+                    near.get_mut(node.val).unwrap().push((c.val, side));
+                    near.insert(c.val, [(node.val, 'U')].to_vec());
+                    todo.push(c);
+                }
+            }
+        }
+        RoadsRoads { near }
+    }
+
+    fn way(self, from: i64, to: i64) -> String {
+        let mut came: Map[i64, (i64, char)] = Map.new();
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(from);
+        while let Some(v) = queue.pop_front() {
+            if v == to {
+                break;
+            }
+            for (w, c) in self.near[v].iter() {
+                if w != from and not came.contains_key(w) {
+                    came.insert(w, (v, c));
+                    queue.push_back(w);
+                }
+            }
+        }
+        let mut steps: Vec[char] = Vec.new();
+        let mut at = to;
+        while at != from {
+            let (back, c) = came[at];
+            steps.push(c);
+            at = back;
+        }
+        steps.iter().rev().collect()
+    }
+}
+
+fn roads_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    RoadsRoads.of(root).way(start_value, dest_value)
+}
+
+// ---- directions_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct SolutionSolution {}
+
+fn solution_find(node: Option[RustTreeNode], target: i32, path: mut ref Vec[u8]) -> bool {
+    if let Some(n) = node {
+        let n = n;
+        if n.val == target {
+            return true;
+        }
+        path.push(b'L');
+        if solution_find(n.left, target, mut path) {
+            return true;
+        }
+        path.pop();
+        path.push(b'R');
+        if solution_find(n.right, target, mut path) {
+            return true;
+        }
+        path.pop();
+    }
+    false
+}
+
+impl SolutionSolution {
+    pub fn get_directions(root: Option[RustTreeNode], start_value: i32, dest_value: i32) -> String {
+        let mut s = Vec.new();
+        let mut d = Vec.new();
+        solution_find(root, start_value, mut s);
+        solution_find(root, dest_value, mut d);
+        let mut i = 0;
+        while i < s.len() and i < d.len() and s[i] == d[i] {
+            i += 1;
+        }
+        let mut ans = "U".repeat(s.len() - i);
+        ans.push_str(String.from_utf8(d[i..]).unwrap());
+        ans
+    }
+}
+
+fn solution_get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    SolutionSolution.get_directions(to_rust(root), start_value as i32, dest_value as i32)
+}
+
+// ---- the statement read literally
+
+struct Places {
+    node: Map[i64, TreeNode],
+    parent: Map[i64, i64],
+}
+
+fn places(root: Option[TreeNode]) -> Places {
+    let mut node: Map[i64, TreeNode] = Map.new();
+    let mut parent: Map[i64, i64] = Map.new();
+    let mut todo: Vec[TreeNode] = Vec.new();
+    if let Some(r) = root {
+        todo.push(r);
+    }
+    while let Some(n) = todo.pop() {
+        node.insert(n.val, n);
+        for child in [n.left, n.right] {
+            if let Some(c) = child {
+                parent.insert(c.val, n.val);
+                todo.push(c);
+            }
+        }
+    }
+    Places { node, parent }
+}
+
+// where `way` leads from `from`, or 0 when it leaves the tree
+fn walk(at: Places, from: i64, way: Str) -> i64 {
+    let mut here = from;
+    for c in way.chars() {
+        let next = match c {
+            'U' => at.parent.get(here).cloned(),
+            'L' => at.node[here].left.map(|n| n.val),
+            _ => at.node[here].right.map(|n| n.val),
+        };
+        match next {
+            Some(v) => here = v,
+            None => {
+                return 0;
+            }
+        }
+    }
+    here
+}
+
+fn literal(root: Option[TreeNode], s: i64, t: i64) -> String {
+    let at = places(root);
+    let mut ways: Vec[String] = [String.new()].to_vec();
+    loop {
+        for way in ways.iter() {
+            if walk(at, s, way) == t {
+                return way.clone();
+            }
+        }
+        let mut longer: Vec[String] = Vec.new();
+        for way in ways.iter() {
+            for c in ['L', 'R', 'U'] {
+                longer.push(f"{way}{c}");
+            }
+        }
+        ways = longer;
+    }
+}
+
+fn mirror(node: Option[TreeNode]) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: n.val, left: mirror(n.right), right: mirror(n.left) })
+}
+
+fn answer(arm: i64, root: Option[TreeNode], s: i64, t: i64) -> String {
+    match arm {
+        0 => star_get_directions(root, s, t),
+        1 => parents_get_directions(root, s, t),
+        2 => lca_get_directions(root, s, t),
+        3 => stack_get_directions(root, s, t),
+        4 => roads_get_directions(root, s, t),
+        _ => solution_get_directions(root, s, t),
+    }
+}
+
+// ---- trees
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+// `n` nodes holding 1 to `n` in a random order, each after the first hung
+// below a random earlier one, or below the last one for a chain
+fn random_tree(n: i64, chain: bool, seed: mut ref i64) -> Option[TreeNode] {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        values.swap(i, next_random(mut seed) % (i + 1));
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| leaf(v)).collect();
+    for k in 1..n {
+        let mut at = if chain { nodes[k - 1] } else { nodes[next_random(mut seed) % k] };
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+fn count(way: Str, c: char) -> i64 {
+    way.chars().filter(|x| x == c).count()
+}
+
+fn main() {
+    let names = ["star", "parents", "lca", "stack", "roads", "solution"];
+    let mut seed = 2096;
+    let mut problems: Vec[(Option[TreeNode], i64, i64)] = Vec.new();
+    for t in 0..340 {
+        let mut n = next_random(mut seed) % 7 + 2;
+        let chain = t >= 300 and t < 320;
+        if chain {
+            n = next_random(mut seed) % 3 + 6;
+        } else if t >= 320 {
+            n = next_random(mut seed) % 2 + 9;
+        }
+        let root = random_tree(n, chain, mut seed);
+        let s = next_random(mut seed) % n + 1;
+        let d = (s + next_random(mut seed) % (n - 1)) % n + 1;
+        problems.push((root, s, d));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (root, s, d) in problems.iter() {
+        let truth = literal(root, s, d);
+        for c in truth.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+        check = (check * 31 + 1) % 1000000007;
+        let at = places(root);
+        let mirrored = mirror(root);
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, root, s, d)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let back = answer(arm, root, d, s);
+            let ups = count(x, 'U');
+            let downs = x.len() - ups;
+            let swapped: String = x.chars().map(|c| match c {
+                'L' => 'R',
+                'R' => 'L',
+                other => other,
+            }).collect();
+            let verdicts = [
+                x == truth,
+                count(back, 'U') == downs and back.len() - count(back, 'U') == ups,
+                x.chars().skip(ups).all(|c| c != 'U'),
+                answer(arm, mirrored, s, d) == swapped,
+                walk(at, s, x) == d,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"from {s} to {d} arm {names[arm]}: P{q + 1} fails, answer \"{x}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} trees: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

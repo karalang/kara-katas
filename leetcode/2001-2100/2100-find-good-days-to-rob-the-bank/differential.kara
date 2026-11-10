@@ -1,0 +1,301 @@
+// LeetCode #2100: Find Good Days to Rob the Bank -- the differential. The
+// six arms, against the statement read literally: each day checked on its
+// own, the `time` days before it never rising and the `time` days after it
+// never falling. 300 random schedules of 1 to 12 days of 0 to 3 guards, so
+// that equal days are common, with a time of 0 to 4; then 20 valleys and
+// hills of 1 to 15 days; then 20 schedules of 1 to 12 days of 0 to 10^5
+// guards; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer goes up, and every day it names is good
+// P3  the schedule reversed: the answer mirrored
+// P4  one more day asked for: an answer inside this one
+// P5  each guard count replaced by its rank among the counts: the same
+//     answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- good_days.kara: the ★ arm, the two runs counted in two passes
+fn star_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let n = security.len();
+    let mut before = Vec.filled(n, 0);
+    let mut after = Vec.filled(n, 0);
+    for i in 1..n {
+        if security[i] <= security[i - 1] {
+            before[i] = before[i - 1] + 1;
+        }
+    }
+    for i in (0..n - 1).rev() {
+        if security[i] <= security[i + 1] {
+            after[i] = after[i + 1] + 1;
+        }
+    }
+    (0..n).filter(|i| before[i] >= time and after[i] >= time).collect()
+}
+
+// ---- good_days_prefix.kara: prefix sums of the rises and falls
+fn prefix_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let n = security.len();
+    let mut rises = Vec.filled(n, 0);
+    let mut falls = Vec.filled(n, 0);
+    for j in 1..n {
+        rises[j] = rises[j - 1] + if security[j] > security[j - 1] { 1 } else { 0 };
+        falls[j] = falls[j - 1] + if security[j] < security[j - 1] { 1 } else { 0 };
+    }
+    let mut good: Vec[i64] = Vec.new();
+    for i in time..n - time {
+        if rises[i] - rises[i - time] == 0 and falls[i + time] - falls[i] == 0 {
+            good.push(i);
+        }
+    }
+    good
+}
+
+// ---- good_days_scan.kara: the runs from `scan` over `windows(2)`
+fn scan_runs(steps: Vec[(i64, i64)]) -> Vec[i64] {
+    once(0).chain(steps.iter().scan(0, |run, (a, b)| {
+        let next = if b <= a { run + 1 } else { 0 };
+        Some((next, next))
+    })).collect()
+}
+
+fn scan_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let pairs: Vec[(i64, i64)] = security.windows(2).iter().map(|w| (w[0], w[1])).collect();
+    let before = scan_runs(pairs);
+    let backwards: Vec[(i64, i64)] = pairs.iter().rev().map(|(a, b)| (b, a)).collect();
+    let mut after = scan_runs(backwards);
+    after.reverse();
+    before.iter().zip(after.iter()).enumerate().filter_map(|(i, (b, a))| if b >= time and a >= time { Some(i) } else { None }).collect()
+}
+
+// ---- good_days_struct.kara: a `struct Streaks` of where each run starts and ends
+struct StreaksStreaks {
+    last_rise: Vec[i64],
+    next_fall: Vec[i64],
+}
+
+impl StreaksStreaks {
+    fn new(security: Vec[i64]) -> StreaksStreaks {
+        let n = security.len();
+        let mut last_rise = Vec.filled(n, 0);
+        for i in 1..n {
+            last_rise[i] = if security[i] > security[i - 1] { i } else { last_rise[i - 1] };
+        }
+        let mut next_fall = Vec.filled(n, n - 1);
+        for i in (0..n - 1).rev() {
+            next_fall[i] = if security[i + 1] < security[i] { i } else { next_fall[i + 1] };
+        }
+        StreaksStreaks { last_rise, next_fall }
+    }
+
+    fn before(self, day: i64) -> i64 {
+        day - self.last_rise[day]
+    }
+
+    fn after(self, day: i64) -> i64 {
+        self.next_fall[day] - day
+    }
+
+    fn good(self, day: i64, time: i64) -> bool {
+        self.before(day) >= time and self.after(day) >= time
+    }
+}
+
+fn streaks_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let streaks = StreaksStreaks.new(security);
+    (0..security.len()).filter(|day| streaks.good(day, time)).collect()
+}
+
+// ---- good_days_segments.kara: the maximal stretches walked with `while`
+fn segments_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let n = security.len();
+    let mut marks = Vec.filled(n, 0);
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end + 1 < n and security[end + 1] <= security[end] {
+            end += 1;
+        }
+        for day in start + time..end + 1 {
+            marks[day] += 1;
+        }
+        start = end + 1;
+    }
+    start = 0;
+    while start < n {
+        let mut end = start;
+        while end + 1 < n and security[end + 1] >= security[end] {
+            end += 1;
+        }
+        for day in start..end - time + 1 {
+            marks[day] += 1;
+        }
+        start = end + 1;
+    }
+    (0..n).filter(|day| marks[day] == 2).collect()
+}
+
+// ---- good_days_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn good_days_to_rob_bank(security: Vec[i32], time: i32) -> Vec[i32] {
+        let n = security.len();
+        let mut left = Vec.filled(n, 0);
+        for i in 1..n {
+            if security[i] <= security[i - 1] {
+                left[i] = left[i - 1] + 1;
+            }
+        }
+        let mut ans = Vec.new();
+        let mut right = 0;
+        for i in (0..n).rev() {
+            if i + 1 < n and security[i] <= security[i + 1] {
+                right += 1;
+            } else {
+                right = 0;
+            }
+            if left[i] >= time and right >= time {
+                ans.push(i as i32);
+            }
+        }
+        ans.reverse();
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let v: Vec[i32] = security.iter().map(|x| x as i32).collect();
+    SolutionSolution.good_days_to_rob_bank(v, time as i32).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn is_good(security: Vec[i64], day: i64, time: i64) -> bool {
+    if day < time or day + time >= security.len() {
+        return false;
+    }
+    for j in day - time..day {
+        if security[j] < security[j + 1] {
+            return false;
+        }
+    }
+    for j in day..day + time {
+        if security[j] > security[j + 1] {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(security: Vec[i64], time: i64) -> Vec[i64] {
+    (0..security.len()).filter(|day| is_good(security, day, time)).collect()
+}
+
+fn answer(arm: i64, security: Vec[i64], time: i64) -> Vec[i64] {
+    match arm {
+        0 => star_good_days_to_rob_bank(security, time),
+        1 => prefix_good_days_to_rob_bank(security, time),
+        2 => scan_good_days_to_rob_bank(security, time),
+        3 => streaks_good_days_to_rob_bank(security, time),
+        4 => segments_good_days_to_rob_bank(security, time),
+        _ => solution_good_days_to_rob_bank(security, time),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "prefix", "scan", "streaks", "segments", "solution"];
+    let mut seed = 2100;
+    let mut problems: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..340 {
+        let mut security: Vec[i64] = Vec.new();
+        let n = if t < 300 or t >= 320 { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 15 + 1 };
+        if t < 300 {
+            for _ in 0..n {
+                security.push(next_random(mut seed) % 4);
+            }
+        } else if t < 320 {
+            let bottom = next_random(mut seed) % n;
+            let step = next_random(mut seed) % 3;
+            let sign = if t % 2 == 0 { 1 } else { -1 };
+            for i in 0..n {
+                security.push(50 + sign * step * (i - bottom).abs());
+            }
+        } else {
+            for _ in 0..n {
+                security.push(wide_random(mut seed) % 100001);
+            }
+        }
+        let time = next_random(mut seed) % 5;
+        problems.push((security, time));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (security, time) in problems.iter() {
+        let n = security.len();
+        let truth = literal(security, time);
+        for d in truth.iter() {
+            check = (check * 31 + d + 1) % 1000000007;
+        }
+        check = (check * 31 + 7) % 1000000007;
+        let mut reversed = security.to_vec();
+        reversed.reverse();
+        let mut distinct = security.to_vec();
+        distinct.sort();
+        distinct.dedup();
+        let ranked: Vec[i64] = security.iter().map(|x| distinct.binary_search(x).unwrap()).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, security, time)).collect();
+        for arm in 0..6 {
+            let x = got[arm].to_vec();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let rising = (1..x.len()).all(|i| x[i - 1] < x[i]);
+            let mut mirrored: Vec[i64] = answer(arm, reversed, time).iter().map(|d| n - 1 - d).collect();
+            mirrored.reverse();
+            let longer = answer(arm, security, time + 1);
+            let verdicts = [
+                x == truth,
+                rising and x.iter().all(|d| is_good(security, d, time)),
+                mirrored == x,
+                longer.iter().all(|d| x.contains(d)),
+                answer(arm, ranked, time) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{security} time={time} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} schedules: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

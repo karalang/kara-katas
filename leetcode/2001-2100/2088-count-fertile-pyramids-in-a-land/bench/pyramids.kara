@@ -1,0 +1,58 @@
+// LeetCode #2088: Count Fertile Pyramids in a Land -- the ★ arm as a
+// benchmark. 20 lands of 316 by 316, the constraints' limit, from 15 to
+// 19 cells in 20 fertile, each counted 20 times by the two passes of the
+// dynamic programming: 400 counts of 10^5 cells each way.
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn count_one_way(grid: Vec[Vec[i64]], order: Vec[i64]) -> i64 {
+    let n = grid[0].len();
+    let mut below: Vec[i64] = Vec.filled(n, 0);
+    let mut count = 0;
+    for r in order.iter() {
+        let mut tall: Vec[i64] = Vec.filled(n, 0);
+        for c in 0..n {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            tall[c] = if c == 0 or c == n - 1 {
+                1
+            } else {
+                below[c - 1].min(below[c]).min(below[c + 1]) + 1
+            };
+            count += tall[c] - 1;
+        }
+        below = tall;
+    }
+    count
+}
+
+fn count_pyramids(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let up: Vec[i64] = (0..m).rev().collect();
+    let down: Vec[i64] = (0..m).collect();
+    count_one_way(grid, up) + count_one_way(grid, down)
+}
+
+fn main() {
+    let mut seed = 2088;
+    let mut lands: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..20 {
+        let odds = 15 + t % 5;
+        let land: Vec[Vec[i64]] = (0..316).map(|_| (0..316).map(|_| if next_random(mut seed) % 20 < odds { 1 } else { 0 }).collect()).collect();
+        lands.push(land);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..20 {
+        for t in 0..20 {
+            let a = count_pyramids(lands[(t + round) % 20]);
+            total += a;
+            check = (check * 31 + a) % 1000000007;
+        }
+    }
+    println(f"400 counts: sum {total}, checksum {check}");
+}

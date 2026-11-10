@@ -1,0 +1,83 @@
+// LeetCode #2094: Finding 3-Digit Even Numbers -- by backtracking over the
+// counts: the hundreds, tens and units each take a digit still in hand,
+// smallest first, given back after, the first not a 0 and the last even.
+// Trying the digits in order makes the numbers come out increasing. At
+// most 9 * 10 * 5 leaves.
+
+fn place(position: i64, so_far: i64, have: mut ref Array[i64, 10], found: mut ref Vec[i64]) {
+    if position == 3 {
+        found.push(so_far);
+        return;
+    }
+    for d in 0..10 {
+        if have[d] == 0 or (position == 0 and d == 0) or (position == 2 and d % 2 == 1) {
+            continue;
+        }
+        have[d] -= 1;
+        place(position + 1, so_far * 10 + d, mut have, mut found);
+        have[d] += 1;
+    }
+}
+
+fn find_even_numbers(digits: Vec[i64]) -> Vec[i64] {
+    let mut have = [0; 10];
+    for d in digits.iter() {
+        have[d] += 1;
+    }
+    let mut found: Vec[i64] = Vec.new();
+    place(0, 0, mut have, mut found);
+    found
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [
+        [2, 1, 3, 0].to_vec(),
+        [2, 2, 8, 8, 2].to_vec(),
+        [3, 7, 5].to_vec(),
+        [0, 0, 0].to_vec(),
+        [1, 0, 0].to_vec(),
+        [8, 8, 8, 8].to_vec(),
+        [4, 0, 4, 1, 0].to_vec(),
+    ];
+    for digits in examples.iter() {
+        println(f"{show(digits)} -> {show(find_even_numbers(digits))}");
+    }
+    // 2000 random lists of 3 to 12 digits, each digit below 10, 5 or 3
+    let mut seed = 2094;
+    let mut count = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let len = next_random(mut seed) % 10 + 3;
+        let top = [10, 5, 3][next_random(mut seed) % 3];
+        let digits: Vec[i64] = (0..len).map(|_| next_random(mut seed) % top).collect();
+        let got = find_even_numbers(digits);
+        count += got.len();
+        for x in got.iter() {
+            check = (check * 31 + x) % 1000000007;
+        }
+        check = (check * 31 + 1000) % 1000000007;
+    }
+    println(f"2000 lists: {count} numbers, checksum {check}");
+    // the constraints' longest: 100 digits, all 7 but one 4 and one 0; then
+    // every digit ten times
+    let mut sevens: Vec[i64] = Vec.filled(100, 7);
+    sevens[next_random(mut seed) % 50] = 4;
+    sevens[next_random(mut seed) % 50 + 50] = 0;
+    let all: Vec[i64] = (0..100).map(|i| i % 10).collect();
+    println(f"98 sevens, a 4 and a 0 -> {show(find_even_numbers(sevens))}");
+    let a = find_even_numbers(all);
+    println(f"every digit ten times: {a.len()} numbers, from {a[0]} to {a[a.len() - 1]}");
+}

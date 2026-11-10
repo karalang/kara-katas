@@ -1,0 +1,95 @@
+// LeetCode #2100: Find Good Days to Rob the Bank -- walking the segments.
+// The schedule splits into maximal stretches that never rise and maximal
+// stretches that never fall; inside a never-rising stretch from `s` to
+// `e`, the days from `s + time` on have `time` quiet days behind them, and
+// inside a never-falling one, the days up to `e - time` have `time` ahead.
+// Each stretch is found with a `while` loop and counts its days once;
+// a day marked by both kinds is good. O(n).
+
+fn good_days_to_rob_bank(security: Vec[i64], time: i64) -> Vec[i64] {
+    let n = security.len();
+    let mut marks = Vec.filled(n, 0);
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end + 1 < n and security[end + 1] <= security[end] {
+            end += 1;
+        }
+        for day in start + time..end + 1 {
+            marks[day] += 1;
+        }
+        start = end + 1;
+    }
+    start = 0;
+    while start < n {
+        let mut end = start;
+        while end + 1 < n and security[end + 1] >= security[end] {
+            end += 1;
+        }
+        for day in start..end - time + 1 {
+            marks[day] += 1;
+        }
+        start = end + 1;
+    }
+    (0..n).filter(|day| marks[day] == 2).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [
+        ([5, 3, 3, 3, 5, 6, 2].to_vec(), 2),
+        ([1, 1, 1, 1, 1].to_vec(), 0),
+        ([1, 2, 3, 4, 5, 6].to_vec(), 2),
+        ([7].to_vec(), 0),
+        ([7].to_vec(), 1),
+        ([3, 2, 1, 2, 3, 2, 1, 2, 3].to_vec(), 2),
+        ([4, 4, 0, 4, 4].to_vec(), 2),
+    ];
+    for (security, time) in examples.iter() {
+        println(f"{security} time={time} -> {good_days_to_rob_bank(security, time)}");
+    }
+    // 3000 random guard counts of 1 to 30 days from 0 to 3, or 0 to 10^5,
+    // each with a time of 0 to 5
+    let mut seed = 2100;
+    let mut days = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let top = if round % 2 == 0 { 4 } else { 100001 };
+        let security: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % top).collect();
+        let time = next_random(mut seed) % 6;
+        let good = good_days_to_rob_bank(security, time);
+        days += good.len();
+        for d in good.iter() {
+            check = (check * 31 + d + 1) % 1000000007;
+        }
+        check = (check * 31 + 7) % 1000000007;
+    }
+    println(f"3000 schedules: {days} good days, checksum {check}");
+    // the constraints' largest: 10^5 days in valleys 2000 days wide whose
+    // sides climb one guard every two days, and all level, asked for
+    // several times
+    let n = 100000;
+    let valleys: Vec[i64] = (0..n).map(|i| (i % 2000 - 1000).abs() / 2).collect();
+    for time in [0, 1, 300, 999, 1000] {
+        let good = good_days_to_rob_bank(valleys, time);
+        let ends = if good.len() > 0 { f", first {good[0]}, last {good[good.len() - 1]}" } else { String.new() };
+        println(f"valleys, time={time}: {good.len()} good days{ends}");
+    }
+    let level = Vec.filled(n, 100000);
+    let good = good_days_to_rob_bank(level, 49999);
+    println(f"level, time=49999: {good.len()} good days, first {good[0]}, last {good[good.len() - 1]}");
+    let none = good_days_to_rob_bank(level, 100000);
+    println(f"level, time=100000: {none.len()} good days");
+}

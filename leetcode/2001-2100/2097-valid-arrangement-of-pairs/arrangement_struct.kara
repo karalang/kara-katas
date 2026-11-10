@@ -1,0 +1,187 @@
+// LeetCode #2097: Valid Arrangement of Pairs -- a `struct Itinerary` that
+// owns the routes out of each value as a `VecDeque`, taken from the front,
+// so the walk tries the pairs in the order they were given. Its methods
+// find the start and walk Hierholzer's stack, and the arrangement is read
+// off the finished path. O(n).
+
+struct Itinerary {
+    routes: Map[i64, VecDeque[i64]],
+    surplus: Map[i64, i64],
+    first: i64,
+}
+
+impl Itinerary {
+    fn new(pairs: Vec[(i64, i64)]) -> Itinerary {
+        let mut it = Itinerary { routes: Map.new(), surplus: Map.new(), first: pairs[0].0 };
+        for (a, b) in pairs.iter() {
+            it.routes.entry(a).or_insert(VecDeque.new()).push_back(b);
+            it.routes.entry(b).or_insert(VecDeque.new());
+            *it.surplus.entry(a).or_insert(0) += 1;
+            *it.surplus.entry(b).or_insert(0) -= 1;
+        }
+        it
+    }
+
+    fn start(self) -> i64 {
+        for (v, s) in self.surplus.iter() {
+            if s > 0 {
+                return v;
+            }
+        }
+        self.first
+    }
+
+    fn take(mut ref self, from: i64) -> Option[i64] {
+        self.routes[from].pop_front()
+    }
+
+    fn path(mut ref self) -> Vec[i64] {
+        let mut stack = [self.start()].to_vec();
+        let mut done: Vec[i64] = Vec.new();
+        while let Some(top) = stack.pop() {
+            match self.take(top) {
+                Some(v) => {
+                    stack.push(top);
+                    stack.push(v);
+                }
+                None => done.push(top),
+            }
+        }
+        done.reverse();
+        done
+    }
+}
+
+fn valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut it = Itinerary.new(pairs);
+    let path = it.path();
+    path.windows(2).iter().map(|w| (w[0], w[1])).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(pairs: Vec[(i64, i64)]) -> String {
+    let items: Vec[String] = pairs.iter().map(|(a, b)| f"[{a},{b}]").collect();
+    f"[{items.join(",")}]"
+}
+
+// the arrangement is the pairs in some order, each end the next one's start
+fn is_arrangement(pairs: Vec[(i64, i64)], got: Vec[(i64, i64)]) -> bool {
+    if got.len() != pairs.len() {
+        return false;
+    }
+    for i in 1..got.len() {
+        if got[i - 1].1 != got[i].0 {
+            return false;
+        }
+    }
+    let mut want = pairs.to_vec();
+    let mut have = got.to_vec();
+    want.sort();
+    have.sort();
+    want == have
+}
+
+// a step from `at` to a value it has no pair to yet: the first such one
+// from a random place among the values, or `None` when there is none
+fn step(at: i64, values: Vec[i64], used: Set[(i64, i64)], seed: mut ref i64) -> Option[i64] {
+    let k = values.len();
+    let from = next_random(mut seed) % k;
+    for j in 0..k {
+        let v = values[(from + j) % k];
+        if v != at and not used.contains((at, v)) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+// a random walk of `m` pairs over `k` random values below 10^9 + 1, no
+// pair from a value to itself and none twice, its pairs then shuffled. A
+// closed walk goes on until it can step back to where it began, and stays
+// open if 50 more steps do not get it there; any walk ends early where it
+// has no step left.
+fn random_pairs(m: i64, k: i64, closed: bool, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let values: Vec[i64] = (0..k).map(|_| wide_random(mut seed) % 1000000001).collect();
+    let first = values[next_random(mut seed) % k];
+    let mut walk = [first].to_vec();
+    let mut used: Set[(i64, i64)] = Set.new();
+    let mut at = first;
+    while walk.len() <= m + 50 {
+        if closed and walk.len() >= m and at != first and not used.contains((at, first)) {
+            walk.push(first);
+            break;
+        }
+        if not closed and walk.len() > m {
+            break;
+        }
+        match step(at, values, used, mut seed) {
+            Some(v) => {
+                used.insert((at, v));
+                walk.push(v);
+                at = v;
+            }
+            None => break,
+        }
+    }
+    let mut pairs: Vec[(i64, i64)] = (1..walk.len()).map(|i| (walk[i - 1], walk[i])).collect();
+    for i in (1..pairs.len()).rev() {
+        pairs.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    pairs
+}
+
+fn main() {
+    // LeetCode's three examples, then three more; each has one answer only
+    let examples = [
+        [(5, 1), (4, 5), (11, 9), (9, 4)].to_vec(),
+        [(1, 3), (3, 2), (2, 1)].to_vec(),
+        [(1, 2), (1, 3), (2, 1)].to_vec(),
+        [(0, 1)].to_vec(),
+        [(7, 9), (8, 7), (7, 8)].to_vec(),
+        [(1000000000, 0), (0, 1000000000)].to_vec(),
+    ];
+    for pairs in examples.iter() {
+        println(f"{show(pairs)} -> {show(valid_arrangement(pairs))}");
+    }
+    // 2000 random walks of 1 to 40 pairs over 2 to 12 values, every third
+    // one closed
+    let mut seed = 2097;
+    let mut valid = 0;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let m = next_random(mut seed) % 40 + 1;
+        let k = next_random(mut seed) % 11 + 2;
+        let pairs = random_pairs(m, k, round % 3 == 0, mut seed);
+        let got = valid_arrangement(pairs);
+        if is_arrangement(pairs, got) {
+            valid += 1;
+        }
+        total += got.len();
+        check = (check * 31 + got[0].0) % 1000000007;
+        check = (check * 31 + got[got.len() - 1].1) % 1000000007;
+    }
+    println(f"2000 walks: {valid} valid, {total} pairs, checksum {check}");
+    // the constraints' largest: 100000 pairs, a walk over 1000 values, a
+    // closed walk over 1000, and a chain of 100000 different values
+    let open = random_pairs(100000, 1000, false, mut seed);
+    let got = valid_arrangement(open);
+    println(f"100000 pairs over 1000 values: valid {is_arrangement(open, got)}, from {got[0].0} to {got[got.len() - 1].1}");
+    let closed = random_pairs(100000, 1000, true, mut seed);
+    let got = valid_arrangement(closed);
+    println(f"100000 pairs over 1000 values, closed: valid {is_arrangement(closed, got)}, from {got[0].0} to {got[got.len() - 1].1}");
+    let mut chain: Vec[(i64, i64)] = (0..100000).map(|i| (i * 7 + 3, i * 7 + 10)).collect();
+    chain.reverse();
+    let got = valid_arrangement(chain);
+    println(f"a chain of 100000: valid {is_arrangement(chain, got)}, from {got[0].0} to {got[got.len() - 1].1}");
+}

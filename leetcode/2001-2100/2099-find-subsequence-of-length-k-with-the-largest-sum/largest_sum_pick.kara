@@ -1,0 +1,91 @@
+// LeetCode #2099: Find Subsequence of Length K With the Largest Sum -- `k`
+// picks. Each pick scans the numbers not yet taken for the largest, the
+// earliest of equals, and marks it; the marked ones are read back in
+// order. O(n k), at most 10^6 steps under the constraints.
+
+fn max_subsequence(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let mut taken = Vec.filled(nums.len(), false);
+    for _ in 0..k {
+        let mut best = -1;
+        for i in 0..nums.len() {
+            if not taken[i] and (best < 0 or nums[i] > nums[best]) {
+                best = i;
+            }
+        }
+        taken[best] = true;
+    }
+    (0..nums.len()).filter(|i| taken[i]).map(|i| nums[i]).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// the answer keeps the list's order, and is as long as asked
+fn is_subsequence(nums: Vec[i64], sub: Vec[i64]) -> bool {
+    let mut at = 0;
+    for x in nums.iter() {
+        if at < sub.len() and sub[at] == x {
+            at += 1;
+        }
+    }
+    at == sub.len()
+}
+
+fn main() {
+    // LeetCode's three examples, then four more; of equal numbers, the
+    // earlier is taken first
+    let examples = [
+        ([2, 1, 3, 3].to_vec(), 2),
+        ([-1, -2, 3, 4].to_vec(), 3),
+        ([3, 4, 3, 3].to_vec(), 2),
+        ([5].to_vec(), 1),
+        ([-5, -1, -3].to_vec(), 2),
+        ([1, 2, 3, 4, 5].to_vec(), 5),
+        ([7, -7, 7, -7, 0].to_vec(), 3),
+    ];
+    for (nums, k) in examples.iter() {
+        println(f"{nums} k={k} -> {max_subsequence(nums, k)}");
+    }
+    // 3000 random lists of 1 to 30 numbers from -10^5 to 10^5, or from -3
+    // to 3 so that equal numbers are common, each asked for a random k
+    let mut seed = 2099;
+    let mut valid = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let spread = if round % 2 == 0 { 100000 } else { 3 };
+        let nums: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % (2 * spread + 1) - spread).collect();
+        let k = next_random(mut seed) % n + 1;
+        let got = max_subsequence(nums, k);
+        if got.len() == k and is_subsequence(nums, got) {
+            valid += 1;
+        }
+        let sum: i64 = got.iter().sum();
+        check = (check * 31 + sum + 3000000) % 1000000007;
+    }
+    println(f"3000 lists: {valid} valid, checksum {check}");
+    // the constraints' largest: 1000 numbers, in random order, all equal,
+    // and falling, each asked for 1, 500 and 1000
+    let lists = [
+        (0..1000).map(|_| wide_random(mut seed) % 200001 - 100000).collect(),
+        Vec.filled(1000, -7),
+        (0..1000).map(|i| 100000 - 200 * i).collect(),
+    ];
+    for nums in lists.iter() {
+        let mut line: Vec[String] = Vec.new();
+        for k in [1, 500, 1000] {
+            let got = max_subsequence(nums, k);
+            let sum: i64 = got.iter().sum();
+            line.push(f"k={k} sum {sum} valid {is_subsequence(nums, got)}");
+        }
+        println(f"1000 numbers from {nums[0]}: {line.join(", ")}");
+    }
+}

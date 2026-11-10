@@ -1,0 +1,73 @@
+// LeetCode #2087: Minimum Cost Homecoming of a Robot in a Grid -- by
+// filter: every row from the lower of start and home to the higher, but
+// the start's own, kept from `iter().enumerate()` and summed, and the
+// columns likewise.
+
+fn axis(costs: Vec[i64], from: i64, to: i64) -> i64 {
+    let (low, high) = (from.min(to), from.max(to));
+    costs.iter().enumerate().filter(|(i, _)| i >= low and i <= high and i != from).map(|(_, c)| c).sum()
+}
+
+fn min_cost(start_pos: Vec[i64], home_pos: Vec[i64], row_costs: Vec[i64], col_costs: Vec[i64]) -> i64 {
+    axis(row_costs, start_pos[0], home_pos[0]) + axis(col_costs, start_pos[1], home_pos[1])
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's two examples, then five more
+    let examples = [
+        ([1, 0], [2, 3], [5, 4, 3], [8, 2, 6, 7]),
+        ([0, 0], [0, 0], [5], [26]),
+        ([2, 3], [1, 0], [5, 4, 3], [8, 2, 6, 7]),
+        ([0, 2], [3, 2], [1, 2, 3, 4], [9, 9, 9]),
+        ([1, 1], [1, 0], [7, 7], [0, 5]),
+        ([4, 0], [0, 4], [1, 2, 3, 4, 5], [5, 4, 3, 2, 1]),
+        ([0, 0], [2, 2], [0, 0, 0], [0, 0, 0]),
+    ];
+    for (start, home, rows, cols) in examples.iter() {
+        let s = start.to_vec();
+        let h = home.to_vec();
+        let r = rows.to_vec();
+        let c = cols.to_vec();
+        println(f"{show(s)} {show(h)} {show(r)} {show(c)} -> {min_cost(s, h, r, c)}");
+    }
+    // 2000 random grids of 1 to 50 rows and columns, costs up to 10^4
+    let mut seed = 2087;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 50 + 1;
+        let n = next_random(mut seed) % 50 + 1;
+        let rows: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 10001).collect();
+        let cols: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10001).collect();
+        let start = vec_of(next_random(mut seed) % m, next_random(mut seed) % n);
+        let home = vec_of(next_random(mut seed) % m, next_random(mut seed) % n);
+        let a = min_cost(start, home, rows, cols);
+        total += a;
+        check = (check * 31 + a) % 1000000007;
+    }
+    println(f"2000 grids: sum {total}, checksum {check}");
+    // the constraints' largest, 10^5 rows and columns, corner to corner
+    let rows: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 10001).collect();
+    let cols: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 10001).collect();
+    println(f"10^5 by 10^5, corner to corner: {min_cost(vec_of(0, 0), vec_of(99999, 99999), rows, cols)}");
+    println(f"10^5 by 10^5, back: {min_cost(vec_of(99999, 99999), vec_of(0, 0), rows, cols)}");
+}
+
+fn vec_of(a: i64, b: i64) -> Vec[i64] {
+    let mut v: Vec[i64] = Vec.new();
+    v.push(a);
+    v.push(b);
+    v
+}

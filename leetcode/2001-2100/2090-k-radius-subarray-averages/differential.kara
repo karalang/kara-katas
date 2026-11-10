@@ -1,0 +1,255 @@
+// LeetCode #2090: K Radius Subarray Averages -- the differential. The six
+// arms, against the statement read literally: for each place, -1 when
+// fewer than `k` values lie before it or after it, and otherwise the
+// values from `k` before to `k` after added one by one and divided by
+// their count. 300 random arrays of 1 to 12 values from 0 to 3, 9 or 999,
+// the radius from 0 to 6; then 20 of radius 0, and 20 whose radius leaves
+// no window; every one drawn before any arm answers.
+//
+// P1  the averages are the statement read literally
+// P2  -1 stands at the first and last `k` places and nowhere else
+// P3  every value times the window's width gives each average times the
+//     width, to within what the division drops
+// P4  the array reversed gives the averages reversed
+// P5  7 added to every value adds 7 to every average
+// P6  each arm agrees with at least three of the other five
+
+// ---- averages.kara: the ★ arm, one window sliding along
+fn star_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let width = 2 * k + 1;
+    let mut avgs: Vec[i64] = Vec.filled(n, -1);
+    let mut sum = 0;
+    for i in 0..n {
+        sum += nums[i];
+        if i >= width {
+            sum -= nums[i - width];
+        }
+        if i + 1 >= width {
+            avgs[i - k] = sum / width;
+        }
+    }
+    avgs
+}
+
+// ---- averages_prefix.kara: prefix sums, a difference of two for each window
+fn prefix_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut avgs: Vec[i64] = Vec.filled(n, -1);
+    for i in k..n - k {
+        avgs[i] = (prefix[i + k + 1] - prefix[i - k]) / (2 * k + 1);
+    }
+    avgs
+}
+
+// ---- averages_windows.kara: every window summed afresh from `windows`
+fn windows_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let width = 2 * k + 1;
+    if width > n {
+        return Vec.filled(n, -1);
+    }
+    let mut avgs: Vec[i64] = Vec.filled(k, -1);
+    for w in nums.windows(width).iter() {
+        let sum: i64 = w.iter().sum();
+        avgs.push(sum / width);
+    }
+    avgs.extend(Vec.filled(k, -1));
+    avgs
+}
+
+// ---- averages_scan.kara: the running sums from `scan`, mapped place by place
+fn scan_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let running: Vec[i64] = once(0).chain(nums.iter().scan(0, |sum, x| {
+        let next = sum + x;
+        Some((next, next))
+    })).collect();
+    (0..n).map(|i| if i < k or i + k >= n { -1 } else { (running[i + k + 1] - running[i - k]) / (2 * k + 1) }).collect()
+}
+
+// ---- averages_deque.kara: a `struct Window` over a `VecDeque`
+struct DequeWindow {
+    held: VecDeque[i64],
+    width: i64,
+    sum: i64,
+}
+
+impl DequeWindow {
+    fn new(width: i64) -> DequeWindow {
+        DequeWindow { held: VecDeque.new(), width, sum: 0 }
+    }
+
+    fn push(mut ref self, x: i64) -> Option[i64] {
+        self.held.push_back(x);
+        self.sum += x;
+        if self.held.len() > self.width {
+            self.sum -= self.held.pop_front().unwrap();
+        }
+        if self.held.len() == self.width { Some(self.sum / self.width) } else { None }
+    }
+}
+
+fn deque_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let mut avgs: Vec[i64] = Vec.filled(nums.len(), -1);
+    let mut window = DequeWindow.new(2 * k + 1);
+    for (i, x) in nums.iter().enumerate() {
+        if let Some(a) = window.push(x) {
+            avgs[i - k] = a;
+        }
+    }
+    avgs
+}
+
+// ---- averages_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn get_averages(nums: Vec[i32], k: i32) -> Vec[i32] {
+        let n = nums.len();
+        let k = k as i64;
+        let w = 2 * k + 1;
+        let mut ans = Vec.filled(n, -1);
+        if w > n {
+            return ans;
+        }
+        let mut sum: i64 = nums[..w].iter().map(|x| x as i64).sum();
+        ans[k] = (sum / w) as i32;
+        for i in w..n {
+            sum += nums[i] as i64 - nums[i - w] as i64;
+            ans[i - k] = (sum / w) as i32;
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    SolutionSolution.get_averages(v, k as i32).iter().map(|a| a as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        if i - k < 0 or i + k > n - 1 {
+            out.push(-1);
+        } else {
+            let mut sum = 0;
+            let mut count = 0;
+            for j in i - k..i + k + 1 {
+                sum += nums[j];
+                count += 1;
+            }
+            out.push(sum / count);
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> Vec[i64] {
+    match arm {
+        0 => star_get_averages(nums, k),
+        1 => prefix_get_averages(nums, k),
+        2 => windows_get_averages(nums, k),
+        3 => scan_get_averages(nums, k),
+        4 => deque_get_averages(nums, k),
+        _ => solution_get_averages(nums, k),
+    }
+}
+
+// ---- arrays
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "prefix", "windows", "scan", "deque", "solution"];
+    let mut seed = 2090;
+    let mut problems: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [4, 10, 1000][next_random(mut seed) % 3];
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let mut k = next_random(mut seed) % 7;
+        if t >= 300 and t < 320 {
+            k = 0;
+        } else if t >= 320 {
+            k = (n + 1) / 2 + k % 3;
+        }
+        problems.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k) in problems.iter() {
+        let n = nums.len();
+        let width = 2 * k + 1;
+        let truth = literal(nums, k);
+        for a in truth.iter() {
+            check = (check * 31 + a + 2) % 1000000007;
+        }
+        let scaled: Vec[i64] = nums.iter().map(|x| x * width).collect();
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let raised: Vec[i64] = nums.iter().map(|x| x + 7).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let edges = x.len() == n and (0..n).all(|i| (x[i] == -1) == (i < k or i + k >= n));
+            let big = answer(arm, scaled, k);
+            let scales = big.len() == n and (0..n).all(|i| if x[i] == -1 { big[i] == -1 } else { big[i] / width == x[i] });
+            let back: Vec[i64] = answer(arm, reversed, k).iter().rev().cloned().collect();
+            let up = answer(arm, raised, k);
+            let lifts = up.len() == n and (0..n).all(|i| if x[i] == -1 { up[i] == -1 } else { up[i] == x[i] + 7 });
+            let verdicts = [
+                x == truth,
+                edges,
+                scales,
+                back == x,
+                lifts,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(nums)} {k} arm {names[arm]}: P{p + 1} fails, answer {show(x)}, literal {show(truth)}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

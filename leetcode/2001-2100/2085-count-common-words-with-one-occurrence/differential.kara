@@ -1,0 +1,268 @@
+// LeetCode #2085: Count Common Words With One Occurrence -- the
+// differential. The six arms, against the statement read literally: every
+// word of either list, once each, counted when it is in each list exactly
+// once. 300 random pairs of lists of 1 to 12 words of 1 or 2 letters from
+// the first 2, 3 or 5 of the alphabet; then 20 pairs of one list of words
+// all different, and 20 pairs whose lists share no word; every one drawn
+// before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the lists swapped give the same count
+// P3  each list reversed gives the same count
+// P4  the first list written twice over counts 0
+// P5  a new word added to both lists counts one more, and added to the
+//     first alone, the same
+// P6  each arm agrees with at least three of the other five
+
+// ---- common.kara: the ★ arm, each list's counts in a `Map`
+fn star_counts(words: Vec[String]) -> Map[String, i64] {
+    let mut seen: Map[String, i64] = Map.new();
+    for w in words.iter() {
+        *seen.entry(w.clone()).or_insert(0) += 1;
+    }
+    seen
+}
+
+fn star_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    let one = star_counts(words1);
+    let two = star_counts(words2);
+    one.iter().filter(|(w, c)| c == 1 and two.get(w) == Some(1)).count()
+}
+
+// ---- common_pairs.kara: one `Map` of `(first, second)` pairs
+fn pairs_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    let mut seen: Map[String, (i64, i64)] = Map.new();
+    for w in words1.iter() {
+        let (a, b) = seen.get(w).unwrap_or((0, 0));
+        seen.insert(w.clone(), (a + 1, b));
+    }
+    for w in words2.iter() {
+        let (a, b) = seen.get(w).unwrap_or((0, 0));
+        seen.insert(w.clone(), (a, b + 1));
+    }
+    seen.values().filter(|p| p == (1, 1)).count()
+}
+
+// ---- common_sorted.kara: both lists sorted and walked with two cursors
+// How many times the word at `at` repeats from there on.
+fn sorted_run_length(words: Vec[String], at: i64) -> i64 {
+    let mut end = at;
+    while end < words.len() and words[end] == words[at] {
+        end += 1;
+    }
+    end - at
+}
+
+fn sorted_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    let mut a = words1.clone();
+    let mut b = words2.clone();
+    a.sort();
+    b.sort();
+    let mut (i, j) = (0, 0);
+    let mut count = 0;
+    while i < a.len() and j < b.len() {
+        if a[i] < b[j] {
+            i += sorted_run_length(a, i);
+        } else if b[j] < a[i] {
+            j += sorted_run_length(b, j);
+        } else {
+            let (ra, rb) = (sorted_run_length(a, i), sorted_run_length(b, j));
+            if ra == 1 and rb == 1 {
+                count += 1;
+            }
+            i += ra;
+            j += rb;
+        }
+    }
+    count
+}
+
+// ---- common_sets.kara: the once-words of each list as `Set`s, intersected
+fn sets_once(words: Vec[String]) -> Set[String] {
+    let mut seen: Set[String] = Set.new();
+    let mut again: Set[String] = Set.new();
+    for w in words.iter() {
+        if not seen.insert(w.clone()) {
+            again.insert(w.clone());
+        }
+    }
+    seen.difference(again)
+}
+
+fn sets_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    sets_once(words1).intersection(sets_once(words2)).len()
+}
+
+// ---- common_scan.kara: no map, `filter(..).count()` over both lists
+fn scan_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    words1
+        .iter()
+        .filter(|w| {
+            words1.iter().filter(|x| x == w).count() == 1
+                and words2.iter().filter(|x| x == w).count() == 1
+        })
+        .count()
+}
+
+// ---- common_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_words(words1: Vec[String], words2: Vec[String]) -> i32 {
+        let mut c1: Map[Str, i32] = Map.new();
+        let mut c2: Map[Str, i32] = Map.new();
+        for w in ref words1 {
+            *c1.entry(w.as_str()).or_insert(0) += 1;
+        }
+        for w in ref words2 {
+            *c2.entry(w.as_str()).or_insert(0) += 1;
+        }
+        c1.iter()
+            .filter(|(w, c)| c == 1 and c2.get(*w) == Some(1))
+            .count() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_words(words1: Vec[String], words2: Vec[String]) -> i64 {
+    Solution.count_words(words1, words2)
+}
+
+// ---- the statement read literally
+
+fn occurs(words: Vec[String], w: Str) -> i64 {
+    let mut n = 0;
+    for x in words.iter() {
+        if x == w {
+            n += 1;
+        }
+    }
+    n
+}
+
+fn literal(words1: Vec[String], words2: Vec[String]) -> i64 {
+    let mut every: Vec[String] = words1.clone();
+    every.extend(words2.iter().cloned());
+    every.sort();
+    every.dedup();
+    let mut count = 0;
+    for w in every.iter() {
+        if occurs(words1, w) == 1 and occurs(words2, w) == 1 {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, words1: Vec[String], words2: Vec[String]) -> i64 {
+    match arm {
+        0 => star_count_words(words1, words2),
+        1 => pairs_count_words(words1, words2),
+        2 => sorted_count_words(words1, words2),
+        3 => sets_count_words(words1, words2),
+        4 => scan_count_words(words1, words2),
+        _ => solution_count_words(words1, words2),
+    }
+}
+
+// ---- lists
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A word of 1 or 2 letters from the `width` letters after `from`.
+fn random_word(seed: mut ref i64, from: i64, width: i64) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let n = next_random(mut seed) % 2 + 1;
+    let mut w = String.new();
+    for _ in 0..n {
+        let at = from + next_random(mut seed) % width;
+        w.push_str(letters.substring(at, at + 1));
+    }
+    w
+}
+
+fn show(words: Vec[String]) -> String {
+    f"[{words.join(" ")}]"
+}
+
+fn main() {
+    let names = ["star", "pairs", "sorted", "sets", "scan", "solution"];
+    let mut seed = 2085;
+    let mut problems: Vec[(Vec[String], Vec[String])] = Vec.new();
+    for t in 0..340 {
+        let n1 = next_random(mut seed) % 12 + 1;
+        let n2 = next_random(mut seed) % 12 + 1;
+        if t < 300 {
+            let width = [2, 3, 5][next_random(mut seed) % 3];
+            let words1: Vec[String] = (0..n1).map(|_| random_word(mut seed, 0, width)).collect();
+            let words2: Vec[String] = (0..n2).map(|_| random_word(mut seed, 0, width)).collect();
+            problems.push((words1, words2));
+        } else if t < 320 {
+            let mut words: Vec[String] = (0..n1).map(|_| random_word(mut seed, 0, 5)).collect();
+            words.sort();
+            words.dedup();
+            problems.push((words.clone(), words.iter().rev().cloned().collect()));
+        } else {
+            let words1: Vec[String] = (0..n1).map(|_| random_word(mut seed, 0, 3)).collect();
+            let words2: Vec[String] = (0..n2).map(|_| random_word(mut seed, 3, 3)).collect();
+            problems.push((words1, words2));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (words1, words2) in problems.iter() {
+        let truth = literal(words1, words2);
+        check = (check * 31 + truth) % 1000000007;
+        let back1: Vec[String] = words1.iter().rev().cloned().collect();
+        let back2: Vec[String] = words2.iter().rev().cloned().collect();
+        let mut twice = words1.clone();
+        twice.extend(words1.iter().cloned());
+        let mut more1 = words1.clone();
+        more1.push("zz");
+        let mut more2 = words2.clone();
+        more2.push("zz");
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, words1, words2)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, words2, words1) == x,
+                answer(arm, back1, back2) == x,
+                answer(arm, twice, words2) == 0,
+                answer(arm, more1, more2) == x + 1 and answer(arm, more1, words2) == x,
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(words1)} {show(words2)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

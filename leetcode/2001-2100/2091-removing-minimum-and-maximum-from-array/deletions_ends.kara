@@ -1,0 +1,121 @@
+// LeetCode #2091: Removing Minimum and Maximum From Array -- a `struct
+// Ends` that deletes from either end of the array, a front and a back
+// index and a count, asked for each of the three ways in turn: delete
+// from one end until the least and the greatest are both gone, or from
+// the front until the nearer is gone and then from the back. O(n) a way.
+
+struct Ends {
+    front: i64,
+    back: i64,
+    deleted: i64,
+}
+
+impl Ends {
+    fn new(n: i64) -> Ends {
+        Ends { front: 0, back: n, deleted: 0 }
+    }
+
+    fn from_front(mut ref self) -> i64 {
+        self.front += 1;
+        self.deleted += 1;
+        self.front - 1
+    }
+
+    fn from_back(mut ref self) -> i64 {
+        self.back -= 1;
+        self.deleted += 1;
+        self.back
+    }
+
+    fn holds(self, place: i64) -> bool {
+        self.front <= place and place < self.back
+    }
+}
+
+fn minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut lo = 0;
+    let mut hi = 0;
+    for k in 0..n {
+        if nums[k] < nums[lo] {
+            lo = k;
+        }
+        if nums[k] > nums[hi] {
+            hi = k;
+        }
+    }
+    let mut best = n;
+    for way in 0..3 {
+        let mut ends = Ends.new(n);
+        while ends.holds(lo) or ends.holds(hi) {
+            let from_front = way == 0 or (way == 2 and ends.holds(lo.min(hi)));
+            if from_front {
+                ends.from_front();
+            } else {
+                ends.from_back();
+            }
+        }
+        best = best.min(ends.deleted);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+// `n` distinct values, `step` apart from `low`, in an order the seed shuffles
+fn shuffled(n: i64, low: i64, step: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut v: Vec[i64] = (0..n).map(|i| low + i * step).collect();
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        v.swap(i, j);
+    }
+    v
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [
+        [2, 10, 7, 5, 4, 1, 8, 6].to_vec(),
+        [0, -4, 19, 1, 8, -2, -3, 5].to_vec(),
+        [101].to_vec(),
+        [1, 2].to_vec(),
+        [5, 1, 9, 3, 7].to_vec(),
+        [3, 1, 2].to_vec(),
+        [4, 9, 1, 6, 2, 8, 3, 7, 5].to_vec(),
+    ];
+    for nums in examples.iter() {
+        println(f"{show(nums)} -> {minimum_deletions(nums)}");
+    }
+    // 2000 random arrays of 1 to 100 distinct values from -100000 on
+    let mut seed = 2091;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let step = next_random(mut seed) % 2000 + 1;
+        let nums = shuffled(n, -100000, step, mut seed);
+        let d = minimum_deletions(nums);
+        total += d;
+        check = (check * 31 + d) % 1000000007;
+    }
+    println(f"2000 arrays: sum {total}, checksum {check}");
+    // the constraints' largest, 100000 distinct values; then the least at
+    // the front and the greatest at the back, and both in the middle
+    let big = shuffled(100000, -100000, 2, mut seed);
+    println(f"100000 values: {minimum_deletions(big)}");
+    let ends: Vec[i64] = (0..100000).collect();
+    let mut middle: Vec[i64] = (0..100000).collect();
+    middle.swap(0, 49999);
+    middle.swap(99999, 50000);
+    println(f"least first, greatest last: {minimum_deletions(ends)}; both in the middle: {minimum_deletions(middle)}");
+}

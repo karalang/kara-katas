@@ -1,0 +1,59 @@
+// LeetCode #2095: Delete the Middle Node of a Linked List -- the ★ arm's
+// benchmark: 20000 lists of 1000 nodes, each built fresh, its middle
+// deleted 50 times by the slow and fast runners, and what is left folded
+// into a checksum.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn delete_middle(head: Option[ListNode]) -> Option[ListNode] {
+    let Some(first) = head else {
+        return None;
+    };
+    let Some(second) = first.next else {
+        return None;
+    };
+    let mut slow = first;
+    let mut fast = second.next;
+    while let Some(f) = fast {
+        let Some(after) = f.next else {
+            break;
+        };
+        slow = slow.next.unwrap();
+        fast = after.next;
+    }
+    let middle = slow.next.unwrap();
+    slow.next = middle.next;
+    Some(first)
+}
+
+fn build(m: i64, round: i64) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    let mut j = m - 1;
+    while j >= 0 {
+        head = Some(ListNode { val: (round * 7919 + j * 104729) % 100000 + 1, next: head });
+        j -= 1;
+    }
+    head
+}
+
+fn main() {
+    let rounds = 20000;
+    let mut left = 0;
+    let mut check = 0;
+    for r in 0..rounds {
+        let mut list = build(1000, r);
+        for _ in 0..50 {
+            list = delete_middle(list);
+        }
+        let mut cur = list;
+        while let Some(node) = cur {
+            left += 1;
+            check = (check * 31 + node.val) % 1000000007;
+            cur = node.next;
+        }
+    }
+    println(f"{rounds} rounds: {left} nodes left, checksum {check}");
+}

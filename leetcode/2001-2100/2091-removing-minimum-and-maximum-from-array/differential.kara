@@ -1,0 +1,301 @@
+// LeetCode #2091: Removing Minimum and Maximum From Array -- the
+// differential. The six arms, against the statement read literally: every
+// way of deleting `f` values from the front and `b` from the back, kept
+// when the least and the greatest are both among those deleted, and the
+// fewest `f + b` kept. 300 random arrays of 1 to 12 distinct values; then
+// 20 in increasing order, and 20 in decreasing; every one drawn before any
+// arm answers.
+//
+// P1  the deletions are the statement read literally
+// P2  the array reversed takes the same deletions
+// P3  every value negated takes the same deletions
+// P4  the deletions are at least 1, at least 2 for two values or more, and
+//     at most a third of `2n + 2`
+// P5  a new greatest value at the back takes the fewer of `lo + 2` and
+//     `n + 1 - lo`, `lo` the least value's place
+// P6  each arm agrees with at least three of the other five
+
+// ---- deletions.kara: the ★ arm, one walk and the fewest of three ways
+fn star_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut (lo, hi) = (0, 0);
+    for k in 1..n {
+        if nums[k] < nums[lo] {
+            lo = k;
+        }
+        if nums[k] > nums[hi] {
+            hi = k;
+        }
+    }
+    let (i, j) = (lo.min(hi), lo.max(hi));
+    (j + 1).min(n - i).min(i + 1 + n - j)
+}
+
+// ---- deletions_position.kara: `min`, `max` and `position` from the library
+fn position_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let least = nums.iter().min().unwrap();
+    let greatest = nums.iter().max().unwrap();
+    let a = nums.iter().position(|x| x == least).unwrap();
+    let b = nums.iter().position(|x| x == greatest).unwrap();
+    let (i, j) = (a.min(b), a.max(b));
+    [j + 1, n - i, i + 1 + n - j].iter().min().unwrap()
+}
+
+// ---- deletions_fold.kara: one `fold` carrying both places
+fn fold_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let (lo, hi) = nums.iter().enumerate().fold((0, 0), |(lo, hi), (k, x)| {
+        (if x < nums[lo] { k } else { lo }, if x > nums[hi] { k } else { hi })
+    });
+    let (near, far) = if lo < hi { (lo, hi) } else { (hi, lo) };
+    let front = far + 1;
+    let back = n - near;
+    let both = near + 1 + n - far;
+    front.min(back).min(both)
+}
+
+// ---- deletions_split.kara: every count deleted from the front
+fn split_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut lo = 0;
+    let mut hi = 0;
+    for k in 0..n {
+        if nums[k] < nums[lo] {
+            lo = k;
+        }
+        if nums[k] > nums[hi] {
+            hi = k;
+        }
+    }
+    (0..=n)
+        .map(|f| {
+            // the places at or past `f` are still there, and the back must
+            // reach the nearest of them
+            let left: Vec[i64] = [lo, hi].iter().filter(|p| p >= f).cloned().collect();
+            let back = match left.iter().min() {
+                Some(p) => n - p,
+                None => 0,
+            };
+            f + back
+        })
+        .min()
+        .unwrap()
+}
+
+// ---- deletions_ends.kara: a `struct Ends` deleting from either end
+struct EndsEnds {
+    front: i64,
+    back: i64,
+    deleted: i64,
+}
+
+impl EndsEnds {
+    fn new(n: i64) -> EndsEnds {
+        EndsEnds { front: 0, back: n, deleted: 0 }
+    }
+
+    fn from_front(mut ref self) -> i64 {
+        self.front += 1;
+        self.deleted += 1;
+        self.front - 1
+    }
+
+    fn from_back(mut ref self) -> i64 {
+        self.back -= 1;
+        self.deleted += 1;
+        self.back
+    }
+
+    fn holds(self, place: i64) -> bool {
+        self.front <= place and place < self.back
+    }
+}
+
+fn ends_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut lo = 0;
+    let mut hi = 0;
+    for k in 0..n {
+        if nums[k] < nums[lo] {
+            lo = k;
+        }
+        if nums[k] > nums[hi] {
+            hi = k;
+        }
+    }
+    let mut best = n;
+    for way in 0..3 {
+        let mut ends = EndsEnds.new(n);
+        while ends.holds(lo) or ends.holds(hi) {
+            let from_front = way == 0 or (way == 2 and ends.holds(lo.min(hi)));
+            if from_front {
+                ends.from_front();
+            } else {
+                ends.from_back();
+            }
+        }
+        best = best.min(ends.deleted);
+    }
+    best
+}
+
+// ---- deletions_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn minimum_deletions(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut (lo, hi) = (0, 0);
+        for (k, x) in nums.iter().enumerate() {
+            if x < nums[lo] {
+                lo = k;
+            }
+            if x > nums[hi] {
+                hi = k;
+            }
+        }
+        let (i, j) = (lo.min(hi), lo.max(hi));
+        min(j + 1, min(n - i, i + 1 + n - j)) as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_deletions(nums: Vec[i64]) -> i64 {
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    SolutionSolution.minimum_deletions(v)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut least = nums[0];
+    let mut greatest = nums[0];
+    for x in nums.iter() {
+        if x < least {
+            least = x;
+        }
+        if x > greatest {
+            greatest = x;
+        }
+    }
+    let mut best = n;
+    for f in 0..n + 1 {
+        for b in 0..n - f + 1 {
+            let mut gone_least = false;
+            let mut gone_greatest = false;
+            for k in 0..n {
+                if k < f or k >= n - b {
+                    if nums[k] == least {
+                        gone_least = true;
+                    }
+                    if nums[k] == greatest {
+                        gone_greatest = true;
+                    }
+                }
+            }
+            if gone_least and gone_greatest and f + b < best {
+                best = f + b;
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_deletions(nums),
+        1 => position_minimum_deletions(nums),
+        2 => fold_minimum_deletions(nums),
+        3 => split_minimum_deletions(nums),
+        4 => ends_minimum_deletions(nums),
+        _ => solution_minimum_deletions(nums),
+    }
+}
+
+// ---- arrays
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "position", "fold", "split", "ends", "solution"];
+    let mut seed = 2091;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 12 + 1;
+        let step = next_random(mut seed) % 5 + 1;
+        let low = next_random(mut seed) % 21 - 10;
+        let mut nums: Vec[i64] = (0..n).map(|i| low + i * step).collect();
+        if t < 300 {
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+        } else if t >= 320 {
+            nums.reverse();
+        }
+        problems.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in problems.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let lo = (0..n).fold(0, |best, k| if nums[k] < nums[best] { k } else { best });
+        let top = nums.iter().max().unwrap();
+        let mut grown = nums.clone();
+        grown.push(top + 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, negated) == x,
+                x >= n.min(2) and 3 * x <= 2 * n + 2,
+                answer(arm, grown) == (lo + 2).min(n + 1 - lo),
+                same >= 3,
+            ];
+            for p in 0..6 {
+                checks += 1;
+                if not verdicts[p] {
+                    by_property[p] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{show(nums)} arm {names[arm]}: P{p + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for p in 0..6 {
+            if by_property[p] > 0 {
+                println(f"P{p + 1} {by_property[p]}");
+            }
+        }
+    }
+}

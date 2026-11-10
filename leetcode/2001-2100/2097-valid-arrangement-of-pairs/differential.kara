@@ -1,0 +1,479 @@
+// LeetCode #2097: Valid Arrangement of Pairs -- the differential. The six
+// arms, against the statement read literally: the answer is the pairs in
+// some order, each pair's end the next one's start. Every arrangement is
+// also counted by trying each unused pair after each, for the checksum.
+// 300 random walks of 1 to 7 pairs over 2 to 5 values, every third
+// closed; then 20 chains of 6 to 8 different values; then 20 closed walks
+// of 7 or 8 pairs over 4 values; no pair from a value to itself and none
+// twice, as the constraints say; each walk's pairs shuffled, every one
+// drawn before any arm answers.
+//
+// P1  the answer is an arrangement, the statement read literally
+// P2  the pairs each turned round: the answer is an arrangement of them,
+//     and when the walk is open it starts where the first answer ended
+// P3  the values renamed, v to 10^9 - v: the answer is the first one
+//     renamed
+// P4  the pairs after the first shuffled: the answer starts and ends where
+//     the first one did
+// P5  the answer starts at the value with one more pair out than in, or
+//     at the first pair's start when none has, and ends at the value with
+//     one more in than out, or where it started
+// P6  each arm agrees with at least three of the other five on where the
+//     answer starts and ends
+
+// ---- arrangement.kara: the ★ arm, Hierholzer's walk on an explicit stack
+fn star_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut next: Map[i64, Vec[i64]] = Map.new();
+    let mut balance: Map[i64, i64] = Map.new();
+    for (a, b) in pairs.iter() {
+        next.entry(a).or_insert(Vec.new()).push(b);
+        next.entry(b).or_insert(Vec.new());
+        *balance.entry(a).or_insert(0) += 1;
+        *balance.entry(b).or_insert(0) -= 1;
+    }
+    let mut start = pairs[0].0;
+    for (v, d) in balance.iter() {
+        if d == 1 {
+            start = v;
+        }
+    }
+    let mut stack = [start].to_vec();
+    let mut path: Vec[i64] = Vec.new();
+    while stack.len() > 0 {
+        let top = stack[stack.len() - 1];
+        match next[top].pop() {
+            Some(v) => stack.push(v),
+            None => {
+                path.push(top);
+                stack.pop();
+            }
+        }
+    }
+    path.reverse();
+    (1..path.len()).map(|i| (path[i - 1], path[i])).collect()
+}
+
+// ---- arrangement_rec.kara: Hierholzer's walk written recursively
+fn rec_walk(at: i64, next: mut ref Map[i64, Vec[i64]], path: mut ref Vec[i64]) {
+    while let Some(v) = next[at].pop() {
+        rec_walk(v, mut next, mut path);
+    }
+    path.push(at);
+}
+
+fn rec_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut next: Map[i64, Vec[i64]] = Map.new();
+    let mut outs: Map[i64, i64] = Map.new();
+    let mut ins: Map[i64, i64] = Map.new();
+    for (a, b) in pairs.iter() {
+        next.entry(a).or_insert(Vec.new()).push(b);
+        next.entry(b).or_insert(Vec.new());
+        *outs.entry(a).or_insert(0) += 1;
+        *ins.entry(b).or_insert(0) += 1;
+    }
+    let start = outs.iter().find(|(v, n)| n == ins.get(v).unwrap_or(0) + 1).map(|(v, _)| v).unwrap_or(pairs[0].0);
+    let mut path: Vec[i64] = Vec.new();
+    rec_walk(start, mut next, mut path);
+    path.reverse();
+    path.windows(2).iter().map(|w| (w[0], w[1])).collect()
+}
+
+// ---- arrangement_ids.kara: the values renamed 0, 1, 2, ..., every table a `Vec`
+fn ids_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut values: Vec[i64] = Vec.new();
+    for (a, b) in pairs.iter() {
+        values.push(a);
+        values.push(b);
+    }
+    values.sort();
+    values.dedup();
+    let id = |v: i64| values.binary_search(v).unwrap();
+    let n = values.len();
+    let mut outs: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut ins = Vec.filled(n, 0);
+    for (a, b) in pairs.iter() {
+        outs[id(a)].push(id(b));
+        ins[id(b)] += 1;
+    }
+    let mut start = id(pairs[0].0);
+    for v in 0..n {
+        if outs[v].len() == ins[v] + 1 {
+            start = v;
+        }
+    }
+    let mut used = Vec.filled(n, 0);
+    let mut stack = [start].to_vec();
+    let mut path: Vec[i64] = Vec.new();
+    while let Some(top) = stack.last().cloned() {
+        if used[top] < outs[top].len() {
+            stack.push(outs[top][used[top]]);
+            used[top] += 1;
+        } else {
+            path.push(top);
+            stack.pop();
+        }
+    }
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    for i in (1..path.len()).rev() {
+        out.push((values[path[i]], values[path[i - 1]]));
+    }
+    out
+}
+
+// ---- arrangement_edges.kara: the walk over pair numbers
+fn edges_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut leaving: Map[i64, Vec[i64]] = Map.new();
+    let mut degree: Map[i64, (i64, i64)] = Map.new();
+    for i in 0..pairs.len() {
+        let (a, b) = pairs[i];
+        leaving.entry(a).or_insert(Vec.new()).push(i);
+        leaving.entry(b).or_insert(Vec.new());
+        degree.entry(a).or_insert((0, 0)).0 += 1;
+        degree.entry(b).or_insert((0, 0)).1 += 1;
+    }
+    let mut start = pairs[0].0;
+    for (v, (out, inn)) in degree.iter() {
+        if out > inn {
+            start = v;
+        }
+    }
+    let mut out: Vec[(i64, i64)] = Vec.new();
+    let mut stack: Vec[i64] = Vec.new();
+    let mut at = start;
+    loop {
+        if let Some(e) = leaving[at].pop() {
+            stack.push(e);
+            at = pairs[e].1;
+        } else if let Some(e) = stack.pop() {
+            out.push(pairs[e]);
+            at = pairs[e].0;
+        } else {
+            break;
+        }
+    }
+    out.reverse();
+    out
+}
+
+// ---- arrangement_struct.kara: a `struct Itinerary` of `VecDeque` routes
+struct ItinItinerary {
+    routes: Map[i64, VecDeque[i64]],
+    surplus: Map[i64, i64],
+    first: i64,
+}
+
+impl ItinItinerary {
+    fn new(pairs: Vec[(i64, i64)]) -> ItinItinerary {
+        let mut it = ItinItinerary { routes: Map.new(), surplus: Map.new(), first: pairs[0].0 };
+        for (a, b) in pairs.iter() {
+            it.routes.entry(a).or_insert(VecDeque.new()).push_back(b);
+            it.routes.entry(b).or_insert(VecDeque.new());
+            *it.surplus.entry(a).or_insert(0) += 1;
+            *it.surplus.entry(b).or_insert(0) -= 1;
+        }
+        it
+    }
+
+    fn start(self) -> i64 {
+        for (v, s) in self.surplus.iter() {
+            if s > 0 {
+                return v;
+            }
+        }
+        self.first
+    }
+
+    fn take(mut ref self, from: i64) -> Option[i64] {
+        self.routes[from].pop_front()
+    }
+
+    fn path(mut ref self) -> Vec[i64] {
+        let mut stack = [self.start()].to_vec();
+        let mut done: Vec[i64] = Vec.new();
+        while let Some(top) = stack.pop() {
+            match self.take(top) {
+                Some(v) => {
+                    stack.push(top);
+                    stack.push(v);
+                }
+                None => done.push(top),
+            }
+        }
+        done.reverse();
+        done
+    }
+}
+
+fn itin_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut it = ItinItinerary.new(pairs);
+    let path = it.path();
+    path.windows(2).iter().map(|w| (w[0], w[1])).collect()
+}
+
+// ---- arrangement_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn valid_arrangement(pairs: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let mut graph: Map[i32, Vec[i32]] = Map.new();
+        let mut deg: Map[i32, i32] = Map.new();
+        for p in ref pairs {
+            graph.entry(p[0]).or_insert(Vec.new()).push(p[1]);
+            *deg.entry(p[0]).or_insert(0) += 1;
+            *deg.entry(p[1]).or_insert(0) -= 1;
+        }
+        let mut start = pairs[0][0];
+        for (k, v) in ref deg {
+            if v == 1 {
+                start = k;
+                break;
+            }
+        }
+        let mut stack = [start];
+        let mut path = Vec.new();
+        while let Some(u) = stack.last().cloned() {
+            if let Some(vs) = graph.get_mut(u) {
+                if let Some(v) = vs.pop() {
+                    stack.push(v);
+                    continue;
+                }
+            }
+            path.push(u);
+            stack.pop();
+        }
+        path.reverse();
+        path.windows(2).iter().map(|w| [w[0], w[1]]).collect()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let p: Vec[Vec[i32]] = pairs.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    SolutionSolution.valid_arrangement(p).iter().map(|v| (v[0] as i64, v[1] as i64)).collect()
+}
+
+// ---- the statement read literally
+
+// the answer uses each pair once, and each pair's end is the next one's
+// start
+fn literal_ok(pairs: Vec[(i64, i64)], got: Vec[(i64, i64)]) -> bool {
+    if got.len() != pairs.len() {
+        return false;
+    }
+    let mut used = Vec.filled(pairs.len(), false);
+    for i in 0..got.len() {
+        if i > 0 and got[i - 1].1 != got[i].0 {
+            return false;
+        }
+        let mut found = false;
+        for j in 0..pairs.len() {
+            if not found and not used[j] and pairs[j] == got[i] {
+                used[j] = true;
+                found = true;
+            }
+        }
+        if not found {
+            return false;
+        }
+    }
+    true
+}
+
+// how many orders of the pairs are arrangements, each pair told apart by
+// its place in the input
+fn arrangements(pairs: Vec[(i64, i64)], used: mut ref Vec[bool], at: i64, left: i64) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    let mut ways = 0;
+    for j in 0..pairs.len() {
+        if not used[j] and (left == pairs.len() or pairs[j].0 == at) {
+            used[j] = true;
+            ways += arrangements(pairs, mut used, pairs[j].1, left - 1);
+            used[j] = false;
+        }
+    }
+    ways
+}
+
+fn answer(arm: i64, pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    match arm {
+        0 => star_valid_arrangement(pairs),
+        1 => rec_valid_arrangement(pairs),
+        2 => ids_valid_arrangement(pairs),
+        3 => edges_valid_arrangement(pairs),
+        4 => itin_valid_arrangement(pairs),
+        _ => solution_valid_arrangement(pairs),
+    }
+}
+
+// ---- walks
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn shuffle(pairs: mut ref Vec[(i64, i64)], from: i64, seed: mut ref i64) {
+    for i in (from + 1..pairs.len()).rev() {
+        pairs.swap(i, from + next_random(mut seed) % (i - from + 1));
+    }
+}
+
+// a step from `at` to a value it has no pair to yet: the first such one
+// from a random place among the values, or `None` when there is none
+fn step(at: i64, values: Vec[i64], used: Set[(i64, i64)], seed: mut ref i64) -> Option[i64] {
+    let k = values.len();
+    let from = next_random(mut seed) % k;
+    for j in 0..k {
+        let v = values[(from + j) % k];
+        if v != at and not used.contains((at, v)) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+// a walk of `m` pairs over `k` random values, no pair from a value to
+// itself and none twice, closed back to where it began when asked (or left
+// open if 50 more steps do not get it there), or a chain through `m + 1`
+// different values; its pairs shuffled
+fn walk_pairs(m: i64, k: i64, closed: bool, chain: bool, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let mut walk: Vec[i64] = Vec.new();
+    if chain {
+        let base = wide_random(mut seed) % 1000000;
+        for i in 0..m + 1 {
+            walk.push(base + i * 997);
+        }
+    } else {
+        let values: Vec[i64] = (0..k).map(|_| wide_random(mut seed) % 1000000001).collect();
+        let first = values[next_random(mut seed) % k];
+        walk.push(first);
+        let mut used: Set[(i64, i64)] = Set.new();
+        let mut at = first;
+        while walk.len() <= m + 50 {
+            if closed and walk.len() >= m and at != first and not used.contains((at, first)) {
+                walk.push(first);
+                break;
+            }
+            if not closed and walk.len() > m {
+                break;
+            }
+            match step(at, values, used, mut seed) {
+                Some(v) => {
+                    used.insert((at, v));
+                    walk.push(v);
+                    at = v;
+                }
+                None => break,
+            }
+        }
+    }
+    let mut pairs: Vec[(i64, i64)] = (1..walk.len()).map(|i| (walk[i - 1], walk[i])).collect();
+    shuffle(mut pairs, 0, mut seed);
+    pairs
+}
+
+fn ends(got: Vec[(i64, i64)]) -> (i64, i64) {
+    (got[0].0, got[got.len() - 1].1)
+}
+
+fn main() {
+    let names = ["star", "rec", "ids", "edges", "itin", "solution"];
+    let mut seed = 2097;
+    let mut problems: Vec[Vec[(i64, i64)]] = Vec.new();
+    for t in 0..340 {
+        if t < 300 {
+            let m = next_random(mut seed) % 7 + 1;
+            let k = next_random(mut seed) % 4 + 2;
+            problems.push(walk_pairs(m, k, t % 3 == 0, false, mut seed));
+        } else if t < 320 {
+            let m = next_random(mut seed) % 3 + 6;
+            problems.push(walk_pairs(m, 0, false, true, mut seed));
+        } else {
+            let m = next_random(mut seed) % 2 + 7;
+            problems.push(walk_pairs(m, 4, true, false, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut shuffles = 1;
+    for pairs in problems.iter() {
+        let mut used = Vec.filled(pairs.len(), false);
+        let ways = arrangements(pairs, mut used, 0, pairs.len());
+        check = (check * 31 + ways) % 1000000007;
+        check = (check * 31 + pairs.len()) % 1000000007;
+        let mut surplus: Map[i64, i64] = Map.new();
+        for (a, b) in pairs.iter() {
+            *surplus.entry(a).or_insert(0) += 1;
+            *surplus.entry(b).or_insert(0) -= 1;
+        }
+        let mut from = pairs[0].0;
+        let mut to = -1;
+        for (v, s) in surplus.iter() {
+            if s == 1 {
+                from = v;
+            }
+            if s == -1 {
+                to = v;
+            }
+        }
+        if to < 0 {
+            to = from;
+        }
+        let open = from != to;
+        let turned: Vec[(i64, i64)] = pairs.iter().map(|(a, b)| (b, a)).collect();
+        let renamed: Vec[(i64, i64)] = pairs.iter().map(|(a, b)| (1000000000 - a, 1000000000 - b)).collect();
+        let mut mixed = pairs.to_vec();
+        shuffle(mut mixed, 1, mut shuffles);
+        let got: Vec[Vec[(i64, i64)]] = (0..6).map(|arm| answer(arm, pairs)).collect();
+        for arm in 0..6 {
+            let x = got[arm].to_vec();
+            let ok = ways > 0 and literal_ok(pairs, x);
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o].len() > 0 and x.len() > 0 and ends(got[o]) == ends(x) {
+                    same += 1;
+                }
+            }
+            let back = answer(arm, turned);
+            let back_ok = literal_ok(turned, back) and (not open or not ok or back[0].0 == x[x.len() - 1].1);
+            let renamed_x: Vec[(i64, i64)] = x.iter().map(|(a, b)| (1000000000 - a, 1000000000 - b)).collect();
+            let mixed_x = answer(arm, mixed);
+            let verdicts = [
+                ok,
+                back_ok,
+                answer(arm, renamed) == renamed_x,
+                ok and literal_ok(mixed, mixed_x) and ends(mixed_x) == ends(x),
+                ok and ends(x) == (from, to),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{pairs} arm {names[arm]}: P{q + 1} fails, answer {x}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} walks: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

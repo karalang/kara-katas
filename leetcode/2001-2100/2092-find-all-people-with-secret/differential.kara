@@ -1,0 +1,402 @@
+// LeetCode #2092: Find All People With Secret -- the differential. The
+// six arms, against the statement read literally: 0 and the first person
+// know at time 0; then for each time that has a meeting, from the earliest,
+// every meeting at that time between one who knows and one who does not
+// tells the other, looked at again and again until no one more is told.
+// 300 random gatherings of 2 to 10 people and up to 14 meetings at times 1
+// to 4; then 20 whose meetings all share one time, and 20 whose meetings
+// all have their own; every one drawn before any arm answers.
+//
+// P1  the people are the statement read literally
+// P2  the meetings listed in reverse give the same people
+// P3  every time doubled and moved on by 5 gives the same people
+// P4  0 and the first person are there, and the people are distinct, in
+//     increasing order, and below `n`
+// P5  a meeting of 0 and person `p` after every other adds `p` and no one
+//     else
+// P6  each arm agrees with at least three of the other five
+
+// ---- secret.kara: the ★ arm, a union-find rooted at person 0, cut loose after each time
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut sorted = meetings.clone();
+    sorted.sort_by_key(|(_, _, t)| t);
+    let mut parent: Vec[i64] = (0..n).collect();
+    parent[first_person] = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j].2 == sorted[i].2 {
+            let (x, y, _) = sorted[j];
+            let (rx, ry) = (star_find(mut parent, x), star_find(mut parent, y));
+            if rx < ry {
+                parent[ry] = rx;
+            } else {
+                parent[rx] = ry;
+            }
+            j += 1;
+        }
+        for k in i..j {
+            let (x, y, _) = sorted[k];
+            if star_find(mut parent, x) != 0 {
+                parent[x] = x;
+            }
+            if star_find(mut parent, y) != 0 {
+                parent[y] = y;
+            }
+        }
+        i = j;
+    }
+    let mut knows: Vec[i64] = Vec.new();
+    for p in 0..n {
+        if star_find(mut parent, p) == 0 {
+            knows.push(p);
+        }
+    }
+    knows
+}
+
+// ---- secret_bfs.kara: each time's meetings in a `Map`, a `VecDeque` from those who know
+fn bfs_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut known: Vec[bool] = Vec.filled(n, false);
+    known[0] = true;
+    known[first_person] = true;
+    let mut sorted = meetings.clone();
+    sorted.sort_by_key(|(_, _, t)| t);
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut met: Map[i64, Vec[i64]] = Map.new();
+        let mut j = i;
+        while j < sorted.len() and sorted[j].2 == sorted[i].2 {
+            let (x, y, _) = sorted[j];
+            met.entry(x).or_insert(Vec.new()).push(y);
+            met.entry(y).or_insert(Vec.new()).push(x);
+            j += 1;
+        }
+        let mut queue: VecDeque[i64] = met.keys().filter(|p| known[p]).cloned().collect();
+        while let Some(p) = queue.pop_front() {
+            for q in met[p].iter() {
+                if not known[q] {
+                    known[q] = true;
+                    queue.push_back(q);
+                }
+            }
+        }
+        i = j;
+    }
+    (0..n).filter(|p| known[p]).collect()
+}
+
+// ---- secret_earliest.kara: the earliest time each learns, from a `PriorityQueue`
+fn earliest_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut meets: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (x, y, t) in meetings.iter() {
+        meets[x].push((t, y));
+        meets[y].push((t, x));
+    }
+    let mut learned: Vec[bool] = Vec.filled(n, false);
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    heap.push((0, 0));
+    heap.push((0, first_person));
+    while let Some((t, p)) = heap.pop() {
+        if learned[p] {
+            continue;
+        }
+        learned[p] = true;
+        for (when, q) in meets[p].iter() {
+            if when >= t and not learned[q] {
+                heap.push((when, q));
+            }
+        }
+    }
+    (0..n).filter(|p| learned[p]).collect()
+}
+
+// ---- secret_relax.kara: each time's meetings passed over to a fixed point
+fn relax_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut known: Vec[bool] = Vec.filled(n, false);
+    known[0] = true;
+    known[first_person] = true;
+    let mut sorted = meetings.clone();
+    sorted.sort_by_key(|(_, _, t)| t);
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j].2 == sorted[i].2 {
+            j += 1;
+        }
+        let mut told = true;
+        while told {
+            told = false;
+            for (x, y, _) in sorted[i..j].iter() {
+                if known[x] != known[y] {
+                    known[x] = true;
+                    known[y] = true;
+                    told = true;
+                }
+            }
+        }
+        i = j;
+    }
+    (0..n).filter(|p| known[p]).collect()
+}
+
+// ---- secret_struct.kara: a `struct Gathering` per time, from a `SortedMap`
+struct GatheringGathering {
+    met: Map[i64, Vec[i64]],
+}
+
+impl GatheringGathering {
+    fn new(pairs: Vec[(i64, i64)]) -> GatheringGathering {
+        let mut met: Map[i64, Vec[i64]] = Map.new();
+        for (x, y) in pairs.iter() {
+            met.entry(x).or_insert(Vec.new()).push(y);
+            met.entry(y).or_insert(Vec.new()).push(x);
+        }
+        GatheringGathering { met }
+    }
+
+    fn spread(self, p: i64, known: mut ref Vec[bool]) {
+        for q in self.met[p].iter() {
+            if not known[q] {
+                known[q] = true;
+                self.spread(q, mut known);
+            }
+        }
+    }
+}
+
+fn gathering_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut by_time: SortedMap[i64, Vec[(i64, i64)]] = SortedMap.new();
+    for (x, y, t) in meetings.iter() {
+        by_time.entry(t).or_insert(Vec.new()).push((x, y));
+    }
+    let mut known: Vec[bool] = Vec.filled(n, false);
+    known[0] = true;
+    known[first_person] = true;
+    for (_, pairs) in by_time.iter() {
+        let gathering = GatheringGathering.new(pairs);
+        let knowers: Vec[i64] = gathering.met.keys().filter(|p| known[p]).cloned().collect();
+        for p in knowers.iter() {
+            gathering.spread(p, mut known);
+        }
+    }
+    (0..n).filter(|p| known[p]).collect()
+}
+
+// ---- secret_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_find(parent: mut ref Vec[usize], x: usize) -> usize {
+    if parent[x] != x {
+        let r = solution_find(mut parent, parent[x]);
+        parent[x] = r;
+    }
+    parent[x]
+}
+
+impl SolutionSolution {
+    pub fn find_all_people(n: i32, meetings: own Vec[Vec[i32]], first_person: i32) -> Vec[i32] {
+        let mut meetings = meetings;
+        let n = n as usize;
+        let mut parent: Vec[usize] = (0..n).collect();
+        meetings.sort_by_key(|m| m[2]);
+        parent[first_person as usize] = 0;
+        let mut i = 0;
+        while i < meetings.len() {
+            let mut j = i;
+            while j < meetings.len() and meetings[j][2] == meetings[i][2] {
+                let a = solution_find(mut parent, meetings[j][0] as usize);
+                let b = solution_find(mut parent, meetings[j][1] as usize);
+                if a < b {
+                    parent[b] = a;
+                } else {
+                    parent[a] = b;
+                }
+                j += 1;
+            }
+            for k in i..j {
+                for p in [meetings[k][0] as usize, meetings[k][1] as usize] {
+                    if solution_find(mut parent, p) != 0 {
+                        parent[p] = p;
+                    }
+                }
+            }
+            i = j;
+        }
+        let mut ans = Vec.new();
+        for p in 0..n {
+            if solution_find(mut parent, p) == 0 {
+                ans.push(p as i32);
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_find_all_people(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let m: Vec[Vec[i32]] = meetings.iter().map(|(x, y, t)| [x as i32, y as i32, t as i32]).collect();
+    SolutionSolution.find_all_people(n as i32, m, first_person as i32).iter().map(|p| p as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    let mut knows: Vec[bool] = Vec.filled(n, false);
+    knows[0] = true;
+    knows[first_person] = true;
+    let mut last = 0;
+    for (_, _, t) in meetings.iter() {
+        if t > last {
+            last = t;
+        }
+    }
+    for time in 0..last + 1 {
+        let mut told = true;
+        while told {
+            told = false;
+            for (x, y, t) in meetings.iter() {
+                if t == time and (knows[x] or knows[y]) and not (knows[x] and knows[y]) {
+                    knows[x] = true;
+                    knows[y] = true;
+                    told = true;
+                }
+            }
+        }
+    }
+    let mut people: Vec[i64] = Vec.new();
+    for p in 0..n {
+        if knows[p] {
+            people.push(p);
+        }
+    }
+    people
+}
+
+fn answer(arm: i64, n: i64, meetings: Vec[(i64, i64, i64)], first_person: i64) -> Vec[i64] {
+    match arm {
+        0 => star_find_all_people(n, meetings, first_person),
+        1 => bfs_find_all_people(n, meetings, first_person),
+        2 => earliest_find_all_people(n, meetings, first_person),
+        3 => relax_find_all_people(n, meetings, first_person),
+        4 => gathering_find_all_people(n, meetings, first_person),
+        _ => solution_find_all_people(n, meetings, first_person),
+    }
+}
+
+// ---- gatherings
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn show_meetings(v: Vec[(i64, i64, i64)]) -> String {
+    let parts: Vec[String] = v.iter().map(|(x, y, t)| f"{x}-{y}@{t}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "bfs", "earliest", "relax", "gathering", "solution"];
+    let mut seed = 2092;
+    let mut problems: Vec[(i64, Vec[(i64, i64, i64)], i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 9 + 2;
+        let m = next_random(mut seed) % 15;
+        let mut meetings: Vec[(i64, i64, i64)] = Vec.new();
+        for k in 0..m {
+            let x = next_random(mut seed) % n;
+            let y = (x + 1 + next_random(mut seed) % (n - 1)) % n;
+            let mut time = next_random(mut seed) % 4 + 1;
+            if t >= 300 and t < 320 {
+                time = 2;
+            } else if t >= 320 {
+                time = k + 1;
+            }
+            meetings.push((x, y, time));
+        }
+        let first = next_random(mut seed) % (n - 1) + 1;
+        problems.push((n, meetings, first));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, meetings, first) in problems.iter() {
+        let truth = literal(n, meetings, first);
+        for p in truth.iter() {
+            check = (check * 31 + p + 1) % 1000000007;
+        }
+        check = (check * 31 + 1000) % 1000000007;
+        let reversed: Vec[(i64, i64, i64)] = meetings.iter().rev().cloned().collect();
+        let moved: Vec[(i64, i64, i64)] = meetings.iter().map(|(x, y, t)| (x, y, 2 * t + 5)).collect();
+        // the person told by a last meeting with 0: one who did not know,
+        // when there is one
+        let mut p = n - 1;
+        for q in 0..n {
+            if not truth.contains(q) {
+                p = q;
+            }
+        }
+        let mut later = meetings.clone();
+        later.push((0, p, 100));
+        let mut grown = truth.clone();
+        if not grown.contains(p) {
+            grown.push(p);
+            grown.sort();
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, n, meetings, first)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let shaped = x.contains(0) and x.contains(first) and (1..x.len()).all(|k| x[k - 1] < x[k]) and x.iter().all(|q| 0 <= q and q < n);
+            let verdicts = [
+                x == truth,
+                answer(arm, n, reversed, first) == x,
+                answer(arm, n, moved, first) == x,
+                shaped,
+                answer(arm, n, later, first) == grown,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} people, first {first}, {show_meetings(meetings)} arm {names[arm]}: P{q + 1} fails, answer {show(x)}, literal {show(truth)}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} gatherings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

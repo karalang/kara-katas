@@ -1,0 +1,99 @@
+// LeetCode #2098: Subsequence of Size K With the Largest Even Sum --
+// LeetCode's Rust template (`mut nums: Vec<i32>`, `k: i32`, an `i64`
+// answer): sorted smallest first, the top `k` read from `nums[n - k..]`
+// into the sum and the smallest taken of each parity (`[i32::MAX; 2]`
+// indexed by `x & 1`), the rest into the largest left of each, carried by
+// `karac fix`. The adapter below hands the harness's numbers to it.
+
+impl Solution {
+    pub fn largest_even_sum(nums: own Vec[i32], k: i32) -> i64 {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        let k = k as i64;
+        let mut sum: i64 = 0;
+        let mut mn = [i32.MAX; 2];
+        for x in nums[n - k..] {
+            sum += x;
+            let p = (x & 1) as i64;
+            mn[p] = mn[p].min(x);
+        }
+        if sum % 2 == 0 {
+            return sum;
+        }
+        let mut mx = [-1i32; 2];
+        for x in nums[..n - k] {
+            let p = (x & 1) as i64;
+            mx[p] = mx[p].max(x);
+        }
+        let mut ans = -1;
+        for p in 0..2 {
+            if mn[p] != i32.MAX and mx[1 - p] >= 0 {
+                ans = ans.max(sum - mn[p] + mx[1 - p]);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn largest_even_sum(nums: Vec[i64], k: i64) -> i64 {
+    Solution.largest_even_sum(nums.iter().map(|x| x as i32).collect(), k as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples, then five more
+    let examples = [
+        ([4, 1, 5, 3, 1].to_vec(), 3),
+        ([4, 6, 2].to_vec(), 3),
+        ([1, 3, 5].to_vec(), 1),
+        ([7].to_vec(), 1),
+        ([0].to_vec(), 1),
+        ([5, 5, 2, 9, 1].to_vec(), 2),
+        ([9, 8, 1].to_vec(), 2),
+        ([3, 3, 3, 3, 3].to_vec(), 5),
+    ];
+    for (nums, k) in examples.iter() {
+        println(f"{nums} k={k} -> {largest_even_sum(nums, k)}");
+    }
+    // 3000 random lists of 1 to 30 numbers below 10, 100 or 10^5 + 1,
+    // each asked for a random k
+    let mut seed = 2098;
+    let mut none = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let top = [10, 100, 100001][round % 3];
+        let nums: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % top).collect();
+        let k = next_random(mut seed) % n + 1;
+        let got = largest_even_sum(nums, k);
+        if got < 0 {
+            none += 1;
+        }
+        check = (check * 31 + got + 1) % 1000000007;
+    }
+    println(f"3000 lists: {none} with no even sum, checksum {check}");
+    // the constraints' largest: 10^5 numbers up to 10^5 for three k, all
+    // odd, and all the largest
+    let n = 100000;
+    let nums: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % 100001).collect();
+    for k in [1, 50001, 100000] {
+        println(f"100000 random, k={k}: {largest_even_sum(nums, k)}");
+    }
+    let odd: Vec[i64] = (0..n).map(|i| 2 * (i % 50000) + 1).collect();
+    println(f"100000 odd, k=99999: {largest_even_sum(odd, 99999)}, k=100000: {largest_even_sum(odd, 100000)}");
+    let same = Vec.filled(n, 100000);
+    println(f"100000 of 100000, k=100000: {largest_even_sum(same, 100000)}");
+}

@@ -1,0 +1,110 @@
+// LeetCode #2097: Valid Arrangement of Pairs -- the ★ arm's benchmark: 100
+// rounds, each a random walk of 100000 pairs over 1000 values (every
+// other one closed), no pair twice and none from a value to itself,
+// shuffled and arranged by Hierholzer's walk on an explicit stack. Every
+// pair of every arrangement goes into the checksum.
+
+fn valid_arrangement(pairs: Vec[(i64, i64)]) -> Vec[(i64, i64)] {
+    let mut next: Map[i64, Vec[i64]] = Map.new();
+    let mut balance: Map[i64, i64] = Map.new();
+    for (a, b) in pairs.iter() {
+        next.entry(a).or_insert(Vec.new()).push(b);
+        next.entry(b).or_insert(Vec.new());
+        *balance.entry(a).or_insert(0) += 1;
+        *balance.entry(b).or_insert(0) -= 1;
+    }
+    let mut start = pairs[0].0;
+    for (v, d) in balance.iter() {
+        if d == 1 {
+            start = v;
+        }
+    }
+    let mut stack = [start].to_vec();
+    let mut path: Vec[i64] = Vec.new();
+    while stack.len() > 0 {
+        let top = stack[stack.len() - 1];
+        match next[top].pop() {
+            Some(v) => stack.push(v),
+            None => {
+                path.push(top);
+                stack.pop();
+            }
+        }
+    }
+    path.reverse();
+    (1..path.len()).map(|i| (path[i - 1], path[i])).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a step from `at` to a value it has no pair to yet: the first such one
+// from a random place among the values, or `None` when there is none
+fn step(at: i64, values: Vec[i64], used: Set[(i64, i64)], seed: mut ref i64) -> Option[i64] {
+    let k = values.len();
+    let from = next_random(mut seed) % k;
+    for j in 0..k {
+        let v = values[(from + j) % k];
+        if v != at and not used.contains((at, v)) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+// a random walk of `m` pairs over `k` random values below 10^9 + 1, no
+// pair from a value to itself and none twice, its pairs then shuffled. A
+// closed walk goes on until it can step back to where it began, and stays
+// open if 50 more steps do not get it there; any walk ends early where it
+// has no step left.
+fn random_pairs(m: i64, k: i64, closed: bool, seed: mut ref i64) -> Vec[(i64, i64)] {
+    let values: Vec[i64] = (0..k).map(|_| wide_random(mut seed) % 1000000001).collect();
+    let first = values[next_random(mut seed) % k];
+    let mut walk = [first].to_vec();
+    let mut used: Set[(i64, i64)] = Set.new();
+    let mut at = first;
+    while walk.len() <= m + 50 {
+        if closed and walk.len() >= m and at != first and not used.contains((at, first)) {
+            walk.push(first);
+            break;
+        }
+        if not closed and walk.len() > m {
+            break;
+        }
+        match step(at, values, used, mut seed) {
+            Some(v) => {
+                used.insert((at, v));
+                walk.push(v);
+                at = v;
+            }
+            None => break,
+        }
+    }
+    let mut pairs: Vec[(i64, i64)] = (1..walk.len()).map(|i| (walk[i - 1], walk[i])).collect();
+    for i in (1..pairs.len()).rev() {
+        pairs.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    pairs
+}
+
+fn main() {
+    let mut seed = 2097;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..100 {
+        let pairs = random_pairs(100000, 1000, round % 2 == 0, mut seed);
+        let got = valid_arrangement(pairs);
+        total += got.len();
+        for (a, _) in got.iter() {
+            check = (check * 31 + a) % 1000000007;
+        }
+        check = (check * 31 + got[got.len() - 1].1) % 1000000007;
+    }
+    println(f"100 rounds: {total} pairs, checksum {check}");
+}

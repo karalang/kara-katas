@@ -1,0 +1,431 @@
+// LeetCode #2093: Minimum Cost to Reach City With Discounts -- the
+// differential. The six arms, against the statement read literally: every
+// path from city 0 to city n - 1 that visits no city twice, its largest
+// tolls halved (rounded down) while discounts last, and the cheapest of
+// them, or -1 when there is no path. 300 random maps of 2 to 7 cities and
+// up to 10 highways with up to 4 discounts; then 20 with no discount, and
+// 20 with a discount for every highway; every one drawn before any arm
+// answers.
+//
+// P1  the cost is the statement read literally
+// P2  one discount more never costs more, and -1 stays -1
+// P3  the highways listed in reverse, each with its ends swapped, give the
+//     same cost
+// P4  the cost is -1 exactly when city n - 1 cannot be reached, and
+//     otherwise at most the cost with no discount and at least half of it,
+//     less a half for each of the at most n - 1 tolls rounded down
+// P5  the cities between the first and the last numbered the other way
+//     round give the same cost
+// P6  each arm agrees with at least three of the other five
+
+// ---- discounts.kara: the ★ arm, Dijkstra over (city, discounts used) states
+fn star_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (a, b, toll) in highways.iter() {
+        roads[a].push((b, toll));
+        roads[b].push((a, toll));
+    }
+    let k = discounts + 1;
+    let mut best: Vec[i64] = Vec.filled(n * k, i64.MAX);
+    let mut heap: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    best[0] = 0;
+    heap.push((0, 0, 0));
+    while let Some((cost, city, used)) = heap.pop() {
+        if city == n - 1 {
+            return cost;
+        }
+        if cost > best[city * k + used] {
+            continue;
+        }
+        for (other, toll) in roads[city].iter() {
+            let full = cost + toll;
+            if full < best[other * k + used] {
+                best[other * k + used] = full;
+                heap.push((full, other, used));
+            }
+            if used < discounts {
+                let half = cost + toll / 2;
+                if half < best[other * k + used + 1] {
+                    best[other * k + used + 1] = half;
+                    heap.push((half, other, used + 1));
+                }
+            }
+        }
+    }
+    -1
+}
+
+// ---- discounts_layers.kara: one Dijkstra per layer of discounts
+fn layers_spread(roads: Vec[Vec[(i64, i64)]], start: Vec[i64]) -> Vec[i64] {
+    let mut cost = start.clone();
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    for (city, c) in start.iter().enumerate() {
+        if c < i64.MAX {
+            heap.push((c, city));
+        }
+    }
+    while let Some((c, city)) = heap.pop() {
+        if c > cost[city] {
+            continue;
+        }
+        for (other, toll) in roads[city].iter() {
+            if c + toll < cost[other] {
+                cost[other] = c + toll;
+                heap.push((c + toll, other));
+            }
+        }
+    }
+    cost
+}
+
+fn layers_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (a, b, toll) in highways.iter() {
+        roads[a].push((b, toll));
+        roads[b].push((a, toll));
+    }
+    let mut start: Vec[i64] = Vec.filled(n, i64.MAX);
+    start[0] = 0;
+    let mut layer = layers_spread(roads, start);
+    // a road uses at most n - 1 highways, so more discounts change nothing
+    for _ in 0..discounts.min(n - 1) {
+        let mut next = layer.clone();
+        for (a, b, toll) in highways.iter() {
+            if layer[a] < i64.MAX {
+                next[b] = next[b].min(layer[a] + toll / 2);
+            }
+            if layer[b] < i64.MAX {
+                next[a] = next[a].min(layer[b] + toll / 2);
+            }
+        }
+        layer = layers_spread(roads, next);
+    }
+    if layer[n - 1] == i64.MAX { -1 } else { layer[n - 1] }
+}
+
+// ---- discounts_sorted.kara: Dijkstra with a `SortedSet` frontier
+fn sorted_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (a, b, toll) in highways.iter() {
+        roads[a].push((b, toll));
+        roads[b].push((a, toll));
+    }
+    let k = discounts + 1;
+    let mut best: Vec[i64] = Vec.filled(n * k, i64.MAX);
+    let mut frontier: SortedSet[(i64, i64)] = SortedSet.new();
+    best[0] = 0;
+    frontier.insert((0, 0));
+    while let Some((cost, state)) = frontier.pop_first() {
+        let (city, used) = (state / k, state % k);
+        if city == n - 1 {
+            return cost;
+        }
+        for (other, toll) in roads[city].iter() {
+            let mut moves = [(other * k + used, cost + toll)].to_vec();
+            if used < discounts {
+                moves.push((other * k + used + 1, cost + toll / 2));
+            }
+            for (next, c) in moves.iter() {
+                if c < best[next] {
+                    if best[next] < i64.MAX {
+                        frontier.remove((best[next], next));
+                    }
+                    best[next] = c;
+                    frontier.insert((c, next));
+                }
+            }
+        }
+    }
+    -1
+}
+
+// ---- discounts_bellman.kara: Bellman-Ford over the layered states
+fn bellman_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let k = discounts.min(n - 1) + 1;
+    let mut cost: Vec[Vec[i64]] = Vec.filled(k, Vec.filled(n, i64.MAX));
+    cost[0][0] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for d in 0..k {
+            for (a, b, toll) in highways.iter() {
+                for (from, to) in [(a, b), (b, a)] {
+                    if cost[d][from] == i64.MAX {
+                        continue;
+                    }
+                    if cost[d][from] + toll < cost[d][to] {
+                        cost[d][to] = cost[d][from] + toll;
+                        changed = true;
+                    }
+                    if d + 1 < k and cost[d][from] + toll / 2 < cost[d + 1][to] {
+                        cost[d + 1][to] = cost[d][from] + toll / 2;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    let best = cost.iter().map(|layer| layer[n - 1]).min().unwrap();
+    if best == i64.MAX { -1 } else { best }
+}
+
+// ---- discounts_queue.kara: a `struct Roads` relaxed by a work queue
+struct QueueRoads {
+    roads: Vec[Vec[(i64, i64)]],
+    k: i64,
+    cost: Vec[i64],
+    queued: Vec[bool],
+    work: VecDeque[i64],
+}
+
+impl QueueRoads {
+    fn new(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> QueueRoads {
+        let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+        for (a, b, toll) in highways.iter() {
+            roads[a].push((b, toll));
+            roads[b].push((a, toll));
+        }
+        let k = discounts.min(n - 1) + 1;
+        QueueRoads { roads, k, cost: Vec.filled(n * k, i64.MAX), queued: Vec.filled(n * k, false), work: VecDeque.new() }
+    }
+
+    fn offer(mut ref self, state: i64, c: i64) {
+        if c < self.cost[state] {
+            self.cost[state] = c;
+            if not self.queued[state] {
+                self.queued[state] = true;
+                self.work.push_back(state);
+            }
+        }
+    }
+
+    fn settle(mut ref self) {
+        while let Some(state) = self.work.pop_front() {
+            self.queued[state] = false;
+            let (city, used) = (state / self.k, state % self.k);
+            let c = self.cost[state];
+            for (other, toll) in self.roads[city].clone().iter() {
+                self.offer(other * self.k + used, c + toll);
+                if used + 1 < self.k {
+                    self.offer(other * self.k + used + 1, c + toll / 2);
+                }
+            }
+        }
+    }
+}
+
+fn queue_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut map = QueueRoads.new(n, highways, discounts);
+    map.offer(0, 0);
+    map.settle();
+    let best = (0..map.k).map(|used| map.cost[(n - 1) * map.k + used]).min().unwrap();
+    if best == i64.MAX { -1 } else { best }
+}
+
+// ---- discounts_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn minimum_cost(n: i32, highways: Vec[Vec[i32]], discounts: i32) -> i32 {
+        let n = n as i64;
+        let k = discounts as i64;
+        let mut adj: Vec[Vec[(i64, i32)]] = Vec.filled(n, Vec.new());
+        for h in ref highways {
+            let (a, b, t) = (h[0] as i64, h[1] as i64, h[2]);
+            adj[a].push((b, t));
+            adj[b].push((a, t));
+        }
+        let mut dist = Vec.filled(n, Vec.filled(k + 1, i32.MAX));
+        let mut heap: PriorityQueue[(i32, i64, i64)] = PriorityQueue.new();
+        dist[0][0] = 0;
+        heap.push((0, 0, 0));
+        while let Some((d, u, used)) = heap.pop() {
+            if u == n - 1 {
+                return d;
+            }
+            if d > dist[u][used] {
+                continue;
+            }
+            for (v, t) in ref adj[u] {
+                if d + t < dist[v][used] {
+                    dist[v][used] = d + t;
+                    heap.push((d + t, v, used));
+                }
+                if used < k and d + t / 2 < dist[v][used + 1] {
+                    dist[v][used + 1] = d + t / 2;
+                    heap.push((d + t / 2, v, used + 1));
+                }
+            }
+        }
+        -1
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_cost(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let h: Vec[Vec[i32]] = highways.iter().map(|(a, b, t)| [a as i32, b as i32, t as i32]).collect();
+    SolutionSolution.minimum_cost(n as i32, h, discounts as i32) as i64
+}
+
+// ---- the statement read literally
+
+fn walk(city: i64, last: i64, roads: Vec[Vec[(i64, i64)]], seen: mut ref Vec[bool], tolls: mut ref Vec[i64], discounts: i64, best: mut ref i64) {
+    if city == last {
+        let mut paid = tolls.clone();
+        paid.sort();
+        paid.reverse();
+        let mut cost = 0;
+        for i in 0..paid.len() {
+            cost += if i < discounts { paid[i] / 2 } else { paid[i] };
+        }
+        if *best < 0 or cost < *best {
+            *best = cost;
+        }
+        return;
+    }
+    for (other, toll) in roads[city].iter() {
+        if not seen[other] {
+            seen[other] = true;
+            tolls.push(toll);
+            walk(other, last, roads, mut seen, mut tolls, discounts, mut best);
+            tolls.pop();
+            seen[other] = false;
+        }
+    }
+}
+
+fn literal(n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for (a, b, toll) in highways.iter() {
+        roads[a].push((b, toll));
+        roads[b].push((a, toll));
+    }
+    let mut seen: Vec[bool] = Vec.filled(n, false);
+    seen[0] = true;
+    let mut tolls: Vec[i64] = Vec.new();
+    let mut best = -1;
+    walk(0, n - 1, roads, mut seen, mut tolls, discounts, mut best);
+    best
+}
+
+// whether city n - 1 is joined to city 0, tolls aside
+fn reaches(n: i64, highways: Vec[(i64, i64, i64)]) -> bool {
+    let mut joined: Vec[bool] = Vec.filled(n, false);
+    joined[0] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (a, b, _) in highways.iter() {
+            if joined[a] != joined[b] {
+                joined[a] = true;
+                joined[b] = true;
+                grew = true;
+            }
+        }
+    }
+    joined[n - 1]
+}
+
+fn answer(arm: i64, n: i64, highways: Vec[(i64, i64, i64)], discounts: i64) -> i64 {
+    match arm {
+        0 => star_minimum_cost(n, highways, discounts),
+        1 => layers_minimum_cost(n, highways, discounts),
+        2 => sorted_minimum_cost(n, highways, discounts),
+        3 => bellman_minimum_cost(n, highways, discounts),
+        4 => queue_minimum_cost(n, highways, discounts),
+        _ => solution_minimum_cost(n, highways, discounts),
+    }
+}
+
+// ---- maps
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[(i64, i64, i64)]) -> String {
+    let parts: Vec[String] = v.iter().map(|(a, b, t)| f"{a}-{b}:{t}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    let names = ["star", "layers", "sorted", "bellman", "queue", "solution"];
+    let mut seed = 2093;
+    let mut problems: Vec[(i64, Vec[(i64, i64, i64)], i64)] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 6 + 2;
+        let m = next_random(mut seed) % 11;
+        let top = [20, 1000][next_random(mut seed) % 2];
+        let mut seen: Set[(i64, i64)] = Set.new();
+        let mut highways: Vec[(i64, i64, i64)] = Vec.new();
+        for _ in 0..m {
+            let a = next_random(mut seed) % n;
+            let b = (a + 1 + next_random(mut seed) % (n - 1)) % n;
+            let toll = next_random(mut seed) % top;
+            if seen.insert((a.min(b), a.max(b))) {
+                highways.push((a, b, toll));
+            }
+        }
+        let mut discounts = next_random(mut seed) % 5;
+        if t >= 300 and t < 320 {
+            discounts = 0;
+        } else if t >= 320 {
+            discounts = highways.len();
+        }
+        problems.push((n, highways, discounts));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, highways, discounts) in problems.iter() {
+        let truth = literal(n, highways, discounts);
+        check = (check * 31 + truth + 2) % 1000000007;
+        let reversed: Vec[(i64, i64, i64)] = highways.iter().rev().map(|(a, b, t)| (b, a, t)).collect();
+        let renumber = |c: i64| if c == 0 or c == n - 1 { c } else { n - 1 - c };
+        let renumbered: Vec[(i64, i64, i64)] = highways.iter().map(|(a, b, t)| (renumber(a), renumber(b), t)).collect();
+        let joined = reaches(n, highways);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, highways, discounts)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, n, highways, discounts + 1);
+            let plain = answer(arm, n, highways, 0);
+            let bounded = if joined { x >= 0 and plain <= 2 * x + n - 1 and x <= plain } else { x == -1 };
+            let verdicts = [
+                x == truth,
+                if x == -1 { more == -1 } else { 0 <= more and more <= x },
+                answer(arm, n, reversed, discounts) == x,
+                bounded,
+                answer(arm, n, renumbered, discounts) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} cities, {discounts} discounts, {show(highways)} arm {names[arm]}: P{q + 1} fails, cost {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} maps: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

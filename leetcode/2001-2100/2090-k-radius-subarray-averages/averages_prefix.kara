@@ -1,0 +1,74 @@
+// LeetCode #2090: K Radius Subarray Averages -- prefix sums: `prefix[i]`
+// the sum of the first `i` values, so the window around `i` sums to
+// `prefix[i + k + 1] - prefix[i - k]`. O(n), and n + 1 more values kept.
+
+fn get_averages(nums: Vec[i64], k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut avgs: Vec[i64] = Vec.filled(n, -1);
+    for i in k..n - k {
+        avgs[i] = (prefix[i + k + 1] - prefix[i - k]) / (2 * k + 1);
+    }
+    avgs
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(v: Vec[i64]) -> String {
+    let parts: Vec[String] = v.iter().map(|x| f"{x}").collect();
+    f"[{parts.join(",")}]"
+}
+
+fn main() {
+    // LeetCode's three examples, then four more
+    let examples = [
+        ([7, 4, 3, 9, 1, 8, 5, 2, 6].to_vec(), 3),
+        ([100000].to_vec(), 0),
+        ([8].to_vec(), 100000),
+        ([1, 2, 3, 4, 5].to_vec(), 1),
+        ([5, 5].to_vec(), 1),
+        ([0, 0, 0].to_vec(), 0),
+        ([1, 2, 3, 4, 5, 6].to_vec(), 2),
+    ];
+    for (nums, k) in examples.iter() {
+        println(f"{show(nums)} {k} -> {show(get_averages(nums, k))}");
+    }
+    // 2000 random arrays of 1 to 100 values from 0 to 9, 999 or 99999, the
+    // radius from 0 to 59
+    let mut seed = 2090;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let top = [10, 1000, 100000][next_random(mut seed) % 3];
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let k = next_random(mut seed) % 60;
+        for a in get_averages(nums, k).iter() {
+            total += a;
+            check = (check * 31 + a + 2) % 1000000007;
+        }
+    }
+    println(f"2000 arrays: sum {total}, checksum {check}");
+    // the constraints' largest, 100000 values up to 100000, a radius of 10,
+    // of 49999 (one window, the whole array but the last value), and of
+    // 50000 (no window at all)
+    let big: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100001).collect();
+    let mut s = 0;
+    let mut c = 0;
+    for a in get_averages(big, 10).iter() {
+        s += a;
+        c = (c * 31 + a + 2) % 1000000007;
+    }
+    println(f"100000 values, radius 10: sum {s}, checksum {c}");
+    let one = get_averages(big, 49999);
+    let missing = get_averages(big, 50000).iter().filter(|a| a == -1).count();
+    println(f"radius 49999: {one[49999]} at 49999, {one.iter().filter(|a| a == -1).count()} missing; radius 50000: {missing} missing");
+}

@@ -1,0 +1,102 @@
+// LeetCode #2096: Step-By-Step Directions From a Binary Tree Node to
+// Another -- the ★ arm's benchmark: one random tree of 100000 nodes, built
+// once, asked 1000 questions, each answered by the two depth-first searches
+// from the root and the common start dropped.
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn way_to(node: Option[TreeNode], target: i64, way: mut ref String) -> bool {
+    let Some(n) = node else {
+        return false;
+    };
+    if n.val == target {
+        return true;
+    }
+    way.push('L');
+    if way_to(n.left, target, mut way) {
+        return true;
+    }
+    way.pop();
+    way.push('R');
+    if way_to(n.right, target, mut way) {
+        return true;
+    }
+    way.pop();
+    false
+}
+
+fn get_directions(root: Option[TreeNode], start_value: i64, dest_value: i64) -> String {
+    let mut from = String.new();
+    let mut to = String.new();
+    way_to(root, start_value, mut from);
+    way_to(root, dest_value, mut to);
+    let a: Vec[char] = from.chars().collect();
+    let b: Vec[char] = to.chars().collect();
+    let mut common = 0;
+    while common < a.len() and common < b.len() and a[common] == b[common] {
+        common += 1;
+    }
+    let mut out = "U".repeat(a.len() - common);
+    for c in b[common..].iter() {
+        out.push(c);
+    }
+    out
+}
+
+fn main() {
+    let mut seed = 2096;
+    let n = 100000;
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        values.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    let nodes: Vec[TreeNode] = values.iter().map(|v| TreeNode { val: v, left: None, right: None }).collect();
+    for k in 1..n {
+        let mut at = nodes[wide_random(mut seed) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    let root = Some(nodes[0]);
+    let mut steps = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let s = wide_random(mut seed) % n + 1;
+        let t = (s + wide_random(mut seed) % (n - 1)) % n + 1;
+        let way = get_directions(root, s, t);
+        steps += way.len();
+        for c in way.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"1000 answers: {steps} steps, checksum {check}");
+}
