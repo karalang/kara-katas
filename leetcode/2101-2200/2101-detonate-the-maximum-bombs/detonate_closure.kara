@@ -1,0 +1,101 @@
+// LeetCode #2101: Detonate the Maximum Bombs -- the transitive closure.
+// A `Vec[Vec[bool]]` starts as "bomb `i` sets off bomb `j` directly" (and
+// itself), and Warshall's triple loop adds every route through each bomb
+// `k` in turn; a row's count of `true` is how many its bomb sets off.
+// O(n^3) for n <= 100.
+
+fn maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut reach: Vec[Vec[bool]] = (0..n).map(|i| (0..n).map(|j| {
+        let dx = bombs[i][0] - bombs[j][0];
+        let dy = bombs[i][1] - bombs[j][1];
+        dx * dx + dy * dy <= bombs[i][2] * bombs[i][2]
+    }).collect()).collect();
+    for k in 0..n {
+        for i in 0..n {
+            if reach[i][k] {
+                for j in 0..n {
+                    if reach[k][j] {
+                        reach[i][j] = true;
+                    }
+                }
+            }
+        }
+    }
+    reach.iter().map(|row| row.iter().filter(|r| r).count()).max().unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: a bomb reaches another
+    // exactly on its rim, the reach is one-way, and a chain only one end
+    // of which sets off the rest
+    let examples = [
+        [[2, 1, 3].to_vec(), [6, 1, 4].to_vec()].to_vec(),
+        [[1, 1, 5].to_vec(), [10, 10, 5].to_vec()].to_vec(),
+        [[1, 2, 3].to_vec(), [2, 3, 1].to_vec(), [3, 4, 2].to_vec(), [4, 5, 3].to_vec(), [5, 6, 4].to_vec()].to_vec(),
+        [[7, 7, 9].to_vec()].to_vec(),
+        [[1, 1, 5].to_vec(), [4, 5, 1].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec(), [1, 3, 1].to_vec()].to_vec(),
+        [[1, 1, 2].to_vec(), [3, 1, 2].to_vec(), [5, 1, 2].to_vec(), [7, 1, 1].to_vec(), [9, 1, 9].to_vec()].to_vec(),
+    ];
+    for bombs in examples.iter() {
+        println(f"{bombs} -> {maximum_detonation(bombs)}");
+    }
+    // 3000 random fields of 1 to 12 bombs, on a 20 by 20 square with radii
+    // of 1 to 8, or spread up to 10^5 with radii up to 10^5
+    let mut seed = 2101;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut bombs: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            if round % 2 == 0 {
+                bombs.push([next_random(mut seed) % 20 + 1, next_random(mut seed) % 20 + 1, next_random(mut seed) % 8 + 1].to_vec());
+            } else {
+                bombs.push([wide_random(mut seed) % 100000 + 1, wide_random(mut seed) % 100000 + 1, wide_random(mut seed) % 100000 + 1].to_vec());
+            }
+        }
+        let got = maximum_detonation(bombs);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 fields: {total} bombs in all, checksum {check}");
+    // the constraints' largest: 100 bombs on a line whose gaps shrink, each
+    // reaching only the next, so the first sets off all; 100 whose gaps
+    // grow, each reaching only the one before, so the last does; 100 too
+    // far apart to reach any other; and 100 at the corners of the square
+    // with the largest radius
+    let mut chain: Vec[Vec[i64]] = Vec.new();
+    let mut at = 1;
+    for i in 0..100 {
+        let gap = 1000 - 5 * i;
+        chain.push([at, 50000, gap].to_vec());
+        at += gap;
+    }
+    println(f"a chain of 100: {maximum_detonation(chain)}");
+    let mut back: Vec[Vec[i64]] = Vec.new();
+    at = 1;
+    let mut behind = 1;
+    for i in 0..100 {
+        back.push([at, 50000, behind].to_vec());
+        behind = 500 + 5 * i;
+        at += behind;
+    }
+    println(f"a chain of 100 set off from its far end: {maximum_detonation(back)}");
+    let apart: Vec[Vec[i64]] = (0..100).map(|i| [1 + 1000 * (i % 10), 1 + 1000 * (i / 10), 999].to_vec()).collect();
+    println(f"100 apart: {maximum_detonation(apart)}");
+    let corners: Vec[Vec[i64]] = (0..100).map(|i| [if i % 2 == 0 { 1 } else { 100000 }, if i % 4 < 2 { 1 } else { 100000 }, 100000].to_vec()).collect();
+    println(f"100 at the corners: {maximum_detonation(corners)}");
+}

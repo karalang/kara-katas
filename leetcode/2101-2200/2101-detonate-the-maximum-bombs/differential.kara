@@ -1,0 +1,339 @@
+// LeetCode #2101: Detonate the Maximum Bombs -- the differential. The six
+// arms, against the statement read literally: from each bomb, every bomb
+// within range of one already gone off is set off too, sweeping all pairs
+// again until a sweep adds nothing. 300 random fields of 1 to 10 bombs on
+// a 20 by 20 square with radii of 1 to 8; then 20 fields of 1 to 10 bombs
+// along one line, 1 to 5 apart with radii of 1 to 5, so chains are long
+// and often one-way; then 20 fields of 1 to 10 bombs spread up to 10^5;
+// every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 1 to n, and more than any one bomb sets off directly
+// P3  the bombs listed in reverse: the same answer
+// P4  the field turned a quarter, (x, y) to (y, 100001 - x): the same
+//     answer
+// P5  every radius halved, rounded up: an answer no larger
+// P6  each arm agrees with at least three of the other five
+
+// ---- detonate.kara: the ★ arm, adjacency lists and a breadth-first search
+fn star_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut reach: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 0..n {
+        for j in 0..n {
+            let dx = bombs[i][0] - bombs[j][0];
+            let dy = bombs[i][1] - bombs[j][1];
+            if i != j and dx * dx + dy * dy <= bombs[i][2] * bombs[i][2] {
+                reach[i].push(j);
+            }
+        }
+    }
+    let mut best = 0;
+    for start in 0..n {
+        let mut seen = Vec.filled(n, false);
+        seen[start] = true;
+        let mut queue = VecDeque.new();
+        queue.push_back(start);
+        let mut count = 0;
+        while let Some(i) = queue.pop_front() {
+            count += 1;
+            for j in reach[i].iter() {
+                if not seen[j] {
+                    seen[j] = true;
+                    queue.push_back(j);
+                }
+            }
+        }
+        best = best.max(count);
+    }
+    best
+}
+
+// ---- detonate_dfs.kara: a recursive depth-first search
+fn dfs_reaches(a: Vec[i64], b: Vec[i64]) -> bool {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    dx * dx + dy * dy <= a[2] * a[2]
+}
+
+fn dfs_spread(bombs: Vec[Vec[i64]], i: i64, gone: mut ref Vec[bool]) -> i64 {
+    gone[i] = true;
+    let mut count = 1;
+    for j in 0..bombs.len() {
+        if not gone[j] and dfs_reaches(bombs[i], bombs[j]) {
+            count += dfs_spread(bombs, j, mut gone);
+        }
+    }
+    count
+}
+
+fn dfs_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    (0..bombs.len()).map(|start| {
+        let mut gone = Vec.filled(bombs.len(), false);
+        dfs_spread(bombs, start, mut gone)
+    }).max().unwrap()
+}
+
+// ---- detonate_closure.kara: Warshall's transitive closure
+fn closure_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut reach: Vec[Vec[bool]] = (0..n).map(|i| (0..n).map(|j| {
+        let dx = bombs[i][0] - bombs[j][0];
+        let dy = bombs[i][1] - bombs[j][1];
+        dx * dx + dy * dy <= bombs[i][2] * bombs[i][2]
+    }).collect()).collect();
+    for k in 0..n {
+        for i in 0..n {
+            if reach[i][k] {
+                for j in 0..n {
+                    if reach[k][j] {
+                        reach[i][j] = true;
+                    }
+                }
+            }
+        }
+    }
+    reach.iter().map(|row| row.iter().filter(|r| r).count()).max().unwrap()
+}
+
+// ---- detonate_struct.kara: a `struct Bomb` and an explicit stack
+struct FieldBomb {
+    x: i64,
+    y: i64,
+    r: i64,
+}
+
+impl FieldBomb {
+    fn sets_off(self, other: FieldBomb) -> bool {
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        dx * dx + dy * dy <= self.r * self.r
+    }
+}
+
+fn field_chain(field: Vec[FieldBomb], start: i64) -> i64 {
+    let mut gone = Vec.filled(field.len(), false);
+    gone[start] = true;
+    let mut stack = [start].to_vec();
+    let mut count = 0;
+    while let Some(i) = stack.pop() {
+        count += 1;
+        for j in 0..field.len() {
+            if not gone[j] and field[i].sets_off(field[j]) {
+                gone[j] = true;
+                stack.push(j);
+            }
+        }
+    }
+    count
+}
+
+fn field_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let field: Vec[FieldBomb] = bombs.iter().map(|b| FieldBomb { x: b[0], y: b[1], r: b[2] }).collect();
+    let mut best = 0;
+    for start in 0..field.len() {
+        best = best.max(field_chain(field, start));
+    }
+    best
+}
+
+// ---- detonate_bits.kara: reach sets as `u128` bits
+fn bits_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut reach: Vec[u128] = Vec.filled(n, 0u128);
+    for i in 0..n {
+        for j in 0..n {
+            let dx = bombs[i][0] - bombs[j][0];
+            let dy = bombs[i][1] - bombs[j][1];
+            if dx * dx + dy * dy <= bombs[i][2] * bombs[i][2] {
+                reach[i] |= 1u128 << j;
+            }
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            let mut grown = reach[i];
+            for j in 0..n {
+                if (reach[i] >> j) & 1 == 1 {
+                    grown |= reach[j];
+                }
+            }
+            if grown != reach[i] {
+                reach[i] = grown;
+                changed = true;
+            }
+        }
+    }
+    reach.iter().map(|set| set.count_ones()).max().unwrap()
+}
+
+// ---- detonate_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn maximum_detonation(bombs: Vec[Vec[i32]]) -> i32 {
+        let n = bombs.len();
+        let mut graph = Vec.filled(n, Vec.new());
+        for i in 0..n {
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                let dx = (bombs[i][0] - bombs[j][0]) as i64;
+                let dy = (bombs[i][1] - bombs[j][1]) as i64;
+                let r = bombs[i][2] as i64;
+                if dx * dx + dy * dy <= r * r {
+                    graph[i].push(j);
+                }
+            }
+        }
+        let mut ans: i32 = 0;
+        for s in 0..n {
+            let mut seen = Set.new();
+            seen.insert(s);
+            let mut stack = [s];
+            while let Some(u) = stack.pop() {
+                for v in ref graph[u] {
+                    if seen.insert(v) {
+                        stack.push(v);
+                    }
+                }
+            }
+            ans = ans.max(seen.len() as i32);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let v: Vec[Vec[i32]] = bombs.iter().map(|b| b.iter().map(|x| x as i32).collect()).collect();
+    SolutionSolution.maximum_detonation(v)
+}
+
+// ---- the statement read literally
+
+fn within(a: Vec[i64], b: Vec[i64]) -> bool {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    dx * dx + dy * dy <= a[2] * a[2]
+}
+
+fn literal(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut best = 0;
+    for start in 0..n {
+        let mut gone = Vec.filled(n, false);
+        gone[start] = true;
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for i in 0..n {
+                for j in 0..n {
+                    if gone[i] and not gone[j] and within(bombs[i], bombs[j]) {
+                        gone[j] = true;
+                        grew = true;
+                    }
+                }
+            }
+        }
+        best = best.max(gone.iter().filter(|g| g).count());
+    }
+    best
+}
+
+fn answer(arm: i64, bombs: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_maximum_detonation(bombs),
+        1 => dfs_maximum_detonation(bombs),
+        2 => closure_maximum_detonation(bombs),
+        3 => field_maximum_detonation(bombs),
+        4 => bits_maximum_detonation(bombs),
+        _ => solution_maximum_detonation(bombs),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "dfs", "closure", "struct", "bits", "solution"];
+    let mut seed = 2101;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..340 {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut bombs: Vec[Vec[i64]] = Vec.new();
+        let mut x = 1;
+        for _ in 0..n {
+            if t < 300 {
+                bombs.push([next_random(mut seed) % 20 + 1, next_random(mut seed) % 20 + 1, next_random(mut seed) % 8 + 1].to_vec());
+            } else if t < 320 {
+                x += next_random(mut seed) % 5 + 1;
+                bombs.push([x, 1, next_random(mut seed) % 5 + 1].to_vec());
+            } else {
+                bombs.push([wide_random(mut seed) % 100000 + 1, wide_random(mut seed) % 100000 + 1, wide_random(mut seed) % 100000 + 1].to_vec());
+            }
+        }
+        problems.push(bombs);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for bombs in problems.iter() {
+        let n = bombs.len();
+        let truth = literal(bombs);
+        check = (check * 31 + truth) % 1000000007;
+        let direct = (0..n).map(|i| (0..n).filter(|j| within(bombs[i], bombs[j])).count()).max().unwrap();
+        let mut reversed = bombs.to_vec();
+        reversed.reverse();
+        let turned: Vec[Vec[i64]] = bombs.iter().map(|b| [b[1], 100001 - b[0], b[2]].to_vec()).collect();
+        let halved: Vec[Vec[i64]] = bombs.iter().map(|b| [b[0], b[1], (b[2] + 1) / 2].to_vec()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, bombs)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= 1 and x <= n and x >= direct,
+                answer(arm, reversed) == x,
+                answer(arm, turned) == x,
+                answer(arm, halved) <= x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{bombs} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} fields: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,60 @@
+// LeetCode #2101: Detonate the Maximum Bombs -- the ★ arm's benchmark:
+// 2000 fields of 100 bombs, the constraints' largest count, on a 1000 by
+// 1000 square with radii of 1 to 150, so that most bombs sit in one large
+// chain and some apart. Each field answered by adjacency lists and a
+// breadth-first search from each bomb; every answer goes into the
+// checksum.
+
+fn maximum_detonation(bombs: Vec[Vec[i64]]) -> i64 {
+    let n = bombs.len();
+    let mut reach: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for i in 0..n {
+        for j in 0..n {
+            let dx = bombs[i][0] - bombs[j][0];
+            let dy = bombs[i][1] - bombs[j][1];
+            if i != j and dx * dx + dy * dy <= bombs[i][2] * bombs[i][2] {
+                reach[i].push(j);
+            }
+        }
+    }
+    let mut best = 0;
+    for start in 0..n {
+        let mut seen = Vec.filled(n, false);
+        seen[start] = true;
+        let mut queue = VecDeque.new();
+        queue.push_back(start);
+        let mut count = 0;
+        while let Some(i) = queue.pop_front() {
+            count += 1;
+            for j in reach[i].iter() {
+                if not seen[j] {
+                    seen[j] = true;
+                    queue.push_back(j);
+                }
+            }
+        }
+        best = best.max(count);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2101;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let mut bombs: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..100 {
+            bombs.push([next_random(mut seed) % 1000 + 1, next_random(mut seed) % 1000 + 1, next_random(mut seed) % 150 + 1].to_vec());
+        }
+        let got = maximum_detonation(bombs);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"2000 fields: {total} bombs in all, checksum {check}");
+}
