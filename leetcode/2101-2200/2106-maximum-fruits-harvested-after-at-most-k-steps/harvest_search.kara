@@ -1,0 +1,85 @@
+// LeetCode #2106: Maximum Fruits Harvested After at Most K Steps --
+// binary search. A prefix sum over the sorted fruits; for each fruit `i`
+// as the left end of the window, `partition_point` on the positions
+// finds the farthest right end the steps allow. O(n log n).
+
+fn max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let positions: Vec[i64] = fruits.iter().map(|f| f[0]).collect();
+    let mut prefix = [0].to_vec();
+    for f in fruits.iter() {
+        prefix.push(prefix[prefix.len() - 1] + f[1]);
+    }
+    let mut best = 0;
+    for i in 0..fruits.len() {
+        let l = positions[i];
+        if l > start or start - l > k {
+            continue;
+        }
+        let left_steps = start - l;
+        let reach = (k - 2 * left_steps).max((k - left_steps) / 2) + start;
+        let reach = reach.max(start);
+        let end = positions.partition_point(|p| p <= reach);
+        best = best.max(prefix[end] - prefix[i]);
+    }
+    let first_right = positions.partition_point(|p| p < start);
+    let end = positions.partition_point(|p| p <= start + k);
+    best.max(prefix[end] - prefix[first_right])
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn field(pairs: Vec[(i64, i64)]) -> Vec[Vec[i64]] {
+    pairs.iter().map(|p| [p.0, p.1].to_vec()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: no steps at all on a
+    // fruit, a start right of every fruit, a long way to the richer side,
+    // and the turn that costs less going right first
+    let examples = [
+        (field([(2, 8), (6, 3), (8, 6)].to_vec()), 5, 4),
+        (field([(0, 9), (4, 1), (5, 7), (6, 2), (7, 4), (10, 9)].to_vec()), 5, 4),
+        (field([(0, 3), (6, 4), (8, 5)].to_vec()), 3, 2),
+        (field([(3, 7), (4, 1)].to_vec()), 3, 0),
+        (field([(1, 2), (2, 3), (5, 4)].to_vec()), 9, 5),
+        (field([(0, 100), (9, 1), (11, 1), (12, 1)].to_vec()), 10, 12),
+        (field([(1, 5), (11, 6), (13, 6)].to_vec()), 10, 7),
+    ];
+    for (fruits, start, k) in examples.iter() {
+        println(f"{fruits} from {start} in {k} -> {max_total_fruits(fruits, start, k)}");
+    }
+    // 3000 random fields of 1 to 40 fruits on positions 0 to 60, from a
+    // random start with 0 to 40 steps
+    let mut seed = 2106;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let mut taken = Vec.filled(61, false);
+        let mut fruits: Vec[Vec[i64]] = Vec.new();
+        while fruits.len() < n {
+            let p = next_random(mut seed) % 61;
+            if not taken[p] {
+                taken[p] = true;
+                fruits.push([p, next_random(mut seed) % 20 + 1].to_vec());
+            }
+        }
+        fruits.sort();
+        let start = next_random(mut seed) % 61;
+        let k = next_random(mut seed) % 41;
+        let got = max_total_fruits(fruits, start, k);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 fields: {total} fruits, checksum {check}");
+    // the constraints' largest, 10^5 fruits of 10^4 on every even
+    // position from 0, from the middle with 2 * 10^5 steps and with 1000
+    let wide: Vec[Vec[i64]] = (0..100000).map(|i| [2 * i, 10000].to_vec()).collect();
+    println(f"wide, every step -> {max_total_fruits(wide, 100000, 200000)}");
+    println(f"wide, 1000 steps -> {max_total_fruits(wide, 100001, 1000)}");
+}

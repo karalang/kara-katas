@@ -1,0 +1,329 @@
+// LeetCode #2106: Maximum Fruits Harvested After at Most K Steps -- the
+// differential. The six arms, against the statement read literally: a
+// walk of at most `k` steps covers an interval around the start, and the
+// cheapest walk covering `lo..=hi` walks it end to end once plus its
+// shorter side twice; every interval whose ends are the start or a fruit
+// is tried. 300 random fields of 1 to 10 fruits on positions 0 to 20,
+// from a start in 0 to 20 with 0 to 15 steps; then 20 of 1 to 30 fruits
+// up to 10^4 each on positions up to 2 * 10^5 with up to 2 * 10^5
+// steps; then 20 with every fruit on one side of the start; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at most every fruit together, and at least the
+//     richest single fruit within `k` steps
+// P3  the field mirrored, `p` to `200000 - p` and the start with it:
+//     the same answer
+// P4  one more step: an answer no smaller
+// P5  every position and the start moved 5 right: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- harvest.kara: the ★ arm, a sliding window
+fn star_steps(l: i64, r: i64, start: i64) -> i64 {
+    if l >= start {
+        r - start
+    } else if r <= start {
+        start - l
+    } else {
+        (2 * (start - l) + (r - start)).min((start - l) + 2 * (r - start))
+    }
+}
+
+fn star_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let mut left = 0;
+    let mut sum = 0;
+    let mut best = 0;
+    for right in 0..fruits.len() {
+        sum += fruits[right][1];
+        while left <= right and star_steps(fruits[left][0], fruits[right][0], start) > k {
+            sum -= fruits[left][1];
+            left += 1;
+        }
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- harvest_prefix.kara: every route over a prefix of positions
+fn prefix_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let last = fruits[fruits.len() - 1][0].max(start) + k + 1;
+    let mut prefix = Vec.filled(last + 1, 0);
+    for f in fruits.iter() {
+        prefix[f[0] + 1] += f[1];
+    }
+    for p in 1..=last {
+        prefix[p] += prefix[p - 1];
+    }
+    let between = |l: i64, r: i64| prefix[r.min(last - 1) + 1] - prefix[l.max(0)];
+    let mut best = 0;
+    for x in 0..=k {
+        let back = (k - 2 * x).max(0);
+        best = best.max(between(start - x, start + back));
+        best = best.max(between(start - back, start + x));
+    }
+    best
+}
+
+// ---- harvest_search.kara: `partition_point` for each left end
+fn search_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let positions: Vec[i64] = fruits.iter().map(|f| f[0]).collect();
+    let mut prefix = [0].to_vec();
+    for f in fruits.iter() {
+        prefix.push(prefix[prefix.len() - 1] + f[1]);
+    }
+    let mut best = 0;
+    for i in 0..fruits.len() {
+        let l = positions[i];
+        if l > start or start - l > k {
+            continue;
+        }
+        let left_steps = start - l;
+        let reach = (k - 2 * left_steps).max((k - left_steps) / 2) + start;
+        let reach = reach.max(start);
+        let end = positions.partition_point(|p| p <= reach);
+        best = best.max(prefix[end] - prefix[i]);
+    }
+    let first_right = positions.partition_point(|p| p < start);
+    let end = positions.partition_point(|p| p <= start + k);
+    best.max(prefix[end] - prefix[first_right])
+}
+
+// ---- harvest_struct.kara: a `Walk` and a `Window`
+struct WalkWalk {
+    start: i64,
+    k: i64,
+}
+
+impl WalkWalk {
+    fn cost(self, l: i64, r: i64) -> i64 {
+        let left = (self.start - l).max(0);
+        let right = (r - self.start).max(0);
+        left + right + left.min(right)
+    }
+
+    fn fits(self, l: i64, r: i64) -> bool {
+        self.cost(l, r) <= self.k
+    }
+}
+
+struct WalkWindow {
+    first: i64,
+    total: i64,
+}
+
+impl WalkWindow {
+    fn take(mut ref self, amount: i64) {
+        self.total += amount;
+    }
+
+    fn drop_first(mut ref self, amount: i64) {
+        self.total -= amount;
+        self.first += 1;
+    }
+}
+
+fn walk_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let walk = WalkWalk { start: start, k: k };
+    let mut window = WalkWindow { first: 0, total: 0 };
+    let mut best = 0;
+    for (last, f) in fruits.iter().enumerate() {
+        window.take(f[1]);
+        while window.first <= last and not walk.fits(fruits[window.first][0], f[0]) {
+            window.drop_first(fruits[window.first][1]);
+        }
+        best = best.max(window.total);
+    }
+    best
+}
+
+// ---- harvest_deque.kara: a `VecDeque` window
+fn deque_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let mut window: VecDeque[(i64, i64)] = VecDeque.new();
+    let mut sum = 0;
+    let mut best = 0;
+    for f in fruits.iter() {
+        window.push_back((f[0], f[1]));
+        sum += f[1];
+        loop {
+            let (l, _) = window.front().unwrap();
+            let r = f[0];
+            let span = r.max(start) - l.min(start);
+            let shorter = (start - l).max(0).min((r - start).max(0));
+            if span + shorter <= k {
+                break;
+            }
+            let (_, amount) = window.pop_front().unwrap();
+            sum -= amount;
+            if window.is_empty() {
+                break;
+            }
+        }
+        best = best.max(sum);
+    }
+    best
+}
+
+// ---- harvest_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn max_total_fruits(fruits: Vec[Vec[i32]], start_pos: i32, k: i32) -> i32 {
+        let cost = |l: i32, r: i32| {
+            if r <= start_pos {
+                start_pos - l
+            } else if l >= start_pos {
+                r - start_pos
+            } else {
+                min(2 * (start_pos - l) + (r - start_pos), (start_pos - l) + 2 * (r - start_pos))
+            }
+        };
+        let mut ans: i32 = 0;
+        let mut sum: i32 = 0;
+        let mut left = 0;
+        for right in 0..fruits.len() {
+            sum += fruits[right][1];
+            while left <= right and cost(fruits[left][0], fruits[right][0]) > k {
+                sum -= fruits[left][1];
+                left += 1;
+            }
+            ans = ans.max(sum);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_max_total_fruits(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let fruits: Vec[Vec[i32]] = fruits.iter().map(|f| f.iter().map(|x| x as i32).collect()).collect();
+    SolutionSolution.max_total_fruits(fruits, start as i32, k as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    let mut ends = [start].to_vec();
+    for f in fruits.iter() {
+        ends.push(f[0]);
+    }
+    let mut best = 0;
+    for lo in ends.iter() {
+        for hi in ends.iter() {
+            if lo > start or hi < start {
+                continue;
+            }
+            let walked = (hi - lo) + (start - lo).min(hi - start);
+            if walked > k {
+                continue;
+            }
+            let mut sum = 0;
+            for f in fruits.iter() {
+                if f[0] >= lo and f[0] <= hi {
+                    sum += f[1];
+                }
+            }
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, fruits: Vec[Vec[i64]], start: i64, k: i64) -> i64 {
+    match arm {
+        0 => star_max_total_fruits(fruits, start, k),
+        1 => prefix_max_total_fruits(fruits, start, k),
+        2 => search_max_total_fruits(fruits, start, k),
+        3 => walk_max_total_fruits(fruits, start, k),
+        4 => deque_max_total_fruits(fruits, start, k),
+        _ => solution_max_total_fruits(fruits, start, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "prefix", "search", "struct", "deque", "solution"];
+    let mut seed = 2106;
+    let mut problems: Vec[(Vec[Vec[i64]], i64, i64)] = Vec.new();
+    for t in 0..340 {
+        let (count, span, most) = if t < 300 {
+            (next_random(mut seed) % 10 + 1, 21, 20)
+        } else {
+            (next_random(mut seed) % 30 + 1, 200001, 10000)
+        };
+        let mut positions: Set[i64] = Set.new();
+        while positions.len() < count {
+            positions.insert(wide_random(mut seed) % span);
+        }
+        let mut sorted: Vec[i64] = positions.iter().collect();
+        sorted.sort();
+        let fruits: Vec[Vec[i64]] = sorted.iter().map(|p| [p, wide_random(mut seed) % most + 1].to_vec()).collect();
+        let (start, k) = if t < 300 {
+            (next_random(mut seed) % 21, next_random(mut seed) % 16)
+        } else if t < 320 {
+            (wide_random(mut seed) % 200001, wide_random(mut seed) % 200001)
+        } else if t % 2 == 0 {
+            (sorted[0] - next_random(mut seed) % 50, wide_random(mut seed) % 200001)
+        } else {
+            (sorted[sorted.len() - 1] + next_random(mut seed) % 50, wide_random(mut seed) % 200001)
+        };
+        problems.push((fruits, start.max(0).min(200000), k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (fruits, start, k) in problems.iter() {
+        let truth = literal(fruits, start, k);
+        check = (check * 31 + truth) % 1000000007;
+        let all: i64 = fruits.iter().map(|f| f[1]).sum();
+        let single = fruits.iter().filter(|f| (f[0] - start).abs() <= k).map(|f| f[1]).max().unwrap_or(0);
+        let mut mirrored: Vec[Vec[i64]] = fruits.iter().map(|f| [200000 - f[0], f[1]].to_vec()).collect();
+        mirrored.reverse();
+        let moved: Vec[Vec[i64]] = fruits.iter().map(|f| [f[0] + 5, f[1]].to_vec()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, fruits, start, k)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x <= all and x >= single,
+                answer(arm, mirrored, 200000 - start, k) == x,
+                answer(arm, fruits, start, k + 1) >= x,
+                answer(arm, moved, start + 5, k) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{fruits} from {start} in {k} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} fields: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
