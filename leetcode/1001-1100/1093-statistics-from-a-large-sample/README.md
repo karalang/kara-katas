@@ -163,7 +163,7 @@ The kata found one gap, fixed in the compiler:
   waits for the closure's other returns and takes their integer type, as
   it would against a declared one; a literal out of that type's range is
   still refused, and a literal beside a non-integer return still
-  conflicts (kara B-2026-11-10-22, pinned by
+  conflicts (kara B-2026-11-10-23, pinned by
   `tests/kata_1093_closure_literal_return.rs`).
 
 With that, the Rust arm reaches a clean check in three rounds of `karac
