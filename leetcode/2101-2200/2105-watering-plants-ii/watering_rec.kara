@@ -1,0 +1,73 @@
+// LeetCode #2105: Watering Plants II -- one step per call. `step(plants,
+// i, j, a, b)` waters plants `i` and `j` and returns the refills from
+// there on, with the meeting rules as its base cases; a loop in tail
+// position, written as a recursion over the pairs. O(n) calls, n / 2
+// deep.
+
+fn pour(left: i64, need: i64, capacity: i64) -> (i64, i64) {
+    if left < need { (capacity - need, 1) } else { (left - need, 0) }
+}
+
+fn step(plants: Vec[i64], i: i64, j: i64, a: i64, b: i64, capacity_a: i64, capacity_b: i64) -> i64 {
+    if i > j {
+        return 0;
+    }
+    if i == j {
+        return if a.max(b) < plants[i] { 1 } else { 0 };
+    }
+    let (a, ra) = pour(a, plants[i], capacity_a);
+    let (b, rb) = pour(b, plants[j], capacity_b);
+    ra + rb + step(plants, i + 1, j - 1, a, b, capacity_a, capacity_b)
+}
+
+fn minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    step(plants, 0, plants.len() - 1, capacity_a, capacity_b, capacity_a, capacity_b)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: a middle plant neither
+    // can water, a middle plant only Bob, holding more, can; a refill at
+    // every plant, two plants each a full can, and no refill at all
+    let examples = [
+        ([2, 2, 3, 3].to_vec(), 5, 5),
+        ([2, 2, 3, 3].to_vec(), 3, 4),
+        ([5].to_vec(), 10, 8),
+        ([1, 2, 4, 4, 5].to_vec(), 6, 5),
+        ([3, 1, 2, 1, 1].to_vec(), 4, 4),
+        ([3, 3, 3, 3, 3, 3].to_vec(), 3, 3),
+        ([4, 6].to_vec(), 4, 6),
+        ([1, 1, 1, 1, 1].to_vec(), 9, 9),
+    ];
+    for (plants, a, b) in examples.iter() {
+        println(f"{plants} with {a} and {b} -> {minimum_refill(plants, a, b)}");
+    }
+    // 3000 random rows of 1 to 50 plants each needing 1 to 10, the cans
+    // holding the largest need to 5 more
+    let mut seed = 2105;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let plants: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10 + 1).collect();
+        let most = plants.iter().max().unwrap();
+        let a = most + next_random(mut seed) % 6;
+        let b = most + next_random(mut seed) % 6;
+        let got = minimum_refill(plants, a, b);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 rows: {total} refills, checksum {check}");
+    // the constraints' largest, 10^5 plants: every one needing 10^6 with
+    // cans of 10^6, and needs rising from 1 with cans of 10^9
+    let full: Vec[i64] = (0..100000).map(|_| 1000000).collect();
+    let rising: Vec[i64] = (0..100000).map(|i| i % 1000000 + 1).collect();
+    println(f"full -> {minimum_refill(full, 1000000, 1000000)}");
+    println(f"rising -> {minimum_refill(rising, 1000000000, 1000000000)}");
+}

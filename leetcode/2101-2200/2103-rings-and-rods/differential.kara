@@ -1,0 +1,246 @@
+// LeetCode #2103: Rings and Rods -- the differential. The six arms,
+// against the statement read literally: a rod holds all three colors when
+// the string has an `R`, a `G` and a `B` each followed by that rod's digit.
+// 300 random strings of 1 to 100 rings on rods 0 to 9; then 20 on rods 0
+// to 2 only, so that rods fill up; then 20 that put all three colors on
+// every one of a random set of rods, in shuffled order, with stray rings
+// between; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 0 to 10, no more than a third of the rings, and no
+//     more than the rods that have any ring
+// P3  the rings listed in reverse: the same answer
+// P4  every rod's digit d made 9 - d: the same answer
+// P5  one more ring added at the end: an answer no smaller, and at most
+//     one larger
+// P6  each arm agrees with at least three of the other five
+
+// ---- rings.kara: the ★ arm, a color mask per rod
+fn star_count_points(rings: Str) -> i64 {
+    let bytes = rings.bytes();
+    let mut masks = [0; 10];
+    let mut i = 0;
+    while i < bytes.len() {
+        let bit = match bytes[i] {
+            b'R' => 1,
+            b'G' => 2,
+            _ => 4,
+        };
+        masks[(bytes[i + 1] - b'0') as i64] |= bit;
+        i += 2;
+    }
+    masks.iter().filter(|m| m == 7).count()
+}
+
+// ---- rings_sets.kara: a `Set` of colors per rod
+fn sets_count_points(rings: Str) -> i64 {
+    let mut rods: Vec[Set[char]] = Vec.filled(10, Set.new());
+    let colors = rings.chars().step_by(2);
+    let places = rings.chars().skip(1).step_by(2);
+    for (color, rod) in colors.zip(places) {
+        rods[rod.to_digit(10).unwrap() as i64].insert(color);
+    }
+    rods.iter().filter(|s| s.len() == 3).count()
+}
+
+// ---- rings_search.kara: one search per rod and color
+fn search_count_points(rings: Str) -> i64 {
+    let pairs = rings.bytes().chunks(2);
+    (0..10).filter(|d| {
+        let rod = b'0' + d as u8;
+        [b'R', b'G', b'B'].iter().all(|c| pairs.iter().any(|p| p[0] == c and p[1] == rod))
+    }).count()
+}
+
+// ---- rings_struct.kara: a `struct Rod` of three flags
+struct RodRod {
+    red: bool,
+    green: bool,
+    blue: bool,
+}
+
+impl RodRod {
+    fn put(mut ref self, color: u8) {
+        match color {
+            b'R' => self.red = true,
+            b'G' => self.green = true,
+            _ => self.blue = true,
+        }
+    }
+
+    fn full(self) -> bool {
+        self.red and self.green and self.blue
+    }
+}
+
+fn rod_count_points(rings: Str) -> i64 {
+    let bytes = rings.bytes();
+    let mut rods: Vec[RodRod] = (0..10).map(|_| RodRod { red: false, green: false, blue: false }).collect();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        rods[(bytes[i + 1] - b'0') as i64].put(bytes[i]);
+        i += 2;
+    }
+    rods.iter().filter(|r| r.full()).count()
+}
+
+// ---- rings_counts.kara: a folded table of counts
+fn counts_count_points(rings: Str) -> i64 {
+    let bytes = rings.bytes();
+    let table = (0..bytes.len() / 2).fold(Vec.filled(10, Vec.filled(3, 0)), |t, k| {
+        let mut t = t;
+        let color = "RGB".bytes().iter().position(|c| c == bytes[2 * k]).unwrap();
+        let rod = (bytes[2 * k + 1] - b'0') as i64;
+        t[rod][color] += 1;
+        t
+    });
+    table.iter().filter(|row| row.iter().all(|c| c > 0)).count()
+}
+
+// ---- rings_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn count_points(rings: String) -> i32 {
+        let mut rods = [0u8; 10];
+        for pair in rings.bytes().chunks(2) {
+            let bit: u8 = match pair[0] {
+                b'R' => 1,
+                b'G' => 2,
+                _ => 4,
+            };
+            rods[(pair[1] - b'0') as usize] |= bit;
+        }
+        rods.iter().filter(|m| m == 7).count() as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_count_points(rings: Str) -> i64 {
+    SolutionSolution.count_points(rings.to_string())
+}
+
+// ---- the statement read literally
+
+fn literal(rings: Str) -> i64 {
+    let mut full = 0;
+    for d in 0..10 {
+        if rings.contains(f"R{d}") and rings.contains(f"G{d}") and rings.contains(f"B{d}") {
+            full += 1;
+        }
+    }
+    full
+}
+
+fn answer(arm: i64, rings: Str) -> i64 {
+    match arm {
+        0 => star_count_points(rings),
+        1 => sets_count_points(rings),
+        2 => search_count_points(rings),
+        3 => rod_count_points(rings),
+        4 => counts_count_points(rings),
+        _ => solution_count_points(rings),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn ring(seed: mut ref i64, rods: i64) -> String {
+    let color = "RGB".bytes()[next_random(mut seed) % 3] as char;
+    f"{color}{next_random(mut seed) % rods}"
+}
+
+fn main() {
+    let names = ["star", "sets", "search", "struct", "counts", "solution"];
+    let mut seed = 2103;
+    let mut problems: Vec[String] = Vec.new();
+    for t in 0..340 {
+        let mut rings = String.new();
+        if t < 320 {
+            let n = next_random(mut seed) % 100 + 1;
+            let rods = if t < 300 { 10 } else { 3 };
+            for _ in 0..n {
+                rings.push_str(ring(mut seed, rods));
+            }
+        } else {
+            let mut pieces: Vec[String] = Vec.new();
+            for d in 0..10 {
+                if next_random(mut seed) % 2 == 0 {
+                    pieces.push(f"R{d}");
+                    pieces.push(f"G{d}");
+                    pieces.push(f"B{d}");
+                }
+            }
+            for _ in 0..next_random(mut seed) % 4 {
+                pieces.push(ring(mut seed, 10));
+            }
+            for i in (1..pieces.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                pieces.swap(i, j);
+            }
+            if pieces.is_empty() {
+                pieces.push(ring(mut seed, 10));
+            }
+            rings = pieces.join("");
+        }
+        problems.push(rings);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for rings in problems.iter() {
+        let n = rings.len() / 2;
+        let truth = literal(rings);
+        check = (check * 31 + truth) % 1000000007;
+        let pairs: Vec[String] = (0..n).map(|k| rings.substring(2 * k, 2 * k + 2)).collect();
+        let used = (0..10).filter(|d| pairs.iter().any(|p| p.ends_with(f"{d}"))).count();
+        let mut back = pairs.to_vec();
+        back.reverse();
+        let reversed = back.join("");
+        let mirrored: String = rings.bytes().iter().map(|b| if b >= b'0' and b <= b'9' { (b'9' - b + b'0') as char } else { b as char }).collect();
+        let extra = rings.to_string() + ring(mut seed, 10);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, rings)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, extra);
+            let verdicts = [
+                x == truth,
+                x >= 0 and x <= 10 and 3 * x <= n and x <= used,
+                answer(arm, reversed) == x,
+                answer(arm, mirrored) == x,
+                more >= x and more <= x + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{rings} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

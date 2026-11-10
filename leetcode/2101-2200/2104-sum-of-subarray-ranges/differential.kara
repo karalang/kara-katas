@@ -1,0 +1,312 @@
+// LeetCode #2104: Sum of Subarray Ranges -- the differential. The six
+// arms, against the statement read literally: every subarray's largest
+// less its smallest, each found by a scan of the subarray, summed. 300
+// random arrays of 1 to 12 numbers from -5 to 5, so ties are everywhere;
+// then 20 of 1 to 30 numbers up to 5 * 10^8 either side of zero; then 20
+// of 1 to 30 numbers in runs that rise, fall or stay level; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least the whole array's range, and at most that
+//     range times the number of subarrays
+// P3  the numbers listed in reverse: the same answer
+// P4  every number negated: the same answer
+// P5  every number doubled: the answer doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- ranges.kara: the ★ arm, two monotonic stacks popped once
+fn star_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut sum = 0;
+    let mut stack: Vec[i64] = Vec.new();
+    for i in 0..=n {
+        while not stack.is_empty() and (i == n or nums[stack.last().unwrap()] < nums[i]) {
+            let top = stack.pop().unwrap();
+            let left = if stack.is_empty() { -1 } else { stack.last().unwrap() };
+            sum += nums[top] * (top - left) * (i - top);
+        }
+        stack.push(i);
+    }
+    stack.clear();
+    for i in 0..=n {
+        while not stack.is_empty() and (i == n or nums[stack.last().unwrap()] > nums[i]) {
+            let top = stack.pop().unwrap();
+            let left = if stack.is_empty() { -1 } else { stack.last().unwrap() };
+            sum -= nums[top] * (top - left) * (i - top);
+        }
+        stack.push(i);
+    }
+    sum
+}
+
+// ---- ranges_brute.kara: every subarray, with running bounds
+fn brute_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut sum = 0;
+    for i in 0..n {
+        let mut low = nums[i];
+        let mut high = nums[i];
+        for j in i..n {
+            low = low.min(nums[j]);
+            high = high.max(nums[j]);
+            sum += high - low;
+        }
+    }
+    sum
+}
+
+// ---- ranges_scan.kara: `scan` over each start's suffix
+fn scan_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    (0..nums.len())
+        .map(|i| {
+            nums[i..]
+                .iter()
+                .scan((nums[i], nums[i]), |bounds, x| {
+                    let (low, high) = (bounds.0.min(x), bounds.1.max(x));
+                    Some(((low, high), high - low))
+                })
+                .sum()
+        })
+        .sum()
+}
+
+// ---- ranges_bounds.kara: four nearest-boundary passes
+fn bounds_nearest(nums: Vec[i64], order: Vec[i64], beats: Fn(i64, i64) -> bool, none: i64) -> Vec[i64] {
+    let mut found = Vec.filled(nums.len(), none);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in order.iter() {
+        while not stack.is_empty() and not beats(nums[stack.last().unwrap()], nums[i]) {
+            stack.pop();
+        }
+        if not stack.is_empty() {
+            found[i] = stack.last().unwrap();
+        }
+        stack.push(i);
+    }
+    found
+}
+
+fn bounds_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let forward: Vec[i64] = (0..n).collect();
+    let backward: Vec[i64] = (0..n).rev().collect();
+    let greater_left = bounds_nearest(nums, forward, |a, b| a >= b, -1);
+    let greater_right = bounds_nearest(nums, backward, |a, b| a > b, n);
+    let smaller_left = bounds_nearest(nums, forward, |a, b| a <= b, -1);
+    let smaller_right = bounds_nearest(nums, backward, |a, b| a < b, n);
+    let mut sum = 0;
+    for i in 0..n {
+        sum += nums[i] * (i - greater_left[i]) * (greater_right[i] - i);
+        sum -= nums[i] * (i - smaller_left[i]) * (smaller_right[i] - i);
+    }
+    sum
+}
+
+// ---- ranges_struct.kara: a `Sweep` of `Run`s
+struct SweepRun {
+    value: i64,
+    places: i64,
+}
+
+struct SweepSweep {
+    runs: Vec[SweepRun],
+    total: i64,
+    largest: bool,
+}
+
+impl SweepSweep {
+    fn new(largest: bool) -> SweepSweep {
+        SweepSweep { runs: Vec.new(), total: 0, largest: largest }
+    }
+
+    fn beats(self, a: i64, b: i64) -> bool {
+        if self.largest { a >= b } else { a <= b }
+    }
+
+    fn push(mut ref self, value: i64) -> i64 {
+        let mut places = 1;
+        while not self.runs.is_empty() and self.beats(value, self.runs.last().unwrap().value) {
+            let run = self.runs.pop().unwrap();
+            self.total -= run.value * run.places;
+            places += run.places;
+        }
+        self.total += value * places;
+        self.runs.push(SweepRun { value: value, places: places });
+        self.total
+    }
+}
+
+fn sweep_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    let mut high = SweepSweep.new(true);
+    let mut low = SweepSweep.new(false);
+    let mut sum = 0;
+    for x in nums.iter() {
+        sum += high.push(x) - low.push(x);
+    }
+    sum
+}
+
+// ---- ranges_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn sub_array_ranges(nums: Vec[i32]) -> i64 {
+        let n = nums.len();
+        let mut ans: i64 = 0;
+        let mut stack: Vec[i64] = Vec.new();
+        for i in 0..=n {
+            while let Some(top) = stack.last().cloned() {
+                if i < n and nums[top] >= nums[i] {
+                    break;
+                }
+                stack.pop();
+                let left = stack.last().map_or(-1, |l| l);
+                ans += nums[top] * (i - top) * (top - left);
+            }
+            stack.push(i);
+        }
+        stack.clear();
+        for i in 0..=n {
+            while let Some(top) = stack.last().cloned() {
+                if i < n and nums[top] <= nums[i] {
+                    break;
+                }
+                stack.pop();
+                let left = stack.last().map_or(-1, |l| l);
+                ans -= nums[top] * (i - top) * (top - left);
+            }
+            stack.push(i);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_sub_array_ranges(nums: Vec[i64]) -> i64 {
+    SolutionSolution.sub_array_ranges(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut sum = 0;
+    for i in 0..n {
+        for j in i..n {
+            let mut low = nums[i];
+            let mut high = nums[i];
+            for k in i..=j {
+                if nums[k] < low {
+                    low = nums[k];
+                }
+                if nums[k] > high {
+                    high = nums[k];
+                }
+            }
+            sum += high - low;
+        }
+    }
+    sum
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_sub_array_ranges(nums),
+        1 => brute_sub_array_ranges(nums),
+        2 => scan_sub_array_ranges(nums),
+        3 => bounds_sub_array_ranges(nums),
+        4 => sweep_sub_array_ranges(nums),
+        _ => solution_sub_array_ranges(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "brute", "scan", "bounds", "struct", "solution"];
+    let mut seed = 2104;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..340 {
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            for _ in 0..next_random(mut seed) % 12 + 1 {
+                nums.push(next_random(mut seed) % 11 - 5);
+            }
+        } else if t < 320 {
+            for _ in 0..next_random(mut seed) % 30 + 1 {
+                nums.push(wide_random(mut seed) % 1000000001 - 500000000);
+            }
+        } else {
+            let len = next_random(mut seed) % 30 + 1;
+            let mut x = next_random(mut seed) % 21 - 10;
+            while nums.len() < len {
+                let step = next_random(mut seed) % 3 - 1;
+                for _ in 0..next_random(mut seed) % 6 + 1 {
+                    nums.push(x);
+                    x += step;
+                }
+            }
+            nums.truncate(len);
+        }
+        problems.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in problems.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        check = (check * 31 + truth % 1000000007) % 1000000007;
+        let range = nums.iter().max().unwrap() - nums.iter().min().unwrap();
+        let mut reversed = nums.to_vec();
+        reversed.reverse();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= range and x <= range * (n * (n + 1) / 2),
+                answer(arm, reversed) == x,
+                answer(arm, negated) == x,
+                answer(arm, doubled) == 2 * x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

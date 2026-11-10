@@ -1,0 +1,320 @@
+// LeetCode #2105: Watering Plants II -- the differential. The six arms,
+// against the statement read literally: time steps, Alice at plant `t`
+// and Bob at plant `n - 1 - t` at step `t`, each refilling first when
+// short, both stopping once they have passed; at the same plant the one
+// holding more waters it, Alice on a tie. 300 random rows of 1 to 12
+// plants needing 1 to 6, the cans holding the largest need to 4 more;
+// then 20 rows of 1 to 30 plants needing up to 10^6 with cans up to
+// 10^9; then 20 rows where every plant needs exactly a can; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 0 to n - 2 (0 for one plant): each gardener's first
+//     plant needs no refill
+// P3  the row reversed and the cans swapped: the same answer
+// P4  every need and both cans doubled: the same answer
+// P5  both cans as large as the whole row's needs: no refill
+// P6  each arm agrees with at least three of the other five
+
+// ---- watering.kara: the ★ arm, two indices walking in
+fn star_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    let mut i = 0;
+    let mut j = plants.len() - 1;
+    let mut a = capacity_a;
+    let mut b = capacity_b;
+    let mut refills = 0;
+    while i < j {
+        if a < plants[i] {
+            refills += 1;
+            a = capacity_a;
+        }
+        a -= plants[i];
+        if b < plants[j] {
+            refills += 1;
+            b = capacity_b;
+        }
+        b -= plants[j];
+        i += 1;
+        j -= 1;
+    }
+    if i == j and a.max(b) < plants[i] {
+        refills += 1;
+    }
+    refills
+}
+
+// ---- watering_struct.kara: a `struct Can` per gardener
+struct CanCan {
+    capacity: i64,
+    left: i64,
+    refills: i64,
+}
+
+impl CanCan {
+    fn new(capacity: i64) -> CanCan {
+        CanCan { capacity: capacity, left: capacity, refills: 0 }
+    }
+
+    fn water(mut ref self, need: i64) {
+        if self.left < need {
+            self.refills += 1;
+            self.left = self.capacity;
+        }
+        self.left -= need;
+    }
+
+    fn holds(self) -> i64 {
+        self.left
+    }
+}
+
+fn can_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    let n = plants.len();
+    let mut alice = CanCan.new(capacity_a);
+    let mut bob = CanCan.new(capacity_b);
+    for k in 0..n / 2 {
+        alice.water(plants[k]);
+        bob.water(plants[n - 1 - k]);
+    }
+    if n % 2 == 1 {
+        if alice.holds() >= bob.holds() {
+            alice.water(plants[n / 2]);
+        } else {
+            bob.water(plants[n / 2]);
+        }
+    }
+    alice.refills + bob.refills
+}
+
+// ---- watering_fold.kara: a `fold` over each half
+fn fold_walk(half: Vec[i64], capacity: i64) -> (i64, i64) {
+    half.iter().fold((capacity, 0), |state, need| {
+        if state.0 < need {
+            (capacity - need, state.1 + 1)
+        } else {
+            (state.0 - need, state.1)
+        }
+    })
+}
+
+fn fold_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    let n = plants.len();
+    let (a, alice) = fold_walk(plants[..n / 2].to_vec(), capacity_a);
+    let (b, bob) = fold_walk(plants[(n + 1) / 2..].iter().rev().collect(), capacity_b);
+    let middle = if n % 2 == 1 and a.max(b) < plants[n / 2] { 1 } else { 0 };
+    alice + bob + middle
+}
+
+// ---- watering_rec.kara: one recursive call per pair
+fn rec_pour(left: i64, need: i64, capacity: i64) -> (i64, i64) {
+    if left < need { (capacity - need, 1) } else { (left - need, 0) }
+}
+
+fn rec_step(plants: Vec[i64], i: i64, j: i64, a: i64, b: i64, capacity_a: i64, capacity_b: i64) -> i64 {
+    if i > j {
+        return 0;
+    }
+    if i == j {
+        return if a.max(b) < plants[i] { 1 } else { 0 };
+    }
+    let (a, ra) = rec_pour(a, plants[i], capacity_a);
+    let (b, rb) = rec_pour(b, plants[j], capacity_b);
+    ra + rb + rec_step(plants, i + 1, j - 1, a, b, capacity_a, capacity_b)
+}
+
+fn rec_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    rec_step(plants, 0, plants.len() - 1, capacity_a, capacity_b, capacity_a, capacity_b)
+}
+
+// ---- watering_zip.kara: the two ends `zip`ped
+fn zip_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    let n = plants.len();
+    let capacity = [capacity_a, capacity_b];
+    let mut cans = [capacity_a, capacity_b];
+    let mut refills = 0;
+    for (x, y) in plants.iter().zip(plants.iter().rev()).take(n / 2) {
+        let needs = [x, y];
+        for g in 0..2 {
+            if cans[g] < needs[g] {
+                refills += 1;
+                cans[g] = capacity[g];
+            }
+            cans[g] -= needs[g];
+        }
+    }
+    if n % 2 == 1 and cans[0].max(cans[1]) < plants[n / 2] {
+        refills += 1;
+    }
+    refills
+}
+
+// ---- watering_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn minimum_refill(plants: Vec[i32], capacity_a: i32, capacity_b: i32) -> i32 {
+        let mut (i, j) = (0, plants.len() - 1);
+        let mut (a, b) = (capacity_a, capacity_b);
+        let mut ans = 0;
+        while i < j {
+            if a < plants[i] {
+                ans += 1;
+                a = capacity_a;
+            }
+            a -= plants[i];
+            if b < plants[j] {
+                ans += 1;
+                b = capacity_b;
+            }
+            b -= plants[j];
+            i += 1;
+            j -= 1;
+        }
+        if i == j and a.max(b) < plants[i] {
+            ans += 1;
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_refill(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    SolutionSolution.minimum_refill(plants.iter().map(|x| x as i32).collect(), capacity_a as i32, capacity_b as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(plants: Vec[i64], capacity_a: i64, capacity_b: i64) -> i64 {
+    let n = plants.len();
+    let mut alice = capacity_a;
+    let mut bob = capacity_b;
+    let mut refills = 0;
+    let mut t = 0;
+    loop {
+        let here_a = t;
+        let here_b = n - 1 - t;
+        if here_a > here_b {
+            break;
+        }
+        if here_a == here_b {
+            let alice_waters = alice >= bob;
+            let left = if alice_waters { alice } else { bob };
+            if left < plants[here_a] {
+                refills += 1;
+            }
+            break;
+        }
+        if alice < plants[here_a] {
+            refills += 1;
+            alice = capacity_a;
+        }
+        alice -= plants[here_a];
+        if bob < plants[here_b] {
+            refills += 1;
+            bob = capacity_b;
+        }
+        bob -= plants[here_b];
+        t += 1;
+    }
+    refills
+}
+
+fn answer(arm: i64, plants: Vec[i64], a: i64, b: i64) -> i64 {
+    match arm {
+        0 => star_minimum_refill(plants, a, b),
+        1 => can_minimum_refill(plants, a, b),
+        2 => fold_minimum_refill(plants, a, b),
+        3 => rec_minimum_refill(plants, a, b),
+        4 => zip_minimum_refill(plants, a, b),
+        _ => solution_minimum_refill(plants, a, b),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "struct", "fold", "rec", "zip", "solution"];
+    let mut seed = 2105;
+    let mut problems: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for t in 0..340 {
+        let mut plants: Vec[i64] = Vec.new();
+        let (a, b) = if t < 300 {
+            for _ in 0..next_random(mut seed) % 12 + 1 {
+                plants.push(next_random(mut seed) % 6 + 1);
+            }
+            let most = plants.iter().max().unwrap();
+            (most + next_random(mut seed) % 5, most + next_random(mut seed) % 5)
+        } else if t < 320 {
+            for _ in 0..next_random(mut seed) % 30 + 1 {
+                plants.push(wide_random(mut seed) % 1000000 + 1);
+            }
+            let most = plants.iter().max().unwrap();
+            (most + wide_random(mut seed) % (1000000000 - most + 1), most + wide_random(mut seed) % (1000000000 - most + 1))
+        } else {
+            let need = next_random(mut seed) % 9 + 1;
+            for _ in 0..next_random(mut seed) % 30 + 1 {
+                plants.push(need);
+            }
+            (need, need)
+        };
+        problems.push((plants, a, b));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (plants, a, b) in problems.iter() {
+        let n = plants.len();
+        let truth = literal(plants, a, b);
+        check = (check * 31 + truth) % 1000000007;
+        let mut reversed = plants.to_vec();
+        reversed.reverse();
+        let doubled: Vec[i64] = plants.iter().map(|x| 2 * x).collect();
+        let whole = plants.iter().sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, plants, a, b)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                x >= 0 and x <= 0.max(n - 2),
+                answer(arm, reversed, b, a) == x,
+                answer(arm, doubled, 2 * a, 2 * b) == x,
+                answer(arm, plants, whole, whole) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{plants} with {a} and {b} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} rows: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

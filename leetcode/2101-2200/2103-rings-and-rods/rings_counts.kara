@@ -1,0 +1,63 @@
+// LeetCode #2103: Rings and Rods -- a ten-by-three table of counts. Each
+// ring adds one to its rod's row in its color's column, found with
+// `position` in "RGB"; a rod holds all three when no count in its row is
+// zero. The table is a `Vec[Vec[i64]]`, folded over the pairs. O(n).
+
+fn count_points(rings: Str) -> i64 {
+    let bytes = rings.bytes();
+    let table = (0..bytes.len() / 2).fold(Vec.filled(10, Vec.filled(3, 0)), |t, k| {
+        let mut t = t;
+        let color = "RGB".bytes().iter().position(|c| c == bytes[2 * k]).unwrap();
+        let rod = (bytes[2 * k + 1] - b'0') as i64;
+        t[rod][color] += 1;
+        t
+    });
+    table.iter().filter(|row| row.iter().all(|c| c > 0)).count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: every rod holding all
+    // three, one color many times, two colors only, and the longest a
+    // string may be
+    let mut every = String.new();
+    for d in 0..10 {
+        every.push_str(f"R{d}G{d}B{d}");
+    }
+    let examples = [
+        "B0B6G0R6R0R6G9",
+        "B0R0G0R9R0B0G0",
+        "G4",
+        every,
+        "R3R3R3R3",
+        "R1G1R2G2",
+        "R0G1B2".repeat(33) + "R0",
+    ];
+    for rings in examples.iter() {
+        println(f"{rings} -> {count_points(rings)}");
+    }
+    // 3000 random strings of 1 to 100 rings on rods 0 to 9, or on rods 0
+    // to 2 so that rods fill up
+    let mut seed = 2103;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let rods = if round % 2 == 0 { 10 } else { 3 };
+        let mut rings = String.new();
+        for _ in 0..n {
+            rings.push("RGB".bytes()[next_random(mut seed) % 3] as char);
+            rings.push((b'0' + (next_random(mut seed) % rods) as u8) as char);
+        }
+        let got = count_points(rings);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 strings: {total} rods with all three, checksum {check}");
+}

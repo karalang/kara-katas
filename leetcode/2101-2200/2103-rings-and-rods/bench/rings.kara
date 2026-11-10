@@ -1,0 +1,45 @@
+// LeetCode #2103: Rings and Rods -- bench. The ★ arm's mask per rod:
+// 4096 strings of 100 rings built once, then 300000 counts over them.
+
+fn count_points(rings: Str) -> i64 {
+    let bytes = rings.bytes();
+    let mut masks = [0; 10];
+    let mut i = 0;
+    while i < bytes.len() {
+        let bit = match bytes[i] {
+            b'R' => 1,
+            b'G' => 2,
+            _ => 4,
+        };
+        masks[(bytes[i + 1] - b'0') as i64] |= bit;
+        i += 2;
+    }
+    masks.iter().filter(|m| m == 7).count()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2103;
+    let mut strings: Vec[String] = Vec.new();
+    for s in 0..4096 {
+        let rods = if s % 2 == 0 { 10 } else { 3 };
+        let mut rings = String.new();
+        for _ in 0..100 {
+            rings.push("RGB".bytes()[next_random(mut seed) % 3] as char);
+            rings.push((b'0' + (next_random(mut seed) % rods) as u8) as char);
+        }
+        strings.push(rings);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for k in 0..300000 {
+        let got = count_points(strings[k * 7919 % 4096]);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"300000 counts: {total} rods with all three, checksum {check}");
+}

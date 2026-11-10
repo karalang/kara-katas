@@ -1,0 +1,107 @@
+// LeetCode #2104: Sum of Subarray Ranges -- a `struct Run` per stack
+// entry: a number and how many places it stands for, so the stack holds
+// runs rather than places. A `Sweep` keeps the stack and the running
+// total of the extremes of the subarrays ending at the current place;
+// pushing a number pops every run it beats, takes over their places, and
+// moves the total by the difference. One sweep keeps the largest, one
+// the smallest; their totals summed over every end give the answer.
+// O(n).
+
+struct Run {
+    value: i64,
+    places: i64,
+}
+
+struct Sweep {
+    runs: Vec[Run],
+    total: i64,
+    largest: bool,
+}
+
+impl Sweep {
+    fn new(largest: bool) -> Sweep {
+        Sweep { runs: Vec.new(), total: 0, largest: largest }
+    }
+
+    fn beats(self, a: i64, b: i64) -> bool {
+        if self.largest { a >= b } else { a <= b }
+    }
+
+    fn push(mut ref self, value: i64) -> i64 {
+        let mut places = 1;
+        while not self.runs.is_empty() and self.beats(value, self.runs.last().unwrap().value) {
+            let run = self.runs.pop().unwrap();
+            self.total -= run.value * run.places;
+            places += run.places;
+        }
+        self.total += value * places;
+        self.runs.push(Run { value: value, places: places });
+        self.total
+    }
+}
+
+fn sub_array_ranges(nums: Vec[i64]) -> i64 {
+    let mut high = Sweep.new(true);
+    let mut low = Sweep.new(false);
+    let mut sum = 0;
+    for x in nums.iter() {
+        sum += high.push(x) - low.push(x);
+    }
+    sum
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one number, all equal,
+    // the two extremes, and a valley of repeats
+    let examples = [
+        [1, 2, 3].to_vec(),
+        [1, 3, 3].to_vec(),
+        [4, -2, -3, 4, 1].to_vec(),
+        [5].to_vec(),
+        [7, 7, 7, 7].to_vec(),
+        [-1000000000, 1000000000].to_vec(),
+        [3, 1, 1, 1, 3].to_vec(),
+    ];
+    for nums in examples.iter() {
+        println(f"{nums} -> {sub_array_ranges(nums)}");
+    }
+    // 3000 random arrays of 1 to 60 numbers, from -20 to 20 so that ties
+    // are common, or from -10^9 to 10^9
+    let mut seed = 2104;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            if round % 2 == 0 {
+                nums.push(next_random(mut seed) % 41 - 20);
+            } else {
+                nums.push(wide_random(mut seed) % 2000000001 - 1000000000);
+            }
+        }
+        let got = sub_array_ranges(nums);
+        total += got % 1000000007;
+        check = (check * 31 + got % 1000000007 + 1000000007) % 1000000007;
+    }
+    println(f"3000 arrays: total {total}, checksum {check}");
+    // the constraints' largest, 1000 numbers: rising, alternating between
+    // the extremes, and random over the whole range
+    let rising: Vec[i64] = (0..1000).map(|i| i * 2000000 - 1000000000).collect();
+    let alternating: Vec[i64] = (0..1000).map(|i| if i % 2 == 0 { 1000000000 } else { -1000000000 }).collect();
+    let spread: Vec[i64] = (0..1000).map(|_| wide_random(mut seed) % 2000000001 - 1000000000).collect();
+    println(f"rising -> {sub_array_ranges(rising)}");
+    println(f"alternating -> {sub_array_ranges(alternating)}");
+    println(f"spread -> {sub_array_ranges(spread)}");
+}
