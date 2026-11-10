@@ -156,7 +156,7 @@ chain: its 99998 meetings come in falling times, so each is inserted at
 the front of the `SortedMap`, which is kept as one sorted array and
 moves every entry after it. 100000 inserts of falling keys take 1.8 s
 compiled, where rising keys take 0.03 s; collections.md calls the map a
-B-tree. Filed as SORTEDROW.
+B-tree. Filed as B-2026-11-10-39.
 
 No arm met any other compiler gap. The Rust arm was written as
 LeetCode's Rust template. `karac fix` carries it in three rounds of 29,

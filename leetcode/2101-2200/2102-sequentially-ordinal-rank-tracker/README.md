@@ -178,7 +178,7 @@ score in one heap and a name in the other, and no edit of the tuple
 keeps that order: a score could be negated, but a `String` cannot. The
 Kāra spellings are a hand-written `Ord`, as the ★ arm has, or a
 negated score with the name left alone, as the tuples arm has. Filed as
-REVROW. The arm stays as the fix left it.
+B-2026-11-10-41. The arm stays as the fix left it.
 
 ## Benchmarks
 

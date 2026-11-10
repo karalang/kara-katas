@@ -163,7 +163,7 @@ Literals: "Beside a type that does widen, the literal keeps its
 default"), so `return d` and the two stores into `dist` were refused as
 narrowing. The message points at those three and asks for `as i32` at
 each, not at the literal that made `d` an `i64`; that is filed as
-DIAGROW. A last round of 1 edit then makes the adapter's `ref` parameter
+B-2026-11-10-40. A last round of 1 edit then makes the adapter's `ref` parameter
 a bare one, which borrows already. The fixed arm reads as the template
 does.
 
