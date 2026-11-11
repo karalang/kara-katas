@@ -1,0 +1,120 @@
+// LeetCode #2115: Find All Possible Recipes from Given Supplies -- the ★
+// arm, Kahn's topological order. Each recipe counts the ingredients it
+// still lacks, and a `Map` lists, for each ingredient, the recipes that
+// need it. A `VecDeque` starts with the supplies; taking an item off it
+// lowers the count of every recipe that needs it, and a recipe whose
+// count reaches zero is made and joins the queue as an item itself. A
+// recipe on a cycle, or needing something never had, is never reached.
+// O(n + total ingredients).
+
+fn find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut needed_by: Map[String, Vec[i64]] = Map.new();
+    let mut lacking: Vec[i64] = Vec.new();
+    for i in 0..recipes.len() {
+        lacking.push(ingredients[i].len());
+        for item in ingredients[i].iter() {
+            needed_by.entry(item.clone()).or_insert(Vec.new()).push(i);
+        }
+    }
+    let mut queue: VecDeque[String] = VecDeque.new();
+    for s in supplies.iter() {
+        queue.push_back(s.clone());
+    }
+    let mut made: Vec[String] = Vec.new();
+    while let Some(item) = queue.pop_front() {
+        if let Some(users) = needed_by.get(item) {
+            for i in users.iter() {
+                lacking[i] -= 1;
+                if lacking[i] == 0 {
+                    made.push(recipes[i].clone());
+                    queue.push_back(recipes[i].clone());
+                }
+            }
+        }
+    }
+    made
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn strings(words: Vec[Str]) -> Vec[String] {
+    words.iter().map(|w| w.to_string()).collect()
+}
+
+fn made(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut got = find_all_recipes(recipes, ingredients, supplies);
+    got.sort();
+    got
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: two recipes needing
+    // each other, a recipe needing one that cannot be made, and a chain
+    // given last recipe first
+    let examples: Vec[(Vec[String], Vec[Vec[String]], Vec[String])] = [
+        (strings(["bread"].to_vec()), [strings(["yeast", "flour"].to_vec())].to_vec(), strings(["yeast", "flour", "corn"].to_vec())),
+        (strings(["bread", "sandwich"].to_vec()), [strings(["yeast", "flour"].to_vec()), strings(["bread", "meat"].to_vec())].to_vec(), strings(["yeast", "flour", "meat"].to_vec())),
+        (strings(["bread", "sandwich", "burger"].to_vec()), [strings(["yeast", "flour"].to_vec()), strings(["bread", "meat"].to_vec()), strings(["sandwich", "meat", "bread"].to_vec())].to_vec(), strings(["yeast", "flour", "meat"].to_vec())),
+        (strings(["egg", "hen"].to_vec()), [strings(["hen"].to_vec()), strings(["egg", "grain"].to_vec())].to_vec(), strings(["grain"].to_vec())),
+        (strings(["soup", "stew"].to_vec()), [strings(["salt", "water"].to_vec()), strings(["soup", "meat"].to_vec())].to_vec(), strings(["water", "meat"].to_vec())),
+        (strings(["c", "b", "a"].to_vec()), [strings(["b"].to_vec()), strings(["a"].to_vec()), strings(["x"].to_vec())].to_vec(), strings(["x"].to_vec())),
+    ].to_vec();
+    for (recipes, ingredients, supplies) in examples.iter() {
+        println(f"{recipes} from {supplies} -> {made(recipes, ingredients, supplies)}");
+    }
+    // 2000 random kitchens: 1 to 8 recipes `r0`.. and 1 to 6 supplies
+    // `s0`.., of 8 possible, each recipe needing 1 to 4 distinct items
+    // among the possible supplies and the other recipes
+    let mut seed = 2115;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let recipes: Vec[String] = (0..n).map(|i| f"r{i}").collect();
+        let have = next_random(mut seed) % 6 + 1;
+        let supplies: Vec[String] = (0..have).map(|i| f"s{i}").collect();
+        let mut ingredients: Vec[Vec[String]] = Vec.new();
+        for i in 0..n {
+            let mut need: Vec[String] = Vec.new();
+            for _ in 0..next_random(mut seed) % 4 + 1 {
+                let pick = next_random(mut seed) % (8 + n);
+                let item = if pick < 8 { f"s{pick}" } else { f"r{pick - 8}" };
+                if item != f"r{i}" and not need.contains(item) {
+                    need.push(item);
+                }
+            }
+            if need.is_empty() {
+                need.push("s0");
+            }
+            ingredients.push(need);
+        }
+        let got = made(recipes, ingredients, supplies);
+        total += got.len();
+        for r in got.iter() {
+            check = (check * 31 + r.bytes()[1]) % 1000000007;
+        }
+        check = (check * 37 + got.len()) % 1000000007;
+    }
+    println(f"2000 kitchens: {total} recipes made, checksum {check}");
+    // the constraints' largest: 100 recipes in a chain, each needing the
+    // one before and 99 supplies, given last first; then the same with
+    // the first recipe's own supply missing
+    let recipes: Vec[String] = (0..100).map(|i| f"r{99 - i}").collect();
+    let supplies: Vec[String] = (0..100).map(|i| f"s{i}").collect();
+    let chain: Vec[Vec[String]] = (0..100).map(|i| {
+        let k = 99 - i;
+        let mut need: Vec[String] = (0..99).map(|j| f"s{(k + j) % 100}").collect();
+        if k > 0 {
+            need.push(f"r{k - 1}");
+        }
+        need
+    }).collect();
+    println(f"chain of 100 -> {made(recipes, chain, supplies).len()} made");
+    let short: Vec[String] = (1..100).map(|i| f"s{i}").collect();
+    println(f"chain of 100, s0 missing -> {made(recipes, chain, short).len()} made");
+}

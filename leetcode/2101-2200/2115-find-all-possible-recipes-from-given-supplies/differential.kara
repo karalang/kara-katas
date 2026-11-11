@@ -1,0 +1,423 @@
+// LeetCode #2115: Find All Possible Recipes from Given Supplies -- the
+// differential. The six arms, against the statement read literally: a
+// recipe can be made within `d` steps when each of its ingredients is a
+// supply or a recipe that can be made within `d - 1`, and can be made at
+// all when it can within `n`, the number of recipes. 300 random kitchens
+// of 1 to 6 recipes and 1 to 4 of 6 possible supplies, each recipe
+// needing 1 to 3 items; then 30 of up to 30 recipes and up to 10 of 12
+// supplies, needing 1 to 4; then 30 chains of up to 30 recipes listed in
+// a shuffled order, each needing the one before and a supply, some
+// closed into a cycle; every one drawn before any arm answers.
+//
+// P1  the recipes made are the statement read literally
+// P2  each is a recipe, none twice, and each one's ingredients are all
+//     supplies or recipes made
+// P3  every name given an `x` in front: the same recipes with theirs
+// P4  the recipes listed in reverse: the same recipes
+// P5  a recipe needing only a supply appended, and one needing it and an
+//     item nobody has: the recipes made and the first of the two
+// P6  each arm agrees with at least three of the other five
+
+// ---- recipes.kara: the ★ arm, Kahn's order over names
+fn star_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut needed_by: Map[String, Vec[i64]] = Map.new();
+    let mut lacking: Vec[i64] = Vec.new();
+    for i in 0..recipes.len() {
+        lacking.push(ingredients[i].len());
+        for item in ingredients[i].iter() {
+            needed_by.entry(item.clone()).or_insert(Vec.new()).push(i);
+        }
+    }
+    let mut queue: VecDeque[String] = VecDeque.new();
+    for s in supplies.iter() {
+        queue.push_back(s.clone());
+    }
+    let mut made: Vec[String] = Vec.new();
+    while let Some(item) = queue.pop_front() {
+        if let Some(users) = needed_by.get(item) {
+            for i in users.iter() {
+                lacking[i] -= 1;
+                if lacking[i] == 0 {
+                    made.push(recipes[i].clone());
+                    queue.push_back(recipes[i].clone());
+                }
+            }
+        }
+    }
+    made
+}
+
+// ---- recipes_fixpoint.kara: passes until nothing changes
+fn fixpoint_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut on_hand: Set[String] = Set.new();
+    for s in supplies.iter() {
+        on_hand.insert(s.clone());
+    }
+    let mut made: Vec[String] = Vec.new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..recipes.len() {
+            if not on_hand.contains(recipes[i]) and ingredients[i].iter().all(|item| on_hand.contains(item)) {
+                on_hand.insert(recipes[i].clone());
+                made.push(recipes[i].clone());
+                changed = true;
+            }
+        }
+    }
+    made
+}
+
+// ---- recipes_dfs.kara: a depth-first search with a state per recipe
+enum DfsState {
+    Unseen,
+    Visiting,
+    Made,
+    Failed,
+}
+
+fn dfs_can_make(i: i64, ingredients: Vec[Vec[String]], index: Map[String, i64], supplies: Set[String], state: mut ref Vec[DfsState]) -> bool {
+    match state[i] {
+        DfsState.Made => return true,
+        DfsState.Failed | DfsState.Visiting => return false,
+        DfsState.Unseen => {}
+    }
+    state[i] = DfsState.Visiting;
+    let mut ok = true;
+    for item in ingredients[i].iter() {
+        let had = if supplies.contains(item) {
+            true
+        } else {
+            match index.get(item) {
+                Some(j) => dfs_can_make(j, ingredients, index, supplies, mut state),
+                None => false,
+            }
+        };
+        if not had {
+            ok = false;
+            break;
+        }
+    }
+    state[i] = if ok { DfsState.Made } else { DfsState.Failed };
+    ok
+}
+
+fn dfs_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut index: Map[String, i64] = Map.new();
+    for i in 0..recipes.len() {
+        index[recipes[i].clone()] = i;
+    }
+    let have: Set[String] = supplies.iter().cloned().collect();
+    let mut state: Vec[DfsState] = (0..recipes.len()).map(|_| DfsState.Unseen).collect();
+    let mut made: Vec[String] = Vec.new();
+    for i in 0..recipes.len() {
+        if dfs_can_make(i, ingredients, index, have, mut state) {
+            made.push(recipes[i].clone());
+        }
+    }
+    made
+}
+
+// ---- recipes_struct.kara: a `Kitchen`
+struct StructKitchen {
+    on_hand: Set[String],
+    lacking: Map[String, Set[String]],
+}
+
+impl StructKitchen {
+    fn stock(mut ref self, item: String) -> Vec[String] {
+        if not self.on_hand.insert(item.clone()) {
+            return Vec.new();
+        }
+        let mut done: Vec[String] = Vec.new();
+        for (recipe, needs) in self.lacking.iter_mut() {
+            if needs.remove(item) and needs.is_empty() {
+                done.push(recipe.clone());
+            }
+        }
+        done
+    }
+}
+
+fn struct_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut kitchen = StructKitchen { on_hand: Set.new(), lacking: Map.new() };
+    for i in 0..recipes.len() {
+        kitchen.lacking[recipes[i].clone()] = ingredients[i].iter().cloned().collect();
+    }
+    let mut stack: Vec[String] = supplies.clone();
+    let mut made: Vec[String] = Vec.new();
+    while let Some(item) = stack.pop() {
+        for recipe in kitchen.stock(item).iter() {
+            made.push(recipe.clone());
+            stack.push(recipe.clone());
+        }
+    }
+    made
+}
+
+// ---- recipes_levels.kara: Kahn's order over indices, level by level
+fn levels_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut id: Map[String, i64] = Map.new();
+    for r in recipes.iter() {
+        let next = id.len();
+        id[r.clone()] = next;
+    }
+    for list in ingredients.iter() {
+        for item in list.iter() {
+            if not id.contains_key(item) {
+                let next = id.len();
+                id[item.clone()] = next;
+            }
+        }
+    }
+    let mut users: Vec[Vec[i64]] = Vec.filled(id.len(), Vec.new());
+    let mut lacking: Vec[i64] = ingredients.iter().map(|list| list.len()).collect();
+    for i in 0..recipes.len() {
+        for item in ingredients[i].iter() {
+            users[id[item.clone()]].push(i);
+        }
+    }
+    let mut frontier: Vec[i64] = supplies.iter().filter_map(|s| id.get(s).cloned()).collect();
+    let mut made: Vec[String] = Vec.new();
+    while not frontier.is_empty() {
+        frontier = frontier
+            .iter()
+            .flat_map(|item| users[item].clone().into_iter())
+            .filter(|i| {
+                lacking[i] -= 1;
+                lacking[i] == 0
+            })
+            .collect();
+        for i in frontier.iter() {
+            made.push(recipes[i].clone());
+        }
+    }
+    made
+}
+
+// ---- recipes_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+        let mut indeg: Map[Str, i64] = Map.new();
+        let mut graph: Map[Str, Vec[Str]] = Map.new();
+        for (r, ing) in recipes.iter().zip(ingredients.iter()) {
+            indeg.insert(r.as_str(), ing.len());
+            for i in ing {
+                graph.entry(i.as_str()).or_insert(Vec.new()).push(r.as_str());
+            }
+        }
+        let mut q: VecDeque[Str] = supplies.iter().map(|s| s.as_str()).collect();
+        let mut ans = Vec.new();
+        while let Some(x) = q.pop_front() {
+            if let Some(next) = graph.get(x) {
+                for r in next {
+                    let d = indeg.get_mut(r).unwrap();
+                    *d -= 1;
+                    if *d == 0 {
+                        ans.push(r.to_string());
+                        q.push_back(r);
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_find_all_recipes(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    SolutionSolution.find_all_recipes(recipes, ingredients, supplies)
+}
+
+// ---- the statement read literally
+
+fn literal(recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let n = recipes.len();
+    let mut within: Vec[bool] = Vec.filled(n, false);
+    for _ in 0..n {
+        let before = within.clone();
+        for i in 0..n {
+            let mut all = true;
+            for item in ingredients[i].iter() {
+                let mut had = supplies.contains(item);
+                for j in 0..n {
+                    if recipes[j] == item and before[j] {
+                        had = true;
+                    }
+                }
+                if not had {
+                    all = false;
+                }
+            }
+            within[i] = all;
+        }
+    }
+    let mut made: Vec[String] = Vec.new();
+    for i in 0..n {
+        if within[i] {
+            made.push(recipes[i].clone());
+        }
+    }
+    made.sort();
+    made
+}
+
+fn answer(arm: i64, recipes: Vec[String], ingredients: Vec[Vec[String]], supplies: Vec[String]) -> Vec[String] {
+    let mut got = match arm {
+        0 => star_find_all_recipes(recipes, ingredients, supplies),
+        1 => fixpoint_find_all_recipes(recipes, ingredients, supplies),
+        2 => dfs_find_all_recipes(recipes, ingredients, supplies),
+        3 => struct_find_all_recipes(recipes, ingredients, supplies),
+        4 => levels_find_all_recipes(recipes, ingredients, supplies),
+        _ => solution_find_all_recipes(recipes, ingredients, supplies),
+    };
+    got.sort();
+    got
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn prefixed(list: Vec[String]) -> Vec[String] {
+    list.iter().map(|s| "x" + s).collect()
+}
+
+fn kitchen(seed: mut ref i64, n: i64, have: i64, kinds: i64, most: i64) -> (Vec[String], Vec[Vec[String]], Vec[String]) {
+    let recipes: Vec[String] = (0..n).map(|i| f"r{i}").collect();
+    let supplies: Vec[String] = (0..have).map(|i| f"s{i}").collect();
+    let mut ingredients: Vec[Vec[String]] = Vec.new();
+    for i in 0..n {
+        let mut need: Vec[String] = Vec.new();
+        for _ in 0..next_random(mut seed) % most + 1 {
+            let pick = next_random(mut seed) % (kinds + n);
+            let item = if pick < kinds { f"s{pick}" } else { f"r{pick - kinds}" };
+            if item != f"r{i}" and not need.contains(item) {
+                need.push(item);
+            }
+        }
+        if need.is_empty() {
+            need.push("s0");
+        }
+        ingredients.push(need);
+    }
+    (recipes, ingredients, supplies)
+}
+
+fn main() {
+    let names = ["star", "fixpoint", "dfs", "struct", "levels", "solution"];
+    let mut seed = 2115;
+    let mut problems: Vec[(Vec[String], Vec[Vec[String]], Vec[String])] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let n = next_random(mut seed) % 6 + 1;
+            let have = next_random(mut seed) % 4 + 1;
+            problems.push(kitchen(mut seed, n, have, 6, 3));
+        } else if t < 330 {
+            let n = next_random(mut seed) % 30 + 1;
+            let have = next_random(mut seed) % 10 + 1;
+            problems.push(kitchen(mut seed, n, have, 12, 4));
+        } else {
+            let n = next_random(mut seed) % 30 + 1;
+            let mut order: Vec[i64] = (0..n).collect();
+            for i in 0..n {
+                let j = i + next_random(mut seed) % (n - i);
+                order.swap(i, j);
+            }
+            let cycle = next_random(mut seed) % 3 == 0;
+            let recipes: Vec[String] = order.iter().map(|k| f"r{k}").collect();
+            let ingredients: Vec[Vec[String]] = order.iter().map(|k| {
+                let mut need: Vec[String] = [f"s{k % 3}"].to_vec();
+                if k > 0 {
+                    need.push(f"r{k - 1}");
+                } else if cycle {
+                    need.push(f"r{n - 1}");
+                }
+                need
+            }).collect();
+            let supplies: Vec[String] = ["s0", "s1", "s2"].to_vec();
+            problems.push((recipes, ingredients, supplies));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (recipes, ingredients, supplies) in problems.iter() {
+        let truth = literal(recipes, ingredients, supplies);
+        check = (check * 37 + truth.len()) % 1000000007;
+        for r in truth.iter() {
+            check = (check * 31 + r.len() + r.bytes()[r.len() - 1]) % 1000000007;
+        }
+        let x_recipes = prefixed(recipes);
+        let x_ingredients: Vec[Vec[String]] = ingredients.iter().map(|l| prefixed(l)).collect();
+        let x_supplies = prefixed(supplies);
+        let mut back_recipes = recipes.clone();
+        back_recipes.reverse();
+        let mut back_ingredients = ingredients.clone();
+        back_ingredients.reverse();
+        let mut more_recipes = recipes.clone();
+        more_recipes.push("new");
+        more_recipes.push("never");
+        let mut more_ingredients = ingredients.clone();
+        more_ingredients.push([supplies[0].clone()].to_vec());
+        more_ingredients.push(["new", "nobody"].to_vec());
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, recipes, ingredients, supplies)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut closed = true;
+            for k in 0..x.len() {
+                if (k > 0 and x[k] == x[k - 1]) or not recipes.contains(x[k]) {
+                    closed = false;
+                } else {
+                    let at = recipes.iter().position(|r| r == x[k]) ?? 0;
+                    for item in ingredients[at].iter() {
+                        if not supplies.contains(item) and not x.contains(item) {
+                            closed = false;
+                        }
+                    }
+                }
+            }
+            let mut with_new = x.clone();
+            with_new.push("new");
+            with_new.sort();
+            let verdicts = [
+                x == truth,
+                closed,
+                answer(arm, x_recipes, x_ingredients, x_supplies) == prefixed(x),
+                answer(arm, back_recipes, back_ingredients, supplies) == x,
+                answer(arm, more_recipes, more_ingredients, supplies) == with_new,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{recipes} {ingredients} from {supplies} arm {names[arm]}: P{q + 1} fails, made {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} kitchens: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
