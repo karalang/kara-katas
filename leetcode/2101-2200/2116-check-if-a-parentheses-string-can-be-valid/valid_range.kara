@@ -1,0 +1,83 @@
+// LeetCode #2116: Check if a Parentheses String Can Be Valid -- the
+// range arm, one pass. `lo` and `hi` bound the open count the prefix can
+// have: a locked `(` raises both, a locked `)` lowers both, an unlocked
+// position lowers `lo` and raises `hi`. `hi` below zero fails; `lo` never
+// goes below zero, since a choice there would close nothing. The string
+// can balance when the length is even and `lo` ends at zero. O(n).
+
+fn can_be_valid(s: String, locked: String) -> bool {
+    if s.len() % 2 != 0 {
+        return false;
+    }
+    let mut lo = 0;
+    let mut hi = 0;
+    for (c, l) in s.chars().zip(locked.chars()) {
+        if l == '0' {
+            lo -= 1;
+            hi += 1;
+        } else if c == '(' {
+            lo += 1;
+            hi += 1;
+        } else {
+            lo -= 1;
+            hi -= 1;
+        }
+        if hi < 0 {
+            return false;
+        }
+        lo = lo.max(0);
+    }
+    lo == 0
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: a single pair locked
+    // backwards, all unlocked, a locked `(` with nothing after it, and an
+    // odd length
+    let examples: Vec[(String, String)] = [
+        ("))()))", "010100"),
+        ("()()", "0000"),
+        (")", "0"),
+        (")(", "11"),
+        ("((((", "0000"),
+        ("()((", "1110"),
+        ("(()", "000"),
+    ].to_vec();
+    for (s, locked) in examples.iter() {
+        println(f"{s} {locked} -> {can_be_valid(s, locked)}");
+    }
+    // 4000 random strings of even length 2 to 24 (and some odd), each
+    // position locked with chance one half
+    let mut seed = 2116;
+    let mut valid = 0;
+    let mut check = 0;
+    for _ in 0..4000 {
+        let n = next_random(mut seed) % 24 + 1;
+        let mut s: String = "";
+        let mut locked: String = "";
+        for _ in 0..n {
+            s.push(if next_random(mut seed) % 2 == 0 { '(' } else { ')' });
+            locked.push(if next_random(mut seed) % 2 == 0 { '0' } else { '1' });
+        }
+        let got = can_be_valid(s, locked);
+        if got {
+            valid += 1;
+        }
+        check = (check * 31 + if got { n } else { 1 }) % 1000000007;
+    }
+    println(f"4000 strings: {valid} can be valid, checksum {check}");
+    // the constraints' largest: 100000 characters, all `)` locked but the
+    // first half unlocked, then the same with one more locked
+    let s = ")".repeat(100000);
+    let half = "0".repeat(50000) + "1".repeat(50000);
+    let short = "0".repeat(49999) + "1".repeat(50001);
+    println(f"half unlocked -> {can_be_valid(s, half)}");
+    println(f"one short -> {can_be_valid(s, short)}");
+}

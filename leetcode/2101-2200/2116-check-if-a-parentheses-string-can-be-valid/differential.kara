@@ -1,0 +1,369 @@
+// LeetCode #2116: Check if a Parentheses String Can Be Valid -- the
+// differential. The six arms, against the statement read literally:
+// every way of choosing the unlocked positions, tried one by one, and
+// valid when one of them balances. 300 random strings of 1 to 12
+// characters, each position locked with chance one half; then 30 of even
+// length up to 40, with at most 10 positions unlocked; then 30 balanced
+// strings of up to 30, half of them with one character flipped, also with
+// at most 10 unlocked; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string read backwards with `(` and `)` swapped: the same answer
+// P3  the first unlocked character flipped: the same answer
+// P4  a locked `()` appended: the same answer
+// P5  a true answer stays true with the string wrapped in a locked `(`
+//     and `)`, and with its first locked position unlocked
+// P6  each arm agrees with at least three of the other five
+
+// ---- valid.kara: the ★ arm, two greedy passes
+fn star_can_be_valid(s: String, locked: String) -> bool {
+    let n = s.len();
+    if n % 2 == 1 {
+        return false;
+    }
+    let s = s.bytes();
+    let locked = locked.bytes();
+    let mut open = 0;
+    for i in 0..n {
+        if s[i] == b'(' or locked[i] == b'0' {
+            open += 1;
+        } else {
+            open -= 1;
+            if open < 0 {
+                return false;
+            }
+        }
+    }
+    let mut close = 0;
+    for i in (0..n).rev() {
+        if s[i] == b')' or locked[i] == b'0' {
+            close += 1;
+        } else {
+            close -= 1;
+            if close < 0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- valid_range.kara: one pass bounding the open count
+fn range_can_be_valid(s: String, locked: String) -> bool {
+    if s.len() % 2 != 0 {
+        return false;
+    }
+    let mut lo = 0;
+    let mut hi = 0;
+    for (c, l) in s.chars().zip(locked.chars()) {
+        if l == '0' {
+            lo -= 1;
+            hi += 1;
+        } else if c == '(' {
+            lo += 1;
+            hi += 1;
+        } else {
+            lo -= 1;
+            hi -= 1;
+        }
+        if hi < 0 {
+            return false;
+        }
+        lo = lo.max(0);
+    }
+    lo == 0
+}
+
+// ---- valid_stacks.kara: locked opens and unlocked positions on stacks
+fn stacks_can_be_valid(s: String, locked: String) -> bool {
+    let s: Vec[char] = s.chars().collect();
+    let locked: Vec[char] = locked.chars().collect();
+    let mut opens: Vec[i64] = Vec.new();
+    let mut free: Vec[i64] = Vec.new();
+    for i in 0..s.len() {
+        if locked[i] == '0' {
+            free.push(i);
+        } else if s[i] == '(' {
+            opens.push(i);
+        } else if opens.pop().is_none() and free.pop().is_none() {
+            return false;
+        }
+    }
+    while let Some(o) = opens.pop() {
+        match free.pop() {
+            Some(f) if f > o => {}
+            _ => return false,
+        }
+    }
+    free.len() % 2 == 0
+}
+
+// ---- valid_iter.kara: the two passes as `all` over zipped bytes
+fn iter_holds(pairs: Vec[(u8, u8)], opener: u8) -> bool {
+    let mut balance = 0;
+    pairs.iter().all(|(c, l)| {
+        balance += if c == opener or l == b'0' { 1 } else { -1 };
+        balance >= 0
+    })
+}
+
+fn iter_can_be_valid(s: String, locked: String) -> bool {
+    let pairs: Vec[(u8, u8)] = s.bytes().iter().zip(locked.bytes().iter()).collect();
+    let back: Vec[(u8, u8)] = pairs.iter().rev().collect();
+    pairs.len() % 2 == 0 and iter_holds(pairs, b'(') and iter_holds(back, b')')
+}
+
+// ---- valid_struct.kara: two `Pass` values
+struct StructPass {
+    opener: char,
+    balance: i64,
+}
+
+impl StructPass {
+    fn new(opener: char) -> StructPass {
+        StructPass { opener: opener, balance: 0 }
+    }
+
+    fn feed(mut ref self, c: char, unlocked: bool) -> bool {
+        if c == self.opener or unlocked {
+            self.balance += 1;
+        } else {
+            self.balance -= 1;
+        }
+        self.balance >= 0
+    }
+}
+
+fn struct_can_be_valid(s: String, locked: String) -> bool {
+    let s: Vec[char] = s.chars().collect();
+    let locked: Vec[char] = locked.chars().collect();
+    let n = s.len();
+    if n % 2 == 1 {
+        return false;
+    }
+    let mut forward = StructPass.new('(');
+    let mut backward = StructPass.new(')');
+    for i in 0..n {
+        let j = n - 1 - i;
+        if not forward.feed(s[i], locked[i] == '0') or not backward.feed(s[j], locked[j] == '0') {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- valid_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn can_be_valid(s: String, locked: String) -> bool {
+        let n = s.len();
+        if n % 2 == 1 {
+            return false;
+        }
+        let (s, l) = (s.bytes(), locked.bytes());
+        let mut open = 0;
+        for i in 0..n {
+            if s[i] == b'(' or l[i] == b'0' {
+                open += 1;
+            } else {
+                open -= 1;
+            }
+            if open < 0 {
+                return false;
+            }
+        }
+        let mut close = 0;
+        for i in (0..n).rev() {
+            if s[i] == b')' or l[i] == b'0' {
+                close += 1;
+            } else {
+                close -= 1;
+            }
+            if close < 0 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_can_be_valid(s: String, locked: String) -> bool {
+    SolutionSolution.can_be_valid(s, locked)
+}
+
+// ---- the statement read literally
+
+fn literal(s: Vec[char], locked: Vec[char], i: i64, open: i64) -> bool {
+    if open < 0 {
+        return false;
+    }
+    if i == s.len() {
+        return open == 0;
+    }
+    if locked[i] == '1' {
+        let step = if s[i] == '(' { 1 } else { -1 };
+        return literal(s, locked, i + 1, open + step);
+    }
+    literal(s, locked, i + 1, open + 1) or literal(s, locked, i + 1, open - 1)
+}
+
+fn answer(arm: i64, s: String, locked: String) -> bool {
+    match arm {
+        0 => star_can_be_valid(s, locked),
+        1 => range_can_be_valid(s, locked),
+        2 => stacks_can_be_valid(s, locked),
+        3 => iter_can_be_valid(s, locked),
+        4 => struct_can_be_valid(s, locked),
+        _ => solution_can_be_valid(s, locked),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn flip(c: char) -> char {
+    if c == '(' { ')' } else { '(' }
+}
+
+fn mirrored(s: String) -> String {
+    s.chars().rev().map(|c| flip(c)).collect()
+}
+
+fn locks(seed: mut ref i64, n: i64, free: i64) -> String {
+    let mut locked: String = "";
+    let mut unlocked = 0;
+    for _ in 0..n {
+        if unlocked < 10 and next_random(mut seed) % free == 0 {
+            locked.push('0');
+            unlocked += 1;
+        } else {
+            locked.push('1');
+        }
+    }
+    locked
+}
+
+fn main() {
+    let names = ["star", "range", "stacks", "iter", "struct", "solution"];
+    let mut seed = 2116;
+    let mut problems: Vec[(String, String)] = Vec.new();
+    for t in 0..360 {
+        let mut s: String = "";
+        if t < 300 {
+            let n = next_random(mut seed) % 12 + 1;
+            for _ in 0..n {
+                s.push(if next_random(mut seed) % 2 == 0 { '(' } else { ')' });
+            }
+            let locked = locks(mut seed, n, 2);
+            problems.push((s, locked));
+        } else if t < 330 {
+            let n = (next_random(mut seed) % 20 + 1) * 2;
+            for _ in 0..n {
+                s.push(if next_random(mut seed) % 2 == 0 { '(' } else { ')' });
+            }
+            let locked = locks(mut seed, n, 8);
+            problems.push((s, locked));
+        } else {
+            let n = (next_random(mut seed) % 15 + 1) * 2;
+            let mut open = 0;
+            let mut chars: Vec[char] = Vec.new();
+            for i in 0..n {
+                let up = if open == 0 {
+                    true
+                } else if open == n - i {
+                    false
+                } else {
+                    next_random(mut seed) % 2 == 0
+                };
+                chars.push(if up { '(' } else { ')' });
+                open += if up { 1 } else { -1 };
+            }
+            if next_random(mut seed) % 2 == 0 {
+                let at = next_random(mut seed) % n;
+                chars[at] = flip(chars[at]);
+            }
+            for c in chars.iter() {
+                s.push(c);
+            }
+            let locked = locks(mut seed, n, 8);
+            problems.push((s, locked));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, locked) in problems.iter() {
+        let n = s.len();
+        let truth = literal(s.chars().collect(), locked.chars().collect(), 0, 0);
+        check = (check * 31 + if truth { n } else { 1 }) % 1000000007;
+        let back_s = mirrored(s);
+        let back_locked: String = locked.chars().rev().collect();
+        let mut flipped: String = "";
+        let mut done = false;
+        for (c, l) in s.chars().zip(locked.chars()) {
+            if l == '0' and not done {
+                flipped.push(flip(c));
+                done = true;
+            } else {
+                flipped.push(c);
+            }
+        }
+        let longer_s = s + "()";
+        let longer_locked = locked + "11";
+        let wrapped_s = "(" + s + ")";
+        let wrapped_locked = "1" + locked + "1";
+        let mut freed: String = "";
+        let mut gone = false;
+        for l in locked.chars() {
+            if l == '1' and not gone {
+                freed.push('0');
+                gone = true;
+            } else {
+                freed.push(l);
+            }
+        }
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, s, locked)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, back_s, back_locked) == x,
+                answer(arm, flipped, locked) == x,
+                answer(arm, longer_s, longer_locked) == x,
+                not x or (answer(arm, wrapped_s, wrapped_locked) and answer(arm, s, freed)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} {locked} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,87 @@
+// LeetCode #2116: Check if a Parentheses String Can Be Valid -- the
+// benchmark, the ★ arm's two greedy passes over the bytes. 64 strings of
+// 50000, balanced but half with one bracket flipped, and every other one
+// fully locked; then 40 rounds, each string given a locked `()` before
+// it is solved again.
+
+fn can_be_valid(s: String, locked: String) -> bool {
+    let n = s.len();
+    if n % 2 == 1 {
+        return false;
+    }
+    let s = s.bytes();
+    let locked = locked.bytes();
+    let mut open = 0;
+    for i in 0..n {
+        if s[i] == b'(' or locked[i] == b'0' {
+            open += 1;
+        } else {
+            open -= 1;
+            if open < 0 {
+                return false;
+            }
+        }
+    }
+    let mut close = 0;
+    for i in (0..n).rev() {
+        if s[i] == b')' or locked[i] == b'0' {
+            close += 1;
+        } else {
+            close -= 1;
+            if close < 0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2116;
+    let mut strings: Vec[String] = Vec.new();
+    let mut locks: Vec[String] = Vec.new();
+    let n = 50000;
+    for k in 0..64 {
+        let flip = if next_random(mut seed) % 2 == 0 { next_random(mut seed) % n } else { -1 };
+        let mut s: String = "";
+        let mut locked: String = "";
+        let mut open = 0;
+        for i in 0..n {
+            let mut up = if open == 0 {
+                true
+            } else if open == n - i {
+                false
+            } else {
+                next_random(mut seed) % 2 == 0
+            };
+            open += if up { 1 } else { -1 };
+            if i == flip {
+                up = not up;
+            }
+            s.push(if up { '(' } else { ')' });
+            let unlocked = next_random(mut seed) % 4 == 0 and k % 2 == 0;
+            locked.push(if unlocked { '0' } else { '1' });
+        }
+        strings.push(s);
+        locks.push(locked);
+    }
+    let mut valid = 0;
+    let mut check = 0;
+    for round in 0..40 {
+        for a in 0..64 {
+            strings[a].push_str("()");
+            locks[a].push_str("11");
+            let got = can_be_valid(strings[a], locks[a]);
+            if got {
+                valid += 1;
+            }
+            check = (check * 31 + if got { round + a } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"2560 solves: {valid} can be valid, checksum {check}");
+}
