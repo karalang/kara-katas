@@ -1,0 +1,69 @@
+// LeetCode #2117: Abbreviating the Product of a Range -- the limbs arm,
+// the product exactly. A `Vec[i64]` holds it in base 10000, the lowest
+// limb first, and each number multiplies it limb by limb with a carry.
+// The decimal digits are then written out, the zeros stripped from the
+// end with `strip_suffix` in a loop, and the answer cut from the string. O((right - left) * digits).
+
+fn abbreviate_product(left: i64, right: i64) -> String {
+    let base = 10000;
+    let mut limbs: Vec[i64] = [1].to_vec();
+    for i in left..=right {
+        let mut carry = 0;
+        for k in 0..limbs.len() {
+            let v = limbs[k] * i + carry;
+            limbs[k] = v % base;
+            carry = v / base;
+        }
+        while carry > 0 {
+            limbs.push(carry % base);
+            carry /= base;
+        }
+    }
+    let mut digits: String = f"{limbs[limbs.len() - 1]}";
+    for k in (0..limbs.len() - 1).rev() {
+        digits.push_str(f"{limbs[k]:04}");
+    }
+    let mut kept: Str = digits.as_str();
+    while let Some(rest) = kept.strip_suffix("0") {
+        kept = rest;
+    }
+    let zeros = digits.len() - kept.len();
+    if kept.len() <= 10 {
+        return f"{kept}e{zeros}";
+    }
+    f"{kept[..5]}...{kept[kept.len() - 5..]}e{zeros}"
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: one number, ten alone,
+    // the constraints' last two, a product of exactly ten digits after
+    // its zeros, and one of eleven
+    let examples = [(1, 4), (2, 11), (371, 375), (1, 1), (10, 10), (9999, 10000), (1, 15), (1, 16)];
+    for (left, right) in examples.iter() {
+        println(f"[{left}, {right}] -> {abbreviate_product(left, right)}");
+    }
+    // 1000 random ranges: `left` from 1 to 10000, and up to 60 numbers
+    let mut seed = 2117;
+    let mut zeros = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let left = next_random(mut seed) % 10000 + 1;
+        let right = (left + next_random(mut seed) % 61).min(10000);
+        let got = abbreviate_product(left, right);
+        for b in got.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        zeros += i64.parse(got.split("e").last().unwrap()).unwrap();
+    }
+    println(f"1000 ranges: {zeros} trailing zeros, checksum {check}");
+    // long ranges: the first 3000 numbers and the last 1000
+    println(f"[1, 3000] -> {abbreviate_product(1, 3000)}");
+    println(f"[9001, 10000] -> {abbreviate_product(9001, 10000)}");
+}

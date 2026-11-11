@@ -1,0 +1,101 @@
+// LeetCode #2117: Abbreviating the Product of a Range -- the counting
+// arm. The 2s and 5s among `left..=right` are counted per power, as
+// Legendre's formula counts them in a factorial: the multiples of `p^k`
+// up to `right` less those below `left`. The last five digits are the
+// numbers with their 2s and 5s divided out, multiplied modulo 100000,
+// times the unpaired ones by repeated squaring; the first five come from
+// the fractional part of the sum of `log10`. Whether the product without
+// its zeros has more than ten digits is decided exactly, by the same
+// product capped at 10^11.
+
+fn count(left: i64, right: i64, p: i64) -> i64 {
+    let mut total = 0;
+    let mut power = p;
+    while power <= right {
+        total += right / power - (left - 1) / power;
+        power *= p;
+    }
+    total
+}
+
+fn power_mod(base: i64, exp: i64, m: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % m;
+    let mut e = exp;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % m;
+        }
+        b = b * b % m;
+        e /= 2;
+    }
+    result
+}
+
+fn abbreviate_product(left: i64, right: i64) -> String {
+    let cap = 100000000000;
+    let twos = count(left, right, 2);
+    let fives = count(left, right, 5);
+    let zeros = twos.min(fives);
+    let mut last = 1;
+    let mut exact = 1;
+    let mut logs = 0.0;
+    for i in left..=right {
+        let mut x = i;
+        while x % 2 == 0 {
+            x /= 2;
+        }
+        while x % 5 == 0 {
+            x /= 5;
+        }
+        last = last * x % 100000;
+        exact = if exact > cap / x { cap } else { exact * x };
+        logs += (i as f64).log10();
+    }
+    let (p, extra) = if twos > zeros { (2, twos - zeros) } else { (5, fives - zeros) };
+    last = last * power_mod(p, extra, 100000) % 100000;
+    for _ in 0..extra {
+        if exact < cap {
+            exact = if exact > cap / p { cap } else { exact * p };
+        }
+    }
+    if exact < 10000000000 {
+        return f"{exact}e{zeros}";
+    }
+    let first = 10.0.pow(logs - logs.floor() + 4.0) as i64;
+    f"{first}...{last:05}e{zeros}"
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: one number, ten alone,
+    // the constraints' last two, a product of exactly ten digits after
+    // its zeros, and one of eleven
+    let examples = [(1, 4), (2, 11), (371, 375), (1, 1), (10, 10), (9999, 10000), (1, 15), (1, 16)];
+    for (left, right) in examples.iter() {
+        println(f"[{left}, {right}] -> {abbreviate_product(left, right)}");
+    }
+    // 1000 random ranges: `left` from 1 to 10000, and up to 60 numbers
+    let mut seed = 2117;
+    let mut zeros = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let left = next_random(mut seed) % 10000 + 1;
+        let right = (left + next_random(mut seed) % 61).min(10000);
+        let got = abbreviate_product(left, right);
+        for b in got.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        zeros += i64.parse(got.split("e").last().unwrap()).unwrap();
+    }
+    println(f"1000 ranges: {zeros} trailing zeros, checksum {check}");
+    // long ranges: the first 3000 numbers and the last 1000
+    println(f"[1, 3000] -> {abbreviate_product(1, 3000)}");
+    println(f"[9001, 10000] -> {abbreviate_product(9001, 10000)}");
+}

@@ -1,0 +1,69 @@
+// LeetCode #2117: Abbreviating the Product of a Range -- the benchmark,
+// the ★ arm: the factors of 2 and 5 pulled out, the rest modulo 100000
+// and capped at 10^11, and an `f64` of the leading digits. 40000 random
+// ranges of 1 to 3000 numbers within 1 to 10000, each solved once.
+
+fn abbreviate_product(left: i64, right: i64) -> String {
+    let cap = 100000000000;
+    let mut twos = 0;
+    let mut fives = 0;
+    let mut last = 1;
+    let mut exact = 1;
+    let mut lead = 1.0;
+    for i in left..=right {
+        let mut x = i;
+        while x % 2 == 0 {
+            x /= 2;
+            twos += 1;
+        }
+        while x % 5 == 0 {
+            x /= 5;
+            fives += 1;
+        }
+        last = last * x % 100000;
+        exact = if exact > cap / x { cap } else { exact * x };
+        lead *= i as f64;
+        while lead >= 1e12 {
+            lead /= 10.0;
+        }
+    }
+    let zeros = twos.min(fives);
+    for _ in 0..twos - zeros {
+        last = last * 2 % 100000;
+        exact = if exact > cap / 2 { cap } else { exact * 2 };
+    }
+    for _ in 0..fives - zeros {
+        last = last * 5 % 100000;
+        exact = if exact > cap / 5 { cap } else { exact * 5 };
+    }
+    if exact < 10000000000 {
+        return f"{exact}e{zeros}";
+    }
+    while lead >= 1e5 {
+        lead /= 10.0;
+    }
+    f"{lead as i64}...{last:05}e{zeros}"
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2117;
+    let mut long = 0;
+    let mut check = 0;
+    for _ in 0..40000 {
+        let left = next_random(mut seed) % 10000 + 1;
+        let right = (left + next_random(mut seed) % 3000).min(10000);
+        let got = abbreviate_product(left, right);
+        if got.contains("...") {
+            long += 1;
+        }
+        for b in got.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+    }
+    println(f"40000 solves: {long} long answers, checksum {check}");
+}

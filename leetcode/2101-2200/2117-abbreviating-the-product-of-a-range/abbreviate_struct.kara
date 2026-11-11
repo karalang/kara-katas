@@ -1,0 +1,102 @@
+// LeetCode #2117: Abbreviating the Product of a Range -- the struct arm.
+// A `Product` keeps the ★ arm's running state: the 2s and 5s pulled out,
+// the rest modulo 100000 and capped at 10^11, and an `f64` of the leading
+// digits. `times` (`mut ref self`) multiplies one number in; `abbreviated`
+// puts the unpaired 2s or 5s back and writes the answer.
+
+struct Product {
+    twos: i64,
+    fives: i64,
+    last: i64,
+    exact: i64,
+    lead: f64,
+}
+
+impl Product {
+    fn new() -> Product {
+        Product { twos: 0, fives: 0, last: 1, exact: 1, lead: 1.0 }
+    }
+
+    fn mul(mut ref self, x: i64) {
+        let cap = 100000000000;
+        self.last = self.last * x % 100000;
+        self.exact = if self.exact > cap / x { cap } else { self.exact * x };
+    }
+
+    fn times(mut ref self, i: i64) {
+        let mut x = i;
+        while x % 2 == 0 {
+            x /= 2;
+            self.twos += 1;
+        }
+        while x % 5 == 0 {
+            x /= 5;
+            self.fives += 1;
+        }
+        self.mul(x);
+        self.lead *= i as f64;
+        while self.lead >= 1e12 {
+            self.lead /= 10.0;
+        }
+    }
+
+    fn abbreviated(mut ref self) -> String {
+        let zeros = self.twos.min(self.fives);
+        for _ in zeros..self.twos {
+            self.mul(2);
+        }
+        for _ in zeros..self.fives {
+            self.mul(5);
+        }
+        if self.exact < 10000000000 {
+            return f"{self.exact}e{zeros}";
+        }
+        let mut lead = self.lead;
+        while lead >= 1e5 {
+            lead /= 10.0;
+        }
+        f"{lead as i64}...{self.last:05}e{zeros}"
+    }
+}
+
+fn abbreviate_product(left: i64, right: i64) -> String {
+    let mut product = Product.new();
+    for i in left..=right {
+        product.times(i);
+    }
+    product.abbreviated()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: one number, ten alone,
+    // the constraints' last two, a product of exactly ten digits after
+    // its zeros, and one of eleven
+    let examples = [(1, 4), (2, 11), (371, 375), (1, 1), (10, 10), (9999, 10000), (1, 15), (1, 16)];
+    for (left, right) in examples.iter() {
+        println(f"[{left}, {right}] -> {abbreviate_product(left, right)}");
+    }
+    // 1000 random ranges: `left` from 1 to 10000, and up to 60 numbers
+    let mut seed = 2117;
+    let mut zeros = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let left = next_random(mut seed) % 10000 + 1;
+        let right = (left + next_random(mut seed) % 61).min(10000);
+        let got = abbreviate_product(left, right);
+        for b in got.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        zeros += i64.parse(got.split("e").last().unwrap()).unwrap();
+    }
+    println(f"1000 ranges: {zeros} trailing zeros, checksum {check}");
+    // long ranges: the first 3000 numbers and the last 1000
+    println(f"[1, 3000] -> {abbreviate_product(1, 3000)}");
+    println(f"[9001, 10000] -> {abbreviate_product(9001, 10000)}");
+}

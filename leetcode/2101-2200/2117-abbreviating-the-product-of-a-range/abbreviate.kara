@@ -1,0 +1,85 @@
+// LeetCode #2117: Abbreviating the Product of a Range -- the ★ arm, the
+// factors of 2 and 5 pulled out. Every trailing zero of the product is a
+// 2 paired with a 5, so their counts give the zeros, `min(twos, fives)`.
+// What is left of each factor is multiplied modulo 100000 for the last
+// five digits, and also exactly but capped at 10^11, which is enough to
+// tell whether the product without its zeros has at most ten digits.
+// The unpaired 2s or 5s go back in at the end. The first five digits
+// come from an `f64` that keeps the product's leading digits, divided by
+// ten whenever it passes 10^12. O((right - left) log right).
+
+fn abbreviate_product(left: i64, right: i64) -> String {
+    let cap = 100000000000;
+    let mut twos = 0;
+    let mut fives = 0;
+    let mut last = 1;
+    let mut exact = 1;
+    let mut lead = 1.0;
+    for i in left..=right {
+        let mut x = i;
+        while x % 2 == 0 {
+            x /= 2;
+            twos += 1;
+        }
+        while x % 5 == 0 {
+            x /= 5;
+            fives += 1;
+        }
+        last = last * x % 100000;
+        exact = if exact > cap / x { cap } else { exact * x };
+        lead *= i as f64;
+        while lead >= 1e12 {
+            lead /= 10.0;
+        }
+    }
+    let zeros = twos.min(fives);
+    for _ in 0..twos - zeros {
+        last = last * 2 % 100000;
+        exact = if exact > cap / 2 { cap } else { exact * 2 };
+    }
+    for _ in 0..fives - zeros {
+        last = last * 5 % 100000;
+        exact = if exact > cap / 5 { cap } else { exact * 5 };
+    }
+    if exact < 10000000000 {
+        return f"{exact}e{zeros}";
+    }
+    while lead >= 1e5 {
+        lead /= 10.0;
+    }
+    f"{lead as i64}...{last:05}e{zeros}"
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: one number, ten alone,
+    // the constraints' last two, a product of exactly ten digits after
+    // its zeros, and one of eleven
+    let examples = [(1, 4), (2, 11), (371, 375), (1, 1), (10, 10), (9999, 10000), (1, 15), (1, 16)];
+    for (left, right) in examples.iter() {
+        println(f"[{left}, {right}] -> {abbreviate_product(left, right)}");
+    }
+    // 1000 random ranges: `left` from 1 to 10000, and up to 60 numbers
+    let mut seed = 2117;
+    let mut zeros = 0;
+    let mut check = 0;
+    for _ in 0..1000 {
+        let left = next_random(mut seed) % 10000 + 1;
+        let right = (left + next_random(mut seed) % 61).min(10000);
+        let got = abbreviate_product(left, right);
+        for b in got.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        zeros += i64.parse(got.split("e").last().unwrap()).unwrap();
+    }
+    println(f"1000 ranges: {zeros} trailing zeros, checksum {check}");
+    // long ranges: the first 3000 numbers and the last 1000
+    println(f"[1, 3000] -> {abbreviate_product(1, 3000)}");
+    println(f"[9001, 10000] -> {abbreviate_product(9001, 10000)}");
+}
