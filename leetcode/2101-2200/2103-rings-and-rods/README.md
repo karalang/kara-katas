@@ -163,7 +163,7 @@ operator's operand does not fix it, so the `|=` still keeps `bit` an
 above; the §8 ruling of 2026-11-10 says a compound assignment into a
 target of a fixed type will fix it, at which point the template needs
 one edit less. Test `tests/kata_2103_literal_match_binding_fix.rs`
-(kara KATASHA) runs the Mend loop on the kata's pattern either way.
+(kara 81aca4606b) runs the Mend loop on the kata's pattern either way.
 
 ## Benchmarks
 

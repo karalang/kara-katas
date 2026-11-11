@@ -150,7 +150,7 @@ a branch of an `if` already took it from the other branch, but an
 element of an array literal did not take it from its siblings, and
 `karac check` refused the literal with "an expression whose type does
 not lower (UnsolvedParam("C"))", which names nothing the program wrote.
-It now does, as Rust's does. Fixed in kara ARRAYSHA, test
+It now does, as Rust's does. Fixed in kara 81aca4606b, test
 `tests/kata_2099_array_literal_collect.rs`.
 
 `karac fix` carries the template in four rounds of 20, 1, 2 and 1 edits:

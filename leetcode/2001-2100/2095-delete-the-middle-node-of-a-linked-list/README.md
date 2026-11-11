@@ -142,7 +142,7 @@ Ord`, were type-checked for an `Item` with no order: a struct, a `Map`, an
 `Option` of a struct. `karac check` keeps only the program's own errors
 and dropped them, so only the run saw them. A copy whose bound the impl
 does not meet is now left unchecked, and calling `max` on such an
-iterator is still refused at the call. Fixed in kara FIXSHA, test
+iterator is still refused at the call. Fixed in kara 81aca4606b, test
 `tests/kata_2095_iterator_unordered_items.rs`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries

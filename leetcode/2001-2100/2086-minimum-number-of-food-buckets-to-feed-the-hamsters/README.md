@@ -154,7 +154,7 @@ Rust does, `hamsters.matches("H.H").count()`, and was refused "no method
 'matches' on type 'Str'", though `match_indices` is there. `matches` is
 now in the library, `match_indices` without the offsets: every
 non-overlapping match, left to right, each a view into the text. Fixed
-in kara MATCHSHA, test `tests/kata_2086_str_matches.rs`.
+in kara 81aca4606b, test `tests/kata_2086_str_matches.rs`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
 it in three rounds of 5, 2 and 1 edits: Rust's spellings (`&&` to `and`,

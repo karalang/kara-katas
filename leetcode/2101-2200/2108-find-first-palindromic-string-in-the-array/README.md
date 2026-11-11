@@ -150,7 +150,7 @@ right-hand type, so deleting the list left `collect()` with nothing to
 fix what it builds, and the template stopped at "cannot infer type
 parameter". A turbofished `collect` compared with `==` or `!=` now
 becomes the receiver of the collection's `from_iter`, the function
-`collect` calls (kara PALSHA). And `String.from_iter`, which the
+`collect` calls (kara 81aca4606b). And `String.from_iter`, which the
 checker typed, did not resolve to the library's `impl
 FromIterator[char] for String` in the MIR builder; it does since kara
 B-2026-11-10-43, which landed the same fix first.
@@ -159,7 +159,7 @@ B-2026-11-10-43, which landed the same fix first.
 Writing the differential met a third: `letters.iter().copied()`, Rust's
 spelling, drew "no method 'copied'" with nothing to apply, where
 `Option`'s `.copied()` already had a fix to `.cloned()`. An iterator's
-gets the same fix now (kara COPIEDSHA).
+gets the same fix now (kara 81aca4606b).
 
 ## Benchmarks
 

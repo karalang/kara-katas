@@ -142,7 +142,7 @@ The Rust arm was written as LeetCode's Rust template. `karac fix` carried
 `Some(&1)` to `Some(ref 1)`, which the checker then refused
 (E_REF_OPERAND_UNSUPPORTED): a literal has no place to borrow. The edit
 now drops the `&` before a scalar literal, and Kāra compares the value
-as it is. Fixed in kara REFSHA, test `tests/kata_2085_ref_literal.rs`.
+as it is. Fixed in kara 81aca4606b, test `tests/kata_2085_ref_literal.rs`.
 With it `karac fix` carries the arm in three rounds of 24, 4 and 1
 edits: Rust's spellings (`Vec<String>` and `HashMap<&str, i32>` to
 brackets, `&str` to `Str`, `HashMap::new` and `Solution::` to `.`, the

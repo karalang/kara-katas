@@ -148,7 +148,7 @@ then `HashMap` to `Map`; then `k as usize` to `k as i64` and the
 adapter's `as i64` dropped as widening; then the adapter's `ref`
 parameter to a bare one.
 
-The third round needed a compiler fix (kara RANGESHA). The template's
+The third round needed a compiler fix (kara 81aca4606b). The template's
 `for i in k..candies.len()` has a `usize` start and Kāra's `i64`
 `len()`, and the range's bounds check let the two meet, so the template
 ran with its FFI-only `usize` and nothing said. The same pair under an

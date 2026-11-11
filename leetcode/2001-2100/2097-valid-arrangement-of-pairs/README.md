@@ -155,14 +155,14 @@ The kata met two gaps, both fixed.
   under `karac __mir-run`, against 0.6 s compiled. It now reads only the
   probed elements, in std's probe order as the compiled runtime does, so
   among equal elements both answer the same index. Fixed in kara
-  BSEARCHSHA, test `tests/kata_2097_interp_binary_search.rs`.
+  81aca4606b, test `tests/kata_2097_interp_binary_search.rs`.
 - The ids arm was first written `while let Some(top) = stack.last()`,
   pushing onto `stack` in the body. `last` returns `Option[ref T]`, so
   `top` borrows `stack` for the whole body and the push is refused, as
   Rust refuses it. The message names the repair, a copy of the value,
   but `karac fix` applied it only to a `let` initializer, not to a
   `while let` or `if let` scrutinee. It now writes `.cloned()` there
-  when the element is `Copy` or `shared`. Fixed in kara WHILESHA, test
+  when the element is `Copy` or `shared`. Fixed in kara 81aca4606b, test
   `tests/kata_2097_while_let_last_copy_fix.rs`. The Rust template's
   `while let Some(&u) = stack.last()` goes the same way.
 

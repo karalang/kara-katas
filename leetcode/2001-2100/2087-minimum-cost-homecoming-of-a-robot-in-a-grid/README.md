@@ -157,7 +157,7 @@ sum widened and the store was refused as narrowing, with no fix
 (B-2026-11-10-6, filed by kata 2055). As an operand, or the value of a
 compound assignment, such an `if` or `match` now takes the other
 operand's type when every literal fits it, as a literal written there
-does. Fixed in kara LITSHA, test `tests/kata_2087_literal_if_operand.rs`.
+does. Fixed in kara 81aca4606b, test `tests/kata_2087_literal_if_operand.rs`.
 The same `if` bound by a `let` first and added in later is typed
 `i64`, as design.md §8 Literals means it to be: a binding's literal
 beside a type that widens keeps its default, so that form writes `let

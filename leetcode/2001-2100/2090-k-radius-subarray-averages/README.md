@@ -153,7 +153,7 @@ as a pointer and crashed on, where the interpreter printed the right
 sum; and `let fs = [1.0, 3.0];` was typed `f64` at once, so its elements
 could not reach an `f32` parameter, though a list of integer literals is
 left open for its use to fix. Both are fixed with the first, in kara
-ITERSHA, test `tests/kata_2090_literal_ref_arg.rs`.
+81aca4606b, test `tests/kata_2090_literal_ref_arg.rs`.
 
 The scan arm first chained the running sums after `[0].iter()`, which
 yields borrows where `scan` yields values, and was refused as Rust

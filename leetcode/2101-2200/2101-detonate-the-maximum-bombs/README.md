@@ -163,7 +163,7 @@ and the import then failed with "unknown module `std.collections`":
 Kāra's collections are in the prelude, and no such module exists. The
 `::` spelling already had a fix that deletes the line; the dotted one,
 written as `use` or as `import`, now gets the same. Fixed in kara
-USESHA, test `tests/kata_2101_dotted_std_use_fix.rs`. The arm has no
+81aca4606b, test `tests/kata_2101_dotted_std_use_fix.rs`. The arm has no
 import.
 
 `karac fix` carries the template in four rounds of 17, 1, 4 and 2 edits:

@@ -152,7 +152,7 @@ the `std::` and wrote `str.from_utf8`, and in the next round took the
 resolver's nearest name for the undefined `str` and wrote
 `ptr.from_utf8`, which cannot be typed. Rust's `str::from_utf8` is
 Kāra's `String.from_utf8`: the path fix now writes that, and an
-undefined `str` suggests `String`. Fixed in kara UTF8SHA, test
+undefined `str` suggests `String`. Fixed in kara 81aca4606b, test
 `tests/kata_2096_str_from_utf8_fix.rs`.
 
 With that, `karac fix` carries the template in five rounds of 33, 6, 3,

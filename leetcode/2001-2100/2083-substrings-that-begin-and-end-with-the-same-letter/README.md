@@ -139,7 +139,7 @@ could not be iterated: the library's ranges step through any type with
 over the surrogate gap as Rust's does. And a `for` loop straight over a
 char range was lowered as a counting loop, which the MIR interpreter
 refused ("Add on Char") and which would walk into the surrogates; it now
-iterates the library's range. Fixed in kara CHARSHA, test
+iterates the library's range. Fixed in kara 81aca4606b, test
 `tests/kata_2083_char_range.rs`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries

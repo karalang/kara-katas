@@ -147,7 +147,7 @@ as they come (library/iterators.md, "Items read through a reference"),
 `ref i64` from `iter()`, so the halves are `Vec[ref i64]`, where
 `collect` would have read them as values. The refusal carried no repair.
 `karac fix` now writes `.cloned()` before the `partition` when the
-declared halves hold the items' own type. Fixed in kara PARTSHA, test
+declared halves hold the items' own type. Fixed in kara 81aca4606b, test
 `tests/kata_2098_partition_cloned_fix.rs`.
 
 `karac fix` carries the template in three rounds of 17, 6 and 1 edits:

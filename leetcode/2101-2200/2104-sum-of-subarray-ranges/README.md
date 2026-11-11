@@ -172,13 +172,13 @@ counts as a read, and `karac fix` rewrites the closure to `let bounds =
 bounds.0))`; its lines are indented where the closure sits since kara
 B-2026-11-10-32, which fixed the same layout from another kata first
 (the rewrite had laid a multi-line closure out from the first column).
-Fixed in kara SCANSHA, test `tests/kata_2104_rust_scan_field_reads.rs`. The
+Fixed in kara 81aca4606b, test `tests/kata_2104_rust_scan_field_reads.rs`. The
 arm is written in Kāra's form.
 
 A type mismatch whose expected type holds a parameter of the library
 signature it came from, one nothing at the call has bound, now writes
 it `_`: the M29 refusal reads "expected 'Option[((i64, i64), _)]'".
-Fixed in kara PARAMSHA, test `tests/kata_2104_foreign_param_display.rs`.
+Fixed in kara 81aca4606b, test `tests/kata_2104_foreign_param_display.rs`.
 
 `karac fix` carries the template in three rounds of 19, 5 and 7 edits:
 Rust's spellings (`Vec<..>` to brackets, `::` to `.`, `&&` to `and`,

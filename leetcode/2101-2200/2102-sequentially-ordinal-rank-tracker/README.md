@@ -164,7 +164,7 @@ through `to_vec`, whose receiver the checker then refines; the
 refinement reached the elements' types but not the `collect` calls'
 own type argument, and `karac check` stopped at "the method call
 `.collect` with no resolved callee is not lowered yet". It now reaches
-the calls too. Fixed in kara COLLECTSHA, test
+the calls too. Fixed in kara 81aca4606b, test
 `tests/kata_2102_to_vec_of_collects.rs`.
 
 The Rust template does not carry. `karac fix` takes it in three rounds

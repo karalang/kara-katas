@@ -174,7 +174,7 @@ as i64`, drew `lossless_cast` for the same cast, and this one, whose
 call also casts its arguments, `capacity_a as i32`, did not: the type a
 function's return wants of its cast was kept in a single slot, and the
 argument's own cast, checked inside the outer one's operand, took the
-slot over. The slots are a stack now. Fixed in kara CASTSHA, test
+slot over. The slots are a stack now. Fixed in kara 81aca4606b, test
 `tests/kata_2105_nested_cast_lint.rs`. The same lint now offers to drop
 the closing cast in the adapters of earlier katas written the same way;
 they are left as they were.

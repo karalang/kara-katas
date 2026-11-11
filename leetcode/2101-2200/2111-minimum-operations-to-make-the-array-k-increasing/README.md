@@ -163,7 +163,7 @@ declared `i32` too, which the round before had made the type
 `ans += len - ..` needs.
 
 Two compiler gaps came up, each fixed in karac with a test named for
-this kata (karac SKIPSHA):
+this kata (karac 81aca4606b):
 
 - The search arm, `arr.iter().skip(r).step_by(k)`, ran for minutes at
   `k = n = 10^5`. `skip` already jumped its skipped items, but
