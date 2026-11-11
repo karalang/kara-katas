@@ -1,0 +1,84 @@
+// LeetCode #2113: Elements in Array After Removing and Replacing Elements
+// -- the process itself, once round its period, in a `VecDeque`: the
+// queries are sorted by their minute within the period, and a deque of
+// the array as it stands pops its front each minute until empty, then
+// pushes the original values back one a minute, answering each query
+// when its minute comes. O(n + q log q).
+
+fn element_in_nums(nums: Vec[i64], queries: Vec[(i64, i64)]) -> Vec[i64] {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..queries.len()).collect();
+    order.sort_by_key(|j| queries[j].0 % (2 * n));
+    let mut ans = Vec.filled(queries.len(), -1);
+    let mut now: VecDeque[i64] = VecDeque.new();
+    for x in nums.iter() {
+        now.push_back(x);
+    }
+    let mut minute = 0;
+    for j in order.iter() {
+        let (time, index) = queries[j];
+        while minute < time % (2 * n) {
+            if minute < n {
+                now.pop_front();
+            } else {
+                now.push_back(nums[minute - n]);
+            }
+            minute += 1;
+        }
+        if index < now.len() {
+            ans[j] = now[index];
+        }
+    }
+    ans
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then two more: two elements over four
+    // periods' worth of minutes, and the last place of four asked across
+    // a removal and a restoring
+    let examples = [
+        ([0, 1, 2].to_vec(), [(0, 2), (2, 0), (3, 2), (5, 0)].to_vec()),
+        ([2].to_vec(), [(0, 0), (1, 0), (2, 0), (3, 0)].to_vec()),
+        ([5, 6].to_vec(), [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1)].to_vec()),
+        ([7, 8, 9, 10].to_vec(), [(4, 0), (8, 3), (7, 3), (6, 1), (100000, 3)].to_vec()),
+    ];
+    for (nums, queries) in examples.iter() {
+        println(f"{nums} at {queries} -> {element_in_nums(nums, queries)}");
+    }
+    // 2000 random arrays of 1 to 10 values from 0 to 100, each asked 1 to
+    // 20 queries at minutes 0 to 60
+    let mut seed = 2113;
+    let mut total = 0;
+    let mut check = 0;
+    let mut missing = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 101).collect();
+        let q = next_random(mut seed) % 20 + 1;
+        let queries: Vec[(i64, i64)] = (0..q).map(|_| (next_random(mut seed) % 61, next_random(mut seed) % n)).collect();
+        for x in element_in_nums(nums, queries).iter() {
+            if x == -1 {
+                missing += 1;
+            } else {
+                total += x;
+            }
+            check = (check * 31 + x + 1) % 1000000007;
+        }
+    }
+    println(f"2000 arrays: {total} summed, {missing} missing, checksum {check}");
+    // the constraints' largest: 100 values, 10^5 queries, minute `j` at
+    // place `j * 37 mod 100`
+    let nums: Vec[i64] = (0..100).map(|i| i * 7 % 101).collect();
+    let queries: Vec[(i64, i64)] = (0..100000).map(|j| (j, j * 37 % 100)).collect();
+    let got = element_in_nums(nums, queries);
+    let found = got.iter().filter(|x| x >= 0).count();
+    let sum: i64 = got.iter().filter(|x| x >= 0).sum();
+    println(f"10^5 queries: {found} found, {sum} summed");
+}
