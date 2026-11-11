@@ -1,0 +1,209 @@
+// LeetCode #2119: A Number After a Double Reversal -- the differential.
+// The six arms, against the statement read literally: the decimal digits
+// written out, reversed, their leading zeros dropped, and that done
+// twice. 300 random numbers from 0 to 10^6; then 30 that are a power of
+// ten times a number up to 1000; then 0 to 29; every one drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  a nonzero number with a zero written after it: false
+// P3  a number with a nonzero digit written after it: true
+// P4  a nonzero number with a 1 written before it: the same answer
+// P5  a true answer stays true for the number reversed
+// P6  each arm agrees with at least three of the other five
+
+// ---- reversed.kara: the ★ arm, the last digit
+fn star_is_same_after_reversals(num: i64) -> bool {
+    num == 0 or num % 10 != 0
+}
+
+// ---- reversed_twice.kara: the digits reversed by `% 10` and `/ 10`, twice
+fn twice_reverse(num: i64) -> i64 {
+    let mut n = num;
+    let mut out = 0;
+    while n > 0 {
+        out = out * 10 + n % 10;
+        n /= 10;
+    }
+    out
+}
+
+fn twice_is_same_after_reversals(num: i64) -> bool {
+    twice_reverse(twice_reverse(num)) == num
+}
+
+// ---- reversed_string.kara: the text reversed and parsed back, twice
+fn string_reverse(num: i64) -> i64 {
+    let text: String = f"{num}".chars().rev().collect();
+    i64.parse(text).unwrap()
+}
+
+fn string_is_same_after_reversals(num: i64) -> bool {
+    string_reverse(string_reverse(num)) == num
+}
+
+// ---- reversed_struct.kara: a `Digits`
+struct StructDigits {
+    digits: Vec[i64],
+}
+
+impl StructDigits {
+    fn of(num: i64) -> StructDigits {
+        let mut digits: Vec[i64] = Vec.new();
+        let mut n = num;
+        while n > 0 {
+            digits.push(n % 10);
+            n /= 10;
+        }
+        digits.reverse();
+        StructDigits { digits: digits }
+    }
+
+    fn reversed(self) -> StructDigits {
+        let digits: Vec[i64] = self.digits.iter().rev().skip_while(|d| d == 0).collect();
+        StructDigits { digits: digits }
+    }
+}
+
+fn struct_is_same_after_reversals(num: i64) -> bool {
+    let digits = StructDigits.of(num);
+    digits.reversed().reversed().digits == digits.digits
+}
+
+// ---- reversed_iter.kara: `successors` and a `fold`
+fn iter_digits(num: i64) -> Vec[i64] {
+    successors(Some(num), |n| if n >= 10 { Some(n / 10) } else { None }).map(|n| n % 10).collect()
+}
+
+fn iter_reverse(num: i64) -> i64 {
+    iter_digits(num).iter().fold(0, |acc, d| acc * 10 + d)
+}
+
+fn iter_is_same_after_reversals(num: i64) -> bool {
+    iter_reverse(iter_reverse(num)) == num
+}
+
+// ---- reversed_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn is_same_after_reversals(num: i32) -> bool {
+        let reverse = |n: i32| { i32.parse(String.from_iter(n.to_string().chars().rev())).unwrap() };
+        reverse(reverse(num)) == num
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_is_same_after_reversals(num: i64) -> bool {
+    SolutionSolution.is_same_after_reversals(num as i32)
+}
+
+// ---- the statement read literally
+
+fn written(num: i64) -> Vec[i64] {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut n = num;
+    loop {
+        digits.push(n % 10);
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    digits.reverse();
+    digits
+}
+
+fn literal_reverse(num: i64) -> i64 {
+    let mut digits = written(num);
+    digits.reverse();
+    let mut value = 0;
+    for d in digits.iter() {
+        value = value * 10 + d;
+    }
+    value
+}
+
+fn literal(num: i64) -> bool {
+    literal_reverse(literal_reverse(num)) == num
+}
+
+fn answer(arm: i64, num: i64) -> bool {
+    match arm {
+        0 => star_is_same_after_reversals(num),
+        1 => twice_is_same_after_reversals(num),
+        2 => string_is_same_after_reversals(num),
+        3 => struct_is_same_after_reversals(num),
+        4 => iter_is_same_after_reversals(num),
+        _ => solution_is_same_after_reversals(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "twice", "string", "struct", "iter", "solution"];
+    let mut seed = 2119;
+    let mut problems: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            problems.push(next_random(mut seed) % 1000001);
+        } else if t < 330 {
+            let base = next_random(mut seed) % 1001;
+            problems.push(base * 10.pow((next_random(mut seed) % 4) as u32));
+        } else {
+            problems.push(t - 330);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in problems.iter() {
+        let truth = literal(num);
+        check = (check * 31 + if truth { num % 1000 } else { 7 }) % 1000000007;
+        let digit = num % 9 + 1;
+        let front = 10.pow(written(num).len() as u32) + num;
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                num == 0 or not answer(arm, num * 10),
+                answer(arm, num * 10 + digit),
+                num == 0 or answer(arm, front) == x,
+                not x or answer(arm, literal_reverse(num)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
