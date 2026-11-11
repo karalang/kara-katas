@@ -39,42 +39,20 @@ impl A0FooBar {
 
 // ---- print_foobar_semaphore.kara ----
 
-sync struct A1Permits {
-    permits: (Sender[()], Receiver[()]),
-}
-
-impl A1Permits {
-    fn new(value: i64) -> A1Permits {
-        let permits = channel(1);
-        for _ in 0..value {
-            let _ = permits.0.send(());
-        }
-        A1Permits { permits }
-    }
-
-    fn acquire(self) {
-        let _ = self.permits.1.recv();
-    }
-
-    fn release(self) {
-        let _ = self.permits.0.send(());
-    }
-}
-
 sync struct A1FooBar {
     n: i64,
-    foo_sem: A1Permits,
-    bar_sem: A1Permits,
+    foo_sem: Semaphore,
+    bar_sem: Semaphore,
 }
 
 impl A1FooBar {
     fn new(n: i64) -> A1FooBar {
-        A1FooBar { n, foo_sem: A1Permits.new(1), bar_sem: A1Permits.new(0) }
+        A1FooBar { n, foo_sem: Semaphore.new(1), bar_sem: Semaphore.new(0) }
     }
 
     fn foo(self, print_foo: Fn()) {
         for _ in 0..self.n {
-            self.foo_sem.acquire();
+            let _ = self.foo_sem.acquire(60000);
             print_foo();
             self.bar_sem.release();
         }
@@ -82,7 +60,7 @@ impl A1FooBar {
 
     fn bar(self, print_bar: Fn()) {
         for _ in 0..self.n {
-            self.bar_sem.acquire();
+            let _ = self.bar_sem.acquire(60000);
             print_bar();
             self.foo_sem.release();
         }

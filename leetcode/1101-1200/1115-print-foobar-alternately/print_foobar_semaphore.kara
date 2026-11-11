@@ -1,49 +1,24 @@
-// LeetCode #1115: Print FooBar Alternately -- two semaphores, as the
-// Python solutions on LeetCode write it with `threading.Semaphore`, each
-// a channel holding its permits: `acquire` takes one and `release` puts
-// one back. `foo` starts with a permit and `bar` without, and each
-// method releases the other's after it prints. The standard library's
-// `Semaphore` would be the natural type, but its `acquire` does not wait
-// for another task's `release` (B-2026-11-10-NN).
+// LeetCode #1115: Print FooBar Alternately -- two semaphores from the
+// standard library, as the Python solutions on LeetCode write it with
+// `threading.Semaphore`: `foo` starts with a permit and `bar` without,
+// and each method releases the other's after it prints.
 
 import std.sync.{Mutex, TaskGroup};
 
-sync struct Permits {
-    permits: (Sender[()], Receiver[()]),
-}
-
-impl Permits {
-    fn new(value: i64) -> Permits {
-        let permits = channel(1);
-        for _ in 0..value {
-            let _ = permits.0.send(());
-        }
-        Permits { permits }
-    }
-
-    fn acquire(self) {
-        let _ = self.permits.1.recv();
-    }
-
-    fn release(self) {
-        let _ = self.permits.0.send(());
-    }
-}
-
 sync struct FooBar {
     n: i64,
-    foo_sem: Permits,
-    bar_sem: Permits,
+    foo_sem: Semaphore,
+    bar_sem: Semaphore,
 }
 
 impl FooBar {
     fn new(n: i64) -> FooBar {
-        FooBar { n, foo_sem: Permits.new(1), bar_sem: Permits.new(0) }
+        FooBar { n, foo_sem: Semaphore.new(1), bar_sem: Semaphore.new(0) }
     }
 
     fn foo(self, print_foo: Fn()) {
         for _ in 0..self.n {
-            self.foo_sem.acquire();
+            let _ = self.foo_sem.acquire(60000);
             print_foo();
             self.bar_sem.release();
         }
@@ -51,7 +26,7 @@ impl FooBar {
 
     fn bar(self, print_bar: Fn()) {
         for _ in 0..self.n {
-            self.bar_sem.acquire();
+            let _ = self.bar_sem.acquire(60000);
             print_bar();
             self.foo_sem.release();
         }

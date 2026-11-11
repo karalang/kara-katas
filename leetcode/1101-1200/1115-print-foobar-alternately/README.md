@@ -42,7 +42,7 @@ started in either order, and its prints go to a log behind a `Mutex`.
 | file | mechanism |
 |---|---|
 | `print_foobar.kara` ★ | two channels passed back and forth, each holding one method's turn: `foo` waits on its own, prints and hands the turn to `bar`, which hands it back; `foo`'s first turn is put in its channel when the pair is made |
-| `print_foobar_semaphore.kara` | two semaphores, as the Python solutions on LeetCode write it with `threading.Semaphore`: `foo` starts with a permit and `bar` without, and each method releases the other's after it prints. Each semaphore is a channel holding its permits, since the standard library's `Semaphore` does not wait for another task's `release` (B-2026-11-11-34) |
+| `print_foobar_semaphore.kara` | two of the standard library's semaphores, as the Python solutions on LeetCode write it with `threading.Semaphore`: `foo` starts with a permit and `bar` without, and each method releases the other's after it prints |
 | `print_foobar_waitlist.kara` | a condition variable built from a `Mutex` and channels, as the C++ and Java solutions use one: whose turn it is sits under the lock with the method waiting, if any, and a method that prints passes the turn and wakes the waiter |
 | `print_foobar_polling.kara` | an `Atomic` flag for whose turn it is, and a method whose turn has not come sleeping for no time at all between checks |
 | `differential.kara` | the four arms against the statement read literally, six properties |
@@ -94,9 +94,9 @@ natively, and ten under the interpreter too.
 | M4 | ★: `bar` hands back the turn before it prints | none | P4 6; 403 to 446 in four more runs |
 | M5 | ★: `foo` prints twice a turn | P1 600, P2 600, P3 600, P4 600, P5 600 | P1 600, P2 600, P3 600, P4 600, P5 600 |
 | M6 | semaphore: `bar` starts with the permit | P1 600, P2 600, P3 600, P4 600, P5 600 | P1 600, P2 600, P3 600, P4 600, P5 600 |
-| M7 | semaphore: `foo` releases before it prints | none | P3 2, P4 8, P5 1; 498 to 524 in four more runs |
-| M8 | semaphore: `bar` releases before it prints | none | P1 5, P2 5, P3 2, P4 38, P6 1; 373 to 408 in four more runs |
-| M9 | semaphore: `foo` prints before it acquires | P1 547, P2 547, P3 547, P4 547, P5 547 | P1 547, P2 547, P3 547, P4 547, P5 547, P6 4 |
+| M7 | semaphore: `foo` releases before it prints | none | P1 42, P2 43, P3 35, P4 180, P5 46, P6 69; 1284 to 1348 in four more runs |
+| M8 | semaphore: `bar` releases before it prints | none | P1 25, P2 26, P3 16, P4 81, P5 32, P6 33; 980 to 1091 in four more runs |
+| M9 | semaphore: `foo` prints before it acquires | P1 547, P2 547, P3 547, P4 547, P5 547 | P1 547, P2 547, P3 547, P4 547, P5 547, P6 67 |
 | M10 | semaphore: `bar` prints twice a turn | P1 600, P2 600, P3 600, P4 600, P5 600 | P1 600, P2 600, P3 600, P4 600, P5 600 |
 | M11 | waitlist: a method goes on when the turn is not its own | P1 600, P2 600, P3 600, P4 600, P5 600 | P1 600, P2 600, P3 600, P4 600, P5 600 |
 | M12 | waitlist: `foo` passes the turn before it prints | none | P1 11, P2 12, P3 13, P4 27, P5 10, P6 19; 1824 to 1867 in four more runs |
@@ -117,9 +117,9 @@ waits, and a send, a release or a store is not a wait, so the method
 still prints before the next one runs. Natively the tasks run at once on
 every core, and the next method sometimes prints first. How often
 depends on how busy the machine is: in the mutation run, three programs
-at a time, each of the eight failed between 6 and 124 checks; run four
+at a time, each of the eight failed between 6 and 415 checks; run four
 more times each, one program at a time, every one of them failed every
-time, between 373 and 1867 checks.
+time, between 403 and 1867 checks.
 
 M18 and M19 turn the polling arm's wait into one look and one sleep.
 Under the interpreter one sleep is always time enough for the other task
@@ -142,7 +142,7 @@ __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 arm and the differential. `karac check --output=json` reports nothing on
 any file, and `karac fix` has nothing to apply.
 
-The kata found two gaps. The polling arm waits for its turn with
+The kata found three gaps. The polling arm waits for its turn with
 `sleep(Duration.ms(0))` between looks at an `Atomic`, and a sleep whose
 pause had passed when first asked never let another task run, so on the
 interpreter and on a one-worker build the arm never finished
@@ -151,13 +151,18 @@ the first time it is asked. The natural semaphore arm is the Python
 solutions' two `threading.Semaphore`s, written with the standard
 library's `Semaphore`: `Semaphore.new(1)` for `foo` and
 `Semaphore.new(0)` for `bar`, each method releasing the other's. It
-prints `foofoobarbar` for `n = 2`, because `acquire` on an exhausted
-semaphore fails at once rather than waiting for another task's
-`release`, and `release` never counts above the starting permits, so a
-semaphore made with none can never be released (B-2026-11-11-34, open).
-The semaphore arm builds its semaphores from channels until it is fixed.
-Every arm was written as Kāra, and `karac fix` had nothing to change in
-any of them.
+printed `foofoobarbar` for `n = 2`, because `acquire` on an exhausted
+semaphore failed at once rather than waiting for another task's
+`release`, and `release` never counted above the starting permits, so a
+semaphore made with none could never be released (B-2026-11-11-34, fixed
+in c47fd80f23). The semaphore arm built its semaphores from channels
+until then and now uses the standard library's. With it, a compiled run
+of the differential sometimes takes 63 s rather than 3 s, in 6 of 120
+runs across a built binary, `karac __mir-llvm-run` and `karac run`,
+though its output is right: an `acquire` waits out its whole 60 s
+timeout after the permit it waits for was released (B-2026-11-11-66,
+open). Every arm was written as Kāra, and `karac fix` had nothing to
+change in any of them.
 
 ## Benchmarks
 
