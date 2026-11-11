@@ -1,0 +1,102 @@
+// LeetCode #2111: Minimum Operations to Make the Array K-Increasing --
+// a Fenwick tree over the values, 1 to 10^5: walking a chain, the longest
+// non-decreasing subsequence ending at `x` is one more than the longest
+// ending at any value up to `x`, a prefix maximum the tree answers in
+// O(log V); the tree is reset after each chain by undoing its writes.
+// O(n log V).
+
+fn best_up_to(tree: Vec[i64], v: i64) -> i64 {
+    let mut best = 0;
+    let mut i = v;
+    while i > 0 {
+        best = best.max(tree[i]);
+        i -= i & -i;
+    }
+    best
+}
+
+fn raise(tree: mut ref Vec[i64], v: i64, len: i64) {
+    let mut i = v;
+    while i < tree.len() {
+        tree[i] = tree[i].max(len);
+        i += i & -i;
+    }
+}
+
+fn clear(tree: mut ref Vec[i64], v: i64) {
+    let mut i = v;
+    while i < tree.len() {
+        tree[i] = 0;
+        i += i & -i;
+    }
+}
+
+fn k_increasing(arr: Vec[i64], k: i64) -> i64 {
+    let mut tree = Vec.filled(100001, 0);
+    let mut changes = 0;
+    for r in 0..k {
+        let mut longest = 0;
+        let mut len = 0;
+        let mut i = r;
+        while i < arr.len() {
+            let here = best_up_to(tree, arr[i]) + 1;
+            raise(mut tree, arr[i], here);
+            longest = longest.max(here);
+            len += 1;
+            i += k;
+        }
+        let mut i = r;
+        while i < arr.len() {
+            clear(mut tree, arr[i]);
+            i += k;
+        }
+        changes += len - longest;
+    }
+    changes
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one element, equal
+    // elements, every chain one long, and two falling chains
+    let examples = [
+        ([5, 4, 3, 2, 1].to_vec(), 1),
+        ([4, 1, 5, 2, 6, 2].to_vec(), 2),
+        ([4, 1, 5, 2, 6, 2].to_vec(), 3),
+        ([1].to_vec(), 1),
+        ([2, 2, 2].to_vec(), 1),
+        ([3, 1, 2].to_vec(), 3),
+        ([10, 9, 8, 7, 6, 5].to_vec(), 2),
+    ];
+    for (arr, k) in examples.iter() {
+        println(f"{arr}, k = {k} -> {k_increasing(arr, k)}");
+    }
+    // 3000 random arrays of 1 to 40 values from 1 to 10, with `k` from 1
+    // to the length
+    let mut seed = 2111;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 10 + 1).collect();
+        let k = next_random(mut seed) % n + 1;
+        let got = k_increasing(arr, k);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 arrays: {total} operations, checksum {check}");
+    // the constraints' largest, 10^5 values: falling with k = 1, random
+    // with k = 7, and random with k = n
+    let falling: Vec[i64] = (0..100000).map(|i| 100000 - i).collect();
+    let mut seed = 7;
+    let random: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1).collect();
+    println(f"falling, k = 1 -> {k_increasing(falling, 1)}");
+    println(f"random, k = 7 -> {k_increasing(random, 7)}");
+    println(f"random, k = n -> {k_increasing(random, 100000)}");
+}
