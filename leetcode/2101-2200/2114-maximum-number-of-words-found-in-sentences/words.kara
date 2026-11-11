@@ -1,0 +1,69 @@
+// LeetCode #2114: Maximum Number of Words Found in Sentences -- the ★
+// arm. Words are separated by single spaces with none at either end, so a
+// sentence has one word more than it has spaces: each sentence's spaces
+// are counted over its bytes, and the largest count plus one is the
+// answer. O(total length).
+
+fn most_words_found(sentences: Vec[String]) -> i64 {
+    let mut most = 0;
+    for s in sentences.iter() {
+        let words = s.bytes().iter().filter(|b| b == b' ').count() + 1;
+        most = most.max(words);
+    }
+    most
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then three more: one word alone, one-letter
+    // words, and the longest sentence last
+    let examples: Vec[Vec[String]] = [
+        ["alice and bob love leetcode", "i think so too", "this is great thanks very much"].to_vec(),
+        ["please wait", "continue to fight", "continue to win"].to_vec(),
+        ["hello"].to_vec(),
+        ["a b c", "d e f g h"].to_vec(),
+        ["one two", "one", "one two three four"].to_vec(),
+    ].to_vec();
+    for sentences in examples.iter() {
+        println(f"{sentences} -> {most_words_found(sentences)}");
+    }
+    // 3000 random lists of 1 to 10 sentences, each of 1 to 12 words of 1
+    // to 6 letters
+    let mut seed = 2114;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let count = next_random(mut seed) % 10 + 1;
+        let mut sentences: Vec[String] = Vec.new();
+        for _ in 0..count {
+            let words = next_random(mut seed) % 12 + 1;
+            let mut s: String = "";
+            for w in 0..words {
+                if w > 0 {
+                    s.push(' ');
+                }
+                let len = next_random(mut seed) % 6 + 1;
+                for _ in 0..len {
+                    s.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+                }
+            }
+            sentences.push(s);
+        }
+        let got = most_words_found(sentences);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 lists: {total} words, checksum {check}");
+    // the constraints' largest: 100 sentences of 100 characters, one-letter
+    // words (50 each) and one 100-letter word
+    let short: Vec[String] = (0..100).map(|_| "a " .repeat(49) + "a").collect();
+    let long: Vec[String] = (0..100).map(|_| "z".repeat(100)).collect();
+    println(f"one-letter words -> {most_words_found(short)}");
+    println(f"one long word -> {most_words_found(long)}");
+}

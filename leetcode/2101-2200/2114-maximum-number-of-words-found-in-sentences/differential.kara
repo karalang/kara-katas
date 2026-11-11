@@ -1,0 +1,237 @@
+// LeetCode #2114: Maximum Number of Words Found in Sentences -- the
+// differential. The six arms, against the statement read literally: each
+// sentence cut into its words, a word ending at each space and at the
+// end, the words kept in a list and the longest list's length taken. 300
+// random lists of 1 to 5 sentences of 1 to 6 words of 1 to 3 letters;
+// then 30 of up to 30 sentences of up to 50 words of 1 to 4 letters;
+// then 30 in which one sentence of up to 100 characters holds only
+// one-letter words; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least 1 and at most half of the longest sentence's
+//     length plus one, rounded down
+// P3  every letter made `z`: the same answer
+// P4  the sentences joined with spaces and appended: the answer is the
+//     sum of each sentence's alone
+// P5  the sentences reversed: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- words.kara: the ★ arm, spaces counted
+fn star_most_words_found(sentences: Vec[String]) -> i64 {
+    let mut most = 0;
+    for s in sentences.iter() {
+        let words = s.bytes().iter().filter(|b| b == b' ').count() + 1;
+        most = most.max(words);
+    }
+    most
+}
+
+// ---- words_split.kara: `split` and `max`
+fn split_most_words_found(sentences: Vec[String]) -> i64 {
+    sentences.iter().map(|s| s.split(" ").count()).max() ?? 0
+}
+
+// ---- words_starts.kara: word starts by index
+fn starts_most_words_found(sentences: Vec[String]) -> i64 {
+    let mut most = 0;
+    for s in sentences.iter() {
+        let b = s.bytes();
+        let mut starts = 0;
+        for i in 0..b.len() {
+            if b[i] != b' ' and (i == 0 or b[i - 1] == b' ') {
+                starts += 1;
+            }
+        }
+        if starts > most {
+            most = starts;
+        }
+    }
+    most
+}
+
+// ---- words_fold.kara: `fold` and `split_whitespace`
+fn fold_most_words_found(sentences: Vec[String]) -> i64 {
+    sentences.iter().fold(0, |most, s| most.max(s.split_whitespace().count()))
+}
+
+// ---- words_struct.kara: a `Tally`
+struct StructTally {
+    words: i64,
+    most: i64,
+}
+
+impl StructTally {
+    fn see(mut ref self, c: char) {
+        if c == ' ' {
+            self.words += 1;
+        }
+    }
+
+    fn finish(mut ref self) {
+        self.most = self.most.max(self.words + 1);
+        self.words = 0;
+    }
+}
+
+fn struct_most_words_found(sentences: Vec[String]) -> i64 {
+    let mut tally = StructTally { words: 0, most: 0 };
+    for s in sentences.iter() {
+        for c in s.chars() {
+            tally.see(c);
+        }
+        tally.finish();
+    }
+    tally.most
+}
+
+// ---- words_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn most_words_found(sentences: Vec[String]) -> i32 {
+        sentences
+            .iter()
+            .map(|s| s.split(" ").count() as i32)
+            .max()
+            .unwrap()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_most_words_found(sentences: Vec[String]) -> i64 {
+    SolutionSolution.most_words_found(sentences)
+}
+
+// ---- the statement read literally
+
+fn literal(sentences: Vec[String]) -> i64 {
+    let mut most = 0;
+    for s in sentences.iter() {
+        let mut words: Vec[String] = Vec.new();
+        let mut word: String = "";
+        for c in s.chars() {
+            if c == ' ' {
+                words.push(word.clone());
+                word = "";
+            } else {
+                word.push(c);
+            }
+        }
+        words.push(word);
+        if words.len() > most {
+            most = words.len();
+        }
+    }
+    most
+}
+
+fn answer(arm: i64, sentences: Vec[String]) -> i64 {
+    match arm {
+        0 => star_most_words_found(sentences),
+        1 => split_most_words_found(sentences),
+        2 => starts_most_words_found(sentences),
+        3 => fold_most_words_found(sentences),
+        4 => struct_most_words_found(sentences),
+        _ => solution_most_words_found(sentences),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn sentence(seed: mut ref i64, words: i64, letters: i64) -> String {
+    let mut s: String = "";
+    for w in 0..words {
+        if w > 0 {
+            s.push(' ');
+        }
+        for _ in 0..next_random(mut seed) % letters + 1 {
+            s.push((b'a' + (next_random(mut seed) % 3) as u8) as char);
+        }
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "split", "starts", "fold", "struct", "solution"];
+    let mut seed = 2114;
+    let mut problems: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let mut sentences: Vec[String] = Vec.new();
+        if t < 300 {
+            for _ in 0..next_random(mut seed) % 5 + 1 {
+                let words = next_random(mut seed) % 6 + 1;
+                sentences.push(sentence(mut seed, words, 3));
+            }
+        } else if t < 330 {
+            for _ in 0..next_random(mut seed) % 30 + 1 {
+                let words = next_random(mut seed) % 50 + 1;
+                sentences.push(sentence(mut seed, words, 4));
+            }
+        } else {
+            for _ in 0..next_random(mut seed) % 5 {
+                let words = next_random(mut seed) % 6 + 1;
+                sentences.push(sentence(mut seed, words, 8));
+            }
+            let words = next_random(mut seed) % 50 + 1;
+            let at = next_random(mut seed) % (sentences.len() + 1);
+            sentences.insert(at, sentence(mut seed, words, 1));
+        }
+        problems.push(sentences);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for sentences in problems.iter() {
+        let truth = literal(sentences);
+        check = (check * 31 + truth) % 1000000007;
+        let longest = sentences.iter().map(|s| s.len()).max() ?? 0;
+        let zs: Vec[String] = sentences.iter().map(|s| String.from_iter(s.chars().map(|c| if c == ' ' { ' ' } else { 'z' }))).collect();
+        let mut joined = sentences.clone();
+        joined.push(sentences.join(" "));
+        let mut reversed = sentences.clone();
+        reversed.reverse();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, sentences)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let alone: i64 = sentences.iter().map(|s| answer(arm, [s.clone()].to_vec())).sum();
+            let verdicts = [
+                x == truth,
+                x >= 1 and x <= (longest + 1) / 2,
+                answer(arm, zs) == x,
+                answer(arm, joined) == alone,
+                answer(arm, reversed) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{sentences} arm {names[arm]}: P{q + 1} fails, answer {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

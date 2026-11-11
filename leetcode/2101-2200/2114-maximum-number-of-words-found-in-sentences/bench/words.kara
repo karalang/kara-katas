@@ -1,0 +1,53 @@
+// LeetCode #2114: Maximum Number of Words Found in Sentences -- the
+// benchmark, words.kara's ★ arm: each sentence's spaces counted over its
+// bytes, plus one, and the largest taken. 200 lists of 100 sentences of
+// 1 to 25 words of 1 to 6 letters are built once; each list is then
+// solved 10 times, a one-letter word appended to one of its sentences
+// before each solve so that no solve repeats the one before.
+
+fn most_words_found(sentences: Vec[String]) -> i64 {
+    let mut most = 0;
+    for s in sentences.iter() {
+        let words = s.bytes().iter().filter(|b| b == b' ').count() + 1;
+        most = most.max(words);
+    }
+    most
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2114;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for _ in 0..200 {
+        let mut sentences: Vec[String] = Vec.new();
+        for _ in 0..100 {
+            let words = next_random(mut seed) % 25 + 1;
+            let mut s: String = "";
+            for w in 0..words {
+                if w > 0 {
+                    s.push(' ');
+                }
+                for _ in 0..next_random(mut seed) % 6 + 1 {
+                    s.push((b'a' + (next_random(mut seed) % 26) as u8) as char);
+                }
+            }
+            sentences.push(s);
+        }
+        lists.push(sentences);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..10 {
+        for a in 0..200 {
+            lists[a][(round * 37 + a) % 100].push_str(" a");
+            let got = most_words_found(lists[a]);
+            total += got;
+            check = (check * 31 + got) % 1000000007;
+        }
+    }
+    println(f"2000 solves: {total} words, checksum {check}");
+}
