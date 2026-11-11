@@ -143,17 +143,18 @@ Solution {}`, the adapter's `&Vec` to `ref` and `Solution::` to `.`, and
 `into_iter()`, which takes the vector the method only borrows, and the
 adapter's `ref` parameter to a bare one.
 
-The turbofish needed two compiler fixes (kara PALSHA). Every other
+The turbofish needed two compiler fixes. Every other
 turbofish's fix deletes it, or moves its type onto the `let` the call is
 bound to; here the call is an operand of `==`, which takes its own
 right-hand type, so deleting the list left `collect()` with nothing to
 fix what it builds, and the template stopped at "cannot infer type
 parameter". A turbofished `collect` compared with `==` or `!=` now
 becomes the receiver of the collection's `from_iter`, the function
-`collect` calls. And `String.from_iter`, which the checker typed, did not
-resolve to the library's `impl FromIterator[char] for String` in the MIR
-builder; it does now. `tests/kata_2108_collect_turbofish_compare.rs` pins
-both.
+`collect` calls (kara PALSHA). And `String.from_iter`, which the
+checker typed, did not resolve to the library's `impl
+FromIterator[char] for String` in the MIR builder; it does since kara
+B-2026-11-10-43, which landed the same fix first.
+`tests/kata_2108_collect_turbofish_compare.rs` pins both.
 
 Writing the differential met a third: `letters.iter().copied()`, Rust's
 spelling, drew "no method 'copied'" with nothing to apply, where

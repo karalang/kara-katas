@@ -152,16 +152,18 @@ spellings (the `&&m` closure pattern dropped, `struct Solution;` to
 `.`); then `as_bytes()` to `bytes()`, the adapter's `as i64` dropped as
 a cast `i32` widens without, and `bit` given `: u8`.
 
-That last edit is new. Rust infers `bit`'s type from the `|=` into a
-`u8` array; Kāra types a `let` bound to a `match` of bare literals at
-the default `i64` at once, before any later use can fix it (kara
-B-2026-11-10-49, the binding half of B-2026-11-10-6, whose operand half
-is fixed), so the `|=` would narrow and was rejected. The rejection already named the narrowing but
-not why `bit` was an `i64`, and offered no edit: the explanation of a
-defaulted literal looked only at a literal bound directly. It now looks
-through a `match` or an `if` whose every branch is a literal, says that
-`bit` is an `i64` because of them, and offers `: u8` as the fix. Fixed
-in kara LITMATCHSHA, test `tests/kata_2103_literal_match_binding_fix.rs`.
+That last edit is the one this kata turned up. Rust infers `bit`'s
+type from the `|=` into a `u8` array. Kāra typed a `let` bound to a
+`match` of bare literals at the default `i64` at once, before any later
+use could fix it, and the refusal of the narrowing `|=` named no reason
+and offered no edit. Since kara B-2026-11-10-49 a join of literals is
+a literal that stays open until a use fixes it (design.md §8). An
+operator's operand does not fix it, so the `|=` still keeps `bit` an
+`i64`, and the refusal now says why and offers `bit: u8`, the edit
+above; the §8 ruling of 2026-11-10 says a compound assignment into a
+target of a fixed type will fix it, at which point the template needs
+one edit less. Test `tests/kata_2103_literal_match_binding_fix.rs`
+(kara KATASHA) runs the Mend loop on the kata's pattern either way.
 
 ## Benchmarks
 

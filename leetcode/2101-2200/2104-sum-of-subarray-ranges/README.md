@@ -169,9 +169,10 @@ as some other use of the state, and the call drew a "drop the `*`" error
 and a mismatch naming `scan`'s own `OutV`. A field read of the state now
 counts as a read, and `karac fix` rewrites the closure to `let bounds =
 (bounds.0.min(x), bounds.1.max(x)); Some((bounds, bounds.1 -
-bounds.0))`, with its lines indented where the closure sits (the
-rewrite had laid a multi-line closure out from the first column). Fixed
-in kara SCANSHA, test `tests/kata_2104_rust_scan_field_reads.rs`. The
+bounds.0))`; its lines are indented where the closure sits since kara
+B-2026-11-10-32, which fixed the same layout from another kata first
+(the rewrite had laid a multi-line closure out from the first column).
+Fixed in kara SCANSHA, test `tests/kata_2104_rust_scan_field_reads.rs`. The
 arm is written in Kāra's form.
 
 A type mismatch whose expected type holds a parameter of the library
