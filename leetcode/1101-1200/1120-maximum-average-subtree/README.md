@@ -150,8 +150,10 @@ out of the `impl`, `struct Solution {}` declared and `Solution::` to
 parameter borrowing by default. The gap: the solution's `let n =
 n.borrow();`, which reads the node through its `RefCell`, became `let n
 = n;` when the `RefCell` went, a binding that only renames; the fix now
-drops the statement (B-2026-11-11-40). The solution arm keeps one leftover of the
-`use` lines it lost, a blank line after its header comment. In the ★ and
+drops the statement (B-2026-11-11-40). Deleting the two `use` lines,
+one a round, left two blank lines after the header comment, since the
+`Rc` / `RefCell` fix took only each line's newline; it now takes a blank
+line too when one is on each side (B-2026-11-11-74), and the arm has one. In the ★ and
 fraction arms, `karac fix` took out a habit from Rust, `n.val as i64`
 added to an `i64` sum, since an `i32` widens to `i64` by itself; in the
 differential it took out two more such casts and a `sum::[i64]()`
