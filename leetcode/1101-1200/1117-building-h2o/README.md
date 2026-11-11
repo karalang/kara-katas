@@ -53,7 +53,7 @@ logs.
 | file | mechanism |
 |---|---|
 | `building_h2o.kara` ★ | each oxygen building its molecule: a hydrogen hands a one-shot channel to the oxygens and waits on it; an oxygen takes the bonding lock, receives two hydrogens, releases itself, sends each a channel to say it is out on, and waits for both before it gives the lock up |
-| `building_h2o_semaphore.kara` | semaphores and a barrier, as the Python solutions write it with `threading.Semaphore(2)`, `Semaphore(1)` and `Barrier(3)`: two hydrogens and an oxygen pass the semaphores, meet at the barrier, release themselves and only then give their permits back. The semaphores are channels holding their permits and the barrier a count under a lock |
+| `building_h2o_semaphore.kara` | semaphores and a barrier, as the Python solutions write it with `threading.Semaphore(2)`, `Semaphore(1)` and `Barrier(3)`: two hydrogens and an oxygen pass the semaphores, meet at the barrier, release themselves and only then give their permits back. The semaphores are the standard library's; it has no barrier, so the barrier is a count under a lock |
 | `building_h2o_waitlist.kara` | a condition variable built from a `Mutex` and channels: the atoms let into the molecule being built and the ones out of it under the lock, an atom getting in while its element has room, and the third out emptying the molecule and waking every waiter |
 | `building_h2o_polling.kara` | the same molecule under a lock, and an atom with no room for its element sleeping for no time at all between looks |
 | `differential.kara` | the four arms against the statement read literally, six properties |
@@ -106,11 +106,11 @@ natively, and fourteen under the interpreter too.
 | M3 | ★: an oxygen not waiting for its hydrogens to be out | P1 196, P2 196, P3 175, P4 196, P5 305, P6 337 | P1 208, P2 208, P3 214, P4 220, P5 316, P6 338 |
 | M4 | ★: the bonding lock given up at once | P1 446, P2 446, P3 443, P4 446, P5 560, P6 554 | P1 449, P2 449, P3 447, P4 458, P5 559, P6 554 |
 | M5 | ★: a hydrogen released twice | P1 600, P2 531, P3 600, P4 600, P5 600, P6 600 | P1 600, P2 531, P3 600, P4 600, P5 600, P6 600 |
-| M6 | semaphore: a hydrogen released before the barrier | P1 502, P2 502, P3 493, P4 502, P5 586, P6 579 | P1 487, P2 487, P3 475, P4 492, P5 583, P6 576 |
-| M7 | semaphore: an oxygen released before the barrier | P1 373, P2 373, P3 361, P4 373, P5 498, P6 497 | P1 454, P2 454, P3 460, P4 454, P5 560, P6 528 |
-| M8 | semaphore: a hydrogen gives back its permit before it is released | none | P1 4, P2 4, P3 4, P4 8, P5 5, P6 9; 166 to 306 in four more runs |
-| M9 | semaphore: an oxygen gives back its permit before it is released | none | P4 3; 135 to 274 in four more runs |
-| M10 | semaphore: a hydrogen released twice | P1 600, P2 554, P3 600, P4 600, P5 600, P6 600 | P1 600, P2 554, P3 600, P4 600, P5 600, P6 600 |
+| M6 | semaphore: a hydrogen released before the barrier | P1 502, P2 502, P3 493, P4 502, P5 586, P6 579 | P1 461, P2 461, P3 460, P4 493, P5 574, P6 559 |
+| M7 | semaphore: an oxygen released before the barrier | P1 373, P2 373, P3 361, P4 373, P5 498, P6 497 | P1 442, P2 442, P3 463, P4 469, P5 557, P6 539 |
+| M8 | semaphore: a hydrogen gives back its permit before it is released | none | P1 29, P2 29, P3 23, P4 47, P5 45, P6 64; 291 to 317 in four more runs |
+| M9 | semaphore: an oxygen gives back its permit before it is released | none | P1 22, P2 22, P3 21, P4 37, P5 38, P6 54; 234 to 257 in four more runs |
+| M10 | semaphore: a hydrogen released twice | P1 600, P2 554, P3 600, P4 600, P5 600, P6 600 | P1 600, P2 559, P3 600, P4 600, P5 600, P6 600 |
 | M11 | waitlist: a hydrogen leaves before it is released | none | P1 2, P2 2, P3 1, P4 12, P5 4, P6 2; 245 to 316 in four more runs |
 | M12 | waitlist: an oxygen leaves before it is released | none | P3 1, P4 4, P6 1; 120 to 286 in four more runs |
 | M13 | waitlist: a hydrogen released before it enters | P1 374, P2 374, P3 386, P4 374, P5 517, P6 467 | P1 378, P2 378, P3 387, P4 377, P5 520, P6 468 |
@@ -130,7 +130,7 @@ waits, and giving back a permit or a place is not a wait, so the atom is
 still released before the next one runs. Natively the tasks run at once
 on every core, and the next molecule's atoms are sometimes released into
 this one. How often depends on how busy the machine is: in the mutation
-run, three programs at a time, each of the six failed between 3 and 137
+run, three programs at a time, each of the six failed between 6 and 237
 checks; run four more times each, one program at a time, every one of
 them failed every time, between 120 and 427 checks.
 
@@ -146,10 +146,11 @@ __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no error.
 arm and the differential. `karac check --output=json` reports nothing on
 any file, and `karac fix` has nothing to apply.
 
-The kata found four gaps, three of them fixed. LeetCode names the class
+The kata found four gaps, all of them fixed. LeetCode names the class
 `H2O`, which `karac` refuses as a constant's name, suggesting `H2o` with
-no fix to rename the declaration and its uses (B-2026-11-11-35, open);
-the arms are written `H2o`. The harness builds each water with
+no fix to rename the declaration and its uses (B-2026-11-11-35, fixed in
+cc0bc927f2): `karac fix` now renames them, and every arm written with
+`H2O` comes out as it is here. The harness builds each water with
 `String.from_iter(atoms.iter())` over a `Vec[char]`, whose items are
 `ref char`: the error named `.cloned()` but offered no edit, because a
 call through a type's name never recorded where its arguments end
@@ -160,8 +161,11 @@ fix` asked for `let mut g` and the assignment then wrote through the
 guard, where a `mut ref` local's `r = v` is refused with the `*r = v`
 fix (B-2026-11-11-37); it now gets `*g.value = ..` and `let g` stays.
 And that arm, like 1114's, waits with `sleep(Duration.ms(0))`, which
-never let another task run before B-2026-11-11-32. Every arm was written
-as Kāra.
+never let another task run before B-2026-11-11-32. The semaphore arm,
+like kata 1115's, built its semaphores from channels until
+`Semaphore.acquire` waited for another task's `release`
+(B-2026-11-11-34, found by kata 1115, fixed in c47fd80f23), and now uses
+the standard library's. Every arm was written as Kāra.
 
 ## Benchmarks
 
