@@ -159,9 +159,12 @@ in c47fd80f23). The semaphore arm built its semaphores from channels
 until then and now uses the standard library's. With it, a compiled run
 of the differential sometimes takes 63 s rather than 3 s, in 6 of 120
 runs across a built binary, `karac __mir-llvm-run` and `karac run`,
-though its output is right: an `acquire` waits out its whole 60 s
-timeout after the permit it waits for was released (B-2026-11-11-66,
-open). Every arm was written as Kāra, and `karac fix` had nothing to
+though its output was right. It was not the `acquire` that waited but
+the join on the root: the first worker, the only one that polls it,
+slept to the waiter's 60 s deadline while another worker had settled
+its task and not yet taken the waiter the release woke
+(B-2026-11-11-66, fixed in 316e6be03d). At that fix, 0 of 120 runs are
+slow. Every arm was written as Kāra, and `karac fix` had nothing to
 change in any of them.
 
 ## Benchmarks
