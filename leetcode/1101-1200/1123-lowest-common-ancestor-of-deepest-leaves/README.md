@@ -161,3 +161,30 @@ prints `200 rounds over 16 trees of 10^4 nodes: answers total 168345633,
 checksum 199965951`. Rust's nodes are LeetCode's own
 `Rc<RefCell<TreeNode>>`, Go's are on its collected heap, Python's are
 objects with `__slots__`, and C `malloc`s each node.
+
+Timings on a 4-core container (Intel Xeon, 2.1 GHz), twelve interleaved
+runs of each compiled program and one of Python, with karac `628eb9974d`
+on LLVM 22. karac builds for the x86-64-v3 baseline, so the C and
+overflow-checked Rust programs are also built at `-march=x86-64-v3`:
+
+| | time | median |
+|---|---|---|
+| Go | 0.495 to 0.624 s | 0.560 s |
+| C (`clang -O3`) | 0.573 to 0.714 s | 0.636 s |
+| C (`clang -O3 -march=x86-64-v3`) | 0.507 to 0.722 s | 0.649 s |
+| Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 0.963 to 1.126 s | 1.053 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.954 to 1.275 s | 1.095 s |
+| Kāra (`karac build`) | 0.925 to 1.153 s | 1.098 s |
+| Rust (`rustc -O`) | 1.002 to 1.149 s | 1.125 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 1.139 to 1.217 s | 1.187 s |
+| Python | 4.140 s | |
+
+`bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
+the sequential lane. A plain `karac build` parallelizes nothing here
+(its user time equals its wall time), so its two rows differ by noise.
+Kāra takes about 1.7x C's time and 2x Go's, and ties Rust, whose nodes
+are reached through `Rc<RefCell<..>>` with a borrow flag checked on
+every read; with overflow checks Rust is a little slower. Each call hands
+a node back up as a reference-counted handle where C hands a pointer and
+Go a collected one; the gap was not traced further. Python takes about
+3.8x Kāra's time.
