@@ -33,7 +33,7 @@ multiplied by something at least that large.
 |---|---|
 | `mct_from_leaf_values.kara` ★ | a stack of leaves in decreasing order: a leaf that a larger or equal one comes after is joined to the smaller of its two neighbours, the leaf below it on the stack and the one arriving; what is left pairs off from the top. O(n) |
 | `mct_from_leaf_values_dp.kara` | interval dynamic programming: the least cost over leaves `i..=j` is the least over every split of the two sides' costs and the product of their largest leaves, the widths in increasing order. O(n^3) |
-| `mct_from_leaf_values_memo.kara` | the same recursion over ranges, top down, each range's answer kept in a `Map` keyed by `(lo, hi)`. O(n^3) |
+| `mct_from_leaf_values_memo.kara` | the same recursion over ranges, top down: a range gives back its least cost and its largest leaf together, and each range's pair is kept in a `Map` keyed by `(lo, hi)`. O(n^3) |
 | `mct_from_leaf_values_greedy.kara` | greedy removal: while more than one leaf is left, the smallest is joined to the smaller of its neighbours, the product paid and the smallest removed. O(n^2) |
 | `mct_from_leaf_values_solution.kara` | a Rust solution as LeetCode's Rust users write it (`impl Solution`, a `Vec<i32>` stack started with `i32::MAX`, `*stack.last().unwrap()`, `std::cmp::min`, a `for &a in arr.iter()` pattern), carried to Kāra by `karac fix` |
 | `differential.kara` | the five arms against the statement read literally, six properties |
@@ -126,8 +126,12 @@ every arm and the differential. `karac check --output=json` reports
 nothing on any file, and `karac fix` has nothing to apply.
 
 The kata found no gap. The ★, dp, memo and greedy arms were written as
-Kāra and checked clean as written. `karac fix` carried the solution arm
-in three rounds: `Vec<..>` to `[..]`, `i32::MAX` to `i32.MAX`, the `&a`
+Kāra and checked clean as written. The memo arm first read each side's
+largest leaf off a slice, `arr[lo..k].iter().max()`, at every split:
+O(n^4), and 100 s under `karac __mir-run`, past the corpus's 60 s. It
+now has each range give back its largest leaf with its cost.
+
+`karac fix` carried the solution arm in three rounds: `Vec<..>` to `[..]`, `i32::MAX` to `i32.MAX`, the `&a`
 and `&x` patterns to `a` and `x`, `std::cmp::min` to `min` and `::` to
 `.`; then `struct Solution {}` declared; then `vec![..]` to `[..]`, the
 cost declared `i32` where it is summed from `i32` products, and the `as
