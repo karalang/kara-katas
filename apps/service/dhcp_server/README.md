@@ -69,12 +69,12 @@ Fixed in kara while writing it:
 - `pkt[4..8].copy_from_slice(xid)`, Rust's slice copy, was "no method
   'copy_from_slice' on type 'Slice'" with no fix. It also set off a
   borrow error at every later use of the buffer. `karac fix` now writes
-  the range assignment `pkt[4..8] = xid` (B-2026-11-13-5).
+  the range assignment `pkt[4..8] = xid` (B-2026-11-13-15).
 - The cookie check `pkt[236..240] != COOKIE`, a `Slice` against an
   `Array`, was never equal in compiled code, so every datagram was dropped
-  as "bad cookie" there. The interpreter was right (B-2026-11-13-6).
+  as "bad cookie" there. The interpreter was right (B-2026-11-13-16).
   Comparing the other way round, `COOKIE != pkt[236..240]`, is refused with
-  an `.as_slice()` fix; which order a comparison accepts is B-2026-11-13-7.
+  an `.as_slice()` fix; which order a comparison accepts is B-2026-11-13-17.
 
 `Request` and `Server` shadow prelude types of the same names. `check`
 warns, and the program means its own types.
