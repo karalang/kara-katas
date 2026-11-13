@@ -153,14 +153,16 @@ not lower (UnsolvedParam("C"))", which names nothing the program wrote.
 It now does, as Rust's does. Fixed in kara 81aca4606b, test
 `tests/kata_2099_array_literal_collect.rs`.
 
-`karac fix` carries the template in four rounds of 20, 1, 2 and 1 edits:
+`karac fix` carries the template in five rounds of 20, 1, 2, 1 and 1 edits:
 Rust's spellings (`Vec<i32>` and `Vec<usize>` to brackets, the closures'
 `&i` patterns dropped, `std::cmp::Reverse` to `Reverse`, `Solution::` to
 `.`, `struct Solution;` to `struct Solution {}`); then
 `sort_by_key(|i| Reverse(nums[i]))` to `sort_by(|a, b|
 (nums[b]).cmp(nums[a]))`, which keeps the stable sort's order of
 equals; then `usize` to `i64` in the positions' type and the cast; then
-the adapter's `ref` parameter to a bare one, which borrows already.
+the adapter's `ref` parameter to a bare one, which borrows already; then,
+since kara B-2026-11-13-7, the `as i64` in `idx.truncate(k as i64)`
+dropped, as `k: i32` widens by itself.
 
 ## Benchmarks
 

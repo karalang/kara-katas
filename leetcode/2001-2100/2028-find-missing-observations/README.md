@@ -149,12 +149,13 @@ fixed it on main, and the arm runs on every lane of a current build.
 The five arms were written in Kāra and checked clean with no fix.
 
 The Rust arm was written as LeetCode's Rust template and reaches a clean
-check through `karac fix` alone, in three rounds (16, 3 and 1 edits). The
+check through `karac fix` alone, in four rounds (16, 3, 1 and 1 edits). The
 first carries the `Vec<..>` types, the `sum::<i32>()` turbofish, `||`, the
 unit struct, the `&Vec` parameter, the `|&x|` pattern and the `::` path;
 the second turns `vec![]` into `Vec.new()` and `vec![q; n as usize]` into
 `Vec.filled(n as usize, q)`, and drops the wrapper's `ref`; the third turns
-that `as usize` into `as i64`. The loop bound `0..r as usize` keeps its
+that `as usize` into `as i64`; the fourth, since kara B-2026-11-13-7,
+drops it, as `n: i32` widens by itself. The loop bound `0..r as usize` keeps its
 `usize` (B-2026-11-08-49 is about `karac fix` rewriting `usize` only in
 part); it checks, since a range of `usize` indexes a `Vec` as well.
 

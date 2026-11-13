@@ -148,5 +148,7 @@ The arms were written in Kāra and `karac fix` had nothing to change. A
 first try at the ★ arm's queue as `PriorityQueue[(f64, i64)]` was refused
 with "`(f64, i64)` does not implement `Ord`"; the same refusal for a bare
 `f64` adds the note that names `F64`, but the tuple's does not. The Rust
-arm took 11, 2, 1 and 1 `karac fix` edits, among them
-`vec![0.0f64; n as usize]` to `Vec.filled(n as i64, 0.0)`, and checks.
+arm took 11, 2, 1, 1 and 1 `karac fix` edits, among them
+`vec![0.0f64; n as usize]` to `Vec.filled(n as i64, 0.0)` and, since kara
+B-2026-11-13-7, that `as i64` dropped, as `n: i32` widens by itself; it
+checks.

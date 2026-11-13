@@ -132,12 +132,14 @@ and the differential 1.6 s.
 The five arms were written in Kāra and checked clean, with no fix.
 
 The Rust arm was written as LeetCode's Rust template and reaches a clean
-check through `karac fix` alone, in three rounds (16, 4 and 1 edits). The
+check through `karac fix` alone, in four rounds (16, 4, 1 and 1 edits). The
 first carries the unit struct, the `Vec<..>` types, the `&Vec` parameter,
 the `&x` closure pattern and the `::` path; the second turns `as usize`
 into `as i64` and `vec![]` into `Vec.new()`, and adds the `.iter()` that
 Kāra's `chunks`, which returns a `Vec` of slices, needs before `map`; the
-third drops the wrapper's `ref`, which a parameter borrows by default.
+third drops the wrapper's `ref`, which a parameter borrows by default;
+the fourth, since kara B-2026-11-13-7, drops the `as i64` in `chunks(n as
+i64)`, as `n: i32` widens by itself.
 
 A first iter arm took each row as `iter().skip(i * n).take(n)`: the same
 answers, but quadratic, since Kāra's `skip(k)` walks `k` values on both
