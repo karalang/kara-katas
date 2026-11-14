@@ -127,7 +127,10 @@ The greedy and room arms were written in Kāra and checked as written.
 The ★ arm was first written with `Array[i64, 26].filled(0)` for the
 table, which has no such method, and was rewritten by hand to `[0; 26]`,
 Kāra's fixed array: the refusal, `no method 'filled' on `Array[…]``,
-elides the type and points nowhere, filed as B-2026-11-14-6. The iterator arm took one edit from `karac fix`:
+elided the type and pointed nowhere, filed as B-2026-11-14-6. Since
+kara `940c5678af` the refusal names `Array[i64, 26]` and points to
+`[0; 26]`, which `karac fix` writes. The iterator arm took one edit from
+`karac fix`:
 `filter(|d| *d > 0)` to `filter(|d| d > 0)`, an `i64` being copied into
 the closure.
 
