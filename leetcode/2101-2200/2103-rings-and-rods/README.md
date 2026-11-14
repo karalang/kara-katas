@@ -146,24 +146,30 @@ any of them, and `karac fix --dry-run` has nothing to apply.
 Under `karac __mir-run` the arms take 0.8 s to 2.2 s, and the
 differential 3.2 s (timed while other work shared the machine).
 
-`karac fix` carries the template in two rounds of 4 and 3 edits: Rust's
+`karac fix` carries the template in two rounds of 4 and 2 edits: Rust's
 spellings (the `&&m` closure pattern dropped, `struct Solution;` to
 `struct Solution {}`, the adapter's `&str` to `Str` and `Solution::` to
-`.`); then `as_bytes()` to `bytes()`, the adapter's `as i64` dropped as
-a cast `i32` widens without, and `bit` given `: u8`.
+`.`); then `as_bytes()` to `bytes()` and the adapter's `as i64` dropped
+as a cast `i32` widens without. `bit` needs no edit.
 
-That last edit is the one this kata turned up. Rust infers `bit`'s
-type from the `|=` into a `u8` array. Kāra typed a `let` bound to a
-`match` of bare literals at the default `i64` at once, before any later
-use could fix it, and the refusal of the narrowing `|=` named no reason
-and offered no edit. Since kara B-2026-11-10-49 a join of literals is
-a literal that stays open until a use fixes it (design.md §8). An
-operator's operand does not fix it, so the `|=` still keeps `bit` an
-`i64`, and the refusal now says why and offers `bit: u8`, the edit
-above; the §8 ruling of 2026-11-10 says a compound assignment into a
-target of a fixed type will fix it, at which point the template needs
-one edit less. Test `tests/kata_2103_literal_match_binding_fix.rs`
-(kara 81aca4606b) runs the Mend loop on the kata's pattern either way.
+It needed one when this kata was written, and that was the gap the kata
+turned up. Rust infers `bit`'s type from the `|=` into a `u8` array.
+Kāra typed a `let` bound to a `match` of bare literals at the default
+`i64` at once, before any later use could fix it, and the refusal of
+the narrowing `|=` named no reason and offered no edit. Kara
+B-2026-11-10-49 made a join of literals a literal that stays open until
+a use fixes it (design.md §8), and the refusal said why and offered
+`bit: u8`, a third edit in the second round. Since kara 1adf82aef2 a
+compound assignment into a target of a fixed type fixes it too, as the
+§8 ruling of 2026-11-10 said it would, so the `|=` makes `bit` a `u8`
+and the template is carried with the `let` as Rust wrote it. Test
+`tests/kata_2103_literal_match_binding_fix.rs` (kara 81aca4606b) runs
+the Mend loop on the kata's pattern.
+
+The newer compiler also flags the `as i64` on a rod's digit used as an
+index, in the ★, sets and struct arms and three times in the
+differential: a `u8` or `u32` widens to the index without it. `karac
+fix` dropped the casts, and the mutation results are unchanged.
 
 ## Benchmarks
 
