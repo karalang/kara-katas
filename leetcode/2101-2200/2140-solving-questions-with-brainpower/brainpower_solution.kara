@@ -1,0 +1,76 @@
+// LeetCode #2140: Solving Questions With Brainpower -- LeetCode's Rust
+// template (`Vec<Vec<i32>>` to `i64`): `vec![0i64; n + 1]` filled from
+// the back over `(0..n).rev()`, the brainpower read `as usize`, written
+// as Rust. Carried by `karac fix`. The adapter below hands the harness's
+// questions to it.
+
+impl Solution {
+    pub fn most_points(questions: Vec[Vec[i32]]) -> i64 {
+        let n = questions.len();
+        let mut dp = Vec.filled(n + 1, 0);
+        for i in (0..n).rev() {
+            let points = questions[i][0] as i64;
+            let next = (i + 1 + questions[i][1]).min(n);
+            dp[i] = dp[i + 1].max(points + dp[next]);
+        }
+        dp[0]
+    }
+}
+
+struct Solution {}
+
+fn most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let q: Vec[Vec[i32]] = questions.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.most_points(q)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(questions: Vec[Vec[i64]]) {
+    println(f"{questions} -> {most_points(questions)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one question, no
+    // brainpower anywhere, every question shutting out the rest, and the
+    // best taken from the far end
+    show([[3, 2].to_vec(), [4, 3].to_vec(), [4, 4].to_vec(), [2, 5].to_vec()].to_vec());
+    show([[1, 1].to_vec(), [2, 2].to_vec(), [3, 3].to_vec(), [4, 4].to_vec(), [5, 5].to_vec()].to_vec());
+    show([[7, 0].to_vec()].to_vec());
+    show([[1, 0].to_vec(), [2, 0].to_vec(), [3, 0].to_vec()].to_vec());
+    show([[5, 9].to_vec(), [8, 9].to_vec(), [6, 9].to_vec()].to_vec());
+    show([[1, 1].to_vec(), [1, 1].to_vec(), [100000, 100000].to_vec()].to_vec());
+    // 2000 random lists of 1 to 12 questions, points of 1 to 10 or 1 to
+    // 100000, brainpower of 0 to 3 or 0 to 12, in turn
+    let mut seed = 2140;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [10, 100000][round % 2];
+        let reach = [4, 13][(round / 2) % 2];
+        let questions: Vec[Vec[i64]] = (0..n)
+            .map(|_| [next_random(mut seed) % top + 1, next_random(mut seed) % reach].to_vec())
+            .collect();
+        let points = most_points(questions);
+        total += points;
+        check = (check * 31 + points + n) % 1000000007;
+    }
+    println(f"2000 lists: {total} points in all, checksum {check}");
+    // the constraints' largest, 100000 questions of up to 100000 points:
+    // no brainpower, the most brainpower, and at random
+    let none: Vec[Vec[i64]] = (0..100000).map(|i| [100000 - i % 7, 0].to_vec()).collect();
+    let most: Vec[Vec[i64]] = (0..100000).map(|i| [i % 100000 + 1, 100000].to_vec()).collect();
+    let random: Vec[Vec[i64]] = (0..100000)
+        .map(|_| [next_random(mut seed) % 100000 + 1, next_random(mut seed) % 100001].to_vec())
+        .collect();
+    let x = most_points(none);
+    let y = most_points(most);
+    let z = most_points(random);
+    println(f"100000 questions: {x} with no brainpower, {y} with the most, {z} at random");
+}

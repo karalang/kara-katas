@@ -1,0 +1,246 @@
+// LeetCode #2140: Solving Questions With Brainpower -- the differential.
+// The six arms, against the statement read literally: every set of
+// questions to solve is tried, and a set counts when no question in it
+// lies within the brainpower of an earlier one in it; the most points
+// over the sets that count is the answer. No table is built. 300 random
+// lists of 1 to 10 questions, points of 1 to 9, brainpower of 0 to 3;
+// then 30 with brainpower of 0 to 10; then 30 with every brainpower 0;
+// every one drawn before any arm answers.
+//
+// P1  the points are the statement read literally
+// P2  a question of 0 points and brainpower 0 added at the end: the same
+// P3  every point doubled: twice the points
+// P4  every brainpower 0: every point
+// P5  a question of 0 points added at the front, of any brainpower: the
+//     same
+// P6  each arm agrees with at least three of the other five
+
+// ---- brainpower.kara: the ★ arm, the best from each question on, filled from the back
+fn star_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let n = questions.len();
+    let mut best: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        let next = (i + 1 + questions[i][1]).min(n);
+        best[i] = best[i + 1].max(questions[i][0] + best[next]);
+    }
+    best[0]
+}
+
+// ---- brainpower_forward.kara: the best reaching each question, pushed forward
+fn forward_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let n = questions.len();
+    let mut reach: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        let here = reach[i];
+        reach[i + 1] = reach[i + 1].max(here);
+        let next = (i + 1 + questions[i][1]).min(n);
+        reach[next] = reach[next].max(here + questions[i][0]);
+    }
+    reach[n]
+}
+
+// ---- brainpower_fold.kara: one `fold` carrying a `VecDeque` grown at its front
+fn fold_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let mut start: VecDeque[i64] = VecDeque.new();
+    start.push_back(0);
+    let best = questions.iter().rev().fold(start, |best, q| {
+        let mut best: VecDeque[i64] = best;
+        let after = q[1].min(best.len() - 1);
+        let solve = q[0] + best[after];
+        let here = best[0].max(solve);
+        best.push_front(here);
+        best
+    });
+    best[0]
+}
+
+// ---- brainpower_struct.kara: a `Question` and an `Exam` settled from the back
+struct ExamQuestion {
+    points: i64,
+    brainpower: i64,
+}
+
+impl ExamQuestion {
+    fn of(pair: Vec[i64]) -> ExamQuestion {
+        ExamQuestion { points: pair[0], brainpower: pair[1] }
+    }
+
+    fn resume(ref self, at: i64, end: i64) -> i64 {
+        (at + 1 + self.brainpower).min(end)
+    }
+}
+
+struct ExamExam {
+    questions: Vec[ExamQuestion],
+    best: Vec[i64],
+}
+
+impl ExamExam {
+    fn new(questions: Vec[Vec[i64]]) -> ExamExam {
+        let questions: Vec[ExamQuestion] = questions.iter().map(|q| ExamQuestion.of(q)).collect();
+        let best = Vec.filled(questions.len() + 1, 0);
+        ExamExam { questions, best }
+    }
+
+    fn settle(mut ref self, at: i64) {
+        let n = self.questions.len();
+        let q = ref self.questions[at];
+        let skip = self.best[at + 1];
+        let solve = q.points + self.best[q.resume(at, n)];
+        self.best[at] = skip.max(solve);
+    }
+}
+
+fn exam_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let mut exam = ExamExam.new(questions);
+    for at in (0..questions.len()).rev() {
+        exam.settle(at);
+    }
+    exam.best[0]
+}
+
+// ---- brainpower_pairs.kara: (points, brainpower) tuples, a table from the end
+fn pairs_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let pairs: Vec[(i64, i64)] = questions.iter().map(|q| (q[0], q[1])).collect();
+    let n = pairs.len();
+    // from_end[k] is the best over the last k questions
+    let mut from_end: Vec[i64] = [0].to_vec();
+    for (k, (points, brainpower)) in pairs.iter().rev().enumerate() {
+        let left_after = (k - brainpower).max(0);
+        let solve = points + from_end[left_after];
+        let skip = from_end[k];
+        from_end.push(skip.max(solve));
+    }
+    from_end[n]
+}
+
+// ---- brainpower_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn most_points(questions: Vec[Vec[i32]]) -> i64 {
+        let n = questions.len();
+        let mut dp = Vec.filled(n + 1, 0);
+        for i in (0..n).rev() {
+            let points = questions[i][0] as i64;
+            let next = (i + 1 + questions[i][1]).min(n);
+            dp[i] = dp[i + 1].max(points + dp[next]);
+        }
+        dp[0]
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_most_points(questions: Vec[Vec[i64]]) -> i64 {
+    let q: Vec[Vec[i32]] = questions.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    SolutionSolution.most_points(q)
+}
+
+
+// ---- the statement read literally
+
+fn literal(questions: Vec[Vec[i64]]) -> i64 {
+    let n = questions.len();
+    let mut most = 0;
+    for set in 0..(1 << n) {
+        let mut points = 0;
+        let mut allowed = true;
+        for i in 0..n {
+            if (set >> i) & 1 == 1 {
+                points += questions[i][0];
+                for j in i + 1..n {
+                    if (set >> j) & 1 == 1 and j <= i + questions[i][1] {
+                        allowed = false;
+                    }
+                }
+            }
+        }
+        if allowed and points > most {
+            most = points;
+        }
+    }
+    most
+}
+
+fn answer(arm: i64, questions: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_most_points(questions),
+        1 => forward_most_points(questions),
+        2 => fold_most_points(questions),
+        3 => exam_most_points(questions),
+        4 => pairs_most_points(questions),
+        _ => solution_most_points(questions),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "forward", "fold", "exam", "pairs", "solution"];
+    let mut seed = 2140;
+    let mut lists: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let reach = if t < 300 { 4 } else if t < 330 { 11 } else { 1 };
+        let questions: Vec[Vec[i64]] = (0..n)
+            .map(|_| [next_random(mut seed) % 9 + 1, next_random(mut seed) % reach].to_vec())
+            .collect();
+        lists.push(questions);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for questions in lists.iter() {
+        let truth = literal(questions);
+        check = (check * 31 + truth + questions.len()) % 1000000007;
+        let mut tail = questions.clone();
+        tail.push([0, 0].to_vec());
+        let doubled: Vec[Vec[i64]] = questions.iter().map(|q| [2 * q[0], q[1]].to_vec()).collect();
+        let free: Vec[Vec[i64]] = questions.iter().map(|q| [q[0], 0].to_vec()).collect();
+        let every: i64 = questions.iter().map(|q| q[0]).sum();
+        let mut front: Vec[Vec[i64]] = [[0, questions.len() % 4].to_vec()].to_vec();
+        front.extend(questions.iter().cloned());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, questions)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, tail) == x,
+                answer(arm, doubled) == 2 * x,
+                answer(arm, free) == every,
+                answer(arm, front) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{questions} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
