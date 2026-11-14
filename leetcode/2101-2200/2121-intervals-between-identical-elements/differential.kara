@@ -1,0 +1,290 @@
+// LeetCode #2121: Intervals Between Identical Elements -- the
+// differential. The six arms, against the statement read literally: for
+// each index, every other index holding the same value, and the
+// distances summed. 300 random arrays of 1 to 30 values from 1 to 1, 3,
+// 10 or 1000 in turn; then 30 of up to 200 values from 1 to 5; then 30
+// of up to 12 equal values; every one drawn before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  the array reversed: the answers reversed
+// P3  the first value replaced by one not in the array: its answer 0,
+//     every other copy of the old value that far nearer, the rest the same
+// P4  a value not in the array appended: the same answers and a 0
+// P5  one answer per index, never negative, 0 exactly where the value is
+//     alone, and their sum even, since each pair is counted from both ends
+// P6  each arm agrees with at least three of the other five
+
+// ---- intervals.kara: the ★ arm, each value's indices and a running sum
+fn star_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    let mut positions: Map[i64, Vec[i64]] = Map.new();
+    for i in 0..arr.len() {
+        positions.entry(arr[i]).or_insert(Vec.new()).push(i);
+    }
+    let mut answer = Vec.filled(arr.len(), 0);
+    for (_, p) in positions.iter() {
+        let c = p.len();
+        let total: i64 = p.iter().sum();
+        let mut before = 0;
+        for k in 0..c {
+            let after = total - before - p[k];
+            answer[p[k]] = k * p[k] - before + after - (c - k - 1) * p[k];
+            before += p[k];
+        }
+    }
+    answer
+}
+
+// ---- intervals_passes.kara: a count and a sum per value, both ways
+fn passes_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    let n = arr.len();
+    let mut answer = Vec.filled(n, 0);
+    let mut seen: Map[i64, (i64, i64)] = Map.new();
+    for i in 0..n {
+        let (count, sum) = seen.get(arr[i]).unwrap_or((0, 0));
+        answer[i] += count * i - sum;
+        seen[arr[i]] = (count + 1, sum + i);
+    }
+    let mut seen: Map[i64, (i64, i64)] = Map.new();
+    for i in (0..n).rev() {
+        let (count, sum) = seen.get(arr[i]).unwrap_or((0, 0));
+        answer[i] += sum - count * i;
+        seen[arr[i]] = (count + 1, sum + i);
+    }
+    answer
+}
+
+// ---- intervals_sorted.kara: the indices sorted by value, in runs
+fn sorted_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    let n = arr.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by_key(|i| (arr[i], i));
+    let mut answer = Vec.filled(n, 0);
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end < n and arr[order[end]] == arr[order[start]] {
+            end += 1;
+        }
+        let run = order[start..end];
+        let total: i64 = run.iter().sum();
+        let c = end - start;
+        let mut before = 0;
+        for k in 0..c {
+            let p = run[k];
+            answer[p] = k * p - before + (total - before - p) - (c - k - 1) * p;
+            before += p;
+        }
+        start = end;
+    }
+    answer
+}
+
+// ---- intervals_struct.kara: a `Group` stepping from index to index
+struct StructGroup {
+    positions: Vec[i64],
+}
+
+impl StructGroup {
+    fn spread_into(self, answer: mut ref Vec[i64]) {
+        let p = ref self.positions;
+        let c = p.len();
+        let mut distance = 0;
+        for j in 1..c {
+            distance += p[j] - p[0];
+        }
+        answer[p[0]] = distance;
+        for k in 1..c {
+            distance += (2 * k - c) * (p[k] - p[k - 1]);
+            answer[p[k]] = distance;
+        }
+    }
+}
+
+fn struct_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    let mut groups: Map[i64, StructGroup] = Map.new();
+    for i in 0..arr.len() {
+        groups.entry(arr[i]).or_insert(StructGroup { positions: Vec.new() }).positions.push(i);
+    }
+    let mut answer = Vec.filled(arr.len(), 0);
+    for (_, group) in groups.iter() {
+        group.spread_into(mut answer);
+    }
+    answer
+}
+
+// ---- intervals_iter.kara: a `SortedMap` and `scan` prefix sums
+fn iter_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    let mut positions: SortedMap[i64, Vec[i64]] = SortedMap.new();
+    for (i, v) in arr.iter().enumerate() {
+        positions.entry(v).or_insert(Vec.new()).push(i);
+    }
+    let mut answer = Vec.filled(arr.len(), 0);
+    for p in positions.values() {
+        let c = p.len();
+        let prefix: Vec[i64] = p.iter().scan(0, |acc, x| { let acc = acc + x; Some((acc, acc)) }).collect();
+        let total = prefix[c - 1];
+        for (k, x) in p.iter().enumerate() {
+            let before = prefix[k] - x;
+            answer[x] = k * x - before + (total - prefix[k]) - (c - k - 1) * x;
+        }
+    }
+    answer
+}
+
+// ---- intervals_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn get_distances(arr: Vec[i32]) -> Vec[i64] {
+        let n = arr.len();
+        let mut groups: Map[i32, Vec[i64]] = Map.new();
+        for (i, v) in arr.iter().enumerate() {
+            groups.entry(v).or_insert_with(Vec.new).push(i);
+        }
+        let mut ans = Vec.filled(n, 0);
+        for idx in groups.values() {
+            let m = idx.len();
+            let total: i64 = idx.iter().map(|x| x).sum();
+            let mut left: i64 = 0;
+            for (k, i) in idx.iter().enumerate() {
+                let x = i;
+                let k = k;
+                let right = total - left - x;
+                ans[i] = x * k - left + right - x * (m - k - 1);
+                left += x;
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_get_distances(arr: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.get_distances(arr.iter().map(|x| x as i32).collect())
+}
+
+// ---- the statement read literally
+
+fn literal(arr: Vec[i64]) -> Vec[i64] {
+    let mut answer: Vec[i64] = Vec.new();
+    for i in 0..arr.len() {
+        let mut sum = 0;
+        for j in 0..arr.len() {
+            if arr[j] == arr[i] {
+                sum += (i - j).abs();
+            }
+        }
+        answer.push(sum);
+    }
+    answer
+}
+
+fn answer(arm: i64, arr: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_get_distances(arr),
+        1 => passes_get_distances(arr),
+        2 => sorted_get_distances(arr),
+        3 => struct_get_distances(arr),
+        4 => iter_get_distances(arr),
+        _ => solution_get_distances(arr),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "passes", "sorted", "struct", "iter", "solution"];
+    let mut seed = 2121;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let (n, top) = if t < 300 {
+            (next_random(mut seed) % 30 + 1, [1, 3, 10, 1000][t % 4])
+        } else if t < 330 {
+            (next_random(mut seed) % 200 + 1, 5)
+        } else {
+            (next_random(mut seed) % 12 + 1, 1)
+        };
+        let mut arr: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            arr.push(next_random(mut seed) % top + 1);
+        }
+        problems.push(arr);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for arr in problems.iter() {
+        let truth = literal(arr);
+        for d in truth.iter() {
+            check = (check * 31 + d) % 1000000007;
+        }
+        let n = arr.len();
+        let reversed: Vec[i64] = arr.iter().rev().collect();
+        let mut freed = arr.clone();
+        freed[0] = 0;
+        let mut longer = arr.clone();
+        longer.push(0);
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, arr)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let back: Vec[i64] = answer(arm, reversed).iter().rev().collect();
+            let mut less = x.clone();
+            for j in 0..x.len().min(n) {
+                if j == 0 {
+                    less[j] = 0;
+                } else if arr[j] == arr[0] {
+                    less[j] -= j;
+                }
+            }
+            let mut extended = x.clone();
+            extended.push(0);
+            let mut shaped = x.len() == n;
+            let mut total = 0;
+            for i in 0..x.len().min(n) {
+                let alone = arr.iter().filter(|v| v == arr[i]).count() == 1;
+                if x[i] < 0 or (x[i] == 0) != alone {
+                    shaped = false;
+                }
+                total += x[i];
+            }
+            let verdicts = [
+                x == truth,
+                back == x,
+                answer(arm, freed) == less,
+                answer(arm, longer) == extended,
+                shaped and total % 2 == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{arr} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
