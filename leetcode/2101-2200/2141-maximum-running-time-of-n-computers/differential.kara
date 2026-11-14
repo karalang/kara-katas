@@ -1,0 +1,271 @@
+// LeetCode #2141: Maximum Running Time of N Computers -- the differential.
+// The six arms, against the statement read literally: minute by minute,
+// every choice of n batteries with charge left to run the n computers is
+// tried, each losing a minute of charge, and the longest run over all the
+// choices is the answer, the charges left remembered once sorted. No
+// bound is assumed and no halving is done. 300 random fleets of 1 to 6
+// batteries of 1 to 4 minutes, for 1 computer up to one for every
+// battery; then 30 with one battery of up to 12; then 30 with a computer
+// for every battery; every one drawn before any arm answers.
+//
+// P1  the minutes are the statement read literally
+// P2  the batteries in reverse order: the same minutes
+// P3  every battery listed twice, for twice the computers: the same
+// P4  one computer: every minute of charge
+// P5  a battery holding the whole charge added, for one more computer:
+//     the same minutes
+// P6  each arm agrees with at least three of the other five
+
+// ---- running.kara: the ★ arm, the longest run found by halving
+fn star_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let total: i64 = batteries.iter().sum();
+    let mut low = 0;
+    let mut high = total / n;
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        let usable: i64 = batteries.iter().map(|b| b.min(mid)).sum();
+        if usable >= n * mid {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
+// ---- running_greedy.kara: the batteries too large to share set aside, largest first
+fn greedy_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let mut sorted = batteries.clone();
+    sorted.sort_by(|a, b| b.cmp(a));
+    let mut rest: i64 = sorted.iter().sum();
+    let mut computers = n;
+    for b in sorted.iter() {
+        if b > rest / computers {
+            computers -= 1;
+            rest -= b;
+        } else {
+            break;
+        }
+    }
+    rest / computers
+}
+
+// ---- running_heap.kara: the same set aside off a `PriorityQueue.max_first_from`
+fn heap_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let mut heap = PriorityQueue.max_first_from(batteries.clone());
+    let mut rest: i64 = batteries.iter().sum();
+    let mut computers = n;
+    while let Some(largest) = heap.peek().cloned() {
+        if largest * computers <= rest {
+            break;
+        }
+        heap.pop();
+        rest -= largest;
+        computers -= 1;
+    }
+    rest / computers
+}
+
+// ---- running_struct.kara: a `Fleet` asked whether it `lasts`, halved over minutes
+struct Fleet {
+    batteries: Vec[i64],
+    computers: i64,
+}
+
+impl Fleet {
+    fn lasts(ref self, minutes: i64) -> bool {
+        let mut usable = 0;
+        for b in self.batteries.iter() {
+            usable += b.min(minutes);
+            if usable >= self.computers * minutes {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn longest(ref self) -> i64 {
+        let total: i64 = self.batteries.iter().sum();
+        let mut lasts = 0;
+        let mut fails = total / self.computers + 1;
+        while fails - lasts > 1 {
+            let mid = lasts + (fails - lasts) / 2;
+            if self.lasts(mid) {
+                lasts = mid;
+            } else {
+                fails = mid;
+            }
+        }
+        lasts
+    }
+}
+
+fn fleet_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let fleet = Fleet { batteries: batteries.clone(), computers: n };
+    fleet.longest()
+}
+
+// ---- running_bound.kara: the least of the prefix sums' upper bounds, by `fold`
+fn bound_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let mut sorted = batteries.clone();
+    sorted.sort();
+    let len = sorted.len();
+    let mut prefix: Vec[i64] = [0].to_vec();
+    for b in sorted.iter() {
+        prefix.push(prefix[prefix.len() - 1] + b);
+    }
+    (len - n + 1..len + 1).fold(i64.MAX, |least, k| least.min(prefix[k] / (n - len + k)))
+}
+
+// ---- running_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn max_run_time(n: i32, batteries: Vec[i32]) -> i64 {
+        let n = n as i64;
+        let mut lo: i64 = 0;
+        let mut hi: i64 = batteries.iter().map(|b| b as i64).sum() / n;
+        while lo < hi {
+            let mid = hi - (hi - lo) / 2;
+            let total: i64 = batteries.iter().map(|b| (b as i64).min(mid)).sum();
+            if total >= n * mid {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let b: Vec[i32] = batteries.iter().map(|v| v as i32).collect();
+    SolutionSolution.max_run_time(n as i32, b)
+}
+
+
+// ---- the statement read literally
+
+fn longest(n: i64, charges: Vec[i64], memo: mut ref Map[String, i64]) -> i64 {
+    let key = f"{charges}";
+    if let Some(known) = memo.get(key) {
+        return *known;
+    }
+    let len = charges.len();
+    let mut best = 0;
+    for set in 0..(1 << len) {
+        let mut chosen = 0;
+        let mut charged = true;
+        for i in 0..len {
+            if (set >> i) & 1 == 1 {
+                chosen += 1;
+                if charges[i] == 0 {
+                    charged = false;
+                }
+            }
+        }
+        if chosen == n and charged {
+            let mut left = charges.clone();
+            for i in 0..len {
+                if (set >> i) & 1 == 1 {
+                    left[i] -= 1;
+                }
+            }
+            left.sort();
+            best = best.max(1 + longest(n, left, mut memo));
+        }
+    }
+    memo.insert(key, best);
+    best
+}
+
+fn literal(n: i64, batteries: Vec[i64]) -> i64 {
+    let mut charges = batteries.clone();
+    charges.sort();
+    let mut memo: Map[String, i64] = Map.new();
+    longest(n, charges, mut memo)
+}
+
+fn answer(arm: i64, n: i64, batteries: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_run_time(n, batteries),
+        1 => greedy_max_run_time(n, batteries),
+        2 => heap_max_run_time(n, batteries),
+        3 => fleet_max_run_time(n, batteries),
+        4 => bound_max_run_time(n, batteries),
+        _ => solution_max_run_time(n, batteries),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "greedy", "heap", "fleet", "bound", "solution"];
+    let mut seed = 2141;
+    let mut fleets: Vec[(i64, Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let count = next_random(mut seed) % 6 + 1;
+        let n = if t < 330 { next_random(mut seed) % count + 1 } else { count };
+        let mut batteries: Vec[i64] = (0..count).map(|_| next_random(mut seed) % 4 + 1).collect();
+        if t >= 300 and t < 330 {
+            batteries[next_random(mut seed) % count] = next_random(mut seed) % 12 + 1;
+        }
+        fleets.push((n, batteries));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, batteries) in fleets.iter() {
+        let truth = literal(n, batteries);
+        check = (check * 31 + truth + n) % 1000000007;
+        let reversed: Vec[i64] = batteries.iter().rev().cloned().collect();
+        let mut twice = batteries.clone();
+        twice.extend(batteries.iter().cloned());
+        let every: i64 = batteries.iter().sum();
+        let mut whole = batteries.clone();
+        whole.push(every);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, batteries)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, n, reversed) == x,
+                answer(arm, 2 * n, twice) == x,
+                answer(arm, 1, batteries) == every,
+                answer(arm, n + 1, whole) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} {batteries} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{fleets.len()} fleets: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,65 @@
+// LeetCode #2141: Maximum Running Time of N Computers -- the least upper
+// bound. Sorted smallest first, any k smallest batteries must carry the
+// n - (len - k) computers the other len - k cannot, since each of those
+// runs at most one at a time: so T is at most the k smallest's charge over
+// that many computers, for every k that leaves one. The split the greedy
+// stops at meets its bound, so the answer is the least of them, a `fold`
+// over the prefix sums. O(len log len).
+
+fn max_run_time(n: i64, batteries: Vec[i64]) -> i64 {
+    let mut sorted = batteries.clone();
+    sorted.sort();
+    let len = sorted.len();
+    let mut prefix: Vec[i64] = [0].to_vec();
+    for b in sorted.iter() {
+        prefix.push(prefix[prefix.len() - 1] + b);
+    }
+    (len - n + 1..len + 1).fold(i64.MAX, |least, k| least.min(prefix[k] / (n - len + k)))
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(n: i64, batteries: Vec[i64]) {
+    println(f"{n} {batteries} -> {max_run_time(n, batteries)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one computer, a computer
+    // for every battery, one battery too large to share, and the most
+    // charge one computer can use
+    show(2, [3, 3, 3].to_vec());
+    show(2, [1, 1, 1, 1].to_vec());
+    show(1, [5].to_vec());
+    show(3, [4, 9, 2].to_vec());
+    show(2, [100, 1, 1].to_vec());
+    show(1, [1000000000, 1000000000, 1000000000].to_vec());
+    // 2000 random fleets of 1 to 12 batteries of 1 to 10 or 1 to 10^9 in
+    // turn, for 1 computer up to one for every battery
+    let mut seed = 2141;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let count = next_random(mut seed) % 12 + 1;
+        let n = next_random(mut seed) % count + 1;
+        let top = [10, 1000000000][round % 2];
+        let batteries: Vec[i64] = (0..count).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let minutes = max_run_time(n, batteries);
+        total += minutes;
+        check = (check * 31 + minutes % 1000000007 + n) % 1000000007;
+    }
+    println(f"2000 fleets: {total} minutes in all, checksum {check}");
+    // the constraints' largest, 100000 batteries of up to 10^9: every one
+    // the largest for 100000 computers, at random for one computer, and at
+    // random for 50000
+    let full: Vec[i64] = Vec.filled(100000, 1000000000);
+    let random: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000000 + 1).collect();
+    let x = max_run_time(100000, full);
+    let y = max_run_time(1, random);
+    let z = max_run_time(50000, random);
+    println(f"100000 batteries: {x} all full, {y} for one computer, {z} for 50000");
+}
