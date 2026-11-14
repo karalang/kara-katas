@@ -1,0 +1,264 @@
+// LeetCode #1552: Magnetic Force Between Two Balls -- the differential.
+//
+// Four arms against the statement read literally, on 3000 baskets of 2 to
+// 8 distinct positions from 1 to 30 in a random order, each with 2 to all
+// of them balls, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least 1 and at most the span over m - 1
+// P3  the positions mirrored, p to 31 - p, leave the answer
+// P4  every position tripled and moved by 5 triples the answer
+// P5  two balls give the span, and one ball more never widens the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- magnetic.kara: the ★ arm: a binary search on the answer, a greedy check
+
+fn star_fits(sorted: Vec[i64], m: i64, gap: i64) -> bool {
+    let mut placed = 1;
+    let mut last = sorted[0];
+    for p in sorted.iter() {
+        if p - last >= gap {
+            placed += 1;
+            last = p;
+        }
+    }
+    placed >= m
+}
+
+fn star_arm(position: Vec[i64], m: i64) -> i64 {
+    let mut sorted = position.clone();
+    sorted.sort();
+    let mut lo = 1;
+    let mut hi = sorted[sorted.len() - 1] - sorted[0];
+    while lo < hi {
+        let mid = lo + (hi - lo + 1) / 2;
+        if star_fits(sorted, m, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- magnetic_jump.kara: the check jumping ball to ball by partition_point
+
+fn jump_fits(sorted: Vec[i64], m: i64, gap: i64) -> bool {
+    let mut at = 0;
+    for _ in 1..m {
+        let want = sorted[at] + gap;
+        at = sorted.partition_point(|p| p < want);
+        if at == sorted.len() {
+            return false;
+        }
+    }
+    true
+}
+
+fn jump_arm(position: Vec[i64], m: i64) -> i64 {
+    let mut sorted = position.clone();
+    sorted.sort();
+    let mut lo = 1;
+    let mut hi = (sorted[sorted.len() - 1] - sorted[0]) / (m - 1) + 1;
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if jump_fits(sorted, m, mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+// ---- magnetic_fold.kara: the check as a fold, the search bit by bit
+
+fn fold_arm(position: Vec[i64], m: i64) -> i64 {
+    let mut sorted = position.clone();
+    sorted.sort();
+    let fits = |gap: i64| {
+        let (placed, _) = sorted.iter().skip(1).fold((1, sorted[0]), |(placed, last), p| {
+            if p - last >= gap { (placed + 1, p) } else { (placed, last) }
+        });
+        placed >= m
+    };
+    let mut best = 0;
+    let mut bit = 1 << 30;
+    while bit > 0 {
+        if fits(best + bit) {
+            best += bit;
+        }
+        bit /= 2;
+    }
+    best
+}
+
+// ---- magnetic_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_distance(position: own Vec[i32], m: i32) -> i32 {
+        let mut position = position;
+        position.sort();
+        let can_place = |gap: i32| {
+            let mut count = 1;
+            let mut last = position[0];
+            for p in position.iter().skip(1) {
+                if p - last >= gap {
+                    count += 1;
+                    last = p;
+                }
+            }
+            count >= m
+        };
+        let mut (lo, hi) = (1i32, position[position.len() - 1] - position[0]);
+        while lo < hi {
+            let mid = lo + (hi - lo + 1) / 2;
+            if can_place(mid) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo
+    }
+}
+
+fn solution_arm(position: Vec[i64], m: i64) -> i64 {
+    let position: Vec[i32] = position.iter().map(|p| p as i32).collect();
+    Solution.max_distance(position, m as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, position: Vec[i64], m: i64) -> i64 {
+    match a {
+        0 => star_arm(position, m),
+        1 => jump_arm(position, m),
+        2 => fold_arm(position, m),
+        _ => solution_arm(position, m),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["magnetic", "jump", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way to choose `m` of the
+// baskets, its force the least distance between any two of its balls, the
+// most of those
+
+fn choose(position: Vec[i64], m: i64, from: i64, chosen: mut ref Vec[i64], best: mut ref i64) {
+    if chosen.len() == m {
+        let mut least = i64.MAX;
+        for i in 0..m {
+            for j in 0..m {
+                if i != j {
+                    least = least.min((chosen[i] - chosen[j]).abs());
+                }
+            }
+        }
+        *best = (*best).max(least);
+        return;
+    }
+    for k in from..position.len() {
+        chosen.push(position[k]);
+        choose(position, m, k + 1, mut chosen, mut best);
+        chosen.pop();
+    }
+}
+
+fn literal(position: Vec[i64], m: i64) -> i64 {
+    let mut best = 0;
+    let mut chosen = Vec.new();
+    choose(position, m, 0, mut chosen, mut best);
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15520;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 2;
+        let m = next_random(mut seed) % (n - 1) + 2;
+        let mut position = Vec.new();
+        while position.len() < n {
+            let p = next_random(mut seed) % 30 + 1;
+            if not position.contains(p) {
+                position.push(p);
+            }
+        }
+        cases.push((position, m));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (position, m) = cases[p].clone();
+        let n = position.len();
+        let truth = literal(position.clone(), m);
+        let low = position.iter().min().unwrap();
+        let high = position.iter().max().unwrap();
+        let mirrored: Vec[i64] = position.iter().map(|x| 31 - x).collect();
+        let stretched: Vec[i64] = position.iter().map(|x| 3 * x + 5).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, position.clone(), m);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 1 or answer > (high - low) / (m - 1),
+                arm(a, mirrored.clone(), m) != answer,
+                arm(a, stretched.clone(), m) != 3 * answer,
+                arm(a, position.clone(), 2) != high - low or (m < n and arm(a, position.clone(), m + 1) > answer),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
