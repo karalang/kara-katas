@@ -1,0 +1,273 @@
+// LeetCode #1540: Can Convert String in K Moves -- the differential.
+//
+// Five arms against the statement read literally, on 3000 pairs of 1 to 8
+// letters over the first 1 to 4, one in ten of different lengths, with k
+// from 0 to 60, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  a yes stays yes at k + 1, and a no stays no at k - 1
+// P3  the same letter put after both leaves the answer
+// P4  every letter of both moved on by one (z to a) leaves the answer
+// P5  both reversed leave the answer
+// P6  each arm agrees with at least two of the other four
+
+// ---- convert.kara: the ★ arm: the places counted by shift
+
+fn star_arm(s: String, t: String, k: i64) -> bool {
+    if s.len() != t.len() {
+        return false;
+    }
+    let (s, t) = (s.bytes(), t.bytes());
+    let mut count = [0; 26];
+    for i in 0..s.len() {
+        let d = (t[i] as i64 - s[i] as i64 + 26) % 26;
+        count[d] += 1;
+    }
+    for d in 1..26 {
+        if count[d] > 0 and d + 26 * (count[d] - 1) > k {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- convert_greedy.kara: each place taking the next move left for its shift
+
+fn greedy_arm(s: String, t: String, k: i64) -> bool {
+    if s.len() != t.len() {
+        return false;
+    }
+    let mut next = Vec.filled(26, 0);
+    for d in 0..26 {
+        next[d] = d;
+    }
+    for (a, b) in s.bytes().iter().zip(t.bytes().iter()) {
+        let d = (b as i64 - a as i64 + 26) % 26;
+        if d > 0 {
+            if next[d] > k {
+                return false;
+            }
+            next[d] += 26;
+        }
+    }
+    true
+}
+
+// ---- convert_room.kara: each shift's room among the moves 1 to k, needs in a Map
+
+fn room_arm(s: String, t: String, k: i64) -> bool {
+    if s.len() != t.len() {
+        return false;
+    }
+    let mut need = Map.new();
+    for (a, b) in s.chars().zip(t.chars()) {
+        let d = (b as i64 - a as i64 + 26) % 26;
+        if d != 0 {
+            *need.entry(d).or_insert(0) += 1;
+        }
+    }
+    need.iter().all(|(d, c)| c <= k / 26 + if d <= k % 26 { 1 } else { 0 })
+}
+
+// ---- convert_iter.kara: the shifts collected with iterators, sorted, runs walked
+
+fn iter_arm(s: String, t: String, k: i64) -> bool {
+    if s.len() != t.len() {
+        return false;
+    }
+    let mut shifts: Vec[i64] = s
+        .bytes()
+        .iter()
+        .zip(t.bytes().iter())
+        .map(|(a, b)| (b as i64 - a as i64 + 26) % 26)
+        .filter(|d| d > 0)
+        .collect();
+    shifts.sort();
+    let mut run = 0;
+    for i in 0..shifts.len() {
+        if i > 0 and shifts[i] == shifts[i - 1] {
+            run += 1;
+        } else {
+            run = 0;
+        }
+        if shifts[i] + 26 * run > k {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- convert_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn can_convert_string(s: String, t: String, k: i32) -> bool {
+        if s.len() != t.len() {
+            return false;
+        }
+        let (s, t) = (s.bytes(), t.bytes());
+        let mut count = [0i32; 26];
+        for i in 0..s.len() {
+            let d = ((t[i] as i32 - s[i] as i32 + 26) % 26) as usize;
+            count[d] += 1;
+        }
+        for d in 1..26 {
+            if count[d] > 0 and d as i32 + 26 * (count[d] - 1) > k {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn solution_arm(s: String, t: String, k: i64) -> bool {
+    Solution.can_convert_string(s, t, k as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String, t: String, k: i64) -> bool {
+    match a {
+        0 => star_arm(s, t, k),
+        1 => greedy_arm(s, t, k),
+        2 => room_arm(s, t, k),
+        3 => iter_arm(s, t, k),
+        _ => solution_arm(s, t, k),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["convert", "greedy", "room", "iter", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: a search for one move from 1 to k for
+// each place that must change, no move used twice, each shifting its
+// place's letter to t's
+
+fn assign(s: Vec[u8], t: Vec[u8], at: i64, k: i64, used: mut ref Vec[bool]) -> bool {
+    if at == s.len() {
+        return true;
+    }
+    if s[at] == t[at] {
+        return assign(s, t, at + 1, k, mut used);
+    }
+    for i in 1..=k {
+        let shifted = (s[at] as i64 - 97 + i) % 26 + 97;
+        if not used[i] and shifted == t[at] as i64 {
+            used[i] = true;
+            if assign(s, t, at + 1, k, mut used) {
+                return true;
+            }
+            used[i] = false;
+        }
+    }
+    false
+}
+
+fn literal(s: String, t: String, k: i64) -> bool {
+    if s.len() != t.len() {
+        return false;
+    }
+    let mut used = Vec.filled(k + 1, false);
+    let s: Vec[u8] = s.bytes().iter().collect();
+    let t: Vec[u8] = t.bytes().iter().collect();
+    assign(s, t, 0, k, mut used)
+}
+
+fn word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+// every letter moved on by one, z to a
+fn rotated(w: String) -> String {
+    w.chars().map(|c| if c == 'z' { 'a' } else { ((c as u32 as u8) + 1) as char }).collect()
+}
+
+fn reversed(w: String) -> String {
+    w.chars().rev().collect()
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15400;
+    let mut cases: Vec[(String, String, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let m = if next_random(mut seed) % 10 == 0 { next_random(mut seed) % 8 + 1 } else { n };
+        let used = next_random(mut seed) % 4 + 1;
+        let s = word(n, used, mut seed);
+        let t = word(m, used, mut seed);
+        let k = next_random(mut seed) % 61;
+        cases.push((s, t, k));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (s, t, k) = cases[p].clone();
+        let truth = literal(s.clone(), t.clone(), k);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s.clone(), t.clone(), k);
+            answers.push(answer);
+            check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+            let more = if answer { arm(a, s.clone(), t.clone(), k + 1) } else { k > 0 and arm(a, s.clone(), t.clone(), k - 1) };
+            let failed = [
+                answer != truth,
+                more != answer,
+                arm(a, s.clone() + "q", t.clone() + "q", k) != answer,
+                arm(a, rotated(s.clone()), rotated(t.clone()), k) != answer,
+                arm(a, reversed(s.clone()), reversed(t.clone()), k) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
