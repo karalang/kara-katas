@@ -1,0 +1,184 @@
+// LeetCode #1550: Three Consecutive Odds -- the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 1 to
+// 14 values from 1 to 8, each with its own chance of an odd value, with
+// six properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  true needs three odd values, and an all-odd array of three or more
+//     is true
+// P3  the array reversed has the same answer
+// P4  every value raised by 2 leaves the answer
+// P5  7, 5, 3 put after the array makes it true, and a 4 after every value
+//     makes it false
+// P6  each arm agrees with at least two of the other three
+
+// ---- three_odds.kara: the ★ arm: the run of odd values
+
+fn star_arm(arr: Vec[i64]) -> bool {
+    let mut run = 0;
+    for x in arr.iter() {
+        if x % 2 == 1 {
+            run += 1;
+            if run == 3 {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+// ---- three_odds_windows.kara: every window of three, all odd
+
+fn windows_arm(arr: Vec[i64]) -> bool {
+    arr.windows(3).into_iter().any(|w| w.iter().all(|x| x % 2 == 1))
+}
+
+// ---- three_odds_product.kara: an odd product of three neighbours
+
+fn product_arm(arr: Vec[i64]) -> bool {
+    (2..arr.len()).any(|i| arr[i - 2] * arr[i - 1] * arr[i] % 2 == 1)
+}
+
+// ---- three_odds_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn three_consecutive_odds(arr: Vec[i32]) -> bool {
+        arr.windows(3).into_iter().any(|w| w.iter().all(|x| x % 2 == 1))
+    }
+}
+
+fn solution_arm(arr: Vec[i64]) -> bool {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    Solution.three_consecutive_odds(arr)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, arr: Vec[i64]) -> bool {
+    match a {
+        0 => star_arm(arr),
+        1 => windows_arm(arr),
+        2 => product_arm(arr),
+        _ => solution_arm(arr),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["three_odds", "windows", "product", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: some place starts three neighbours
+// none of which leaves a remainder of 0 when halved
+
+fn literal(arr: Vec[i64]) -> bool {
+    for i in 0..arr.len() {
+        if i + 2 < arr.len() {
+            let mut odd = 0;
+            for j in i..i + 3 {
+                if arr[j] % 2 != 0 {
+                    odd += 1;
+                }
+            }
+            if odd == 3 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15500;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..problems {
+        let length = next_random(mut seed) % 14 + 1;
+        let odds = next_random(mut seed) % 101;
+        let mut arr = Vec.new();
+        for _ in 0..length {
+            let odd = next_random(mut seed) % 100 < odds;
+            let half = next_random(mut seed) % 4;
+            arr.push(if odd { 2 * half + 1 } else { 2 * half + 2 });
+        }
+        cases.push(arr);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let arr = cases[p].clone();
+        let truth = literal(arr.clone());
+        let odd_count = arr.iter().filter(|x| x % 2 == 1).count();
+        let all_odd = odd_count == arr.len();
+        let reversed: Vec[i64] = arr.iter().rev().cloned().collect();
+        let shifted: Vec[i64] = arr.iter().map(|x| x + 2).collect();
+        let mut tripled = arr.clone();
+        tripled.extend([7, 5, 3].iter().cloned());
+        let mut spaced = Vec.new();
+        for x in arr.iter() {
+            spaced.push(x);
+            spaced.push(4);
+        }
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, arr.clone());
+            answers.push(answer);
+            check = (check * 31 + (if answer { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                (answer and odd_count < 3) or (all_odd and arr.len() >= 3 and not answer),
+                arm(a, reversed.clone()) != answer,
+                arm(a, shifted.clone()) != answer,
+                not arm(a, tripled.clone()) or arm(a, spaced.clone()),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
