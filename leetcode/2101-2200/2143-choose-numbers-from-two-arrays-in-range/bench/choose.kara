@@ -1,0 +1,56 @@
+// LeetCode #2143: Choose Numbers From Two Arrays in Range -- the
+// benchmark, choose.kara's ★ arm. 4 pairs of arrays of 100 values of 0 to
+// 100 built once; then every pair solved 50 times, one pair of values
+// redrawn before each solve.
+
+fn count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let low: i64 = nums2.iter().sum();
+    let high: i64 = nums1.iter().sum();
+    let width = low + high + 1;
+    let mut ways: Vec[i64] = Vec.filled(width, 0);
+    let mut balanced = 0;
+    for i in 0..nums1.len() {
+        ways[low] += 1;
+        let mut next: Vec[i64] = Vec.filled(width, 0);
+        for d in 0..width {
+            if ways[d] > 0 {
+                next[d + nums1[i]] = (next[d + nums1[i]] + ways[d]) % modulus;
+                next[d - nums2[i]] = (next[d - nums2[i]] + ways[d]) % modulus;
+            }
+        }
+        ways = next;
+        balanced = (balanced + ways[low]) % modulus;
+    }
+    balanced
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2143;
+    let mut firsts: Vec[Vec[i64]] = Vec.new();
+    let mut seconds: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..4 {
+        let nums1: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 101).collect();
+        let nums2: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 101).collect();
+        firsts.push(nums1);
+        seconds.push(nums2);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..50 {
+        for p in 0..4 {
+            let at = next_random(mut seed) % 100;
+            firsts[p][at] = next_random(mut seed) % 101;
+            seconds[p][at] = next_random(mut seed) % 101;
+            let ways = count_subranges(firsts[p], seconds[p]);
+            total += ways;
+            check = (check * 31 + ways + round) % 1000000007;
+        }
+    }
+    println(f"200 solves: {total} ranges in all, checksum {check}");
+}

@@ -1,0 +1,76 @@
+// LeetCode #2143: Choose Numbers From Two Arrays in Range -- the ★ arm.
+// Picking nums1[i] adds it to a running difference and picking nums2[i]
+// takes it away, so a range balances where the difference is back at
+// zero. For each right end the ranges ending there are counted by their
+// difference: those ending one before moved on by either pick, with a new
+// range started at zero first, in a `Vec` offset by the sum of nums2.
+// O(n (sum1 + sum2)).
+
+fn count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let low: i64 = nums2.iter().sum();
+    let high: i64 = nums1.iter().sum();
+    let width = low + high + 1;
+    let mut ways: Vec[i64] = Vec.filled(width, 0);
+    let mut balanced = 0;
+    for i in 0..nums1.len() {
+        ways[low] += 1;
+        let mut next: Vec[i64] = Vec.filled(width, 0);
+        for d in 0..width {
+            if ways[d] > 0 {
+                next[d + nums1[i]] = (next[d + nums1[i]] + ways[d]) % modulus;
+                next[d - nums2[i]] = (next[d - nums2[i]] + ways[d]) % modulus;
+            }
+        }
+        ways = next;
+        balanced = (balanced + ways[low]) % modulus;
+    }
+    balanced
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums1: Vec[i64], nums2: Vec[i64]) {
+    println(f"{nums1} {nums2} -> {count_subranges(nums1, nums2)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one pair of 0s, one pair
+    // that cannot balance, two equal pairs, and four
+    show([1, 2, 5].to_vec(), [2, 6, 3].to_vec());
+    show([0, 1].to_vec(), [1, 0].to_vec());
+    show([0].to_vec(), [0].to_vec());
+    show([5].to_vec(), [5].to_vec());
+    show([3, 3].to_vec(), [3, 3].to_vec());
+    show([1, 1, 1, 1].to_vec(), [1, 1, 1, 1].to_vec());
+    // 2000 random pairs of arrays of 1 to 12 values, of 0 to 9, 0 to 2
+    // or 0 to 100 in turn
+    let mut seed = 2143;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [10, 3, 101][round % 3];
+        let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let nums2: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let ways = count_subranges(nums1, nums2);
+        total += ways;
+        check = (check * 31 + ways + n) % 1000000007;
+    }
+    println(f"2000 pairs: {total} ranges in all, checksum {check}");
+    // the constraints' largest, 100 values in each: every one 0, every
+    // one 100, and at random
+    let zeros: Vec[i64] = Vec.filled(100, 0);
+    let full: Vec[i64] = Vec.filled(100, 100);
+    let random1: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 101).collect();
+    let random2: Vec[i64] = (0..100).map(|_| next_random(mut seed) % 101).collect();
+    let x = count_subranges(zeros, zeros);
+    let y = count_subranges(full, full);
+    let z = count_subranges(random1, random2);
+    println(f"100 pairs: {x} all 0, {y} all 100, {z} at random");
+}

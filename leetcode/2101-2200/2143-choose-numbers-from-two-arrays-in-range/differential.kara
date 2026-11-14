@@ -1,0 +1,304 @@
+// LeetCode #2143: Choose Numbers From Two Arrays in Range -- the
+// differential. The six arms, against the statement read literally: every
+// range is tried, and every way to pick from nums1 or nums2 at each place
+// in it, and a pick counts when the two sums are equal. No difference is
+// counted and nothing is carried from one range to the next. 300 random
+// pairs of arrays of 1 to 8 values of 0 to 9, 0 to 2 or 0 to 4 in turn;
+// then 30 with the two arrays equal; then 30 of 1 to 6 values of 0 to
+// 100; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the two arrays swapped: the same count
+// P3  both arrays reversed: the same count
+// P4  every value doubled: the same count
+// P5  the arrays laid twice end to end, a pair too large to balance
+//     between: twice the count
+// P6  each arm agrees with at least three of the other five
+
+// ---- choose.kara: the ★ arm, the ranges counted by difference in an offset `Vec`
+fn star_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let low: i64 = nums2.iter().sum();
+    let high: i64 = nums1.iter().sum();
+    let width = low + high + 1;
+    let mut ways: Vec[i64] = Vec.filled(width, 0);
+    let mut balanced = 0;
+    for i in 0..nums1.len() {
+        ways[low] += 1;
+        let mut next: Vec[i64] = Vec.filled(width, 0);
+        for d in 0..width {
+            if ways[d] > 0 {
+                next[d + nums1[i]] = (next[d + nums1[i]] + ways[d]) % modulus;
+                next[d - nums2[i]] = (next[d - nums2[i]] + ways[d]) % modulus;
+            }
+        }
+        ways = next;
+        balanced = (balanced + ways[low]) % modulus;
+    }
+    balanced
+}
+
+// ---- choose_map.kara: the same counts in a `Map` of the differences reached
+fn map_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let mut ways: Map[i64, i64] = Map.new();
+    let mut balanced = 0;
+    for (i, a) in nums1.iter().enumerate() {
+        *ways.entry(0).or_insert(0) += 1;
+        let b = nums2[i];
+        let mut next: Map[i64, i64] = Map.new();
+        for (d, count) in ways.iter() {
+            let up = next.entry(d + a).or_insert(0);
+            *up = (*up + count) % modulus;
+            let down = next.entry(d - b).or_insert(0);
+            *down = (*down + count) % modulus;
+        }
+        ways = next;
+        balanced = (balanced + ways.get(0).cloned().unwrap_or(0)) % modulus;
+    }
+    balanced
+}
+
+// ---- choose_weights.kara: nums1's picks weighed against nums2's sum, a knapsack in place
+fn weights_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let modulus = 1000000007;
+    let n = nums1.len();
+    let mut before: Vec[i64] = [0].to_vec();
+    for b in nums2.iter() {
+        before.push(before[before.len() - 1] + b);
+    }
+    let size = before[n] + nums1.iter().sum() + before[n] + 1;
+    let mut ways: Vec[i64] = Vec.filled(size, 0);
+    let mut balanced = 0;
+    for r in 0..n {
+        ways[before[r]] += 1;
+        let weight = nums1[r] + nums2[r];
+        for v in (0..size - weight).rev() {
+            ways[v + weight] = (ways[v + weight] + ways[v]) % modulus;
+        }
+        balanced = (balanced + ways[before[r + 1]]) % modulus;
+    }
+    balanced
+}
+
+// ---- choose_struct.kara: a `Tally` opened, stepped and asked how many are balanced
+struct Tally {
+    ways: Vec[i64],
+    zero: i64,
+}
+
+impl Tally {
+    fn new(low: i64, high: i64) -> Tally {
+        Tally { ways: Vec.filled(low + high + 1, 0), zero: low }
+    }
+
+    fn open(mut ref self) {
+        self.ways[self.zero] += 1;
+    }
+
+    fn step(mut ref self, add: i64, take: i64) {
+        let mut next: Vec[i64] = Vec.filled(self.ways.len(), 0);
+        for (d, count) in self.ways.iter().enumerate() {
+            if count > 0 {
+                next[d + add] = (next[d + add] + count) % 1000000007;
+                next[d - take] = (next[d - take] + count) % 1000000007;
+            }
+        }
+        self.ways = next;
+    }
+
+    fn balanced(ref self) -> i64 {
+        self.ways[self.zero]
+    }
+}
+
+fn tally_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut tally = Tally.new(nums2.iter().sum(), nums1.iter().sum());
+    let mut balanced = 0;
+    for i in 0..nums1.len() {
+        tally.open();
+        tally.step(nums1[i], nums2[i]);
+        balanced = (balanced + tally.balanced()) % 1000000007;
+    }
+    balanced
+}
+
+// ---- choose_fold.kara: one `fold` over the `zip`ped pairs, each count pulled
+fn fold_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let low: i64 = nums2.iter().sum();
+    let width = low + nums1.iter().sum() + 1;
+    let start: Vec[i64] = Vec.filled(width, 0);
+    let (_, balanced) = nums1.iter().zip(nums2.iter()).fold((start, 0), |(ways, balanced), (a, b)| {
+        let mut opened = ways;
+        opened[low] += 1;
+        let next: Vec[i64] = (0..width)
+            .map(|d| {
+                let from_a = if d >= a { opened[d - a] } else { 0 };
+                let from_b = if d + b < width { opened[d + b] } else { 0 };
+                (from_a + from_b) % 1000000007
+            })
+            .collect();
+        let now = (balanced + next[low]) % 1000000007;
+        (next, now)
+    });
+    balanced
+}
+
+// ---- choose_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn count_subranges(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let s1: i32 = nums1.iter().sum();
+        let s2: i32 = nums2.iter().sum();
+        let off = s2 as i64;
+        let w = (s1 + s2) as i64 + 1;
+        let mut dp = Vec.filled(w, 0);
+        let mut ans = 0;
+        for i in 0..nums1.len() {
+            dp[off] += 1;
+            let mut ndp = Vec.filled(w, 0);
+            let a = nums1[i] as i64;
+            let b = nums2[i] as i64;
+            for d in 0..w {
+                if dp[d] == 0 {
+                    continue;
+                }
+                ndp[d + a] = (ndp[d + a] + dp[d]) % MOD;
+                ndp[d - b] = (ndp[d - b] + dp[d]) % MOD;
+            }
+            dp = ndp;
+            ans = (ans + dp[off]) % MOD;
+        }
+        ans as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_count_subranges(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|v| v as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|v| v as i32).collect();
+    SolutionSolution.count_subranges(a, b)
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count = 0;
+    for l in 0..n {
+        for r in l..n {
+            for picks in 0..(1 << (r - l + 1)) {
+                let mut first = 0;
+                let mut second = 0;
+                for i in l..r + 1 {
+                    if (picks >> (i - l)) & 1 == 1 {
+                        first += nums1[i];
+                    } else {
+                        second += nums2[i];
+                    }
+                }
+                if first == second {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_count_subranges(nums1, nums2),
+        1 => map_count_subranges(nums1, nums2),
+        2 => weights_count_subranges(nums1, nums2),
+        3 => tally_count_subranges(nums1, nums2),
+        4 => fold_count_subranges(nums1, nums2),
+        _ => solution_count_subranges(nums1, nums2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn twice(nums: Vec[i64], between: i64) -> Vec[i64] {
+    let mut laid = nums.clone();
+    laid.push(between);
+    laid.extend(nums.iter().cloned());
+    laid
+}
+
+fn main() {
+    let names = ["star", "map", "weights", "tally", "fold", "solution"];
+    let mut seed = 2143;
+    let mut pairs: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 330 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 6 + 1 };
+        let top = if t < 300 { [10, 3, 5][t % 3] } else if t < 330 { 10 } else { 101 };
+        let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top).collect();
+        let nums2: Vec[i64] = if t >= 300 and t < 330 {
+            nums1.clone()
+        } else {
+            (0..n).map(|_| next_random(mut seed) % top).collect()
+        };
+        pairs.push((nums1, nums2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums1, nums2) in pairs.iter() {
+        let truth = literal(nums1, nums2);
+        check = (check * 31 + truth + nums1.len()) % 1000000007;
+        let back1: Vec[i64] = nums1.iter().rev().cloned().collect();
+        let back2: Vec[i64] = nums2.iter().rev().cloned().collect();
+        let double1: Vec[i64] = nums1.iter().map(|v| 2 * v).collect();
+        let double2: Vec[i64] = nums2.iter().map(|v| 2 * v).collect();
+        let sum1: i64 = nums1.iter().sum();
+        let sum2: i64 = nums2.iter().sum();
+        let laid1 = twice(nums1, 2 * (sum1 + sum2) + 1);
+        let laid2 = twice(nums2, 2 * (sum1 + sum2) + 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, nums2, nums1) == x,
+                answer(arm, back1, back2) == x,
+                answer(arm, double1, double2) == x,
+                answer(arm, laid1, laid2) == 2 * x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums1} {nums2} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{pairs.len()} pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
