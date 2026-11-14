@@ -1,0 +1,62 @@
+// LeetCode #2148: Count Elements With Strictly Smaller and Greater
+// Elements -- the numbers tallied in a `SortedMap[i64, i64]`, value to
+// how many times it is met; the first key is the least and the last the
+// greatest, so every tally but those two ends is counted, by `skip`,
+// `take` and `sum` over the tallies in order. O(n log n).
+
+fn count_elements(nums: Vec[i64]) -> i64 {
+    let mut tally: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        *tally.entry(x).or_insert(0) += 1;
+    }
+    let kinds = tally.len();
+    if kinds < 3 {
+        return 0;
+    }
+    tally.values().skip(1).take(kinds - 2).sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {count_elements(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, three equal,
+    // two apart, and every value met twice
+    show([11, 7, 2, 15].to_vec());
+    show([-3, 3, 3, 90].to_vec());
+    show([5].to_vec());
+    show([4, 4, 4].to_vec());
+    show([1, 2].to_vec());
+    show([3, 1, 2, 3, 1, 2].to_vec());
+    // 2000 random lists of 1 to 12 numbers of 1 to 3, of 1 to 5, and of
+    // -100000 to 100000 in turn
+    let mut seed = 2148;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = match round % 3 {
+            0 => (0..n).map(|_| next_random(mut seed) % 3 + 1).collect(),
+            1 => (0..n).map(|_| next_random(mut seed) % 5 + 1).collect(),
+            _ => (0..n).map(|_| next_random(mut seed) * 7 % 200001 - 100000).collect(),
+        };
+        let count = count_elements(nums);
+        total += count;
+        check = (check * 31 + count + n) % 1000000007;
+    }
+    println(f"2000 lists: {total} counted in all, checksum {check}");
+    // the constraints' largest, 100 numbers: one of each from -50 to 49,
+    // every one -100000, and at random from the whole range
+    let every: Vec[i64] = (-50..50).collect();
+    let same: Vec[i64] = Vec.filled(100, -100000);
+    let random: Vec[i64] = (0..100).map(|_| next_random(mut seed) * 7 % 200001 - 100000).collect();
+    println(f"100 numbers: {count_elements(every)} one of each, {count_elements(same)} all equal, {count_elements(random)} at random");
+}

@@ -1,0 +1,233 @@
+// LeetCode #2148: Count Elements With Strictly Smaller and Greater
+// Elements -- the differential. The six arms, against the statement read
+// literally: each number is checked against every other for one strictly
+// smaller and one strictly greater, with no least or greatest found
+// first. 300 random lists of 1 to 10 numbers of 1 to 2, 1 to 4 or -1000
+// to 1000 in turn; then 30 of numbers all equal; then 30 of 1 to 10
+// distinct numbers; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the list reversed: the same count
+// P3  every number negated: the same count
+// P4  every number listed twice: twice the count
+// P5  a number below every one and a number above every one added: the
+//     whole length of the list
+// P6  each arm agrees with at least three of the other five
+
+// ---- elements.kara: the ★ arm, between the least and the greatest by `min` and `max`
+fn star_count_elements(nums: Vec[i64]) -> i64 {
+    let low = nums.iter().min().unwrap();
+    let high = nums.iter().max().unwrap();
+    nums.iter().filter(|x| low < x and x < high).count()
+}
+
+// ---- elements_sorted.kara: sorted, the ends walked off by `position` and `rposition`
+fn sorted_count_elements(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let low = sorted[0];
+    let high = sorted[n - 1];
+    match (sorted.iter().position(|x| x != low), sorted.iter().rposition(|x| x != high)) {
+        (Some(first), Some(last)) if first <= last => last - first + 1,
+        _ => 0,
+    }
+}
+
+// ---- elements_tally.kara: one pass tallying the least and the greatest
+fn tally_count_elements(nums: Vec[i64]) -> i64 {
+    let mut low = nums[0];
+    let mut lows = 0;
+    let mut high = nums[0];
+    let mut highs = 0;
+    for x in nums.iter() {
+        if x < low {
+            low = x;
+            lows = 1;
+        } else if x == low {
+            lows += 1;
+        }
+        if x > high {
+            high = x;
+            highs = 1;
+        } else if x == high {
+            highs += 1;
+        }
+    }
+    if low == high { 0 } else { nums.len() - lows - highs }
+}
+
+// ---- elements_struct.kara: a `Bounds` built by `fold`, asked what lies `inside`
+struct Bounds {
+    low: i64,
+    high: i64,
+}
+
+impl Bounds {
+    fn of(nums: Vec[i64]) -> Bounds {
+        nums.iter().fold(Bounds { low: nums[0], high: nums[0] }, |bounds, x| Bounds { low: bounds.low.min(x), high: bounds.high.max(x) })
+    }
+
+    fn inside(ref self, x: i64) -> bool {
+        self.low < x and x < self.high
+    }
+}
+
+fn bounds_count_elements(nums: Vec[i64]) -> i64 {
+    let bounds = Bounds.of(nums);
+    let mut count = 0;
+    for x in nums.iter() {
+        if bounds.inside(x) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- elements_map.kara: a `SortedMap` of tallies, the two ends left out
+fn map_count_elements(nums: Vec[i64]) -> i64 {
+    let mut tally: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        *tally.entry(x).or_insert(0) += 1;
+    }
+    let kinds = tally.len();
+    if kinds < 3 {
+        return 0;
+    }
+    tally.values().skip(1).take(kinds - 2).sum()
+}
+
+// ---- elements_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn count_elements(nums: Vec[i32]) -> i32 {
+        let mn = *nums.iter().min().unwrap();
+        let mx = *nums.iter().max().unwrap();
+        nums.iter().filter(|x| x > mn and x < mx).count() as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_count_elements(nums: Vec[i64]) -> i64 {
+    SolutionSolution.count_elements(nums.iter().map(|x| x as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut count = 0;
+    for x in nums.iter() {
+        let mut smaller = false;
+        let mut greater = false;
+        for y in nums.iter() {
+            if y < x {
+                smaller = true;
+            }
+            if y > x {
+                greater = true;
+            }
+        }
+        if smaller and greater {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_count_elements(nums),
+        1 => sorted_count_elements(nums),
+        2 => tally_count_elements(nums),
+        3 => bounds_count_elements(nums),
+        4 => map_count_elements(nums),
+        _ => solution_count_elements(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "tally", "bounds", "map", "solution"];
+    let mut seed = 2148;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = if t < 300 {
+            match t % 3 {
+                0 => (0..n).map(|_| next_random(mut seed) % 2 + 1).collect(),
+                1 => (0..n).map(|_| next_random(mut seed) % 4 + 1).collect(),
+                _ => (0..n).map(|_| next_random(mut seed) % 2001 - 1000).collect(),
+            }
+        } else if t < 330 {
+            Vec.filled(n, next_random(mut seed) % 2001 - 1000)
+        } else {
+            let start = next_random(mut seed) % 2001 - 1000;
+            let mut distinct: Vec[i64] = (0..n).map(|i| start + 3 * i).collect();
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                distinct.swap(i, j);
+            }
+            distinct
+        };
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth + nums.len()) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let mut twice = nums.clone();
+        twice.extend(nums.clone());
+        let mut bracketed = nums.clone();
+        bracketed.push(-5000);
+        bracketed.insert(0, 5000);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, negated) == x,
+                answer(arm, twice) == 2 * x,
+                answer(arm, bracketed) == nums.len(),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
