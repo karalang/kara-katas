@@ -1,0 +1,48 @@
+// LeetCode #2134: Minimum Swaps to Group All 1's Together II -- the
+// benchmark, swaps.kara's ★ arm. 20 arrays of 100000 built once, a 1 one
+// time in 2 to 21 by array; then every array solved 10 times, one value
+// flipped before each solve.
+
+fn min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let k: i64 = nums.iter().sum();
+    let mut inside = 0;
+    for i in 0..k {
+        inside += nums[i];
+    }
+    let mut most = inside;
+    for i in k..n + k {
+        inside += nums[i % n] - nums[(i - k) % n];
+        most = most.max(inside);
+    }
+    k - most
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2134;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for a in 0..20 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(if next_random(mut seed) % (a + 2) == 0 { 1 } else { 0 });
+        }
+        arrays.push(nums);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..10 {
+        for a in 0..20 {
+            let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000;
+            arrays[a][at] = 1 - arrays[a][at];
+            let swaps = min_swaps(arrays[a]);
+            total += swaps;
+            check = (check * 31 + swaps + round) % 1000000007;
+        }
+    }
+    println(f"200 solves: {total} swaps in all, checksum {check}");
+}

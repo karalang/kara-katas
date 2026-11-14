@@ -1,0 +1,272 @@
+// LeetCode #2134: Minimum Swaps to Group All 1's Together II -- the
+// differential. The six arms, against the statement read literally: a
+// search, breadth first, over every arrangement that swaps of two values
+// reach from the array, until one has its 1s together round the circle,
+// that is with at most one place where a 1 is followed by a 0; no window
+// is assumed. 300 random arrays of 1 to 8, a 1 one time in 2, 3 or 5 in
+// turn; then 30 of 1 to 8 with a single 0 or a single 1; then 30 of 9 or
+// 10 at random; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the array turned by one, the first moved last: the same answer
+// P3  the array reversed: the same answer
+// P4  every 0 made 1 and every 1 made 0: the same answer
+// P5  the array sorted, its 1s first: 0
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- swaps.kara: the ★ arm, a window of k slid round the circle by index mod n
+fn star_min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let k: i64 = nums.iter().sum();
+    let mut inside = 0;
+    for i in 0..k {
+        inside += nums[i];
+    }
+    let mut most = inside;
+    for i in k..n + k {
+        inside += nums[i % n] - nums[(i - k) % n];
+        most = most.max(inside);
+    }
+    k - most
+}
+
+// ---- swaps_prefix.kara: prefix sums over the array laid twice
+fn prefix_min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut before: Vec[i64] = Vec.filled(2 * n + 1, 0);
+    for i in 0..2 * n {
+        before[i + 1] = before[i] + nums[i % n];
+    }
+    let k = before[n];
+    let mut fewest = k;
+    for start in 0..n {
+        fewest = fewest.min(k - (before[start + k] - before[start]));
+    }
+    fewest
+}
+
+// ---- swaps_zeros.kara: a window of the 0s' places, over the array chained to itself
+fn zeros_min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let zeros = nums.iter().filter(|v| *v == 0).count();
+    let ring: Vec[i64] = nums.iter().chain(nums.iter()).collect();
+    let mut ones: i64 = ring[..zeros].iter().sum();
+    let mut fewest = ones;
+    for end in zeros..zeros + n {
+        ones += ring[end] - ring[end - zeros];
+        fewest = fewest.min(ones);
+    }
+    fewest
+}
+
+// ---- swaps_struct.kara: a `Window` that slides
+struct StructWindow {
+    size: i64,
+    start: i64,
+    ones: i64,
+}
+
+impl StructWindow {
+    fn at_start(ring: Vec[i64], size: i64) -> StructWindow {
+        let ones = (0..size).map(|i| ring[i]).sum();
+        StructWindow { size, start: 0, ones }
+    }
+
+    fn slide(mut ref self, ring: Vec[i64]) {
+        let n = ring.len();
+        self.ones += ring[(self.start + self.size) % n] - ring[self.start];
+        self.start = (self.start + 1) % n;
+    }
+}
+
+fn struct_min_swaps(nums: Vec[i64]) -> i64 {
+    let k = nums.iter().sum();
+    let mut window = StructWindow.at_start(nums, k);
+    let mut most = window.ones;
+    for _ in 1..nums.len() {
+        window.slide(nums);
+        most = most.max(window.ones);
+    }
+    k - most
+}
+
+// ---- swaps_fold.kara: one fold carrying (1s now, most so far)
+fn fold_min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let k: i64 = nums.iter().sum();
+    let first: i64 = nums.iter().take(k).sum();
+    let (_, most) = (k..n + k).fold((first, first), |(now, most), i| {
+        let next = now + nums[i % n] - nums[(i - k) % n];
+        (next, most.max(next))
+    });
+    k - most
+}
+
+// ---- swaps_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn min_swaps(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let k = nums.iter().filter(|x| x == 1).count();
+        if k == 0 {
+            return 0;
+        }
+        let mut cnt = nums[..k].iter().filter(|x| x == 1).count();
+        let mut mx = cnt;
+        for i in k..n + k {
+            cnt += nums[i % n];
+            cnt -= nums[(i - k) % n];
+            mx = mx.max(cnt);
+        }
+        (k - mx) as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_min_swaps(nums: Vec[i64]) -> i64 {
+    SolutionSolution.min_swaps(nums.iter().map(|v| v as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+// the 1s of a mask of n bits together round the circle: at most one
+// place where a 1 is followed by a 0
+fn together(mask: i64, n: i64) -> bool {
+    let mut breaks = 0;
+    for i in 0..n {
+        if (mask >> i) & 1 == 1 and (mask >> ((i + 1) % n)) & 1 == 0 {
+            breaks += 1;
+        }
+    }
+    breaks <= 1
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut start = 0;
+    for i in 0..n {
+        start |= nums[i] << i;
+    }
+    let mut depth: Vec[i64] = Vec.filled(1 << n, -1);
+    depth[start] = 0;
+    let mut queue: Vec[i64] = [start].to_vec();
+    let mut at = 0;
+    while at < queue.len() {
+        let mask = queue[at];
+        at += 1;
+        if together(mask, n) {
+            return depth[mask];
+        }
+        for i in 0..n {
+            for j in i + 1..n {
+                if (mask >> i) & 1 != (mask >> j) & 1 {
+                    let next = mask ^ (1 << i) ^ (1 << j);
+                    if depth[next] < 0 {
+                        depth[next] = depth[mask] + 1;
+                        queue.push(next);
+                    }
+                }
+            }
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_swaps(nums),
+        1 => prefix_min_swaps(nums),
+        2 => zeros_min_swaps(nums),
+        3 => struct_min_swaps(nums),
+        4 => fold_min_swaps(nums),
+        _ => solution_min_swaps(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "prefix", "zeros", "struct", "fold", "solution"];
+    let mut seed = 2134;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 330 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 2 + 9 };
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            let k = [2, 3, 5][t % 3];
+            for _ in 0..n {
+                nums.push(if next_random(mut seed) % k == 0 { 1 } else { 0 });
+            }
+        } else if t < 330 {
+            let odd = next_random(mut seed) % n;
+            let bit = next_random(mut seed) % 2;
+            for i in 0..n {
+                nums.push(if i == odd { bit } else { 1 - bit });
+            }
+        } else {
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % 2);
+            }
+        }
+        problems.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in problems.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        check = (check * 31 + truth * 16 + n) % 1000000007;
+        let turned: Vec[i64] = (0..n).map(|i| nums[(i + 1) % n]).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let flipped: Vec[i64] = nums.iter().map(|v| 1 - v).collect();
+        let mut sorted = nums.clone();
+        sorted.sort();
+        sorted.reverse();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, turned) == x,
+                answer(arm, reversed) == x,
+                answer(arm, flipped) == x,
+                answer(arm, sorted) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

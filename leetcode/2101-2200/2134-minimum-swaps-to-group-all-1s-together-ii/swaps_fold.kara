@@ -1,0 +1,60 @@
+// LeetCode #2134: Minimum Swaps to Group All 1's Together II -- a fold.
+// The first window's 1s summed, then one fold over the window's later
+// ends carries the pair (1s now, most so far), each step adding the
+// value reached and taking the one left. O(n).
+
+fn min_swaps(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let k: i64 = nums.iter().sum();
+    let first: i64 = nums.iter().take(k).sum();
+    let (_, most) = (k..n + k).fold((first, first), |(now, most), i| {
+        let next = now + nums[i % n] - nums[(i - k) % n];
+        (next, most.max(next))
+    });
+    k - most
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {min_swaps(nums)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one 0, one 1, 1 and 0 in
+    // turn, and no 1 at all
+    show([0, 1, 0, 1, 1, 0, 0].to_vec());
+    show([0, 1, 1, 1, 0, 0, 1, 1, 0].to_vec());
+    show([1, 1, 0, 0, 1].to_vec());
+    show([0].to_vec());
+    show([1].to_vec());
+    show([1, 0, 1, 0, 1, 0].to_vec());
+    show([0, 0, 0].to_vec());
+    // 2000 random arrays of 1 to 12, a 1 one time in 2, 3 or 5 in turn
+    let mut seed = 2134;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let k = [2, 3, 5][round % 3];
+        let nums: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % k == 0 { 1 } else { 0 }).collect();
+        let swaps = min_swaps(nums);
+        total += swaps;
+        check = (check * 31 + swaps + n) % 1000000007;
+    }
+    println(f"2000 arrays: {total} swaps in all, checksum {check}");
+    // the constraints' largest, 100000: 1 and 0 in turn; 1s at both ends,
+    // grouped across the wrap; and at random
+    let turns: Vec[i64] = (0..100000).map(|i| (i + 1) % 2).collect();
+    let ends: Vec[i64] = (0..100000).map(|i| if i < 30000 or i >= 70000 { 1 } else { 0 }).collect();
+    let random: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 2).collect();
+    let x = min_swaps(turns);
+    let y = min_swaps(ends);
+    let z = min_swaps(random);
+    println(f"100000 values: {x} in turn, {y} at the ends, {z} at random");
+}
