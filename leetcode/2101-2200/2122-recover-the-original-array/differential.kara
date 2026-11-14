@@ -1,0 +1,408 @@
+// LeetCode #2122: Recover the Original Array -- the differential. The
+// six arms, against the statement read literally: every `k` from 1 up
+// tried in turn, and for each the numbers split by taking the smallest
+// left with its partner `2k` above it until none is left; the first `k`
+// that empties them gives the answer. 300 random arrays, an original of
+// 1 to 8 values from 1 to 1, 5 or 50 in turn and a `k` from 1 to 10;
+// then 30 of up to 40 values from 1 to 1000 with a `k` up to 500; then
+// 30 whose original values are all one; every one drawn before any arm
+// answers. Answers are compared sorted.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is an original: for `k` its smallest less the smallest
+//     number, positive, the values less and plus `k` are the numbers
+// P3  the numbers reflected (`x` to `max + min - x`): the answer
+//     reflected
+// P4  every number times 3: the answer times 3
+// P5  the numbers twice over: the answer twice over
+// P6  each arm agrees with at least three of the other five
+
+// ---- recover.kara: the ★ arm, two pointers over the sorted numbers
+fn star_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let m = sorted.len();
+    for i in 1..m {
+        let gap = sorted[i] - sorted[0];
+        if gap == 0 or gap % 2 != 0 or (i > 1 and gap == sorted[i - 1] - sorted[0]) {
+            continue;
+        }
+        let k = gap / 2;
+        let mut used = Vec.filled(m, false);
+        let mut original: Vec[i64] = Vec.new();
+        let mut high = 0;
+        for low in 0..m {
+            if used[low] {
+                continue;
+            }
+            while high < m and (used[high] or high <= low or sorted[high] < sorted[low] + 2 * k) {
+                high += 1;
+            }
+            if high == m or sorted[high] != sorted[low] + 2 * k {
+                break;
+            }
+            used[high] = true;
+            original.push(sorted[low] + k);
+        }
+        if original.len() * 2 == m {
+            return original;
+        }
+    }
+    Vec.new()
+}
+
+// ---- recover_counts.kara: a `SortedMap` of counts, settled by key
+fn counts_pair_counts(counts: SortedMap[i64, i64], k: i64) -> Option[Vec[i64]] {
+    let mut left = counts.clone();
+    let mut original: Vec[i64] = Vec.new();
+    for (x, _) in counts.iter() {
+        let c = left[x];
+        if c == 0 {
+            continue;
+        }
+        let partner = left.get(x + 2 * k).unwrap_or(0);
+        if partner < c {
+            return None;
+        }
+        left[x + 2 * k] = partner - c;
+        for _ in 0..c {
+            original.push(x + k);
+        }
+    }
+    Some(original)
+}
+
+fn counts_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for x in nums.iter() {
+        counts[x] = counts.get(x).unwrap_or(0) + 1;
+    }
+    let smallest = counts.keys().next().unwrap();
+    for (x, _) in counts.iter() {
+        let gap = x - smallest;
+        if gap > 0 and gap % 2 == 0 {
+            if let Some(original) = counts_pair_counts(counts, gap / 2) {
+                return original;
+            }
+        }
+    }
+    Vec.new()
+}
+
+// ---- recover_queue.kara: a `VecDeque` of the highers waited for
+fn queue_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut tried: Set[i64] = Set.new();
+    for i in 1..sorted.len() {
+        let gap = sorted[i] - sorted[0];
+        if gap == 0 or gap % 2 != 0 or tried.contains(gap) {
+            continue;
+        }
+        tried.insert(gap);
+        let mut waiting: VecDeque[i64] = VecDeque.new();
+        let mut original: Vec[i64] = Vec.new();
+        let mut fits = true;
+        for x in sorted.iter() {
+            if waiting.front() == Some(x) {
+                waiting.pop_front();
+            } else if waiting.front().is_some_and(|w| w < x) {
+                fits = false;
+                break;
+            } else {
+                waiting.push_back(x + gap);
+                original.push(x + gap / 2);
+            }
+        }
+        if fits and waiting.is_empty() {
+            return original;
+        }
+    }
+    Vec.new()
+}
+
+// ---- recover_struct.kara: a `Multiset` that takes copies
+struct StructMultiset {
+    counts: Map[i64, i64],
+}
+
+impl StructMultiset {
+    fn of(nums: Vec[i64]) -> StructMultiset {
+        let mut counts: Map[i64, i64] = Map.new();
+        for x in nums.iter() {
+            counts[x] = counts.get(x).unwrap_or(0) + 1;
+        }
+        StructMultiset { counts: counts }
+    }
+
+    fn has(self, x: i64) -> bool {
+        self.counts.get(x).unwrap_or(0) > 0
+    }
+
+    fn take(mut ref self, x: i64) -> bool {
+        if not self.has(x) {
+            return false;
+        }
+        self.counts[x] -= 1;
+        true
+    }
+}
+
+fn struct_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    for i in 1..sorted.len() {
+        let gap = sorted[i] - sorted[0];
+        if gap == 0 or gap % 2 != 0 {
+            continue;
+        }
+        let mut left = StructMultiset.of(sorted);
+        let mut original: Vec[i64] = Vec.new();
+        for x in sorted.iter() {
+            if not left.take(x) {
+                continue;
+            }
+            if not left.take(x + gap) {
+                break;
+            }
+            original.push(x + gap / 2);
+        }
+        if original.len() * 2 == sorted.len() {
+            return original;
+        }
+    }
+    Vec.new()
+}
+
+// ---- recover_iter.kara: `find_map` over candidates, `try_fold` to pair
+fn iter_pair_with(sorted: Vec[i64], k: i64) -> Option[Vec[i64]] {
+    let (waiting, original) = sorted.iter().try_fold((VecDeque.new(), Vec.new()), |(waiting, original), x| {
+        let mut waiting = waiting;
+        let mut original = original;
+        match waiting.front() {
+            Some(w) if w == x => {
+                waiting.pop_front();
+            }
+            Some(w) if w < x => return None,
+            _ => {
+                waiting.push_back(x + 2 * k);
+                original.push(x + k);
+            }
+        }
+        Some((waiting, original))
+    })?;
+    if waiting.is_empty() { Some(original) } else { None }
+}
+
+fn iter_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let smallest = sorted[0];
+    sorted
+        .iter()
+        .map(|x| x - smallest)
+        .filter(|gap| gap > 0 and gap % 2 == 0)
+        .find_map(|gap| iter_pair_with(sorted, gap / 2))
+        .unwrap_or(Vec.new())
+}
+
+// ---- recover_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn recover_array(nums: own Vec[i32]) -> Vec[i32] {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        for i in 1..n {
+            let d = nums[i] - nums[0];
+            if d <= 0 or d % 2 != 0 {
+                continue;
+            }
+            let mut cnt: Map[i32, i32] = Map.new();
+            for x in ref nums {
+                *cnt.entry(x).or_insert(0) += 1;
+            }
+            let mut ans = Vec.new();
+            for x in ref nums {
+                if cnt[x] == 0 {
+                    continue;
+                }
+                match cnt.get_mut(x + d) {
+                    Some(c) if *c > 0 => *c -= 1,
+                    _ => break,
+                }
+                *cnt.get_mut(x).unwrap() -= 1;
+                ans.push(x + d / 2);
+            }
+            if ans.len() * 2 == n {
+                return ans;
+            }
+        }
+        Vec.new()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_recover_array(nums: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.recover_array(nums.iter().map(|x| x as i32).collect())
+        .iter()
+        .map(|x| x as i64)
+        .collect()
+}
+
+// ---- the statement read literally
+
+fn split_by(nums: Vec[i64], k: i64) -> Option[Vec[i64]] {
+    let mut left = nums.clone();
+    left.sort();
+    let mut original: Vec[i64] = Vec.new();
+    while not left.is_empty() {
+        let low = left.remove(0);
+        let mut found = false;
+        for j in 0..left.len() {
+            if left[j] == low + 2 * k {
+                left.remove(j);
+                found = true;
+                break;
+            }
+        }
+        if not found {
+            return None;
+        }
+        original.push(low + k);
+    }
+    Some(original)
+}
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let top = nums.iter().max().unwrap();
+    let bottom = nums.iter().min().unwrap();
+    for k in 1..(top - bottom) / 2 + 1 {
+        if let Some(original) = split_by(nums, k) {
+            return original;
+        }
+    }
+    Vec.new()
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    let mut got = match arm {
+        0 => star_recover_array(nums),
+        1 => counts_recover_array(nums),
+        2 => queue_recover_array(nums),
+        3 => struct_recover_array(nums),
+        4 => iter_recover_array(nums),
+        _ => solution_recover_array(nums),
+    };
+    got.sort();
+    got
+}
+
+fn is_original(nums: Vec[i64], got: Vec[i64]) -> bool {
+    if got.is_empty() or got.len() * 2 != nums.len() {
+        return false;
+    }
+    let k = got[0] - nums.iter().min().unwrap();
+    if k <= 0 {
+        return false;
+    }
+    let mut made: Vec[i64] = Vec.new();
+    for v in got.iter() {
+        made.push(v - k);
+        made.push(v + k);
+    }
+    made.sort();
+    let mut sorted = nums.clone();
+    sorted.sort();
+    made == sorted
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "counts", "queue", "struct", "iter", "solution"];
+    let mut seed = 2122;
+    let mut problems: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let (n, top, k) = if t < 300 {
+            (next_random(mut seed) % 8 + 1, [1, 5, 50][t % 3], next_random(mut seed) % 10 + 1)
+        } else if t < 330 {
+            (next_random(mut seed) % 40 + 1, 1000, next_random(mut seed) % 500 + 1)
+        } else {
+            (next_random(mut seed) % 10 + 1, 1, next_random(mut seed) % 10 + 1)
+        };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed) % top + 1 + k;
+            nums.push(x - k);
+            nums.push(x + k);
+        }
+        for i in (1..nums.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            nums.swap(i, j);
+        }
+        problems.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in problems.iter() {
+        let mut truth = literal(nums);
+        truth.sort();
+        for v in truth.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+        let mirror = nums.iter().max().unwrap() + nums.iter().min().unwrap();
+        let reflected: Vec[i64] = nums.iter().map(|x| mirror - x).collect();
+        let tripled: Vec[i64] = nums.iter().map(|x| 3 * x).collect();
+        let twice: Vec[i64] = nums.iter().chain(nums.iter()).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut turned: Vec[i64] = x.iter().map(|v| mirror - v).collect();
+            turned.sort();
+            let scaled: Vec[i64] = x.iter().map(|v| 3 * v).collect();
+            let mut doubled: Vec[i64] = x.iter().chain(x.iter()).collect();
+            doubled.sort();
+            let verdicts = [
+                x == truth,
+                is_original(nums, x),
+                answer(arm, reflected) == turned,
+                answer(arm, tripled) == scaled,
+                answer(arm, twice) == doubled,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} arrays: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

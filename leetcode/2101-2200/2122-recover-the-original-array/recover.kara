@@ -1,0 +1,109 @@
+// LeetCode #2122: Recover the Original Array -- the ★ arm. With the
+// numbers sorted, the smallest is some `x - k`, so `2k` is its distance
+// to one of the others: each positive even distance is tried, smallest
+// first. For one `k`, the smallest number not yet used must be a lower
+// `x - k`, and a second pointer finds its `x + k` further on; `k` works
+// when every number is paired. O(n^2) for 2n numbers.
+
+fn recover_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let m = sorted.len();
+    for i in 1..m {
+        let gap = sorted[i] - sorted[0];
+        if gap == 0 or gap % 2 != 0 or (i > 1 and gap == sorted[i - 1] - sorted[0]) {
+            continue;
+        }
+        let k = gap / 2;
+        let mut used = Vec.filled(m, false);
+        let mut original: Vec[i64] = Vec.new();
+        let mut high = 0;
+        for low in 0..m {
+            if used[low] {
+                continue;
+            }
+            while high < m and (used[high] or high <= low or sorted[high] < sorted[low] + 2 * k) {
+                high += 1;
+            }
+            if high == m or sorted[high] != sorted[low] + 2 * k {
+                break;
+            }
+            used[high] = true;
+            original.push(sorted[low] + k);
+        }
+        if original.len() * 2 == m {
+            return original;
+        }
+    }
+    Vec.new()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) -> String {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    f"{sorted}"
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one pair, every value
+    // the same before the shift, a k that is not the first candidate,
+    // and the constraints' largest values
+    let examples: Vec[Vec[i64]] = [
+        [2, 10, 6, 4, 8, 12].to_vec(),
+        [1, 1, 3, 3].to_vec(),
+        [5, 435].to_vec(),
+        [7, 9].to_vec(),
+        [4, 4, 4, 10, 10, 10].to_vec(),
+        [1, 3, 4, 6, 9, 11].to_vec(),
+        [999999998, 1000000000, 1, 3].to_vec(),
+    ].to_vec();
+    for nums in examples.iter() {
+        println(f"{nums} -> {show(recover_array(nums))}");
+    }
+    // 2000 random arrays: an original of 1 to 12 values from 1 to 1, 10
+    // or 1000 in turn, a k from 1 to 20, the lower and higher arrays
+    // shuffled together
+    let mut seed = 2122;
+    let mut sizes = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [1, 10, 1000][round % 3];
+        let k = next_random(mut seed) % 20 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed) % top + 1 + k;
+            nums.push(x - k);
+            nums.push(x + k);
+        }
+        for i in (1..nums.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            nums.swap(i, j);
+        }
+        let mut got = recover_array(nums);
+        got.sort();
+        sizes += got.len();
+        for v in got.iter() {
+            check = (check * 31 + v) % 1000000007;
+        }
+    }
+    println(f"2000 arrays: {sizes} values recovered, checksum {check}");
+    // the constraints' largest: 1000 random values up to 10^6 and a k of
+    // 777, so that many candidates are tried before it
+    let mut big: Vec[i64] = Vec.new();
+    for _ in 0..1000 {
+        let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % 1000000 + 778;
+        big.push(x - 777);
+        big.push(x + 777);
+    }
+    let got = recover_array(big);
+    let total: i64 = got.iter().sum();
+    println(f"2000 values: {got.len()} recovered, sum {total}");
+}
