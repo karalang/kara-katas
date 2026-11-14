@@ -1,0 +1,105 @@
+// LeetCode #2133: Check if Every Row and Column Contains All Numbers --
+// the ★ arm. Every value is 1 to n, so a line of n holds all of them
+// exactly when it holds none twice. One table of marks serves all 2n
+// lines: a value is marked with the number of the line it was last seen
+// in, and seen twice when its mark is the current line's. O(n^2).
+
+fn check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    let mut mark: Vec[i64] = Vec.filled(n + 1, -1);
+    for i in 0..n {
+        // line 2i is row i, line 2i + 1 is column i
+        for j in 0..n {
+            let v = matrix[i][j];
+            if mark[v] == 2 * i {
+                return false;
+            }
+            mark[v] = 2 * i;
+        }
+        for j in 0..n {
+            let v = matrix[j][i];
+            if mark[v] == 2 * i + 1 {
+                return false;
+            }
+            mark[v] = 2 * i + 1;
+        }
+    }
+    true
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(matrix: Vec[Vec[i64]]) {
+    println(f"{matrix} -> {check_valid(matrix)}");
+}
+
+// a Latin square of order n: row r is the symbols shifted by r, with the
+// rows and the symbols each in a random order
+fn latin(n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut rows: Vec[i64] = (0..n).collect();
+    let mut symbols: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        rows.swap(i, next_random(mut seed) % (i + 1));
+        symbols.swap(i, next_random(mut seed) % (i + 1));
+    }
+    (0..n).map(|r| (0..n).map(|c| symbols[(rows[r] + c) % n]).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one cell, a square of two,
+    // its rows equal so its columns fail, and its columns equal so its
+    // rows fail
+    show([[1, 2, 3], [3, 1, 2], [2, 3, 1]].to_vec());
+    show([[1, 1, 1], [1, 2, 3], [1, 2, 3]].to_vec());
+    show([[1]].to_vec());
+    show([[1, 2], [2, 1]].to_vec());
+    show([[1, 2], [1, 2]].to_vec());
+    show([[1, 1], [2, 2]].to_vec());
+    // 2000 random matrices of order 1 to 6 in turn: values of 1 to n at
+    // random, a Latin square, and a Latin square with one cell redrawn
+    let mut seed = 2133;
+    let mut valid = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 6 + 1;
+        let mut matrix: Vec[Vec[i64]] = Vec.new();
+        if round % 3 == 0 {
+            for _ in 0..n {
+                let mut row: Vec[i64] = Vec.new();
+                for _ in 0..n {
+                    row.push(next_random(mut seed) % n + 1);
+                }
+                matrix.push(row);
+            }
+        } else {
+            matrix = latin(n, mut seed);
+            if round % 3 == 2 {
+                let r = next_random(mut seed) % n;
+                let c = next_random(mut seed) % n;
+                matrix[r][c] = next_random(mut seed) % n + 1;
+            }
+        }
+        let ok = check_valid(matrix);
+        if ok {
+            valid += 1;
+        }
+        check = (check * 31 + if ok { 1 } else { 0 } + n * 2) % 1000000007;
+    }
+    println(f"2000 matrices: {valid} valid, checksum {check}");
+    // the constraints' largest, order 100: a Latin square; the same with two
+    // cells of a row swapped, so that only two columns fail; and every row
+    // 1 to 100
+    let square = latin(100, mut seed);
+    let mut swapped = square.clone();
+    swapped[37].swap(10, 90);
+    let same: Vec[Vec[i64]] = Vec.filled(100, (1..101).collect());
+    let x = check_valid(square);
+    let y = check_valid(swapped);
+    let z = check_valid(same);
+    println(f"order 100: {x} square, {y} swapped, {z} every row the same");
+}

@@ -1,0 +1,305 @@
+// LeetCode #2133: Check if Every Row and Column Contains All Numbers --
+// the differential. The six arms, against the statement read literally:
+// for every row and every column, each number of 1 to n is looked for
+// along it; nothing is counted and no repeat is looked for. 300 random
+// matrices of order 1 to 5, in turn values of 1 to n at random, a Latin
+// square, and a Latin square with one cell redrawn; then 30 Latin squares
+// with two cells of a row swapped; then 30 of order 1 to 3 at random;
+// then 30 Latin squares of order 60 to 70, across a 64-bit word, every
+// other one with a cell redrawn; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the matrix transposed: the same answer
+// P3  the rows in reverse order: the same answer
+// P4  the columns turned by one, the first moved last: the same answer
+// P5  every value v made n + 1 - v: the same answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- valid.kara: the ★ arm, one table of marks for all 2n lines
+fn star_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    let mut mark: Vec[i64] = Vec.filled(n + 1, -1);
+    for i in 0..n {
+        // line 2i is row i, line 2i + 1 is column i
+        for j in 0..n {
+            let v = matrix[i][j];
+            if mark[v] == 2 * i {
+                return false;
+            }
+            mark[v] = 2 * i;
+        }
+        for j in 0..n {
+            let v = matrix[j][i];
+            if mark[v] == 2 * i + 1 {
+                return false;
+            }
+            mark[v] = 2 * i + 1;
+        }
+    }
+    true
+}
+
+// ---- valid_sets.kara: each line collected into a `Set`
+fn sets_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    let in_range = |line: Set[i64]| line.len() == n and line.iter().all(|v| v >= 1 and v <= n);
+    for i in 0..n {
+        let row: Set[i64] = matrix[i].iter().collect();
+        let column: Set[i64] = (0..n).map(|j| matrix[j][i]).collect();
+        if not in_range(row) or not in_range(column) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- valid_sorted.kara: each line sorted and compared with 1 to n
+fn sorted_sorted_is_one_to_n(line: own Vec[i64]) -> bool {
+    line.sort();
+    let one_to_n: Vec[i64] = (1..line.len() + 1).collect();
+    line == one_to_n
+}
+
+fn sorted_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    (0..n).all(|i| sorted_sorted_is_one_to_n(matrix[i].clone()) and sorted_sorted_is_one_to_n((0..n).map(|j| matrix[j][i]).collect()))
+}
+
+// ---- valid_struct.kara: a `Tally` of one line's counts, cleared between lines
+struct StructTally {
+    counts: Vec[i64],
+}
+
+impl StructTally {
+    fn new(n: i64) -> StructTally {
+        StructTally { counts: Vec.filled(n + 1, 0) }
+    }
+
+    fn add(mut ref self, v: i64) {
+        self.counts[v] += 1;
+    }
+
+    // every value of 1 to n counted at least once
+    fn whole(ref self) -> bool {
+        (1..self.counts.len()).all(|v| self.counts[v] > 0)
+    }
+
+    fn clear(mut ref self) {
+        for v in 0..self.counts.len() {
+            self.counts[v] = 0;
+        }
+    }
+}
+
+fn struct_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    let mut tally = StructTally.new(n);
+    for i in 0..n {
+        for j in 0..n {
+            tally.add(matrix[i][j]);
+        }
+        if not tally.whole() {
+            return false;
+        }
+        tally.clear();
+        for j in 0..n {
+            tally.add(matrix[j][i]);
+        }
+        if not tally.whole() {
+            return false;
+        }
+        tally.clear();
+    }
+    true
+}
+
+// ---- valid_bits.kara: each line's values as bits in a `Vec[u64]`
+fn bits_line_whole(n: i64, value_at: Fn(i64) -> i64) -> bool {
+    let mut words: Vec[u64] = Vec.filled((n + 63) / 64, 0);
+    for j in 0..n {
+        let v = value_at(j) - 1;
+        let bit: u64 = 1 << (v % 64);
+        if words[v / 64] & bit != 0 {
+            return false;
+        }
+        words[v / 64] |= bit;
+    }
+    (0..words.len()).all(|k| {
+        let width = (n - k * 64).min(64);
+        let full: u64 = if width == 64 { u64.MAX } else { (1 << width) - 1 };
+        words[k] == full
+    })
+}
+
+fn bits_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    (0..n).all(|i| bits_line_whole(n, |j| matrix[i][j]) and bits_line_whole(n, |j| matrix[j][i]))
+}
+
+// ---- valid_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn check_valid(matrix: Vec[Vec[i32]]) -> bool {
+        let n = matrix.len();
+        for i in 0..n {
+            let mut row = Set.new();
+            let mut col = Set.new();
+            for j in 0..n {
+                if not row.insert(matrix[i][j]) or not col.insert(matrix[j][i]) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_check_valid(matrix: Vec[Vec[i64]]) -> bool {
+    let m: Vec[Vec[i32]] = matrix.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    SolutionSolution.check_valid(m)
+}
+
+
+// ---- the statement read literally
+
+fn literal(matrix: Vec[Vec[i64]]) -> bool {
+    let n = matrix.len();
+    for i in 0..n {
+        for k in 1..n + 1 {
+            let mut in_row = false;
+            let mut in_column = false;
+            for j in 0..n {
+                if matrix[i][j] == k {
+                    in_row = true;
+                }
+                if matrix[j][i] == k {
+                    in_column = true;
+                }
+            }
+            if not in_row or not in_column {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, matrix: Vec[Vec[i64]]) -> bool {
+    match arm {
+        0 => star_check_valid(matrix),
+        1 => sets_check_valid(matrix),
+        2 => sorted_check_valid(matrix),
+        3 => struct_check_valid(matrix),
+        4 => bits_check_valid(matrix),
+        _ => solution_check_valid(matrix),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn latin(n: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut rows: Vec[i64] = (0..n).collect();
+    let mut symbols: Vec[i64] = (1..n + 1).collect();
+    for i in (1..n).rev() {
+        rows.swap(i, next_random(mut seed) % (i + 1));
+        symbols.swap(i, next_random(mut seed) % (i + 1));
+    }
+    (0..n).map(|r| (0..n).map(|c| symbols[(rows[r] + c) % n]).collect()).collect()
+}
+
+fn main() {
+    let names = ["star", "sets", "sorted", "struct", "bits", "solution"];
+    let mut seed = 2133;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..390 {
+        let n = if t < 330 {
+            next_random(mut seed) % 5 + 1
+        } else if t < 360 {
+            next_random(mut seed) % 3 + 1
+        } else {
+            next_random(mut seed) % 11 + 60
+        };
+        let mut matrix: Vec[Vec[i64]] = Vec.new();
+        if (t < 300 and t % 3 == 0) or (t >= 330 and t < 360) {
+            for _ in 0..n {
+                let mut row: Vec[i64] = Vec.new();
+                for _ in 0..n {
+                    row.push(next_random(mut seed) % n + 1);
+                }
+                matrix.push(row);
+            }
+        } else {
+            matrix = latin(n, mut seed);
+            let r = next_random(mut seed) % n;
+            let a = next_random(mut seed) % n;
+            if (t < 300 and t % 3 == 2) or (t >= 360 and t % 2 == 0) {
+                matrix[r][a] = next_random(mut seed) % n + 1;
+            } else if t >= 300 and t < 330 {
+                let b = next_random(mut seed) % n;
+                matrix[r].swap(a, b);
+            }
+        }
+        problems.push(matrix);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut valid = 0;
+    for matrix in problems.iter() {
+        let n = matrix.len();
+        let truth = literal(matrix);
+        if truth {
+            valid += 1;
+        }
+        check = (check * 31 + if truth { 1 } else { 0 } + n * 2) % 1000000007;
+        let transposed: Vec[Vec[i64]] = (0..n).map(|c| (0..n).map(|r| matrix[r][c]).collect()).collect();
+        let reversed: Vec[Vec[i64]] = matrix.iter().rev().map(|row| row.clone()).collect();
+        let turned: Vec[Vec[i64]] = matrix.iter().map(|row| (0..n).map(|c| row[(c + 1) % n]).collect()).collect();
+        let relabelled: Vec[Vec[i64]] = matrix.iter().map(|row| row.iter().map(|v| n + 1 - v).collect()).collect();
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, matrix)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, transposed) == x,
+                answer(arm, reversed) == x,
+                answer(arm, turned) == x,
+                answer(arm, relabelled) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{matrix} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} matrices ({valid} valid): checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
