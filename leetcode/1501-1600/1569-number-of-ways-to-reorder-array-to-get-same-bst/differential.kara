@@ -1,0 +1,339 @@
+// LeetCode #1569: Number of Ways to Reorder Array to Get Same BST -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 permutations of
+// 1 to n for n from 1 to 6, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is below 10^9 + 7, and 0 when there are at most two values
+// P3  every value x turned into n + 1 - x leaves the answer
+// P4  the root, then the smaller values, then the larger, each in their
+//     order, leaves the answer
+// P5  every value moved up by one and 1 put first leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- ways.kara: the ★ arm: the interleavings, by recursion and Pascal's triangle
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_ways(nums: Vec[i64], choose: Vec[Vec[i64]]) -> i64 {
+    if nums.len() <= 2 {
+        return 1;
+    }
+    let root = nums[0];
+    let left: Vec[i64] = nums.iter().skip(1).filter(|x| x < root).cloned().collect();
+    let right: Vec[i64] = nums.iter().skip(1).filter(|x| x > root).cloned().collect();
+    choose[nums.len() - 1][left.len()] * star_ways(left, choose) % STAR_MOD * star_ways(right, choose) % STAR_MOD
+}
+
+fn star_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut choose: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+    for i in 0..=n {
+        choose[i][0] = 1;
+        for j in 1..=i {
+            choose[i][j] = (choose[i - 1][j - 1] + choose[i - 1][j]) % STAR_MOD;
+        }
+    }
+    (star_ways(nums, choose) - 1 + STAR_MOD) % STAR_MOD
+}
+
+// ---- ways_tree.kara: the tree built, binomials from factorials
+
+const TREE_MOD: i64 = 1000000007;
+
+struct TreeNode {
+    left: Option[i64],
+    right: Option[i64],
+    parent: i64,
+}
+
+fn tree_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut base = base % TREE_MOD;
+    let mut exp = exp;
+    while exp > 0 {
+        if exp % 2 == 1 {
+            result = result * base % TREE_MOD;
+        }
+        base = base * base % TREE_MOD;
+        exp /= 2;
+    }
+    result
+}
+
+fn tree_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut nodes: Vec[TreeNode] = [TreeNode { left: None, right: None, parent: -1 }];
+    for i in 1..n {
+        let mut at = 0;
+        loop {
+            let next = if nums[i] < nums[at] { nodes[at].left } else { nodes[at].right };
+            match next {
+                Some(child) => at = child,
+                None => break,
+            }
+        }
+        if nums[i] < nums[at] {
+            nodes[at].left = Some(i);
+        } else {
+            nodes[at].right = Some(i);
+        }
+        nodes.push(TreeNode { left: None, right: None, parent: at });
+    }
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    for i in (1..n).rev() {
+        size[nodes[i].parent] += size[i];
+    }
+    let mut factorial: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 1..=n {
+        factorial[i] = factorial[i - 1] * i % TREE_MOD;
+    }
+    let inverse: Vec[i64] = factorial.iter().map(|f| tree_power(f, TREE_MOD - 2)).collect();
+    let mut ways = 1;
+    for i in 0..n {
+        let left = match nodes[i].left {
+            Some(l) => size[l],
+            None => 0,
+        };
+        let below = size[i] - 1;
+        ways = ways * factorial[below] % TREE_MOD * inverse[left] % TREE_MOD * inverse[below - left] % TREE_MOD;
+    }
+    (ways - 1 + TREE_MOD) % TREE_MOD
+}
+
+// ---- ways_hook.kara: the hook length formula, parents from a SortedMap
+
+const HOOK_MOD: i64 = 1000000007;
+
+fn hook_power(base: i64, exp: i64) -> i64 {
+    let mut result = 1;
+    let mut base = base % HOOK_MOD;
+    let mut exp = exp;
+    while exp > 0 {
+        if exp % 2 == 1 {
+            result = result * base % HOOK_MOD;
+        }
+        base = base * base % HOOK_MOD;
+        exp /= 2;
+    }
+    result
+}
+
+fn hook_arm(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut seen: SortedMap[i64, i64] = SortedMap.new();
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for (i, x) in nums.iter().enumerate() {
+        let below = seen.range(i64.MIN, x).next_back().map(|(_, at)| at);
+        let above = seen.range_inclusive(x + 1, i64.MAX).next().map(|(_, at)| at);
+        parent[i] = match (below, above) {
+            (Some(a), Some(b)) => a.max(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => -1,
+        };
+        seen.insert(x, i);
+    }
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    for i in (1..n).rev() {
+        size[parent[i]] += size[i];
+    }
+    let mut ways = 1;
+    for i in 1..=n {
+        ways = ways * i % HOOK_MOD;
+    }
+    for s in size.iter() {
+        ways = ways * hook_power(s, HOOK_MOD - 2) % HOOK_MOD;
+    }
+    (ways - 1 + HOOK_MOD) % HOOK_MOD
+}
+
+// ---- ways_solution.kara: LeetCode's Rust template as karac fix left it
+
+fn solution_dfs(nums: Slice[i32], comb: Vec[Vec[i64]]) -> i64 {
+    if nums.len() <= 2 {
+        return 1;
+    }
+    let root = nums[0];
+    let left: Vec[i32] = nums.iter().filter(|x| x < root).cloned().collect();
+    let right: Vec[i32] = nums.iter().filter(|x| x > root).cloned().collect();
+    comb[nums.len() - 1][left.len()] * solution_dfs(left, comb) % 1_000_000_007 * solution_dfs(right, comb) % 1_000_000_007
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn num_of_ways(nums: Vec[i32]) -> i32 {
+        const SOLUTION_MOD: i64 = 1_000_000_007;
+        let n = nums.len();
+        let mut comb = Vec.filled(n + 1, Vec.filled(n + 1, 0));
+        for i in 0..=n {
+            comb[i][0] = 1;
+            for j in 1..=i {
+                comb[i][j] = (comb[i - 1][j - 1] + comb[i - 1][j]) % SOLUTION_MOD;
+            }
+        }
+        ((solution_dfs(nums, comb) - 1 + SOLUTION_MOD) % SOLUTION_MOD) as i32
+    }
+}
+
+fn solution_arm(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.num_of_ways(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(nums),
+        1 => tree_arm(nums),
+        2 => hook_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["ways", "tree", "hook", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every order of the values, each put
+// into a tree by insertion, the tree written as each value's parent; the
+// orders other than `nums` whose parents are the same counted
+
+fn parents(order: Vec[i64]) -> Vec[i64] {
+    let n = order.len();
+    let mut left: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut right: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut parent: Vec[i64] = Vec.filled(n + 1, 0);
+    for x in order.iter().skip(1) {
+        let mut at = order[0];
+        loop {
+            let child = if x < at { left[at] } else { right[at] };
+            if child == 0 {
+                break;
+            }
+            at = child;
+        }
+        if x < at {
+            left[at] = x;
+        } else {
+            right[at] = x;
+        }
+        parent[x] = at;
+    }
+    parent
+}
+
+fn orders(rest: mut ref Vec[i64], taken: mut ref Vec[i64], shape: Vec[i64], count: mut ref i64) {
+    if rest.is_empty() {
+        if parents(taken.clone()) == shape {
+            *count += 1;
+        }
+        return;
+    }
+    for k in 0..rest.len() {
+        let x = rest.remove(k);
+        taken.push(x);
+        orders(mut rest, mut taken, shape, mut count);
+        taken.pop();
+        rest.insert(k, x);
+    }
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let shape = parents(nums.clone());
+    let mut rest = nums.clone();
+    let mut taken: Vec[i64] = Vec.new();
+    let mut count = 0;
+    orders(mut rest, mut taken, shape, mut count);
+    count - 1
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15690;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let mut nums: Vec[i64] = (1..=n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            nums.swap(i, j);
+        }
+        cases.push(nums);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let nums = cases[p].clone();
+        let truth = literal(nums.clone());
+        let n = nums.len();
+        let root = nums[0];
+        let mirrored: Vec[i64] = nums.iter().map(|x| n + 1 - x).collect();
+        let mut parted = [root];
+        parted.extend(nums.iter().filter(|x| x < root).cloned());
+        parted.extend(nums.iter().filter(|x| x > root).cloned());
+        let mut raised = [1];
+        raised.extend(nums.iter().map(|x| x + 1));
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 0 or answer >= 1000000007 or (n <= 2 and answer != 0),
+                arm(a, mirrored.clone()) != answer,
+                arm(a, parted.clone()) != answer,
+                arm(a, raised.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
