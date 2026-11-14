@@ -1,0 +1,48 @@
+// LeetCode #2126: Destroying Asteroids -- the benchmark, asteroids.kara's
+// ★ arm. 20 arrays of 100000 asteroids of 1000 to 100000 built once; then
+// every array solved 10 times against a mass of 500 to 1499, one asteroid
+// set to 1 to 2000 before each solve.
+
+fn asteroids_destroyed(mass: i64, asteroids: Vec[i64]) -> bool {
+    let mut sorted = asteroids.clone();
+    sorted.sort();
+    let mut planet = mass;
+    for a in sorted.iter() {
+        if planet < a {
+            return false;
+        }
+        planet += a;
+    }
+    true
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2126;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut asteroids: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            asteroids.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 99001 + 1000);
+        }
+        arrays.push(asteroids);
+    }
+    let mut destroyed = 0;
+    let mut check = 0;
+    for round in 0..10 {
+        for k in 0..20 {
+            let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000;
+            arrays[k][at] = next_random(mut seed) % 2000 + 1;
+            let mass = next_random(mut seed) % 1000 + 500;
+            if asteroids_destroyed(mass, arrays[k]) {
+                destroyed += 1;
+                check = (check * 31 + round * 20 + k) % 1000000007;
+            }
+        }
+    }
+    println(f"200 solves: {destroyed} destroyed, checksum {check}");
+}

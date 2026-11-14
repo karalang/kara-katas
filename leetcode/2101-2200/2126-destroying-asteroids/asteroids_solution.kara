@@ -1,0 +1,78 @@
+// LeetCode #2126: Destroying Asteroids -- LeetCode's Rust template
+// (`i32` and `Vec<i32>` to `bool`): the asteroids sorted in place with
+// `sort_unstable`, the mass widened to `i64`, written as Rust. Carried by
+// `karac fix`. The adapter below hands the harness's cases to it.
+
+impl Solution {
+    pub fn asteroids_destroyed(mass: i32, asteroids: own Vec[i32]) -> bool {
+        let mut asteroids = asteroids;
+        asteroids.sort();
+        let mut m = mass as i64;
+        for a in asteroids {
+            if m < a {
+                return false;
+            }
+            m += a;
+        }
+        true
+    }
+}
+
+struct Solution {}
+
+fn asteroids_destroyed(mass: i64, asteroids: Vec[i64]) -> bool {
+    Solution.asteroids_destroyed(mass as i32, asteroids.iter().map(|a| a as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(mass: i64, asteroids: Vec[i64]) {
+    println(f"mass {mass}, {asteroids} -> {asteroids_destroyed(mass, asteroids)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one asteroid as heavy as
+    // the planet, one heavier, doubling masses just caught, and just missed
+    show(10, [3, 9, 19, 5, 21].to_vec());
+    show(5, [4, 9, 23, 4].to_vec());
+    show(1, [1].to_vec());
+    show(1, [2].to_vec());
+    show(1, [8, 4, 2, 1].to_vec());
+    show(1, [9, 4, 2, 1].to_vec());
+    // 3000 random cases: a mass of 1 to 20 and 1 to 12 asteroids of up
+    // to 10, 30 or 100 in turn
+    let mut seed = 2126;
+    let mut destroyed = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let mass = next_random(mut seed) % 20 + 1;
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [10, 30, 100][round % 3];
+        let mut asteroids: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            asteroids.push(next_random(mut seed) % top + 1);
+        }
+        if asteroids_destroyed(mass, asteroids) {
+            destroyed += 1;
+            check = (check * 31 + round) % 1000000007;
+        }
+    }
+    println(f"3000 cases: {destroyed} destroyed, checksum {check}");
+    // the constraints' largest: 100000 asteroids of 1 to 100000 shuffled
+    // against a mass of 1, and 100000 of 100000 against 99999 and 100000
+    let mut ladder: Vec[i64] = (1..100001).collect();
+    for i in 0..ladder.len() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % ladder.len();
+        ladder.swap(i, j);
+    }
+    let heavy = Vec.filled(100000, 100000);
+    let a = asteroids_destroyed(1, ladder);
+    let b = asteroids_destroyed(99999, heavy);
+    let c = asteroids_destroyed(100000, heavy);
+    println(f"100000 asteroids: {a} from 1, {b} from 99999, {c} from 100000");
+}
