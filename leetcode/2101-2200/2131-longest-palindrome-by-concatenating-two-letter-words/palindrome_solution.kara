@@ -1,0 +1,99 @@
+// LeetCode #2131: Longest Palindrome by Concatenating Two Letter Words --
+// LeetCode's Rust template (`Vec<String>` to `i32`): a `HashMap<String,
+// i32>` of counts through `entry().or_insert(0)`, each word's reverse a
+// `String` of its chars reversed, written as Rust. Carried by `karac
+// fix`. The adapter below hands the harness's words to it.
+
+impl Solution {
+    pub fn longest_palindrome(words: Vec[String]) -> i32 {
+        let mut count: Map[String, i32] = Map.new();
+        for w in ref words {
+            *count.entry(w.clone()).or_insert(0) += 1;
+        }
+        let mut ans: i32 = 0;
+        let mut center = false;
+        for (w, c) in count.iter() {
+            let r: String = w.chars().rev().collect();
+            if *w == r {
+                ans += c / 2 * 4;
+                if c % 2 == 1 {
+                    center = true;
+                }
+            } else if *w < r {
+                if let Some(rc) = count.get(r).cloned() {
+                    ans += c.min(rc) * 4;
+                }
+            }
+        }
+        if center {
+            ans += 2;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn longest_palindrome(words: Vec[String]) -> i64 {
+    Solution.longest_palindrome(words.clone())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(words: Vec[String]) {
+    println(f"{words} -> {longest_palindrome(words)}");
+}
+
+fn strings(words: Vec[Str]) -> Vec[String] {
+    words.iter().map(|w| w.to_string()).collect()
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one doubled word, two,
+    // a word and two of its reverse, and a word with no partner
+    show(strings(["lc", "cl", "gg"].to_vec()));
+    show(strings(["ab", "ty", "yt", "lc", "cl", "ab"].to_vec()));
+    show(strings(["cc", "ll", "xx"].to_vec()));
+    show(strings(["aa"].to_vec()));
+    show(strings(["aa", "aa"].to_vec()));
+    show(strings(["ab", "ba", "ba"].to_vec()));
+    show(strings(["ab"].to_vec()));
+    // 2000 random lists of 1 to 12 words over the first 2, 3 or 5 letters
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let mut seed = 2131;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let k = [2, 3, 5][round % 3];
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..n {
+            let a = next_random(mut seed) % k;
+            let b = next_random(mut seed) % k;
+            words.push(f"{letters[a..a + 1]}{letters[b..b + 1]}");
+        }
+        let length = longest_palindrome(words);
+        total += length;
+        check = (check * 31 + length) % 1000000007;
+    }
+    println(f"2000 lists: {total} letters in all, checksum {check}");
+    // the constraints' largest: 100000 of "aa", 100000 of "ab" and "ba" in
+    // turn, and 100000 random words
+    let same: Vec[String] = Vec.filled(100000, "aa");
+    let turns: Vec[String] = (0..100000).map(|i| if i % 2 == 0 { "ab" } else { "ba" }).collect();
+    let mut random: Vec[String] = Vec.new();
+    for _ in 0..100000 {
+        let a = next_random(mut seed) % 26;
+        let b = next_random(mut seed) % 26;
+        random.push(f"{letters[a..a + 1]}{letters[b..b + 1]}");
+    }
+    let x = longest_palindrome(same);
+    let y = longest_palindrome(turns);
+    let z = longest_palindrome(random);
+    println(f"100000 words: {x} of one, {y} in turn, {z} at random");
+}

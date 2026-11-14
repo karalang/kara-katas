@@ -1,0 +1,327 @@
+// LeetCode #2131: Longest Palindrome by Concatenating Two Letter Words --
+// the differential. The six arms, against the statement read literally:
+// every sequence of distinct words is tried, built one word at a time by
+// a search over which are used, and the longest whose letters read the
+// same backwards is kept; no pairing is assumed. 300 random lists of 1
+// to 7 words over the first 2, 3 or 5 letters in turn; then 30 of 1 to 7
+// doubled words over 3 letters; then 30 of 1 to 7 words each a word or
+// its reverse over 4 letters; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the words in reverse order: the same answer
+// P3  every word reversed: the same answer
+// P4  a new word and its reverse added: four more
+// P5  every letter moved on by one in the alphabet: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- palindrome.kara: the ★ arm, a 26 by 26 table of counts
+fn star_longest_palindrome(words: Vec[String]) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(26 * 26, 0);
+    for w in words.iter() {
+        let b = w.bytes();
+        count[(b[0] - 97) as i64 * 26 + (b[1] - 97)] += 1;
+    }
+    let mut length = 0;
+    let mut middle = false;
+    for x in 0..26 {
+        length += count[x * 26 + x] / 2 * 4;
+        if count[x * 26 + x] % 2 == 1 {
+            middle = true;
+        }
+        for y in x + 1..26 {
+            length += count[x * 26 + y].min(count[y * 26 + x]) * 4;
+        }
+    }
+    if middle {
+        length += 2;
+    }
+    length
+}
+
+// ---- palindrome_map.kara: a `Map` of counts, each word met with its reverse
+fn map_longest_palindrome(words: Vec[String]) -> i64 {
+    let mut count: Map[String, i64] = Map.new();
+    for w in words.iter() {
+        *count.entry(w.clone()).or_insert(0) += 1;
+    }
+    let mut length = 0;
+    let mut middle = false;
+    for (w, c) in count.iter() {
+        let r: String = w.chars().rev().collect();
+        if r == w {
+            length += c / 2 * 4;
+            if c % 2 == 1 {
+                middle = true;
+            }
+        } else if w < r {
+            length += c.min(count.get(r).unwrap_or(0)) * 4;
+        }
+    }
+    if middle {
+        length += 2;
+    }
+    length
+}
+
+// ---- palindrome_greedy.kara: one pass, a word taking its waiting reverse
+fn greedy_longest_palindrome(words: Vec[String]) -> i64 {
+    let mut waiting: Vec[i64] = Vec.filled(26 * 26, 0);
+    let mut length = 0;
+    for w in words.iter() {
+        let b = w.bytes();
+        let x = (b[0] - b'a') as i64;
+        let y = (b[1] - b'a') as i64;
+        if waiting[y * 26 + x] > 0 {
+            waiting[y * 26 + x] -= 1;
+            length += 4;
+        } else {
+            waiting[x * 26 + y] += 1;
+        }
+    }
+    if (0..26).any(|x| waiting[x * 26 + x] > 0) {
+        length += 2;
+    }
+    length
+}
+
+// ---- palindrome_sorted.kara: runs of the sorted words, found by `binary_search`
+fn sorted_run_of(sorted: Vec[String], word: String) -> i64 {
+    let mut Some(at) = sorted.binary_search(word) else {
+        return 0;
+    };
+    while at > 0 and sorted[at - 1] == word {
+        at -= 1;
+    }
+    let mut n = 0;
+    while at + n < sorted.len() and sorted[at + n] == word {
+        n += 1;
+    }
+    n
+}
+
+fn sorted_longest_palindrome(words: Vec[String]) -> i64 {
+    let mut sorted = words.clone();
+    sorted.sort();
+    let mut length = 0;
+    let mut middle = false;
+    let mut i = 0;
+    while i < sorted.len() {
+        let w = sorted[i].clone();
+        let c = sorted_run_of(sorted, w.clone());
+        let r: String = w.chars().rev().collect();
+        if r == w {
+            length += c / 2 * 4;
+            middle = middle or c % 2 == 1;
+        } else if w < r {
+            length += c.min(sorted_run_of(sorted, r)) * 4;
+        }
+        i += c;
+    }
+    if middle {
+        length += 2;
+    }
+    length
+}
+
+// ---- palindrome_struct.kara: a `Shelf` of counts in an `Array`
+struct StructShelf {
+    counts: Array[i64, 676],
+}
+
+impl StructShelf {
+    fn put(mut ref self, word: Str) {
+        let b = word.bytes();
+        self.counts[(b[0] - 97) as i64 * 26 + (b[1] - 97)] += 1;
+    }
+
+    fn pairs(ref self, x: i64, y: i64) -> i64 {
+        if x == y {
+            self.counts[x * 26 + x] / 2
+        } else {
+            self.counts[x * 26 + y].min(self.counts[y * 26 + x])
+        }
+    }
+
+    fn centre(ref self) -> bool {
+        (0..26).any(|x| self.counts[x * 26 + x] % 2 == 1)
+    }
+}
+
+fn struct_longest_palindrome(words: Vec[String]) -> i64 {
+    let mut shelf = StructShelf { counts: [0; 676] };
+    for w in words.iter() {
+        shelf.put(w);
+    }
+    let mut length = 0;
+    for x in 0..26 {
+        for y in x..26 {
+            length += shelf.pairs(x, y) * 4;
+        }
+    }
+    if shelf.centre() {
+        length += 2;
+    }
+    length
+}
+
+// ---- palindrome_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn longest_palindrome(words: Vec[String]) -> i32 {
+        let mut count: Map[String, i32] = Map.new();
+        for w in ref words {
+            *count.entry(w.clone()).or_insert(0) += 1;
+        }
+        let mut ans: i32 = 0;
+        let mut center = false;
+        for (w, c) in count.iter() {
+            let r: String = w.chars().rev().collect();
+            if *w == r {
+                ans += c / 2 * 4;
+                if c % 2 == 1 {
+                    center = true;
+                }
+            } else if *w < r {
+                if let Some(rc) = count.get(r).cloned() {
+                    ans += c.min(rc) * 4;
+                }
+            }
+        }
+        if center {
+            ans += 2;
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_longest_palindrome(words: Vec[String]) -> i64 {
+    SolutionSolution.longest_palindrome(words.clone())
+}
+
+// ---- the statement read literally
+
+fn is_palindrome(s: Str) -> bool {
+    let b = s.bytes();
+    let n = b.len();
+    (0..n / 2).all(|i| b[i] == b[n - 1 - i])
+}
+
+fn search(words: Vec[String], used: i64, so_far: String) -> i64 {
+    let mut best = if is_palindrome(so_far) { so_far.len() } else { 0 };
+    for i in 0..words.len() {
+        if used & (1 << i) == 0 {
+            best = best.max(search(words, used | (1 << i), f"{so_far}{words[i]}"));
+        }
+    }
+    best
+}
+
+fn literal(words: Vec[String]) -> i64 {
+    search(words, 0, String.new())
+}
+
+fn answer(arm: i64, words: Vec[String]) -> i64 {
+    match arm {
+        0 => star_longest_palindrome(words),
+        1 => map_longest_palindrome(words),
+        2 => greedy_longest_palindrome(words),
+        3 => sorted_longest_palindrome(words),
+        4 => struct_longest_palindrome(words),
+        _ => solution_longest_palindrome(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "map", "greedy", "sorted", "struct", "solution"];
+    let letters = "abcdefghijklmnopqrstuvwxyz";
+    let mut seed = 2131;
+    let mut problems: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 7 + 1;
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..n {
+            let mut a = 0;
+            let mut b = 0;
+            if t < 300 {
+                let k = [2, 3, 5][t % 3];
+                a = next_random(mut seed) % k;
+                b = next_random(mut seed) % k;
+            } else if t < 330 {
+                a = next_random(mut seed) % 3;
+                b = a;
+            } else {
+                a = next_random(mut seed) % 4;
+                b = (a + 1) % 4;
+                if next_random(mut seed) % 2 == 0 {
+                    let c = a;
+                    a = b;
+                    b = c;
+                }
+            }
+            words.push(f"{letters[a..a + 1]}{letters[b..b + 1]}");
+        }
+        problems.push(words);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for words in problems.iter() {
+        let truth = literal(words);
+        check = (check * 31 + truth * 8 + words.len()) % 1000000007;
+        let reversed: Vec[String] = words.iter().rev().map(|w| w.clone()).collect();
+        let turned: Vec[String] = words.iter().map(|w| w.chars().rev().collect()).collect();
+        let mut added = words.clone();
+        added.insert(0, "zq");
+        added.push("qz");
+        let moved: Vec[String] = words
+            .iter()
+            .map(|w| w.chars().map(|c| char.try_from(c as u32 + 1).ok().unwrap()).collect())
+            .collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, words)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, turned) == x,
+                answer(arm, added) == x + 4,
+                answer(arm, moved) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{words} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
