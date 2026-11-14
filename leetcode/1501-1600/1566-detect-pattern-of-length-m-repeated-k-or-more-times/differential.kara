@@ -1,0 +1,209 @@
+// LeetCode #1566: Detect Pattern of Length M Repeated K or More Times --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 2 to
+// 10 values over their own first 1 to 3 values, each with an m from 1 to
+// 4 and a k from 2 to 4, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is false when m k is more than the length
+// P3  the array reversed leaves the answer
+// P4  every value moved on by one leaves the answer
+// P5  the first m values written k times, the array after them, has the
+//     pattern
+// P6  each arm agrees with at least two of the other three
+
+// ---- pattern.kara: the ★ arm: a run of agreements m apart
+
+fn star_arm(arr: Vec[i64], m: i64, k: i64) -> bool {
+    let mut run = 0;
+    for i in 0..arr.len() - m {
+        if arr[i] == arr[i + m] {
+            run += 1;
+            if run == m * (k - 1) {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+// ---- pattern_chunks.kara: every start, its chunks of m compared
+
+fn chunks_arm(arr: Vec[i64], m: i64, k: i64) -> bool {
+    let span = m * k;
+    if span > arr.len() {
+        return false;
+    }
+    (0..=arr.len() - span).any(|start| {
+        let piece = arr[start..start + span];
+        let first = piece[..m];
+        piece.chunks(m).into_iter().all(|chunk| chunk == first)
+    })
+}
+
+// ---- pattern_split.kara: the agreements split where they fail
+
+fn split_arm(arr: Vec[i64], m: i64, k: i64) -> bool {
+    if m >= arr.len() {
+        return false;
+    }
+    let agree: Vec[bool] = (0..arr.len() - m).map(|i| arr[i] == arr[i + m]).collect();
+    agree.split(|a| not a).into_iter().any(|piece| piece.len() >= m * (k - 1))
+}
+
+// ---- pattern_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn contains_pattern(arr: Vec[i32], m: i32, k: i32) -> bool {
+        let (m, k) = (m as i64, k as i64);
+        let mut count = 0;
+        for i in 0..arr.len().saturating_sub(m) {
+            if arr[i] == arr[i + m] {
+                count += 1;
+                if count == m * (k - 1) {
+                    return true;
+                }
+            } else {
+                count = 0;
+            }
+        }
+        false
+    }
+}
+
+fn solution_arm(arr: Vec[i64], m: i64, k: i64) -> bool {
+    let arr: Vec[i32] = arr.iter().map(|a| a as i32).collect();
+    Solution.contains_pattern(arr, m as i32, k as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, arr: Vec[i64], m: i64, k: i64) -> bool {
+    match a {
+        0 => star_arm(arr, m, k),
+        1 => chunks_arm(arr, m, k),
+        2 => split_arm(arr, m, k),
+        _ => solution_arm(arr, m, k),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["pattern", "chunks", "split", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: some start and some count c of at
+// least k, the m c values from that start each equal to the value at the
+// same place in the first m
+
+fn literal(arr: Vec[i64], m: i64, k: i64) -> bool {
+    let n = arr.len();
+    for start in 0..n {
+        let mut c = k;
+        while start + m * c <= n {
+            let mut repeats = true;
+            for t in 0..m * c {
+                if arr[start + t] != arr[start + t % m] {
+                    repeats = false;
+                }
+            }
+            if repeats {
+                return true;
+            }
+            c += 1;
+        }
+    }
+    false
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15660;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 2;
+        let own = next_random(mut seed) % 3 + 1;
+        let arr: Vec[i64] = (0..n).map(|_| next_random(mut seed) % own + 1).collect();
+        let m = next_random(mut seed) % 4 + 1;
+        let k = next_random(mut seed) % 3 + 2;
+        cases.push((arr, m, k));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (arr, m, k) = cases[p].clone();
+        let n = arr.len();
+        let truth = literal(arr.clone(), m, k);
+        let reversed: Vec[i64] = arr.iter().rev().cloned().collect();
+        let moved: Vec[i64] = arr.iter().map(|v| v + 1).collect();
+        let mut planted: Vec[i64] = Vec.new();
+        for _ in 0..k {
+            for i in 0..m.min(n) {
+                planted.push(arr[i]);
+            }
+        }
+        planted.extend(arr.iter().cloned());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, arr.clone(), m, k);
+            answers.push(answer);
+            check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+            let failed = [
+                answer != truth,
+                m * k > n and answer,
+                arm(a, reversed.clone(), m, k) != answer,
+                arm(a, moved.clone(), m, k) != answer,
+                m <= n and not arm(a, planted.clone(), m, k),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
