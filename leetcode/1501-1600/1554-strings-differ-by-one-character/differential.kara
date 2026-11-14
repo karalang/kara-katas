@@ -1,0 +1,237 @@
+// LeetCode #1554: Strings Differ by One Character -- the differential.
+//
+// Four arms against the statement read literally, on 3000 lists of 1 to 8
+// distinct words of one length from 1 to 5, each list over its own first
+// 1 to 3 letters, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  one word is false, and the first word with its first letter made a
+//     z, put after the list, makes it true
+// P3  every word reversed leaves the answer
+// P4  every letter moved on by one (c back to a) leaves the answer
+// P5  the list in reverse order, a q put after every word, leaves it
+// P6  each arm agrees with at least two of the other three
+
+// ---- differ.kara: the ★ arm: blotted patterns in a Set
+
+fn star_arm(dict: Vec[String]) -> bool {
+    let mut seen: Set[String] = Set.new();
+    for word in dict.iter() {
+        let letters: Vec[char] = word.chars().collect();
+        for j in 0..letters.len() {
+            let mut blotted = letters.clone();
+            blotted[j] = '*';
+            let pattern: String = blotted.iter().collect();
+            if not seen.insert(pattern) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// ---- differ_hash.kara: the blotted patterns hashed, collisions checked
+
+fn hash_arm(dict: Vec[String]) -> bool {
+    let modulus = 1000000007;
+    let base = 31;
+    let words: Vec[Vec[i64]] = dict.iter().map(|w| w.bytes().iter().map(|b| b as i64 - 96).collect()).collect();
+    let m = words[0].len();
+    let mut power = Vec.filled(m, 1);
+    for j in (0..m - 1).rev() {
+        power[j] = power[j + 1] * base % modulus;
+    }
+    let mut seen: Map[(i64, i64), Vec[i64]] = Map.new();
+    for w in 0..words.len() {
+        let mut whole = 0;
+        for j in 0..m {
+            whole = (whole + words[w][j] * power[j]) % modulus;
+        }
+        for j in 0..m {
+            let blotted = (whole - words[w][j] * power[j] % modulus + modulus) % modulus;
+            let others = seen.entry((j, blotted)).or_insert(Vec.new());
+            for o in others.iter() {
+                let mut differ = 0;
+                for k in 0..m {
+                    if words[o][k] != words[w][k] {
+                        differ += 1;
+                    }
+                }
+                if differ == 1 {
+                    return true;
+                }
+            }
+            others.push(w);
+        }
+    }
+    false
+}
+
+// ---- differ_sorted.kara: each place cut out, sorted, neighbours compared
+
+fn sorted_arm(dict: Vec[String]) -> bool {
+    let m = dict[0].len();
+    for j in 0..m {
+        let mut cut: Vec[String] = dict.iter().map(|w| w[..j].to_string() + w[j + 1..].to_string()).collect();
+        cut.sort();
+        if cut.windows(2).into_iter().any(|pair| pair[0] == pair[1]) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- differ_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn differ_by_one(dict: Vec[String]) -> bool {
+        let mut seen: Set[Vec[u8]] = Set.new();
+        for word in ref dict {
+            let bytes = word.bytes();
+            for j in 0..bytes.len() {
+                let mut pattern = bytes.to_vec();
+                pattern[j] = b'*';
+                if not seen.insert(pattern) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+fn solution_arm(dict: Vec[String]) -> bool {
+    Solution.differ_by_one(dict)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, dict: Vec[String]) -> bool {
+    match a {
+        0 => star_arm(dict),
+        1 => hash_arm(dict),
+        2 => sorted_arm(dict),
+        _ => solution_arm(dict),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["differ", "hash", "sorted", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: some two words, place by place,
+// differ in exactly one place
+
+fn literal(dict: Vec[String]) -> bool {
+    for i in 0..dict.len() {
+        for k in i + 1..dict.len() {
+            let differ = dict[i].chars().zip(dict[k].chars()).filter(|(x, y)| x != y).count();
+            if differ == 1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+// every letter moved on by one, c back to a
+fn renamed(word: String) -> String {
+    word.chars().map(|c| if c == 'c' { 'a' } else { ((c as u32 as u8) + 1) as char }).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15540;
+    let alphabet: Vec[char] = "abc".chars().collect();
+    let mut cases: Vec[Vec[String]] = Vec.new();
+    for _ in 0..problems {
+        let want = next_random(mut seed) % 8 + 1;
+        let length = next_random(mut seed) % 5 + 1;
+        let own = next_random(mut seed) % 3 + 1;
+        let mut room = 1;
+        for _ in 0..length {
+            room = (room * own).min(want);
+        }
+        let mut dict: Vec[String] = Vec.new();
+        while dict.len() < want.min(room) {
+            let word: String = (0..length).map(|_| alphabet[next_random(mut seed) % own]).collect();
+            if not dict.contains(word) {
+                dict.push(word);
+            }
+        }
+        cases.push(dict);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let dict = cases[p].clone();
+        let truth = literal(dict.clone());
+        let first = dict[0].clone();
+        let changed = "z" + first[1..].to_string();
+        let mut grown = dict.clone();
+        grown.push(changed);
+        let reversed: Vec[String] = dict.iter().map(|w| w.chars().rev().collect()).collect();
+        let moved: Vec[String] = dict.iter().map(|w| renamed(w.clone())).collect();
+        let shuffled: Vec[String] = dict.iter().rev().map(|w| w.clone() + "q").collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, dict.clone());
+            answers.push(answer);
+            check = (check * 31 + (if answer { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                (dict.len() == 1 and answer) or not arm(a, grown.clone()),
+                arm(a, reversed.clone()) != answer,
+                arm(a, moved.clone()) != answer,
+                arm(a, shuffled.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
