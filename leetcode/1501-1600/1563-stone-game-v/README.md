@@ -125,7 +125,7 @@ and `karac fix` has nothing left to change. Checked at kara `5a1b79539`.
 The ★, memo and quadratic arms were written in Kāra and checked as
 written.
 
-The Rust template took five rounds of `karac fix`, 4 changed lines, then
+The Rust template took five rounds of `karac fix`, 3 changed lines, then
 1 added, then 3, 1 and 1 changed, and then one hand edit:
 
 1. the `Vec<..>` types to `Vec[..]`, the wrapper's `|&v|` to `|v|` and
