@@ -1,0 +1,305 @@
+// LeetCode #1533: Find the Index of the Large Integer -- the differential.
+//
+// Five arms against the statement read literally, on 3000 arrays of 2 to
+// 41 values, each all one value from 1 to 99 but for one larger, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally: the place whose value
+//     is above every other
+// P2  the arm keeps to its own bound on calls: a third kept per call for
+//     the ternary arms, a half for the binary one, one call per pair for
+//     the scans
+// P3  every value raised by the same amount leaves the answer
+// P4  the array reversed moves the answer to n - 1 - answer
+// P5  one more equal value in front moves the answer up by one
+// P6  each arm agrees with at least two of the other four
+
+// ---- index.kara: the ★ arm: ternary search
+
+fn star_arm(reader: ArrayReader) -> i64 {
+    let mut lo: i32 = 0;
+    let mut hi = reader.length() - 1;
+    while lo < hi {
+        let third = (hi - lo + 1) / 3;
+        if third == 0 {
+            // two values left: compare them directly
+            return if reader.compare_sub(lo, lo, hi, hi) > 0 { lo } else { hi };
+        }
+        let second = lo + third;
+        match reader.compare_sub(lo, second - 1, second, second + third - 1) {
+            1 => hi = second - 1,
+            -1 => {
+                lo = second;
+                hi = second + third - 1;
+            }
+            _ => lo = second + third,
+        }
+    }
+    lo
+}
+
+// ---- index_halves.kara: binary search, half against half
+
+fn halves_arm(reader: ArrayReader) -> i64 {
+    let mut lo: i32 = 0;
+    let mut hi = reader.length() - 1;
+    while lo < hi {
+        let half = (hi - lo + 1) / 2;
+        match reader.compare_sub(lo, lo + half - 1, hi - half + 1, hi) {
+            1 => hi = lo + half - 1,
+            -1 => lo = hi - half + 1,
+            _ => return lo + half,
+        }
+    }
+    lo
+}
+
+// ---- index_scan.kara: pairs from the front
+
+fn scan_arm(reader: ArrayReader) -> i64 {
+    let n = reader.length();
+    let mut i: i32 = 0;
+    while i + 1 < n {
+        match reader.compare_sub(i, i, i + 1, i + 1) {
+            1 => return i,
+            -1 => return i + 1,
+            _ => i += 2,
+        }
+    }
+    n - 1
+}
+
+// ---- index_iter.kara: the scan with iterators
+
+fn iter_arm(reader: ArrayReader) -> i64 {
+    let n = reader.length();
+    (0..n - 1)
+        .step_by(2)
+        .find_map(|i| match reader.compare_sub(i, i, i + 1, i + 1) {
+            1 => Some(i),
+            -1 => Some(i + 1),
+            _ => None,
+        })
+        .unwrap_or(n - 1)
+}
+
+// ---- index_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_index(reader: ArrayReader) -> i32 {
+        let mut (lo, hi) = (0i32, reader.length() - 1);
+        while lo < hi {
+            let third = (hi - lo + 1) / 3;
+            if third == 0 {
+                return if reader.compare_sub(lo, lo, hi, hi) > 0 { lo } else { hi };
+            }
+            let second = lo + third;
+            match reader.compare_sub(lo, second - 1, second, second + third - 1) {
+                1 => hi = second - 1,
+                -1 => {
+                    lo = second;
+                    hi = second + third - 1;
+                }
+                _ => lo = second + third,
+            }
+        }
+        lo
+    }
+}
+
+fn solution_arm(reader: ArrayReader) -> i64 {
+    Solution.get_index(reader)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+// The judge's side, with LeetCode's `i32` API: the array, its prefix sums
+// so a comparison is O(1), and a count of the calls. `shared` because the API compares through a
+// plain borrow of the reader, as LeetCode's `&self` does, and counting is
+// the judge's business.
+pub shared struct ArrayReader {
+    sums: Vec[i64],
+    mut calls: i64,
+}
+
+impl ArrayReader {
+    fn from(values: Vec[i64]) -> ArrayReader {
+        let mut sums = Vec.filled(values.len() + 1, 0);
+        for i in 0..values.len() {
+            sums[i + 1] = sums[i] + values[i];
+        }
+        ArrayReader { sums, calls: 0 }
+    }
+
+    // 1, 0 or -1 as the sum of arr[l..=r] is above, equal to or below the
+    // sum of arr[x..=y]
+    pub fn compare_sub(self, l: i32, r: i32, x: i32, y: i32) -> i32 {
+        self.calls += 1;
+        let left = self.sums[r + 1] - self.sums[l];
+        let right = self.sums[y + 1] - self.sums[x];
+        if left > right {
+            1
+        } else if left < right {
+            -1
+        } else {
+            0
+        }
+    }
+
+    pub fn length(self) -> i32 {
+        (self.sums.len() - 1) as i32
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn arm(k: i64, values: Vec[i64]) -> (i64, i64) {
+    let reader = ArrayReader.from(values);
+    let answer = if k == 0 {
+        star_arm(reader)
+    } else if k == 1 {
+        halves_arm(reader)
+    } else if k == 2 {
+        scan_arm(reader)
+    } else if k == 3 {
+        iter_arm(reader)
+    } else {
+        solution_arm(reader)
+    };
+    (answer, reader.calls)
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "halves", "scan", "iter", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: the place whose value is not the
+// others' (with two values, the larger)
+
+fn literal(values: Vec[i64]) -> i64 {
+    let n = values.len();
+    for i in 0..n {
+        let mut larger = true;
+        for j in 0..n {
+            if j != i and values[j] >= values[i] {
+                larger = false;
+            }
+        }
+        if larger {
+            return i;
+        }
+    }
+    -1
+}
+
+// the most calls each arm may make on n values: a third kept per call
+// (plus the last pair), a half kept per call, one per pair
+fn call_bound(k: i64, n: i64) -> i64 {
+    if k == 0 or k == 4 {
+        let mut calls = 1;
+        let mut reach = 3;
+        while reach < n {
+            reach *= 3;
+            calls += 1;
+        }
+        calls + 1
+    } else if k == 1 {
+        let mut calls = 0;
+        let mut reach = 1;
+        while reach < n {
+            reach *= 2;
+            calls += 1;
+        }
+        calls
+    } else {
+        n / 2
+    }
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15330;
+    let mut cases: Vec[(i64, i64, i64, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 40 + 2;
+        let base = next_random(mut seed) % 99 + 1;
+        let large = base + next_random(mut seed) % (100 - base) + 1;
+        let at = next_random(mut seed) % n;
+        let raise = next_random(mut seed) % 50 + 1;
+        cases.push((n, base, large, at, raise));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, base, large, at, raise) = cases[p];
+        let mut values = Vec.filled(n, base);
+        values[at] = large;
+        let truth = literal(values.clone());
+        let raised: Vec[i64] = values.iter().map(|v| v + raise).collect();
+        let mut reversed = values.clone();
+        reversed.reverse();
+        let mut longer = Vec.filled(1, base);
+        longer.extend(values.iter().cloned());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let (answer, calls) = arm(a, values.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + calls + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                calls > call_bound(a, n),
+                arm(a, raised.clone()).0 != answer,
+                arm(a, reversed.clone()).0 != n - 1 - answer,
+                arm(a, longer.clone()).0 != answer + 1,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

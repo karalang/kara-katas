@@ -1,0 +1,114 @@
+// LeetCode #1533: Find the Index of the Large Integer -- the ★ arm:
+// ternary search. The range left is cut into three parts, the first two
+// the same size; comparing those two says which holds the larger value,
+// and equal sums put it in the third. Each call keeps a third, so 500000
+// values take at most 13 calls, within the 20 allowed.
+
+fn get_index(reader: ArrayReader) -> i64 {
+    let mut lo: i32 = 0;
+    let mut hi = reader.length() - 1;
+    while lo < hi {
+        let third = (hi - lo + 1) / 3;
+        if third == 0 {
+            // two values left: compare them directly
+            return if reader.compare_sub(lo, lo, hi, hi) > 0 { lo } else { hi };
+        }
+        let second = lo + third;
+        match reader.compare_sub(lo, second - 1, second, second + third - 1) {
+            1 => hi = second - 1,
+            -1 => {
+                lo = second;
+                hi = second + third - 1;
+            }
+            _ => lo = second + third,
+        }
+    }
+    lo
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+// The judge's side, with LeetCode's `i32` API: the array, its prefix sums
+// so a comparison is O(1), and a count of the calls. `shared` because the API compares through a
+// plain borrow of the reader, as LeetCode's `&self` does, and counting is
+// the judge's business.
+pub shared struct ArrayReader {
+    sums: Vec[i64],
+    mut calls: i64,
+}
+
+impl ArrayReader {
+    fn from(values: Vec[i64]) -> ArrayReader {
+        let mut sums = Vec.filled(values.len() + 1, 0);
+        for i in 0..values.len() {
+            sums[i + 1] = sums[i] + values[i];
+        }
+        ArrayReader { sums, calls: 0 }
+    }
+
+    // 1, 0 or -1 as the sum of arr[l..=r] is above, equal to or below the
+    // sum of arr[x..=y]
+    pub fn compare_sub(self, l: i32, r: i32, x: i32, y: i32) -> i32 {
+        self.calls += 1;
+        let left = self.sums[r + 1] - self.sums[l];
+        let right = self.sums[y + 1] - self.sums[x];
+        if left > right {
+            1
+        } else if left < right {
+            -1
+        } else {
+            0
+        }
+    }
+
+    pub fn length(self) -> i32 {
+        (self.sums.len() - 1) as i32
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// n values of `base` with one of `large` at `at`
+fn array(n: i64, base: i64, large: i64, at: i64) -> Vec[i64] {
+    let mut values = Vec.filled(n, base);
+    values[at] = large;
+    values
+}
+
+// `count` arrays of 2 to `most` values, each all one value from 1 to 99
+// but for one larger, up to 100, at a random place
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % (most - 1) + 2;
+        let base = next_random(mut seed) % 99 + 1;
+        let large = base + next_random(mut seed) % (100 - base) + 1;
+        let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+        let reader = ArrayReader.from(array(n, base, large, at));
+        check = mix(check, get_index(reader));
+    }
+    println(f"{count} arrays of 2 to {most} values: checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[i64]] = [[7, 7, 7, 7, 10, 7, 7, 7], [6, 6, 12], [1, 2], [2, 1], [99, 100, 99]];
+    for values in examples.iter() {
+        let reader = ArrayReader.from(values.clone());
+        println(f"{values} -> {get_index(reader)}");
+    }
+    for at in [0, 1, 249999, 250000, 499998, 499999] {
+        let reader = ArrayReader.from(array(500000, 1, 2, at));
+        println(f"500000 values, the larger at {at} -> {get_index(reader)}");
+    }
+    let mut seed = 1533;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 500000, mut seed);
+}
