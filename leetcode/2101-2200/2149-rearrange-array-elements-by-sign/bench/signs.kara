@@ -1,0 +1,56 @@
+// LeetCode #2149: Rearrange Array Elements by Sign -- the benchmark,
+// signs.kara's ★ arm. 4 lists of 100000 positives and as many negatives,
+// of 1 to 100000, built once in a random order; then every list
+// rearranged 25 times, two of its numbers swapped before each so that no
+// answer repeats one before, and three places of each answer read.
+
+fn rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.filled(nums.len(), 0);
+    let mut positive = 0;
+    let mut negative = 1;
+    for x in nums.iter() {
+        if x > 0 {
+            out[positive] = x;
+            positive += 2;
+        } else {
+            out[negative] = x;
+            negative += 2;
+        }
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2149;
+    let n = 200000;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..4 {
+        let mut nums: Vec[i64] = Vec.new();
+        for i in 0..n {
+            let size = next_random(mut seed) % 100000 + 1;
+            nums.push(if i < n / 2 { size } else { -size });
+        }
+        for i in (1..n).rev() {
+            let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+            nums.swap(i, j);
+        }
+        lists.push(nums);
+    }
+    let mut check = 0;
+    for round in 0..25 {
+        for l in 0..4 {
+            let a = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            let b = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            lists[l].swap(a, b);
+            let out = rearrange_array(lists[l]);
+            let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            check = (check * 31 + out[0] + out[n - 1] + out[at] + 300000 + round) % 1000000007;
+        }
+    }
+    println(f"100 answers: checksum {check}");
+}

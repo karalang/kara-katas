@@ -1,0 +1,254 @@
+// LeetCode #2149: Rearrange Array Elements by Sign -- the differential.
+// The six arms, against the statement read literally: each number's place
+// is found by counting the numbers of its sign before it, k of them
+// putting a positive at 2k and a negative at 2k + 1; no cursor is kept.
+// 300 random lists of 1 to 5 positives and as many negatives, of 1 to 3
+// or 1 to 100 in turn, in a random order; then 30 with every positive
+// first; then 30 with the signs in turn, a negative first; every one
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every number negated: each pair of the answer negated and swapped
+// P3  the answer's even places: the positives, in the list's order
+// P4  the answer's odd places: the negatives, in the list's order
+// P5  the answer fed back in: the same answer, and it is a list the
+//     statement allows
+// P6  each arm agrees with at least three of the other five
+
+// ---- signs.kara: the ★ arm, two cursors into a `Vec.filled` answer
+fn star_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.filled(nums.len(), 0);
+    let mut positive = 0;
+    let mut negative = 1;
+    for x in nums.iter() {
+        if x > 0 {
+            out[positive] = x;
+            positive += 2;
+        } else {
+            out[negative] = x;
+            negative += 2;
+        }
+    }
+    out
+}
+
+// ---- signs_split.kara: `partition` by sign, woven back by `zip` and `flat_map`
+fn split_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let (positives, negatives) = nums.iter().partition(|x| x > 0);
+    positives.into_iter().zip(negatives.into_iter()).flat_map(|(p, q)| [p, q].to_vec().into_iter()).collect()
+}
+
+// ---- signs_queues.kara: a `VecDeque` per sign, taken from in turn
+fn queues_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut positives: VecDeque[i64] = VecDeque.new();
+    let mut negatives: VecDeque[i64] = VecDeque.new();
+    for x in nums.iter() {
+        if x > 0 {
+            positives.push_back(x);
+        } else {
+            negatives.push_back(x);
+        }
+    }
+    let mut out: Vec[i64] = Vec.new();
+    while let (Some(p), Some(q)) = (positives.pop_front(), negatives.pop_front()) {
+        out.push(p);
+        out.push(q);
+    }
+    out
+}
+
+// ---- signs_struct.kara: a `Seater` that seats each number at its sign's next place
+struct Seater {
+    row: Vec[i64],
+    positive: i64,
+    negative: i64,
+}
+
+impl Seater {
+    fn new(n: i64) -> Seater {
+        Seater { row: Vec.filled(n, 0), positive: 0, negative: 1 }
+    }
+
+    fn seat(mut ref self, x: i64) {
+        if x > 0 {
+            self.row[self.positive] = x;
+            self.positive += 2;
+        } else {
+            self.row[self.negative] = x;
+            self.negative += 2;
+        }
+    }
+
+    fn seated(own self) -> Vec[i64] {
+        self.row
+    }
+}
+
+fn seater_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut seater = Seater.new(nums.len());
+    for x in nums.iter() {
+        seater.seat(x);
+    }
+    seater.seated()
+}
+
+// ---- signs_iter.kara: two `filter` iterators held side by side
+fn iter_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut positives = nums.iter().filter(|x| x > 0);
+    let mut negatives = nums.iter().filter(|x| x < 0);
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..nums.len() / 2 {
+        out.push(positives.next().unwrap());
+        out.push(negatives.next().unwrap());
+    }
+    out
+}
+
+// ---- signs_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn rearrange_array(nums: Vec[i32]) -> Vec[i32] {
+        let mut ans = Vec.filled(nums.len(), 0i32);
+        let mut (i, j) = (0usize, 1usize);
+        for x in ref nums {
+            if x > 0 {
+                ans[i] = x;
+                i += 2;
+            } else {
+                ans[j] = x;
+                j += 2;
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.rearrange_array(nums.iter().map(|x| x as i32).collect()).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let mut before = 0;
+        for j in 0..i {
+            if (nums[j] > 0) == (nums[i] > 0) {
+                before += 1;
+            }
+        }
+        let place = if nums[i] > 0 { 2 * before } else { 2 * before + 1 };
+        out[place] = nums[i];
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_rearrange_array(nums),
+        1 => split_rearrange_array(nums),
+        2 => queues_rearrange_array(nums),
+        3 => seater_rearrange_array(nums),
+        4 => iter_rearrange_array(nums),
+        _ => solution_rearrange_array(nums),
+    }
+}
+
+// each pair of places swapped, and every number multiplied by `by`
+fn swapped(nums: Vec[i64], by: i64) -> Vec[i64] {
+    (0..nums.len()).map(|i| by * nums[i ^ 1]).collect()
+}
+
+// as long as `n` and half of it positive: a list the statement allows
+fn balanced(nums: Vec[i64], n: i64) -> bool {
+    nums.len() == n and nums.iter().filter(|x| x > 0).count() * 2 == n and nums.iter().all(|x| x != 0)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "split", "queues", "seater", "iter", "solution"];
+    let mut seed = 2149;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let half = next_random(mut seed) % 5 + 1;
+        let top = [3, 100][t % 2];
+        let mut nums: Vec[i64] = Vec.new();
+        for i in 0..2 * half {
+            let size = next_random(mut seed) % top + 1;
+            if t >= 330 {
+                nums.push(if i % 2 == 0 { -size } else { size });
+            } else {
+                nums.push(if i < half { size } else { -size });
+            }
+        }
+        if t < 300 {
+            for i in (1..2 * half).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+        }
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let truth = literal(nums);
+        for x in truth.iter() {
+            check = (check * 31 + x + 1000) % 1000000007;
+        }
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let positives: Vec[i64] = nums.iter().filter(|x| x > 0).cloned().collect();
+        let negatives: Vec[i64] = nums.iter().filter(|x| x < 0).cloned().collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let evens: Vec[i64] = x.iter().step_by(2).cloned().collect();
+            let odds: Vec[i64] = x.iter().skip(1).step_by(2).cloned().collect();
+            let verdicts = [
+                x == truth,
+                x.len() == nums.len() and answer(arm, negated) == swapped(x, -1),
+                evens == positives,
+                odds == negatives,
+                balanced(x, nums.len()) and answer(arm, x) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

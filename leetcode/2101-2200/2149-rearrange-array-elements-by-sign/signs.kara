@@ -1,0 +1,86 @@
+// LeetCode #2149: Rearrange Array Elements by Sign -- the ★ arm. The
+// answer begins with a positive and the signs alternate, so the k-th
+// positive met, counting from 0, goes to place 2k and the k-th negative
+// to place 2k + 1; the order within each sign is kept by walking the
+// list once with two cursors into a `Vec.filled` answer. O(n).
+
+fn rearrange_array(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.filled(nums.len(), 0);
+    let mut positive = 0;
+    let mut negative = 1;
+    for x in nums.iter() {
+        if x > 0 {
+            out[positive] = x;
+            positive += 2;
+        } else {
+            out[negative] = x;
+            negative += 2;
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {rearrange_array(nums)}");
+}
+
+// `half` positives and `half` negatives of 1 to `top`, in a random order
+fn draw(half: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for i in 0..2 * half {
+        let size = next_random(mut seed) % top + 1;
+        nums.push(if i < half { size } else { -size });
+    }
+    for i in (1..2 * half).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the negatives first, one
+    // of each already in place, every positive then every negative, and
+    // the constraints' extremes
+    show([3, 1, -2, -5, 2, -4].to_vec());
+    show([-1, 1].to_vec());
+    show([-5, -4, 3, 2].to_vec());
+    show([7, -7].to_vec());
+    show([1, 2, 3, -1, -2, -3].to_vec());
+    show([-100000, 100000, -1, 1].to_vec());
+    // 2000 random lists of 1 to 10 positives and as many negatives, of 1
+    // to 3 or 1 to 100000 in turn
+    let mut seed = 2149;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let half = next_random(mut seed) % 10 + 1;
+        let nums = draw(half, [3, 100000][round % 2], mut seed);
+        let out = rearrange_array(nums);
+        for (i, x) in out.iter().enumerate() {
+            total += x * (1 - i % 2 * 2);
+            check = (check * 31 + x + 100000) % 1000000007;
+        }
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest, 200000 numbers: every positive then every
+    // negative, the signs already in turn, and at random
+    let blocks: Vec[i64] = (0..200000).map(|i| if i < 100000 { i + 1 } else { 99999 - i }).collect();
+    let turns: Vec[i64] = (0..200000).map(|i| if i % 2 == 0 { i / 2 + 1 } else { -(i / 2 + 1) }).collect();
+    let random = draw(100000, 100000, mut seed);
+    for (name, nums) in [("blocks", blocks), ("in turn", turns), ("at random", random)] {
+        let out = rearrange_array(nums);
+        let mut sum = 0;
+        for x in out.iter() {
+            sum = (sum * 31 + x + 100000) % 1000000007;
+        }
+        println(f"200000 numbers {name}: {out[0]} {out[1]} .. {out[199998]} {out[199999]}, checksum {sum}");
+    }
+}
