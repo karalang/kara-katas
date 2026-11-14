@@ -1,0 +1,73 @@
+// LeetCode #2125: Number of Laser Beams in a Bank -- the ★ arm. Beams
+// join only the devices of two rows with no device between them, so each
+// row with devices adds its count times the count of the last such row
+// above it. O(m * n).
+
+fn number_of_beams(bank: Vec[String]) -> i64 {
+    let mut prev = 0;
+    let mut beams = 0;
+    for row in bank.iter() {
+        let devices = row.bytes().iter().filter(|c| c == b'1').count();
+        if devices > 0 {
+            beams += prev * devices;
+            prev = devices;
+        }
+    }
+    beams
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn rows(text: Str) -> Vec[String] {
+    text.split(" ").map(|row| row.to_string()).collect()
+}
+
+fn random_bank(seed: mut ref i64, m: i64, n: i64, quarters: i64) -> Vec[String] {
+    let mut bank: Vec[String] = Vec.new();
+    for _ in 0..m {
+        let mut row = String.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 4 < quarters { '1' } else { '0' });
+        }
+        bank.push(row);
+    }
+    bank
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one row, two full rows,
+    // empty rows between devices, and no device at all
+    let examples = [
+        "011001 000000 010100 001000",
+        "000 111 000",
+        "10101",
+        "11 11",
+        "1 0 0 1 0 1",
+        "000 000",
+    ];
+    for text in examples.iter() {
+        println(f"{text} -> {number_of_beams(rows(text))}");
+    }
+    // 2000 random banks of 1 to 10 rows of 1 to 10 cells, each a device
+    // with chance a quarter, a half or three quarters in turn
+    let mut seed = 2125;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let m = next_random(mut seed) % 10 + 1;
+        let n = next_random(mut seed) % 10 + 1;
+        let beams = number_of_beams(random_bank(mut seed, m, n, round % 3 + 1));
+        total += beams;
+        check = (check * 31 + beams) % 1000000007;
+    }
+    println(f"2000 banks: {total} beams, checksum {check}");
+    // the constraints' largest: 500 by 500, all devices and half
+    let full = random_bank(mut seed, 500, 500, 4);
+    let half = random_bank(mut seed, 500, 500, 2);
+    println(f"500 by 500: {number_of_beams(full)} beams all devices, {number_of_beams(half)} half");
+}

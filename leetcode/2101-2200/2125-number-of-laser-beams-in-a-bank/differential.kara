@@ -1,0 +1,261 @@
+// LeetCode #2125: Number of Laser Beams in a Bank -- the differential.
+// The six arms, against the statement read literally: every pair of
+// devices in two different rows, counted when every row between them has
+// no device. 300 random banks of 1 to 5 rows of 1 to 5 cells, each a
+// device with chance a quarter, a half or three quarters in turn; then 30
+// of up to 8 rows of up to 8 cells, an eighth devices; then 30 of one
+// column of up to 12 rows, a half devices; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the rows in reverse order: the same answer
+// P3  a row with no device put after the first: the same answer
+// P4  a row of devices only put at the bottom: the answer plus its
+//     width times the devices of the last row that has any
+// P5  every row written twice over: four times the answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- beams.kara: the ★ arm, the last nonempty row's count carried
+fn star_number_of_beams(bank: Vec[String]) -> i64 {
+    let mut prev = 0;
+    let mut beams = 0;
+    for row in bank.iter() {
+        let devices = row.bytes().iter().filter(|c| c == b'1').count();
+        if devices > 0 {
+            beams += prev * devices;
+            prev = devices;
+        }
+    }
+    beams
+}
+
+// ---- beams_counts.kara: the counts gathered, neighbours multiplied through `zip`
+fn counts_number_of_beams(bank: Vec[String]) -> i64 {
+    let mut counts: Vec[i64] = Vec.new();
+    for row in bank.iter() {
+        let mut devices = 0;
+        for c in row.chars() {
+            if c == '1' {
+                devices += 1;
+            }
+        }
+        if devices > 0 {
+            counts.push(devices);
+        }
+    }
+    counts.iter().zip(counts.iter().skip(1)).map(|(a, b)| a * b).sum()
+}
+
+// ---- beams_iter.kara: `map`, `filter` and a `fold` over a pair
+fn iter_number_of_beams(bank: Vec[String]) -> i64 {
+    bank.iter()
+        .map(|row| row.chars().filter(|c| c == '1').count())
+        .filter(|devices| devices > 0)
+        .fold((0, 0), |(prev, beams), devices| (devices, beams + prev * devices))
+        .1
+}
+
+// ---- beams_scan.kara: index loops over the rows' bytes
+fn scan_number_of_beams(bank: Vec[String]) -> i64 {
+    let mut above = 0;
+    let mut beams = 0;
+    for i in 0..bank.len() {
+        let cells = bank[i].bytes();
+        let mut here = 0;
+        for j in 0..cells.len() {
+            if cells[j] == b'1' {
+                beams += above;
+                here += 1;
+            }
+        }
+        if here > 0 {
+            above = here;
+        }
+    }
+    beams
+}
+
+// ---- beams_struct.kara: a `Bank` taking one row at a time
+struct StructBank {
+    last_devices: i64,
+    beams: i64,
+}
+
+impl StructBank {
+    fn new() -> StructBank {
+        StructBank { last_devices: 0, beams: 0 }
+    }
+
+    fn add_row(mut ref self, row: Str) {
+        let devices = row.chars().filter(|c| c == '1').count();
+        if devices == 0 {
+            return;
+        }
+        self.beams += self.last_devices * devices;
+        self.last_devices = devices;
+    }
+}
+
+fn struct_number_of_beams(bank: Vec[String]) -> i64 {
+    let mut b = StructBank.new();
+    for row in bank.iter() {
+        b.add_row(row);
+    }
+    b.beams
+}
+
+// ---- beams_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn number_of_beams(bank: Vec[String]) -> i32 {
+        let mut prev: i32 = 0;
+        let mut ans: i32 = 0;
+        for row in bank.iter() {
+            let c = row.chars().filter(|ch| ch == '1').count() as i32;
+            if c > 0 {
+                ans += prev * c;
+                prev = c;
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_number_of_beams(bank: Vec[String]) -> i64 {
+    SolutionSolution.number_of_beams(bank.clone())
+}
+
+// ---- the statement read literally
+
+fn literal(bank: Vec[String]) -> i64 {
+    let mut devices: Vec[(i64, i64)] = Vec.new();
+    for r in 0..bank.len() {
+        let cells: Vec[char] = bank[r].chars().collect();
+        for c in 0..cells.len() {
+            if cells[c] == '1' {
+                devices.push((r, c));
+            }
+        }
+    }
+    let mut beams = 0;
+    for i in 0..devices.len() {
+        for j in 0..devices.len() {
+            let (r1, _) = devices[i];
+            let (r2, _) = devices[j];
+            if r1 < r2 and (r1 + 1..r2).all(|r| not bank[r].contains("1")) {
+                beams += 1;
+            }
+        }
+    }
+    beams
+}
+
+fn answer(arm: i64, bank: Vec[String]) -> i64 {
+    match arm {
+        0 => star_number_of_beams(bank),
+        1 => counts_number_of_beams(bank),
+        2 => iter_number_of_beams(bank),
+        3 => scan_number_of_beams(bank),
+        4 => struct_number_of_beams(bank),
+        _ => solution_number_of_beams(bank),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_bank(seed: mut ref i64, m: i64, n: i64, eighths: i64) -> Vec[String] {
+    let mut bank: Vec[String] = Vec.new();
+    for _ in 0..m {
+        let mut row = String.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 8 < eighths { '1' } else { '0' });
+        }
+        bank.push(row);
+    }
+    bank
+}
+
+fn main() {
+    let names = ["star", "counts", "iter", "scan", "struct", "solution"];
+    let mut seed = 2125;
+    let mut problems: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        if t < 300 {
+            let m = next_random(mut seed) % 5 + 1;
+            let n = next_random(mut seed) % 5 + 1;
+            problems.push(random_bank(mut seed, m, n, 2 * (t % 3 + 1)));
+        } else if t < 330 {
+            let m = next_random(mut seed) % 8 + 1;
+            let n = next_random(mut seed) % 8 + 1;
+            problems.push(random_bank(mut seed, m, n, 1));
+        } else {
+            let m = next_random(mut seed) % 12 + 1;
+            problems.push(random_bank(mut seed, m, 1, 4));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for bank in problems.iter() {
+        let truth = literal(bank);
+        check = (check * 31 + truth * 7 + bank.len()) % 1000000007;
+        let width = bank[0].len();
+        let shown = bank.join(" ");
+        let reversed: Vec[String] = bank.iter().rev().map(|row| row.clone()).collect();
+        let mut gapped: Vec[String] = Vec.new();
+        for r in 0..bank.len() {
+            gapped.push(bank[r].clone());
+            if r == 0 {
+                gapped.push("0".repeat(width));
+            }
+        }
+        let mut topped = bank.clone();
+        topped.push("1".repeat(width));
+        let last = bank.iter().rev().map(|row| row.chars().filter(|c| c == '1').count()).find(|d| d > 0).unwrap_or(0);
+        let doubled: Vec[String] = bank.iter().map(|row| row + row).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, bank)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, gapped) == x,
+                answer(arm, topped) == x + width * last,
+                answer(arm, doubled) == 4 * x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{shown} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} banks: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
