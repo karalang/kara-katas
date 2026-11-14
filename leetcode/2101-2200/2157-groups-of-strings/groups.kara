@@ -1,0 +1,127 @@
+// LeetCode #2157: Groups of Strings -- the ★ arm. No letter repeats and
+// order does not matter, so a word is its set of letters, 26 bits. Two
+// words are joined when one's set is the other's with a letter added or
+// taken away, or with one letter replaced, itself included. A union-find
+// over the words joins each word to the first word of its own set, to
+// the first of each set it makes by losing a letter (which covers adding
+// one, from the other side), and, through a second map keyed by the set
+// with one letter blanked out, to the first word that blanks out to the
+// same, which is a replacement. O(26 n) map lookups.
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn unite(parent: mut ref Vec[i64], size: mut ref Vec[i64], a: i64, b: i64) {
+    let ra = find(mut parent, a);
+    let rb = find(mut parent, b);
+    if ra == rb {
+        return;
+    }
+    let (big, small) = if size[ra] >= size[rb] { (ra, rb) } else { (rb, ra) };
+    parent[small] = big;
+    size[big] += size[small];
+}
+
+fn group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let masks: Vec[i64] = words.iter().map(|w| w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')))).collect();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut first: Map[i64, i64] = Map.new();
+    for i in 0..n {
+        match first.get(masks[i]) {
+            Some(j) => unite(mut parent, mut size, i, j),
+            None => {
+                first.insert(masks[i], i);
+            }
+        }
+    }
+    let mut blanked: Map[i64, i64] = Map.new();
+    for i in 0..n {
+        for bit in 0..26 {
+            if (masks[i] >> bit) & 1 == 1 {
+                let less = masks[i] ^ (1 << bit);
+                if let Some(j) = first.get(less) {
+                    unite(mut parent, mut size, i, j);
+                }
+                match blanked.get(less) {
+                    Some(j) => unite(mut parent, mut size, i, j),
+                    None => {
+                        blanked.insert(less, i);
+                    }
+                }
+            }
+        }
+    }
+    let mut groups = 0;
+    let mut largest = 0;
+    for i in 0..n {
+        if find(mut parent, i) == i {
+            groups += 1;
+            largest = largest.max(size[i]);
+        }
+    }
+    [groups, largest].to_vec()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to most distinct letters from the first alphabet
+fn word(most: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % most + 1;
+    let mut w = String.new();
+    while w.len() < length {
+        let c = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+        if not w.contains(c.to_string()) {
+            w.push(c);
+        }
+    }
+    w
+}
+
+fn show(words: Vec[String]) {
+    println(f"{words} -> {group_strings(words)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one word, the same letters
+    // in two orders, three words apart, and three joined only by replacing
+    show(["a", "b", "ab", "cde"].iter().map(|w| w.to_string()).collect());
+    show(["a", "ab", "abc"].iter().map(|w| w.to_string()).collect());
+    show(["xyz"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "ba"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "cd", "ef"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "ac", "bc"].iter().map(|w| w.to_string()).collect());
+    // 2000 random lists of 1 to 8 words of 1 to 4 letters from the first
+    // 4, 6 or 26 in turn
+    let mut seed = 2157;
+    let mut groups = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let alphabet = [4, 6, 26][round % 3];
+        let words: Vec[String] = (0..n).map(|_| word(4, alphabet, mut seed)).collect();
+        let answer = group_strings(words);
+        groups += answer[0];
+        check = (check * 31 + answer[0] * 100 + answer[1] + n) % 1000000007;
+    }
+    println(f"2000 lists: {groups} groups in all, checksum {check}");
+    // the constraints' largest, 20000 words: of 1 to 5 letters from the
+    // first 10, and of 1 to 26 from all 26
+    for (most, alphabet) in [(5, 10), (26, 26)] {
+        let words: Vec[String] = (0..20000).map(|_| word(most, alphabet, mut seed)).collect();
+        let answer = group_strings(words);
+        println(f"20000 words of 1 to {most} letters from {alphabet}: {answer[0]} groups, the largest {answer[1]}");
+    }
+}

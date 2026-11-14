@@ -1,0 +1,109 @@
+// LeetCode #2157: Groups of Strings -- each group a list of its words,
+// and each word a label naming its list; two groups merge by moving the
+// smaller list's words into the larger and relabelling them, so a word
+// moves at most log n times. The words are joined through a map of each
+// set's first word and a map of each set with a letter blanked out, as
+// the ★ arm joins them. O(26 n + n log n).
+
+fn merge(label: mut ref Vec[i64], members: mut ref Vec[Vec[i64]], a: i64, b: i64) {
+    let (la, lb) = (label[a], label[b]);
+    if la == lb {
+        return;
+    }
+    let (big, small) = if members[la].len() >= members[lb].len() { (la, lb) } else { (lb, la) };
+    let moving = members[small].clone();
+    members[small].clear();
+    for w in moving.iter() {
+        label[w] = big;
+        members[big].push(w);
+    }
+}
+
+fn group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut members: Vec[Vec[i64]] = (0..n).map(|i| [i].to_vec()).collect();
+    let mut first: Map[i64, i64] = Map.new();
+    let mut blanked: Map[i64, i64] = Map.new();
+    let masks: Vec[i64] = words.iter().map(|w| w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')))).collect();
+    for i in 0..n {
+        if let Some(j) = first.get(masks[i]) {
+            merge(mut label, mut members, i, j);
+        } else {
+            first.insert(masks[i], i);
+        }
+    }
+    for i in 0..n {
+        for bit in 0..26 {
+            if masks[i] & (1 << bit) != 0 {
+                let less = masks[i] - (1 << bit);
+                if let Some(j) = first.get(less) {
+                    merge(mut label, mut members, i, j);
+                }
+                if let Some(j) = blanked.get(less) {
+                    merge(mut label, mut members, i, j);
+                } else {
+                    blanked.insert(less, i);
+                }
+            }
+        }
+    }
+    let sizes: Vec[i64] = members.iter().map(|m| m.len()).filter(|s| s > 0).collect();
+    [sizes.len(), sizes.iter().max().unwrap()].to_vec()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to most distinct letters from the first alphabet
+fn word(most: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % most + 1;
+    let mut w = String.new();
+    while w.len() < length {
+        let c = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+        if not w.contains(c.to_string()) {
+            w.push(c);
+        }
+    }
+    w
+}
+
+fn show(words: Vec[String]) {
+    println(f"{words} -> {group_strings(words)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one word, the same letters
+    // in two orders, three words apart, and three joined only by replacing
+    show(["a", "b", "ab", "cde"].iter().map(|w| w.to_string()).collect());
+    show(["a", "ab", "abc"].iter().map(|w| w.to_string()).collect());
+    show(["xyz"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "ba"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "cd", "ef"].iter().map(|w| w.to_string()).collect());
+    show(["ab", "ac", "bc"].iter().map(|w| w.to_string()).collect());
+    // 2000 random lists of 1 to 8 words of 1 to 4 letters from the first
+    // 4, 6 or 26 in turn
+    let mut seed = 2157;
+    let mut groups = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let alphabet = [4, 6, 26][round % 3];
+        let words: Vec[String] = (0..n).map(|_| word(4, alphabet, mut seed)).collect();
+        let answer = group_strings(words);
+        groups += answer[0];
+        check = (check * 31 + answer[0] * 100 + answer[1] + n) % 1000000007;
+    }
+    println(f"2000 lists: {groups} groups in all, checksum {check}");
+    // the constraints' largest, 20000 words: of 1 to 5 letters from the
+    // first 10, and of 1 to 26 from all 26
+    for (most, alphabet) in [(5, 10), (26, 26)] {
+        let words: Vec[String] = (0..20000).map(|_| word(most, alphabet, mut seed)).collect();
+        let answer = group_strings(words);
+        println(f"20000 words of 1 to {most} letters from {alphabet}: {answer[0]} groups, the largest {answer[1]}");
+    }
+}

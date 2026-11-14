@@ -1,0 +1,526 @@
+// LeetCode #2157: Groups of Strings -- the differential. The six arms,
+// against the statement read literally: every two words compared letter
+// by letter for the three rules (a letter added, taken away, or replaced
+// by any letter, itself included), and the groups found by relabelling
+// until no join changes a label; no bits, maps or union-find. 300 random
+// lists of 1 to 8 words of 1 to 3 letters from the first 3, 5 or 26 in
+// turn; then 30 of words from the first 2 letters, so that many repeat;
+// then 30 of 1 to 4 words of up to 26 letters; every one drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the words in reverse order: the same answer
+// P3  every word's letters reversed: the same answer
+// P4  every letter moved on by one, z to a: the same answer
+// P5  every word listed twice: the same groups, the largest twice as big
+// P6  each arm agrees with at least three of the other five
+
+// ---- groups.kara: the ★ arm, a union-find joined through a map of sets and a map of blanked sets
+fn star_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn star_unite(parent: mut ref Vec[i64], size: mut ref Vec[i64], a: i64, b: i64) {
+    let ra = star_find(mut parent, a);
+    let rb = star_find(mut parent, b);
+    if ra == rb {
+        return;
+    }
+    let (big, small) = if size[ra] >= size[rb] { (ra, rb) } else { (rb, ra) };
+    parent[small] = big;
+    size[big] += size[small];
+}
+
+fn star_group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let masks: Vec[i64] = words.iter().map(|w| w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')))).collect();
+    let mut parent: Vec[i64] = (0..n).collect();
+    let mut size: Vec[i64] = Vec.filled(n, 1);
+    let mut first: Map[i64, i64] = Map.new();
+    for i in 0..n {
+        match first.get(masks[i]) {
+            Some(j) => star_unite(mut parent, mut size, i, j),
+            None => {
+                first.insert(masks[i], i);
+            }
+        }
+    }
+    let mut blanked: Map[i64, i64] = Map.new();
+    for i in 0..n {
+        for bit in 0..26 {
+            if (masks[i] >> bit) & 1 == 1 {
+                let less = masks[i] ^ (1 << bit);
+                if let Some(j) = first.get(less) {
+                    star_unite(mut parent, mut size, i, j);
+                }
+                match blanked.get(less) {
+                    Some(j) => star_unite(mut parent, mut size, i, j),
+                    None => {
+                        blanked.insert(less, i);
+                    }
+                }
+            }
+        }
+    }
+    let mut groups = 0;
+    let mut largest = 0;
+    for i in 0..n {
+        if star_find(mut parent, i) == i {
+            groups += 1;
+            largest = largest.max(size[i]);
+        }
+    }
+    [groups, largest].to_vec()
+}
+
+// ---- groups_struct.kara: a `Groups` union-find with a recursive `root`, one map with a tag bit
+struct Groups {
+    parent: Vec[i64],
+    size: Vec[i64],
+}
+
+impl Groups {
+    fn of(n: i64) -> Groups {
+        Groups { parent: (0..n).collect(), size: Vec.filled(n, 1) }
+    }
+
+    fn root(mut ref self, x: i64) -> i64 {
+        if self.parent[x] == x {
+            return x;
+        }
+        let r = self.root(self.parent[x]);
+        self.parent[x] = r;
+        r
+    }
+
+    fn join(mut ref self, a: i64, b: i64) {
+        let ra = self.root(a);
+        let rb = self.root(b);
+        if ra == rb {
+            return;
+        }
+        if self.size[ra] < self.size[rb] {
+            self.parent[ra] = rb;
+            self.size[rb] += self.size[ra];
+        } else {
+            self.parent[rb] = ra;
+            self.size[ra] += self.size[rb];
+        }
+    }
+
+    fn tally(ref self) -> Vec[i64] {
+        let mut groups = 0;
+        let mut largest = 0;
+        for i in 0..self.parent.len() {
+            if self.parent[i] == i {
+                groups += 1;
+                largest = largest.max(self.size[i]);
+            }
+        }
+        [groups, largest].to_vec()
+    }
+}
+
+const BLANK: i64 = 1 << 26;
+
+fn struct_group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let mut masks: Vec[i64] = Vec.new();
+    for w in words.iter() {
+        let mut mask = 0;
+        for c in w.chars() {
+            mask |= 1 << (c as i64 - 'a' as i64);
+        }
+        masks.push(mask);
+    }
+    let mut groups = Groups.of(n);
+    let mut seen: Map[i64, i64] = Map.new();
+    for i in 0..n {
+        if let Some(j) = seen.get(masks[i]) {
+            groups.join(i, j);
+        } else {
+            seen.insert(masks[i], i);
+        }
+    }
+    for i in 0..n {
+        let mut rest = masks[i];
+        while rest != 0 {
+            let low = rest & -rest;
+            rest ^= low;
+            let less = masks[i] ^ low;
+            if let Some(j) = seen.get(less) {
+                groups.join(i, j);
+            }
+            if let Some(j) = seen.get(less | BLANK) {
+                groups.join(i, j);
+            } else {
+                seen.insert(less | BLANK, i);
+            }
+        }
+    }
+    groups.tally()
+}
+
+// ---- groups_bfs.kara: a breadth-first search over the sets of letters, counts taken out as reached
+fn bfs_group_strings(words: Vec[String]) -> Vec[i64] {
+    let mut count: Map[i64, i64] = Map.new();
+    for w in words.iter() {
+        let mask = w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')));
+        *count.entry(mask).or_insert(0) += 1;
+    }
+    let sets: Vec[i64] = count.keys().cloned().collect();
+    let mut groups = 0;
+    let mut largest = 0;
+    for start in sets.iter() {
+        let Some(own) = count.remove(start) else {
+            continue;
+        };
+        groups += 1;
+        let mut size = own;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        while let Some(set) = queue.pop_front() {
+            let mut next: Vec[i64] = Vec.new();
+            for i in 0..26 {
+                next.push(set ^ (1 << i));
+                if (set >> i) & 1 == 1 {
+                    for j in 0..26 {
+                        if (set >> j) & 1 == 0 {
+                            next.push(set ^ (1 << i) ^ (1 << j));
+                        }
+                    }
+                }
+            }
+            for other in next.iter() {
+                if let Some(c) = count.remove(other) {
+                    size += c;
+                    queue.push_back(other);
+                }
+            }
+        }
+        largest = largest.max(size);
+    }
+    [groups, largest].to_vec()
+}
+
+// ---- groups_graph.kara: words and the sets they meet at as a graph, components by an explicit stack
+fn graph_group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let mut keys: Map[i64, i64] = Map.new();
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        edges.push(Vec.new());
+    }
+    for (i, w) in words.iter().enumerate() {
+        let mask = w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')));
+        let mut wanted: Vec[i64] = [mask].to_vec();
+        for bit in 0..26 {
+            if (mask >> bit) & 1 == 1 {
+                wanted.push(mask ^ (1 << bit));
+            }
+        }
+        for key in wanted.iter() {
+            let node = match keys.get(key) {
+                Some(node) => node,
+                None => {
+                    let node = edges.len();
+                    keys.insert(key, node);
+                    edges.push(Vec.new());
+                    node
+                }
+            };
+            edges[i].push(node);
+            edges[node].push(i);
+        }
+    }
+    let mut seen: Vec[bool] = Vec.filled(edges.len(), false);
+    let mut groups = 0;
+    let mut largest = 0;
+    for start in 0..n {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        groups += 1;
+        let mut size = 0;
+        let mut stack: Vec[i64] = [start].to_vec();
+        while let Some(node) = stack.pop() {
+            if node < n {
+                size += 1;
+            }
+            for next in edges[node].iter() {
+                if not seen[next] {
+                    seen[next] = true;
+                    stack.push(next);
+                }
+            }
+        }
+        largest = largest.max(size);
+    }
+    [groups, largest].to_vec()
+}
+
+// ---- groups_merge.kara: each group a list, the smaller moved into the larger
+fn merge_merge(label: mut ref Vec[i64], members: mut ref Vec[Vec[i64]], a: i64, b: i64) {
+    let (la, lb) = (label[a], label[b]);
+    if la == lb {
+        return;
+    }
+    let (big, small) = if members[la].len() >= members[lb].len() { (la, lb) } else { (lb, la) };
+    let moving = members[small].clone();
+    members[small].clear();
+    for w in moving.iter() {
+        label[w] = big;
+        members[big].push(w);
+    }
+}
+
+fn merge_group_strings(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut members: Vec[Vec[i64]] = (0..n).map(|i| [i].to_vec()).collect();
+    let mut first: Map[i64, i64] = Map.new();
+    let mut blanked: Map[i64, i64] = Map.new();
+    let masks: Vec[i64] = words.iter().map(|w| w.bytes().iter().fold(0, |m, b| m | (1 << (b - b'a')))).collect();
+    for i in 0..n {
+        if let Some(j) = first.get(masks[i]) {
+            merge_merge(mut label, mut members, i, j);
+        } else {
+            first.insert(masks[i], i);
+        }
+    }
+    for i in 0..n {
+        for bit in 0..26 {
+            if masks[i] & (1 << bit) != 0 {
+                let less = masks[i] - (1 << bit);
+                if let Some(j) = first.get(less) {
+                    merge_merge(mut label, mut members, i, j);
+                }
+                if let Some(j) = blanked.get(less) {
+                    merge_merge(mut label, mut members, i, j);
+                } else {
+                    blanked.insert(less, i);
+                }
+            }
+        }
+    }
+    let sizes: Vec[i64] = members.iter().map(|m| m.len()).filter(|s| s > 0).collect();
+    [sizes.len(), sizes.iter().max().unwrap()].to_vec()
+}
+
+// ---- groups_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_find(p: mut ref Vec[i64], x: i64) -> i64 {
+    if p[x] != x {
+        let r = solution_find(mut p, p[x]);
+        p[x] = r;
+    }
+    p[x]
+}
+
+impl SolutionSolution {
+    pub fn group_strings(words: Vec[String]) -> Vec[i32] {
+        let n = words.len();
+        let mut p: Vec[i64] = (0..n).collect();
+        let mut sz = Vec.filled(n, 1);
+        let mut masks = Vec.filled(n, 0i32);
+        for (i, w) in words.iter().enumerate() {
+            for c in w.chars() {
+                masks[i] |= 1 << (c as u32 as u8 - b'a');
+            }
+        }
+        let mut first: Map[i32, i64] = Map.new();
+        let mut blank: Map[i32, i64] = Map.new();
+        let mut pairs: Vec[(i64, i64)] = Vec.new();
+        for i in 0..n {
+            if let Some(j) = first.get(masks[i]).cloned() {
+                pairs.push((i, j));
+            } else {
+                first.insert(masks[i], i);
+            }
+        }
+        for i in 0..n {
+            for b in 0..26 {
+                if masks[i] >> b & 1 == 1 {
+                    let less = masks[i] ^ (1 << b);
+                    if let Some(j) = first.get(less).cloned() {
+                        pairs.push((i, j));
+                    }
+                    if let Some(j) = blank.get(less).cloned() {
+                        pairs.push((i, j));
+                    } else {
+                        blank.insert(less, i);
+                    }
+                }
+            }
+        }
+        for (a, b) in pairs {
+            let ra = solution_find(mut p, a);
+            let rb = solution_find(mut p, b);
+            if ra != rb {
+                if sz[ra] < sz[rb] {
+                    p[ra] = rb;
+                    sz[rb] += sz[ra];
+                } else {
+                    p[rb] = ra;
+                    sz[ra] += sz[rb];
+                }
+            }
+        }
+        let mut groups = 0;
+        let mut largest = 0;
+        for i in 0..n {
+            if solution_find(mut p, i) == i {
+                groups += 1;
+                largest = largest.max(sz[i]);
+            }
+        }
+        [groups as i32, largest as i32]
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_group_strings(words: Vec[String]) -> Vec[i64] {
+    SolutionSolution.group_strings(words.clone()).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+// whether b's letters are a's with one letter added
+fn one_added(a: String, b: String) -> bool {
+    b.len() == a.len() + 1 and a.chars().all(|c| b.contains(c.to_string()))
+}
+
+fn joined(a: String, b: String) -> bool {
+    let missing = a.chars().filter(|c| not b.contains(c.to_string())).count();
+    one_added(a, b) or one_added(b, a) or (a.len() == b.len() and missing <= 1)
+}
+
+fn literal(words: Vec[String]) -> Vec[i64] {
+    let n = words.len();
+    let mut label: Vec[i64] = (0..n).collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            for j in 0..n {
+                if label[j] < label[i] and joined(words[i], words[j]) {
+                    label[i] = label[j];
+                    changed = true;
+                }
+            }
+        }
+    }
+    let mut groups = 0;
+    let mut largest = 0;
+    for i in 0..n {
+        if label[i] == i {
+            groups += 1;
+            largest = largest.max(label.iter().filter(|l| l == i).count());
+        }
+    }
+    [groups, largest].to_vec()
+}
+
+fn answer(arm: i64, words: Vec[String]) -> Vec[i64] {
+    match arm {
+        0 => star_group_strings(words),
+        1 => struct_group_strings(words),
+        2 => bfs_group_strings(words),
+        3 => graph_group_strings(words),
+        4 => merge_group_strings(words),
+        _ => solution_group_strings(words),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(most: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let length = next_random(mut seed) % most + 1;
+    let mut w = String.new();
+    while w.len() < length {
+        let c = (b'a' + (next_random(mut seed) % alphabet) as u8) as char;
+        if not w.contains(c.to_string()) {
+            w.push(c);
+        }
+    }
+    w
+}
+
+fn main() {
+    let names = ["star", "struct", "bfs", "graph", "merge", "solution"];
+    let mut seed = 2157;
+    let mut lists: Vec[Vec[String]] = Vec.new();
+    for t in 0..360 {
+        let (n, most, alphabet) = if t < 300 {
+            (next_random(mut seed) % 8 + 1, 3, [3, 5, 26][t % 3])
+        } else if t < 330 {
+            (next_random(mut seed) % 8 + 1, 2, 2)
+        } else {
+            (next_random(mut seed) % 4 + 1, 26, 26)
+        };
+        let words: Vec[String] = (0..n).map(|_| word(most, alphabet, mut seed)).collect();
+        lists.push(words);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for words in lists.iter() {
+        let truth = literal(words);
+        check = (check * 31 + truth[0] * 100 + truth[1] + words.len()) % 1000000007;
+        let reversed: Vec[String] = words.iter().rev().cloned().collect();
+        let mirrored: Vec[String] = words.iter().map(|w| w.chars().rev().collect()).collect();
+        let moved: Vec[String] = words.iter().map(|w| w.chars().map(|c| ((c as u32 - 'a' as u32 + 1) % 26 + 'a' as u32) as u8 as char).collect()).collect();
+        let mut twice: Vec[String] = words.clone();
+        twice.extend(words.iter().cloned());
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, words)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, mirrored) == x,
+                answer(arm, moved) == x,
+                answer(arm, twice) == [x[0], 2 * x[1]].to_vec(),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{words} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
