@@ -1,0 +1,245 @@
+// LeetCode #2150: Find All Lonely Numbers in the Array -- the
+// differential. The six arms, against the statement read literally: each
+// number is checked against the whole list for another copy of itself
+// and for a number one below or one above, by counting; no map, set or
+// sort is used to find them. Every answer is sorted before it is
+// compared, since any order is allowed. 300 random lists of 1 to 10
+// numbers of 0 to 5, 0 to 15 or 0 to 100 in turn; then 30 of 1 to 10
+// even numbers; then 30 runs of numbers one apart, a number met twice in
+// some; every one drawn before any arm answers.
+//
+// P1  the lonely numbers are the statement read literally
+// P2  the list reversed: the same lonely numbers
+// P3  every number moved up by 5: every lonely number moved up by 5
+// P4  every number doubled: the numbers met once, doubled
+// P5  the list followed by itself: none lonely
+// P6  each arm agrees with at least three of the other five
+
+// ---- lonely.kara: the ★ arm, a `Map` of counts filtered by `contains_key`
+fn star_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x).or_insert(0) += 1;
+    }
+    count.iter().filter(|(x, c)| c == 1 and not count.contains_key(x - 1) and not count.contains_key(x + 1)).map(|(x, _)| x).collect()
+}
+
+// ---- lonely_sorted.kara: sorted, each number against the ones beside it
+fn sorted_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..sorted.len() {
+        let x = sorted[i];
+        let below = i == 0 or sorted[i - 1] < x - 1;
+        let above = match sorted.get(i + 1) {
+            Some(next) => next > x + 1,
+            None => true,
+        };
+        if below and above {
+            out.push(x);
+        }
+    }
+    out
+}
+
+// ---- lonely_count.kara: a table of counts by value, read in value order
+fn table_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let top = nums.iter().max().unwrap();
+    let mut count: Vec[i64] = Vec.filled(top + 3, 0);
+    for x in nums.iter() {
+        count[x + 1] += 1;
+    }
+    (1..top + 2).filter(|v| count[v] == 1 and count[v - 1] == 0 and count[v + 1] == 0).map(|v| v - 1).collect()
+}
+
+// ---- lonely_struct.kara: a `Census` of a `SortedMap`, asked who is `alone`
+struct Census {
+    counts: SortedMap[i64, i64],
+}
+
+impl Census {
+    fn of(nums: Vec[i64]) -> Census {
+        let mut counts: SortedMap[i64, i64] = SortedMap.new();
+        for x in nums.iter() {
+            counts.insert(x, counts.get(x).unwrap_or(0) + 1);
+        }
+        Census { counts }
+    }
+
+    fn met(ref self, x: i64) -> i64 {
+        self.counts.get(x).unwrap_or(0)
+    }
+
+    fn alone(ref self, x: i64) -> bool {
+        self.met(x) == 1 and self.met(x - 1) == 0 and self.met(x + 1) == 0
+    }
+}
+
+fn census_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let census = Census.of(nums);
+    let mut out: Vec[i64] = Vec.new();
+    for x in census.counts.keys() {
+        if census.alone(x) {
+            out.push(x);
+        }
+    }
+    out
+}
+
+// ---- lonely_sets.kara: two `Set`s, the numbers seen and those seen again
+fn sets_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let mut seen: Set[i64] = Set.new();
+    let mut again: Set[i64] = Set.new();
+    for x in nums.iter() {
+        if not seen.insert(x) {
+            again.insert(x);
+        }
+    }
+    seen.iter().filter(|x| not again.contains(x) and not seen.contains(x - 1) and not seen.contains(x + 1)).cloned().collect()
+}
+
+// ---- lonely_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn find_lonely(nums: Vec[i32]) -> Vec[i32] {
+        let mut count: Map[i32, i32] = Map.new();
+        for x in ref nums {
+            *count.entry(x).or_insert(0) += 1;
+        }
+        count
+            .iter()
+            .filter(|(x, c)| c == 1 and not count.contains_key(x - 1) and not count.contains_key(x + 1))
+            .map(|(x, _)| x)
+            .collect()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.find_lonely(nums.iter().map(|x| x as i32).collect()).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn met(nums: Vec[i64], x: i64) -> i64 {
+    let mut count = 0;
+    for y in nums.iter() {
+        if y == x {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        if met(nums, x) == 1 and met(nums, x - 1) == 0 and met(nums, x + 1) == 0 {
+            out.push(x);
+        }
+    }
+    out.sort();
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    let mut out = match arm {
+        0 => star_find_lonely(nums),
+        1 => sorted_find_lonely(nums),
+        2 => table_find_lonely(nums),
+        3 => census_find_lonely(nums),
+        4 => sets_find_lonely(nums),
+        _ => solution_find_lonely(nums),
+    };
+    out.sort();
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "table", "census", "sets", "solution"];
+    let mut seed = 2150;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = if t < 300 {
+            let top = [6, 16, 101][t % 3];
+            (0..n).map(|_| next_random(mut seed) % top).collect()
+        } else if t < 330 {
+            (0..n).map(|_| next_random(mut seed) % 20 * 2).collect()
+        } else {
+            let start = next_random(mut seed) % 20;
+            let twice = next_random(mut seed) % (n + 3);
+            let mut run: Vec[i64] = (0..n).map(|i| start + i).collect();
+            if twice < n {
+                run.push(start + twice);
+            }
+            run
+        };
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let truth = literal(nums);
+        for x in truth.iter() {
+            check = (check * 31 + x + 1) % 1000000007;
+        }
+        check = (check * 31 + nums.len()) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let moved: Vec[i64] = nums.iter().map(|x| x + 5).collect();
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let mut once: Vec[i64] = nums.iter().filter(|x| met(nums, x) == 1).map(|x| 2 * x).collect();
+        once.sort();
+        let mut twice = nums.clone();
+        twice.extend(nums.clone());
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let up: Vec[i64] = x.iter().map(|v| v + 5).collect();
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, moved) == up,
+                answer(arm, doubled) == once,
+                answer(arm, twice).len() == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

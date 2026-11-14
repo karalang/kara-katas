@@ -1,0 +1,46 @@
+// LeetCode #2150: Find All Lonely Numbers in the Array -- the benchmark,
+// lonely.kara's ★ arm. 4 lists of 100000 numbers of 0 to 1000000 built
+// once; then every list searched 25 times, one number redrawn before each
+// so that no search repeats one before. The lonely numbers come in any
+// order, so each answer is folded to its length and its sum.
+
+fn find_lonely(nums: Vec[i64]) -> Vec[i64] {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in nums.iter() {
+        *count.entry(x).or_insert(0) += 1;
+    }
+    count.iter().filter(|(x, c)| c == 1 and not count.contains_key(x - 1) and not count.contains_key(x + 1)).map(|(x, _)| x).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2150;
+    let n = 100000;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..4 {
+        let nums: Vec[i64] = (0..n).map(|_| wide(mut seed) % 1000001).collect();
+        lists.push(nums);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..25 {
+        for l in 0..4 {
+            let at = wide(mut seed) % n;
+            lists[l][at] = wide(mut seed) % 1000001;
+            let out = find_lonely(lists[l]);
+            let sum: i64 = out.iter().sum();
+            total += out.len();
+            check = (check * 31 + sum % 1000000007 + out.len() + round) % 1000000007;
+        }
+    }
+    println(f"100 searches: {total} lonely in all, checksum {check}");
+}
