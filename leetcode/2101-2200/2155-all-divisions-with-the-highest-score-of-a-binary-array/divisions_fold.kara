@@ -1,0 +1,81 @@
+// LeetCode #2155: All Divisions With the Highest Score of a Binary Array
+// -- one `fold` over the `enumerate`d bits carrying (score, top, places)
+// as a tuple, the first score being the count of 1s; a `match` on how
+// the new score stands to the top, by `cmp`, says whether to start the
+// places over, add one, or leave them. O(n).
+
+fn max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let ones = nums.iter().filter(|x| x == 1).count();
+    let (_, _, places) = nums.iter().enumerate().fold((ones, ones, [0].to_vec()), |(score, top, places), (i, x)| {
+        let next = if x == 0 { score + 1 } else { score - 1 };
+        match next.cmp(top) {
+            Ordering.Greater => (next, next, [i + 1].to_vec()),
+            Ordering.Equal => {
+                let mut more = places;
+                more.push(i + 1);
+                (next, top, more)
+            }
+            Ordering.Less => (next, top, places),
+        }
+    });
+    places
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the best divisions in ascending order, since any order is allowed
+fn best(nums: Vec[i64]) -> Vec[i64] {
+    let mut out = max_score_indices(nums);
+    out.sort();
+    out
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {best(nums)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: a lone 0, a lone 1, a 1
+    // then a 0, and 0 and 1 in turn
+    show([0, 0, 1, 0].to_vec());
+    show([0, 0, 0].to_vec());
+    show([1, 1].to_vec());
+    show([0].to_vec());
+    show([1].to_vec());
+    show([1, 0].to_vec());
+    show([0, 1, 0, 1].to_vec());
+    // 2000 random lists of 1 to 16 bits, a 1 one time in 2, 3 or 4 in turn
+    let mut seed = 2155;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 16 + 1;
+        let one_in = [2, 3, 4][round % 3];
+        let nums: Vec[i64] = (0..n).map(|_| if next_random(mut seed) % one_in == 0 { 1 } else { 0 }).collect();
+        let out = best(nums);
+        total += out.len();
+        for i in out.iter() {
+            check = (check * 31 + i + 1) % 1000000007;
+        }
+        check = (check * 31 + n) % 1000000007;
+    }
+    println(f"2000 lists: {total} divisions in all, checksum {check}");
+    // the constraints' largest, 100000 bits: 0 and 1 in turn, all 0, and
+    // at random
+    let turns: Vec[i64] = (0..100000).map(|i| i % 2).collect();
+    let zeros: Vec[i64] = Vec.filled(100000, 0);
+    let random: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 2).collect();
+    for (name, nums) in [("in turn", turns), ("all 0", zeros), ("at random", random)] {
+        let out = best(nums);
+        let mut sum = 0;
+        for i in out.iter() {
+            sum = (sum * 31 + i + 1) % 1000000007;
+        }
+        println(f"100000 bits {name}: {out.len()} divisions, first {out[0]}, last {out[out.len() - 1]}, checksum {sum}");
+    }
+}

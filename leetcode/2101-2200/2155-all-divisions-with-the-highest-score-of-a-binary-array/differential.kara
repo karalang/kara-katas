@@ -1,0 +1,321 @@
+// LeetCode #2155: All Divisions With the Highest Score of a Binary Array
+// -- the differential. The six arms, against the statement read
+// literally: every division's score counted afresh, the 0s left of it
+// one by one and the 1s from it on one by one, and the divisions that
+// reach the highest listed; no running count. 300 random lists of 1 to
+// 12 bits, a 1 one time in 2, 3 or 4 in turn; then 30 all one bit; then
+// 30 of 0 and 1 in turn; every one drawn before any arm answers. Any
+// order is allowed, so each arm's divisions are sorted before they are
+// compared.
+//
+// P1  the divisions are the statement read literally
+// P2  the bits reversed and flipped: each division i becomes n - i
+// P3  a 0 put in front: each division moves on by one
+// P4  a 1 put at the end: the same divisions
+// P5  every bit doubled: each division i becomes 2i, and 2i + 1 joins
+//     them when i + 1 is a division too
+// P6  each arm agrees with at least three of the other five
+
+// ---- divisions.kara: the ★ arm, one walk keeping the 0s on the left and the 1s on the right
+fn star_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let mut right_ones = nums.iter().filter(|x| x == 1).count();
+    let mut left_zeros = 0;
+    let mut top = right_ones;
+    let mut found: Vec[i64] = [0].to_vec();
+    for (i, x) in nums.iter().enumerate() {
+        if x == 0 {
+            left_zeros += 1;
+        } else {
+            right_ones -= 1;
+        }
+        let score = left_zeros + right_ones;
+        if score > top {
+            top = score;
+            found.clear();
+        }
+        if score == top {
+            found.push(i + 1);
+        }
+    }
+    found
+}
+
+// ---- divisions_prefix.kara: every score from two `scan`s, the best by `max` and `filter`
+fn prefix_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut zeros_before: Vec[i64] = [0].to_vec();
+    zeros_before.extend(nums.iter().scan(0, |seen, x| {
+        let seen = seen + (1 - x);
+        Some((seen, seen))
+    }));
+    let mut ones_after: Vec[i64] = [0].to_vec();
+    ones_after.extend(nums.iter().rev().scan(0, |seen, x| {
+        let seen = seen + x;
+        Some((seen, seen))
+    }));
+    ones_after.reverse();
+    let scores: Vec[i64] = (0..n + 1).map(|i| zeros_before[i] + ones_after[i]).collect();
+    let top = scores.iter().max().unwrap();
+    scores.iter().enumerate().filter(|(_, s)| s == top).map(|(i, _)| i).collect()
+}
+
+// ---- divisions_relative.kara: a balance against the first division, the 1s never counted
+fn relative_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let mut balance = 0;
+    let mut high = 0;
+    let mut found: Vec[i64] = [0].to_vec();
+    for i in 0..nums.len() {
+        balance += if nums[i] == 0 { 1 } else { -1 };
+        if balance > high {
+            high = balance;
+            found = [i + 1].to_vec();
+        } else if balance == high {
+            found.push(i + 1);
+        }
+    }
+    found
+}
+
+// ---- divisions_struct.kara: a `Divider` that `pass`es along and a `Podium` `offer`ed each score
+struct StructDivider {
+    at: i64,
+    left_zeros: i64,
+    right_ones: i64,
+}
+
+impl StructDivider {
+    fn pass(mut ref self, x: i64) {
+        if x == 0 {
+            self.left_zeros += 1;
+        } else {
+            self.right_ones -= 1;
+        }
+        self.at += 1;
+    }
+
+    fn score(ref self) -> i64 {
+        self.left_zeros + self.right_ones
+    }
+}
+
+struct StructPodium {
+    top: i64,
+    places: Vec[i64],
+}
+
+impl StructPodium {
+    fn offer(mut ref self, place: i64, score: i64) {
+        if score > self.top {
+            self.top = score;
+            self.places.clear();
+        }
+        if score == self.top {
+            self.places.push(place);
+        }
+    }
+}
+
+fn struct_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let ones: i64 = nums.iter().sum();
+    let mut divider = StructDivider { at: 0, left_zeros: 0, right_ones: ones };
+    let mut podium = StructPodium { top: -1, places: Vec.new() };
+    podium.offer(divider.at, divider.score());
+    for x in nums.iter() {
+        divider.pass(x);
+        podium.offer(divider.at, divider.score());
+    }
+    podium.places
+}
+
+// ---- divisions_fold.kara: one `fold` with a `match` on `cmp`
+fn fold_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    let ones = nums.iter().filter(|x| x == 1).count();
+    let (_, _, places) = nums.iter().enumerate().fold((ones, ones, [0].to_vec()), |(score, top, places), (i, x)| {
+        let next = if x == 0 { score + 1 } else { score - 1 };
+        match next.cmp(top) {
+            Ordering.Greater => (next, next, [i + 1].to_vec()),
+            Ordering.Equal => {
+                let mut more = places;
+                more.push(i + 1);
+                (next, top, more)
+            }
+            Ordering.Less => (next, top, places),
+        }
+    });
+    places
+}
+
+// ---- divisions_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn max_score_indices(nums: Vec[i32]) -> Vec[i32] {
+        let mut ones: i32 = nums.iter().sum();
+        let mut zeros: i32 = 0;
+        let mut best = ones;
+        let mut ans = [0];
+        for (i, x) in nums.iter().enumerate() {
+            if x == 0 {
+                zeros += 1;
+            } else {
+                ones -= 1;
+            }
+            let score = zeros + ones;
+            if score > best {
+                best = score;
+                ans.clear();
+                ans.push(i as i32 + 1);
+            } else if score == best {
+                ans.push(i as i32 + 1);
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_max_score_indices(nums: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.max_score_indices(nums.iter().map(|x| x as i32).collect()).iter().map(|i| i as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut scores: Vec[i64] = Vec.new();
+    for i in 0..n + 1 {
+        let mut score = 0;
+        for j in 0..i {
+            if nums[j] == 0 {
+                score += 1;
+            }
+        }
+        for j in i..n {
+            if nums[j] == 1 {
+                score += 1;
+            }
+        }
+        scores.push(score);
+    }
+    let mut top = 0;
+    for s in scores.iter() {
+        if s > top {
+            top = s;
+        }
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n + 1 {
+        if scores[i] == top {
+            out.push(i);
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    let mut out = match arm {
+        0 => star_max_score_indices(nums),
+        1 => prefix_max_score_indices(nums),
+        2 => relative_max_score_indices(nums),
+        3 => struct_max_score_indices(nums),
+        4 => fold_max_score_indices(nums),
+        _ => solution_max_score_indices(nums),
+    };
+    out.sort();
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "prefix", "relative", "struct", "fold", "solution"];
+    let mut seed = 2155;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = if t < 300 {
+            let one_in = [2, 3, 4][t % 3];
+            (0..n).map(|_| if next_random(mut seed) % one_in == 0 { 1 } else { 0 }).collect()
+        } else if t < 330 {
+            Vec.filled(n, next_random(mut seed) % 2)
+        } else {
+            let first = next_random(mut seed) % 2;
+            (0..n).map(|i| (first + i) % 2).collect()
+        };
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        for i in truth.iter() {
+            check = (check * 31 + i + 1) % 1000000007;
+        }
+        check = (check * 31 + n) % 1000000007;
+        let mirrored: Vec[i64] = nums.iter().rev().map(|x| 1 - x).collect();
+        let mut fronted: Vec[i64] = [0].to_vec();
+        fronted.extend(nums.iter().cloned());
+        let mut ended = nums.clone();
+        ended.push(1);
+        let mut doubled: Vec[i64] = Vec.new();
+        for x in nums.iter() {
+            doubled.push(x);
+            doubled.push(x);
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut turned: Vec[i64] = x.iter().map(|i| n - i).collect();
+            turned.sort();
+            let moved: Vec[i64] = x.iter().map(|i| i + 1).collect();
+            let mut spread: Vec[i64] = Vec.new();
+            for i in x.iter() {
+                spread.push(2 * i);
+                if x.contains(i + 1) {
+                    spread.push(2 * i + 1);
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, mirrored) == turned,
+                answer(arm, fronted) == moved,
+                answer(arm, ended) == x,
+                answer(arm, doubled) == spread,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
