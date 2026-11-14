@@ -31,7 +31,7 @@ two sides may interleave in any way.
 | `differential.kara` | the four arms against the statement read literally, six properties |
 
 Every arm prints the same 12 lines: LeetCode's three examples, then
-`[1]`, two small trees, a chain under a root, a full tree of 20 values,
+`[1]`, two small trees, a chain under a root, a balanced tree of 20 values,
 and 1000 values that make two chains under 500 (the binomial 999 choose
 499); then the count with no other order and a checksum for 3000 random
 permutations of up to 8 values, 300 of up to 100 and 30 of up to 1000.
@@ -78,7 +78,7 @@ bounds rather than a property; both were replaced.
 | M5 | tree: a node's own value counted among those below it | P1 2149, P2 253, P3 2257, P6 2149 |
 | M6 | tree: insertion walks the wrong way | P1 1523, P3 1824, P4 370, P5 1036, P6 1523 |
 | M7 | hook: the parent the earlier neighbour | P1 1417, P5 1785, P6 1417 |
-| M8 | hook: n! taken as (n - 1)! / 1 | P1 2490, P2 489, P5 3000, P6 2490 |
+| M8 | hook: n! taken as (n - 1)! | P1 2490, P2 489, P5 3000, P6 2490 |
 | M9 | template: the larger side skips one more value | P1 239, P3 480, P4 87, P5 1169, P6 239 |
 | M10 | template: the original order counted | P1 3000, P2 999, P6 3000 |
 
