@@ -1,0 +1,112 @@
+// LeetCode #2127: Maximum Employees to Be Invited to a Meeting -- every
+// person walked forward on an explicit stack until someone already
+// settled; a walk that runs into itself settles a cycle, and the stack is
+// then unwound, each person taking the cycle member their chain reaches
+// and how far it is. A mutual pair's tail is the farthest person whose
+// chain reaches each of the two.
+
+fn maximum_invitations(favorite: Vec[i64]) -> i64 {
+    let n = favorite.len();
+    // 0 never seen, 1 on the current walk, 2 settled
+    let mut state: Vec[i64] = Vec.filled(n, 0);
+    let mut reaches: Vec[i64] = Vec.filled(n, -1);
+    let mut distance: Vec[i64] = Vec.filled(n, 0);
+    let mut cycle_length: Vec[i64] = Vec.filled(n, 0);
+    for start in 0..n {
+        let mut stack: Vec[i64] = Vec.new();
+        let mut j = start;
+        while state[j] == 0 {
+            state[j] = 1;
+            stack.push(j);
+            j = favorite[j];
+        }
+        if state[j] == 1 {
+            let mut members: Vec[i64] = Vec.new();
+            while let Some(p) = stack.pop() {
+                members.push(p);
+                if p == j {
+                    break;
+                }
+            }
+            for p in members.iter() {
+                state[p] = 2;
+                reaches[p] = p;
+                cycle_length[p] = members.len();
+            }
+        }
+        while let Some(p) = stack.pop() {
+            let f = favorite[p];
+            state[p] = 2;
+            reaches[p] = reaches[f];
+            distance[p] = distance[f] + 1;
+        }
+    }
+    let mut longest: Vec[i64] = Vec.filled(n, 0);
+    for p in 0..n {
+        let r = reaches[p];
+        longest[r] = longest[r].max(distance[p]);
+    }
+    let mut largest_cycle = 0;
+    let mut pairs = 0;
+    for p in 0..n {
+        if reaches[p] != p {
+            continue;
+        }
+        if cycle_length[p] == 2 {
+            pairs += 1 + longest[p];
+        } else {
+            largest_cycle = largest_cycle.max(cycle_length[p]);
+        }
+    }
+    largest_cycle.max(pairs)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(favorite: Vec[i64]) {
+    println(f"{favorite} -> {maximum_invitations(favorite)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one pair, two pairs
+    // each with a tail, and a triangle beside a pair
+    show([2, 2, 1, 2].to_vec());
+    show([1, 2, 0].to_vec());
+    show([3, 0, 1, 4, 1].to_vec());
+    show([1, 0].to_vec());
+    show([1, 0, 3, 2, 0, 2].to_vec());
+    show([1, 2, 0, 4, 3].to_vec());
+    // 3000 random tables of 2 to 12 employees
+    let mut seed = 2127;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 11 + 2;
+        let mut favorite: Vec[i64] = Vec.new();
+        for i in 0..n {
+            favorite.push((i + 1 + next_random(mut seed) % (n - 1)) % n);
+        }
+        let invited = maximum_invitations(favorite);
+        total += invited;
+        check = (check * 31 + invited) % 1000000007;
+    }
+    println(f"3000 tables: {total} invited, checksum {check}");
+    // the constraints' largest: 100000 in one ring, a pair with a tail of
+    // 99998, and 100000 random favorites
+    let n = 100000;
+    let ring: Vec[i64] = (0..n).map(|i| (i + 1) % n).collect();
+    let tail: Vec[i64] = (0..n).map(|i| if i < 2 { 1 - i } else { i - 1 }).collect();
+    let mut random: Vec[i64] = Vec.new();
+    for i in 0..n {
+        random.push((i + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - 1)) % n);
+    }
+    let a = maximum_invitations(ring);
+    let b = maximum_invitations(tail);
+    let c = maximum_invitations(random);
+    println(f"100000 employees: {a} in a ring, {b} with a tail, {c} at random");
+}

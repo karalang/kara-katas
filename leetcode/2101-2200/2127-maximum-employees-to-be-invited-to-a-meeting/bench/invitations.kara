@@ -1,0 +1,82 @@
+// LeetCode #2127: Maximum Employees to Be Invited to a Meeting -- the
+// benchmark, invitations.kara's ★ arm. 20 tables of 100000 employees
+// built once, a quarter of them in mutual pairs and the rest favoring
+// someone at random; then every table solved 10 times, one favorite
+// changed before each solve.
+
+fn maximum_invitations(favorite: Vec[i64]) -> i64 {
+    let n = favorite.len();
+    let mut indegree: Vec[i64] = Vec.filled(n, 0);
+    for f in favorite.iter() {
+        indegree[f] += 1;
+    }
+    let mut chain: Vec[i64] = Vec.filled(n, 0);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for i in 0..n {
+        if indegree[i] == 0 {
+            queue.push_back(i);
+        }
+    }
+    while let Some(i) = queue.pop_front() {
+        let f = favorite[i];
+        chain[f] = chain[f].max(chain[i] + 1);
+        indegree[f] -= 1;
+        if indegree[f] == 0 {
+            queue.push_back(f);
+        }
+    }
+    let mut largest_cycle = 0;
+    let mut pairs = 0;
+    for i in 0..n {
+        if indegree[i] == 0 {
+            continue;
+        }
+        let mut length = 0;
+        let mut j = i;
+        while indegree[j] != 0 {
+            indegree[j] = 0;
+            length += 1;
+            j = favorite[j];
+        }
+        if length == 2 {
+            pairs += 2 + chain[i] + chain[favorite[i]];
+        } else {
+            largest_cycle = largest_cycle.max(length);
+        }
+    }
+    largest_cycle.max(pairs)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let mut seed = 2127;
+    let mut tables: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut favorite: Vec[i64] = Vec.new();
+        for i in 0..n {
+            if i < n / 4 {
+                favorite.push(i ^ 1);
+            } else {
+                favorite.push((i + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - 1)) % n);
+            }
+        }
+        tables.push(favorite);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..10 {
+        for t in 0..20 {
+            let i = n / 4 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - n / 4);
+            tables[t][i] = (i + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - 1)) % n;
+            let invited = maximum_invitations(tables[t]);
+            total += invited;
+            check = (check * 31 + invited + round) % 1000000007;
+        }
+    }
+    println(f"200 solves: {total} invited, checksum {check}");
+}

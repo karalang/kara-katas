@@ -1,0 +1,101 @@
+// LeetCode #2127: Maximum Employees to Be Invited to a Meeting -- LeetCode's
+// Rust template (`Vec<i32>` to `i32`): Kahn's order over a `VecDeque` of
+// `usize` indices, the longest chain into each person in a `Vec<i32>`,
+// then the cycles walked, written as Rust. Carried by `karac fix`. The
+// adapter below hands the harness's favorites to it.
+
+impl Solution {
+    pub fn maximum_invitations(favorite: Vec[i32]) -> i32 {
+        let n = favorite.len();
+        let mut indeg = Vec.filled(n, 0);
+        for f in ref favorite {
+            indeg[f] += 1;
+        }
+        let mut depth = Vec.filled(n, 1i32);
+        let mut q: VecDeque[i64] = (0..n).filter(|i| indeg[i] == 0).collect();
+        while let Some(u) = q.pop_front() {
+            let v = favorite[u] as i64;
+            depth[v] = depth[v].max(depth[u] + 1);
+            indeg[v] -= 1;
+            if indeg[v] == 0 {
+                q.push_back(v);
+            }
+        }
+        let mut max_cycle: i32 = 0;
+        let mut two_cycles: i32 = 0;
+        for i in 0..n {
+            if indeg[i] == 0 {
+                continue;
+            }
+            let mut len: i32 = 0;
+            let mut j = i;
+            while indeg[j] != 0 {
+                indeg[j] = 0;
+                len += 1;
+                j = favorite[j];
+            }
+            if len == 2 {
+                two_cycles += depth[i] + depth[favorite[i]];
+            } else {
+                max_cycle = max_cycle.max(len);
+            }
+        }
+        max_cycle.max(two_cycles)
+    }
+}
+
+struct Solution {}
+
+fn maximum_invitations(favorite: Vec[i64]) -> i64 {
+    Solution.maximum_invitations(favorite.iter().map(|f| f as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(favorite: Vec[i64]) {
+    println(f"{favorite} -> {maximum_invitations(favorite)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one pair, two pairs
+    // each with a tail, and a triangle beside a pair
+    show([2, 2, 1, 2].to_vec());
+    show([1, 2, 0].to_vec());
+    show([3, 0, 1, 4, 1].to_vec());
+    show([1, 0].to_vec());
+    show([1, 0, 3, 2, 0, 2].to_vec());
+    show([1, 2, 0, 4, 3].to_vec());
+    // 3000 random tables of 2 to 12 employees
+    let mut seed = 2127;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 11 + 2;
+        let mut favorite: Vec[i64] = Vec.new();
+        for i in 0..n {
+            favorite.push((i + 1 + next_random(mut seed) % (n - 1)) % n);
+        }
+        let invited = maximum_invitations(favorite);
+        total += invited;
+        check = (check * 31 + invited) % 1000000007;
+    }
+    println(f"3000 tables: {total} invited, checksum {check}");
+    // the constraints' largest: 100000 in one ring, a pair with a tail of
+    // 99998, and 100000 random favorites
+    let n = 100000;
+    let ring: Vec[i64] = (0..n).map(|i| (i + 1) % n).collect();
+    let tail: Vec[i64] = (0..n).map(|i| if i < 2 { 1 - i } else { i - 1 }).collect();
+    let mut random: Vec[i64] = Vec.new();
+    for i in 0..n {
+        random.push((i + 1 + (next_random(mut seed) * 32768 + next_random(mut seed)) % (n - 1)) % n);
+    }
+    let a = maximum_invitations(ring);
+    let b = maximum_invitations(tail);
+    let c = maximum_invitations(random);
+    println(f"100000 employees: {a} in a ring, {b} with a tail, {c} at random");
+}
