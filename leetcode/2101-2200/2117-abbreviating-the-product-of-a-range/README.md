@@ -60,7 +60,7 @@ two long ranges were checked against Python's exact integers.
 
 The limbs arm first bound its digits as `let mut kept: Str = digits;`,
 so that the loop could reassign the view. That met a compiler gap,
-fixed in karac with a test named for this kata (karac ASSTRSHA,
+fixed in karac with a test named for this kata (karac 115ea5b11c,
 `tests/kata_2117_string_as_str_fix.rs`). The mismatch said only
 "expected 'Str', found 'String'", though a `String` passes as a `Str`
 at a call and strings.md names `as_str()` for every other place, and

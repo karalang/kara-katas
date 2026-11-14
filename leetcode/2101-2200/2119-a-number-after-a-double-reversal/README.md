@@ -137,7 +137,7 @@ closure's `-> i32` deleted, `collect::<String>()` rewritten as
 `::` to `.`; then `parse::<i32>()` to `i32.parse(..)`.
 
 The template met a compiler gap, fixed in karac with a test named for
-this kata (karac TURBOSHA, `tests/kata_2119_collect_then_parse_fix.rs`).
+this kata (karac 115ea5b11c, `tests/kata_2119_collect_then_parse_fix.rs`).
 A `collect::<String>()` whose result is the receiver of a further call
 had no fix, only a message to bind it first, while the `parse::<i32>()`
 after it did: `karac fix` moved the `collect` into the argument of

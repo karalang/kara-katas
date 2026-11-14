@@ -163,7 +163,7 @@ dropped, since `q[0] % (2 * n)` widens the `i32` without it. The place
 keeps its `as i64`, which types its binding.
 
 The differential met one compiler gap, fixed in karac with a test named
-for this kata (karac FROMITERSHA,
+for this kata (karac 115ea5b11c,
 `tests/kata_2113_collect_compared_from_iter.rs`): P4 was first written
 `answer(arm, raised, queries) == x.iter().map(..).collect()`. `==` takes
 its own right-hand type, so nothing fixes what `collect` builds, and the

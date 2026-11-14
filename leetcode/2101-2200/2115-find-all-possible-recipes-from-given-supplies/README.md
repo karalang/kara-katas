@@ -176,7 +176,7 @@ then the in-degree's `usize` to `i64` and `or_default()` to
 `or_insert(Vec.new())`.
 
 It then met a compiler gap, fixed in karac with a test named for this
-kata (karac BORROWSHA, `tests/kata_2115_ref_key_not_stored.rs`):
+kata (karac 115ea5b11c, `tests/kata_2115_ref_key_not_stored.rs`):
 `indeg.get_mut(r)` inside `for r in next` was refused with "cannot
 write to `r` while `indeg` still holds a borrow of it". The borrow
 checker takes a call with a `mut ref` argument to store every other
