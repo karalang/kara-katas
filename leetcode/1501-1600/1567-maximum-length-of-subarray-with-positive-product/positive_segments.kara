@@ -1,0 +1,73 @@
+// LeetCode #1567: Maximum Length of Subarray With Positive Product -- the
+// array cut at its zeros by `split`, since no answer spans one. A piece
+// with an even count of negatives is positive whole; with an odd count, the
+// longest positive part drops everything up to its first negative or
+// everything from its last one. O(n)
+
+fn get_max_len(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for piece in nums.split(|x| x == 0) {
+        let negatives = piece.iter().filter(|x| x < 0).count();
+        let length = piece.len();
+        if negatives % 2 == 0 {
+            best = best.max(length);
+        } else {
+            let first = piece.iter().position(|x| x < 0).unwrap();
+            let last = piece.iter().rposition(|x| x < 0).unwrap();
+            best = best.max(length - first - 1).max(last);
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` arrays of 1 to `most` values, each value 0 one time in `zeros`,
+// otherwise of 1 to `top` with a sign negative one time in three
+fn batch(count: i64, most: i64, zeros: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let mut nums = Vec.new();
+        for _ in 0..n {
+            let size = (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1;
+            let kind = next_random(mut seed);
+            nums.push(if kind % zeros == 0 { 0 } else if kind % 3 == 0 { -size } else { size });
+        }
+        let length = get_max_len(nums);
+        total += length;
+        check = mix(check, length);
+    }
+    println(f"{count} arrays of up to {most} values: lengths sum {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[i64]] = [
+        [1, -2, -3, 4],
+        [0, 1, -2, -3, -4],
+        [-1, -2, -3, 0, 1],
+        [-1],
+        [0],
+        [5],
+        [-1, 2],
+        [2, -1, 3, 4, 0, 5, 6, -7, 8],
+        [-1000000000, -1000000000, -1000000000, -1000000000],
+    ];
+    for nums in examples.iter() {
+        println(f"{nums} -> {get_max_len(nums.clone())}");
+    }
+    let mut seed = 1567;
+    batch(3000, 10, 5, 5, mut seed);
+    batch(300, 1000, 50, 1000, mut seed);
+    batch(30, 100000, 1000, 1000000000, mut seed);
+}

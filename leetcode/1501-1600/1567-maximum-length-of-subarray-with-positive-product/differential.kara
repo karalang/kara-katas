@@ -1,0 +1,224 @@
+// LeetCode #1567: Maximum Length of Subarray With Positive Product --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 1 to
+// 10 values from -3 to 3, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at most the length, and at least 1 when a value is
+//     positive
+// P3  the array reversed leaves the answer
+// P4  every value replaced by its sign leaves the answer
+// P5  a 0 and then the array again put after it leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- positive.kara: the ★ arm: the longest positive and negative runs ending here
+
+fn star_arm(nums: Vec[i64]) -> i64 {
+    let mut positive = 0;
+    let mut negative = 0;
+    let mut best = 0;
+    for x in nums.iter() {
+        if x > 0 {
+            positive += 1;
+            negative = if negative > 0 { negative + 1 } else { 0 };
+        } else if x < 0 {
+            let was_positive = positive;
+            positive = if negative > 0 { negative + 1 } else { 0 };
+            negative = was_positive + 1;
+        } else {
+            positive = 0;
+            negative = 0;
+        }
+        best = best.max(positive);
+    }
+    best
+}
+
+// ---- positive_segments.kara: the pieces between zeros, cut at a first or last negative
+
+fn segments_arm(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    for piece in nums.split(|x| x == 0) {
+        let negatives = piece.iter().filter(|x| x < 0).count();
+        let length = piece.len();
+        if negatives % 2 == 0 {
+            best = best.max(length);
+        } else {
+            let first = piece.iter().position(|x| x < 0).unwrap();
+            let last = piece.iter().rposition(|x| x < 0).unwrap();
+            best = best.max(length - first - 1).max(last);
+        }
+    }
+    best
+}
+
+// ---- positive_parity.kara: the first index of each parity of negatives since a zero
+
+fn parity_arm(nums: Vec[i64]) -> i64 {
+    let mut best = 0;
+    let mut odd = false;
+    let mut first: Array[Option[i64], 2] = [Some(-1), None];
+    for (i, x) in nums.iter().enumerate() {
+        if x == 0 {
+            odd = false;
+            first = [Some(i), None];
+            continue;
+        }
+        if x < 0 {
+            odd = not odd;
+        }
+        let parity = if odd { 1 } else { 0 };
+        match first[parity] {
+            Some(start) => best = best.max(i - start),
+            None => first[parity] = Some(i),
+        }
+    }
+    best
+}
+
+// ---- positive_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_max_len(nums: Vec[i32]) -> i32 {
+        let mut (positive, negative, best) = (0i32, 0i32, 0i32);
+        for x in ref nums {
+            if x > 0 {
+                positive += 1;
+                negative = if negative > 0 { negative + 1 } else { 0 };
+            } else if x < 0 {
+                let was_positive = positive;
+                positive = if negative > 0 { negative + 1 } else { 0 };
+                negative = was_positive + 1;
+            } else {
+                positive = 0;
+                negative = 0;
+            }
+            best = best.max(positive);
+        }
+        best
+    }
+}
+
+fn solution_arm(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.get_max_len(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(nums),
+        1 => segments_arm(nums),
+        2 => parity_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["positive", "segments", "parity", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every subarray, its product's sign
+// worked out from its zeros and negatives, the longest positive one kept
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i..n {
+            let part = nums[i..j + 1].to_vec();
+            let zeros = part.iter().filter(|x| x == 0).count();
+            let negatives = part.iter().filter(|x| x < 0).count();
+            if zeros == 0 and negatives % 2 == 0 {
+                best = best.max(j - i + 1);
+            }
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15670;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..problems {
+        let length = next_random(mut seed) % 10 + 1;
+        let nums: Vec[i64] = (0..length).map(|_| next_random(mut seed) % 7 - 3).collect();
+        cases.push(nums);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let nums = cases[p].clone();
+        let truth = literal(nums.clone());
+        let n = nums.len();
+        let any_positive = nums.iter().any(|x| x > 0);
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let signs: Vec[i64] = nums.iter().map(|x| x.signum()).collect();
+        let mut twice = nums.clone();
+        twice.push(0);
+        twice.extend(nums.iter().cloned());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer > n or (any_positive and answer < 1),
+                arm(a, reversed.clone()) != answer,
+                arm(a, signs.clone()) != answer,
+                arm(a, twice.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
