@@ -1,0 +1,262 @@
+// LeetCode #1547: Minimum Cost to Cut a Stick -- the differential.
+//
+// Four arms against the statement read literally, on 3000 sticks of 2 to
+// 30 with 1 to 6 distinct cuts in a random order, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is at least n (the first cut) and at most n per cut
+// P3  every cut mirrored, c to n - c, leaves the answer
+// P4  the stick and every cut doubled double the answer
+// P5  the cuts given in reverse order leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- cut.kara: the ★ arm: interval DP, shortest pieces first
+
+fn star_arm(n: i64, cuts: Vec[i64]) -> i64 {
+    let mut points = cuts.clone();
+    points.push(0);
+    points.push(n);
+    points.sort();
+    let m = points.len();
+    let mut cost = Vec.filled(m, Vec.filled(m, 0));
+    for gap in 2..m {
+        for i in 0..m - gap {
+            let j = i + gap;
+            let mut best = i64.MAX;
+            for k in i + 1..j {
+                best = best.min(cost[i][k] + cost[k][j]);
+            }
+            cost[i][j] = best + points[j] - points[i];
+        }
+    }
+    cost[0][m - 1]
+}
+
+// ---- cut_memo.kara: the recurrence top down, kept in a Map
+
+fn cheapest(points: Vec[i64], i: i64, j: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if j - i < 2 {
+        return 0;
+    }
+    if let Some(known) = memo.get((i, j)) {
+        return known;
+    }
+    let mut best = i64.MAX;
+    for k in i + 1..j {
+        let here = cheapest(points, i, k, mut memo) + cheapest(points, k, j, mut memo);
+        best = best.min(here);
+    }
+    let total = best + points[j] - points[i];
+    memo.insert((i, j), total);
+    total
+}
+
+fn memo_arm(n: i64, cuts: Vec[i64]) -> i64 {
+    let mut points = [0].to_vec();
+    points.extend(cuts.iter().cloned());
+    points.push(n);
+    points.sort();
+    let mut memo = Map.new();
+    cheapest(points, 0, points.len() - 1, mut memo)
+}
+
+// ---- cut_knuth.kara: the DP with Knuth's speed-up
+
+fn knuth_arm(n: i64, cuts: Vec[i64]) -> i64 {
+    let mut points = cuts.clone();
+    points.push(0);
+    points.push(n);
+    points.sort();
+    let m = points.len();
+    let mut cost = Vec.filled(m, Vec.filled(m, 0));
+    let mut split = Vec.filled(m, Vec.filled(m, 0));
+    for i in 0..m - 1 {
+        split[i][i + 1] = i + 1;
+    }
+    for gap in 2..m {
+        for i in 0..m - gap {
+            let j = i + gap;
+            let lo = split[i][j - 1].max(i + 1);
+            let hi = split[i + 1][j].min(j - 1);
+            let mut best = i64.MAX;
+            let mut at = lo;
+            for k in lo..=hi {
+                let here = cost[i][k] + cost[k][j];
+                if here < best {
+                    best = here;
+                    at = k;
+                }
+            }
+            cost[i][j] = best + points[j] - points[i];
+            split[i][j] = at;
+        }
+    }
+    cost[0][m - 1]
+}
+
+// ---- cut_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_cost(n: i32, cuts: Vec[i32]) -> i32 {
+        let mut points = cuts.clone();
+        points.push(0);
+        points.push(n);
+        points.sort();
+        let m = points.len();
+        let mut cost = Vec.filled(m, Vec.filled(m, 0i32));
+        for gap in 2..m {
+            for i in 0..m - gap {
+                let j = i + gap;
+                let mut best = i32.MAX;
+                for k in i + 1..j {
+                    best = best.min(cost[i][k] + cost[k][j]);
+                }
+                cost[i][j] = best + points[j] - points[i];
+            }
+        }
+        cost[0][m - 1]
+    }
+}
+
+fn solution_arm(n: i64, cuts: Vec[i64]) -> i64 {
+    let cuts: Vec[i32] = cuts.iter().map(|c| c as i32).collect();
+    Solution.min_cost(n as i32, cuts)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64, cuts: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(n, cuts),
+        1 => memo_arm(n, cuts),
+        2 => knuth_arm(n, cuts),
+        _ => solution_arm(n, cuts),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["cut", "memo", "knuth", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every order of the cuts tried, each
+// cut costing the length of the piece it falls in at its turn
+
+fn cost_of(n: i64, order: Vec[i64]) -> i64 {
+    let mut ends: Vec[i64] = [0, n].to_vec();
+    let mut total = 0;
+    for c in order.iter() {
+        let at = ends.iter().position(|e| e > c).unwrap();
+        total += ends[at] - ends[at - 1];
+        ends.insert(at, c);
+    }
+    total
+}
+
+fn every_order(n: i64, left: Vec[i64], order: mut ref Vec[i64], best: mut ref i64) {
+    if left.is_empty() {
+        *best = (*best).min(cost_of(n, order.clone()));
+        return;
+    }
+    for i in 0..left.len() {
+        let mut rest = left.clone();
+        let c = rest.remove(i);
+        order.push(c);
+        every_order(n, rest, mut order, mut best);
+        order.pop();
+    }
+}
+
+fn literal(n: i64, cuts: Vec[i64]) -> i64 {
+    let mut best = i64.MAX;
+    let mut order = Vec.new();
+    every_order(n, cuts, mut order, mut best);
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15470;
+    let mut cases: Vec[(i64, Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 29 + 2;
+        let want = (next_random(mut seed) % 6 + 1).min(n - 1);
+        let mut cuts = Vec.new();
+        while cuts.len() < want {
+            let c = next_random(mut seed) % (n - 1) + 1;
+            if not cuts.contains(c) {
+                cuts.push(c);
+            }
+        }
+        cases.push((n, cuts));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, cuts) = cases[p].clone();
+        let truth = literal(n, cuts.clone());
+        let m = cuts.len();
+        let mirrored: Vec[i64] = cuts.iter().map(|c| n - c).collect();
+        let doubled: Vec[i64] = cuts.iter().map(|c| 2 * c).collect();
+        let reversed: Vec[i64] = cuts.iter().rev().cloned().collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n, cuts.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < n or answer > n * m,
+                arm(a, n, mirrored.clone()) != answer,
+                arm(a, 2 * n, doubled.clone()) != 2 * answer,
+                arm(a, n, reversed.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
