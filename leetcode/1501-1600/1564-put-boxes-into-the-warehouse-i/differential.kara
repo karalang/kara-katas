@@ -1,0 +1,246 @@
+// LeetCode #1564: Put Boxes Into the Warehouse I -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1 to
+// 5 boxes and 1 to 5 rooms, heights 1 to at most 9, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is from 0 to the fewer of boxes and rooms
+// P3  the boxes in reverse order leave the answer
+// P4  every room cut to the least height up to it leaves the answer
+// P5  a box taller than every room leaves the answer, and a box of height
+//     1 adds one unless every room was already full
+// P6  each arm agrees with at least two of the other three
+
+// ---- warehouse.kara: the ★ arm: usable heights, smallest boxes deepest
+
+fn star_arm(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let mut usable = warehouse.clone();
+    for i in 1..usable.len() {
+        usable[i] = usable[i].min(usable[i - 1]);
+    }
+    let mut sorted = boxes.clone();
+    sorted.sort();
+    let mut placed = 0;
+    for room in usable.iter().rev() {
+        if placed < sorted.len() and sorted[placed] <= room {
+            placed += 1;
+        }
+    }
+    placed
+}
+
+// ---- warehouse_front.kara: tallest boxes first from the door
+
+fn front_arm(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let mut sorted = boxes.clone();
+    sorted.sort_by(|a, b| b.cmp(a));
+    let mut next = 0;
+    let mut placed = 0;
+    for room in warehouse.iter() {
+        while next < sorted.len() and sorted[next] > room {
+            next += 1;
+        }
+        if next == sorted.len() {
+            break;
+        }
+        placed += 1;
+        next += 1;
+    }
+    placed
+}
+
+// ---- warehouse_search.kara: a binary search on the count
+
+fn fits(sorted: Vec[i64], usable: Vec[i64], k: i64) -> bool {
+    // the k smallest boxes, tallest first, against rooms 0 to k - 1
+    (0..k).all(|i| sorted[k - 1 - i] <= usable[i])
+}
+
+fn search_arm(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let mut usable = warehouse.clone();
+    for i in 1..usable.len() {
+        usable[i] = usable[i].min(usable[i - 1]);
+    }
+    let mut sorted = boxes.clone();
+    sorted.sort();
+    let most = sorted.len().min(usable.len());
+    let counts: Vec[i64] = (1..=most).collect();
+    counts.partition_point(|k| fits(sorted, usable, k))
+}
+
+// ---- warehouse_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_boxes_in_warehouse(boxes: own Vec[i32], warehouse: own Vec[i32]) -> i32 {
+        let mut boxes = boxes;
+        let mut warehouse = warehouse;
+        for i in 1..warehouse.len() {
+            warehouse[i] = warehouse[i].min(warehouse[i - 1]);
+        }
+        boxes.sort();
+        let mut i = 0;
+        let mut j = warehouse.len();
+        let mut count = 0;
+        while i < boxes.len() and j > 0 {
+            j -= 1;
+            if boxes[i] <= warehouse[j] {
+                count += 1;
+                i += 1;
+            }
+        }
+        count
+    }
+}
+
+fn solution_arm(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let boxes: Vec[i32] = boxes.iter().map(|b| b as i32).collect();
+    let warehouse: Vec[i32] = warehouse.iter().map(|w| w as i32).collect();
+    Solution.max_boxes_in_warehouse(boxes, warehouse)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(boxes, warehouse),
+        1 => front_arm(boxes, warehouse),
+        2 => search_arm(boxes, warehouse),
+        _ => solution_arm(boxes, warehouse),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["warehouse", "front", "search", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every order of every choice of boxes
+// pushed in from the left, one at a time; a box enters if the first room
+// is free and tall enough, and rolls on while the next room is free and
+// tall enough. An order counts when every box in it goes in; the answer is
+// the longest such order.
+
+fn push_all(boxes: Vec[i64], order: Vec[i64], warehouse: Vec[i64]) -> bool {
+    let mut full = Vec.filled(warehouse.len(), false);
+    for b in order.iter() {
+        let height = boxes[b];
+        if full[0] or warehouse[0] < height {
+            return false;
+        }
+        let mut at = 0;
+        while at + 1 < warehouse.len() and not full[at + 1] and warehouse[at + 1] >= height {
+            at += 1;
+        }
+        full[at] = true;
+    }
+    true
+}
+
+fn longest(boxes: Vec[i64], warehouse: Vec[i64], order: mut ref Vec[i64]) -> i64 {
+    let mut best = order.len();
+    for b in 0..boxes.len() {
+        if order.contains(b) {
+            continue;
+        }
+        order.push(b);
+        if push_all(boxes, order.clone(), warehouse) {
+            best = best.max(longest(boxes, warehouse, mut order));
+        }
+        order.pop();
+    }
+    best
+}
+
+fn literal(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let mut order = Vec.new();
+    longest(boxes, warehouse, mut order)
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15640;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 1;
+        let m = next_random(mut seed) % 5 + 1;
+        let top = next_random(mut seed) % 8 + 2;
+        let boxes: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let warehouse: Vec[i64] = (0..m).map(|_| next_random(mut seed) % top + 1).collect();
+        cases.push((boxes, warehouse));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (boxes, warehouse) = cases[p].clone();
+        let truth = literal(boxes.clone(), warehouse.clone());
+        let reversed: Vec[i64] = boxes.iter().rev().cloned().collect();
+        let mut usable = warehouse.clone();
+        for i in 1..usable.len() {
+            usable[i] = usable[i].min(usable[i - 1]);
+        }
+        let tallest = warehouse.iter().max().unwrap();
+        let mut too_tall = boxes.clone();
+        too_tall.push(tallest + 1);
+        let mut small = boxes.clone();
+        small.push(1);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, boxes.clone(), warehouse.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 0 or answer > boxes.len().min(warehouse.len()),
+                arm(a, reversed.clone(), warehouse.clone()) != answer,
+                arm(a, boxes.clone(), usable.clone()) != answer,
+                arm(a, too_tall.clone(), warehouse.clone()) != answer or arm(a, small.clone(), warehouse.clone()) != (answer + 1).min(warehouse.len()),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
