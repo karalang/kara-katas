@@ -1,0 +1,261 @@
+// LeetCode #1544: Make The String Great -- the differential.
+//
+// Five arms against the statement read literally, on 3000 strings of 1 to
+// 14 letters, each over its own run of 1 to 3 letters starting anywhere in
+// the alphabet (z wraps to a), both cases, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer has no bad pair, and is shorter than the string by an
+//     even count
+// P3  every case swapped swaps every case of the answer
+// P4  the string followed by itself backwards with every case swapped
+//     leaves nothing
+// P5  the answer is left as it is, and every letter moved on by one (z to
+//     a) moves the answer's letters on by one
+// P6  each arm agrees with at least two of the other four
+
+// ---- great.kara: the ★ arm: a stack of chars
+
+fn star_arm(s: String) -> String {
+    let mut stack: Vec[char] = Vec.new();
+    for c in s.chars() {
+        match stack.last() {
+            Some(top) if top != c and top.to_ascii_lowercase() == c.to_ascii_lowercase() => {
+                stack.pop();
+            }
+            _ => stack.push(c),
+        }
+    }
+    stack.iter().collect()
+}
+
+// ---- great_inplace.kara: the stack kept in the string's own bytes
+
+fn inplace_arm(s: String) -> String {
+    let mut b: Vec[u8] = s.bytes().iter().collect();
+    let mut kept = 0;
+    for i in 0..b.len() {
+        if kept > 0 and (b[kept - 1] as i64 - b[i] as i64).abs() == 32 {
+            kept -= 1;
+        } else {
+            b[kept] = b[i];
+            kept += 1;
+        }
+    }
+    b.truncate(kept);
+    String.from_utf8(b).unwrap()
+}
+
+// ---- great_passes.kara: passes dropping every bad pair met, until one drops none
+
+fn bad(a: char, b: char) -> bool {
+    a != b and a.to_ascii_lowercase() == b.to_ascii_lowercase()
+}
+
+fn passes_arm(s: String) -> String {
+    let mut letters: Vec[char] = s.chars().collect();
+    loop {
+        let mut next = Vec.new();
+        let mut i = 0;
+        while i < letters.len() {
+            if i + 1 < letters.len() and bad(letters[i], letters[i + 1]) {
+                i += 2;
+            } else {
+                next.push(letters[i]);
+                i += 1;
+            }
+        }
+        if next.len() == letters.len() {
+            return letters.iter().collect();
+        }
+        letters = next;
+    }
+}
+
+// ---- great_fold.kara: a String carried through a fold
+
+fn fold_arm(s: String) -> String {
+    s.chars().fold(String.new(), |great, c| {
+        let mut great = great;
+        match great.chars().last() {
+            Some(top) if top != c and top.eq_ignore_ascii_case(c) => {
+                great.pop();
+            }
+            _ => great.push(c),
+        }
+        great
+    })
+}
+
+// ---- great_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn make_good(s: String) -> String {
+        let mut stack: Vec[u8] = Vec.new();
+        for b in s.bytes() {
+            if let Some(top) = stack.last().cloned() {
+                if top != b and top.eq_ignore_ascii_case(b) {
+                    stack.pop();
+                    continue;
+                }
+            }
+            stack.push(b);
+        }
+        String.from_utf8(stack).unwrap()
+    }
+}
+
+fn solution_arm(s: String) -> String {
+    Solution.make_good(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> String {
+    match a {
+        0 => star_arm(s),
+        1 => inplace_arm(s),
+        2 => passes_arm(s),
+        3 => fold_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["great", "inplace", "passes", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: a bad pair, here the last one, removed
+// until none is left
+
+fn is_bad(a: char, b: char) -> bool {
+    a != b and a.to_lowercase() == b.to_lowercase()
+}
+
+fn literal(s: String) -> String {
+    let mut letters: Vec[char] = s.chars().collect();
+    loop {
+        let mut last = -1;
+        for i in 0..letters.len() - 1 {
+            if is_bad(letters[i], letters[i + 1]) {
+                last = i;
+            }
+        }
+        if last < 0 {
+            return letters.iter().collect();
+        }
+        letters.remove(last + 1);
+        letters.remove(last);
+    }
+}
+
+fn swapped(s: String) -> String {
+    s.chars().map(|c| if c.is_uppercase() { c.to_lowercase() } else { c.to_uppercase() }).collect()
+}
+
+// the string backwards with every case swapped: what cancels it
+fn mirror(s: String) -> String {
+    swapped(s.chars().rev().collect())
+}
+
+// every letter moved on by one in its case, z to a
+fn rotated(s: String) -> String {
+    s.chars()
+        .map(|c| match c {
+            'z' => 'a',
+            'Z' => 'A',
+            _ => ((c as u32 as u8) + 1) as char,
+        })
+        .collect()
+}
+
+fn has_bad_pair(s: String) -> bool {
+    let letters: Vec[char] = s.chars().collect();
+    (1..letters.len()).any(|i| is_bad(letters[i - 1], letters[i]))
+}
+
+fn main() {
+    let arms = 5;
+    let problems = 3000;
+    let mut seed = 15440;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 14 + 1;
+        let used = next_random(mut seed) % 3 + 1;
+        let low = next_random(mut seed) % 26;
+        let mut s = String.new();
+        for _ in 0..n {
+            let base = if next_random(mut seed) % 2 == 0 { b'a' } else { b'A' };
+            s.push((base + ((low + next_random(mut seed) % used) % 26) as u8) as char);
+        }
+        cases.push(s);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let s = cases[p].clone();
+        let truth = literal(s.clone());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s.clone());
+            answers.push(answer.clone());
+            check = (check * 31 + answer.len() + 1) % 1000000007;
+            for b in answer.bytes().iter() {
+                check = (check * 31 + b + 1) % 1000000007;
+            }
+            let failed = [
+                answer != truth,
+                has_bad_pair(answer.clone()) or answer.len() > s.len() or (s.len() - answer.len()) % 2 != 0,
+                arm(a, swapped(s.clone())) != swapped(answer.clone()),
+                arm(a, s.clone() + mirror(s.clone())) != "",
+                arm(a, answer.clone()) != answer or arm(a, rotated(s.clone())) != rotated(answer.clone()),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

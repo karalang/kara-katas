@@ -1,0 +1,80 @@
+// LeetCode #1544: Make The String Great -- the statement repeated in passes:
+// each pass walks left to right, dropping every bad pair it meets and
+// keeping the rest, until a pass drops nothing. The order pairs are dropped
+// in does not change what is left. O(n^2) at worst.
+
+fn bad(a: char, b: char) -> bool {
+    a != b and a.to_ascii_lowercase() == b.to_ascii_lowercase()
+}
+
+fn make_good(s: String) -> String {
+    let mut letters: Vec[char] = s.chars().collect();
+    loop {
+        let mut next = Vec.new();
+        let mut i = 0;
+        while i < letters.len() {
+            if i + 1 < letters.len() and bad(letters[i], letters[i + 1]) {
+                i += 2;
+            } else {
+                next.push(letters[i]);
+                i += 1;
+            }
+        }
+        if next.len() == letters.len() {
+            return letters.iter().collect();
+        }
+        letters = next;
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// one of the first `letters` letters, upper or lower case
+fn letter(letters: i64, seed: mut ref i64) -> char {
+    let base = if next_random(mut seed) % 2 == 0 { b'a' } else { b'A' };
+    (base + (next_random(mut seed) % letters) as u8) as char
+}
+
+// `count` strings of 1 to `most` letters over the first 1 to `letters`,
+// both cases
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut empty = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let used = next_random(mut seed) % letters + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(letter(used, mut seed));
+        }
+        let great = make_good(s);
+        if great.is_empty() {
+            empty += 1;
+        }
+        check = mix(check, great.len());
+        for b in great.bytes().iter() {
+            check = mix(check, b);
+        }
+    }
+    println(f"{count} strings of up to {most} letters: {empty} empty, checksum {check}");
+}
+
+fn main() {
+    let examples = ["leEeetcode", "abBAcC", "s", "aA", "Aa", "aa", "abBA", "aBbAcCdD", "AbBa", "xyzZYX", "abcCBAd"];
+    for s in examples.iter() {
+        println(f"\"{s}\" -> \"{make_good(s.to_string())}\"");
+    }
+    let mut seed = 1544;
+    batch(3000, 12, 3, mut seed);
+    batch(300, 100, 2, mut seed);
+    batch(300, 100, 26, mut seed);
+}
