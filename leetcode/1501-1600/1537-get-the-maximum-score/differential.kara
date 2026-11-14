@@ -1,0 +1,302 @@
+// LeetCode #1537: Get the Maximum Score -- the differential.
+//
+// Four arms against the statement read literally, on 3000 pairs of sorted
+// arrays built from 1 to 10 values, steps of 1 to 5, a random share of
+// them in both, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the two arrays swapped have the same answer
+// P3  the answer is at least either array's whole sum and at most the sum
+//     of every distinct value
+// P4  one more value, above all others, in both arrays adds that value
+// P5  every value doubled doubles the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- score.kara: the ★ arm: two pointers, the best sum ending on each array
+
+fn star_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let (n, m) = (nums1.len(), nums2.len());
+    let mut i = 0;
+    let mut j = 0;
+    let mut a = 0;
+    let mut b = 0;
+    while i < n or j < m {
+        if i < n and (j == m or nums1[i] < nums2[j]) {
+            a += nums1[i];
+            i += 1;
+        } else if j < m and (i == n or nums2[j] < nums1[i]) {
+            b += nums2[j];
+            j += 1;
+        } else {
+            let best = a.max(b) + nums1[i];
+            a = best;
+            b = best;
+            i += 1;
+            j += 1;
+        }
+    }
+    a.max(b) % 1000000007
+}
+
+// ---- score_segments.kara: the arrays cut at their shared values
+
+fn segments_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let in_first: Set[i64] = nums1.iter().cloned().collect();
+    let mut shared_sum = 0;
+    let mut shared_count = 0;
+    for v in nums2.iter() {
+        if in_first.contains(v) {
+            shared_sum += v;
+            shared_count += 1;
+        }
+    }
+    let in_second: Set[i64] = nums2.iter().cloned().collect();
+    // segment k: the values after the k-th shared value and before the next
+    let mut first_segments = Vec.filled(shared_count + 1, 0);
+    let mut k = 0;
+    for v in nums1.iter() {
+        if in_second.contains(v) {
+            k += 1;
+        } else {
+            first_segments[k] += v;
+        }
+    }
+    let mut second_segments = Vec.filled(shared_count + 1, 0);
+    k = 0;
+    for v in nums2.iter() {
+        if in_first.contains(v) {
+            k += 1;
+        } else {
+            second_segments[k] += v;
+        }
+    }
+    let mut total = shared_sum;
+    for s in 0..=shared_count {
+        total += first_segments[s].max(second_segments[s]);
+    }
+    total % 1000000007
+}
+
+// ---- score_suffix.kara: suffix DP from the largest values down
+
+fn suffix_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let (n, m) = (nums1.len(), nums2.len());
+    let mut from1 = Vec.filled(n + 1, 0);
+    let mut from2 = Vec.filled(m + 1, 0);
+    let mut i = n;
+    let mut j = m;
+    while i > 0 or j > 0 {
+        if i > 0 and (j == 0 or nums1[i - 1] > nums2[j - 1]) {
+            from1[i - 1] = nums1[i - 1] + from1[i];
+            i -= 1;
+        } else if j > 0 and (i == 0 or nums2[j - 1] > nums1[i - 1]) {
+            from2[j - 1] = nums2[j - 1] + from2[j];
+            j -= 1;
+        } else {
+            let best = nums1[i - 1] + from1[i].max(from2[j]);
+            from1[i - 1] = best;
+            from2[j - 1] = best;
+            i -= 1;
+            j -= 1;
+        }
+    }
+    from1[0].max(from2[0]) % 1000000007
+}
+
+// ---- score_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_sum(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let (n, m) = (nums1.len(), nums2.len());
+        let mut (i, j) = (0, 0);
+        let mut (a, b) = (0, 0);
+        while i < n or j < m {
+            if i < n and (j == m or nums1[i] < nums2[j]) {
+                a += nums1[i];
+                i += 1;
+            } else if j < m and (i == n or nums2[j] < nums1[i]) {
+                b += nums2[j];
+                j += 1;
+            } else {
+                let best = a.max(b) + nums1[i];
+                a = best;
+                b = best;
+                i += 1;
+                j += 1;
+            }
+        }
+        (a.max(b) % MOD) as i32
+    }
+}
+
+fn solution_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let nums1: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let nums2: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.max_sum(nums1, nums2)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, first: Vec[i64], second: Vec[i64]) -> i64 {
+    if which == 0 {
+        star_arm(first, second)
+    } else if which == 1 {
+        segments_arm(first, second)
+    } else if which == 2 {
+        suffix_arm(first, second)
+    } else {
+        solution_arm(first, second)
+    }
+}
+
+fn arm_name(which: i64) -> String {
+    ["star", "segments", "suffix", "solution"][which].to_string()
+}
+
+// ---- the statement read literally: every valid path walked, starting at
+// the front of either array, stepping left to right, and at a value in
+// both arrays free to go on in either; the score is the sum of the unique
+// values on the path, the answer the largest score
+
+fn walk(first: Vec[i64], second: Vec[i64], on_first: bool, at: i64, seen: Vec[i64], best: mut ref i64) {
+    let (here, other) = if on_first { (first, second) } else { (second, first) };
+    if at == here.len() {
+        let mut unique = seen.clone();
+        unique.sort();
+        unique.dedup();
+        let score: i64 = unique.iter().sum();
+        if score > *best {
+            *best = score;
+        }
+        return;
+    }
+    let v = here[at];
+    let mut path = seen.clone();
+    path.push(v);
+    walk(first, second, on_first, at + 1, path.clone(), mut best);
+    for k in 0..other.len() {
+        if other[k] == v {
+            walk(first, second, not on_first, k + 1, path.clone(), mut best);
+        }
+    }
+}
+
+fn literal(first: Vec[i64], second: Vec[i64]) -> i64 {
+    let mut best = 0;
+    walk(first, second, true, 0, Vec.new(), mut best);
+    walk(first, second, false, 0, Vec.new(), mut best);
+    best % 1000000007
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15370;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let mut first = Vec.new();
+        let mut second = Vec.new();
+        let mut value = 0;
+        let count = next_random(mut seed) % 10 + 1;
+        let both = next_random(mut seed) % 40;
+        for _ in 0..count {
+            value += next_random(mut seed) % 5 + 1;
+            let roll = next_random(mut seed) % 100;
+            if roll < both {
+                first.push(value);
+                second.push(value);
+            } else if roll < 50 + both / 2 {
+                first.push(value);
+            } else {
+                second.push(value);
+            }
+        }
+        if first.is_empty() {
+            first.push(value + 1);
+        }
+        if second.is_empty() {
+            second.push(value + 2);
+        }
+        cases.push((first, second));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (first, second) = cases[p].clone();
+        let truth = literal(first.clone(), second.clone());
+        let sum1: i64 = first.iter().sum();
+        let sum2: i64 = second.iter().sum();
+        let mut union = first.clone();
+        union.extend(second.iter().cloned());
+        union.sort();
+        union.dedup();
+        let all: i64 = union.iter().sum();
+        let top = union[union.len() - 1] + 7;
+        let mut first_more = first.clone();
+        first_more.push(top);
+        let mut second_more = second.clone();
+        second_more.push(top);
+        let first_doubled: Vec[i64] = first.iter().map(|v| v * 2).collect();
+        let second_doubled: Vec[i64] = second.iter().map(|v| v * 2).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, first.clone(), second.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, second.clone(), first.clone()) != answer,
+                answer < sum1.max(sum2) or answer > all,
+                arm(a, first_more.clone(), second_more.clone()) != answer + top,
+                arm(a, first_doubled.clone(), second_doubled.clone()) != answer * 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
