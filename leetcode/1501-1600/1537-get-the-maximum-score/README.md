@@ -120,7 +120,7 @@ type `[Vec[i64]; 2]` to `Array[Vec[i64], 2]`; its literal reading was then
 rewritten to pass the two arrays as two parameters, since a list literal
 of two borrowed parameters is a `Vec[ref Vec[i64]]`, not that array.
 
-The Rust template took 8, 1 and 5 changed lines over three rounds:
+The Rust template took 10, 1 and 5 changed lines over three rounds:
 `Vec<i32>` to `Vec[i32]` (and the wrapper's `Vec<i64>` and `Vec<i32>`),
 `let (mut i, mut j)` and `let (mut a, mut b)` to `let mut (..)`, `||` and
 `&&` to `or` and `and`, the wrapper's `|&x|` to `|x|` and `Solution::` to
