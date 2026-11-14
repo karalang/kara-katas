@@ -1,0 +1,256 @@
+// LeetCode #2161: Partition Array According to Given Pivot -- the
+// differential. The six arms, against the statement read literally: each
+// number put straight into its place, which is the count of numbers that
+// must come before it (every number of a lower group, and every number of
+// its own group that came before it); no filtering, sorting or joining.
+// 300 random lists of 1 to 10 numbers within 3, 20 or 10^6 of 0 in turn,
+// the pivot one of them; then 30 with the pivot first; then 30 with the
+// pivot last; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every number and the pivot 1000 more: every number of the answer
+//     1000 more
+// P3  every number and the pivot negated: the answer's three groups
+//     negated, the groups above and below swapped, each in its order
+// P4  the answer partitioned again: the same answer
+// P5  the list written twice: each of the answer's groups twice
+// P6  each arm agrees with at least three of the other five
+
+// ---- pivot.kara: the ★ arm, three `filter` passes in order
+fn star_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = nums.iter().filter(|x| x < pivot).collect();
+    out.extend(nums.iter().filter(|x| x == pivot));
+    out.extend(nums.iter().filter(|x| x > pivot));
+    out
+}
+
+// ---- pivot_buckets.kara: one pass into three lists by a `match` on `cmp`
+fn buckets_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let mut below: Vec[i64] = Vec.new();
+    let mut equal: Vec[i64] = Vec.new();
+    let mut above: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        match x.cmp(pivot) {
+            Ordering.Less => below.push(x),
+            Ordering.Equal => equal.push(x),
+            Ordering.Greater => above.push(x),
+        }
+    }
+    below.extend(mem.take(mut equal));
+    below.extend(mem.take(mut above));
+    below
+}
+
+// ---- pivot_ends.kara: one list filled from the front and from the back, the pivot between
+fn ends_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.filled(n, pivot);
+    let mut front = 0;
+    let mut back = n - 1;
+    for i in 0..n {
+        if nums[i] < pivot {
+            out[front] = nums[i];
+            front += 1;
+        }
+        let j = n - 1 - i;
+        if nums[j] > pivot {
+            out[back] = nums[j];
+            back -= 1;
+        }
+    }
+    out
+}
+
+// ---- pivot_sort.kara: a stable `sort_by_key` on the sign of `x - pivot`
+fn sort_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let mut out = nums.clone();
+    out.sort_by_key(|x| (x - pivot).signum());
+    out
+}
+
+// ---- pivot_struct.kara: a `Partition` that `place`s each number and is turned `into_vec`
+struct Partition {
+    pivot: i64,
+    below: Vec[i64],
+    pivots: i64,
+    above: Vec[i64],
+}
+
+impl Partition {
+    fn around(pivot: i64) -> Partition {
+        Partition { pivot: pivot, below: Vec.new(), pivots: 0, above: Vec.new() }
+    }
+
+    fn place(mut ref self, x: i64) {
+        if x < self.pivot {
+            self.below.push(x);
+        } else if x == self.pivot {
+            self.pivots += 1;
+        } else {
+            self.above.push(x);
+        }
+    }
+
+    fn into_vec(own self) -> Vec[i64] {
+        let mut out = self.below;
+        for _ in 0..self.pivots {
+            out.push(self.pivot);
+        }
+        out.extend(self.above);
+        out
+    }
+}
+
+fn place_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let mut p = Partition.around(pivot);
+    for x in nums.iter() {
+        p.place(x);
+    }
+    p.into_vec()
+}
+
+// ---- pivot_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn pivot_array(nums: Vec[i32], pivot: i32) -> Vec[i32] {
+        let mut less = Vec.new();
+        let mut greater = Vec.new();
+        let mut eq = 0;
+        for x in ref nums {
+            if x < pivot {
+                less.push(x);
+            } else if x > pivot {
+                greater.push(x);
+            } else {
+                eq += 1;
+            }
+        }
+        less.extend(repeat(pivot).take(eq));
+        less.extend(greater);
+        less
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_pivot_array(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    SolutionSolution.pivot_array(nums.iter().map(|x| x as i32).collect(), pivot as i32).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    let n = nums.len();
+    let group: Vec[i64] = nums.iter().map(|x| if x < pivot { 0 } else if x == pivot { 1 } else { 2 }).collect();
+    let mut out: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        let mut place = 0;
+        for j in 0..n {
+            if group[j] < group[i] or (group[j] == group[i] and j < i) {
+                place += 1;
+            }
+        }
+        out[place] = nums[i];
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64], pivot: i64) -> Vec[i64] {
+    match arm {
+        0 => star_pivot_array(nums, pivot),
+        1 => buckets_pivot_array(nums, pivot),
+        2 => ends_pivot_array(nums, pivot),
+        3 => sort_pivot_array(nums, pivot),
+        4 => place_pivot_array(nums, pivot),
+        _ => solution_pivot_array(nums, pivot),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    nums: Vec[i64],
+    pivot: i64,
+}
+
+fn main() {
+    let names = ["star", "buckets", "ends", "sort", "place", "solution"];
+    let mut seed = 2161;
+    let mut cases: Vec[Case] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let reach = [3, 20, 1000000][t % 3];
+        let nums: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % (2 * reach + 1) - reach).collect();
+        let at = if t < 300 { next_random(mut seed) % n } else if t < 330 { 0 } else { n - 1 };
+        cases.push(Case { nums: nums.clone(), pivot: nums[at] });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in cases.iter() {
+        let truth = literal(c.nums, c.pivot);
+        for x in truth.iter() {
+            check = (check * 31 + x + 1000001) % 1000000007;
+        }
+        check = (check * 31 + c.nums.len()) % 1000000007;
+        let raised: Vec[i64] = c.nums.iter().map(|x| x + 1000).collect();
+        let negated: Vec[i64] = c.nums.iter().map(|x| -x).collect();
+        let mut twice = c.nums.clone();
+        twice.extend(c.nums.iter().cloned());
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, c.nums, c.pivot)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let below: Vec[i64] = x.iter().filter(|v| v < c.pivot).collect();
+            let equal: Vec[i64] = x.iter().filter(|v| v == c.pivot).collect();
+            let above: Vec[i64] = x.iter().filter(|v| v > c.pivot).collect();
+            let all_raised: Vec[i64] = x.iter().map(|v| v + 1000).collect();
+            let mut turned: Vec[i64] = above.iter().map(|v| -v).collect();
+            turned.extend(equal.iter().map(|v| -v));
+            turned.extend(below.iter().map(|v| -v));
+            let mut doubled: Vec[i64] = Vec.new();
+            for group in [below.clone(), equal.clone(), above.clone()] {
+                doubled.extend(group.iter().cloned());
+                doubled.extend(group.iter().cloned());
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, raised, c.pivot + 1000) == all_raised,
+                answer(arm, negated, -c.pivot) == turned,
+                answer(arm, x, c.pivot) == x,
+                answer(arm, twice, c.pivot) == doubled,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{c.nums}, {c.pivot} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
