@@ -1,0 +1,240 @@
+// LeetCode #1534: Count Good Triplets -- the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 3 to
+// 12 values from 0 to 10 with a, b and c from 0 to 10, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed, with a and b swapped, has the same answer
+// P3  every value raised by the same amount leaves the answer
+// P4  one of a, b, c raised by one never lowers the answer, and all three
+//     at the largest value allow every one of the n(n-1)(n-2)/6 triplets
+// P5  every value v replaced by 10 - v leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- triplets.kara: the ★ arm: every i < j < k, the pair (i, j) first
+
+fn star_arm(arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    let n = arr.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            if (arr[i] - arr[j]).abs() > a {
+                continue;
+            }
+            for k in j + 1..n {
+                if (arr[j] - arr[k]).abs() <= b and (arr[i] - arr[k]).abs() <= c {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- triplets_counts.kara: the middle walked with prefix counts of the values before it
+
+fn counts_arm(arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    let n = arr.len();
+    let top = arr.iter().max().unwrap();
+    // seen[v]: how many of arr[0..j] are v
+    let mut seen = Vec.filled(top + 1, 0);
+    let mut count = 0;
+    for j in 0..n {
+        // at_most[v + 1]: how many of arr[0..j] are at most v
+        let mut at_most = Vec.filled(top + 2, 0);
+        for v in 0..=top {
+            at_most[v + 1] = at_most[v] + seen[v];
+        }
+        for k in j + 1..n {
+            if (arr[j] - arr[k]).abs() > b {
+                continue;
+            }
+            let low = (arr[j] - a).max(arr[k] - c).max(0);
+            let high = (arr[j] + a).min(arr[k] + c).min(top);
+            if low <= high {
+                count += at_most[high + 1] - at_most[low];
+            }
+        }
+        seen[arr[j]] += 1;
+    }
+    count
+}
+
+// ---- triplets_iter.kara: the ★ arm with iterators
+
+fn iter_arm(arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    let n = arr.len();
+    (0..n)
+        .flat_map(|i| (i + 1..n).map(|j| (i, j)))
+        .filter(|(i, j)| (arr[i] - arr[j]).abs() <= a)
+        .map(|(i, j)| {
+            (j + 1..n)
+                .filter(|k| (arr[j] - arr[k]).abs() <= b and (arr[i] - arr[k]).abs() <= c)
+                .count()
+        })
+        .sum()
+}
+
+// ---- triplets_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn count_good_triplets(arr: Vec[i32], a: i32, b: i32, c: i32) -> i32 {
+        let n = arr.len();
+        let mut count = 0;
+        for i in 0..n {
+            for j in i + 1..n {
+                if (arr[i] - arr[j]).abs() > a {
+                    continue;
+                }
+                for k in j + 1..n {
+                    if (arr[j] - arr[k]).abs() <= b and (arr[i] - arr[k]).abs() <= c {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        count
+    }
+}
+
+fn solution_arm(arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    Solution.count_good_triplets(arr, a as i32, b as i32, c as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    if k == 0 {
+        star_arm(arr, a, b, c)
+    } else if k == 1 {
+        counts_arm(arr, a, b, c)
+    } else if k == 2 {
+        iter_arm(arr, a, b, c)
+    } else {
+        solution_arm(arr, a, b, c)
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["star", "counts", "iter", "solution"][k].to_string()
+}
+
+// ---- the statement read literally: every (i, j, k) of places tried, the
+// ones with i < j < k that meet all three bounds counted
+
+fn literal(arr: Vec[i64], a: i64, b: i64, c: i64) -> i64 {
+    let n = arr.len();
+    let mut count = 0;
+    for i in 0..n {
+        for j in 0..n {
+            for k in 0..n {
+                let ordered = i < j and j < k;
+                let good = (arr[i] - arr[j]).abs() <= a and (arr[j] - arr[k]).abs() <= b and (arr[i] - arr[k]).abs() <= c;
+                if ordered and good {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let top = 10;
+    let mut seed = 15340;
+    let mut cases: Vec[(Vec[i64], i64, i64, i64, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 3;
+        let mut arr = Vec.new();
+        for _ in 0..n {
+            arr.push(next_random(mut seed) % (top + 1));
+        }
+        let a = next_random(mut seed) % (top + 1);
+        let b = next_random(mut seed) % (top + 1);
+        let c = next_random(mut seed) % (top + 1);
+        let raise = next_random(mut seed) % 50 + 1;
+        let which = next_random(mut seed) % 3;
+        cases.push((arr, a, b, c, raise, which));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (arr, a, b, c, raise, which) = cases[p].clone();
+        let n = arr.len();
+        let truth = literal(arr.clone(), a, b, c);
+        let mut reversed = arr.clone();
+        reversed.reverse();
+        let raised: Vec[i64] = arr.iter().map(|v| v + raise).collect();
+        let flipped: Vec[i64] = arr.iter().map(|v| top - v).collect();
+        let all = n * (n - 1) * (n - 2) / 6;
+        let mut answers = Vec.new();
+        for k in 0..arms {
+            let answer = arm(k, arr.clone(), a, b, c);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let looser = if which == 0 {
+                arm(k, arr.clone(), a + 1, b, c)
+            } else if which == 1 {
+                arm(k, arr.clone(), a, b + 1, c)
+            } else {
+                arm(k, arr.clone(), a, b, c + 1)
+            };
+            let failed = [
+                answer != truth,
+                arm(k, reversed.clone(), b, a, c) != answer,
+                arm(k, raised.clone(), a, b, c) != answer,
+                looser < answer or arm(k, arr.clone(), top, top, top) != all,
+                arm(k, flipped.clone(), a, b, c) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
