@@ -1,0 +1,362 @@
+// LeetCode #1548: The Most Similar Path in a Graph -- the differential.
+//
+// Four arms against the statement read literally, on 3000 connected graphs
+// of 2 to 6 cities named from 1 to 3 names, each with a target of 1 to 6
+// names from one more, with six properties. Every random choice is drawn
+// before any arm answers. An arm's answer is the distance its path reaches,
+// -1 when the path does not follow the roads or has the wrong length.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is from 0 to the target's length (so the path is a path)
+// P3  the target backwards leaves the answer
+// P4  the cities numbered backwards, roads and names with them, leave it
+// P5  every name spelled backwards, in the graph and the target, leaves it
+// P6  each arm agrees with at least two of the other three
+
+// ---- most_similar.kara: the ★ arm: a DP over the target's places
+
+fn star_arm(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    let mut next_to: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in roads.iter() {
+        next_to[a].push(b);
+        next_to[b].push(a);
+    }
+    let length = target.len();
+    let mut cost = Vec.filled(length, Vec.filled(n, i64.MAX));
+    let mut from = Vec.filled(length, Vec.filled(n, 0));
+    for v in 0..n {
+        cost[0][v] = if names[v] == target[0] { 0 } else { 1 };
+    }
+    for t in 1..length {
+        for v in 0..n {
+            let miss = if names[v] == target[t] { 0 } else { 1 };
+            for u in next_to[v].iter() {
+                if cost[t - 1][u] + miss < cost[t][v] {
+                    cost[t][v] = cost[t - 1][u] + miss;
+                    from[t][v] = u;
+                }
+            }
+        }
+    }
+    let mut last = 0;
+    for v in 1..n {
+        if cost[length - 1][v] < cost[length - 1][last] {
+            last = v;
+        }
+    }
+    let mut path = Vec.filled(length, 0);
+    path[length - 1] = last;
+    for t in (1..length).rev() {
+        path[t - 1] = from[t][path[t]];
+    }
+    path
+}
+
+// ---- most_similar_memo.kara: the recurrence from the other end, kept in a Map
+
+fn memo_rest(t: i64, v: i64, next_to: Vec[Vec[i64]], names: Vec[String], target: Vec[String], memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if let Some(known) = memo.get((t, v)) {
+        return known;
+    }
+    let miss = if names[v] == target[t] { 0 } else { 1 };
+    let mut best = 0;
+    if t + 1 < target.len() {
+        best = i64.MAX;
+        for u in next_to[v].iter() {
+            best = best.min(memo_rest(t + 1, u, next_to, names, target, mut memo));
+        }
+    }
+    memo.insert((t, v), miss + best);
+    miss + best
+}
+
+fn memo_arm(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    let mut next_to: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in roads.iter() {
+        next_to[a].push(b);
+        next_to[b].push(a);
+    }
+    let mut memo = Map.new();
+    let mut here = (0..n).min_by_key(|v| memo_rest(0, v, next_to, names, target, mut memo)).unwrap();
+    let mut path = [here].to_vec();
+    for t in 1..target.len() {
+        here = next_to[here].iter().min_by_key(|u| memo_rest(t, u, next_to, names, target, mut memo)).unwrap();
+        path.push(here);
+    }
+    path
+}
+
+// ---- most_similar_dijkstra.kara: Dijkstra over the layered graph
+
+fn dijkstra_arm(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    let mut next_to: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in roads.iter() {
+        next_to[a].push(b);
+        next_to[b].push(a);
+    }
+    let last = target.len() - 1;
+    let miss = |t: i64, v: i64| if names[v] == target[t] { 0 } else { 1 };
+    let mut queue = PriorityQueue.new();
+    let mut reached: Map[(i64, i64), i64] = Map.new();
+    let mut parent: Map[(i64, i64), i64] = Map.new();
+    let mut done: Set[(i64, i64)] = Set.new();
+    for v in 0..n {
+        reached.insert((0, v), miss(0, v));
+        queue.push((miss(0, v), 0, v));
+    }
+    let mut end = 0;
+    while let Some((cost, t, v)) = queue.pop() {
+        if not done.insert((t, v)) {
+            continue;
+        }
+        if t == last {
+            end = v;
+            break;
+        }
+        for u in next_to[v].iter() {
+            let through = cost + miss(t + 1, u);
+            let better = match reached.get((t + 1, u)) {
+                Some(known) => through < known,
+                None => true,
+            };
+            if better {
+                reached.insert((t + 1, u), through);
+                parent.insert((t + 1, u), v);
+                queue.push((through, t + 1, u));
+            }
+        }
+    }
+    let mut path = [end].to_vec();
+    for t in (1..=last).rev() {
+        path.push(parent[(t, path[path.len() - 1])]);
+    }
+    path.reverse();
+    path
+}
+
+// ---- most_similar_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn most_similar(n: i32, roads: Vec[Vec[i32]], names: Vec[String], target_path: Vec[String]) -> Vec[i32] {
+        let n = n as i64;
+        let mut adj = Vec.filled(n, Vec.new());
+        for r in ref roads {
+            adj[r[0]].push(r[1] as i64);
+            adj[r[1]].push(r[0]);
+        }
+        let m = target_path.len();
+        let mut dp = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut prev = Vec.filled(m, Vec.filled(n, 0));
+        for v in 0..n {
+            dp[0][v] = if names[v] == target_path[0] { 0 } else { 1 };
+        }
+        for t in 1..m {
+            for v in 0..n {
+                let cost: i32 = if names[v] == target_path[t] { 0 } else { 1 };
+                for u in ref adj[v] {
+                    if dp[t - 1][u] + cost < dp[t][v] {
+                        dp[t][v] = dp[t - 1][u] + cost;
+                        prev[t][v] = u;
+                    }
+                }
+            }
+        }
+        let mut last = 0;
+        for v in 1..n {
+            if dp[m - 1][v] < dp[m - 1][last] {
+                last = v;
+            }
+        }
+        let mut path = Vec.filled(m, 0i32);
+        path[m - 1] = last as i32;
+        for t in (1..m).rev() {
+            last = prev[t][last];
+            path[t - 1] = last as i32;
+        }
+        path
+    }
+}
+
+fn solution_arm(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    let roads: Vec[Vec[i32]] = roads.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    Solution.most_similar(n as i32, roads, names, target).iter().map(|v| v as i64).collect()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn name_of(i: i64) -> String {
+    let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut name = String.new();
+    for place in [676, 26, 1] {
+        name.push(letters.chars().nth(i / place % 26).unwrap());
+    }
+    name
+}
+
+fn judge(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String], path: Vec[i64]) -> i64 {
+    if path.len() != target.len() {
+        return -1;
+    }
+    let mut joined = Vec.filled(n, Vec.filled(n, false));
+    for (a, b) in roads.iter() {
+        joined[a][b] = true;
+        joined[b][a] = true;
+    }
+    let mut distance = 0;
+    for t in 0..path.len() {
+        let v = path[t];
+        if v < 0 or v >= n or (t > 0 and not joined[path[t - 1]][v]) {
+            return -1;
+        }
+        if names[v] != target[t] {
+            distance += 1;
+        }
+    }
+    distance
+}
+
+fn arm(a: i64, n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    match a {
+        0 => star_arm(n, roads, names, target),
+        1 => memo_arm(n, roads, names, target),
+        2 => dijkstra_arm(n, roads, names, target),
+        _ => solution_arm(n, roads, names, target),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["most_similar", "memo", "dijkstra", "solution"][a].to_string()
+}
+
+// the distance an arm's path reaches, -1 when it is not a path
+fn reach(a: i64, n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> i64 {
+    let path = arm(a, n, roads.clone(), names.clone(), target.clone());
+    judge(n, roads, names, target, path)
+}
+
+// ---- the statement read literally: every walk along the roads as long as
+// the target, the least number of places where its name is not the
+// target's
+
+fn walk(t: i64, v: i64, misses: i64, joined: Vec[Vec[bool]], names: Vec[String], target: Vec[String], best: mut ref i64) {
+    let misses = misses + if names[v] == target[t] { 0 } else { 1 };
+    if t == target.len() - 1 {
+        *best = (*best).min(misses);
+        return;
+    }
+    for u in 0..names.len() {
+        if joined[v][u] {
+            walk(t + 1, u, misses, joined, names, target, mut best);
+        }
+    }
+}
+
+fn literal(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> i64 {
+    let mut joined = Vec.filled(n, Vec.filled(n, false));
+    for (a, b) in roads.iter() {
+        joined[a][b] = true;
+        joined[b][a] = true;
+    }
+    let mut best = i64.MAX;
+    for v in 0..n {
+        walk(0, v, 0, joined, names, target, mut best);
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15480;
+    let mut cases: Vec[(i64, Vec[(i64, i64)], Vec[String], Vec[String])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 5 + 2;
+        let own = next_random(mut seed) % 3 + 1;
+        let names: Vec[String] = (0..n).map(|_| name_of(next_random(mut seed) % own)).collect();
+        let mut roads = Vec.new();
+        for v in 1..n {
+            roads.push((v, next_random(mut seed) % v));
+        }
+        let extra = next_random(mut seed) % n;
+        for _ in 0..extra {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a != b and not roads.contains((a, b)) and not roads.contains((b, a)) {
+                roads.push((a, b));
+            }
+        }
+        let length = next_random(mut seed) % 6 + 1;
+        let target: Vec[String] = (0..length).map(|_| name_of(next_random(mut seed) % (own + 1))).collect();
+        cases.push((n, roads, names, target));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, roads, names, target) = cases[p].clone();
+        let truth = literal(n, roads.clone(), names.clone(), target.clone());
+        let backwards: Vec[String] = target.iter().rev().cloned().collect();
+        let relabelled: Vec[(i64, i64)] = roads.iter().map(|(a, b)| (n - 1 - a, n - 1 - b)).collect();
+        let renamed_cities: Vec[String] = (0..n).map(|v| names[n - 1 - v].clone()).collect();
+        let spelled: Fn(String) -> String = |s: String| { s.chars().rev().collect() };
+        let names_spelled: Vec[String] = names.iter().map(|s| spelled(s.clone())).collect();
+        let target_spelled: Vec[String] = target.iter().map(|s| spelled(s.clone())).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = reach(a, n, roads.clone(), names.clone(), target.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 0 or answer > target.len(),
+                reach(a, n, roads.clone(), names.clone(), backwards.clone()) != answer,
+                reach(a, n, relabelled.clone(), renamed_cities.clone(), target.clone()) != answer,
+                reach(a, n, roads.clone(), names_spelled.clone(), target_spelled.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

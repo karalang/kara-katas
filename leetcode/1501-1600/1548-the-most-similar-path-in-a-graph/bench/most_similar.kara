@@ -1,0 +1,105 @@
+// LeetCode #1548: The Most Similar Path in a Graph -- bench: the ★ arm (a
+// DP over the target's places) over 100 connected graphs of 50 to 100
+// cities named from up to 26 names, each with a target of 100 names, built
+// once, each asked 20 times.
+
+fn most_similar(n: i64, roads: Vec[(i64, i64)], names: Vec[String], target: Vec[String]) -> Vec[i64] {
+    let mut next_to: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in roads.iter() {
+        next_to[a].push(b);
+        next_to[b].push(a);
+    }
+    let length = target.len();
+    let mut cost = Vec.filled(length, Vec.filled(n, i64.MAX));
+    let mut from = Vec.filled(length, Vec.filled(n, 0));
+    for v in 0..n {
+        cost[0][v] = if names[v] == target[0] { 0 } else { 1 };
+    }
+    for t in 1..length {
+        for v in 0..n {
+            let miss = if names[v] == target[t] { 0 } else { 1 };
+            for u in next_to[v].iter() {
+                if cost[t - 1][u] + miss < cost[t][v] {
+                    cost[t][v] = cost[t - 1][u] + miss;
+                    from[t][v] = u;
+                }
+            }
+        }
+    }
+    let mut last = 0;
+    for v in 1..n {
+        if cost[length - 1][v] < cost[length - 1][last] {
+            last = v;
+        }
+    }
+    let mut path = Vec.filled(length, 0);
+    path[length - 1] = last;
+    for t in (1..length).rev() {
+        path[t - 1] = from[t][path[t]];
+    }
+    path
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn name_of(i: i64) -> String {
+    let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut name = String.new();
+    for place in [676, 26, 1] {
+        name.push(letters.chars().nth(i / place % 26).unwrap());
+    }
+    name
+}
+
+fn main() {
+    let mut seed = 1548;
+    let mut graphs: Vec[(i64, Vec[(i64, i64)], Vec[String], Vec[String])] = Vec.new();
+    for _ in 0..100 {
+        let n = next_random(mut seed) % 51 + 50;
+        let own = next_random(mut seed) % 26 + 1;
+        let names: Vec[String] = (0..n).map(|_| name_of(next_random(mut seed) % own)).collect();
+        let mut joined = Vec.filled(n, Vec.filled(n, false));
+        let mut roads = Vec.new();
+        for v in 1..n {
+            let u = next_random(mut seed) % v;
+            joined[u][v] = true;
+            joined[v][u] = true;
+            roads.push((v, u));
+        }
+        let extra = next_random(mut seed) % (4 * n);
+        for _ in 0..extra {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a != b and not joined[a][b] {
+                joined[a][b] = true;
+                joined[b][a] = true;
+                roads.push((a, b));
+            }
+        }
+        let target: Vec[String] = (0..100).map(|_| name_of(next_random(mut seed) % (own + 1))).collect();
+        graphs.push((n, roads, names, target));
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..20 {
+        for (n, roads, names, target) in graphs.iter() {
+            let path = most_similar(n, roads, names, target);
+            let mut distance = 0;
+            for t in 0..path.len() {
+                check = mix(check, path[t]);
+                if names[path[t]] != target[t] {
+                    distance += 1;
+                }
+            }
+            total += distance;
+        }
+    }
+    println(f"20 passes over 100 graphs of up to 100 cities: distance {total}, checksum {check}");
+}
