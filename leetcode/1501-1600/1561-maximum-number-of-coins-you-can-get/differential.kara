@@ -1,0 +1,206 @@
+// LeetCode #1561: Maximum Number of Coins You Can Get -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 lists of 3, 6 or
+// 9 piles of 1 to at most 20 coins, with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer lies between n times the smallest pile and n times the
+//     largest
+// P3  the piles in reverse order leave the answer
+// P4  every pile doubled doubles the answer, and every pile raised by c
+//     raises it by n c
+// P5  a pile of 1 and two piles above every other, of v, put after the
+//     piles add v
+// P6  each arm agrees with at least two of the other three
+
+// ---- coins.kara: the ★ arm: sorted, every other pile past the n smallest
+
+fn star_arm(piles: Vec[i64]) -> i64 {
+    let mut sorted = piles.clone();
+    sorted.sort();
+    let n = sorted.len() / 3;
+    sorted[n..].iter().step_by(2).sum()
+}
+
+// ---- coins_rounds.kara: the rounds played out on a VecDeque
+
+fn rounds_arm(piles: Vec[i64]) -> i64 {
+    let mut sorted = piles.clone();
+    sorted.sort();
+    let mut table: VecDeque[i64] = sorted.into_iter().collect();
+    let mut mine = 0;
+    while not table.is_empty() {
+        table.pop_back();
+        mine += table.pop_back().unwrap();
+        table.pop_front();
+    }
+    mine
+}
+
+// ---- coins_count.kara: a counting sort walked from the top
+
+fn count_arm(piles: Vec[i64]) -> i64 {
+    let mut count = Vec.filled(10001, 0);
+    for p in piles.iter() {
+        count[p] += 1;
+    }
+    let mut left = piles.len() / 3 * 2;
+    let mut place = 0;
+    let mut mine = 0;
+    let mut size = 10000;
+    while left > 0 {
+        if count[size] == 0 {
+            size -= 1;
+            continue;
+        }
+        count[size] -= 1;
+        if place % 2 == 1 {
+            mine += size;
+        }
+        place += 1;
+        left -= 1;
+    }
+    mine
+}
+
+// ---- coins_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_coins(piles: own Vec[i32]) -> i32 {
+        let mut piles = piles;
+        piles.sort();
+        let n = piles.len() / 3;
+        piles.iter().skip(n).step_by(2).sum()
+    }
+}
+
+fn solution_arm(piles: Vec[i64]) -> i64 {
+    let piles: Vec[i32] = piles.iter().map(|p| p as i32).collect();
+    Solution.max_coins(piles)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, piles: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(piles),
+        1 => rounds_arm(piles),
+        2 => count_arm(piles),
+        _ => solution_arm(piles),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["coins", "rounds", "count", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way to split the piles into
+// triples tried (the first pile left with each pair of the others, the
+// rest split the same way), Alice taking the most of each triple, you the
+// next, Bob the last; the answer is the most you can end with
+
+fn literal(piles: Vec[i64]) -> i64 {
+    if piles.is_empty() {
+        return 0;
+    }
+    let mut best = 0;
+    for j in 1..piles.len() {
+        for k in j + 1..piles.len() {
+            let mut triple = [piles[0], piles[j], piles[k]];
+            triple.sort();
+            let rest: Vec[i64] = (1..piles.len()).filter(|i| i != j and i != k).map(|i| piles[i]).collect();
+            best = best.max(triple[1] + literal(rest));
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15610;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 3 + 1;
+        let top = next_random(mut seed) % 20 + 1;
+        let piles: Vec[i64] = (0..3 * n).map(|_| next_random(mut seed) % top + 1).collect();
+        let add = next_random(mut seed) % 100;
+        cases.push((piles, add));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (piles, add) = cases[p].clone();
+        let n = piles.len() / 3;
+        let truth = literal(piles.clone());
+        let low = piles.iter().min().unwrap();
+        let high = piles.iter().max().unwrap();
+        let reversed: Vec[i64] = piles.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = piles.iter().map(|v| 2 * v).collect();
+        let raised: Vec[i64] = piles.iter().map(|v| v + add).collect();
+        let mut grown = piles.clone();
+        grown.push(high + add);
+        grown.push(1);
+        grown.push(high + add);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, piles.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < n * low or answer > n * high,
+                arm(a, reversed.clone()) != answer,
+                arm(a, doubled.clone()) != 2 * answer or arm(a, raised.clone()) != answer + n * add,
+                arm(a, grown.clone()) != answer + high + add,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
