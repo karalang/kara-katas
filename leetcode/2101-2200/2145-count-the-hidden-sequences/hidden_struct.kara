@@ -1,0 +1,87 @@
+// LeetCode #2145: Count the Hidden Sequences -- a `struct Walk` that
+// `step`s along the differences (`mut ref self`), keeping where it is and
+// the lowest and highest it has been, and is asked how many starts it
+// `fits` between two bounds (`ref self`). O(n).
+
+struct Walk {
+    at: i64,
+    lowest: i64,
+    highest: i64,
+}
+
+impl Walk {
+    fn step(mut ref self, d: i64) {
+        self.at += d;
+        if self.at < self.lowest {
+            self.lowest = self.at;
+        }
+        if self.at > self.highest {
+            self.highest = self.at;
+        }
+    }
+
+    fn span(ref self) -> i64 {
+        self.highest - self.lowest
+    }
+
+    fn fits(ref self, lower: i64, upper: i64) -> i64 {
+        let room = upper - lower - self.span();
+        if room < 0 { 0 } else { room + 1 }
+    }
+}
+
+fn number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let mut walk = Walk { at: 0, lowest: 0, highest: 0 };
+    for d in differences.iter() {
+        walk.step(d);
+    }
+    walk.fits(lower, upper)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(differences: Vec[i64], lower: i64, upper: i64) {
+    println(f"{differences} {lower} {upper} -> {number_of_arrays(differences, lower, upper)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: a walk that stays put
+    // in a range of one, the widest single step, and a step too wide
+    show([1, -3, 4].to_vec(), 1, 6);
+    show([3, -4, 5, 1, -2].to_vec(), -4, 5);
+    show([4, -7, 2].to_vec(), 3, 6);
+    show([0].to_vec(), 5, 5);
+    show([100000].to_vec(), -100000, 100000);
+    show([5].to_vec(), 0, 4);
+    // 2000 random walks of 1 to 12 steps of up to 5 or 10000 either way,
+    // in turn, within bounds up to ten steps wide either side of 0
+    let mut seed = 2145;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let top = [5, 10000][round % 2];
+        let differences: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (2 * top + 1) - top).collect();
+        let a = next_random(mut seed) % (20 * top + 1) - 10 * top;
+        let b = next_random(mut seed) % (20 * top + 1) - 10 * top;
+        let count = number_of_arrays(differences, a.min(b), a.max(b));
+        total += count;
+        check = (check * 31 + count + n) % 1000000007;
+    }
+    println(f"2000 walks: {total} sequences in all, checksum {check}");
+    // the constraints' largest, 100000 differences between -100000 and
+    // 100000: every one 1, swinging the widest each way in turn, and at
+    // random by up to 10
+    let ones: Vec[i64] = Vec.filled(100000, 1);
+    let swings: Vec[i64] = (0..100000).map(|i| if i % 2 == 0 { 100000 } else { -100000 }).collect();
+    let random: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 21 - 10).collect();
+    let x = number_of_arrays(ones, -100000, 100000);
+    let y = number_of_arrays(swings, -100000, 100000);
+    let z = number_of_arrays(random, -100000, 100000);
+    println(f"100000 differences: {x} all 1, {y} swinging, {z} at random");
+}

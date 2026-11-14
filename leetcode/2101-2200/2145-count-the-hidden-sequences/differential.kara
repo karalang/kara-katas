@@ -1,0 +1,236 @@
+// LeetCode #2145: Count the Hidden Sequences -- the differential. The six
+// arms, against the statement read literally: every first value from
+// `lower` to `upper` is tried, the sequence it starts walked out by the
+// differences, and it counts when every value stays between the bounds.
+// No prefix sum is kept apart and no span is measured. 300 random walks
+// of 1 to 8 steps of up to 3 either way, within bounds up to 15 either
+// side of 0; then 30 whose every step is 0; then 30 whose bounds are one
+// value; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the walk taken backwards, its differences reversed and turned
+//     round: the same count
+// P3  every difference turned round: the same count
+// P4  the bounds the lowest and highest the walk reaches from 0: one
+// P5  the walk followed by its own way back: the same count
+// P6  each arm agrees with at least three of the other five
+
+// ---- hidden.kara: the ★ arm, the lowest and highest prefix kept in one walk
+fn star_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let mut at = 0;
+    let mut lowest = 0;
+    let mut highest = 0;
+    for d in differences.iter() {
+        at += d;
+        lowest = lowest.min(at);
+        highest = highest.max(at);
+    }
+    ((upper - lower) - (highest - lowest) + 1).max(0)
+}
+
+// ---- hidden_narrow.kara: the range of first values narrowed by each prefix
+fn narrow_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let mut least = lower;
+    let mut most = upper;
+    let mut at = 0;
+    for d in differences.iter() {
+        at += d;
+        least = least.max(lower - at);
+        most = most.min(upper - at);
+        if least > most {
+            return 0;
+        }
+    }
+    most - least + 1
+}
+
+// ---- hidden_scan.kara: the prefixes made by `scan`, their `max` and `min`
+fn scan_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let prefixes: Vec[i64] = [0]
+        .iter()
+        .cloned()
+        .chain(differences.iter().scan(0, |at, d| Some((at + d, at + d))))
+        .collect();
+    let highest = prefixes.iter().max().cloned().unwrap_or(0);
+    let lowest = prefixes.iter().min().cloned().unwrap_or(0);
+    (upper - lower - (highest - lowest) + 1).max(0)
+}
+
+// ---- hidden_struct.kara: a `Walk` that steps and is asked how many starts fit
+struct Walk {
+    at: i64,
+    lowest: i64,
+    highest: i64,
+}
+
+impl Walk {
+    fn step(mut ref self, d: i64) {
+        self.at += d;
+        if self.at < self.lowest {
+            self.lowest = self.at;
+        }
+        if self.at > self.highest {
+            self.highest = self.at;
+        }
+    }
+
+    fn span(ref self) -> i64 {
+        self.highest - self.lowest
+    }
+
+    fn fits(ref self, lower: i64, upper: i64) -> i64 {
+        let room = upper - lower - self.span();
+        if room < 0 { 0 } else { room + 1 }
+    }
+}
+
+fn walk_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let mut walk = Walk { at: 0, lowest: 0, highest: 0 };
+    for d in differences.iter() {
+        walk.step(d);
+    }
+    walk.fits(lower, upper)
+}
+
+// ---- hidden_fold.kara: one `fold` carrying where the walk is, its lowest and highest
+fn fold_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let (_, lowest, highest) = differences
+        .iter()
+        .fold((0, 0, 0), |(at, low, high), d| (at + d, low.min(at + d), high.max(at + d)));
+    let room = upper - lower - (highest - lowest);
+    if room >= 0 { room + 1 } else { 0 }
+}
+
+// ---- hidden_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn number_of_arrays(differences: Vec[i32], lower: i32, upper: i32) -> i32 {
+        let mut (cur, mn, mx) = (0, 0, 0);
+        for d in ref differences {
+            cur += d;
+            mn = mn.min(cur);
+            mx = mx.max(cur);
+        }
+        let ans = (upper - lower) - (mx - mn) + 1;
+        ans.max(0) as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_number_of_arrays(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let d: Vec[i32] = differences.iter().map(|x| x as i32).collect();
+    SolutionSolution.number_of_arrays(d, lower as i32, upper as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal(differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    let mut count = 0;
+    for first in lower..upper + 1 {
+        let mut value = first;
+        let mut inside = true;
+        for d in differences.iter() {
+            value += d;
+            if value < lower or value > upper {
+                inside = false;
+            }
+        }
+        if inside {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, differences: Vec[i64], lower: i64, upper: i64) -> i64 {
+    match arm {
+        0 => star_number_of_arrays(differences, lower, upper),
+        1 => narrow_number_of_arrays(differences, lower, upper),
+        2 => scan_number_of_arrays(differences, lower, upper),
+        3 => walk_number_of_arrays(differences, lower, upper),
+        4 => fold_number_of_arrays(differences, lower, upper),
+        _ => solution_number_of_arrays(differences, lower, upper),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "narrow", "scan", "walk", "fold", "solution"];
+    let mut seed = 2145;
+    let mut walks: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 8 + 1;
+        let differences: Vec[i64] = if t >= 300 and t < 330 {
+            Vec.filled(n, 0)
+        } else {
+            (0..n).map(|_| next_random(mut seed) % 7 - 3).collect()
+        };
+        let a = next_random(mut seed) % 31 - 15;
+        let b = if t >= 330 { a } else { next_random(mut seed) % 31 - 15 };
+        walks.push((differences, a.min(b), a.max(b)));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (differences, lower, upper) in walks.iter() {
+        let truth = literal(differences, lower, upper);
+        check = (check * 31 + truth + differences.len()) % 1000000007;
+        let backwards: Vec[i64] = differences.iter().rev().map(|d| -d).collect();
+        let turned: Vec[i64] = differences.iter().map(|d| -d).collect();
+        let mut at = 0;
+        let mut low = 0;
+        let mut high = 0;
+        for d in differences.iter() {
+            at += d;
+            low = low.min(at);
+            high = high.max(at);
+        }
+        let mut there_and_back = differences.clone();
+        there_and_back.extend(backwards.iter().cloned());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, differences, lower, upper)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, backwards, lower, upper) == x,
+                answer(arm, turned, lower, upper) == x,
+                answer(arm, differences, low, high) == 1,
+                answer(arm, there_and_back, lower, upper) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{differences} {lower} {upper} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{walks.len()} walks: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
