@@ -1,0 +1,445 @@
+// LeetCode #2146: K Highest Ranked Items Within a Price Range -- the
+// differential. The six arms, against the statement read literally: the
+// distance of every cell is settled by sweeping the grid, each open cell
+// taking one more than its nearest neighbour, until a sweep changes
+// nothing; then every reachable item in range is given its rank by
+// counting the items that beat it on distance, price, row and column, in
+// that order, and those with rank below k are listed in rank order. No
+// queue and no sort. 300 random grids of up to 5 by 5, a wall one cell in
+// 4, prices of 1 to 5; then 30 with prices of 1 to 2, many ties; then 30
+// of up to 7 by 7 with prices of 1 to 100; ranges from 2 up; every one
+// drawn before any arm answers.
+//
+// P1  the items are the statement read literally
+// P2  every price outside the range made an empty cell: the same items
+// P3  k raised to every cell: the items for k are its first k
+// P4  every price and the range doubled: the same items
+// P5  the grid walled round, the start moved in by one: every item moved
+//     in by one
+// P6  each arm agrees with at least three of the other five
+
+// ---- ranked.kara: the ★ arm, a breadth-first search and one sort of rank tuples
+fn star_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[start[0]][start[1]] = true;
+    let mut queue: VecDeque[(i64, i64, i64)] = VecDeque.new();
+    queue.push_back((start[0], start[1], 0));
+    let mut found: Vec[(i64, i64, i64, i64)] = Vec.new();
+    while let Some((r, c, dist)) = queue.pop_front() {
+        let price = grid[r][c];
+        if price >= pricing[0] and price <= pricing[1] {
+            found.push((dist, price, r, c));
+        }
+        for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let nr = r + dr;
+            let nc = c + dc;
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and not seen[nr][nc] and grid[nr][nc] != 0 {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc, dist + 1));
+            }
+        }
+    }
+    found.sort();
+    found.iter().take(k).map(|(_, _, r, c)| [r, c].to_vec()).collect()
+}
+
+// ---- ranked_levels.kara: level by level, each level sorted, stopping at k
+fn levels_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[start[0]][start[1]] = true;
+    let mut level: Vec[(i64, i64)] = [(start[0], start[1])].to_vec();
+    let mut ranked: Vec[Vec[i64]] = Vec.new();
+    while level.len() > 0 and ranked.len() < k {
+        let mut items: Vec[(i64, i64, i64)] = Vec.new();
+        let mut next: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in level.iter() {
+            let price = grid[r][c];
+            if price >= pricing[0] and price <= pricing[1] {
+                items.push((price, r, c));
+            }
+            for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let nr = r + dr;
+                let nc = c + dc;
+                if nr >= 0 and nr < m and nc >= 0 and nc < n and not seen[nr][nc] and grid[nr][nc] != 0 {
+                    seen[nr][nc] = true;
+                    next.push((nr, nc));
+                }
+            }
+        }
+        items.sort();
+        for (_, r, c) in items.iter() {
+            if ranked.len() < k {
+                ranked.push([r, c].to_vec());
+            }
+        }
+        level = next;
+    }
+    ranked
+}
+
+// ---- ranked_heap.kara: the cells popped in rank order off a `PriorityQueue`
+fn heap_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[start[0]][start[1]] = true;
+    let mut heap: PriorityQueue[(i64, i64, i64, i64)] = PriorityQueue.new();
+    heap.push((0, grid[start[0]][start[1]], start[0], start[1]));
+    let mut ranked: Vec[Vec[i64]] = Vec.new();
+    while let Some((dist, price, r, c)) = heap.pop() {
+        if price >= pricing[0] and price <= pricing[1] {
+            ranked.push([r, c].to_vec());
+            if ranked.len() == k {
+                break;
+            }
+        }
+        for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let nr = r + dr;
+            let nc = c + dc;
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and not seen[nr][nc] and grid[nr][nc] != 0 {
+                seen[nr][nc] = true;
+                heap.push((dist + 1, grid[nr][nc], nr, nc));
+            }
+        }
+    }
+    ranked
+}
+
+// ---- ranked_struct.kara: a `Shop` with its distances, ranked by `sort_by` and `then`
+struct Shop {
+    grid: Vec[Vec[i64]],
+    low: i64,
+    high: i64,
+}
+
+impl Shop {
+    fn open(ref self, r: i64, c: i64) -> bool {
+        r >= 0 and r < self.grid.len() and c >= 0 and c < self.grid[0].len() and self.grid[r][c] != 0
+    }
+
+    fn for_sale(ref self, r: i64, c: i64) -> bool {
+        self.grid[r][c] >= self.low and self.grid[r][c] <= self.high
+    }
+
+    fn distances(ref self, sr: i64, sc: i64) -> Vec[Vec[i64]] {
+        let mut dist: Vec[Vec[i64]] = Vec.filled(self.grid.len(), Vec.filled(self.grid[0].len(), -1));
+        dist[sr][sc] = 0;
+        let mut order: Vec[(i64, i64)] = [(sr, sc)].to_vec();
+        let mut head = 0;
+        while head < order.len() {
+            let (r, c) = order[head];
+            head += 1;
+            for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                if self.open(r + dr, c + dc) and dist[r + dr][c + dc] < 0 {
+                    dist[r + dr][c + dc] = dist[r][c] + 1;
+                    order.push((r + dr, c + dc));
+                }
+            }
+        }
+        dist
+    }
+}
+
+fn shop_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let shop = Shop { grid: grid.clone(), low: pricing[0], high: pricing[1] };
+    let dist = shop.distances(start[0], start[1]);
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            if dist[r][c] >= 0 and shop.for_sale(r, c) {
+                items.push([r, c].to_vec());
+            }
+        }
+    }
+    items.sort_by(|a, b| {
+        dist[a[0]][a[1]]
+            .cmp(dist[b[0]][b[1]])
+            .then(grid[a[0]][a[1]].cmp(grid[b[0]][b[1]]))
+            .then(a[0].cmp(b[0]))
+            .then(a[1].cmp(b[1]))
+    });
+    items.truncate(k);
+    items
+}
+
+// ---- ranked_flat.kara: one flat index, ranked by `sort_by_key` after a stable sort
+fn flat_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let cells: Vec[i64] = grid.iter().flat_map(|row| row.iter().cloned()).collect();
+    let mut dist: Vec[i64] = Vec.filled(m * n, -1);
+    let first = start[0] * n + start[1];
+    dist[first] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(first);
+    while let Some(at) = queue.pop_front() {
+        let r = at / n;
+        let c = at % n;
+        let mut near: Vec[i64] = Vec.new();
+        if r > 0 {
+            near.push(at - n);
+        }
+        if r + 1 < m {
+            near.push(at + n);
+        }
+        if c > 0 {
+            near.push(at - 1);
+        }
+        if c + 1 < n {
+            near.push(at + 1);
+        }
+        for to in near.iter() {
+            if cells[to] != 0 and dist[to] < 0 {
+                dist[to] = dist[at] + 1;
+                queue.push_back(to);
+            }
+        }
+    }
+    let mut items: Vec[i64] = (0..m * n)
+        .filter(|i| dist[i] >= 0 and cells[i] >= pricing[0] and cells[i] <= pricing[1])
+        .collect();
+    items.sort_by_key(|i| (dist[i], cells[i]));
+    items.iter().take(k).map(|i| [i / n, i % n].to_vec()).collect()
+}
+
+// ---- ranked_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn highest_ranked_k_items(grid: Vec[Vec[i32]], pricing: Vec[i32], start: Vec[i32], k: i32) -> Vec[Vec[i32]] {
+        let (m, n) = (grid.len(), grid[0].len());
+        let (low, high) = (pricing[0], pricing[1]);
+        let dirs: Array[(i32, i32), 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        let mut seen = Vec.filled(m, Vec.filled(n, false));
+        let (sr, sc) = (start[0] as i64, start[1] as i64);
+        seen[sr][sc] = true;
+        let mut q = VecDeque.new();
+        q.push_back((sr, sc, 0));
+        let mut items: Vec[(i32, i32, i64, i64)] = Vec.new();
+        while let Some((r, c, d)) = q.pop_front() {
+            let p = grid[r][c];
+            if p >= low and p <= high {
+                items.push((d, p, r, c));
+            }
+            for (dr, dc) in dirs.iter() {
+                let nr = r as i32 + dr;
+                let nc = c as i32 + dc;
+                if nr < 0 or nc < 0 or nr >= m as i32 or nc >= n as i32 {
+                    continue;
+                }
+                let (nr, nc) = (nr as i64, nc as i64);
+                if seen[nr][nc] or grid[nr][nc] == 0 {
+                    continue;
+                }
+                seen[nr][nc] = true;
+                q.push_back((nr, nc, d + 1));
+            }
+        }
+        items.sort();
+        items.truncate(k);
+        items.into_iter().map(|(_, _, r, c)| [r as i32, c as i32]).collect()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    let p: Vec[i32] = pricing.iter().map(|v| v as i32).collect();
+    let s: Vec[i32] = start.iter().map(|v| v as i32).collect();
+    SolutionSolution.highest_ranked_k_items(g, p, s, k as i32)
+        .into_iter()
+        .map(|cell| cell.into_iter().map(|v| v as i64).collect())
+        .collect()
+}
+
+
+// ---- the statement read literally
+
+fn beats(a: Vec[i64], b: Vec[i64]) -> bool {
+    for i in 0..4 {
+        if a[i] != b[i] {
+            return a[i] < b[i];
+        }
+    }
+    false
+}
+
+fn literal(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let far = m * n + 1;
+    let mut dist: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, far));
+    dist[start[0]][start[1]] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..m {
+            for c in 0..n {
+                if grid[r][c] != 0 {
+                    let mut best = dist[r][c];
+                    if r > 0 {
+                        best = best.min(dist[r - 1][c] + 1);
+                    }
+                    if r + 1 < m {
+                        best = best.min(dist[r + 1][c] + 1);
+                    }
+                    if c > 0 {
+                        best = best.min(dist[r][c - 1] + 1);
+                    }
+                    if c + 1 < n {
+                        best = best.min(dist[r][c + 1] + 1);
+                    }
+                    if best < dist[r][c] {
+                        dist[r][c] = best;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut items: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            if dist[r][c] < far and grid[r][c] >= pricing[0] and grid[r][c] <= pricing[1] {
+                items.push([dist[r][c], grid[r][c], r, c].to_vec());
+            }
+        }
+    }
+    let mut ranked: Vec[Vec[i64]] = Vec.new();
+    for place in 0..k {
+        for item in items.iter() {
+            let mut rank = 0;
+            for other in items.iter() {
+                if beats(other, item) {
+                    rank += 1;
+                }
+            }
+            if rank == place {
+                ranked.push([item[2], item[3]].to_vec());
+            }
+        }
+    }
+    ranked
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_highest_ranked_k_items(grid, pricing, start, k),
+        1 => levels_highest_ranked_k_items(grid, pricing, start, k),
+        2 => heap_highest_ranked_k_items(grid, pricing, start, k),
+        3 => shop_highest_ranked_k_items(grid, pricing, start, k),
+        4 => flat_highest_ranked_k_items(grid, pricing, start, k),
+        _ => solution_highest_ranked_k_items(grid, pricing, start, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    grid: Vec[Vec[i64]],
+    pricing: Vec[i64],
+    start: Vec[i64],
+    k: i64,
+}
+
+fn main() {
+    let names = ["star", "levels", "heap", "shop", "flat", "solution"];
+    let mut seed = 2146;
+    let mut cases: Vec[Case] = Vec.new();
+    for t in 0..360 {
+        let side = if t < 330 { 5 } else { 7 };
+        let top = if t < 300 { 5 } else if t < 330 { 2 } else { 100 };
+        let m = next_random(mut seed) % side + 1;
+        let n = next_random(mut seed) % side + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(if next_random(mut seed) % 4 == 0 { 0 } else { next_random(mut seed) % top + 1 });
+            }
+            grid.push(row);
+        }
+        let sr = next_random(mut seed) % m;
+        let sc = next_random(mut seed) % n;
+        if grid[sr][sc] == 0 {
+            grid[sr][sc] = 1;
+        }
+        let a = next_random(mut seed) % top + 1;
+        let b = next_random(mut seed) % top + 1;
+        let k = next_random(mut seed) % (m * n) + 1;
+        cases.push(Case { grid: grid, pricing: [a.min(b).max(2), a.max(b).max(2)].to_vec(), start: [sr, sc].to_vec(), k: k });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let truth = literal(case.grid, case.pricing, case.start, case.k);
+        check = (check * 31 + truth.len()) % 1000000007;
+        for cell in truth.iter() {
+            check = (check * 31 + cell[0] * 1000 + cell[1] + 1) % 1000000007;
+        }
+        let m = case.grid.len();
+        let n = case.grid[0].len();
+        let low = case.pricing[0];
+        let high = case.pricing[1];
+        let emptied: Vec[Vec[i64]] = case.grid.iter().map(|row| row.iter().map(|v| if v != 0 and (v < low or v > high) { 1 } else { v }).collect()).collect();
+        let doubled: Vec[Vec[i64]] = case.grid.iter().map(|row| row.iter().map(|v| if v > 1 { 2 * v } else { v }).collect()).collect();
+        let mut walled: Vec[Vec[i64]] = [Vec.filled(n + 2, 0)].to_vec();
+        for row in case.grid.iter() {
+            let mut inner: Vec[i64] = [0].to_vec();
+            inner.extend(row.iter().cloned());
+            inner.push(0);
+            walled.push(inner);
+        }
+        walled.push(Vec.filled(n + 2, 0));
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, case.grid, case.pricing, case.start, case.k)).collect();
+        for arm in 0..6 {
+            let x = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == *x {
+                    same += 1;
+                }
+            }
+            let all = answer(arm, case.grid, case.pricing, case.start, m * n);
+            let first: Vec[Vec[i64]] = all.iter().take(case.k).cloned().collect();
+            let moved: Vec[Vec[i64]] = x.iter().map(|cell| [cell[0] + 1, cell[1] + 1].to_vec()).collect();
+            let verdicts = [
+                *x == truth,
+                answer(arm, emptied, case.pricing, case.start, case.k) == *x,
+                first == *x,
+                answer(arm, doubled, [2 * low, 2 * high].to_vec(), case.start, case.k) == *x,
+                answer(arm, walled, case.pricing, [case.start[0] + 1, case.start[1] + 1].to_vec(), case.k) == moved,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{case.grid} {case.pricing} {case.start} {case.k} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

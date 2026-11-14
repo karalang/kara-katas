@@ -1,0 +1,76 @@
+// LeetCode #2146: K Highest Ranked Items Within a Price Range -- the
+// benchmark, ranked.kara's ★ arm. 4 grids of 316 by 316 cells built once,
+// a wall one cell in 5 and prices of 2 to 100000 elsewhere; then every
+// grid searched 25 times for the 1000 highest ranked items priced 2 to
+// 50000, one cell redrawn and the start moved before each search.
+
+fn highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[start[0]][start[1]] = true;
+    let mut queue: VecDeque[(i64, i64, i64)] = VecDeque.new();
+    queue.push_back((start[0], start[1], 0));
+    let mut found: Vec[(i64, i64, i64, i64)] = Vec.new();
+    while let Some((r, c, dist)) = queue.pop_front() {
+        let price = grid[r][c];
+        if price >= pricing[0] and price <= pricing[1] {
+            found.push((dist, price, r, c));
+        }
+        for (dr, dc) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let nr = r + dr;
+            let nc = c + dc;
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and not seen[nr][nc] and grid[nr][nc] != 0 {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc, dist + 1));
+            }
+        }
+    }
+    found.sort();
+    found.iter().take(k).map(|(_, _, r, c)| [r, c].to_vec()).collect()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw(seed: mut ref i64) -> i64 {
+    if next_random(mut seed) % 5 == 0 { 0 } else { next_random(mut seed) % 99999 + 2 }
+}
+
+fn main() {
+    let mut seed = 2146;
+    let mut grids: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..4 {
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..316 {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..316 {
+                row.push(draw(mut seed));
+            }
+            grid.push(row);
+        }
+        grids.push(grid);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..25 {
+        for g in 0..4 {
+            let r = next_random(mut seed) % 316;
+            let c = next_random(mut seed) % 316;
+            grids[g][r][c] = draw(mut seed);
+            let sr = next_random(mut seed) % 316;
+            let sc = next_random(mut seed) % 316;
+            if grids[g][sr][sc] == 0 {
+                grids[g][sr][sc] = 1;
+            }
+            let cells = highest_ranked_k_items(grids[g], [2, 50000].to_vec(), [sr, sc].to_vec(), 1000);
+            total += cells.len();
+            for cell in cells.iter() {
+                check = (check * 31 + cell[0] * 1000 + cell[1] + round) % 1000000007;
+            }
+        }
+    }
+    println(f"100 searches: {total} items in all, checksum {check}");
+}

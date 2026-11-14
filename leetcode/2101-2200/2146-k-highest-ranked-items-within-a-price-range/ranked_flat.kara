@@ -1,0 +1,121 @@
+// LeetCode #2146: K Highest Ranked Items Within a Price Range -- on one
+// flat index. The grid is laid out row by row in one `Vec`, a cell named
+// by `r * n + c`, so the search's queue holds plain numbers and a
+// neighbour is one step or one row away; row and column are recovered by
+// `/` and `%`. The items are ranked by `sort_by_key` on the pair
+// (distance, price) after a stable sort has left them in index order,
+// which is row order and then column order. O(m n log(m n)).
+
+fn highest_ranked_k_items(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) -> Vec[Vec[i64]] {
+    let m = grid.len();
+    let n = grid[0].len();
+    let cells: Vec[i64] = grid.iter().flat_map(|row| row.iter().cloned()).collect();
+    let mut dist: Vec[i64] = Vec.filled(m * n, -1);
+    let first = start[0] * n + start[1];
+    dist[first] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(first);
+    while let Some(at) = queue.pop_front() {
+        let r = at / n;
+        let c = at % n;
+        let mut near: Vec[i64] = Vec.new();
+        if r > 0 {
+            near.push(at - n);
+        }
+        if r + 1 < m {
+            near.push(at + n);
+        }
+        if c > 0 {
+            near.push(at - 1);
+        }
+        if c + 1 < n {
+            near.push(at + 1);
+        }
+        for to in near.iter() {
+            if cells[to] != 0 and dist[to] < 0 {
+                dist[to] = dist[at] + 1;
+                queue.push_back(to);
+            }
+        }
+    }
+    let mut items: Vec[i64] = (0..m * n)
+        .filter(|i| dist[i] >= 0 and cells[i] >= pricing[0] and cells[i] <= pricing[1])
+        .collect();
+    items.sort_by_key(|i| (dist[i], cells[i]));
+    items.iter().take(k).map(|i| [i / n, i % n].to_vec()).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]], pricing: Vec[i64], start: Vec[i64], k: i64) {
+    println(f"{pricing} {start} {k} -> {highest_ranked_k_items(grid, pricing, start, k)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: the start an item in
+    // range itself, fewer items than k behind a wall, and four items at
+    // one distance and one price, ranked by row and then column
+    show([[1, 2, 0, 1].to_vec(), [1, 3, 0, 1].to_vec(), [0, 2, 5, 1].to_vec()].to_vec(), [2, 5].to_vec(), [0, 0].to_vec(), 3);
+    show([[1, 2, 0, 1].to_vec(), [1, 3, 3, 1].to_vec(), [0, 2, 5, 1].to_vec()].to_vec(), [2, 3].to_vec(), [2, 3].to_vec(), 2);
+    show([[1, 1, 1].to_vec(), [0, 0, 1].to_vec(), [2, 3, 4].to_vec()].to_vec(), [2, 3].to_vec(), [0, 0].to_vec(), 3);
+    show([[4].to_vec()].to_vec(), [4, 4].to_vec(), [0, 0].to_vec(), 1);
+    show([[2, 0, 2].to_vec(), [1, 0, 2].to_vec()].to_vec(), [2, 2].to_vec(), [0, 0].to_vec(), 5);
+    show([[1, 3, 1].to_vec(), [3, 1, 3].to_vec(), [1, 3, 1].to_vec()].to_vec(), [3, 3].to_vec(), [1, 1].to_vec(), 3);
+    // 2000 random grids of up to 6 by 6, a wall one cell in 4, prices of
+    // 1 to 5 or 1 to 100000 in turn, a random range from 2 up, start and k
+    let mut seed = 2146;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let top = [5, 100000][round % 2];
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(if next_random(mut seed) % 4 == 0 { 0 } else { next_random(mut seed) % top + 1 });
+            }
+            grid.push(row);
+        }
+        let sr = next_random(mut seed) % m;
+        let sc = next_random(mut seed) % n;
+        if grid[sr][sc] == 0 {
+            grid[sr][sc] = 1;
+        }
+        let a = next_random(mut seed) % top + 1;
+        let b = next_random(mut seed) % top + 1;
+        let k = next_random(mut seed) % (m * n) + 1;
+        let cells = highest_ranked_k_items(grid, [a.min(b).max(2), a.max(b).max(2)].to_vec(), [sr, sc].to_vec(), k);
+        total += cells.len();
+        for cell in cells.iter() {
+            check = (check * 31 + cell[0] * 1000 + cell[1] + 1) % 1000000007;
+        }
+    }
+    println(f"2000 grids: {total} items in all, checksum {check}");
+    // the constraints' largest, 316 by 316 cells: every price from 1 up,
+    // the odd rows broken by walls, every item ranked from the middle and
+    // the ten cheapest from a corner
+    let mut grid: Vec[Vec[i64]] = (0..316).map(|r| (0..316).map(|c| (r * 316 + c) % 100000 + 1).collect()).collect();
+    for r in (1..316).step_by(2) {
+        for c in 0..316 {
+            if (c + r / 2) % 50 == 0 {
+                grid[r][c] = 0;
+            }
+        }
+    }
+    let every = highest_ranked_k_items(grid, [2, 100000].to_vec(), [158, 158].to_vec(), 99856);
+    let cheap = highest_ranked_k_items(grid, [2, 1000].to_vec(), [0, 0].to_vec(), 10);
+    let mut sum = 0;
+    for cell in every.iter() {
+        sum = (sum * 31 + cell[0] * 1000 + cell[1] + 1) % 1000000007;
+    }
+    let first: Vec[Vec[i64]] = every.iter().take(3).cloned().collect();
+    let cheapest: Vec[Vec[i64]] = cheap.iter().take(3).cloned().collect();
+    println(f"316 x 316: {every.len()} items ranked, checksum {sum}, first {first}, cheap {cheapest}");
+}
