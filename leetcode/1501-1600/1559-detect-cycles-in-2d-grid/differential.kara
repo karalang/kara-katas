@@ -1,0 +1,330 @@
+// LeetCode #1559: Detect Cycles in 2D Grid -- the differential.
+//
+// Four arms against the statement read literally, on 3000 grids of 1 to 4
+// rows and 1 to 4 columns, each over its own first 1 to 3 letters, with
+// six properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  a 2 by 2 block of one letter is a cycle, and a grid with no two
+//     neighbours alike has none
+// P3  the grid transposed leaves the answer
+// P4  the grid turned half way round leaves the answer
+// P5  a row of z put under the grid leaves the answer, and two make a
+//     cycle when the grid is 2 or more wide
+// P6  each arm agrees with at least two of the other three
+
+// ---- cycles.kara: the ★ arm: a search on a stack, each cell with where it came from
+
+fn star_arm(grid: Vec[Vec[char]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut seen = Vec.filled(rows * cols, false);
+    for start in 0..rows * cols {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut stack = [(start, -1)];
+        while let Some((cell, from)) = stack.pop() {
+            let (r, c) = (cell / cols, cell % cols);
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr < 0 or nr >= rows or nc < 0 or nc >= cols or grid[nr][nc] != grid[r][c] {
+                    continue;
+                }
+                let next = nr * cols + nc;
+                if next == from {
+                    continue;
+                }
+                if seen[next] {
+                    return true;
+                }
+                seen[next] = true;
+                stack.push((next, cell));
+            }
+        }
+    }
+    false
+}
+
+// ---- cycles_union.kara: union-find over same-letter neighbours
+
+fn find(parent: mut ref Vec[i64], cell: i64) -> i64 {
+    let mut at = cell;
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+    }
+    at
+}
+
+fn union_arm(grid: Vec[Vec[char]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut parent: Vec[i64] = (0..rows * cols).collect();
+    for r in 0..rows {
+        for c in 0..cols {
+            for (nr, nc) in [(r, c + 1), (r + 1, c)] {
+                if nr < rows and nc < cols and grid[nr][nc] == grid[r][c] {
+                    let a = find(mut parent, r * cols + c);
+                    let b = find(mut parent, nr * cols + nc);
+                    if a == b {
+                        return true;
+                    }
+                    parent[a] = b;
+                }
+            }
+        }
+    }
+    false
+}
+
+// ---- cycles_count.kara: each piece's cells and edges counted
+
+fn count_arm(grid: Vec[Vec[char]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut piece = Vec.filled(rows * cols, false);
+    for start in 0..rows * cols {
+        if piece[start] {
+            continue;
+        }
+        piece[start] = true;
+        let mut queue = VecDeque.new();
+        queue.push_back(start);
+        let mut cells = 0;
+        let mut ends = 0;
+        while let Some(cell) = queue.pop_front() {
+            cells += 1;
+            let (r, c) = (cell / cols, cell % cols);
+            for (dr, dc) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == grid[r][c] {
+                    ends += 1;
+                    let next = nr * cols + nc;
+                    if not piece[next] {
+                        piece[next] = true;
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+        // every edge was counted from both of its ends
+        if ends / 2 >= cells {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- cycles_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn contains_cycle(grid: Vec[Vec[char]]) -> bool {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut visited = Vec.filled(m, Vec.filled(n, false));
+        for i in 0..m {
+            for j in 0..n {
+                if not visited[i][j] and Solution.dfs(grid, mut visited, i, j, i64.MAX, i64.MAX) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn dfs(grid: Vec[Vec[char]], visited: mut ref Vec[Vec[bool]], i: i64, j: i64, pi: i64, pj: i64) -> bool {
+        visited[i][j] = true;
+        let dirs = [(0i32, 1i32), (1, 0), (0, -1), (-1, 0)];
+        for (di, dj) in dirs.iter() {
+            let ni = i as i32 + di;
+            let nj = j as i32 + dj;
+            if ni < 0 or nj < 0 or ni >= grid.len() as i32 or nj >= grid[0].len() as i32 {
+                continue;
+            }
+            let (ni, nj) = (ni as i64, nj as i64);
+            if grid[ni][nj] != grid[i][j] or (ni == pi and nj == pj) {
+                continue;
+            }
+            if visited[ni][nj] {
+                return true;
+            }
+            if Solution.dfs(grid, mut visited, ni, nj, i, j) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn solution_arm(grid: Vec[Vec[char]]) -> bool {
+    Solution.contains_cycle(grid)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, grid: Vec[Vec[char]]) -> bool {
+    match a {
+        0 => star_arm(grid),
+        1 => union_arm(grid),
+        2 => count_arm(grid),
+        _ => solution_arm(grid),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["cycles", "union", "count", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: from every cell, the walks that never
+// step straight back to the cell they just left, searched breadth first
+// over (cell, previous cell, steps taken up to 4); a walk that comes back
+// to where it started after 4 or more steps is a cycle
+
+fn literal(grid: Vec[Vec[char]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    for start in 0..rows * cols {
+        let mut seen: Set[(i64, i64, i64)] = Set.new();
+        let mut queue = VecDeque.new();
+        queue.push_back((start, -1, 0));
+        seen.insert((start, -1, 0));
+        while let Some((cell, previous, steps)) = queue.pop_front() {
+            let (r, c) = (cell / cols, cell % cols);
+            for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+                if nr < 0 or nr >= rows or nc < 0 or nc >= cols {
+                    continue;
+                }
+                let next = nr * cols + nc;
+                if next == previous or grid[nr][nc] != grid[r][c] {
+                    continue;
+                }
+                if next == start and steps + 1 >= 4 {
+                    return true;
+                }
+                let state = (next, cell, (steps + 1).min(4));
+                if seen.insert(state) {
+                    queue.push_back(state);
+                }
+            }
+        }
+    }
+    false
+}
+
+fn transposed(grid: Vec[Vec[char]]) -> Vec[Vec[char]] {
+    (0..grid[0].len()).map(|c| grid.iter().map(|row| row[c]).collect()).collect()
+}
+
+fn turned(grid: Vec[Vec[char]]) -> Vec[Vec[char]] {
+    grid.iter().rev().map(|row| row.iter().rev().cloned().collect()).collect()
+}
+
+fn with_z_rows(grid: Vec[Vec[char]], count: i64) -> Vec[Vec[char]] {
+    let mut out = grid.clone();
+    for _ in 0..count {
+        out.push(Vec.filled(grid[0].len(), 'z'));
+    }
+    out
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15590;
+    let alphabet: Vec[char] = "abc".chars().collect();
+    let mut cases: Vec[Vec[Vec[char]]] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 4 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let own = next_random(mut seed) % 3 + 1;
+        let mut grid = Vec.new();
+        for _ in 0..rows {
+            let mut row = Vec.new();
+            for _ in 0..cols {
+                row.push(alphabet[next_random(mut seed) % own]);
+            }
+            grid.push(row);
+        }
+        cases.push(grid);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let grid = cases[p].clone();
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let truth = literal(grid.clone());
+        let mut block = false;
+        let mut pair = false;
+        for r in 0..rows {
+            for c in 0..cols {
+                if r + 1 < rows and grid[r + 1][c] == grid[r][c] or c + 1 < cols and grid[r][c + 1] == grid[r][c] {
+                    pair = true;
+                }
+                if r + 1 < rows and c + 1 < cols and grid[r + 1][c] == grid[r][c] and grid[r][c + 1] == grid[r][c] and grid[r + 1][c + 1] == grid[r][c] {
+                    block = true;
+                }
+            }
+        }
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, grid.clone());
+            answers.push(answer);
+            check = (check * 31 + if answer { 2 } else { 1 }) % 1000000007;
+            let failed = [
+                answer != truth,
+                block and not answer or not pair and answer,
+                arm(a, transposed(grid.clone())) != answer,
+                arm(a, turned(grid.clone())) != answer,
+                arm(a, with_z_rows(grid.clone(), 1)) != answer or arm(a, with_z_rows(grid.clone(), 2)) != (answer or cols >= 2),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

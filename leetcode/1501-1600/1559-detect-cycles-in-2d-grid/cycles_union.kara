@@ -1,0 +1,96 @@
+// LeetCode #1559: Detect Cycles in 2D Grid -- union-find: every pair of
+// same-letter neighbours (each cell with the one to its right and the one
+// below) joined; a pair already in one set closes a cycle.
+
+fn find(parent: mut ref Vec[i64], cell: i64) -> i64 {
+    let mut at = cell;
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+    }
+    at
+}
+
+fn contains_cycle(grid: Vec[Vec[char]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut parent: Vec[i64] = (0..rows * cols).collect();
+    for r in 0..rows {
+        for c in 0..cols {
+            for (nr, nc) in [(r, c + 1), (r + 1, c)] {
+                if nr < rows and nc < cols and grid[nr][nc] == grid[r][c] {
+                    let a = find(mut parent, r * cols + c);
+                    let b = find(mut parent, nr * cols + nc);
+                    if a == b {
+                        return true;
+                    }
+                    parent[a] = b;
+                }
+            }
+        }
+    }
+    false
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn parse(rows: Vec[Str]) -> Vec[Vec[char]] {
+    rows.iter().map(|row| row.chars().collect()).collect()
+}
+
+// `count` grids of 1 to `most` rows and columns, each over its own first
+// 1 to `letters` letters
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut check = 0;
+    let mut found = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let own = next_random(mut seed) % letters + 1;
+        let mut grid = Vec.new();
+        for _ in 0..rows {
+            let mut row = Vec.new();
+            for _ in 0..cols {
+                row.push(alphabet[next_random(mut seed) % own]);
+            }
+            grid.push(row);
+        }
+        let cycle = contains_cycle(grid);
+        if cycle {
+            found += 1;
+        }
+        check = mix(check, if cycle { rows * cols } else { 0 });
+    }
+    println(f"{count} grids of up to {most} by {most} over up to {letters} letters: {found} with a cycle, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[Str]] = [
+        ["aaaa", "abba", "abba", "aaaa"],
+        ["ccca", "cdcc", "ccec", "fccc"],
+        ["abb", "bzb", "bba"],
+        ["aa", "aa"],
+        ["a"],
+        ["ab", "ba"],
+        ["aaa", "aba", "aaa"],
+        ["aaa", "aba", "aab"],
+        ["aaaa"],
+    ];
+    for rows in examples.iter() {
+        println(f"[{rows.join(", ")}] -> {contains_cycle(parse(rows.clone()))}");
+    }
+    let mut seed = 1559;
+    batch(3000, 6, 3, mut seed);
+    batch(300, 60, 26, mut seed);
+    batch(30, 200, 26, mut seed);
+}
