@@ -1,0 +1,425 @@
+// LeetCode #1568: Minimum Number of Days to Disconnect Island -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 grids of 1 to 4
+// rows and columns with their own share of land from 5 to 9 cells in 10,
+// with six properties. Every random choice is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 0, 1 or 2, and 0 when there is no land
+// P3  the grid transposed leaves the answer
+// P4  every row reversed leaves the answer
+// P5  a row of water put below and a column of water put on the right
+//     each leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- days.kara: the ★ arm: each land cell taken away in turn
+
+fn star_islands(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut seen: Vec[Vec[bool]] = Vec.filled(rows, Vec.filled(cols, false));
+    let mut count = 0;
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 1 and not seen[r][c] {
+                count += 1;
+                seen[r][c] = true;
+                let mut stack = [(r, c)];
+                while let Some((i, j)) = stack.pop() {
+                    for (di, dj) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                        let (a, b) = (i + di, j + dj);
+                        if a >= 0 and a < rows and b >= 0 and b < cols and grid[a][b] == 1 and not seen[a][b] {
+                            seen[a][b] = true;
+                            stack.push((a, b));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+fn star_arm(grid: Vec[Vec[i64]]) -> i64 {
+    if star_islands(grid) != 1 {
+        return 0;
+    }
+    let mut grid = grid.clone();
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            if grid[r][c] == 1 {
+                grid[r][c] = 0;
+                let split = star_islands(grid) != 1;
+                grid[r][c] = 1;
+                if split {
+                    return 1;
+                }
+            }
+        }
+    }
+    2
+}
+
+// ---- days_cuts.kara: one walk for a cut vertex by Tarjan's low links
+
+struct Cuts {
+    grid: Vec[Vec[i64]],
+    order: Vec[Vec[i64]],
+    low: Vec[Vec[i64]],
+    time: i64,
+    found: bool,
+}
+
+impl Cuts {
+    fn visit(mut ref self, r: i64, c: i64, parent: Option[(i64, i64)]) {
+        self.time += 1;
+        self.order[r][c] = self.time;
+        self.low[r][c] = self.time;
+        let mut children = 0;
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (a, b) = (r + dr, c + dc);
+            if a < 0 or a >= self.grid.len() or b < 0 or b >= self.grid[0].len() or self.grid[a][b] == 0 {
+                continue;
+            }
+            if Some((a, b)) == parent {
+                continue;
+            }
+            if self.order[a][b] == 0 {
+                children += 1;
+                self.visit(a, b, Some((r, c)));
+                self.low[r][c] = self.low[r][c].min(self.low[a][b]);
+                if parent.is_some() and self.low[a][b] >= self.order[r][c] {
+                    self.found = true;
+                }
+            } else {
+                self.low[r][c] = self.low[r][c].min(self.order[a][b]);
+            }
+        }
+        if parent.is_none() and children > 1 {
+            self.found = true;
+        }
+    }
+}
+
+fn cuts_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut cuts = Cuts {
+        grid: grid.clone(),
+        order: Vec.filled(rows, Vec.filled(cols, 0)),
+        low: Vec.filled(rows, Vec.filled(cols, 0)),
+        time: 0,
+        found: false,
+    };
+    let mut islands = 0;
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 1 and cuts.order[r][c] == 0 {
+                islands += 1;
+                cuts.visit(r, c, None);
+            }
+        }
+    }
+    if islands != 1 {
+        0
+    } else if cuts.time == 1 or cuts.found {
+        1
+    } else {
+        2
+    }
+}
+
+// ---- days_union.kara: the islands counted by union-find
+
+fn union_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut at = x;
+    while parent[at] != root {
+        let next = parent[at];
+        parent[at] = root;
+        at = next;
+    }
+    root
+}
+
+fn union_islands(grid: Vec[Vec[i64]]) -> i64 {
+    let cols = grid[0].len();
+    let mut parent: Vec[i64] = (0..grid.len() * cols).collect();
+    let mut count = 0;
+    for r in 0..grid.len() {
+        for c in 0..cols {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            count += 1;
+            for (a, b) in [(r - 1, c), (r, c - 1)] {
+                if a >= 0 and b >= 0 and grid[a][b] == 1 {
+                    let here = union_find(mut parent, r * cols + c);
+                    let there = union_find(mut parent, a * cols + b);
+                    if here != there {
+                        parent[here] = there;
+                        count -= 1;
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+fn union_arm(grid: Vec[Vec[i64]]) -> i64 {
+    if union_islands(grid) != 1 {
+        return 0;
+    }
+    let land: Vec[(i64, i64)] = (0..grid.len())
+        .flat_map(|r| (0..grid[0].len()).map(|c| (r, c)))
+        .filter(|(r, c)| grid[r][c] == 1)
+        .collect();
+    let mut grid = grid.clone();
+    for (r, c) in land.iter() {
+        grid[r][c] = 0;
+        let count = union_islands(grid);
+        grid[r][c] = 1;
+        if count != 1 {
+            return 1;
+        }
+    }
+    2
+}
+
+// ---- days_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_days(grid: own Vec[Vec[i32]]) -> i32 {
+        let mut grid = grid;
+        if Solution.count(grid) != 1 {
+            return 0;
+        }
+        let (m, n) = (grid.len(), grid[0].len());
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 {
+                    grid[i][j] = 0;
+                    if Solution.count(grid) != 1 {
+                        return 1;
+                    }
+                    grid[i][j] = 1;
+                }
+            }
+        }
+        2
+    }
+
+    fn count(grid: ref Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut seen = Vec.filled(m, Vec.filled(n, false));
+        let mut islands = 0;
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 and not seen[i][j] {
+                    islands += 1;
+                    Solution.dfs(grid, mut seen, i, j);
+                }
+            }
+        }
+        islands
+    }
+
+    fn dfs(grid: Vec[Vec[i32]], seen: mut ref Vec[Vec[bool]], i: i64, j: i64) {
+        if i >= grid.len() or j >= grid[0].len() or grid[i][j] == 0 or seen[i][j] {
+            return;
+        }
+        seen[i][j] = true;
+        if i > 0 {
+            Solution.dfs(grid, mut seen, i - 1, j);
+        }
+        if j > 0 {
+            Solution.dfs(grid, mut seen, i, j - 1);
+        }
+        Solution.dfs(grid, mut seen, i + 1, j);
+        Solution.dfs(grid, mut seen, i, j + 1);
+    }
+}
+
+fn solution_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.min_days(grid)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match a {
+        0 => star_arm(grid),
+        1 => cuts_arm(grid),
+        2 => union_arm(grid),
+        _ => solution_arm(grid),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["days", "cuts", "union", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: no day, then every land cell, then
+// every two, and so on, each set of cells turned to water and the islands
+// counted by a flood; the fewest that leave other than one island
+
+fn flood(grid: mut ref Vec[Vec[i64]], r: i64, c: i64) {
+    if r < 0 or r >= grid.len() or c < 0 or c >= grid[0].len() or grid[r][c] != 1 {
+        return;
+    }
+    grid[r][c] = 2;
+    flood(mut grid, r + 1, c);
+    flood(mut grid, r - 1, c);
+    flood(mut grid, r, c + 1);
+    flood(mut grid, r, c - 1);
+}
+
+fn literal_islands(grid: Vec[Vec[i64]]) -> i64 {
+    let mut marked = grid.clone();
+    let mut count = 0;
+    for r in 0..marked.len() {
+        for c in 0..marked[0].len() {
+            if marked[r][c] == 1 {
+                count += 1;
+                flood(mut marked, r, c);
+            }
+        }
+    }
+    count
+}
+
+// whether turning `left` more of the land cells from `from` on to water
+// leaves other than one island
+fn splits(grid: mut ref Vec[Vec[i64]], land: Vec[(i64, i64)], from: i64, left: i64) -> bool {
+    if left == 0 {
+        return literal_islands(grid.clone()) != 1;
+    }
+    for k in from..land.len() {
+        let (r, c) = land[k];
+        grid[r][c] = 0;
+        let found = splits(mut grid, land, k + 1, left - 1);
+        grid[r][c] = 1;
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut land: Vec[(i64, i64)] = Vec.new();
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            if grid[r][c] == 1 {
+                land.push((r, c));
+            }
+        }
+    }
+    let mut work = grid.clone();
+    let mut days = 0;
+    while not splits(mut work, land, 0, days) {
+        days += 1;
+    }
+    days
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15680;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 4 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let share = next_random(mut seed) % 5 + 5;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let row: Vec[i64] = (0..cols).map(|_| if next_random(mut seed) % 10 < share { 1 } else { 0 }).collect();
+            grid.push(row);
+        }
+        cases.push(grid);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let grid = cases[p].clone();
+        let truth = literal(grid.clone());
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let no_land = grid.iter().all(|row| row.iter().all(|v| v == 0));
+        let transposed: Vec[Vec[i64]] = (0..cols).map(|c| (0..rows).map(|r| grid[r][c]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let mut below = grid.clone();
+        below.push(Vec.filled(cols, 0));
+        let right: Vec[Vec[i64]] = grid.iter().map(|row| {
+            let mut wider = row.clone();
+            wider.push(0);
+            wider
+        }).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, grid.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 0 or answer > 2 or (no_land and answer != 0),
+                arm(a, transposed.clone()) != answer,
+                arm(a, mirrored.clone()) != answer,
+                arm(a, below.clone()) != answer or arm(a, right.clone()) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

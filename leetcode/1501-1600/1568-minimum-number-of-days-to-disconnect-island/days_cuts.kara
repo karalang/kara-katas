@@ -1,0 +1,127 @@
+// LeetCode #1568: Minimum Number of Days to Disconnect Island -- one day
+// is enough exactly when the island has a cut vertex (or is one cell), so
+// a single depth-first walk finds the islands and, by Tarjan's low links,
+// whether any land cell is a cut vertex: a root with two children in the
+// walk, or another cell with a child whose subtree reaches no higher than
+// it. O(m n)
+
+struct Cuts {
+    grid: Vec[Vec[i64]],
+    order: Vec[Vec[i64]],
+    low: Vec[Vec[i64]],
+    time: i64,
+    found: bool,
+}
+
+impl Cuts {
+    fn visit(mut ref self, r: i64, c: i64, parent: Option[(i64, i64)]) {
+        self.time += 1;
+        self.order[r][c] = self.time;
+        self.low[r][c] = self.time;
+        let mut children = 0;
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (a, b) = (r + dr, c + dc);
+            if a < 0 or a >= self.grid.len() or b < 0 or b >= self.grid[0].len() or self.grid[a][b] == 0 {
+                continue;
+            }
+            if Some((a, b)) == parent {
+                continue;
+            }
+            if self.order[a][b] == 0 {
+                children += 1;
+                self.visit(a, b, Some((r, c)));
+                self.low[r][c] = self.low[r][c].min(self.low[a][b]);
+                if parent.is_some() and self.low[a][b] >= self.order[r][c] {
+                    self.found = true;
+                }
+            } else {
+                self.low[r][c] = self.low[r][c].min(self.order[a][b]);
+            }
+        }
+        if parent.is_none() and children > 1 {
+            self.found = true;
+        }
+    }
+}
+
+fn min_days(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut cuts = Cuts {
+        grid: grid.clone(),
+        order: Vec.filled(rows, Vec.filled(cols, 0)),
+        low: Vec.filled(rows, Vec.filled(cols, 0)),
+        time: 0,
+        found: false,
+    };
+    let mut islands = 0;
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 1 and cuts.order[r][c] == 0 {
+                islands += 1;
+                cuts.visit(r, c, None);
+            }
+        }
+    }
+    if islands != 1 {
+        0
+    } else if cuts.time == 1 or cuts.found {
+        1
+    } else {
+        2
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` grids of 1 to `most` rows and columns, each with its own share
+// of land from 6 to 9 cells in 10
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut days = [0, 0, 0];
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let share = next_random(mut seed) % 4 + 6;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let row: Vec[i64] = (0..cols).map(|_| if next_random(mut seed) % 10 < share { 1 } else { 0 }).collect();
+            grid.push(row);
+        }
+        let answer = min_days(grid);
+        days[answer] += 1;
+        check = mix(check, answer * 1000 + rows * 31 + cols);
+    }
+    println(f"{count} grids of up to {most} by {most}: {days[0]} need 0 days, {days[1]} need 1, {days[2]} need 2, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 0]],
+        [[1, 1]],
+        [[1]],
+        [[0, 0]],
+        [[1, 0, 1]],
+        [[1, 1, 1]],
+        [[1, 1], [1, 1]],
+        [[1, 1, 0], [0, 1, 1]],
+        [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+        [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
+    ];
+    for grid in examples.iter() {
+        println(f"{grid} -> {min_days(grid.clone())}");
+    }
+    let mut seed = 1568;
+    batch(3000, 4, mut seed);
+    batch(300, 10, mut seed);
+    batch(30, 30, mut seed);
+}
