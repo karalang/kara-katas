@@ -1,0 +1,169 @@
+// LeetCode #1551: Minimum Operations to Make Array Equal -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 lengths from 1
+// to 30, with six properties. Every random choice is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 0 exactly when n is 1, and at most n * n
+// P3  one more value needs more operations
+// P4  twice the length needs four times the operations, and one more for
+//     an odd n
+// P5  the answers for n and n + 1 add up to 1 + 2 + .. + n
+// P6  each arm agrees with at least two of the other three
+
+// ---- min_operations.kara: the ★ arm: the lower half's distance from the mean
+
+fn star_arm(n: i64) -> i64 {
+    let mut operations = 0;
+    for i in 0..n / 2 {
+        operations += n - (2 * i + 1);
+    }
+    operations
+}
+
+// ---- min_operations_mean.kara: the array built, its distances from the mean halved
+
+fn mean_arm(n: i64) -> i64 {
+    let arr: Vec[i64] = (0..n).map(|i| 2 * i + 1).collect();
+    let mean = arr.iter().sum() / n;
+    arr.iter().map(|a| (a - mean).abs()).sum() / 2
+}
+
+// ---- min_operations_closed.kara: the closed form n * n / 4
+
+fn closed_arm(n: i64) -> i64 {
+    n * n / 4
+}
+
+// ---- min_operations_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(n: i32) -> i32 {
+        (0..n / 2).map(|i| n - 2 * i - 1).sum()
+    }
+}
+
+fn solution_arm(n: i64) -> i64 {
+    Solution.min_operations(n as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64) -> i64 {
+    match a {
+        0 => star_arm(n),
+        1 => mean_arm(n),
+        2 => closed_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["min_operations", "mean", "closed", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the array built, then operations
+// done one at a time, each taking one from a largest value and giving it
+// to a smallest, until every value is equal. No order does better: an
+// operation changes two values by one each, so it closes at most two
+// units of the values' total distance from their mean, and this one
+// always closes two.
+
+fn literal(n: i64) -> i64 {
+    let mut arr: Vec[i64] = (0..n).map(|i| 2 * i + 1).collect();
+    let mut operations = 0;
+    loop {
+        let mut high = 0;
+        let mut low = 0;
+        for i in 0..n {
+            if arr[i] > arr[high] {
+                high = i;
+            }
+            if arr[i] < arr[low] {
+                low = i;
+            }
+        }
+        if arr[high] == arr[low] {
+            return operations;
+        }
+        arr[high] -= 1;
+        arr[low] += 1;
+        operations += 1;
+    }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15510;
+    let mut cases: Vec[i64] = Vec.new();
+    for _ in 0..problems {
+        cases.push(next_random(mut seed) % 30 + 1);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let n = cases[p];
+        let truth = literal(n);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                (answer == 0) != (n == 1) or answer > n * n,
+                arm(a, n + 1) <= answer,
+                arm(a, 2 * n) != 4 * answer + n % 2,
+                answer + arm(a, n + 1) != n * (n + 1) / 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
