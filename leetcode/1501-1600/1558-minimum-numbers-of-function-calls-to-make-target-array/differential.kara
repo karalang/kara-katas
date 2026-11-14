@@ -1,0 +1,223 @@
+// LeetCode #1558: Minimum Numbers of Function Calls to Make Target Array --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 1 to 3
+// values from 0 to at most 12, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is 0 exactly when every value is, and at most their sum
+// P3  the values reversed leave the answer
+// P4  every value doubled needs one call more (none, when all are 0)
+// P5  a 0 put after the values leaves the answer, and a 1 adds one call
+// P6  each arm agrees with at least two of the other three
+
+// ---- calls.kara: the ★ arm: 1 bits and the widest length
+
+fn star_arm(nums: Vec[i64]) -> i64 {
+    let mut increments = 0;
+    let mut widest = 0;
+    for x in nums.iter() {
+        increments += x.count_ones();
+        if x > 0 {
+            widest = widest.max(64 - x.leading_zeros());
+        }
+    }
+    increments + (widest - 1).max(0)
+}
+
+// ---- calls_backward.kara: the calls run backwards from the target
+
+fn backward_arm(nums: Vec[i64]) -> i64 {
+    let mut values = nums.clone();
+    let mut calls = 0;
+    loop {
+        for i in 0..values.len() {
+            if values[i] % 2 == 1 {
+                values[i] -= 1;
+                calls += 1;
+            }
+        }
+        if values.iter().all(|v| v == 0) {
+            return calls;
+        }
+        for i in 0..values.len() {
+            values[i] /= 2;
+        }
+        calls += 1;
+    }
+}
+
+// ---- calls_fold.kara: each value taken apart bit by bit in a fold
+
+fn fold_arm(nums: Vec[i64]) -> i64 {
+    let (increments, doublings) = nums.iter().fold((0, 0), |(ones, most), x| {
+        let mut rest = x;
+        let mut own_ones = 0;
+        let mut shifts = 0;
+        while rest > 0 {
+            own_ones += rest & 1;
+            rest >>= 1;
+            if rest > 0 {
+                shifts += 1;
+            }
+        }
+        (ones + own_ones, most.max(shifts))
+    });
+    increments + doublings
+}
+
+// ---- calls_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_operations(nums: Vec[i32]) -> i32 {
+        let mut ones: u32 = 0;
+        let mut max_bits: u32 = 0;
+        for x in nums.iter() {
+            ones += x.count_ones() as u32;
+            if x > 0 {
+                max_bits = max_bits.max(32 - x.leading_zeros() as u32);
+            }
+        }
+        (ones + max_bits.saturating_sub(1)) as i32
+    }
+}
+
+fn solution_arm(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.min_operations(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(nums),
+        1 => backward_arm(nums),
+        2 => fold_arm(nums),
+        _ => solution_arm(nums),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["calls", "backward", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: from all zeros, the calls searched
+// breadth first, each one adding 1 to one value or doubling all of them,
+// and only arrays that still fit under the target kept
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let start: Vec[i64] = Vec.filled(nums.len(), 0);
+    let mut seen: Set[Vec[i64]] = Set.new();
+    let mut queue = VecDeque.new();
+    seen.insert(start.clone());
+    queue.push_back((start, 0));
+    while let Some((now, calls)) = queue.pop_front() {
+        if now == nums {
+            return calls;
+        }
+        let mut next: Vec[Vec[i64]] = Vec.new();
+        for i in 0..now.len() {
+            if now[i] < nums[i] {
+                let mut one = now.clone();
+                one[i] += 1;
+                next.push(one);
+            }
+        }
+        if now.iter().zip(nums.iter()).all(|(v, t)| 2 * v <= t) {
+            next.push(now.iter().map(|v| 2 * v).collect());
+        }
+        for state in next.iter() {
+            if seen.insert(state.clone()) {
+                queue.push_back((state.clone(), calls + 1));
+            }
+        }
+    }
+    -1
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15580;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..problems {
+        let length = next_random(mut seed) % 3 + 1;
+        let most = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..length).map(|_| next_random(mut seed) % (most + 1)).collect();
+        cases.push(nums);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let nums = cases[p].clone();
+        let truth = literal(nums.clone());
+        let zero = nums.iter().all(|v| v == 0);
+        let total: i64 = nums.iter().sum();
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = nums.iter().map(|v| 2 * v).collect();
+        let mut with_zero = nums.clone();
+        with_zero.push(0);
+        let mut with_one = nums.clone();
+        with_one.push(1);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                (answer == 0) != zero or answer > total,
+                arm(a, reversed.clone()) != answer,
+                arm(a, doubled.clone()) != if zero { 0 } else { answer + 1 },
+                arm(a, with_zero.clone()) != answer or arm(a, with_one.clone()) != answer + 1,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
