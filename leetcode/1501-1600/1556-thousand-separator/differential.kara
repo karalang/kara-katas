@@ -1,0 +1,203 @@
+// LeetCode #1556: Thousand Separator -- the differential.
+//
+// Four arms against the statement read literally, on 3000 numbers of 1 to
+// 7 digits, one in four a power of ten, each with a group of 0 to 999 to
+// put after it, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is the digits and one dot for every three past the first
+// P3  a group k put after n (1000 n + k, below 2^31) puts "." and k,
+//     three digits, after the answer
+// P4  the last group is n % 1000 in three digits, or n when below 1000
+// P5  counted from the end, every fourth character and only those is a dot
+// P6  each arm agrees with at least two of the other three
+
+// ---- separator.kara: the ★ arm: a dot before every third digit from the end
+
+fn star_arm(n: i64) -> String {
+    let digits = n.to_string();
+    let length = digits.len();
+    let mut out = String.new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 and (length - i) % 3 == 0 {
+            out.push('.');
+        }
+        out.push(c);
+    }
+    out
+}
+
+// ---- separator_chunks.kara: the reversed digits in chunks of three
+
+fn chunks_arm(n: i64) -> String {
+    let reversed: Vec[char] = n.to_string().chars().rev().collect();
+    let mut groups: Vec[String] = reversed.chunks(3).into_iter().map(|g| g.iter().rev().collect()).collect();
+    groups.reverse();
+    groups.join(".")
+}
+
+// ---- separator_arith.kara: the groups taken off by % 1000, zero-padded
+
+fn arith_arm(n: i64) -> String {
+    let mut rest = n;
+    let mut groups = Vec.new();
+    while rest >= 1000 {
+        let group = rest % 1000;
+        groups.push(f"{group:03}");
+        rest /= 1000;
+    }
+    groups.push(f"{rest}");
+    groups.reverse();
+    groups.join(".")
+}
+
+// ---- separator_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn thousand_separator(n: i32) -> String {
+        let s = n.to_string();
+        let mut res = String.new();
+        for (i, c) in s.chars().rev().enumerate() {
+            if i > 0 and i % 3 == 0 {
+                res.push('.');
+            }
+            res.push(c);
+        }
+        res.chars().rev().collect()
+    }
+}
+
+fn solution_arm(n: i64) -> String {
+    Solution.thousand_separator(n as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64) -> String {
+    match a {
+        0 => star_arm(n),
+        1 => chunks_arm(n),
+        2 => arith_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["separator", "chunks", "arith", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the text is `n`'s digits with dots
+// between groups, the groups of three from the right, the first of one to
+// three; only those dots are added
+
+fn literal(n: i64, text: String) -> bool {
+    let digits: String = text.chars().filter(|c| c != '.').collect();
+    if digits != n.to_string() {
+        return false;
+    }
+    let groups: Vec[String] = text.split(".").map(|g| g.to_string()).collect();
+    for k in 0..groups.len() {
+        let size = groups[k].len();
+        if k == 0 and (size < 1 or size > 3) {
+            return false;
+        }
+        if k > 0 and size != 3 {
+            return false;
+        }
+    }
+    true
+}
+
+fn padded(k: i64) -> String {
+    let text = k.to_string();
+    "0".repeat(3 - text.len()) + text
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15560;
+    let mut cases: Vec[(i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let digits = next_random(mut seed) % 7 + 1;
+        let mut top = 1;
+        for _ in 0..digits {
+            top *= 10;
+        }
+        let mut n = (next_random(mut seed) * 32768 + next_random(mut seed)) % top;
+        // one in four a power of ten, where every group but the first is 000
+        if next_random(mut seed) % 4 == 0 {
+            n = top / 10;
+        }
+        let k = next_random(mut seed) % 1000;
+        cases.push((n, k));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, k) = cases[p];
+        let length = n.to_string().len();
+        let mut answers: Vec[String] = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n);
+            answers.push(answer.clone());
+            for b in answer.bytes() {
+                check = (check * 31 + b + 1) % 1000000007;
+            }
+            let last = answer.split(".").last().unwrap().to_string();
+            let failed = [
+                not literal(n, answer.clone()),
+                answer.len() != length + (length - 1) / 3,
+                n > 0 and n * 1000 + k < 2147483648 and arm(a, n * 1000 + k) != answer.clone() + "." + padded(k),
+                last != if n >= 1000 { padded(n % 1000) } else { n.to_string() },
+                answer.chars().rev().enumerate().any(|(i, c)| (c == '.') != (i % 4 == 3)),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
