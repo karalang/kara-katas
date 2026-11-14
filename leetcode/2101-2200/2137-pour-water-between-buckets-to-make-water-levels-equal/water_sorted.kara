@@ -1,0 +1,79 @@
+// LeetCode #2137: Pour Water Between Buckets to Make Water Levels Equal --
+// exact, by the sorted buckets. With the i lowest buckets below the level
+// L and the rest above, the water poured, less its loss, fills the low
+// ones exactly when (100 - loss) (above - (n - i) L) = 100 (i L - below),
+// a line in L. The buckets are sorted and summed as they go, and the
+// level is the one i whose L falls between the i-th bucket and the next;
+// it is a fraction of integers, divided once at the end. O(n log n).
+
+fn equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let mut sorted = buckets.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let total: i64 = sorted.iter().sum();
+    let keep = 100 - loss;
+    let mut below = 0;
+    for i in 0..n + 1 {
+        if i > 0 {
+            below += sorted[i - 1];
+        }
+        let top = keep * (total - below) + 100 * below;
+        let bottom = keep * (n - i) + 100 * i;
+        // L = top / bottom lies at or over the i-th bucket and at or under
+        // the next, compared without dividing
+        let over = i == 0 or top >= sorted[i - 1] * bottom;
+        let under = i == n or top <= sorted[i] * bottom;
+        if over and under {
+            return top as f64 / bottom as f64;
+        }
+    }
+    0.0
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(buckets: Vec[i64], loss: i64) {
+    let level = equalize_water(buckets, loss);
+    println(f"{buckets} {loss} -> {level:.5}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one bucket, every bucket
+    // empty, no loss, and the most loss between the widest pair
+    show([1, 2, 7].to_vec(), 80);
+    show([2, 4, 6].to_vec(), 50);
+    show([3, 3, 3, 3].to_vec(), 40);
+    show([5].to_vec(), 99);
+    show([0, 0, 0].to_vec(), 10);
+    show([1, 2, 3, 4].to_vec(), 0);
+    show([0, 100000].to_vec(), 99);
+    // 2000 random lists of 1 to 10 buckets of 0 to 10, 0 to 100 or 0 to
+    // 100000 in turn, at a random loss; each level counted in steps of
+    // 2^-20, which no level here falls halfway between
+    let mut seed = 2137;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let top = [10, 100, 100000][round % 3];
+        let buckets: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (top + 1)).collect();
+        let loss = next_random(mut seed) % 100;
+        let level = equalize_water(buckets, loss);
+        let scaled = (level * 1048576.0 + 0.5).floor() as i64;
+        total += scaled;
+        check = (check * 31 + scaled + n) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, in steps of 2^-20, checksum {check}");
+    // the constraints' largest, 100000 buckets of 0 to 100000, at no loss,
+    // half and 99 percent
+    let big: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 100001).collect();
+    let x = equalize_water(big, 0);
+    let y = equalize_water(big, 50);
+    let z = equalize_water(big, 99);
+    println(f"100000 buckets: {x:.5} at no loss, {y:.5} at half, {z:.5} at 99");
+}

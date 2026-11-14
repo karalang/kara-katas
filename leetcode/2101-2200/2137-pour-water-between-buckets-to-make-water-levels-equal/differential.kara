@@ -1,0 +1,349 @@
+// LeetCode #2137: Pour Water Between Buckets to Make Water Levels Equal --
+// the differential. The six arms, against the statement read literally:
+// a level counts as reached when pours, one at a time, each from the
+// fullest bucket over the level into the emptiest under it and each
+// losing its share on the way, leave no bucket under it; the highest
+// level reached is found by halving. No sum over the buckets is formed.
+// 300 random lists of 1 to 6 buckets of 0 to 10 at a random loss; then
+// 30 at no loss or at 99; then 30 of 1 to 6 buckets of 0 to 100000;
+// every one drawn before any arm answers. Two levels agree when they
+// differ by at most a millionth of the larger, or of 1.
+//
+// P1  the level is the statement read literally
+// P2  the buckets in reverse order: the same level
+// P3  every bucket doubled: twice the level
+// P4  the same buckets at no loss: their mean
+// P5  every bucket 7 fuller: the level 7 higher
+// P6  each arm agrees with at least three of the other five
+
+// ---- water.kara: the ★ arm, the level halved 64 times
+fn star_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let keep = (100 - loss) as f64 / 100.0;
+    let mut low = 0.0;
+    let mut high = buckets.iter().max().unwrap() as f64;
+    for _ in 0..64 {
+        let mid = (low + high) / 2.0;
+        let mut spare = 0.0;
+        let mut need = 0.0;
+        for b in buckets.iter() {
+            let w = b as f64;
+            if w > mid {
+                spare += (w - mid) * keep;
+            } else {
+                need += mid - w;
+            }
+        }
+        if spare >= need {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    low
+}
+
+// ---- water_sorted.kara: exact, by the sorted buckets
+fn sorted_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let mut sorted = buckets.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let total: i64 = sorted.iter().sum();
+    let keep = 100 - loss;
+    let mut below = 0;
+    for i in 0..n + 1 {
+        if i > 0 {
+            below += sorted[i - 1];
+        }
+        let top = keep * (total - below) + 100 * below;
+        let bottom = keep * (n - i) + 100 * i;
+        // L = top / bottom lies at or over the i-th bucket and at or under
+        // the next, compared without dividing
+        let over = i == 0 or top >= sorted[i - 1] * bottom;
+        let under = i == n or top <= sorted[i] * bottom;
+        if over and under {
+            return top as f64 / bottom as f64;
+        }
+    }
+    0.0
+}
+
+// ---- water_newton.kara: Newton's method from the mean
+fn newton_left_over(buckets: Vec[i64], keep: f64, level: f64) -> (f64, f64) {
+    let mut water = 0.0;
+    let mut slope = 0.0;
+    for b in buckets.iter() {
+        let w = b as f64;
+        if w > level {
+            water += (w - level) * keep;
+            slope -= keep;
+        } else {
+            water -= level - w;
+            slope -= 1.0;
+        }
+    }
+    (water, slope)
+}
+
+fn newton_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let keep = (100 - loss) as f64 / 100.0;
+    let sum: i64 = buckets.iter().sum();
+    let mut level = sum as f64 / buckets.len() as f64;
+    loop {
+        let (water, slope) = newton_left_over(buckets, keep, level);
+        if water >= 0.0 {
+            return level;
+        }
+        let next = level - water / slope;
+        if next >= level {
+            return level;
+        }
+        level = next;
+    }
+}
+
+// ---- water_fold.kara: the halving as one `fold`
+fn fold_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let keep = (100 - loss) as f64 / 100.0;
+    let reaches = |level: f64| {
+        let left = buckets.iter().fold(0.0, |water, b| {
+            let w = b as f64;
+            if w > level { water + (w - level) * keep } else { water - (level - w) }
+        });
+        left >= 0.0
+    };
+    let fullest = buckets.iter().max().unwrap() as f64;
+    let (low, _) = (0..64).fold((0.0, fullest), |(low, high), _| {
+        let mid = (low + high) / 2.0;
+        if reaches(mid) { (mid, high) } else { (low, mid) }
+    });
+    low
+}
+
+// ---- water_struct.kara: a `Pour` asked, a `Range` narrowed
+struct StructPour {
+    buckets: Vec[i64],
+    keep: f64,
+}
+
+impl StructPour {
+    fn of(buckets: Vec[i64], loss: i64) -> StructPour {
+        StructPour { buckets: buckets.clone(), keep: (100 - loss) as f64 / 100.0 }
+    }
+
+    fn reaches(ref self, level: f64) -> bool {
+        let mut spare = 0.0;
+        let mut need = 0.0;
+        for b in self.buckets.iter() {
+            let w = b as f64;
+            if w > level {
+                spare += (w - level) * self.keep;
+            } else {
+                need += level - w;
+            }
+        }
+        spare >= need
+    }
+}
+
+struct StructRange {
+    low: f64,
+    high: f64,
+}
+
+impl StructRange {
+    // halves the range toward the reached side; false once no float lies
+    // strictly between its ends
+    fn narrows(mut ref self, pour: StructPour) -> bool {
+        let mid = (self.low + self.high) / 2.0;
+        if mid <= self.low or mid >= self.high {
+            return false;
+        }
+        if pour.reaches(mid) {
+            self.low = mid;
+        } else {
+            self.high = mid;
+        }
+        true
+    }
+}
+
+fn struct_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let pour = StructPour.of(buckets, loss);
+    let mut range = StructRange { low: 0.0, high: buckets.iter().max().unwrap() as f64 };
+    while range.narrows(pour) {}
+    range.low
+}
+
+// ---- water_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn equalize_water(buckets: Vec[i32], loss: i32) -> f64 {
+        let mut lo = 0.0;
+        let mut hi = *buckets.iter().max().unwrap() as f64;
+        for _ in 0..100 {
+            let mid = (lo + hi) / 2.0;
+            let mut gain = 0.0;
+            let mut need = 0.0;
+            for b in ref buckets {
+                let b = b as f64;
+                if b > mid {
+                    gain += (b - mid) * (100 - loss) as f64 / 100.0;
+                } else {
+                    need += mid - b;
+                }
+            }
+            if gain >= need {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_equalize_water(buckets: Vec[i64], loss: i64) -> f64 {
+    let b: Vec[i32] = buckets.iter().map(|v| v as i32).collect();
+    SolutionSolution.equalize_water(b, loss as i32)
+}
+
+
+// ---- the statement read literally
+
+// whether pours, one at a time, bring every bucket to `level`: each pour
+// goes from the fullest bucket over it into the emptiest under it, as
+// much as fills the one or empties the other's surplus, and arrives less
+// its loss
+fn reached(buckets: Vec[i64], loss: i64, level: f64) -> bool {
+    let mut water: Vec[f64] = buckets.iter().map(|b| b as f64).collect();
+    let keep = (100 - loss) as f64 / 100.0;
+    for _ in 0..3 * water.len() + 3 {
+        let mut low = 0;
+        let mut high = 0;
+        for i in 0..water.len() {
+            if water[i] < water[low] {
+                low = i;
+            }
+            if water[i] > water[high] {
+                high = i;
+            }
+        }
+        if water[low] >= level - 0.000000001 {
+            return true;
+        }
+        if water[high] <= level + 0.000000001 {
+            return false;
+        }
+        let poured = ((level - water[low]) / keep).min(water[high] - level);
+        water[high] -= poured;
+        water[low] += poured * keep;
+    }
+    false
+}
+
+fn literal(buckets: Vec[i64], loss: i64) -> f64 {
+    let mut low = 0.0;
+    let mut high = buckets.iter().max().unwrap() as f64;
+    for _ in 0..64 {
+        let mid = (low + high) / 2.0;
+        if reached(buckets, loss, mid) {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    low
+}
+
+fn answer(arm: i64, buckets: Vec[i64], loss: i64) -> f64 {
+    match arm {
+        0 => star_equalize_water(buckets, loss),
+        1 => sorted_equalize_water(buckets, loss),
+        2 => newton_equalize_water(buckets, loss),
+        3 => fold_equalize_water(buckets, loss),
+        4 => struct_equalize_water(buckets, loss),
+        _ => solution_equalize_water(buckets, loss),
+    }
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 0.000001 * a.abs().max(b.abs()).max(1.0)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    buckets: Vec[i64],
+    loss: i64,
+}
+
+fn main() {
+    let names = ["star", "sorted", "newton", "fold", "struct", "solution"];
+    let mut seed = 2137;
+    let mut cases: Vec[Case] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 6 + 1;
+        let top = if t < 330 { 10 } else { 100000 };
+        let buckets: Vec[i64] = (0..n).map(|_| next_random(mut seed) % (top + 1)).collect();
+        let r = next_random(mut seed);
+        let loss = if t >= 300 and t < 330 { [0, 99][r % 2] } else { r % 100 };
+        cases.push(Case { buckets, loss });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in cases.iter() {
+        let truth = literal(c.buckets, c.loss);
+        let n = c.buckets.len();
+        check = (check * 31 + (truth * 1048576.0 + 0.5).floor() as i64 + n) % 1000000007;
+        let sum: i64 = c.buckets.iter().sum();
+        let mean = sum as f64 / n as f64;
+        let back: Vec[i64] = c.buckets.iter().rev().collect();
+        let doubled: Vec[i64] = c.buckets.iter().map(|b| 2 * b).collect();
+        let fuller: Vec[i64] = c.buckets.iter().map(|b| b + 7).collect();
+        let got: Vec[f64] = (0..6).map(|arm| answer(arm, c.buckets, c.loss)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and close(got[o], x) {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                close(x, truth),
+                close(answer(arm, back, c.loss), x),
+                close(answer(arm, doubled, c.loss), 2.0 * x),
+                close(answer(arm, c.buckets, 0), mean),
+                close(answer(arm, fuller, c.loss), x + 7.0),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{c.buckets} {c.loss} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
