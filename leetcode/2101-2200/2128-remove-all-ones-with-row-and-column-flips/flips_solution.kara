@@ -1,0 +1,104 @@
+// LeetCode #2128: Remove All Ones With Row and Column Flips -- LeetCode's
+// Rust template (`Vec<Vec<i32>>` to `bool`): each row compared with the
+// first as it is and turned over, written as Rust. Carried by `karac
+// fix`. The adapter below hands the harness's grid to it.
+
+impl Solution {
+    pub fn remove_ones(grid: Vec[Vec[i32]]) -> bool {
+        let first = ref grid[0];
+        for row in ref grid {
+            let same = row == first;
+            let flipped = row.iter().zip(first.iter()).all(|(a, b)| a != b);
+            if not same and not flipped {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+struct Solution {}
+
+fn remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    Solution.remove_ones(grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]]) {
+    println(f"{grid} -> {remove_ones(grid)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one row, one column, all
+    // ones, and a single one in a corner
+    show([[0, 1, 0].to_vec(), [1, 0, 1].to_vec(), [0, 1, 0].to_vec()].to_vec());
+    show([[1, 1, 0].to_vec(), [0, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec());
+    show([[0].to_vec()].to_vec());
+    show([[1, 0, 1, 1].to_vec()].to_vec());
+    show([[1].to_vec(), [0].to_vec(), [1].to_vec()].to_vec());
+    show([[1, 1].to_vec(), [1, 1].to_vec()].to_vec());
+    show([[1, 0].to_vec(), [0, 0].to_vec()].to_vec());
+    // 3000 random grids of 1 to 6 by 1 to 6: every other one cell by
+    // cell, the rest a zero grid with rows and columns flipped, one cell
+    // in three of those then flipped as well
+    let mut seed = 2128;
+    let mut cleared = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        if round % 2 == 0 {
+            for _ in 0..m {
+                let mut row: Vec[i64] = Vec.new();
+                for _ in 0..n {
+                    row.push(next_random(mut seed) % 2);
+                }
+                grid.push(row);
+            }
+        } else {
+            let mut columns: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                columns.push(next_random(mut seed) % 2);
+            }
+            for _ in 0..m {
+                let r = next_random(mut seed) % 2;
+                grid.push(columns.iter().map(|c| c ^ r).collect());
+            }
+            if next_random(mut seed) % 3 == 0 {
+                let i = next_random(mut seed) % m;
+                let j = next_random(mut seed) % n;
+                grid[i][j] = 1 - grid[i][j];
+            }
+        }
+        if remove_ones(grid) {
+            cleared += 1;
+            check = (check * 31 + round) % 1000000007;
+        }
+    }
+    println(f"3000 grids: {cleared} cleared, checksum {check}");
+    // the constraints' largest: 300 by 300 of rows and columns flipped,
+    // then the same with its last cell flipped, and its first
+    let mut columns: Vec[i64] = Vec.new();
+    for _ in 0..300 {
+        columns.push(next_random(mut seed) % 2);
+    }
+    let mut big: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..300 {
+        let r = next_random(mut seed) % 2;
+        big.push(columns.iter().map(|c| c ^ r).collect());
+    }
+    let a = remove_ones(big);
+    big[299][299] = 1 - big[299][299];
+    let b = remove_ones(big);
+    big[299][299] = 1 - big[299][299];
+    big[0][0] = 1 - big[0][0];
+    let c = remove_ones(big);
+    println(f"300 by 300: {a} flipped, {b} with the last cell changed, {c} with the first");
+}

@@ -1,0 +1,286 @@
+// LeetCode #2128: Remove All Ones With Row and Column Flips -- the
+// differential. The six arms, against the statement read literally:
+// every grid reachable from this one by flipping one row or one column
+// at a time is found, breadth first over the grids as bit masks, and the
+// answer is whether the grid of zeros is among them; nothing is assumed
+// about the order of the flips or how often one is made. 300 random
+// grids of 1 to 4 by 1 to 4, a cell a one with chance a quarter, a half
+// or three quarters in turn; then 30 of 2 to 4 by 2 to 4 made of a zero
+// grid's rows and columns flipped, every other one with one cell flipped
+// as well; then 30 of one row or one column; every one drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the grid transposed: the same answer
+// P3  the rows in reverse order: the same answer
+// P4  one column flipped: the same answer
+// P5  the first row turned over added at the bottom: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- flips.kara: the ★ arm, every row against the first by xor
+fn star_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    let first = ref grid[0];
+    for row in grid.iter() {
+        for j in 0..row.len() {
+            if row[j] ^ row[0] != first[j] ^ first[0] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- flips_simulate.kara: the rows flipped to a zero first column, then the columns
+fn simulate_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    let mut cells = grid.clone();
+    for row in cells.iter_mut() {
+        if row[0] == 1 {
+            for c in row.iter_mut() {
+                *c = 1 - *c;
+            }
+        }
+    }
+    let n = cells[0].len();
+    for j in 0..n {
+        for i in 1..cells.len() {
+            if cells[i][j] != cells[0][j] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- flips_pattern.kara: a `Set` of each row's pattern turned to start with a 0
+fn pattern_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    let mut patterns: Set[String] = Set.new();
+    for row in grid.iter() {
+        let mut pattern = String.new();
+        for c in row.iter() {
+            pattern.push_str(f"{c ^ row[0]}");
+        }
+        patterns.insert(pattern);
+    }
+    patterns.len() == 1
+}
+
+// ---- flips_struct.kara: a `Pattern` whose `fits` takes one row
+struct StructPattern {
+    first: Vec[i64],
+}
+
+impl StructPattern {
+    fn fits(ref self, row: Vec[i64]) -> bool {
+        match row[0] == self.first[0] {
+            true => row.iter().zip(self.first.iter()).all(|(a, b)| a == b),
+            false => row.iter().zip(self.first.iter()).all(|(a, b)| a != b),
+        }
+    }
+}
+
+fn struct_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    let pattern = StructPattern { first: grid[0].clone() };
+    grid.iter().all(|row| pattern.fits(row))
+}
+
+// ---- flips_iter.kara: nested `all` over every corner's xor
+fn iter_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    (1..m).all(|i| (1..n).all(|j| grid[i][j] ^ grid[i][0] ^ grid[0][j] ^ grid[0][0] == 0))
+}
+
+// ---- flips_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn remove_ones(grid: Vec[Vec[i32]]) -> bool {
+        let first = ref grid[0];
+        for row in ref grid {
+            let same = row == first;
+            let flipped = row.iter().zip(first.iter()).all(|(a, b)| a != b);
+            if not same and not flipped {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_remove_ones(grid: Vec[Vec[i64]]) -> bool {
+    SolutionSolution.remove_ones(grid.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect())
+}
+
+// ---- the statement read literally
+
+fn literal(grid: Vec[Vec[i64]]) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut start = 0;
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 1 {
+                start |= 1 << (i * n + j);
+            }
+        }
+    }
+    let mut moves: Vec[i64] = Vec.new();
+    for i in 0..m {
+        let mut mask = 0;
+        for j in 0..n {
+            mask |= 1 << (i * n + j);
+        }
+        moves.push(mask);
+    }
+    for j in 0..n {
+        let mut mask = 0;
+        for i in 0..m {
+            mask |= 1 << (i * n + j);
+        }
+        moves.push(mask);
+    }
+    let mut seen: Vec[bool] = Vec.filled(1 << (m * n), false);
+    seen[start] = true;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(start);
+    while let Some(g) = queue.pop_front() {
+        if g == 0 {
+            return true;
+        }
+        for mv in moves.iter() {
+            let h = g ^ mv;
+            if not seen[h] {
+                seen[h] = true;
+                queue.push_back(h);
+            }
+        }
+    }
+    false
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> bool {
+    match arm {
+        0 => star_remove_ones(grid),
+        1 => simulate_remove_ones(grid),
+        2 => pattern_remove_ones(grid),
+        3 => struct_remove_ones(grid),
+        4 => iter_remove_ones(grid),
+        _ => solution_remove_ones(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "simulate", "pattern", "struct", "iter", "solution"];
+    let mut seed = 2128;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        if t < 300 {
+            let m = next_random(mut seed) % 4 + 1;
+            let n = next_random(mut seed) % 4 + 1;
+            let ones = t % 3 + 1;
+            for _ in 0..m {
+                let mut row: Vec[i64] = Vec.new();
+                for _ in 0..n {
+                    row.push(if next_random(mut seed) % 4 < ones { 1 } else { 0 });
+                }
+                grid.push(row);
+            }
+        } else if t < 330 {
+            let m = next_random(mut seed) % 3 + 2;
+            let n = next_random(mut seed) % 3 + 2;
+            let mut columns: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                columns.push(next_random(mut seed) % 2);
+            }
+            for _ in 0..m {
+                let r = next_random(mut seed) % 2;
+                grid.push(columns.iter().map(|c| c ^ r).collect());
+            }
+            if t % 2 == 0 {
+                let i = next_random(mut seed) % m;
+                let j = next_random(mut seed) % n;
+                grid[i][j] = 1 - grid[i][j];
+            }
+        } else {
+            let k = next_random(mut seed) % 4 + 1;
+            if t % 2 == 0 {
+                let mut row: Vec[i64] = Vec.new();
+                for _ in 0..k {
+                    row.push(next_random(mut seed) % 2);
+                }
+                grid.push(row);
+            } else {
+                for _ in 0..k {
+                    grid.push([next_random(mut seed) % 2].to_vec());
+                }
+            }
+        }
+        problems.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut t = 0;
+    for grid in problems.iter() {
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = literal(grid);
+        check = (check * 31 + m * 8 + n * 2 + if truth { 1 } else { 0 }) % 1000000007;
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..m).map(|i| grid[i][j]).collect()).collect();
+        let reversed: Vec[Vec[i64]] = grid.iter().rev().map(|row| row.clone()).collect();
+        let column = t % n;
+        let flipped: Vec[Vec[i64]] = grid
+            .iter()
+            .map(|row| (0..n).map(|j| if j == column { 1 - row[j] } else { row[j] }).collect())
+            .collect();
+        let mut extended = grid.clone();
+        extended.push(grid[0].iter().map(|c| 1 - c).collect());
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, transposed) == x,
+                answer(arm, reversed) == x,
+                answer(arm, flipped) == x,
+                answer(arm, extended) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+        t += 1;
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
