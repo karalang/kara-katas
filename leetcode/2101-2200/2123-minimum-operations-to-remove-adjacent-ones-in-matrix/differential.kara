@@ -1,0 +1,592 @@
+// LeetCode #2123: Minimum Operations to Remove Adjacent Ones in Matrix --
+// the differential. The six arms, against the statement read literally:
+// a one with a one beside it must go, or every one beside it must, so
+// the fewest flips are found by trying both, one such one at a time.
+// 300 random grids of 1 to 5 by 1 to 5, each cell a one with chance a
+// quarter, a half or three quarters in turn; then 30 strips of 1 or 2 by
+// up to 16, three quarters ones; then 30 grids of up to 6 by 6, a
+// quarter ones; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the grid transposed: the same answer
+// P3  the grid mirrored left to right: the same answer
+// P4  a row of zeros added on top: the same answer
+// P5  the answer is at most the even ones and at most the odd ones that
+//     have a one beside them, and the first zero made a one raises it by
+//     0 or 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- isolated.kara: the ★ arm, Kuhn's augmenting paths
+fn star_try_match(u: i64, adj: Vec[Vec[i64]], partner: mut ref Vec[i64], seen: mut ref Vec[i64], stamp: i64) -> bool {
+    for v in adj[u].iter() {
+        if seen[v] == stamp {
+            continue;
+        }
+        seen[v] = stamp;
+        if partner[v] < 0 or star_try_match(partner[v], adj, mut partner, mut seen, stamp) {
+            partner[v] = u;
+            return true;
+        }
+    }
+    false
+}
+
+fn star_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..rows * cols {
+        adj.push(Vec.new());
+    }
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 0 or (r + c) % 2 != 0 {
+                continue;
+            }
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)].iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                    adj[r * cols + c].push(nr * cols + nc);
+                }
+            }
+        }
+    }
+    let mut partner = Vec.filled(rows * cols, -1);
+    let mut seen = Vec.filled(rows * cols, -1);
+    let mut matched = 0;
+    for u in 0..rows * cols {
+        if not adj[u].is_empty() and star_try_match(u, adj, mut partner, mut seen, u) {
+            matched += 1;
+        }
+    }
+    matched
+}
+
+// ---- isolated_hopcroft.kara: Hopcroft-Karp phases
+fn hopcroft_layer(lefts: Vec[i64], adj: Vec[Vec[i64]], match_left: Vec[i64], match_right: Vec[i64], dist: mut ref Vec[i64]) -> bool {
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for u in lefts.iter() {
+        if match_left[u] < 0 {
+            dist[u] = 0;
+            queue.push_back(u);
+        } else {
+            dist[u] = -1;
+        }
+    }
+    let mut found = false;
+    while let Some(u) = queue.pop_front() {
+        for v in adj[u].iter() {
+            let w = match_right[v];
+            if w < 0 {
+                found = true;
+            } else if dist[w] < 0 {
+                dist[w] = dist[u] + 1;
+                queue.push_back(w);
+            }
+        }
+    }
+    found
+}
+
+fn hopcroft_augment(u: i64, adj: Vec[Vec[i64]], match_left: mut ref Vec[i64], match_right: mut ref Vec[i64], dist: mut ref Vec[i64]) -> bool {
+    for v in adj[u].iter() {
+        let w = match_right[v];
+        if w < 0 or (dist[w] == dist[u] + 1 and hopcroft_augment(w, adj, mut match_left, mut match_right, mut dist)) {
+            match_left[u] = v;
+            match_right[v] = u;
+            return true;
+        }
+    }
+    dist[u] = -1;
+    false
+}
+
+fn hopcroft_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let cells = rows * cols;
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    let mut lefts: Vec[i64] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            let mut next: Vec[i64] = Vec.new();
+            if grid[r][c] == 1 and (r + c) % 2 == 0 {
+                if r > 0 and grid[r - 1][c] == 1 {
+                    next.push((r - 1) * cols + c);
+                }
+                if r + 1 < rows and grid[r + 1][c] == 1 {
+                    next.push((r + 1) * cols + c);
+                }
+                if c > 0 and grid[r][c - 1] == 1 {
+                    next.push(r * cols + c - 1);
+                }
+                if c + 1 < cols and grid[r][c + 1] == 1 {
+                    next.push(r * cols + c + 1);
+                }
+                if not next.is_empty() {
+                    lefts.push(r * cols + c);
+                }
+            }
+            adj.push(next);
+        }
+    }
+    let mut match_left = Vec.filled(cells, -1);
+    let mut match_right = Vec.filled(cells, -1);
+    let mut dist = Vec.filled(cells, -1);
+    let mut matched = 0;
+    while hopcroft_layer(lefts, adj, match_left, match_right, mut dist) {
+        for u in lefts.iter() {
+            if match_left[u] < 0 and hopcroft_augment(u, adj, mut match_left, mut match_right, mut dist) {
+                matched += 1;
+            }
+        }
+    }
+    matched
+}
+
+// ---- isolated_bfs.kara: breadth-first augmenting paths over the grid
+fn bfs_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let cells = rows * cols;
+    let steps = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+    let mut match_of = Vec.filled(cells, -1);
+    let mut parent = Vec.filled(cells, -1);
+    let mut visited = Vec.filled(cells, -1);
+    let mut matched = 0;
+    for start in 0..cells {
+        let (r0, c0) = (start / cols, start % cols);
+        if grid[r0][c0] == 0 or (r0 + c0) % 2 != 0 {
+            continue;
+        }
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(start);
+        let mut free = -1;
+        while let Some(u) = queue.pop_front() {
+            let (r, c) = (u / cols, u % cols);
+            for (dr, dc) in steps.iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr < 0 or nr >= rows or nc < 0 or nc >= cols or grid[nr][nc] == 0 {
+                    continue;
+                }
+                let v = nr * cols + nc;
+                if visited[v] == start {
+                    continue;
+                }
+                visited[v] = start;
+                parent[v] = u;
+                if match_of[v] < 0 {
+                    free = v;
+                    break;
+                }
+                queue.push_back(match_of[v]);
+            }
+            if free >= 0 {
+                break;
+            }
+        }
+        if free < 0 {
+            continue;
+        }
+        let mut v = free;
+        while v >= 0 {
+            let u = parent[v];
+            let next = match_of[u];
+            match_of[v] = u;
+            match_of[u] = v;
+            v = if u == start { -1 } else { next };
+        }
+        matched += 1;
+    }
+    matched
+}
+
+// ---- isolated_struct.kara: a `Matching` that grows
+struct StructMatching {
+    adj: Vec[Vec[i64]],
+    partner: Vec[i64],
+    seen: Vec[bool],
+}
+
+impl StructMatching {
+    fn new(grid: Vec[Vec[i64]]) -> StructMatching {
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let mut adj: Vec[Vec[i64]] = Vec.new();
+        for r in 0..rows {
+            for c in 0..cols {
+                let mut next: Vec[i64] = Vec.new();
+                if grid[r][c] == 1 and (r + c) % 2 == 0 {
+                    for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)].iter() {
+                        if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                            next.push(nr * cols + nc);
+                        }
+                    }
+                }
+                adj.push(next);
+            }
+        }
+        let cells = rows * cols;
+        StructMatching { adj: adj, partner: Vec.filled(cells, -1), seen: Vec.filled(cells, false) }
+    }
+
+    fn greedy(mut ref self) -> Vec[bool] {
+        let mut done = Vec.filled(self.adj.len(), false);
+        for u in 0..self.adj.len() {
+            for v in self.adj[u].iter() {
+                if self.partner[v] < 0 {
+                    self.partner[v] = u;
+                    done[u] = true;
+                    break;
+                }
+            }
+        }
+        done
+    }
+
+    fn grow(mut ref self, u: i64) -> bool {
+        for i in 0..self.adj[u].len() {
+            let v = self.adj[u][i];
+            if self.seen[v] {
+                continue;
+            }
+            self.seen[v] = true;
+            if self.partner[v] < 0 or self.grow(self.partner[v]) {
+                self.partner[v] = u;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn size(self) -> i64 {
+        self.partner.iter().filter(|p| p >= 0).count()
+    }
+}
+
+fn struct_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let mut matching = StructMatching.new(grid);
+    let done = matching.greedy();
+    for u in 0..done.len() {
+        if done[u] or matching.adj[u].is_empty() {
+            continue;
+        }
+        matching.seen = Vec.filled(done.len(), false);
+        matching.grow(u);
+    }
+    matching.size()
+}
+
+// ---- isolated_flow.kara: Dinic's maximum flow
+struct FlowNetwork {
+    head: Vec[i64],
+    next: Vec[i64],
+    to: Vec[i64],
+    cap: Vec[i64],
+}
+
+fn flow_add_edge(net: mut ref FlowNetwork, u: i64, v: i64) {
+    for (a, b, c) in [(u, v, 1), (v, u, 0)].iter() {
+        net.to.push(b);
+        net.cap.push(c);
+        net.next.push(net.head[a]);
+        net.head[a] = net.to.len() - 1;
+    }
+}
+
+fn flow_levels(net: FlowNetwork, source: i64, sink: i64) -> Vec[i64] {
+    let mut level = Vec.filled(net.head.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    level[source] = 0;
+    queue.push_back(source);
+    while let Some(u) = queue.pop_front() {
+        let mut e = net.head[u];
+        while e >= 0 {
+            let v = net.to[e];
+            if net.cap[e] > 0 and level[v] < 0 {
+                level[v] = level[u] + 1;
+                queue.push_back(v);
+            }
+            e = net.next[e];
+        }
+    }
+    level
+}
+
+fn flow_push(net: mut ref FlowNetwork, u: i64, sink: i64, level: Vec[i64], cursor: mut ref Vec[i64]) -> bool {
+    if u == sink {
+        return true;
+    }
+    while cursor[u] >= 0 {
+        let e = cursor[u];
+        let v = net.to[e];
+        if net.cap[e] > 0 and level[v] == level[u] + 1 and flow_push(mut net, v, sink, level, mut cursor) {
+            net.cap[e] -= 1;
+            net.cap[e ^ 1] += 1;
+            return true;
+        }
+        cursor[u] = net.next[e];
+    }
+    false
+}
+
+fn flow_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let source = rows * cols;
+    let sink = source + 1;
+    let mut net = FlowNetwork { head: Vec.filled(sink + 1, -1), next: Vec.new(), to: Vec.new(), cap: Vec.new() };
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            let u = r * cols + c;
+            if (r + c) % 2 != 0 {
+                flow_add_edge(mut net, u, sink);
+                continue;
+            }
+            flow_add_edge(mut net, source, u);
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)].iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                    flow_add_edge(mut net, u, nr * cols + nc);
+                }
+            }
+        }
+    }
+    let mut flow = 0;
+    loop {
+        let level = flow_levels(net, source, sink);
+        if level[sink] < 0 {
+            break;
+        }
+        let mut cursor = net.head.clone();
+        while flow_push(mut net, source, sink, level, mut cursor) {
+            flow += 1;
+        }
+    }
+    flow
+}
+
+// ---- isolated_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_dfs(u: i64, adj: Vec[Vec[i64]], mate: mut ref Vec[Option[i64]], vis: mut ref Vec[bool]) -> bool {
+    for v in ref adj[u] {
+        if vis[v] {
+            continue;
+        }
+        vis[v] = true;
+        if mate[v].is_none() or solution_dfs(mate[v].unwrap(), adj, mut mate, mut vis) {
+            mate[v] = Some(u);
+            return true;
+        }
+    }
+    false
+}
+
+impl SolutionSolution {
+    pub fn minimum_operations(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut adj: Vec[Vec[i64]] = Vec.filled(m * n, Vec.new());
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 and (i + j) % 2 == 0 {
+                    if i > 0 and grid[i - 1][j] == 1 {
+                        adj[i * n + j].push((i - 1) * n + j);
+                    }
+                    if i + 1 < m and grid[i + 1][j] == 1 {
+                        adj[i * n + j].push((i + 1) * n + j);
+                    }
+                    if j > 0 and grid[i][j - 1] == 1 {
+                        adj[i * n + j].push(i * n + j - 1);
+                    }
+                    if j + 1 < n and grid[i][j + 1] == 1 {
+                        adj[i * n + j].push(i * n + j + 1);
+                    }
+                }
+            }
+        }
+        let mut mate: Vec[Option[i64]] = Vec.filled(m * n, None);
+        let mut ans = 0;
+        for u in 0..m * n {
+            if adj[u].is_empty() {
+                continue;
+            }
+            let mut vis = Vec.filled(m * n, false);
+            if solution_dfs(u, adj, mut mate, mut vis) {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    SolutionSolution.minimum_operations(g)
+}
+
+// ---- the statement read literally
+
+fn fewest_flips(grid: mut ref Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let steps = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            let mut beside: Vec[(i64, i64)] = Vec.new();
+            for (dr, dc) in steps.iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                    beside.push((nr, nc));
+                }
+            }
+            if beside.is_empty() {
+                continue;
+            }
+            grid[r][c] = 0;
+            let flip_it = 1 + fewest_flips(mut grid);
+            grid[r][c] = 1;
+            for (nr, nc) in beside.iter() {
+                grid[nr][nc] = 0;
+            }
+            grid[r][c] = 0;
+            let keep_it = beside.len() + fewest_flips(mut grid);
+            grid[r][c] = 1;
+            for (nr, nc) in beside.iter() {
+                grid[nr][nc] = 1;
+            }
+            return flip_it.min(keep_it);
+        }
+    }
+    0
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut work = grid.clone();
+    fewest_flips(mut work)
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_operations(grid),
+        1 => hopcroft_minimum_operations(grid),
+        2 => bfs_minimum_operations(grid),
+        3 => struct_minimum_operations(grid),
+        4 => flow_minimum_operations(grid),
+        _ => solution_minimum_operations(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "hopcroft", "bfs", "struct", "flow", "solution"];
+    let mut seed = 2123;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let (rows, cols, chance) = if t < 300 {
+            (next_random(mut seed) % 5 + 1, next_random(mut seed) % 5 + 1, [1, 2, 3][t % 3])
+        } else if t < 330 {
+            (next_random(mut seed) % 2 + 1, next_random(mut seed) % 16 + 1, 3)
+        } else {
+            (next_random(mut seed) % 6 + 1, next_random(mut seed) % 6 + 1, 1)
+        };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                row.push(if next_random(mut seed) % 4 < chance { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        problems.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in problems.iter() {
+        let truth = literal(grid);
+        check = (check * 31 + truth) % 1000000007;
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let transposed: Vec[Vec[i64]] = (0..cols).map(|c| (0..rows).map(|r| grid[r][c]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().collect()).collect();
+        let mut padded: Vec[Vec[i64]] = [Vec.filled(cols, 0)].to_vec();
+        for row in grid.iter() {
+            padded.push(row.clone());
+        }
+        let mut grown = grid.clone();
+        let mut zero = -1;
+        for i in 0..rows * cols {
+            if zero < 0 and grid[i / cols][i % cols] == 0 {
+                zero = i;
+                grown[i / cols][i % cols] = 1;
+            }
+        }
+        let mut evens = 0;
+        let mut odds = 0;
+        for r in 0..rows {
+            for c in 0..cols {
+                let beside = grid[r][c] == 1
+                    and ((r > 0 and grid[r - 1][c] == 1) or (r + 1 < rows and grid[r + 1][c] == 1)
+                        or (c > 0 and grid[r][c - 1] == 1) or (c + 1 < cols and grid[r][c + 1] == 1));
+                if beside and (r + c) % 2 == 0 {
+                    evens += 1;
+                } else if beside {
+                    odds += 1;
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let raised = if zero < 0 { x } else { answer(arm, grown) };
+            let verdicts = [
+                x == truth,
+                answer(arm, transposed) == x,
+                answer(arm, mirrored) == x,
+                answer(arm, padded) == x,
+                x >= 0 and x <= evens and x <= odds and raised >= x and raised <= x + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

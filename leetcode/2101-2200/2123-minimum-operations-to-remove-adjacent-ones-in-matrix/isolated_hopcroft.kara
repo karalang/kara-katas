@@ -1,0 +1,146 @@
+// LeetCode #2123: Minimum Operations to Remove Adjacent Ones in Matrix --
+// the Hopcroft-Karp arm. The same bipartite graph of ones; each phase a
+// breadth-first search from every free even one layers the even ones by
+// the length of the shortest alternating path to them, and a depth-first
+// search along the layers then takes a set of shortest augmenting paths
+// that share no cell. O(E * sqrt(V)).
+
+fn layer(lefts: Vec[i64], adj: Vec[Vec[i64]], match_left: Vec[i64], match_right: Vec[i64], dist: mut ref Vec[i64]) -> bool {
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    for u in lefts.iter() {
+        if match_left[u] < 0 {
+            dist[u] = 0;
+            queue.push_back(u);
+        } else {
+            dist[u] = -1;
+        }
+    }
+    let mut found = false;
+    while let Some(u) = queue.pop_front() {
+        for v in adj[u].iter() {
+            let w = match_right[v];
+            if w < 0 {
+                found = true;
+            } else if dist[w] < 0 {
+                dist[w] = dist[u] + 1;
+                queue.push_back(w);
+            }
+        }
+    }
+    found
+}
+
+fn augment(u: i64, adj: Vec[Vec[i64]], match_left: mut ref Vec[i64], match_right: mut ref Vec[i64], dist: mut ref Vec[i64]) -> bool {
+    for v in adj[u].iter() {
+        let w = match_right[v];
+        if w < 0 or (dist[w] == dist[u] + 1 and augment(w, adj, mut match_left, mut match_right, mut dist)) {
+            match_left[u] = v;
+            match_right[v] = u;
+            return true;
+        }
+    }
+    dist[u] = -1;
+    false
+}
+
+fn minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let cells = rows * cols;
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    let mut lefts: Vec[i64] = Vec.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            let mut next: Vec[i64] = Vec.new();
+            if grid[r][c] == 1 and (r + c) % 2 == 0 {
+                if r > 0 and grid[r - 1][c] == 1 {
+                    next.push((r - 1) * cols + c);
+                }
+                if r + 1 < rows and grid[r + 1][c] == 1 {
+                    next.push((r + 1) * cols + c);
+                }
+                if c > 0 and grid[r][c - 1] == 1 {
+                    next.push(r * cols + c - 1);
+                }
+                if c + 1 < cols and grid[r][c + 1] == 1 {
+                    next.push(r * cols + c + 1);
+                }
+                if not next.is_empty() {
+                    lefts.push(r * cols + c);
+                }
+            }
+            adj.push(next);
+        }
+    }
+    let mut match_left = Vec.filled(cells, -1);
+    let mut match_right = Vec.filled(cells, -1);
+    let mut dist = Vec.filled(cells, -1);
+    let mut matched = 0;
+    while layer(lefts, adj, match_left, match_right, mut dist) {
+        for u in lefts.iter() {
+            if match_left[u] < 0 and augment(u, adj, mut match_left, mut match_right, mut dist) {
+                matched += 1;
+            }
+        }
+    }
+    matched
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one cell, a row of ones,
+    // a plus sign, and a 3 by 3 block of ones
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[1, 1, 0].to_vec(), [0, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+        [[0, 0, 0].to_vec(), [0, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0, 1].to_vec(), [1, 0].to_vec()].to_vec(),
+        [[1].to_vec()].to_vec(),
+        [[1, 1, 1, 1, 1].to_vec()].to_vec(),
+        [[0, 1, 0].to_vec(), [1, 1, 1].to_vec(), [0, 1, 0].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec(), [1, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+    ].to_vec();
+    for grid in examples.iter() {
+        println(f"{grid} -> {minimum_operations(grid)}");
+    }
+    // 1000 random grids of 1 to 8 by 1 to 8, each cell a one with chance
+    // a quarter, a half or three quarters in turn
+    let mut seed = 2123;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..1000 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 8 + 1;
+        let chance = [1, 2, 3][round % 3];
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                row.push(if next_random(mut seed) % 4 < chance { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let got = minimum_operations(grid);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"1000 grids: {total} operations, checksum {check}");
+    // the constraints' largest: 300 by 300, all ones, and with each cell
+    // a one with chance one half
+    let full: Vec[Vec[i64]] = (0..300).map(|_| Vec.filled(300, 1)).collect();
+    println(f"300 by 300 ones: {minimum_operations(full)}");
+    let mut half: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..300 {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..300 {
+            row.push(next_random(mut seed) % 2);
+        }
+        half.push(row);
+    }
+    println(f"300 by 300 half ones: {minimum_operations(half)}");
+}

@@ -1,0 +1,157 @@
+// LeetCode #2123: Minimum Operations to Remove Adjacent Ones in Matrix --
+// the flow arm. A maximum matching is a maximum flow: a source with an
+// edge of capacity one to each even one, each even one to its odd
+// neighbours, each odd one to a sink. Dinic's algorithm levels the
+// residual graph by breadth-first search and pushes blocking flow along
+// the levels, the edges kept in flat vectors with each edge's reverse at
+// the index next to it. O(E * sqrt(V)) on unit capacities.
+
+struct Network {
+    head: Vec[i64],
+    next: Vec[i64],
+    to: Vec[i64],
+    cap: Vec[i64],
+}
+
+fn add_edge(net: mut ref Network, u: i64, v: i64) {
+    for (a, b, c) in [(u, v, 1), (v, u, 0)].iter() {
+        net.to.push(b);
+        net.cap.push(c);
+        net.next.push(net.head[a]);
+        net.head[a] = net.to.len() - 1;
+    }
+}
+
+fn levels(net: Network, source: i64, sink: i64) -> Vec[i64] {
+    let mut level = Vec.filled(net.head.len(), -1);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    level[source] = 0;
+    queue.push_back(source);
+    while let Some(u) = queue.pop_front() {
+        let mut e = net.head[u];
+        while e >= 0 {
+            let v = net.to[e];
+            if net.cap[e] > 0 and level[v] < 0 {
+                level[v] = level[u] + 1;
+                queue.push_back(v);
+            }
+            e = net.next[e];
+        }
+    }
+    level
+}
+
+fn push(net: mut ref Network, u: i64, sink: i64, level: Vec[i64], cursor: mut ref Vec[i64]) -> bool {
+    if u == sink {
+        return true;
+    }
+    while cursor[u] >= 0 {
+        let e = cursor[u];
+        let v = net.to[e];
+        if net.cap[e] > 0 and level[v] == level[u] + 1 and push(mut net, v, sink, level, mut cursor) {
+            net.cap[e] -= 1;
+            net.cap[e ^ 1] += 1;
+            return true;
+        }
+        cursor[u] = net.next[e];
+    }
+    false
+}
+
+fn minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let source = rows * cols;
+    let sink = source + 1;
+    let mut net = Network { head: Vec.filled(sink + 1, -1), next: Vec.new(), to: Vec.new(), cap: Vec.new() };
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 0 {
+                continue;
+            }
+            let u = r * cols + c;
+            if (r + c) % 2 != 0 {
+                add_edge(mut net, u, sink);
+                continue;
+            }
+            add_edge(mut net, source, u);
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)].iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                    add_edge(mut net, u, nr * cols + nc);
+                }
+            }
+        }
+    }
+    let mut flow = 0;
+    loop {
+        let level = levels(net, source, sink);
+        if level[sink] < 0 {
+            break;
+        }
+        let mut cursor = net.head.clone();
+        while push(mut net, source, sink, level, mut cursor) {
+            flow += 1;
+        }
+    }
+    flow
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one cell, a row of ones,
+    // a plus sign, and a 3 by 3 block of ones
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[1, 1, 0].to_vec(), [0, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+        [[0, 0, 0].to_vec(), [0, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0, 1].to_vec(), [1, 0].to_vec()].to_vec(),
+        [[1].to_vec()].to_vec(),
+        [[1, 1, 1, 1, 1].to_vec()].to_vec(),
+        [[0, 1, 0].to_vec(), [1, 1, 1].to_vec(), [0, 1, 0].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec(), [1, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+    ].to_vec();
+    for grid in examples.iter() {
+        println(f"{grid} -> {minimum_operations(grid)}");
+    }
+    // 1000 random grids of 1 to 8 by 1 to 8, each cell a one with chance
+    // a quarter, a half or three quarters in turn
+    let mut seed = 2123;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..1000 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 8 + 1;
+        let chance = [1, 2, 3][round % 3];
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                row.push(if next_random(mut seed) % 4 < chance { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let got = minimum_operations(grid);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"1000 grids: {total} operations, checksum {check}");
+    // the constraints' largest: 300 by 300, all ones, and with each cell
+    // a one with chance one half
+    let full: Vec[Vec[i64]] = (0..300).map(|_| Vec.filled(300, 1)).collect();
+    println(f"300 by 300 ones: {minimum_operations(full)}");
+    let mut half: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..300 {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..300 {
+            row.push(next_random(mut seed) % 2);
+        }
+        half.push(row);
+    }
+    println(f"300 by 300 half ones: {minimum_operations(half)}");
+}

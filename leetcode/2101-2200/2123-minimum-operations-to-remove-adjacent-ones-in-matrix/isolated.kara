@@ -1,0 +1,112 @@
+// LeetCode #2123: Minimum Operations to Remove Adjacent Ones in Matrix --
+// the ★ arm. Two adjacent cells have row plus column of different
+// parity, so the ones form a bipartite graph, even cells on one side and
+// odd on the other, with an edge for each adjacent pair. Flipping ones
+// until no edge is left is a vertex cover, and by König's theorem the
+// smallest one is as large as a maximum matching. The matching is grown
+// by Kuhn's augmenting paths from each even one, a depth-first search
+// that marks the odd ones it visits with the round's stamp. O(V * E).
+
+fn try_match(u: i64, adj: Vec[Vec[i64]], partner: mut ref Vec[i64], seen: mut ref Vec[i64], stamp: i64) -> bool {
+    for v in adj[u].iter() {
+        if seen[v] == stamp {
+            continue;
+        }
+        seen[v] = stamp;
+        if partner[v] < 0 or try_match(partner[v], adj, mut partner, mut seen, stamp) {
+            partner[v] = u;
+            return true;
+        }
+    }
+    false
+}
+
+fn minimum_operations(grid: Vec[Vec[i64]]) -> i64 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut adj: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..rows * cols {
+        adj.push(Vec.new());
+    }
+    for r in 0..rows {
+        for c in 0..cols {
+            if grid[r][c] == 0 or (r + c) % 2 != 0 {
+                continue;
+            }
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)].iter() {
+                let (nr, nc) = (r + dr, c + dc);
+                if nr >= 0 and nr < rows and nc >= 0 and nc < cols and grid[nr][nc] == 1 {
+                    adj[r * cols + c].push(nr * cols + nc);
+                }
+            }
+        }
+    }
+    let mut partner = Vec.filled(rows * cols, -1);
+    let mut seen = Vec.filled(rows * cols, -1);
+    let mut matched = 0;
+    for u in 0..rows * cols {
+        if not adj[u].is_empty() and try_match(u, adj, mut partner, mut seen, u) {
+            matched += 1;
+        }
+    }
+    matched
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one cell, a row of ones,
+    // a plus sign, and a 3 by 3 block of ones
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[1, 1, 0].to_vec(), [0, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+        [[0, 0, 0].to_vec(), [0, 0, 0].to_vec(), [0, 0, 0].to_vec()].to_vec(),
+        [[0, 1].to_vec(), [1, 0].to_vec()].to_vec(),
+        [[1].to_vec()].to_vec(),
+        [[1, 1, 1, 1, 1].to_vec()].to_vec(),
+        [[0, 1, 0].to_vec(), [1, 1, 1].to_vec(), [0, 1, 0].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec(), [1, 1, 1].to_vec(), [1, 1, 1].to_vec()].to_vec(),
+    ].to_vec();
+    for grid in examples.iter() {
+        println(f"{grid} -> {minimum_operations(grid)}");
+    }
+    // 1000 random grids of 1 to 8 by 1 to 8, each cell a one with chance
+    // a quarter, a half or three quarters in turn
+    let mut seed = 2123;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..1000 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 8 + 1;
+        let chance = [1, 2, 3][round % 3];
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                row.push(if next_random(mut seed) % 4 < chance { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let got = minimum_operations(grid);
+        total += got;
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"1000 grids: {total} operations, checksum {check}");
+    // the constraints' largest: 300 by 300, all ones, and with each cell
+    // a one with chance one half
+    let full: Vec[Vec[i64]] = (0..300).map(|_| Vec.filled(300, 1)).collect();
+    println(f"300 by 300 ones: {minimum_operations(full)}");
+    let mut half: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..300 {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..300 {
+            row.push(next_random(mut seed) % 2);
+        }
+        half.push(row);
+    }
+    println(f"300 by 300 half ones: {minimum_operations(half)}");
+}
