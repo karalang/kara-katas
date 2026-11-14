@@ -1,0 +1,91 @@
+// LeetCode #2136: Earliest Possible Day of Full Bloom -- an order of its
+// own. A `Seed` holds its plant and grow times and is ordered by its own
+// `Ord`, the longer grow first, so a plain `sort` puts the seeds in the
+// order they are planted. O(n log n).
+
+struct Seed {
+    plant: i64,
+    grow: i64,
+}
+
+impl PartialEq for Seed {
+    fn eq(self, other: Seed) -> bool {
+        self.grow == other.grow
+    }
+}
+
+impl Eq for Seed {}
+
+impl PartialOrd for Seed {
+    fn partial_cmp(self, other: Seed) -> Option[Ordering] {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Seed {
+    // the longer grow is the smaller: it is planted first
+    fn cmp(self, other: Seed) -> Ordering {
+        other.grow.cmp(self.grow)
+    }
+}
+
+fn earliest_full_bloom(plant_time: Vec[i64], grow_time: Vec[i64]) -> i64 {
+    let mut seeds: Vec[Seed] = (0..plant_time.len()).map(|i| Seed { plant: plant_time[i], grow: grow_time[i] }).collect();
+    seeds.sort();
+    let mut planted = 0;
+    let mut bloom = 0;
+    for s in seeds.iter() {
+        planted += s.plant;
+        bloom = bloom.max(planted + s.grow);
+    }
+    bloom
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(plant_time: Vec[i64], grow_time: Vec[i64]) {
+    println(f"{plant_time} {grow_time} -> {earliest_full_bloom(plant_time, grow_time)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: equal grow times, equal
+    // plant times, a long grow behind a long plant, and the largest values
+    show([1, 4, 3].to_vec(), [2, 3, 1].to_vec());
+    show([1, 2, 3, 2].to_vec(), [2, 1, 2, 1].to_vec());
+    show([1].to_vec(), [1].to_vec());
+    show([3, 1, 2].to_vec(), [5, 5, 5].to_vec());
+    show([2, 2, 2].to_vec(), [1, 6, 3].to_vec());
+    show([9, 1].to_vec(), [1, 9].to_vec());
+    show([10000, 10000].to_vec(), [10000, 10000].to_vec());
+    // 2000 random gardens of 1 to 10 seeds, times of 1 to 3, 1 to 10 or 1
+    // to 100 in turn
+    let mut seed = 2136;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 10 + 1;
+        let top = [3, 10, 100][round % 3];
+        let plant: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let grow: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let day = earliest_full_bloom(plant, grow);
+        total += day;
+        check = (check * 31 + day + n) % 1000000007;
+    }
+    println(f"2000 gardens: {total} days in all, checksum {check}");
+    // the constraints' largest, 100000 seeds of times up to 10000: all the
+    // largest, grow times falling as plant times rise, and at random
+    let same: Vec[i64] = Vec.filled(100000, 10000);
+    let rising: Vec[i64] = (0..100000).map(|i| i % 10000 + 1).collect();
+    let falling: Vec[i64] = (0..100000).map(|i| 10000 - i % 10000).collect();
+    let plant: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 10000 + 1).collect();
+    let grow: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 10000 + 1).collect();
+    let x = earliest_full_bloom(same, same);
+    let y = earliest_full_bloom(rising, falling);
+    let z = earliest_full_bloom(plant, grow);
+    println(f"100000 seeds: {x} all largest, {y} rising against falling, {z} at random");
+}
