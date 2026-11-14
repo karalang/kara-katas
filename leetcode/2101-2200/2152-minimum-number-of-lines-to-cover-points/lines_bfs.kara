@@ -1,0 +1,101 @@
+// LeetCode #2152: Minimum Number of Lines to Cover Points -- breadth
+// first over the covered masks: every step draws one more line, so the
+// step at which the full mask is first reached is the answer. Every
+// line through two points is found once up front as a mask, and a single
+// point's own line is added as needed; a `VecDeque` of (mask, lines)
+// and a `Vec[bool]` of masks reached. O(2^n n^2).
+
+fn minimum_lines(points: Vec[Vec[i64]]) -> i64 {
+    let n = points.len();
+    let full = (1 << n) - 1;
+    let mut through: Vec[i64] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..n {
+            let mut line = 0;
+            for k in 0..n {
+                let (dx, dy) = (points[j][0] - points[i][0], points[j][1] - points[i][1]);
+                let (ex, ey) = (points[k][0] - points[i][0], points[k][1] - points[i][1]);
+                if dx * ey == dy * ex {
+                    line |= 1 << k;
+                }
+            }
+            through.push(line);
+        }
+    }
+    let mut reached: Vec[bool] = Vec.filled(1 << n, false);
+    reached[0] = true;
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0));
+    while let Some((mask, lines)) = queue.pop_front() {
+        if mask == full {
+            return lines;
+        }
+        let i = (~mask).trailing_zeros();
+        let mut nexts = [mask | (1 << i)].to_vec();
+        for line in through.iter() {
+            if (line >> i) & 1 == 1 {
+                nexts.push(mask | line);
+            }
+        }
+        for next in nexts.iter() {
+            if not reached[next] {
+                reached[next] = true;
+                queue.push_back((next, lines + 1));
+            }
+        }
+    }
+    n
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct points with both coordinates in -`reach` to `reach`
+fn draw(n: i64, reach: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut points: Vec[Vec[i64]] = Vec.new();
+    while points.len() < n {
+        let p = [next_random(mut seed) % (2 * reach + 1) - reach, next_random(mut seed) % (2 * reach + 1) - reach].to_vec();
+        if not points.contains(p) {
+            points.push(p);
+        }
+    }
+    points
+}
+
+fn show(points: Vec[Vec[i64]]) {
+    println(f"{points} -> {minimum_lines(points)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one point, two points, the
+    // corners of a square, and a 3 by 3 grid
+    show([[0, 1].to_vec(), [2, 3].to_vec(), [4, 5].to_vec(), [4, 3].to_vec()].to_vec());
+    show([[0, 2].to_vec(), [-2, -2].to_vec(), [1, 4].to_vec()].to_vec());
+    show([[5, -5].to_vec()].to_vec());
+    show([[0, 0].to_vec(), [100, -100].to_vec()].to_vec());
+    show([[0, 0].to_vec(), [0, 1].to_vec(), [1, 0].to_vec(), [1, 1].to_vec()].to_vec());
+    show((0..9).map(|k| [k / 3, k % 3].to_vec()).collect());
+    // 2000 random sets of 1 to 8 points, in -2 to 2 and in -100 to 100 in
+    // turn
+    let mut seed = 2152;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let points = draw(n, [2, 100][round % 2], mut seed);
+        let lines = minimum_lines(points);
+        total += lines;
+        check = (check * 31 + lines + n) % 1000000007;
+    }
+    println(f"2000 sets: {total} lines in all, checksum {check}");
+    // the constraints' largest, 10 points: all on one slanted line, on two
+    // crossing lines, and at random in the whole range
+    let one: Vec[Vec[i64]] = (0..10).map(|k| [3 * k - 14, 100 - 7 * k].to_vec()).collect();
+    let two: Vec[Vec[i64]] = (0..10).map(|k| if k < 5 { [k, k].to_vec() } else { [k, -k].to_vec() }).collect();
+    let random = draw(10, 100, mut seed);
+    println(f"10 points: {minimum_lines(one)} on one line, {minimum_lines(two)} on two, {minimum_lines(random)} at random");
+}

@@ -1,0 +1,72 @@
+// LeetCode #2152: Minimum Number of Lines to Cover Points -- the
+// benchmark, lines.kara's ★ arm. 4 sets of 10 points on a 7 by 7 grid
+// built once; then every set solved 2500 times, one point moved to a free
+// place of the grid before each so that no solve repeats one before.
+
+fn minimum_lines(points: Vec[Vec[i64]]) -> i64 {
+    let n = points.len();
+    let full = (1 << n) - 1;
+    let mut fewest: Vec[i64] = Vec.filled(1 << n, n + 1);
+    fewest[0] = 0;
+    for mask in 0..full {
+        if fewest[mask] > n {
+            continue;
+        }
+        let mut i = 0;
+        while (mask >> i) & 1 == 1 {
+            i += 1;
+        }
+        let alone = mask | (1 << i);
+        fewest[alone] = fewest[alone].min(fewest[mask] + 1);
+        for j in i + 1..n {
+            let mut line = 0;
+            for k in 0..n {
+                let cross = (points[j][0] - points[i][0]) * (points[k][1] - points[i][1]) - (points[j][1] - points[i][1]) * (points[k][0] - points[i][0]);
+                if cross == 0 {
+                    line |= 1 << k;
+                }
+            }
+            fewest[mask | line] = fewest[mask | line].min(fewest[mask] + 1);
+        }
+    }
+    fewest[full]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn free_place(points: Vec[Vec[i64]], seed: mut ref i64) -> Vec[i64] {
+    loop {
+        let p = [next_random(mut seed) % 7 - 3, next_random(mut seed) % 7 - 3].to_vec();
+        if not points.contains(p) {
+            return p;
+        }
+    }
+}
+
+fn main() {
+    let mut seed = 2152;
+    let mut sets: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..4 {
+        let mut points: Vec[Vec[i64]] = Vec.new();
+        while points.len() < 10 {
+            let p = free_place(points, mut seed);
+            points.push(p);
+        }
+        sets.push(points);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2500 {
+        for s in 0..4 {
+            let at = next_random(mut seed) % 10;
+            sets[s][at] = free_place(sets[s], mut seed);
+            let lines = minimum_lines(sets[s]);
+            total += lines;
+            check = (check * 31 + lines + round) % 1000000007;
+        }
+    }
+    println(f"10000 solves: {total} lines in all, checksum {check}");
+}

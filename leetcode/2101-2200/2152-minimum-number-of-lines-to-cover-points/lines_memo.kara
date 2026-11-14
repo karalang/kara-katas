@@ -1,0 +1,93 @@
+// LeetCode #2152: Minimum Number of Lines to Cover Points -- top down: the
+// fewest lines for the points still left, a mask, remembered in a
+// `Map[i64, i64]`; the lowest point left goes alone or on the line
+// through it and another point left, and that line takes every point
+// left on it. Recursive. O(2^n n^2).
+
+fn collinear(points: Vec[Vec[i64]], a: i64, b: i64, c: i64) -> bool {
+    (points[b][0] - points[a][0]) * (points[c][1] - points[a][1]) == (points[b][1] - points[a][1]) * (points[c][0] - points[a][0])
+}
+
+fn fewest(points: Vec[Vec[i64]], left: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if let Some(known) = memo.get(left) {
+        return known;
+    }
+    let n = points.len();
+    let i = left.trailing_zeros();
+    let rest = left ^ (1 << i);
+    let mut best = 1 + fewest(points, rest, mut memo);
+    for j in i + 1..n {
+        if (rest >> j) & 1 == 1 {
+            let mut after = rest;
+            for k in 0..n {
+                if (after >> k) & 1 == 1 and collinear(points, i, j, k) {
+                    after ^= 1 << k;
+                }
+            }
+            best = best.min(1 + fewest(points, after, mut memo));
+        }
+    }
+    memo.insert(left, best);
+    best
+}
+
+fn minimum_lines(points: Vec[Vec[i64]]) -> i64 {
+    let mut memo: Map[i64, i64] = Map.new();
+    fewest(points, (1 << points.len()) - 1, mut memo)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` distinct points with both coordinates in -`reach` to `reach`
+fn draw(n: i64, reach: i64, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut points: Vec[Vec[i64]] = Vec.new();
+    while points.len() < n {
+        let p = [next_random(mut seed) % (2 * reach + 1) - reach, next_random(mut seed) % (2 * reach + 1) - reach].to_vec();
+        if not points.contains(p) {
+            points.push(p);
+        }
+    }
+    points
+}
+
+fn show(points: Vec[Vec[i64]]) {
+    println(f"{points} -> {minimum_lines(points)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one point, two points, the
+    // corners of a square, and a 3 by 3 grid
+    show([[0, 1].to_vec(), [2, 3].to_vec(), [4, 5].to_vec(), [4, 3].to_vec()].to_vec());
+    show([[0, 2].to_vec(), [-2, -2].to_vec(), [1, 4].to_vec()].to_vec());
+    show([[5, -5].to_vec()].to_vec());
+    show([[0, 0].to_vec(), [100, -100].to_vec()].to_vec());
+    show([[0, 0].to_vec(), [0, 1].to_vec(), [1, 0].to_vec(), [1, 1].to_vec()].to_vec());
+    show((0..9).map(|k| [k / 3, k % 3].to_vec()).collect());
+    // 2000 random sets of 1 to 8 points, in -2 to 2 and in -100 to 100 in
+    // turn
+    let mut seed = 2152;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let points = draw(n, [2, 100][round % 2], mut seed);
+        let lines = minimum_lines(points);
+        total += lines;
+        check = (check * 31 + lines + n) % 1000000007;
+    }
+    println(f"2000 sets: {total} lines in all, checksum {check}");
+    // the constraints' largest, 10 points: all on one slanted line, on two
+    // crossing lines, and at random in the whole range
+    let one: Vec[Vec[i64]] = (0..10).map(|k| [3 * k - 14, 100 - 7 * k].to_vec()).collect();
+    let two: Vec[Vec[i64]] = (0..10).map(|k| if k < 5 { [k, k].to_vec() } else { [k, -k].to_vec() }).collect();
+    let random = draw(10, 100, mut seed);
+    println(f"10 points: {minimum_lines(one)} on one line, {minimum_lines(two)} on two, {minimum_lines(random)} at random");
+}
