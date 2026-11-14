@@ -1,0 +1,55 @@
+// LeetCode #1535: Find the Winner of an Array Game -- bench: the ★ arm
+// over 100 random arrays of 100000 distinct values, each with its own k
+// from 1 to 200000, built once and answered 20 times.
+
+fn get_winner(arr: Vec[i64], k: i64) -> i64 {
+    let mut front = arr[0];
+    let mut streak = 0;
+    for i in 1..arr.len() {
+        if arr[i] > front {
+            front = arr[i];
+            streak = 1;
+        } else {
+            streak += 1;
+        }
+        if streak == k {
+            return front;
+        }
+    }
+    front
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn draw(seed: mut ref i64, below: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % below
+}
+
+fn main() {
+    let mut seed = 1535;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..100 {
+        let n = 100000;
+        let mut arr: Vec[i64] = (1..=n).map(|v| v * 3).collect();
+        for i in (1..n).rev() {
+            let j = draw(mut seed, i + 1);
+            arr.swap(i, j);
+        }
+        let k = draw(mut seed, 200000) + 1;
+        cases.push((arr, k));
+    }
+    let mut check = 0;
+    for _ in 0..20 {
+        for (arr, k) in cases.iter() {
+            check = mix(check, get_winner(arr, k));
+        }
+    }
+    println(f"20 passes over 100 arrays of 100000 values: checksum {check}");
+}

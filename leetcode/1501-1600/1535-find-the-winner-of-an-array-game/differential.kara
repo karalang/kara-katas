@@ -1,0 +1,220 @@
+// LeetCode #1535: Find the Winner of an Array Game -- the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 2 to
+// 12 distinct values (multiples of 3, shuffled) with k from 1 to 15, with
+// six properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  k of n - 1 or more gives the largest value
+// P3  k = 1 gives the larger of the first two values
+// P4  every value v made 2v + 1 makes the answer 2 * answer + 1
+// P5  one more win needed never gives a smaller winner
+// P6  each arm agrees with at least two of the other three
+
+// ---- winner.kara: the ★ arm: one pass, a running front and its streak
+
+fn star_arm(arr: Vec[i64], k: i64) -> i64 {
+    let mut front = arr[0];
+    let mut streak = 0;
+    for i in 1..arr.len() {
+        if arr[i] > front {
+            front = arr[i];
+            streak = 1;
+        } else {
+            streak += 1;
+        }
+        if streak == k {
+            return front;
+        }
+    }
+    front
+}
+
+// ---- winner_deque.kara: the game played on a VecDeque
+
+fn deque_arm(arr: Vec[i64], k: i64) -> i64 {
+    let n = arr.len();
+    let mut line: VecDeque[i64] = arr.iter().cloned().collect();
+    let mut streak = 0;
+    loop {
+        let first = line.pop_front().unwrap();
+        let second = line.pop_front().unwrap();
+        let (winner, loser) = if first > second { (first, second) } else { (second, first) };
+        if winner == first {
+            streak += 1;
+        } else {
+            streak = 1;
+        }
+        line.push_front(winner);
+        line.push_back(loser);
+        if streak == k or streak == n - 1 {
+            return winner;
+        }
+    }
+}
+
+// ---- winner_iter.kara: the ★ arm as a try_fold
+
+fn iter_arm(arr: Vec[i64], k: i64) -> i64 {
+    let walk = arr.iter().skip(1).try_fold((arr[0], 0), |(front, streak), v| {
+        let (front, streak) = if v > front { (v, 1) } else { (front, streak + 1) };
+        if streak == k { Err(front) } else { Ok((front, streak)) }
+    });
+    match walk {
+        Ok((front, _)) => front,
+        Err(winner) => winner,
+    }
+}
+
+// ---- winner_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn get_winner(arr: Vec[i32], k: i32) -> i32 {
+        let mut front = arr[0];
+        let mut streak = 0;
+        for x in arr.iter().skip(1) {
+            if x > front {
+                front = x;
+                streak = 1;
+            } else {
+                streak += 1;
+            }
+            if streak == k {
+                return front;
+            }
+        }
+        front
+    }
+}
+
+fn solution_arm(arr: Vec[i64], k: i64) -> i64 {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    Solution.get_winner(arr, k as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, arr: Vec[i64], k: i64) -> i64 {
+    if which == 0 {
+        star_arm(arr, k)
+    } else if which == 1 {
+        deque_arm(arr, k)
+    } else if which == 2 {
+        iter_arm(arr, k)
+    } else {
+        solution_arm(arr, k)
+    }
+}
+
+fn arm_name(which: i64) -> String {
+    ["star", "deque", "iter", "solution"][which].to_string()
+}
+
+// ---- the statement read literally: the game played round by round on a
+// `Vec`, the loser removed from the front and pushed on the end, until a
+// value has won k rounds in a row
+
+fn literal(arr: Vec[i64], k: i64) -> i64 {
+    let mut line = arr.clone();
+    let mut last_winner = -1;
+    let mut wins = 0;
+    loop {
+        let (winner, loser_at) = if line[0] > line[1] { (line[0], 1) } else { (line[1], 0) };
+        let loser = line.remove(loser_at);
+        line.push(loser);
+        if winner == last_winner {
+            wins += 1;
+        } else {
+            last_winner = winner;
+            wins = 1;
+        }
+        if wins == k {
+            return winner;
+        }
+    }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15350;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 11 + 2;
+        let mut arr: Vec[i64] = (1..=n).map(|v| v * 3).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            arr.swap(i, j);
+        }
+        let k = next_random(mut seed) % 15 + 1;
+        let beyond = next_random(mut seed) % 100;
+        cases.push((arr, k, beyond));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (arr, k, beyond) = cases[p].clone();
+        let n = arr.len();
+        let truth = literal(arr.clone(), k);
+        let largest = arr.iter().max().unwrap();
+        let doubled: Vec[i64] = arr.iter().map(|v| v * 2 + 1).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, arr.clone(), k);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, arr.clone(), n - 1 + beyond) != largest,
+                arm(a, arr.clone(), 1) != arr[0].max(arr[1]),
+                arm(a, doubled.clone(), k) != answer * 2 + 1,
+                arm(a, arr.clone(), k + 1) < answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

@@ -1,0 +1,302 @@
+// LeetCode #1536: Minimum Swaps to Arrange a Binary Grid -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 grids of 1 to 6
+// rows, each row ending in a random 0 to n zeros, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is -1 exactly when the rows' trailing zeros, sorted from
+//     most, fall short somewhere: the k-th needs at least n - 1 - k
+// P3  the rows sorted by trailing zeros, most first, need no swap
+// P4  bits changed before each row's last 1 leave the answer
+// P5  the answer is at most n(n - 1)/2
+// P6  each arm agrees with at least two of the other three
+
+// ---- swaps.kara: the ★ arm: greedy over trailing zeros, bubbled up
+
+fn star_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let mut zeros: Vec[i64] = Vec.new();
+    for row in grid.iter() {
+        let mut count = 0;
+        while count < n and row[n - 1 - count] == 0 {
+            count += 1;
+        }
+        zeros.push(count);
+    }
+    let mut swaps = 0;
+    for i in 0..n {
+        let need = n - 1 - i;
+        let mut j = i;
+        while j < n and zeros[j] < need {
+            j += 1;
+        }
+        if j == n {
+            return -1;
+        }
+        while j > i {
+            zeros.swap(j, j - 1);
+            j -= 1;
+            swaps += 1;
+        }
+    }
+    swaps
+}
+
+// ---- swaps_last_one.kara: the greedy over each row's last 1
+
+fn last_one_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let mut last: Vec[i64] = Vec.new();
+    for row in grid.iter() {
+        let mut at = n - 1;
+        while at >= 0 and row[at] == 0 {
+            at -= 1;
+        }
+        last.push(at);
+    }
+    let mut swaps = 0;
+    for i in 0..n {
+        let mut j = i;
+        while j < n and last[j] > i {
+            j += 1;
+        }
+        if j == n {
+            return -1;
+        }
+        let row = last.remove(j);
+        last.insert(i, row);
+        swaps += j - i;
+    }
+    swaps
+}
+
+// ---- swaps_iter.kara: the ★ arm with iterators
+
+fn iter_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let mut zeros: Vec[i64] = grid
+        .iter()
+        .map(|row| row.iter().rev().take_while(|c| *c == 0).count())
+        .collect();
+    let mut swaps = 0;
+    for i in 0..n {
+        let need = n - 1 - i;
+        match zeros[i..].iter().position(|z| *z >= need) {
+            None => return -1,
+            Some(ahead) => {
+                let z = zeros.remove(i + ahead);
+                zeros.insert(i, z);
+                swaps += ahead;
+            }
+        }
+    }
+    swaps
+}
+
+// ---- swaps_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_swaps(grid: Vec[Vec[i32]]) -> i32 {
+        let n = grid.len();
+        let mut zeros: Vec[i64] = grid
+            .iter()
+            .map(|row| row.iter().rev().take_while(|c| c == 0).count())
+            .collect();
+        let mut ans: i32 = 0;
+        for i in 0..n {
+            let need = n - 1 - i;
+            match (i..n).find(|j| zeros[j] >= need) {
+                None => return -1,
+                Some(j) => {
+                    let z = zeros.remove(j);
+                    zeros.insert(i, z);
+                    ans += (j - i) as i32;
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(grid: Vec[Vec[i64]]) -> i64 {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|c| c as i32).collect()).collect();
+    Solution.min_swaps(grid)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(which: i64, grid: Vec[Vec[i64]]) -> i64 {
+    if which == 0 {
+        star_arm(grid)
+    } else if which == 1 {
+        last_one_arm(grid)
+    } else if which == 2 {
+        iter_arm(grid)
+    } else {
+        solution_arm(grid)
+    }
+}
+
+fn arm_name(which: i64) -> String {
+    ["star", "last_one", "iter", "solution"][which].to_string()
+}
+
+// ---- the statement read literally: a breadth-first search over the
+// orders of the rows, one adjacent swap a step, to the first order whose
+// cells above the main diagonal are all zero
+
+fn valid(grid: Vec[Vec[i64]], order: Vec[i64]) -> bool {
+    let n = grid.len();
+    for i in 0..n {
+        for j in i + 1..n {
+            if grid[order[i]][j] == 1 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let n = grid.len();
+    let start: Vec[i64] = (0..n).collect();
+    let mut seen: Set[Vec[i64]] = Set.new();
+    seen.insert(start.clone());
+    let mut frontier = [start];
+    let mut steps = 0;
+    while not frontier.is_empty() {
+        let mut next = Vec.new();
+        for order in frontier.iter() {
+            if valid(grid, order) {
+                return steps;
+            }
+            for i in 0..n - 1 {
+                let mut moved = order.clone();
+                moved.swap(i, i + 1);
+                if seen.insert(moved.clone()) {
+                    next.push(moved);
+                }
+            }
+        }
+        frontier = next;
+        steps += 1;
+    }
+    -1
+}
+
+fn trailing_zeros(row: Vec[i64]) -> i64 {
+    let n = row.len();
+    let mut count = 0;
+    while count < n and row[n - 1 - count] == 0 {
+        count += 1;
+    }
+    count
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15360;
+    // each grid as rows of bits, and a second copy with random bits changed
+    // before each row's last 1
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let mut rows = Vec.new();
+        let mut noisy = Vec.new();
+        for _ in 0..n {
+            let zeros = next_random(mut seed) % (n + 1);
+            let mut row = Vec.filled(n, 0);
+            let mut other = Vec.filled(n, 0);
+            if zeros < n {
+                row[n - 1 - zeros] = 1;
+                other[n - 1 - zeros] = 1;
+                for c in 0..n - 1 - zeros {
+                    row[c] = next_random(mut seed) % 2;
+                    other[c] = next_random(mut seed) % 2;
+                }
+            }
+            rows.push(row);
+            noisy.push(other);
+        }
+        cases.push((rows, noisy));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (grid, noisy) = cases[p].clone();
+        let n = grid.len();
+        let truth = literal(grid.clone());
+        let mut zeros: Vec[i64] = grid.iter().map(|row| trailing_zeros(row.clone())).collect();
+        zeros.sort();
+        zeros.reverse();
+        let mut feasible = true;
+        for i in 0..n {
+            if zeros[i] < n - 1 - i {
+                feasible = false;
+            }
+        }
+        let mut sorted = grid.clone();
+        sorted.sort_by_key(|row| -trailing_zeros(row.clone()));
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, grid.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 2) % 1000000007;
+            let failed = [
+                answer != truth,
+                (answer >= 0) != feasible,
+                feasible and arm(a, sorted.clone()) != 0,
+                arm(a, noisy.clone()) != answer,
+                answer > n * (n - 1) / 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

@@ -118,8 +118,8 @@ iterator arm took one edit: Rust's `move` before the inner closure
 `|j| (i, j)` is refused (captures are inferred) with a fix that deletes
 it, applied.
 
-The Rust template took 3, 1 and 1 edits over three rounds: `Vec<i32>` to
-`Vec[i32]` (and `Vec<i64>` in the wrapper), `&&` to `and`, the wrapper's
+The Rust template took 5, 1 and 1 changed lines over three rounds: `Vec<i32>` to
+`Vec[i32]` (and `Vec<i64>`, `Vec<i32>` in the wrapper), `&&` to `and`, the wrapper's
 `|&x|` to `|x|` and `Solution::` to `Solution.`; then the
 `struct Solution {}` the template leaves out added; then the closing
 `as i64` dropped (an `i32` widens). It checks and agrees with no hand
