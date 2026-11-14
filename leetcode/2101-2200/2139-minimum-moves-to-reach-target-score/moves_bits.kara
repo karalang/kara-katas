@@ -1,0 +1,52 @@
+// LeetCode #2139: Minimum Moves to Reach Target Score -- by the bits.
+// Going back, every double spent takes one bit off the target's low end,
+// and a 1 bit there costs a step first. The halvings stop at the
+// target's top bit or when the doubles run out, so with h of them the low
+// h bits cost h halvings and one step per 1 among them, and what is left,
+// the target shifted right by h, is climbed from 1. O(log target).
+
+fn min_moves(target: i64, max_doubles: i64) -> i64 {
+    let width = 63 - target.leading_zeros();
+    let halvings = width.min(max_doubles);
+    let low = target & ((1 << halvings) - 1);
+    halvings + low.count_ones() + (target >> halvings) - 1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(target: i64, max_doubles: i64) {
+    println(f"{target} {max_doubles} -> {min_moves(target, max_doubles)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then five more: already there, already
+    // there with doubles to spare, no doubles at the largest target, every
+    // double the largest target could use, and a power of two
+    show(5, 0);
+    show(19, 2);
+    show(10, 4);
+    show(1, 0);
+    show(1, 100);
+    show(1000000000, 0);
+    show(1000000000, 100);
+    show(536870912, 29);
+    // 2000 random targets of 1 to 100, 1 to 10000 or 1 to 10^9 in turn,
+    // with 0 to 10 doubles or 0 to 100
+    let mut seed = 2139;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let top = [100, 10000, 1000000000][round % 3];
+        let target = (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1;
+        let doubles = next_random(mut seed) % [11, 101][round % 2];
+        let moves = min_moves(target, doubles);
+        total += moves;
+        check = (check * 31 + moves + doubles) % 1000000007;
+    }
+    println(f"2000 targets: {total} moves in all, checksum {check}");
+}
