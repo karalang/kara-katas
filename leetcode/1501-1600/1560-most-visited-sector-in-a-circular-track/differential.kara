@@ -1,0 +1,245 @@
+// LeetCode #1560: Most Visited Sector in a Circular Track -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 tracks of 2 to 8
+// sectors run for 1 to 6 legs, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is nonempty, ascending, names sectors of the track, and
+//     holds the sector the run ends at
+// P3  every sector moved on by the same turn moves the answer on
+// P4  a lap put after the run (to another sector and back) leaves the
+//     answer
+// P5  the answer holds as many sectors as lie from the first on to the
+//     last
+// P6  each arm agrees with at least two of the other three
+
+// ---- sectors.kara: the ★ arm: the first sector on to the last
+
+fn star_arm(n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    let start = rounds[0];
+    let end = rounds[rounds.len() - 1];
+    if start <= end {
+        (start..=end).collect()
+    } else {
+        (1..=end).chain(start..=n).collect()
+    }
+}
+
+// ---- sectors_walk.kara: the run walked sector by sector
+
+fn walk_arm(n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    let mut visits = Vec.filled(n + 1, 0);
+    visits[rounds[0]] += 1;
+    for leg in rounds.windows(2).into_iter() {
+        let mut at = leg[0];
+        while at != leg[1] {
+            at = at % n + 1;
+            visits[at] += 1;
+        }
+    }
+    let most = visits.iter().max().unwrap();
+    (1..=n).filter(|s| visits[s] == most).collect()
+}
+
+// ---- sectors_diff.kara: each leg's ranges in a difference array
+
+fn add(diff: mut ref Vec[i64], from: i64, to: i64) {
+    diff[from] += 1;
+    diff[to + 1] -= 1;
+}
+
+fn diff_arm(n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    let mut diff = Vec.filled(n + 2, 0);
+    add(mut diff, rounds[0], rounds[0]);
+    for i in 1..rounds.len() {
+        let (a, b) = (rounds[i - 1], rounds[i]);
+        if a < b {
+            add(mut diff, a + 1, b);
+        } else {
+            if a < n {
+                add(mut diff, a + 1, n);
+            }
+            add(mut diff, 1, b);
+        }
+    }
+    let mut visits = Vec.filled(n + 1, 0);
+    let mut running = 0;
+    for s in 1..=n {
+        running += diff[s];
+        visits[s] = running;
+    }
+    let most = visits.iter().max().unwrap();
+    let mut sectors = Vec.new();
+    for s in 1..=n {
+        if visits[s] == most {
+            sectors.push(s);
+        }
+    }
+    sectors
+}
+
+// ---- sectors_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn most_visited(n: i32, rounds: Vec[i32]) -> Vec[i32] {
+        let start = rounds[0];
+        let end = *rounds.last().unwrap();
+        let mut res = Vec.new();
+        if start <= end {
+            for i in start..=end {
+                res.push(i);
+            }
+        } else {
+            for i in 1..=end {
+                res.push(i);
+            }
+            for i in start..=n {
+                res.push(i);
+            }
+        }
+        res
+    }
+}
+
+fn solution_arm(n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    let rounds: Vec[i32] = rounds.iter().map(|r| r as i32).collect();
+    Solution.most_visited(n as i32, rounds).iter().map(|s| s as i64).collect()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    match a {
+        0 => star_arm(n, rounds),
+        1 => walk_arm(n, rounds),
+        2 => diff_arm(n, rounds),
+        _ => solution_arm(n, rounds),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["sectors", "walk", "diff", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the marathon written out as the list
+// of sectors it passes, the start and then every sector each round goes
+// through in ascending order, counted in a `Map`; the answer is the
+// sectors counted most, in ascending order
+
+fn literal(n: i64, rounds: Vec[i64]) -> Vec[i64] {
+    let mut path = [rounds[0]];
+    for i in 1..rounds.len() {
+        let mut at = rounds[i - 1];
+        loop {
+            at = if at == n { 1 } else { at + 1 };
+            path.push(at);
+            if at == rounds[i] {
+                break;
+            }
+        }
+    }
+    let mut counts: Map[i64, i64] = Map.new();
+    for s in path.iter() {
+        *counts.entry(s).or_insert(0) += 1;
+    }
+    let most = counts.values().max().unwrap();
+    let mut sectors: Vec[i64] = counts.iter().filter(|(_, c)| c == most).map(|(s, _)| s).collect();
+    sectors.sort();
+    sectors
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15600;
+    let mut cases: Vec[(i64, Vec[i64], i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 2;
+        let m = next_random(mut seed) % 6 + 1;
+        let mut rounds = [next_random(mut seed) % n + 1];
+        for _ in 0..m {
+            let at = rounds[rounds.len() - 1];
+            rounds.push((at - 1 + next_random(mut seed) % (n - 1) + 1) % n + 1);
+        }
+        let turn = next_random(mut seed) % (n - 1) + 1;
+        let lap = next_random(mut seed) % (n - 1) + 1;
+        cases.push((n, rounds, turn, lap));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, rounds, turn, lap) = cases[p].clone();
+        let truth = literal(n, rounds.clone());
+        let start = rounds[0];
+        let end = rounds[rounds.len() - 1];
+        let turned: Vec[i64] = rounds.iter().map(|s| (s - 1 + turn) % n + 1).collect();
+        let mut lapped = rounds.clone();
+        lapped.push((end - 1 + lap) % n + 1);
+        lapped.push(end);
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n, rounds.clone());
+            answers.push(answer.clone());
+            for s in answer.iter() {
+                check = (check * 31 + s + 1) % 1000000007;
+            }
+            check = (check * 31) % 1000000007;
+            let mut expect_turned: Vec[i64] = answer.iter().map(|s| (s - 1 + turn) % n + 1).collect();
+            expect_turned.sort();
+            let failed = [
+                answer != truth,
+                answer.is_empty() or answer.iter().any(|s| s < 1 or s > n) or answer.windows(2).into_iter().any(|w| w[0] >= w[1]) or not answer.contains(end),
+                arm(a, n, turned.clone()) != expect_turned,
+                arm(a, n, lapped.clone()) != answer,
+                answer.len() != (end - start + n) % n + 1,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
