@@ -128,11 +128,12 @@ Two edits first written for the prefix and solution arms did not
 typecheck and were replaced. The solution arm's `let mut best = 0;`
 against an `i32` window is refused because the literal keeps the default
 `i64`, as design.md §8 says, and `karac fix` writes the `best: i32` that
-makes it run. The other is a gap: a `scan` closure whose next state is not
-computed from the state while its item is, `scan(0, |prev, x|
-Some((*x, (prev, *x))))` among them, is refused with two types that unify,
-"expected 'Option[(i64, _)]', found 'Option[(i64, (i64, i64))]'"
-(B-2026-11-13-35, false-positive, open).
+makes it run. The other was a gap: a `scan` closure whose next state is
+not computed from the state while its item is, `scan(0, |prev, x|
+Some((*x, (prev, *x))))` among them, was refused with two types that
+unify, "expected 'Option[(i64, _)]', found 'Option[(i64, (i64, i64))]'".
+A number met in the state's slot now fixes the state's literal
+(B-2026-11-13-35, fixed).
 
 ## Verification
 

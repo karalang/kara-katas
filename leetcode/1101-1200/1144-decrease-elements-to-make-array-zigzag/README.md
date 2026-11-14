@@ -168,8 +168,8 @@ offered its suffix. An array of literals bound whole now offers its first
 literal's suffix at a narrowing read of an element (B-2026-11-12-16,
 fixed).
 
-The bench found one gap in speed: a `step_by(2)` loop over a range costs
-about 1.2x the same loop with `while` (B-2026-11-12-17, open; see
+The bench found one gap in speed: a `step_by(2)` loop over a range cost
+about 1.2x the same loop with `while` (B-2026-11-12-17, fixed; see
 Benchmarks).
 
 ## Benchmarks
@@ -183,34 +183,38 @@ over 20 arrays of 1000 values: answers total 12036077501, checksum
 Go with `i += 2`, Python with `range(low, n, 2)`.
 
 Timings on a 4-core container (Intel Xeon, 2.1 GHz), twelve interleaved
-runs of each compiled program and one of Python, with karac `9049969b63`
+runs of each compiled program and one of Python, with karac `43b61ed0fe`
 on LLVM 22. karac builds for the x86-64-v3 baseline, so the C and
 overflow-checked Rust programs are also built at `-march=x86-64-v3`:
 
 | | time | median |
 |---|---|---|
-| C (`clang -O3 -march=x86-64-v3`) | 0.055 to 0.113 s | 0.062 s |
-| C (`clang -O3`) | 0.063 to 0.116 s | 0.076 s |
-| Rust (`rustc -O`) | 0.096 to 0.169 s | 0.102 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.317 to 0.381 s | 0.328 s |
-| Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 0.282 to 0.380 s | 0.336 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.369 to 0.531 s | 0.489 s |
-| Kāra (`karac build`) | 0.390 to 0.534 s | 0.490 s |
-| Go | 0.613 to 0.763 s | 0.687 s |
-| Python | 20.8 s | |
+| C (`clang -O3 -march=x86-64-v3`) | 0.048 to 0.054 s | 0.050 s |
+| C (`clang -O3`) | 0.056 to 0.088 s | 0.060 s |
+| Rust (`rustc -O`) | 0.079 to 0.093 s | 0.083 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.262 to 0.278 s | 0.267 s |
+| Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 0.268 to 0.303 s | 0.271 s |
+| Kāra (`karac build`) | 0.322 to 0.351 s | 0.332 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.327 to 0.370 s | 0.343 s |
+| Go | 0.527 to 0.587 s | 0.549 s |
+| Python | 16.7 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
 the sequential lane. A plain `karac build` parallelizes nothing here and
 gives the same binary, byte for byte, so its two rows differ by noise
-alone. Rust under overflow checks takes about 0.67x Kāra's median time,
-and most of that gap is the `step_by(2)` loop: over seven interleaved
-runs the Kāra program took a median 484 ms, the same program with the
-loop written `while i < n { ... i += 2; }` 403 ms, and Rust under
-overflow checks 408 ms. Kāra's `step_by` over a range goes through the
-general iterator, a first-item flag and an advance of `step - 1` each
-returning an `Option`, where Rust's is specialized for ranges
-(B-2026-11-12-17). Without the checks, Rust takes about 0.21x Kāra's time
-and C about 0.13x to 0.16x: every lowered place adds its moves to a sum,
-and the checked builds test each addition, but this README has not
-measured how much of the unchecked builds' lead that is. Go takes about 1.4x Kāra's time and
-Python about 43x.
+alone. Rust under overflow checks takes about 0.78x Kāra's median time.
+When the kata was written, most of that gap was the `step_by(2)` loop:
+Kāra's `step_by` over a range went through the general iterator, a
+first-item flag and an advance of `step - 1` each returning an `Option`,
+and took about 1.2x the same loop written `while i < n { ... i += 2; }`.
+A `for` over `step_by` on an `i64` range now compiles to a counting loop
+(B-2026-11-12-17, fixed at ad30c70d4e). Over nine interleaved runs the
+Kāra program took a median 343 ms, the same program with the `while`
+loop 324 ms, and Rust under overflow checks 279 ms: `step_by` now costs
+about 6% over `while`, and the rest of the gap to Rust is in the loop
+both forms share, which this README has not traced. Without the checks,
+Rust takes about 0.24x Kāra's time and C about 0.15x to 0.17x: every
+lowered place adds its moves to a sum, and the checked builds test each
+addition, but this README has not measured how much of the unchecked
+builds' lead that is. Go takes about 1.6x Kāra's time and Python about
+49x.
