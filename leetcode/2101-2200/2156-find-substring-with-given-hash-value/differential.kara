@@ -1,0 +1,311 @@
+// LeetCode #2156: Find Substring With Given Hash Value -- the
+// differential. The six arms, against the statement read literally: the
+// windows tried from the first, each one's hash summed term by term with
+// every power of the power multiplied out afresh, and the first that
+// matches taken; nothing rolled. 300 random strings of 1 to 10 letters
+// from the first 2, 3 or 26 in turn, with power and modulo up to 10, 1000
+// or 10^6 in turn and the hash that of a window drawn at random; then 30
+// with a modulo of 1 to 3, so that many windows match; then 30 asking for
+// the hash of the last window; every one drawn before any arm answers.
+//
+// P1  the window is the statement read literally
+// P2  a letter put at the end: the same window
+// P3  the string written twice: the same window
+// P4  the window has k letters and, by the statement, the hash asked
+// P5  a letter put in front: the same window, or the new first window
+//     when that one has the hash
+// P6  each arm agrees with at least three of the other five
+
+// ---- substring.kara: the ★ arm, one walk from the right rolling the hash
+fn star_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let n = letters.len();
+    let p = power % modulo;
+    let mut top = 1 % modulo;
+    for _ in 0..k {
+        top = top * p % modulo;
+    }
+    let mut hash = 0;
+    let mut start = n - k;
+    for i in (0..n).rev() {
+        hash = (hash * p + letters[i]) % modulo;
+        if i + k < n {
+            hash = (hash - letters[i + k] * top % modulo + modulo) % modulo;
+        }
+        if i + k <= n and hash == hash_value {
+            start = i;
+        }
+    }
+    s[start..start + k].to_string()
+}
+
+// ---- substring_suffix.kara: suffix hashes and a table of powers, the first window by `find`
+fn suffix_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let n = letters.len();
+    let mut suffix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = (suffix[i + 1] * power + letters[i]) % modulo;
+    }
+    let mut powers: Vec[i64] = [1 % modulo].to_vec();
+    for j in 0..k {
+        powers.push(powers[j] * power % modulo);
+    }
+    let start = (0..n - k + 1)
+        .find(|i| ((suffix[i] - suffix[i + k] * powers[k]) % modulo + modulo) % modulo == hash_value)
+        .unwrap();
+    s[start..start + k].to_string()
+}
+
+// ---- substring_struct.kara: a `Window` that `take`s a letter at the front and `drop`s one at the back
+struct Window {
+    hash: i64,
+    power: i64,
+    modulo: i64,
+    top: i64,
+}
+
+impl Window {
+    fn of(power: i64, modulo: i64, k: i64) -> Window {
+        let p = power % modulo;
+        let mut top = 1 % modulo;
+        for _ in 0..k {
+            top = top * p % modulo;
+        }
+        Window { hash: 0, power: p, modulo: modulo, top: top }
+    }
+
+    fn take(mut ref self, letter: i64) {
+        self.hash = (self.hash * self.power + letter) % self.modulo;
+    }
+
+    fn drop(mut ref self, letter: i64) {
+        self.hash = (self.hash - letter * self.top % self.modulo + self.modulo) % self.modulo;
+    }
+
+    fn matches(ref self, hash_value: i64) -> bool {
+        self.hash == hash_value
+    }
+}
+
+fn window_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let n = letters.len();
+    let mut window = Window.of(power, modulo, k);
+    let mut start = n - k;
+    for i in (0..n).rev() {
+        window.take(letters[i]);
+        if i + k < n {
+            window.drop(letters[i + k]);
+        }
+        if i + k <= n and window.matches(hash_value) {
+            start = i;
+        }
+    }
+    s[start..start + k].to_string()
+}
+
+// ---- substring_iter.kara: `scan` from the right, `filter`, and the `last` match
+fn iter_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let n = letters.len();
+    let p = power % modulo;
+    let top = (0..k).fold(1 % modulo, |acc, _| acc * p % modulo);
+    let (start, _) = (0..n)
+        .rev()
+        .scan(0, |hash, i| {
+            let mut next = (hash * p + letters[i]) % modulo;
+            if i + k < n {
+                next = (next - letters[i + k] * top % modulo + modulo) % modulo;
+            }
+            Some((next, (i, next)))
+        })
+        .filter(|(i, h)| i + k <= n and h == hash_value)
+        .last()
+        .unwrap();
+    s[start..start + k].to_string()
+}
+
+// ---- substring_fold.kara: one `fold` carrying the hash and the start, the k-th power by squaring
+fn fold_power_mod(base: i64, exp: i64, modulo: i64) -> i64 {
+    if exp == 0 {
+        return 1 % modulo;
+    }
+    let half = fold_power_mod(base, exp / 2, modulo);
+    let square = half * half % modulo;
+    if exp % 2 == 1 {
+        square * (base % modulo) % modulo
+    } else {
+        square
+    }
+}
+
+fn fold_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let n = letters.len();
+    let p = power % modulo;
+    let top = fold_power_mod(p, k, modulo);
+    let (_, start) = (0..n).rev().fold((0, n - k), |(hash, start), i| {
+        let rolled = (hash * p + letters[i]) % modulo;
+        let hash = if i + k < n { (rolled - letters[i + k] * top % modulo + modulo) % modulo } else { rolled };
+        if i + k <= n and hash == hash_value { (hash, i) } else { (hash, start) }
+    });
+    s[start..start + k].to_string()
+}
+
+// ---- substring_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn sub_str_hash(s: String, power: i32, modulo: i32, k: i32, hash_value: i32) -> String {
+        let bytes = s.bytes();
+        let n = bytes.len();
+        let k = k as i64;
+        let p = power as i64;
+        let m = modulo as i64;
+        let mut pk: i64 = 1 % m;
+        for _ in 0..k {
+            pk = pk * p % m;
+        }
+        let mut h: i64 = 0;
+        let mut ans = n - k;
+        for i in (0..n).rev() {
+            h = (h * p % m + (bytes[i] - b'a' + 1)) % m;
+            if i + k < n {
+                h = ((h - (bytes[i + k] - b'a' + 1) * pk % m) % m + m) % m;
+            }
+            if i + k <= n and h == hash_value {
+                ans = i;
+            }
+        }
+        s[ans..ans + k].to_string()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    SolutionSolution.sub_str_hash(s.clone(), power as i32, modulo as i32, k as i32, hash_value as i32)
+}
+
+
+// ---- the statement read literally
+
+fn hash_of(s: String, start: i64, k: i64, power: i64, modulo: i64) -> i64 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let mut sum = 0;
+    for j in 0..k {
+        let mut weight = 1 % modulo;
+        for _ in 0..j {
+            weight = weight * power % modulo;
+        }
+        sum = (sum + letters[start + j] * weight) % modulo;
+    }
+    sum
+}
+
+fn literal(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    let mut start = 0;
+    while hash_of(s, start, k, power, modulo) != hash_value {
+        start += 1;
+    }
+    s[start..start + k].to_string()
+}
+
+fn answer(arm: i64, s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    match arm {
+        0 => star_sub_str_hash(s, power, modulo, k, hash_value),
+        1 => suffix_sub_str_hash(s, power, modulo, k, hash_value),
+        2 => window_sub_str_hash(s, power, modulo, k, hash_value),
+        3 => iter_sub_str_hash(s, power, modulo, k, hash_value),
+        4 => fold_sub_str_hash(s, power, modulo, k, hash_value),
+        _ => solution_sub_str_hash(s, power, modulo, k, hash_value),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    s: String,
+    power: i64,
+    modulo: i64,
+    k: i64,
+    hash_value: i64,
+}
+
+fn main() {
+    let names = ["star", "suffix", "window", "iter", "fold", "solution"];
+    let mut seed = 2156;
+    let mut cases: Vec[Case] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let alphabet = [2, 3, 26][t % 3];
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+        }
+        let k = next_random(mut seed) % n + 1;
+        let top = if t >= 300 and t < 330 { 3 } else { [10, 1000, 1000000][t % 3] };
+        let power = next_random(mut seed) * 32768 % top + 1;
+        let modulo = next_random(mut seed) * 32768 % top + 1;
+        let start = if t >= 330 { n - k } else { next_random(mut seed) % (n - k + 1) };
+        let hash_value = hash_of(s, start, k, power, modulo);
+        cases.push(Case { s: s, power: power, modulo: modulo, k: k, hash_value: hash_value });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in cases.iter() {
+        let truth = literal(c.s, c.power, c.modulo, c.k, c.hash_value);
+        for b in truth.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        check = (check * 31 + c.s.len()) % 1000000007;
+        let longer = f"{c.s}a";
+        let twice = f"{c.s}{c.s}";
+        let fronted = f"z{c.s}";
+        let front_window: String = fronted[0..c.k].to_string();
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, c.s, c.power, c.modulo, c.k, c.hash_value)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let fronted_answer = if hash_of(fronted, 0, c.k, c.power, c.modulo) == c.hash_value { front_window.clone() } else { x.clone() };
+            let verdicts = [
+                x == truth,
+                answer(arm, longer, c.power, c.modulo, c.k, c.hash_value) == x,
+                answer(arm, twice, c.power, c.modulo, c.k, c.hash_value) == x,
+                x.len() == c.k and hash_of(x, 0, c.k, c.power, c.modulo) == c.hash_value,
+                answer(arm, fronted, c.power, c.modulo, c.k, c.hash_value) == fronted_answer,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{c.s}\" power {c.power} modulo {c.modulo} k {c.k} hash {c.hash_value} arm {names[arm]}: P{q + 1} fails, answered \"{x}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

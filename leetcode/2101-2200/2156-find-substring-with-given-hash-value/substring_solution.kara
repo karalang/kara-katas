@@ -1,0 +1,119 @@
+// LeetCode #2156: Find Substring With Given Hash Value -- LeetCode's Rust
+// template: `s.as_bytes()`, the hash rolled in `i64` from the right with
+// `(bytes[i] - b'a' + 1) as i64`, `k as usize`, written as Rust. Carried
+// by `karac fix`. The adapter below hands the harness's numbers to it as
+// `i32`s.
+
+impl Solution {
+    pub fn sub_str_hash(s: String, power: i32, modulo: i32, k: i32, hash_value: i32) -> String {
+        let bytes = s.bytes();
+        let n = bytes.len();
+        let k = k as i64;
+        let p = power as i64;
+        let m = modulo as i64;
+        let mut pk: i64 = 1 % m;
+        for _ in 0..k {
+            pk = pk * p % m;
+        }
+        let mut h: i64 = 0;
+        let mut ans = n - k;
+        for i in (0..n).rev() {
+            h = (h * p % m + (bytes[i] - b'a' + 1)) % m;
+            if i + k < n {
+                h = ((h - (bytes[i + k] - b'a' + 1) * pk % m) % m + m) % m;
+            }
+            if i + k <= n and h == hash_value {
+                ans = i;
+            }
+        }
+        s[ans..ans + k].to_string()
+    }
+}
+
+struct Solution {}
+
+fn sub_str_hash(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) -> String {
+    Solution.sub_str_hash(s.clone(), power as i32, modulo as i32, k as i32, hash_value as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the hash of the k letters from start, term by term as the statement
+// writes it
+fn window_hash(s: String, start: i64, k: i64, power: i64, modulo: i64) -> i64 {
+    let letters: Vec[i64] = s.bytes().iter().map(|b| (b - b'a' + 1) as i64).collect();
+    let mut hash = 0;
+    let mut weight = 1 % modulo;
+    for j in 0..k {
+        hash = (hash + letters[start + j] * weight) % modulo;
+        weight = weight * power % modulo;
+    }
+    hash
+}
+
+fn show(s: String, power: i64, modulo: i64, k: i64, hash_value: i64) {
+    println(f"\"{s}\" power {power} modulo {modulo} k {k} hash {hash_value} -> \"{sub_str_hash(s, power, modulo, k, hash_value)}\"");
+}
+
+fn letters(n: i64, alphabet: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % alphabet) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: the whole string, one
+    // letter, a power of 1 (the hash is the sum), a modulo of 1 (every
+    // hash is 0, so the first window), and two windows of the hash, the
+    // first of them taken
+    show("leetcode", 7, 20, 2, 0);
+    show("fbxzaad", 31, 100, 3, 32);
+    show("abc", 5, 1000, 3, 86);
+    show("xyz", 3, 7, 1, 5);
+    show("dcba", 1, 100, 2, 5);
+    show("hello", 13, 1, 3, 0);
+    show("abab", 2, 100, 2, 5);
+    // 2000 random strings of 1 to 12 letters from the first 3, 4 or 26 in
+    // turn; power and modulo up to 10, 1000 or 10^9 in turn; the hash that
+    // of a window drawn at random
+    let mut seed = 2156;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let s = letters(n, [3, 4, 26][round % 3], mut seed);
+        let k = next_random(mut seed) % n + 1;
+        let top = [10, 1000, 1000000000][round % 3];
+        let power = next_random(mut seed) * 32768 % top + 1;
+        let modulo = next_random(mut seed) * 32768 % top + 1;
+        let start = next_random(mut seed) % (n - k + 1);
+        let hash_value = window_hash(s, start, k, power, modulo);
+        let found = sub_str_hash(s, power, modulo, k, hash_value);
+        for b in found.bytes().iter() {
+            check = (check * 31 + b as i64) % 1000000007;
+        }
+        check = (check * 31 + n) % 1000000007;
+    }
+    println(f"2000 strings: checksum {check}");
+    // the constraints' largest: 20000 letters, power and modulo near 10^9,
+    // windows of 1, 100, 10000 and 20000 letters
+    let s = letters(20000, 26, mut seed);
+    for k in [1, 100, 10000, 20000] {
+        let power = 1000000000 - next_random(mut seed);
+        let modulo = 1000000000 - next_random(mut seed);
+        let start = next_random(mut seed) % (20000 - k + 1);
+        let hash_value = window_hash(s, start, k, power, modulo);
+        let found = sub_str_hash(s, power, modulo, k, hash_value);
+        let mut sum = 0;
+        for b in found.bytes().iter() {
+            sum = (sum * 31 + b as i64) % 1000000007;
+        }
+        println(f"20000 letters, k {k}: \"{found[..found.len().min(8)]}\", length {found.len()}, checksum {sum}");
+    }
+}
