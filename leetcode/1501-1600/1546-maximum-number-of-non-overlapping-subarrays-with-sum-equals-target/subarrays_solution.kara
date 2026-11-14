@@ -1,0 +1,80 @@
+// LeetCode #1546: Maximum Number of Non-Overlapping Subarrays With Sum
+// Equals Target -- LeetCode's Rust template as karac fix left it: the ★
+// arm with a `HashSet` and `i32` values.
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_non_overlapping(nums: Vec[i32], target: i32) -> i32 {
+        let mut seen = Set.new();
+        seen.insert(0);
+        let mut (sum, count) = (0, 0);
+        for x in nums {
+            sum += x;
+            if seen.contains(sum - target) {
+                count += 1;
+                seen.clear();
+                seen.insert(0);
+                sum = 0;
+            } else {
+                seen.insert(sum);
+            }
+        }
+        count
+    }
+}
+
+fn max_non_overlapping(nums: Vec[i64], target: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.max_non_overlapping(nums, target as i32)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` arrays of 1 to `most` values from -`spread` to `spread`, each
+// with a target from -2 `spread` to 2 `spread`
+fn batch(count: i64, most: i64, spread: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let mut nums = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % (2 * spread + 1) - spread);
+        }
+        let target = next_random(mut seed) % (4 * spread + 1) - 2 * spread;
+        let answer = max_non_overlapping(nums, target);
+        total += answer;
+        check = mix(check, answer);
+    }
+    println(f"{count} arrays of up to {most} values in -{spread}..{spread}: {total} subarrays, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i64], i64)] = [
+        ([1, 1, 1, 1, 1], 2),
+        ([-1, 3, 5, 1, 4, 2, -9], 6),
+        ([-2, 6, 6, 3, 5, 4, 1, 2, 8], 10),
+        ([0, 0, 0], 0),
+        ([5], 5),
+        ([5], 4),
+        ([1, -1, 1, -1], 0),
+        ([3, -3, 3], 3),
+    ];
+    for (nums, target) in examples.iter() {
+        println(f"{nums}, target {target} -> {max_non_overlapping(nums.clone(), target)}");
+    }
+    let mut seed = 1546;
+    batch(3000, 12, 3, mut seed);
+    batch(300, 1000, 5, mut seed);
+    batch(30, 100000, 10, mut seed);
+}

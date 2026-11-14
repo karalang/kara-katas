@@ -1,0 +1,224 @@
+// LeetCode #1546: Maximum Number of Non-Overlapping Subarrays With Sum
+// Equals Target -- the differential.
+//
+// Four arms against the statement read literally, on 3000 arrays of 1 to
+// 14 values from -s to s, s from 1 to 4, each with a target from -2 s to
+// 2 s, with six properties. Every random choice is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is from 0 to the length
+// P3  the array reversed has the same answer
+// P4  every value and the target negated leave the answer
+// P5  the target put after the array adds one
+// P6  each arm agrees with at least two of the other three
+
+// ---- subarrays.kara: the ★ arm: greedy, a Set of prefix sums cleared at each cut
+
+fn star_arm(nums: Vec[i64], target: i64) -> i64 {
+    let mut seen: Set[i64] = Set.new();
+    seen.insert(0);
+    let mut sum = 0;
+    let mut count = 0;
+    for x in nums.iter() {
+        sum += x;
+        if seen.contains(sum - target) {
+            count += 1;
+            seen.clear();
+            seen.insert(0);
+            sum = 0;
+        } else {
+            seen.insert(sum);
+        }
+    }
+    count
+}
+
+// ---- subarrays_dp.kara: a DP over prefixes with each sum's latest place in a Map
+
+fn dp_arm(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut best = Vec.filled(n + 1, 0);
+    let mut latest: Map[i64, i64] = Map.new();
+    latest.insert(0, 0);
+    let mut sum = 0;
+    for i in 1..=n {
+        sum += nums[i - 1];
+        best[i] = best[i - 1];
+        if let Some(j) = latest.get(sum - target) {
+            best[i] = best[i].max(best[j] + 1);
+        }
+        latest.insert(sum, i);
+    }
+    best[n]
+}
+
+// ---- subarrays_cut.kara: the greedy keeping every sum, a match counted only past the cut
+
+fn cut_arm(nums: Vec[i64], target: i64) -> i64 {
+    let mut latest: Map[i64, i64] = Map.new();
+    latest.insert(0, 0);
+    let mut sum = 0;
+    let mut cut = 0;
+    let mut count = 0;
+    for (i, x) in nums.iter().enumerate() {
+        sum += x;
+        let end = i + 1;
+        match latest.get(sum - target) {
+            Some(start) if start >= cut => {
+                count += 1;
+                cut = end;
+            }
+            _ => {}
+        }
+        latest.insert(sum, end);
+    }
+    count
+}
+
+// ---- subarrays_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_non_overlapping(nums: Vec[i32], target: i32) -> i32 {
+        let mut seen = Set.new();
+        seen.insert(0);
+        let mut (sum, count) = (0, 0);
+        for x in nums {
+            sum += x;
+            if seen.contains(sum - target) {
+                count += 1;
+                seen.clear();
+                seen.insert(0);
+                sum = 0;
+            } else {
+                seen.insert(sum);
+            }
+        }
+        count
+    }
+}
+
+fn solution_arm(nums: Vec[i64], target: i64) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.max_non_overlapping(nums, target as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i64], target: i64) -> i64 {
+    match a {
+        0 => star_arm(nums, target),
+        1 => dp_arm(nums, target),
+        2 => cut_arm(nums, target),
+        _ => solution_arm(nums, target),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["subarrays", "dp", "cut", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: most[i], the most non-overlapping
+// subarrays summing to the target within the first i values, over every
+// subarray j..i that sums to it
+
+fn literal(nums: Vec[i64], target: i64) -> i64 {
+    let n = nums.len();
+    let mut most = Vec.filled(n + 1, 0);
+    for i in 1..=n {
+        most[i] = most[i - 1];
+        for j in 0..i {
+            let sum: i64 = nums[j..i].iter().sum();
+            if sum == target {
+                most[i] = most[i].max(most[j] + 1);
+            }
+        }
+    }
+    most[n]
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15460;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 14 + 1;
+        let spread = next_random(mut seed) % 4 + 1;
+        let mut nums = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % (2 * spread + 1) - spread);
+        }
+        let target = next_random(mut seed) % (4 * spread + 1) - 2 * spread;
+        cases.push((nums, target));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (nums, target) = cases[p].clone();
+        let truth = literal(nums.clone(), target);
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let negated: Vec[i64] = nums.iter().map(|x| -x).collect();
+        let mut longer = nums.clone();
+        longer.push(target);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums.clone(), target);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 0 or answer > n,
+                arm(a, reversed.clone(), target) != answer,
+                arm(a, negated.clone(), -target) != answer,
+                arm(a, longer.clone(), target) != answer + 1,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
