@@ -1,0 +1,68 @@
+// LeetCode #1541: Minimum Insertions to Balance a Parentheses String -- the
+// ★ arm: one pass keeping `need`, the ')' the open '(' still want. A '('
+// that arrives while an odd ')' is wanted closes that pair early with one
+// inserted ')'; a ')' with nothing wanted gets an inserted '(' and leaves
+// one more ')' wanted. Whatever is still wanted at the end is inserted too.
+// O(n).
+
+fn min_insertions(s: String) -> i64 {
+    let mut inserted = 0;
+    let mut need = 0;
+    for c in s.chars() {
+        if c == '(' {
+            if need % 2 == 1 {
+                inserted += 1;
+                need -= 1;
+            }
+            need += 2;
+        } else {
+            need -= 1;
+            if need < 0 {
+                inserted += 1;
+                need = 1;
+            }
+        }
+    }
+    inserted + need
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` strings of 1 to `most` parentheses, each with its own chance of
+// a '('
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let chance = next_random(mut seed) % 101;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(if next_random(mut seed) % 100 < chance { '(' } else { ')' });
+        }
+        check = mix(check, min_insertions(s));
+    }
+    println(f"{count} strings of up to {most} parentheses: checksum {check}");
+}
+
+fn main() {
+    let examples = ["(()))", "())", "))())(", "((((((", ")))))))", "(", ")", "()", "())())", ")()", "(()))(()))))"];
+    for s in examples.iter() {
+        println(f"{s} -> {min_insertions(s.to_string())}");
+    }
+    println(f"100000 '(' -> {min_insertions("(".repeat(100000))}");
+    println(f"100000 ')' -> {min_insertions(")".repeat(100000))}");
+    println(f"33333 '())' -> {min_insertions("())".repeat(33333))}");
+    let mut seed = 1541;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}

@@ -1,0 +1,252 @@
+// LeetCode #1541: Minimum Insertions to Balance a Parentheses String --
+// the differential.
+//
+// Four arms against the statement read literally, on 3000 strings of 1 to
+// 6 parentheses, each with its own chance of a '(', with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer plus the length is a multiple of 3, and the answer is at
+//     most twice the length
+// P3  "())" put after the string leaves the answer
+// P4  "())" put before the string leaves the answer
+// P5  the string twice over needs at most twice the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- balance.kara: the ★ arm: one pass keeping the ')' still wanted
+
+fn star_arm(s: String) -> i64 {
+    let mut inserted = 0;
+    let mut need = 0;
+    for c in s.chars() {
+        if c == '(' {
+            if need % 2 == 1 {
+                inserted += 1;
+                need -= 1;
+            }
+            need += 2;
+        } else {
+            need -= 1;
+            if need < 0 {
+                inserted += 1;
+                need = 1;
+            }
+        }
+    }
+    inserted + need
+}
+
+// ---- balance_pairs.kara: the string read in tokens, a ')' taking the next one with it
+
+fn pairs_arm(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut open = 0;
+    let mut inserted = 0;
+    let mut i = 0;
+    while i < n {
+        if b[i] == b'(' {
+            open += 1;
+            i += 1;
+            continue;
+        }
+        if i + 1 < n and b[i + 1] == b')' {
+            i += 2;
+        } else {
+            inserted += 1;
+            i += 1;
+        }
+        if open > 0 {
+            open -= 1;
+        } else {
+            inserted += 1;
+        }
+    }
+    inserted + 2 * open
+}
+
+// ---- balance_fold.kara: each "))" replaced by one closer, then a fold
+
+fn fold_arm(s: String) -> i64 {
+    let tokens = s.replace("))", "]");
+    let (open, inserted) = tokens.chars().fold((0, 0), |(open, inserted), c| {
+        if c == '(' {
+            (open + 1, inserted)
+        } else {
+            let lone = if c == ')' { 1 } else { 0 };
+            if open > 0 { (open - 1, inserted + lone) } else { (open, inserted + lone + 1) }
+        }
+    });
+    inserted + 2 * open
+}
+
+// ---- balance_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_insertions(s: String) -> i32 {
+        let mut (inserted, need) = (0, 0);
+        for c in s.bytes() {
+            if c == b'(' {
+                if need % 2 == 1 {
+                    inserted += 1;
+                    need -= 1;
+                }
+                need += 2;
+            } else {
+                need -= 1;
+                if need < 0 {
+                    inserted += 1;
+                    need = 1;
+                }
+            }
+        }
+        inserted + need
+    }
+}
+
+fn solution_arm(s: String) -> i64 {
+    Solution.min_insertions(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i64 {
+    match a {
+        0 => star_arm(s),
+        1 => pairs_arm(s),
+        2 => fold_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["balance", "pairs", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every balanced string built from its
+// definition, S = "" or '(' S "))" S, shortest first; the answer is how
+// much longer than s the shortest one holding s as a subsequence is
+
+fn balanced_strings(most: i64) -> Vec[Vec[String]] {
+    let mut by_pairs: Vec[Vec[String]] = Vec.new();
+    by_pairs.push([""].to_vec());
+    for m in 1..=most {
+        let mut here = Vec.new();
+        for a in 0..m {
+            for x in by_pairs[a].iter() {
+                for y in by_pairs[m - 1 - a].iter() {
+                    here.push(f"({x})){y}");
+                }
+            }
+        }
+        by_pairs.push(here);
+    }
+    by_pairs
+}
+
+fn holds(w: String, s: String) -> bool {
+    let w: Vec[char] = w.chars().collect();
+    let s: Vec[char] = s.chars().collect();
+    let mut j = 0;
+    for c in w.iter() {
+        if j < s.len() and c == s[j] {
+            j += 1;
+        }
+    }
+    j == s.len()
+}
+
+fn literal(s: String, balanced: Vec[Vec[String]]) -> i64 {
+    for m in 0..balanced.len() {
+        if 3 * m >= s.len() {
+            for w in balanced[m].iter() {
+                if holds(w.clone(), s.clone()) {
+                    return 3 * m - s.len();
+                }
+            }
+        }
+    }
+    -1
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let balanced = balanced_strings(6);
+    let mut seed = 15410;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let chance = next_random(mut seed) % 101;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(if next_random(mut seed) % 100 < chance { '(' } else { ')' });
+        }
+        cases.push(s);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let s = cases[p].clone();
+        let n = s.len();
+        let truth = literal(s.clone(), balanced);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                (answer + n) % 3 != 0 or answer < 0 or answer > 2 * n,
+                arm(a, s.clone() + "())") != answer,
+                arm(a, "())" + s.clone()) != answer,
+                arm(a, s.clone() + s.clone()) > 2 * answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
