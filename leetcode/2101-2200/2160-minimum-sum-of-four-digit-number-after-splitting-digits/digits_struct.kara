@@ -1,0 +1,87 @@
+// LeetCode #2160: Minimum Sum of Four Digit Number After Splitting Digits
+// -- a `struct Split` of the two numbers being built, which `take`s each
+// digit in rising order (`mut ref self`), putting it after the digits of
+// the shorter number so far, the first number on a tie, and gives its
+// `sum` (`ref self`). The digits come sorted from a `SortedMap` of
+// counts. O(1).
+
+struct Split {
+    first: i64,
+    second: i64,
+    first_len: i64,
+    second_len: i64,
+}
+
+impl Split {
+    fn take(mut ref self, digit: i64) {
+        if self.first_len <= self.second_len {
+            self.first = self.first * 10 + digit;
+            self.first_len += 1;
+        } else {
+            self.second = self.second * 10 + digit;
+            self.second_len += 1;
+        }
+    }
+
+    fn sum(ref self) -> i64 {
+        self.first + self.second
+    }
+}
+
+fn minimum_sum(num: i64) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for c in num.to_string().chars() {
+        let digit = c as i64 - '0' as i64;
+        let seen = counts.get(digit).cloned().unwrap_or(0);
+        counts.insert(digit, seen + 1);
+    }
+    let mut split = Split { first: 0, second: 0, first_len: 0, second_len: 0 };
+    for (digit, times) in counts.iter() {
+        for _ in 0..times {
+            split.take(digit);
+        }
+    }
+    split.sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(num: i64) {
+    println(f"{num} -> {minimum_sum(num)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the least and the most four
+    // digits, four digits in order, and two digits twice with zeros
+    show(2932);
+    show(4009);
+    show(1000);
+    show(9999);
+    show(1234);
+    show(5050);
+    // 2000 random numbers of four digits
+    let mut seed = 2160;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let num = next_random(mut seed) % 9000 + 1000;
+        let sum = minimum_sum(num);
+        total += sum;
+        check = (check * 31 + sum + 1) % 1000000007;
+    }
+    println(f"2000 numbers: {total} in all, checksum {check}");
+    // every number the constraints allow, 1000 to 9999
+    let mut every = 0;
+    let mut hash = 0;
+    for num in 1000..10000 {
+        let sum = minimum_sum(num);
+        every += sum;
+        hash = (hash * 31 + sum + 1) % 1000000007;
+    }
+    println(f"all 9000: {every} in all, checksum {hash}");
+}

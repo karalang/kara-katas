@@ -1,0 +1,253 @@
+// LeetCode #2160: Minimum Sum of Four Digit Number After Splitting Digits
+// -- the differential. The six arms, against the statement read
+// literally: the four digits put in every order, the order cut in every
+// place into two numbers, and the least sum taken; no sorting and no rule
+// about tens. 300 random numbers of four digits; then 30 with two or more
+// digits the same; then 30 holding a 0; every one drawn before any arm
+// answers.
+//
+// P1  the sum is the statement read literally
+// P2  the digits put largest first: the same sum
+// P3  every digit one more, when none is 9: the sum 22 more
+// P4  the largest digit made 9: the sum more by 9 less that digit
+// P5  a smallest digit made 0, when one is not the first: the sum less
+//     by ten times it
+// P6  each arm agrees with at least three of the other five
+
+// ---- digits.kara: the ★ arm, the digits from the text sorted, two to the tens
+fn star_minimum_sum(num: i64) -> i64 {
+    let mut d: Vec[i64] = num.to_string().chars().map(|c| c.to_digit(10).unwrap() as i64).collect();
+    d.sort();
+    (d[0] * 10 + d[2]) + (d[1] * 10 + d[3])
+}
+
+// ---- digits_count.kara: the digits counted into ten buckets and dealt out smallest first
+fn count_minimum_sum(num: i64) -> i64 {
+    let mut count = [0; 10];
+    let mut rest = num;
+    while rest > 0 {
+        count[rest % 10] += 1;
+        rest /= 10;
+    }
+    let mut sum = 0;
+    let mut dealt = 0;
+    for digit in 0..10 {
+        for _ in 0..count[digit] {
+            sum += if dealt < 2 { digit * 10 } else { digit };
+            dealt += 1;
+        }
+    }
+    sum
+}
+
+// ---- digits_network.kara: four bindings put in order by a sorting network of `min` and `max`
+fn network_minimum_sum(num: i64) -> i64 {
+    let (a, b, c, d) = (num / 1000, num / 100 % 10, num / 10 % 10, num % 10);
+    let (a, b) = (a.min(b), a.max(b));
+    let (c, d) = (c.min(d), c.max(d));
+    let (a, c) = (a.min(c), a.max(c));
+    let (b, d) = (b.min(d), b.max(d));
+    let (b, c) = (b.min(c), b.max(c));
+    10 * (a + b) + c + d
+}
+
+// ---- digits_struct.kara: a `Split` that `take`s each digit onto the shorter number
+struct Split {
+    first: i64,
+    second: i64,
+    first_len: i64,
+    second_len: i64,
+}
+
+impl Split {
+    fn take(mut ref self, digit: i64) {
+        if self.first_len <= self.second_len {
+            self.first = self.first * 10 + digit;
+            self.first_len += 1;
+        } else {
+            self.second = self.second * 10 + digit;
+            self.second_len += 1;
+        }
+    }
+
+    fn sum(ref self) -> i64 {
+        self.first + self.second
+    }
+}
+
+fn split_minimum_sum(num: i64) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for c in num.to_string().chars() {
+        let digit = c as i64 - '0' as i64;
+        let seen = counts.get(digit).cloned().unwrap_or(0);
+        counts.insert(digit, seen + 1);
+    }
+    let mut split = Split { first: 0, second: 0, first_len: 0, second_len: 0 };
+    for (digit, times) in counts.iter() {
+        for _ in 0..times {
+            split.take(digit);
+        }
+    }
+    split.sum()
+}
+
+// ---- digits_iter.kara: `successors` dividing by 10, sorted, weighed by `enumerate`
+fn iter_minimum_sum(num: i64) -> i64 {
+    let mut d: Vec[i64] = successors(Some(num), |n| if n >= 10 { Some(n / 10) } else { None })
+        .map(|n| n % 10)
+        .collect();
+    d.sort();
+    d.iter().enumerate().map(|(i, x)| if i < 2 { 10 * x } else { x }).sum()
+}
+
+// ---- digits_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn minimum_sum(num: i32) -> i32 {
+        let mut d: Vec[i32] = num.to_string().bytes().iter().map(|b| (b - b'0') as i32).collect();
+        d.sort();
+        d[0] * 10 + d[2] + d[1] * 10 + d[3]
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_sum(num: i64) -> i64 {
+    SolutionSolution.minimum_sum(num as i32)
+}
+
+
+// ---- the statement read literally
+
+fn digits_of(num: i64) -> Vec[i64] {
+    [num / 1000, num / 100 % 10, num / 10 % 10, num % 10].to_vec()
+}
+
+fn number_of(digits: Vec[i64]) -> i64 {
+    digits.iter().fold(0, |n, d| n * 10 + d)
+}
+
+fn literal(num: i64) -> i64 {
+    let d = digits_of(num);
+    let mut best = -1;
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for e in 0..4 {
+                    if a == b or a == c or a == e or b == c or b == e or c == e {
+                        continue;
+                    }
+                    let order = [d[a], d[b], d[c], d[e]].to_vec();
+                    for cut in 1..4 {
+                        let first: Vec[i64] = order[0..cut].to_vec();
+                        let second: Vec[i64] = order[cut..4].to_vec();
+                        let sum = number_of(first) + number_of(second);
+                        if best < 0 or sum < best {
+                            best = sum;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, num: i64) -> i64 {
+    match arm {
+        0 => star_minimum_sum(num),
+        1 => count_minimum_sum(num),
+        2 => network_minimum_sum(num),
+        3 => split_minimum_sum(num),
+        4 => iter_minimum_sum(num),
+        _ => solution_minimum_sum(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "count", "network", "split", "iter", "solution"];
+    let mut seed = 2160;
+    let mut nums: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let mut d: Vec[i64] = (0..4).map(|_| next_random(mut seed) % 10).collect();
+        if d[0] == 0 {
+            d[0] = next_random(mut seed) % 9 + 1;
+        }
+        if t >= 300 and t < 330 {
+            let from = next_random(mut seed) % 4;
+            let to = next_random(mut seed) % 3 + 1;
+            d[to] = d[from];
+        } else if t >= 330 {
+            d[next_random(mut seed) % 3 + 1] = 0;
+        }
+        nums.push(number_of(d));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in nums.iter() {
+        let truth = literal(num);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let d = digits_of(num);
+        let mut down = d.clone();
+        down.sort_by(|a, b| b.cmp(a));
+        let largest = d.iter().max().unwrap();
+        let smallest = d.iter().min().unwrap();
+        let top = d.iter().position(|x| x == largest).unwrap();
+        let mut raised = d.clone();
+        raised[top] = 9;
+        let low = (1..4).find(|i| d[i] == smallest);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let lowered_ok = match low {
+                Some(i) => {
+                    let mut lowered = d.clone();
+                    lowered[i] = 0;
+                    answer(arm, number_of(lowered)) == x - 10 * smallest
+                }
+                None => true,
+            };
+            let verdicts = [
+                x == truth,
+                answer(arm, number_of(down)) == x,
+                largest == 9 or answer(arm, num + 1111) == x + 22,
+                answer(arm, number_of(raised)) == x + 9 - largest,
+                lowered_ok,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{nums.len()} numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
