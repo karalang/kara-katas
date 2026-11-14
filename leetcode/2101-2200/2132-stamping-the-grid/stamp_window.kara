@@ -1,0 +1,111 @@
+// LeetCode #2132: Stamping the Grid -- corners counted in a window. Each
+// cell is a corner, 1, when a stamp fits there, by a prefix sum of the
+// occupied cells; a second prefix sum, over the corners, counts those in
+// the stamp's reach above and to the left of each cell, cut off at the
+// grid's edge. Every empty cell must have one. O(mn).
+
+fn prefix(values: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = values.len();
+    let n = values[0].len();
+    let mut sums: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m {
+        for c in 0..n {
+            sums[r + 1][c + 1] = values[r][c] + sums[r][c + 1] + sums[r + 1][c] - sums[r][c];
+        }
+    }
+    sums
+}
+
+fn block(sums: Vec[Vec[i64]], r: i64, c: i64, r2: i64, c2: i64) -> i64 {
+    sums[r2][c2] - sums[r][c2] - sums[r2][c] + sums[r][c]
+}
+
+fn possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let full = prefix(grid);
+    let corners: Vec[Vec[i64]] = (0..m)
+        .map(|r| {
+            (0..n)
+                .map(|c| {
+                    let inside = r + stamp_height <= m and c + stamp_width <= n;
+                    if inside and block(full, r, c, r + stamp_height, c + stamp_width) == 0 { 1 } else { 0 }
+                })
+                .collect()
+        })
+        .collect();
+    let reach = prefix(corners);
+    (0..m).all(|r| {
+        (0..n).all(|c| {
+            let top = (r - stamp_height + 1).max(0);
+            let left = (c - stamp_width + 1).max(0);
+            grid[r][c] == 1 or block(reach, top, left, r + 1, c + 1) > 0
+        })
+    })
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(grid: Vec[Vec[i64]], h: i64, w: i64) {
+    println(f"{grid} {h}x{w} -> {possible_to_stamp(grid, h, w)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: every cell occupied and a
+    // stamp too big, one empty cell, one empty cell under a stamp too tall,
+    // and a stamp that fits the grid exactly
+    show([[1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]].to_vec(), 4, 3);
+    show([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]].to_vec(), 2, 2);
+    show([[1, 1], [1, 1]].to_vec(), 3, 3);
+    show([[0]].to_vec(), 1, 1);
+    show([[0]].to_vec(), 2, 1);
+    show([[0, 0], [0, 0]].to_vec(), 2, 2);
+    // 2000 random grids of 1 to 6 by 1 to 6, a cell occupied one time in
+    // 2, 4 or 8 in turn, with a stamp of 1 to 4 by 1 to 4
+    let mut seed = 2132;
+    let mut yes = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let k = [2, 4, 8][round % 3];
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                row.push(if next_random(mut seed) % k == 0 { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let h = next_random(mut seed) % 4 + 1;
+        let w = next_random(mut seed) % 4 + 1;
+        let fits = possible_to_stamp(grid, h, w);
+        if fits {
+            yes += 1;
+        }
+        check = (check * 31 + if fits { 1 } else { 0 } + m * 7 + n) % 1000000007;
+    }
+    println(f"2000 grids: {yes} stamped, checksum {check}");
+    // the constraints' largest, m * n = 200000: 400 by 500 empty under a
+    // 400 by 500 stamp; 1 by 200000 with every 1000th cell occupied under
+    // 1 by 999; 400 by 500 with a cell in 200 occupied under 2 by 2
+    let empty: Vec[Vec[i64]] = Vec.filled(400, Vec.filled(500, 0));
+    let line: Vec[Vec[i64]] = [(0..200000).map(|c| if c % 1000 == 999 { 1 } else { 0 }).collect()].to_vec();
+    let mut scattered: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..400 {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..500 {
+            row.push(if next_random(mut seed) % 200 == 0 { 1 } else { 0 });
+        }
+        scattered.push(row);
+    }
+    let x = possible_to_stamp(empty, 400, 500);
+    let y = possible_to_stamp(line, 1, 999);
+    let z = possible_to_stamp(scattered, 2, 2);
+    println(f"200000 cells: {x} empty, {y} in a line, {z} scattered");
+}

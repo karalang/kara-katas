@@ -1,0 +1,457 @@
+// LeetCode #2132: Stamping the Grid -- the differential. The six arms,
+// against the statement read literally: every empty cell must lie under
+// some stamp placed wholly inside the grid with no occupied cell under
+// it, each placement over the cell tried and each of its cells looked at;
+// no sum is kept. 300 random grids of 1 to 6 by 1 to 6, a cell occupied
+// one time in 2, 4 or 8 in turn, under a stamp of 1 to 4 by 1 to 4; then
+// 30 empty grids under a stamp of 1 to 7 by 1 to 7; then 30 grids with
+// one occupied cell; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the grid transposed, the stamp's sides swapped: the same answer
+// P3  the grid mirrored left to right: the same answer
+// P4  the grid turned upside down: the same answer
+// P5  a row of occupied cells added below: the same answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- stamp.kara: the ★ arm, flat prefix sums and a difference table
+fn star_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let w = n + 1;
+    // full[r * w + c]: the occupied cells above row r and left of column c
+    let mut full: Vec[i64] = Vec.filled((m + 1) * w, 0);
+    for r in 0..m {
+        for c in 0..n {
+            full[(r + 1) * w + c + 1] = grid[r][c] + full[r * w + c + 1] + full[(r + 1) * w + c] - full[r * w + c];
+        }
+    }
+    let mut marks: Vec[i64] = Vec.filled((m + 1) * w, 0);
+    for r in 0..m - stamp_height + 1 {
+        for c in 0..n - stamp_width + 1 {
+            let r2 = r + stamp_height;
+            let c2 = c + stamp_width;
+            if full[r2 * w + c2] - full[r * w + c2] - full[r2 * w + c] + full[r * w + c] == 0 {
+                marks[r * w + c] += 1;
+                marks[r * w + c2] -= 1;
+                marks[r2 * w + c] -= 1;
+                marks[r2 * w + c2] += 1;
+            }
+        }
+    }
+    // marks summed in place: the stamps over each cell
+    for r in 0..m {
+        for c in 0..n {
+            if r > 0 {
+                marks[r * w + c] += marks[(r - 1) * w + c];
+            }
+            if c > 0 {
+                marks[r * w + c] += marks[r * w + c - 1];
+            }
+            if r > 0 and c > 0 {
+                marks[r * w + c] -= marks[(r - 1) * w + c - 1];
+            }
+            if grid[r][c] == 0 and marks[r * w + c] == 0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- stamp_rows.kara: the tables as rows, a stamp's fit asked of a closure
+fn rows_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut full: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m {
+        for c in 0..n {
+            full[r + 1][c + 1] = grid[r][c] + full[r][c + 1] + full[r + 1][c] - full[r][c];
+        }
+    }
+    let fits = |r: i64, c: i64| {
+        let r2 = r + stamp_height;
+        let c2 = c + stamp_width;
+        full[r2][c2] - full[r][c2] - full[r2][c] + full[r][c] == 0
+    };
+    let mut marks: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m - stamp_height + 1 {
+        for c in 0..n - stamp_width + 1 {
+            if fits(r, c) {
+                marks[r][c] += 1;
+                marks[r][c + stamp_width] -= 1;
+                marks[r + stamp_height][c] -= 1;
+                marks[r + stamp_height][c + stamp_width] += 1;
+            }
+        }
+    }
+    // over[r + 1][c + 1]: the stamps over cell (r, c)
+    let mut over: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m {
+        for c in 0..n {
+            over[r + 1][c + 1] = marks[r][c] + over[r][c + 1] + over[r + 1][c] - over[r][c];
+            if grid[r][c] == 0 and over[r + 1][c + 1] == 0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- stamp_runs.kara: runs of empty cells, no sums
+fn runs_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    // run: the empty cells from (r, c) rightwards; rows_below[c]: the rows
+    // from r down with such a run of stamp_width at c; corner[r][c]: whether
+    // a stamp fits with its top left corner at (r, c)
+    let mut corner: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    let mut rows_below: Vec[i64] = Vec.filled(n, 0);
+    for r in (0..m).rev() {
+        let mut run = 0;
+        for c in (0..n).rev() {
+            run = if grid[r][c] == 0 { run + 1 } else { 0 };
+            rows_below[c] = if run >= stamp_width { rows_below[c] + 1 } else { 0 };
+            corner[r][c] = rows_below[c] >= stamp_height;
+        }
+    }
+    // last_row[c]: the latest row at or above r whose stamps reach column c
+    let mut last_row: Vec[i64] = Vec.filled(n, -1);
+    for r in 0..m {
+        let mut last_col = -1;
+        for c in 0..n {
+            if corner[r][c] {
+                last_col = c;
+            }
+            if last_col >= 0 and c - last_col < stamp_width {
+                last_row[c] = r;
+            }
+            let covered = last_row[c] >= 0 and r - last_row[c] < stamp_height;
+            if grid[r][c] == 0 and not covered {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- stamp_struct.kara: a `Sums` table and a `Marks` table
+struct StructSums {
+    width: i64,
+    cells: Vec[i64],
+}
+
+impl StructSums {
+    fn of(values: Vec[Vec[i64]]) -> StructSums {
+        let m = values.len();
+        let n = values[0].len();
+        let width = n + 1;
+        let mut cells: Vec[i64] = Vec.filled((m + 1) * width, 0);
+        for r in 0..m {
+            for c in 0..n {
+                cells[(r + 1) * width + c + 1] = values[r][c] + cells[r * width + c + 1] + cells[(r + 1) * width + c] - cells[r * width + c];
+            }
+        }
+        StructSums { width, cells }
+    }
+
+    // the total over rows r..r2 and columns c..c2
+    fn block(ref self, r: i64, c: i64, r2: i64, c2: i64) -> i64 {
+        let w = self.width;
+        self.cells[r2 * w + c2] - self.cells[r * w + c2] - self.cells[r2 * w + c] + self.cells[r * w + c]
+    }
+}
+
+struct StructMarks {
+    cells: Vec[Vec[i64]],
+}
+
+impl StructMarks {
+    fn new(m: i64, n: i64) -> StructMarks {
+        StructMarks { cells: Vec.filled(m + 1, Vec.filled(n + 1, 0)) }
+    }
+
+    fn stamp(mut ref self, r: i64, c: i64, r2: i64, c2: i64) {
+        self.cells[r][c] += 1;
+        self.cells[r][c2] -= 1;
+        self.cells[r2][c] -= 1;
+        self.cells[r2][c2] += 1;
+    }
+
+    // the marks summed in place: the stamps over each cell
+    fn settle(mut ref self) {
+        let m = self.cells.len();
+        let n = self.cells[0].len();
+        for r in 0..m {
+            for c in 0..n {
+                if r > 0 {
+                    self.cells[r][c] += self.cells[r - 1][c];
+                }
+                if c > 0 {
+                    self.cells[r][c] += self.cells[r][c - 1];
+                }
+                if r > 0 and c > 0 {
+                    self.cells[r][c] -= self.cells[r - 1][c - 1];
+                }
+            }
+        }
+    }
+}
+
+fn struct_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let full = StructSums.of(grid);
+    let mut marks = StructMarks.new(m, n);
+    for r in 0..m - stamp_height + 1 {
+        for c in 0..n - stamp_width + 1 {
+            if full.block(r, c, r + stamp_height, c + stamp_width) == 0 {
+                marks.stamp(r, c, r + stamp_height, c + stamp_width);
+            }
+        }
+    }
+    marks.settle();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 0 and marks.cells[r][c] == 0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- stamp_window.kara: corners counted in a window by a second prefix sum
+fn window_prefix(values: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let m = values.len();
+    let n = values[0].len();
+    let mut sums: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n + 1, 0));
+    for r in 0..m {
+        for c in 0..n {
+            sums[r + 1][c + 1] = values[r][c] + sums[r][c + 1] + sums[r + 1][c] - sums[r][c];
+        }
+    }
+    sums
+}
+
+fn window_block(sums: Vec[Vec[i64]], r: i64, c: i64, r2: i64, c2: i64) -> i64 {
+    sums[r2][c2] - sums[r][c2] - sums[r2][c] + sums[r][c]
+}
+
+fn window_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let full = window_prefix(grid);
+    let corners: Vec[Vec[i64]] = (0..m)
+        .map(|r| {
+            (0..n)
+                .map(|c| {
+                    let inside = r + stamp_height <= m and c + stamp_width <= n;
+                    if inside and window_block(full, r, c, r + stamp_height, c + stamp_width) == 0 { 1 } else { 0 }
+                })
+                .collect()
+        })
+        .collect();
+    let reach = window_prefix(corners);
+    (0..m).all(|r| {
+        (0..n).all(|c| {
+            let top = (r - stamp_height + 1).max(0);
+            let left = (c - stamp_width + 1).max(0);
+            grid[r][c] == 1 or window_block(reach, top, left, r + 1, c + 1) > 0
+        })
+    })
+}
+
+// ---- stamp_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn possible_to_stamp(grid: Vec[Vec[i32]], stamp_height: i32, stamp_width: i32) -> bool {
+        let m = grid.len();
+        let n = grid[0].len();
+        let (h, w) = (stamp_height as i64, stamp_width as i64);
+        let mut pre = Vec.filled(m + 1, Vec.filled(n + 1, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                pre[i + 1][j + 1] = pre[i][j + 1] + pre[i + 1][j] - pre[i][j] + grid[i][j];
+            }
+        }
+        let mut diff = Vec.filled(m + 2, Vec.filled(n + 2, 0i32));
+        for i in h..=m {
+            for j in w..=n {
+                let s = pre[i][j] - pre[i - h][j] - pre[i][j - w] + pre[i - h][j - w];
+                if s == 0 {
+                    diff[i - h][j - w] += 1;
+                    diff[i - h][j] -= 1;
+                    diff[i][j - w] -= 1;
+                    diff[i][j] += 1;
+                }
+            }
+        }
+        let mut cnt = Vec.filled(m + 1, Vec.filled(n + 1, 0i32));
+        for i in 0..m {
+            for j in 0..n {
+                cnt[i + 1][j + 1] = cnt[i][j + 1] + cnt[i + 1][j] - cnt[i][j] + diff[i][j];
+                if grid[i][j] == 0 and cnt[i + 1][j + 1] == 0 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_possible_to_stamp(grid: Vec[Vec[i64]], stamp_height: i64, stamp_width: i64) -> bool {
+    let g: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    SolutionSolution.possible_to_stamp(g, stamp_height as i32, stamp_width as i32)
+}
+
+
+// ---- the statement read literally
+
+fn clear(grid: Vec[Vec[i64]], r: i64, c: i64, h: i64, w: i64) -> bool {
+    for i in r..r + h {
+        for j in c..c + w {
+            if grid[i][j] == 1 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn literal(grid: Vec[Vec[i64]], h: i64, w: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    for i in 0..m {
+        for j in 0..n {
+            if grid[i][j] == 0 {
+                let mut covered = false;
+                for r in i - h + 1..i + 1 {
+                    for c in j - w + 1..j + 1 {
+                        if r >= 0 and c >= 0 and r + h <= m and c + w <= n and clear(grid, r, c, h, w) {
+                            covered = true;
+                        }
+                    }
+                }
+                if not covered {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]], h: i64, w: i64) -> bool {
+    match arm {
+        0 => star_possible_to_stamp(grid, h, w),
+        1 => rows_possible_to_stamp(grid, h, w),
+        2 => runs_possible_to_stamp(grid, h, w),
+        3 => struct_possible_to_stamp(grid, h, w),
+        4 => window_possible_to_stamp(grid, h, w),
+        _ => solution_possible_to_stamp(grid, h, w),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Problem {
+    grid: Vec[Vec[i64]],
+    h: i64,
+    w: i64,
+}
+
+fn main() {
+    let names = ["star", "rows", "runs", "struct", "window", "solution"];
+    let mut seed = 2132;
+    let mut problems: Vec[Problem] = Vec.new();
+    for t in 0..360 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+        let mut h = 0;
+        let mut w = 0;
+        if t < 300 {
+            let k = [2, 4, 8][t % 3];
+            for r in 0..m {
+                for c in 0..n {
+                    if next_random(mut seed) % k == 0 {
+                        grid[r][c] = 1;
+                    }
+                }
+            }
+            h = next_random(mut seed) % 4 + 1;
+            w = next_random(mut seed) % 4 + 1;
+        } else if t < 330 {
+            h = next_random(mut seed) % 7 + 1;
+            w = next_random(mut seed) % 7 + 1;
+        } else {
+            let r = next_random(mut seed) % m;
+            let c = next_random(mut seed) % n;
+            grid[r][c] = 1;
+            h = next_random(mut seed) % 4 + 1;
+            w = next_random(mut seed) % 4 + 1;
+        }
+        problems.push(Problem { grid, h, w });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for p in problems.iter() {
+        let grid = p.grid.clone();
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = literal(grid, p.h, p.w);
+        check = (check * 31 + if truth { 1 } else { 0 } + m * 7 + n * 49 + p.h * 343 + p.w * 2401) % 1000000007;
+        let transposed: Vec[Vec[i64]] = (0..n).map(|c| (0..m).map(|r| grid[r][c]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().collect()).collect();
+        let upside_down: Vec[Vec[i64]] = grid.iter().rev().map(|row| row.clone()).collect();
+        let mut walled = grid.clone();
+        walled.push(Vec.filled(n, 1));
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, grid, p.h, p.w)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, transposed, p.w, p.h) == x,
+                answer(arm, mirrored, p.h, p.w) == x,
+                answer(arm, upside_down, p.h, p.w) == x,
+                answer(arm, walled, p.h, p.w) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} {p.h}x{p.w} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} grids: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
