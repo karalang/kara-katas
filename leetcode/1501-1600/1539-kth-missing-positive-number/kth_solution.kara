@@ -1,0 +1,82 @@
+// LeetCode #1539: Kth Missing Positive Number -- LeetCode's Rust template as
+// karac fix left it: the ★ arm over `i32` values.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_kth_positive(arr: Vec[i32], k: i32) -> i32 {
+        let mut (lo, hi) = (0, arr.len());
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if arr[mid] - mid as i32 - 1 < k {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo as i32 + k
+    }
+}
+
+fn find_kth_positive(arr: Vec[i64], k: i64) -> i64 {
+    let arr: Vec[i32] = arr.iter().map(|x| x as i32).collect();
+    Solution.find_kth_positive(arr, k as i32)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a strictly increasing array of `count` values from 1 up, each 1 to `gap`
+// above the one before
+fn values(count: i64, gap: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut arr = Vec.new();
+    let mut value = 0;
+    for _ in 0..count {
+        value += next_random(mut seed) % gap + 1;
+        arr.push(value);
+    }
+    arr
+}
+
+// `count` arrays of 1 to `most` values, steps up to `gap`, each with k from
+// 1 to `top`
+fn batch(count: i64, most: i64, gap: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let arr = values(n, gap, mut seed);
+        let k = next_random(mut seed) % top + 1;
+        check = mix(check, find_kth_positive(arr, k));
+    }
+    println(f"{count} arrays of up to {most} values, steps up to {gap}, k up to {top}: checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i64], i64)] = [
+        ([2, 3, 4, 7, 11], 5),
+        ([1, 2, 3, 4], 2),
+        ([1], 1),
+        ([2], 1),
+        ([1000], 1000),
+        ([5, 6, 7], 4),
+        ([5, 6, 7], 5),
+    ];
+    for (arr, k) in examples.iter() {
+        println(f"{arr}, k = {k} -> {find_kth_positive(arr.clone(), k)}");
+    }
+    let every: Vec[i64] = (1..1001).collect();
+    println(f"1 to 1000, k = 1000 -> {find_kth_positive(every, 1000)}");
+    let odd: Vec[i64] = (0..500).map(|i| 2 * i + 1).collect();
+    println(f"the odd numbers to 999, k = 500 -> {find_kth_positive(odd, 500)}");
+    let mut seed = 1539;
+    batch(3000, 12, 4, 30, mut seed);
+    batch(300, 1000, 2, 1000, mut seed);
+}
