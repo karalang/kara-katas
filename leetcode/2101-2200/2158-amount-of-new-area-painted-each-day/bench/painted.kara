@@ -1,0 +1,67 @@
+// LeetCode #2158: Amount of New Area Painted Each Day -- the benchmark: the
+// ★ arm over four lists of 100000 segments of up to 500 units on a wall of
+// 50000, one segment replaced before each of 20 solves.
+
+fn first_unpainted(next: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while next[x] != x {
+        next[x] = next[next[x]];
+        x = next[x];
+    }
+    x
+}
+
+fn amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut next: Vec[i64] = (0..wall + 1).collect();
+    let mut log: Vec[i64] = Vec.new();
+    for p in paint.iter() {
+        let mut painted = 0;
+        let mut x = first_unpainted(mut next, p[0]);
+        while x < p[1] {
+            painted += 1;
+            next[x] = x + 1;
+            x = first_unpainted(mut next, x + 1);
+        }
+        log.push(painted);
+    }
+    log
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn segment(seed: mut ref i64) -> Vec[i64] {
+    let length = wide_random(mut seed) % 500 + 1;
+    let start = wide_random(mut seed) % (50000 - length + 1);
+    [start, start + length].to_vec()
+}
+
+fn main() {
+    let mut seed = 2158;
+    let mut lists: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..4 {
+        let paint: Vec[Vec[i64]] = (0..100000).map(|_| segment(mut seed)).collect();
+        lists.push(paint);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..5 {
+        for l in 0..4 {
+            let at = wide_random(mut seed) % 100000;
+            lists[l][at] = segment(mut seed);
+            let log = amount_painted(lists[l]);
+            for (day, a) in log.iter().enumerate() {
+                total += a;
+                check = (check * 31 + a * (day + 1) + round) % 1000000007;
+            }
+        }
+    }
+    println(f"20 solves: {total} units in all, checksum {check}");
+}

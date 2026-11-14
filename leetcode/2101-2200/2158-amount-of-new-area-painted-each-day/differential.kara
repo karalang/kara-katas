@@ -1,0 +1,313 @@
+// LeetCode #2158: Amount of New Area Painted Each Day -- the differential.
+// The six arms, against the statement read literally: a wall of units,
+// each day's segment walked unit by unit, the units not yet painted
+// counted and then painted; no jumps, sets or trees. 300 random lists of
+// 1 to 8 segments within 10, 30 or 100 units in turn; then 30 whose
+// segments all start at 0; then 30 of segments one unit long; every one
+// drawn before any arm answers.
+//
+// P1  the log is the statement read literally
+// P2  every segment moved 7 units on: the same log
+// P3  the wall turned end for end: the same log
+// P4  every day's segment painted again the next day: each day's area
+//     followed by a 0
+// P5  every unit made two: every day's area doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- painted.kara: the ★ arm, each unit pointing at the first unpainted unit, paths halved
+fn star_first_unpainted(next: mut ref Vec[i64], x: i64) -> i64 {
+    let mut x = x;
+    while next[x] != x {
+        next[x] = next[next[x]];
+        x = next[x];
+    }
+    x
+}
+
+fn star_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut next: Vec[i64] = (0..wall + 1).collect();
+    let mut log: Vec[i64] = Vec.new();
+    for p in paint.iter() {
+        let mut painted = 0;
+        let mut x = star_first_unpainted(mut next, p[0]);
+        while x < p[1] {
+            painted += 1;
+            next[x] = x + 1;
+            x = star_first_unpainted(mut next, x + 1);
+        }
+        log.push(painted);
+    }
+    log
+}
+
+// ---- painted_runs.kara: the unpainted stretches in a `SortedMap`, by `floor` and `range`
+fn runs_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut unpainted: SortedMap[i64, i64] = SortedMap.new();
+    unpainted.insert(0, wall);
+    let mut log: Vec[i64] = Vec.new();
+    for p in paint.iter() {
+        let (start, end) = (p[0], p[1]);
+        let mut hit: Vec[(i64, i64)] = Vec.new();
+        if let Some((s, e)) = unpainted.floor(start) {
+            if s < start and e > start {
+                hit.push((s, e));
+            }
+        }
+        for (s, e) in unpainted.range(start, end) {
+            hit.push((s, e));
+        }
+        let mut painted = 0;
+        for (s, e) in hit.iter() {
+            unpainted.remove(s);
+            if s < start {
+                unpainted.insert(s, start);
+            }
+            if e > end {
+                unpainted.insert(end, e);
+            }
+            painted += e.min(end) - s.max(start);
+        }
+        log.push(painted);
+    }
+    log
+}
+
+// ---- painted_sweep.kara: a sweep holding the covering days in a `SortedSet`, the earliest paid
+fn sweep_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut opening: Vec[Vec[i64]] = Vec.new();
+    let mut closing: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..wall + 1 {
+        opening.push(Vec.new());
+        closing.push(Vec.new());
+    }
+    for (day, p) in paint.iter().enumerate() {
+        opening[p[0]].push(day);
+        closing[p[1]].push(day);
+    }
+    let mut log: Vec[i64] = Vec.filled(paint.len(), 0);
+    let mut covering: SortedSet[i64] = SortedSet.new();
+    for x in 0..wall {
+        for day in closing[x].iter() {
+            covering.remove(day);
+        }
+        for day in opening[x].iter() {
+            covering.insert(day);
+        }
+        if let Some(first) = covering.min() {
+            log[first] += 1;
+        }
+    }
+    log
+}
+
+// ---- painted_struct.kara: a `Wall` that `free`s by recursion and points painted units at the day's end
+struct Wall {
+    next: Vec[i64],
+}
+
+impl Wall {
+    fn of(width: i64) -> Wall {
+        Wall { next: (0..width + 1).collect() }
+    }
+
+    fn free(mut ref self, x: i64) -> i64 {
+        if self.next[x] == x {
+            return x;
+        }
+        let found = self.free(self.next[x]);
+        self.next[x] = found;
+        found
+    }
+
+    fn paint(mut ref self, start: i64, end: i64) -> i64 {
+        let mut painted = 0;
+        let mut x = self.free(start);
+        while x < end {
+            painted += 1;
+            self.next[x] = end;
+            x = self.free(x + 1);
+        }
+        painted
+    }
+}
+
+fn wall_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut w = Wall.of(wall);
+    paint.iter().map(|p| w.paint(p[0], p[1])).collect()
+}
+
+// ---- painted_tree.kara: a segment tree of painted counts, full nodes never entered
+fn tree_cover(painted: mut ref Vec[i64], node: i64, lo: i64, hi: i64, start: i64, end: i64) -> i64 {
+    if end <= lo or hi <= start or painted[node] == hi - lo {
+        return 0;
+    }
+    if start <= lo and hi <= end {
+        let added = hi - lo - painted[node];
+        painted[node] = hi - lo;
+        return added;
+    }
+    let mid = (lo + hi) / 2;
+    let added = tree_cover(mut painted, 2 * node, lo, mid, start, end) + tree_cover(mut painted, 2 * node + 1, mid, hi, start, end);
+    painted[node] += added;
+    added
+}
+
+fn tree_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut painted: Vec[i64] = Vec.filled(4 * wall, 0);
+    paint.iter().map(|p| tree_cover(mut painted, 1, 0, wall, p[0], p[1])).collect()
+}
+
+// ---- painted_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn amount_painted(paint: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut line = Vec.filled(50001, 0i32);
+        let mut ans = Vec.with_capacity(paint.len());
+        for p in paint.iter() {
+            let mut (start, end) = (p[0], p[1]);
+            let mut area = 0;
+            while start < end {
+                if line[start as usize] == 0 {
+                    line[start as usize] = end;
+                    area += 1;
+                    start += 1;
+                } else {
+                    let next = line[start as usize];
+                    line[start as usize] = next.max(end);
+                    start = next;
+                }
+            }
+            ans.push(area);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let paint32: Vec[Vec[i32]] = paint.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect();
+    SolutionSolution.amount_painted(paint32).iter().map(|a| a as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let wall = paint.iter().map(|p| p[1]).max().unwrap();
+    let mut painted: Vec[bool] = Vec.filled(wall, false);
+    let mut log: Vec[i64] = Vec.new();
+    for p in paint.iter() {
+        let mut area = 0;
+        for x in p[0]..p[1] {
+            if not painted[x] {
+                area += 1;
+                painted[x] = true;
+            }
+        }
+        log.push(area);
+    }
+    log
+}
+
+fn answer(arm: i64, paint: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_amount_painted(paint),
+        1 => runs_amount_painted(paint),
+        2 => sweep_amount_painted(paint),
+        3 => wall_amount_painted(paint),
+        4 => tree_amount_painted(paint),
+        _ => solution_amount_painted(paint),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "runs", "sweep", "wall", "tree", "solution"];
+    let mut seed = 2158;
+    let mut lists: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 8 + 1;
+        let width = [10, 30, 100][t % 3];
+        let mut paint: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let length = if t >= 330 { 1 } else { next_random(mut seed) % width + 1 };
+            let start = if t >= 300 and t < 330 { 0 } else { next_random(mut seed) % (width - length + 1) };
+            paint.push([start, start + length].to_vec());
+        }
+        lists.push(paint);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for paint in lists.iter() {
+        let truth = literal(paint);
+        for a in truth.iter() {
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+        check = (check * 31 + paint.len()) % 1000000007;
+        let wall = paint.iter().map(|p| p[1]).max().unwrap();
+        let moved: Vec[Vec[i64]] = paint.iter().map(|p| [p[0] + 7, p[1] + 7].to_vec()).collect();
+        let turned: Vec[Vec[i64]] = paint.iter().map(|p| [wall - p[1], wall - p[0]].to_vec()).collect();
+        let mut again: Vec[Vec[i64]] = Vec.new();
+        for p in paint.iter() {
+            again.push(p.clone());
+            again.push(p.clone());
+        }
+        let doubled: Vec[Vec[i64]] = paint.iter().map(|p| [2 * p[0], 2 * p[1]].to_vec()).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, paint)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut with_zeros: Vec[i64] = Vec.new();
+            for a in x.iter() {
+                with_zeros.push(a);
+                with_zeros.push(0);
+            }
+            let twice: Vec[i64] = x.iter().map(|a| 2 * a).collect();
+            let verdicts = [
+                x == truth,
+                answer(arm, moved) == x,
+                answer(arm, turned) == x,
+                answer(arm, again) == with_zeros,
+                answer(arm, doubled) == twice,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{paint} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

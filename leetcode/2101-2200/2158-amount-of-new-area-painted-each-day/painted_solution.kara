@@ -1,0 +1,105 @@
+// LeetCode #2158: Amount of New Area Painted Each Day -- LeetCode's Rust
+// template: a `line` of `i32`s where a painted unit holds the end of the
+// block painted from it, `vec![0; 50001]`, `start as usize`, and a jump
+// along the line that stretches each block it passes to the day's end,
+// written as Rust. Carried by `karac fix`. The adapter below hands the
+// harness's segments to it and its log back.
+
+impl Solution {
+    pub fn amount_painted(paint: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut line = Vec.filled(50001, 0i32);
+        let mut ans = Vec.with_capacity(paint.len());
+        for p in paint.iter() {
+            let mut (start, end) = (p[0], p[1]);
+            let mut area = 0;
+            while start < end {
+                if line[start as usize] == 0 {
+                    line[start as usize] = end;
+                    area += 1;
+                    start += 1;
+                } else {
+                    let next = line[start as usize];
+                    line[start as usize] = next.max(end);
+                    start = next;
+                }
+            }
+            ans.push(area);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn amount_painted(paint: Vec[Vec[i64]]) -> Vec[i64] {
+    let paint32: Vec[Vec[i32]] = paint.iter().map(|p| p.iter().map(|x| x as i32).collect()).collect();
+    Solution.amount_painted(paint32).iter().map(|a| a as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number below 2^30, from two draws
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a segment of 1 to most units within [0, width)
+fn segment(width: i64, most: i64, seed: mut ref i64) -> Vec[i64] {
+    let length = wide_random(mut seed) % most.min(width) + 1;
+    let start = wide_random(mut seed) % (width - length + 1);
+    [start, start + length].to_vec()
+}
+
+fn show(paint: Vec[Vec[i64]]) {
+    println(f"{paint} -> {amount_painted(paint)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one day, the same segment
+    // twice, segments that grow around each other, and segments that only
+    // touch
+    show([[1, 4].to_vec(), [4, 7].to_vec(), [5, 8].to_vec()].to_vec());
+    show([[1, 4].to_vec(), [5, 8].to_vec(), [4, 7].to_vec()].to_vec());
+    show([[1, 5].to_vec(), [2, 4].to_vec()].to_vec());
+    show([[0, 1].to_vec()].to_vec());
+    show([[3, 9].to_vec(), [3, 9].to_vec()].to_vec());
+    show([[2, 3].to_vec(), [1, 4].to_vec(), [0, 5].to_vec()].to_vec());
+    show([[0, 2].to_vec(), [4, 6].to_vec(), [2, 4].to_vec()].to_vec());
+    // 2000 random lists of 1 to 8 segments within 10, 30 or 100 units in
+    // turn
+    let mut seed = 2158;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let width = [10, 30, 100][round % 3];
+        let paint: Vec[Vec[i64]] = (0..n).map(|_| segment(width, width, mut seed)).collect();
+        for a in amount_painted(paint).iter() {
+            total += a;
+            check = (check * 31 + a + 1) % 1000000007;
+        }
+    }
+    println(f"2000 lists: {total} units in all, checksum {check}");
+    // the constraints' largest, 100000 days within 50000 units: segments of
+    // up to 50 units, of any length, and the whole wall every day
+    for (name, most) in [("short", 50), ("any", 50000), ("whole", 0)] {
+        let paint: Vec[Vec[i64]] = (0..100000).map(|_| if most == 0 { [0, 50000].to_vec() } else { segment(50000, most, mut seed) }).collect();
+        let log = amount_painted(paint);
+        let mut sum = 0;
+        let mut days = 0;
+        let mut hash = 0;
+        for a in log.iter() {
+            sum += a;
+            if a > 0 {
+                days += 1;
+            }
+            hash = (hash * 31 + a + 1) % 1000000007;
+        }
+        println(f"100000 days, {name}: {sum} units on {days} days, checksum {hash}");
+    }
+}
