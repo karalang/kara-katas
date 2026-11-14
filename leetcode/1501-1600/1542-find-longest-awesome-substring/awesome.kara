@@ -1,0 +1,68 @@
+// LeetCode #1542: Find Longest Awesome Substring -- the ★ arm: a substring
+// can be rearranged into a palindrome when at most one digit occurs in it
+// an odd number of times. A prefix's parity mask holds one bit per digit,
+// and the substring between two prefixes has the two masks' xor, so for
+// each end the best start is the first prefix with the same mask or one
+// that differs in one bit. `first`, a `Vec` over the 1024 masks, holds
+// where each mask was first seen. O(10 n).
+
+fn longest_awesome(s: String) -> i64 {
+    let n = s.len();
+    // first[m]: the first prefix length with parity mask m, n + 1 if none
+    let mut first = Vec.filled(1024, n + 1);
+    first[0] = 0;
+    let mut mask = 0;
+    let mut best = 0;
+    for (i, c) in s.bytes().iter().enumerate() {
+        mask ^= 1 << (c - b'0') as i64;
+        let end = i + 1;
+        best = best.max(end - first[mask]);
+        for d in 0..10 {
+            best = best.max(end - first[mask ^ (1 << d)]);
+        }
+        if first[mask] > n {
+            first[mask] = end;
+        }
+    }
+    best
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` strings of 1 to `most` digits, each over its own first 1 to 10
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let digits = next_random(mut seed) % 10 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'0' + (next_random(mut seed) % digits) as u8) as char);
+        }
+        check = mix(check, longest_awesome(s));
+    }
+    println(f"{count} strings of up to {most} digits: checksum {check}");
+}
+
+fn main() {
+    let examples = ["3242415", "12345678", "213123", "00", "9", "0123456789", "1122334455", "10101", "90019"];
+    for s in examples.iter() {
+        println(f"{s} -> {longest_awesome(s.to_string())}");
+    }
+    let all = "0123456789".repeat(10000);
+    println(f"0123456789 10000 times -> {longest_awesome(all.clone())}");
+    println(f"the same and a 0 -> {longest_awesome(all + "0")}");
+    let mut seed = 1542;
+    batch(3000, 12, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}

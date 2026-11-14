@@ -1,0 +1,247 @@
+// LeetCode #1542: Find Longest Awesome Substring -- the differential.
+//
+// Four arms against the statement read literally, on 3000 strings of 1 to
+// 14 digits, each over its own run of 1 to 5 digits starting anywhere
+// from 0 to 9 (9 wraps to 0), with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is from 1 to the length, and the length exactly when the
+//     whole string is awesome
+// P3  the string reversed has the same answer
+// P4  every digit renamed one-to-one (d to 3 d + 1 mod 10) leaves the answer
+// P5  the string followed by its reverse, or by itself, is awesome whole
+// P6  each arm agrees with at least two of the other three
+
+// ---- awesome.kara: the ★ arm: prefix parity masks, first places in a Vec
+
+fn star_arm(s: String) -> i64 {
+    let n = s.len();
+    // first[m]: the first prefix length with parity mask m, n + 1 if none
+    let mut first = Vec.filled(1024, n + 1);
+    first[0] = 0;
+    let mut mask = 0;
+    let mut best = 0;
+    for (i, c) in s.bytes().iter().enumerate() {
+        mask ^= 1 << (c - b'0') as i64;
+        let end = i + 1;
+        best = best.max(end - first[mask]);
+        for d in 0..10 {
+            best = best.max(end - first[mask ^ (1 << d)]);
+        }
+        if first[mask] > n {
+            first[mask] = end;
+        }
+    }
+    best
+}
+
+// ---- awesome_map.kara: the first places in a Map
+
+fn map_arm(s: String) -> i64 {
+    let mut first: Map[i64, i64] = Map.new();
+    first.insert(0, 0);
+    let mut mask = 0;
+    let mut best = 0;
+    let mut end = 0;
+    for c in s.chars() {
+        let digit = c.to_digit(10).unwrap() as i64;
+        mask ^= 1 << digit;
+        end += 1;
+        if let Some(start) = first.get(mask) {
+            best = best.max(end - start);
+        }
+        for d in 0..10 {
+            if let Some(start) = first.get(mask ^ (1 << d)) {
+                best = best.max(end - start);
+            }
+        }
+        first.entry(mask).or_insert(end);
+    }
+    best
+}
+
+// ---- awesome_iter.kara: the masks by scan, the best by map and max
+
+fn iter_arm(s: String) -> i64 {
+    let masks: Vec[i64] = [0]
+        .iter()
+        .cloned()
+        .chain(s.bytes().iter().scan(0, |mask, c| {
+            let next = mask ^ (1 << (c - b'0') as i64);
+            Some((next, next))
+        }))
+        .collect();
+    let mut first = Vec.filled(1024, masks.len());
+    for (i, m) in masks.iter().enumerate().rev() {
+        first[m] = i;
+    }
+    (0..masks.len())
+        .map(|end| {
+            let odd_one = (0..10).map(|d| end - first[masks[end] ^ (1 << d)]).max().unwrap();
+            odd_one.max(end - first[masks[end]])
+        })
+        .max()
+        .unwrap()
+}
+
+// ---- awesome_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn longest_awesome(s: String) -> i32 {
+        let n = s.len() as i32;
+        let mut first = Vec.filled(1024, n + 1);
+        first[0] = 0;
+        let mut mask = 0usize;
+        let mut best: i32 = 0;
+        for (i, b) in s.bytes().iter().enumerate() {
+            mask ^= 1 << (b - b'0');
+            let end = i as i32 + 1;
+            best = best.max(end - first[mask]);
+            for d in 0..10 {
+                best = best.max(end - first[mask ^ (1 << d)]);
+            }
+            if first[mask] > n {
+                first[mask] = end;
+            }
+        }
+        best
+    }
+}
+
+fn solution_arm(s: String) -> i64 {
+    Solution.longest_awesome(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i64 {
+    match a {
+        0 => star_arm(s),
+        1 => map_arm(s),
+        2 => iter_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["awesome", "map", "iter", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every substring, its digits counted,
+// awesome when at most one digit occurs an odd number of times
+
+fn literal(s: String) -> i64 {
+    let digits: Vec[char] = s.chars().collect();
+    let n = digits.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i + 1..=n {
+            let mut counts = [0; 10];
+            for k in i..j {
+                counts[digits[k].to_digit(10).unwrap()] += 1;
+            }
+            let odd = counts.iter().filter(|c| c % 2 == 1).count();
+            if odd <= 1 {
+                best = best.max(j - i);
+            }
+        }
+    }
+    best
+}
+
+fn reversed(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+// every digit d renamed 3 d + 1 mod 10, a one-to-one renaming
+fn renamed(s: String) -> String {
+    s.chars().map(|c| ((c.to_digit(10).unwrap() * 3 + 1) % 10 + 48) as u8 as char).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15420;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 14 + 1;
+        let low = next_random(mut seed) % 10;
+        let digits = next_random(mut seed) % 5 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'0' + ((low + next_random(mut seed) % digits) % 10) as u8) as char);
+        }
+        cases.push(s);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let s = cases[p].clone();
+        let n = s.len();
+        let truth = literal(s.clone());
+        let mut whole = [0; 10];
+        for c in s.chars() {
+            whole[c.to_digit(10).unwrap()] += 1;
+        }
+        let whole_awesome = whole.iter().filter(|c| c % 2 == 1).count() <= 1;
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer < 1 or answer > n or (answer == n) != whole_awesome,
+                arm(a, reversed(s.clone())) != answer,
+                arm(a, renamed(s.clone())) != answer,
+                arm(a, s.clone() + reversed(s.clone())) != 2 * n or arm(a, s.clone() + s.clone()) != 2 * n,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
