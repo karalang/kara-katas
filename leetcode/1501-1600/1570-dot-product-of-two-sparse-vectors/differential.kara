@@ -1,0 +1,261 @@
+// LeetCode #1570: Dot Product of Two Sparse Vectors -- the differential.
+//
+// Four arms against the statement read literally, on 3000 pairs of
+// vectors of 1 to 10 values from 0 to 3, each vector with its own odds of a
+// value other than 0, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the two vectors swapped leave the answer
+// P3  both vectors reversed leave the answer
+// P4  every value of the first doubled doubles the answer
+// P5  each vector written twice over doubles the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- sparse.kara: the ★ arm: index-ordered pairs merged by two pointers
+
+struct StarVector {
+    pairs: Vec[(i64, i64)],
+}
+
+impl StarVector {
+    fn new(nums: Vec[i64]) -> StarVector {
+        StarVector { pairs: nums.iter().enumerate().filter(|(_, x)| x != 0).collect() }
+    }
+
+    fn dot_product(ref self, other: StarVector) -> i64 {
+        let mut i = 0;
+        let mut j = 0;
+        let mut total = 0;
+        while i < self.pairs.len() and j < other.pairs.len() {
+            let (a, x) = self.pairs[i];
+            let (b, y) = other.pairs[j];
+            if a == b {
+                total += x * y;
+                i += 1;
+                j += 1;
+            } else if a < b {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        total
+    }
+}
+
+fn star_arm(a: Vec[i64], b: Vec[i64]) -> i64 {
+    StarVector.new(a).dot_product(StarVector.new(b))
+}
+
+// ---- sparse_map.kara: a Map per vector, the smaller walked
+
+struct MapVector {
+    values: Map[i64, i64],
+}
+
+impl MapVector {
+    fn new(nums: Vec[i64]) -> MapVector {
+        let mut values: Map[i64, i64] = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            if x != 0 {
+                values.insert(i, x);
+            }
+        }
+        MapVector { values }
+    }
+
+    fn dot_product(ref self, other: MapVector) -> i64 {
+        let (small, large) = if self.values.len() <= other.values.len() {
+            (ref self.values, ref other.values)
+        } else {
+            (ref other.values, ref self.values)
+        };
+        small.iter().map(|(i, x)| x * large.get(i).cloned().unwrap_or(0)).sum()
+    }
+}
+
+fn map_arm(a: Vec[i64], b: Vec[i64]) -> i64 {
+    MapVector.new(a).dot_product(MapVector.new(b))
+}
+
+// ---- sparse_search.kara: index-ordered pairs, each found by binary search
+
+struct SearchVector {
+    pairs: Vec[(i64, i64)],
+}
+
+impl SearchVector {
+    fn new(nums: Vec[i64]) -> SearchVector {
+        SearchVector { pairs: nums.iter().enumerate().filter(|(_, x)| x != 0).collect() }
+    }
+
+    fn dot_product(ref self, other: SearchVector) -> i64 {
+        let (short, long) = if self.pairs.len() <= other.pairs.len() {
+            (ref self.pairs, ref other.pairs)
+        } else {
+            (ref other.pairs, ref self.pairs)
+        };
+        let mut total = 0;
+        for (i, x) in short.iter() {
+            let at = long.partition_point(|(j, _)| j < i);
+            if at < long.len() and long[at].0 == i {
+                total += x * long[at].1;
+            }
+        }
+        total
+    }
+}
+
+fn search_arm(a: Vec[i64], b: Vec[i64]) -> i64 {
+    SearchVector.new(a).dot_product(SearchVector.new(b))
+}
+
+// ---- sparse_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionVector {
+    values: Map[i64, i32],
+}
+
+impl SolutionVector {
+    fn new(nums: Vec[i32]) -> Self {
+        let mut values = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            if x != 0 {
+                values.insert(i, x);
+            }
+        }
+        SolutionVector { values }
+    }
+
+    fn dot_product(self, vec: SolutionVector) -> i32 {
+        let mut total: i32 = 0;
+        for (i, x) in self.values.iter() {
+            if let Some(y) = vec.values.get(i) {
+                total += x * y;
+            }
+        }
+        total
+    }
+}
+
+fn solution_arm(a: Vec[i64], b: Vec[i64]) -> i64 {
+    let a: Vec[i32] = a.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = b.iter().map(|x| x as i32).collect();
+    SolutionVector.new(a).dot_product(SolutionVector.new(b))
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, x: Vec[i64], y: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(x, y),
+        1 => map_arm(x, y),
+        2 => search_arm(x, y),
+        _ => solution_arm(x, y),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["sparse", "map", "search", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the dense vectors multiplied index by
+// index and summed
+
+fn literal(x: Vec[i64], y: Vec[i64]) -> i64 {
+    let mut total = 0;
+    for i in 0..x.len() {
+        total += x[i] * y[i];
+    }
+    total
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15700;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let mut pair: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..2 {
+            let odds = next_random(mut seed) % 3 + 1;
+            let nums: Vec[i64] = (0..n).map(|_| {
+                let draw = next_random(mut seed);
+                if draw % odds == 0 { draw / odds % 3 + 1 } else { 0 }
+            }).collect();
+            pair.push(nums);
+        }
+        cases.push((pair[0].clone(), pair[1].clone()));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (x, y) = cases[p].clone();
+        let truth = literal(x.clone(), y.clone());
+        let x_back: Vec[i64] = x.iter().rev().cloned().collect();
+        let y_back: Vec[i64] = y.iter().rev().cloned().collect();
+        let x_doubled: Vec[i64] = x.iter().map(|v| 2 * v).collect();
+        let mut x_twice = x.clone();
+        x_twice.extend(x.iter().cloned());
+        let mut y_twice = y.clone();
+        y_twice.extend(y.iter().cloned());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, x.clone(), y.clone());
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, y.clone(), x.clone()) != answer,
+                arm(a, x_back.clone(), y_back.clone()) != answer,
+                arm(a, x_doubled.clone(), y.clone()) != 2 * answer,
+                arm(a, x_twice.clone(), y_twice.clone()) != 2 * answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
