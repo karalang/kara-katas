@@ -118,7 +118,8 @@ All four arms print the same output as `days.py` under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change. Checked at kara `5a1b79539`.
+and `karac fix` has nothing left to change. Checked at kara `5a1b79539`;
+the template and the differential again at `49a607740`.
 
 ## Writing it
 
@@ -126,8 +127,8 @@ The ★ and cuts arms were written in Kāra and checked as written. The
 union-find arm was first written with Rust's `move |c| (r, c)` inside its
 `flat_map`; `karac fix` deleted the `move` in one round.
 
-The Rust template took four rounds of `karac fix`, 15 changed lines,
-then 1 added, then 8 and 2 changed:
+The Rust template took five rounds of `karac fix`, 15 changed lines,
+then 1 added, then 8, 2 and 1 changed:
 
 1. the `Vec<..>` types to `Vec[..]`, `&Vec<..>` and `&mut Vec<..>`
    parameters to `ref` and `mut ref`, `&grid` and `&mut seen` arguments
@@ -142,7 +143,9 @@ then 1 added, then 8 and 2 changed:
 4. the outer `vec![..]` to `Vec.filled`, and `dfs`'s `ref` on `grid`
    dropped as redundant.
 
-`count`'s `ref grid` is just as redundant but kept its `ref`: the lint
-skips every function whose name is read as a value anywhere, and it
-matches by name, so the harness's `count` parameter counts. Filed as
-B-2026-11-14-21. It checks and agrees with no hand edit.
+At kara `5a1b79539`, `count`'s `ref grid`, just as redundant, kept its
+`ref`: the lint skipped every function whose name was read as a value
+anywhere, matched by name alone, so the harness's `count` parameter
+counted. Filed as B-2026-11-14-21 and fixed in `49a607740`; a fifth
+round now drops that `ref` too, and the template is kept as that round
+leaves it. It checks and agrees with no hand edit.
