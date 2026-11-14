@@ -1,0 +1,271 @@
+// LeetCode #1562: Find Latest Group of Size M -- the differential.
+//
+// Four arms against the statement read literally, on 3000 orders of 1 to
+// 8 positions, each with an m from 1 to n, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is -1 or from m to n, and is n exactly when m is n
+// P3  every position mirrored (v to n + 1 - v) leaves the answer
+// P4  a position n + 1 set as one more last step leaves the answer
+// P5  an m of 1 always has an answer, and an m of n answers n
+// P6  each arm agrees with at least two of the other three
+
+// ---- latest.kara: the ★ arm: group lengths kept at both ends
+
+fn star_arm(arr: Vec[i64], m: i64) -> i64 {
+    let n = arr.len();
+    let mut length = Vec.filled(n + 2, 0);
+    let mut groups_of_m = 0;
+    let mut latest = -1;
+    for (step, a) in arr.iter().enumerate() {
+        let left = length[a - 1];
+        let right = length[a + 1];
+        let total = left + right + 1;
+        if left == m {
+            groups_of_m -= 1;
+        }
+        if right == m {
+            groups_of_m -= 1;
+        }
+        if total == m {
+            groups_of_m += 1;
+        }
+        length[a - left] = total;
+        length[a + right] = total;
+        if groups_of_m > 0 {
+            latest = step + 1;
+        }
+    }
+    latest
+}
+
+// ---- latest_back.kara: the steps undone with a SortedSet of zeros
+
+fn back_arm(arr: Vec[i64], m: i64) -> i64 {
+    let n = arr.len();
+    if m == n {
+        return n;
+    }
+    let mut zeros: SortedSet[i64] = SortedSet.new();
+    zeros.insert(0);
+    zeros.insert(n + 1);
+    for step in (0..n).rev() {
+        let a = arr[step];
+        let below = *zeros.range(0, a).next_back().unwrap();
+        let above = *zeros.range(a + 1, n + 2).next().unwrap();
+        if a - below - 1 == m or above - a - 1 == m {
+            return step;
+        }
+        zeros.insert(a);
+    }
+    -1
+}
+
+// ---- latest_union.kara: union-find with set sizes
+
+fn root(parent: mut ref Vec[i64], cell: i64) -> i64 {
+    let mut at = cell;
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+    }
+    at
+}
+
+fn union_arm(arr: Vec[i64], m: i64) -> i64 {
+    let n = arr.len();
+    let mut parent: Vec[i64] = (0..n + 2).collect();
+    let mut size = Vec.filled(n + 2, 0);
+    let mut groups_of_m = 0;
+    let mut latest = -1;
+    for step in 0..n {
+        let a = arr[step];
+        size[a] = 1;
+        if m == 1 {
+            groups_of_m += 1;
+        }
+        for b in [a - 1, a + 1] {
+            if size[b] == 0 {
+                continue;
+            }
+            let (ra, rb) = (root(mut parent, a), root(mut parent, b));
+            for s in [size[ra], size[rb]] {
+                if s == m {
+                    groups_of_m -= 1;
+                }
+            }
+            parent[ra] = rb;
+            size[rb] += size[ra];
+            if size[rb] == m {
+                groups_of_m += 1;
+            }
+        }
+        if groups_of_m > 0 {
+            latest = step + 1;
+        }
+    }
+    latest
+}
+
+// ---- latest_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_latest_step(arr: Vec[i32], m: i32) -> i32 {
+        let n = arr.len();
+        let mut len = Vec.filled(n + 2, 0i32);
+        let mut count = 0;
+        let mut ans = -1;
+        for (i, x) in arr.iter().enumerate() {
+            let x = x as usize;
+            let l = len[x - 1];
+            let r = len[x + 1];
+            let total = l + r + 1;
+            if l == m {
+                count -= 1;
+            }
+            if r == m {
+                count -= 1;
+            }
+            if total == m {
+                count += 1;
+            }
+            len[x - l as usize] = total;
+            len[x + r as usize] = total;
+            if count > 0 {
+                ans = i as i32 + 1;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(arr: Vec[i64], m: i64) -> i64 {
+    let arr: Vec[i32] = arr.iter().map(|a| a as i32).collect();
+    Solution.find_latest_step(arr, m as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, arr: Vec[i64], m: i64) -> i64 {
+    match a {
+        0 => star_arm(arr, m),
+        1 => back_arm(arr, m),
+        2 => union_arm(arr, m),
+        _ => solution_arm(arr, m),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["latest", "back", "union", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the bits set one step at a time, and
+// after every step the string scanned for a group of ones that cannot be
+// grown either way and is exactly m long; the answer is the last such step
+
+fn literal(arr: Vec[i64], m: i64) -> i64 {
+    let n = arr.len();
+    let mut bits = Vec.filled(n, false);
+    let mut latest = -1;
+    for step in 0..n {
+        bits[arr[step] - 1] = true;
+        let mut run = 0;
+        for i in 0..=n {
+            if i < n and bits[i] {
+                run += 1;
+            } else {
+                if run == m {
+                    latest = step + 1;
+                }
+                run = 0;
+            }
+        }
+    }
+    latest
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15620;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut arr: Vec[i64] = (1..=n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            arr.swap(i, j);
+        }
+        let m = next_random(mut seed) % n + 1;
+        cases.push((arr, m));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (arr, m) = cases[p].clone();
+        let n = arr.len();
+        let truth = literal(arr.clone(), m);
+        let mirrored: Vec[i64] = arr.iter().map(|v| n + 1 - v).collect();
+        let mut longer = arr.clone();
+        longer.push(n + 1);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, arr.clone(), m);
+            answers.push(answer);
+            check = (check * 31 + answer + 2) % 1000000007;
+            let failed = [
+                answer != truth,
+                answer != -1 and (answer < m or answer > n) or (answer == n) != (m == n),
+                arm(a, mirrored.clone(), m) != answer,
+                arm(a, longer.clone(), m) != answer,
+                arm(a, arr.clone(), 1) < 1 or arm(a, arr.clone(), n) != n,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

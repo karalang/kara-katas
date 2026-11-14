@@ -1,0 +1,83 @@
+// LeetCode #1562: Find Latest Group of Size M -- the steps taken back: all
+// ones at the end, the positions cleared from the last step down, a
+// `SortedSet` of the cleared positions (with 0 and n + 1 as walls) giving
+// the zeros either side of each one; the first clear that leaves a group
+// of m beside it is undoing the step after the answer.
+
+fn find_latest_step(arr: Vec[i64], m: i64) -> i64 {
+    let n = arr.len();
+    if m == n {
+        return n;
+    }
+    let mut zeros: SortedSet[i64] = SortedSet.new();
+    zeros.insert(0);
+    zeros.insert(n + 1);
+    for step in (0..n).rev() {
+        let a = arr[step];
+        let below = *zeros.range(0, a).next_back().unwrap();
+        let above = *zeros.range(a + 1, n + 2).next().unwrap();
+        if a - below - 1 == m or above - a - 1 == m {
+            return step;
+        }
+        zeros.insert(a);
+    }
+    -1
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` orders of 1 to `most` positions, each with an `m` from 1 to 8
+// half the time and from 1 to n the other half
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut found = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let mut arr: Vec[i64] = (1..=n).collect();
+        for i in (1..n).rev() {
+            let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+            arr.swap(i, j);
+        }
+        let m = if next_random(mut seed) % 2 == 0 {
+            next_random(mut seed) % n.min(8) + 1
+        } else {
+            next_random(mut seed) % n + 1
+        };
+        let step = find_latest_step(arr, m);
+        if step >= 0 {
+            found += 1;
+        }
+        check = mix(check, step);
+    }
+    println(f"{count} orders of up to {most} positions: {found} with a group, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i64], i64)] = [
+        ([3, 5, 1, 2, 4], 1),
+        ([3, 1, 5, 4, 2], 2),
+        ([1], 1),
+        ([2, 1], 2),
+        ([2, 1], 1),
+        ([1, 2, 3, 4], 2),
+        ([4, 3, 2, 1], 1),
+        ([1, 3, 5, 2, 4], 1),
+        ([2, 4, 6, 1, 3, 5], 3),
+    ];
+    for (arr, m) in examples.iter() {
+        println(f"{arr}, m = {m} -> {find_latest_step(arr.clone(), m)}");
+    }
+    let mut seed = 1562;
+    batch(3000, 8, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 100000, mut seed);
+}
