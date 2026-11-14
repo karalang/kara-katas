@@ -1,0 +1,246 @@
+// LeetCode #1557: Minimum Number of Vertices to Reach All Nodes -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 acyclic graphs
+// of 2 to 8 nodes, each edge from earlier to later in a random order of
+// the nodes, with six properties. Every random choice is drawn before any
+// arm answers. Any order is accepted, so every answer is read sorted.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is nonempty, distinct, and names nodes of the graph
+// P3  the edges given in reverse order leave the answer
+// P4  every node v renamed n - 1 - v renames the answer
+// P5  a new node with an edge to every node of the answer is the answer
+//     alone
+// P6  each arm agrees with at least two of the other three
+
+// ---- vertices.kara: the ★ arm: the nodes no edge ends at
+
+fn star_arm(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut reached = Vec.filled(n, false);
+    for (_, to) in edges.iter() {
+        reached[to] = true;
+    }
+    let mut sources = Vec.new();
+    for v in 0..n {
+        if not reached[v] {
+            sources.push(v);
+        }
+    }
+    sources
+}
+
+// ---- vertices_set.kara: the edge ends in a Set, the rest filtered
+
+fn set_arm(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let ends: Set[i64] = edges.iter().map(|(_, to)| to).collect();
+    (0..n).filter(|v| not ends.contains(v)).collect()
+}
+
+// ---- vertices_reach.kara: topological order, unreached nodes chosen
+
+fn reach_arm(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut out: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut waiting = Vec.filled(n, 0);
+    for (from, to) in edges.iter() {
+        out[from].push(to);
+        waiting[to] += 1;
+    }
+    let mut ready: VecDeque[i64] = (0..n).filter(|v| waiting[v] == 0).collect();
+    let mut reached = Vec.filled(n, false);
+    let mut chosen = Vec.new();
+    while let Some(v) = ready.pop_front() {
+        if not reached[v] {
+            chosen.push(v);
+            let mut stack = [v].to_vec();
+            reached[v] = true;
+            while let Some(u) = stack.pop() {
+                for w in out[u].iter() {
+                    if not reached[w] {
+                        reached[w] = true;
+                        stack.push(w);
+                    }
+                }
+            }
+        }
+        for w in out[v].iter() {
+            waiting[w] -= 1;
+            if waiting[w] == 0 {
+                ready.push_back(w);
+            }
+        }
+    }
+    chosen
+}
+
+// ---- vertices_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_smallest_set_of_vertices(n: i32, edges: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut has_in = Vec.filled(n, false);
+        for e in edges.iter() {
+            has_in[e[1]] = true;
+        }
+        (0..n).filter(|v| not has_in[v]).collect()
+    }
+}
+
+fn solution_arm(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let edges: Vec[Vec[i32]] = edges.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    Solution.find_smallest_set_of_vertices(n as i32, edges).iter().map(|v| v as i64).collect()
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// any order is accepted, so every answer is read sorted
+fn arm(a: i64, n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    let mut found = match a {
+        0 => star_arm(n, edges),
+        1 => set_arm(n, edges),
+        2 => reach_arm(n, edges),
+        _ => solution_arm(n, edges),
+    };
+    found.sort();
+    found
+}
+
+fn arm_name(a: i64) -> String {
+    ["vertices", "set", "reach", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the smallest set of nodes from which
+// every node is reached, found by trying every set of nodes, fewest first;
+// the smallest is unique, so the first found is the answer
+
+fn reaches_all(n: i64, edges: Vec[(i64, i64)], start: Vec[i64]) -> bool {
+    let mut reached = Vec.filled(n, false);
+    for v in start.iter() {
+        reached[v] = true;
+    }
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (from, to) in edges.iter() {
+            if reached[from] and not reached[to] {
+                reached[to] = true;
+                grew = true;
+            }
+        }
+    }
+    reached.iter().all(|r| r)
+}
+
+fn literal(n: i64, edges: Vec[(i64, i64)]) -> Vec[i64] {
+    for size in 1..=n {
+        for mask in 0..(1 << n) {
+            let start: Vec[i64] = (0..n).filter(|v| mask >> v & 1 == 1).collect();
+            if start.len() == size and reaches_all(n, edges.clone(), start.clone()) {
+                return start;
+            }
+        }
+    }
+    Vec.new()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15570;
+    let mut cases: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 2;
+        let mut order: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            order.swap(i, j);
+        }
+        let draws = next_random(mut seed) % (2 * n) + 1;
+        let mut edges = Vec.new();
+        for _ in 0..draws {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a < b and not edges.contains((order[a], order[b])) {
+                edges.push((order[a], order[b]));
+            }
+        }
+        if edges.is_empty() {
+            edges.push((order[0], order[1]));
+        }
+        cases.push((n, edges));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let (n, edges) = cases[p].clone();
+        let truth = literal(n, edges.clone());
+        let backwards: Vec[(i64, i64)] = edges.iter().rev().cloned().collect();
+        let relabelled: Vec[(i64, i64)] = edges.iter().map(|(a, b)| (n - 1 - a, n - 1 - b)).collect();
+        let mut answers: Vec[Vec[i64]] = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n, edges.clone());
+            answers.push(answer.clone());
+            for v in answer.iter() {
+                check = (check * 31 + v + 1) % 1000000007;
+            }
+            check = (check * 31) % 1000000007;
+            let mut mapped: Vec[i64] = answer.iter().map(|v| n - 1 - v).collect();
+            mapped.sort();
+            let mut topped = edges.clone();
+            for v in answer.iter() {
+                topped.push((n, v));
+            }
+            let failed = [
+                answer != truth,
+                answer.is_empty() or answer.windows(2).into_iter().any(|w| w[0] >= w[1]) or answer.iter().any(|v| v < 0 or v >= n),
+                arm(a, n, backwards.clone()) != answer,
+                arm(a, n, relabelled.clone()) != mapped,
+                arm(a, n + 1, topped) != [n].to_vec(),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
