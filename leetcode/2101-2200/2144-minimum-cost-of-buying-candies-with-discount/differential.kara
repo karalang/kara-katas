@@ -1,0 +1,250 @@
+// LeetCode #2144: Minimum Cost of Buying Candies With Discount -- the
+// differential. The six arms, against the statement read literally: every
+// way to split the candies into sales is tried, a sale being one candy
+// bought alone, two bought, or two bought and a third no dearer than
+// either taken free, and the cheapest split is the answer, the candies
+// left remembered as a set. No sort and no every-third rule. 300 random
+// baskets of 1 to 10 candies of 1 to 9 or 1 to 3 in turn; then 30 of
+// candies all one price; then 30 of 1 to 10 of 1 to 49, so that every
+// price the properties make stays within the 100 the constraints allow;
+// every one drawn before any arm answers.
+//
+// P1  the cost is the statement read literally
+// P2  the candies in reverse order: the same cost
+// P3  every price doubled: twice the cost
+// P4  three candies of 100 added, dearer than any: the cost and 200 more
+// P5  every candy listed three times: twice the whole price of the basket
+// P6  each arm agrees with at least three of the other five
+
+// ---- candies.kara: the ★ arm, every third dearest free, by `enumerate` and `filter`
+fn star_minimum_cost(cost: Vec[i64]) -> i64 {
+    let mut dearest_first = cost.clone();
+    dearest_first.sort_by(|a, b| b.cmp(a));
+    dearest_first.iter().enumerate().filter(|(i, _)| i % 3 != 2).map(|(_, c)| c).sum()
+}
+
+// ---- candies_count.kara: the candies counted by price, walked from the dearest
+fn count_minimum_cost(cost: Vec[i64]) -> i64 {
+    let mut count: Vec[i64] = Vec.filled(101, 0);
+    for c in cost.iter() {
+        count[c] += 1;
+    }
+    let mut paid = 0;
+    let mut place = 0;
+    for price in (1..101).rev() {
+        for _ in 0..count[price] {
+            if place % 3 != 2 {
+                paid += price;
+            }
+            place += 1;
+        }
+    }
+    paid
+}
+
+// ---- candies_chunks.kara: the sales cut by `chunks(3)`, each paying for two
+fn chunks_minimum_cost(cost: Vec[i64]) -> i64 {
+    let mut dearest_first = cost.clone();
+    dearest_first.sort();
+    dearest_first.reverse();
+    dearest_first.chunks(3).into_iter().map(|group| group.iter().take(2).sum()).sum()
+}
+
+// ---- candies_struct.kara: a `Till` that rings up the candies dearest first
+struct Till {
+    paid: i64,
+    earned: i64,
+}
+
+impl Till {
+    fn ring(mut ref self, price: i64) {
+        if self.earned == 2 {
+            self.earned = 0;
+        } else {
+            self.paid += price;
+            self.earned += 1;
+        }
+    }
+
+    fn total(ref self) -> i64 {
+        self.paid
+    }
+}
+
+fn till_minimum_cost(cost: Vec[i64]) -> i64 {
+    let mut dearest_first = cost.clone();
+    dearest_first.sort_by(|a, b| b.cmp(a));
+    let mut till = Till { paid: 0, earned: 0 };
+    for price in dearest_first.iter() {
+        till.ring(price);
+    }
+    till.total()
+}
+
+// ---- candies_free.kara: the whole bill less the free ones, by `step_by(3)`
+fn free_minimum_cost(cost: Vec[i64]) -> i64 {
+    let mut sorted = cost.clone();
+    sorted.sort();
+    let whole: i64 = sorted.iter().sum();
+    let free: i64 = sorted.iter().rev().skip(2).step_by(3).sum();
+    whole - free
+}
+
+// ---- candies_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn minimum_cost(cost: own Vec[i32]) -> i32 {
+        let mut cost = cost;
+        cost.sort_by(|a, b| b.cmp(a));
+        cost.iter()
+            .enumerate()
+            .filter(|(i, _)| i % 3 != 2)
+            .map(|(_, c)| c)
+            .sum()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_minimum_cost(cost: Vec[i64]) -> i64 {
+    SolutionSolution.minimum_cost(cost.iter().map(|c| c as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+fn cheapest(cost: Vec[i64], left: i64, memo: mut ref Vec[i64]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if memo[left] >= 0 {
+        return memo[left];
+    }
+    let n = cost.len();
+    let mut first = 0;
+    while (left >> first) & 1 == 0 {
+        first += 1;
+    }
+    let rest = left ^ (1 << first);
+    let mut best = cost[first] + cheapest(cost, rest, mut memo);
+    for j in 0..n {
+        if (rest >> j) & 1 == 1 {
+            let pair = rest ^ (1 << j);
+            let paid = cost[first] + cost[j];
+            best = best.min(paid + cheapest(cost, pair, mut memo));
+            for k in 0..n {
+                if (pair >> k) & 1 == 1 and cost[k] <= cost[first] and cost[k] <= cost[j] {
+                    best = best.min(paid + cheapest(cost, pair ^ (1 << k), mut memo));
+                }
+            }
+        }
+    }
+    let mut free_first = best;
+    for j in 0..n {
+        for k in 0..n {
+            if j != k and (rest >> j) & 1 == 1 and (rest >> k) & 1 == 1 and cost[first] <= cost[j] and cost[first] <= cost[k] {
+                let paid = cost[j] + cost[k];
+                free_first = free_first.min(paid + cheapest(cost, rest ^ (1 << j) ^ (1 << k), mut memo));
+            }
+        }
+    }
+    best = best.min(free_first);
+    memo[left] = best;
+    best
+}
+
+fn literal(cost: Vec[i64]) -> i64 {
+    let n = cost.len();
+    let mut memo: Vec[i64] = Vec.filled(1 << n, -1);
+    cheapest(cost, (1 << n) - 1, mut memo)
+}
+
+fn answer(arm: i64, cost: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_cost(cost),
+        1 => count_minimum_cost(cost),
+        2 => chunks_minimum_cost(cost),
+        3 => till_minimum_cost(cost),
+        4 => free_minimum_cost(cost),
+        _ => solution_minimum_cost(cost),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "count", "chunks", "till", "free", "solution"];
+    let mut seed = 2144;
+    let mut baskets: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let cost: Vec[i64] = if t < 300 {
+            let top = [9, 3][t % 2];
+            (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+        } else if t < 330 {
+            Vec.filled(n, next_random(mut seed) % 49 + 1)
+        } else {
+            (0..n).map(|_| next_random(mut seed) % 49 + 1).collect()
+        };
+        baskets.push(cost);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for cost in baskets.iter() {
+        let truth = literal(cost);
+        check = (check * 31 + truth + cost.len()) % 1000000007;
+        let reversed: Vec[i64] = cost.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = cost.iter().map(|c| 2 * c).collect();
+        let dearest = 100;
+        let mut dearer = cost.clone();
+        dearer.extend([dearest, dearest, dearest].to_vec());
+        let mut thrice: Vec[i64] = Vec.new();
+        for c in cost.iter() {
+            thrice.extend([c, c, c].to_vec());
+        }
+        let whole: i64 = cost.iter().sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, cost)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                answer(arm, doubled) == 2 * x,
+                answer(arm, dearer) == x + 2 * dearest,
+                answer(arm, thrice) == 2 * whole,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{cost} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{baskets.len()} baskets: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
