@@ -1,0 +1,60 @@
+// LeetCode #1553: Minimum Number of Days to Eat N Oranges -- the ★ arm:
+// eating one at a time is only worth it on the way to a pile that halves
+// or thirds, so from `n` the best is either `n % 2` single days then a
+// halving, or `n % 3` single days then a thirding. The piles reached are
+// `n / (2^a 3^b)`, few enough to keep every answer in a `Map`.
+// O(log^2 n) piles.
+
+fn days(n: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    if n <= 1 {
+        return n;
+    }
+    if let Some(known) = memo.get(n) {
+        return known;
+    }
+    let halve = n % 2 + days(n / 2, mut memo);
+    let third = n % 3 + days(n / 3, mut memo);
+    let best = 1 + halve.min(third);
+    memo.insert(n, best);
+    best
+}
+
+fn min_days(n: i64) -> i64 {
+    let mut memo = Map.new();
+    days(n, mut memo)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` piles of 1 to `most` oranges
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let wide = (next_random(mut seed) * 32768 + next_random(mut seed)) * 32768 + next_random(mut seed);
+        let n = wide % most + 1;
+        let days = min_days(n);
+        total += days;
+        check = mix(check, days);
+    }
+    println(f"{count} piles of up to {most}: {total} days, checksum {check}");
+}
+
+fn main() {
+    for n in [10, 6, 1, 2, 3, 4, 56, 820592, 1000000000, 2000000000] {
+        println(f"n = {n} -> {min_days(n)}");
+    }
+    let mut seed = 1553;
+    batch(3000, 1000, mut seed);
+    batch(300, 1000000, mut seed);
+    batch(100, 2000000000, mut seed);
+}

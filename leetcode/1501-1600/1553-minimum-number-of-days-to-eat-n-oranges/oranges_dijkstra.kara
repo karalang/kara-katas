@@ -1,0 +1,61 @@
+// LeetCode #1553: Minimum Number of Days to Eat N Oranges -- the ★ arm's
+// reduced moves as a weighted graph: from a pile, a halving costs
+// `n % 2 + 1` days and a thirding `n % 3 + 1`, and a pile of 1 is one day
+// from the end. Dijkstra by a `PriorityQueue`, smallest first, settles the
+// piles in order of days spent.
+
+fn min_days(n: i64) -> i64 {
+    let mut queue = PriorityQueue.new();
+    let mut settled: Set[i64] = Set.new();
+    queue.push((0, n));
+    while let Some((spent, pile)) = queue.pop() {
+        if pile == 0 {
+            return spent;
+        }
+        if not settled.insert(pile) {
+            continue;
+        }
+        if pile == 1 {
+            queue.push((spent + 1, 0));
+        } else {
+            queue.push((spent + pile % 2 + 1, pile / 2));
+            queue.push((spent + pile % 3 + 1, pile / 3));
+        }
+    }
+    0
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` piles of 1 to `most` oranges
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let wide = (next_random(mut seed) * 32768 + next_random(mut seed)) * 32768 + next_random(mut seed);
+        let n = wide % most + 1;
+        let days = min_days(n);
+        total += days;
+        check = mix(check, days);
+    }
+    println(f"{count} piles of up to {most}: {total} days, checksum {check}");
+}
+
+fn main() {
+    for n in [10, 6, 1, 2, 3, 4, 56, 820592, 1000000000, 2000000000] {
+        println(f"n = {n} -> {min_days(n)}");
+    }
+    let mut seed = 1553;
+    batch(3000, 1000, mut seed);
+    batch(300, 1000000, mut seed);
+    batch(100, 2000000000, mut seed);
+}

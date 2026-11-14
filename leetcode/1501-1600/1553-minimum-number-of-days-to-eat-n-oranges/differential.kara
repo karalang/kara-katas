@@ -1,0 +1,222 @@
+// LeetCode #1553: Minimum Number of Days to Eat N Oranges -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 piles of 1 to
+// 2000 oranges, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is from 1 to n, and 3 to the power answer - 1 is at
+//     least n (no day leaves less than a third, and the last day eats 1)
+// P3  one orange more needs at most one day more
+// P4  twice or three times the pile needs at most one day more
+// P5  six times the pile needs at most two days more
+// P6  each arm agrees with at least two of the other three
+
+// ---- oranges.kara: the ★ arm: halve or third after the single days, kept in a Map
+
+fn star_days(n: i64, memo: mut ref Map[i64, i64]) -> i64 {
+    if n <= 1 {
+        return n;
+    }
+    if let Some(known) = memo.get(n) {
+        return known;
+    }
+    let halve = n % 2 + star_days(n / 2, mut memo);
+    let third = n % 3 + star_days(n / 3, mut memo);
+    let best = 1 + halve.min(third);
+    memo.insert(n, best);
+    best
+}
+
+fn star_arm(n: i64) -> i64 {
+    let mut memo = Map.new();
+    star_days(n, mut memo)
+}
+
+// ---- oranges_bfs.kara: the statement's moves searched breadth first
+
+fn bfs_arm(n: i64) -> i64 {
+    let mut seen: Set[i64] = Set.new();
+    let mut queue = VecDeque.new();
+    queue.push_back((n, 0));
+    seen.insert(n);
+    while let Some((pile, day)) = queue.pop_front() {
+        if pile == 0 {
+            return day;
+        }
+        let mut next = [pile - 1].to_vec();
+        if pile % 2 == 0 {
+            next.push(pile / 2);
+        }
+        if pile % 3 == 0 {
+            next.push(pile / 3);
+        }
+        for p in next.iter() {
+            if seen.insert(p) {
+                queue.push_back((p, day + 1));
+            }
+        }
+    }
+    0
+}
+
+// ---- oranges_dijkstra.kara: the reduced moves weighted, Dijkstra
+
+fn dijkstra_arm(n: i64) -> i64 {
+    let mut queue = PriorityQueue.new();
+    let mut settled: Set[i64] = Set.new();
+    queue.push((0, n));
+    while let Some((spent, pile)) = queue.pop() {
+        if pile == 0 {
+            return spent;
+        }
+        if not settled.insert(pile) {
+            continue;
+        }
+        if pile == 1 {
+            queue.push((spent + 1, 0));
+        } else {
+            queue.push((spent + pile % 2 + 1, pile / 2));
+            queue.push((spent + pile % 3 + 1, pile / 3));
+        }
+    }
+    0
+}
+
+// ---- oranges_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_days(n: i32) -> i32 {
+        let mut memo: Map[i32, i32] = Map.new();
+        Solution.dfs(n, mut memo)
+    }
+
+    fn dfs(n: i32, memo: mut ref Map[i32, i32]) -> i32 {
+        if n <= 1 {
+            return n;
+        }
+        if let Some(v) = memo.get(n).cloned() {
+            return v;
+        }
+        let res = 1 + (n % 2 + Solution.dfs(n / 2, mut memo)).min(n % 3 + Solution.dfs(n / 3, mut memo));
+        memo.insert(n, res);
+        res
+    }
+}
+
+fn solution_arm(n: i64) -> i64 {
+    Solution.min_days(n as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64) -> i64 {
+    match a {
+        0 => star_arm(n),
+        1 => bfs_arm(n),
+        2 => dijkstra_arm(n),
+        _ => solution_arm(n),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["oranges", "bfs", "dijkstra", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the fewest days for every pile from
+// 0 up, each pile one day more than the best of the piles its moves reach
+
+fn literal_table(most: i64) -> Vec[i64] {
+    let mut fewest = Vec.filled(most + 1, 0);
+    for pile in 1..=most {
+        let mut best = fewest[pile - 1];
+        if pile % 2 == 0 {
+            best = best.min(fewest[pile - pile / 2]);
+        }
+        if pile % 3 == 0 {
+            best = best.min(fewest[pile - 2 * (pile / 3)]);
+        }
+        fewest[pile] = best + 1;
+    }
+    fewest
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15530;
+    let mut cases: Vec[i64] = Vec.new();
+    for _ in 0..problems {
+        cases.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 2000 + 1);
+    }
+    let fewest = literal_table(2000);
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for p in 0..problems {
+        let n = cases[p];
+        let truth = fewest[n];
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let mut power = 1;
+            for _ in 1..answer.max(1) {
+                power *= 3;
+            }
+            let failed = [
+                answer != truth,
+                answer < 1 or answer > n or power < n,
+                n > 1 and answer > arm(a, n - 1) + 1,
+                arm(a, 2 * n) > answer + 1 or arm(a, 3 * n) > answer + 1,
+                arm(a, 6 * n) > answer + 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
