@@ -137,7 +137,7 @@ checks; filed as B-2026-11-14-23. The map arm was also first written
 with Rust's `.copied()` on the `get`, which `karac fix` rewrote to
 `.cloned()` in one round.
 
-The Rust template took three rounds of `karac fix`, 8 changed lines and 2
+The Rust template took three rounds of `karac fix`, 9 changed lines and 2
 removed, then 2 and 2 changed:
 
 1. the `use std::collections::HashMap;` line removed, the `HashMap<..>`
