@@ -26,7 +26,7 @@ other)`, and a `dot(a, b)` that builds both and multiplies them.
 | `sparse.kara` ★ | the values other than 0 kept with their indices in index order, by `enumerate().filter(..).collect()`; the product a merge of the two lists by two pointers that multiplies where the indices meet. O(a + b) |
 | `sparse_map.kara` | a `Map` from index to value; the product walks the smaller map and looks each index up in the other (`get(i).cloned().unwrap_or(0)`). A walk is in hash order, which a sum does not see. O(min(a, b)) expected |
 | `sparse_search.kara` | the ★ arm's pairs, but the product finds each index of the shorter list in the longer by `partition_point`. O(a log b) for a <= b |
-| `sparse_solution.kara` | LeetCode's Rust template (`new(nums: Vec<i32>) -> Self`, `dot_product(&self, vec: SparseVector) -> i32`, a `HashMap<usize, i32>`), carried by `karac fix` and one hand edit |
+| `sparse_solution.kara` | LeetCode's Rust template (`new(nums: Vec<i32>) -> Self`, `dot_product(&self, vec: SparseVector) -> i32`, a `HashMap<usize, i32>`), carried by `karac fix` |
 | `differential.kara` | the four arms against the statement read literally, six properties |
 
 Every arm prints the same 10 lines: LeetCode's three examples, then
@@ -121,7 +121,8 @@ All four arms print the same output as `sparse.py` under
 `karac __mir-llvm-asan` (AddressSanitizer and LeakSanitizer) with no
 error. `karac run` and a `karac build` binary print the same output for
 them and the differential. `karac check` reports nothing on any of them,
-and `karac fix` has nothing left to change. Checked at kara `5a1b79539`.
+and `karac fix` has nothing left to change. Checked at kara `5a1b79539`,
+and every arm and the differential again at `46f3be2f7`.
 
 ## Writing it
 
@@ -147,9 +148,16 @@ removed, then 2 and 2 changed:
 2. `HashMap` to `Map`, in the field and the constructor;
 3. `total`'s literal to `total: i32`, and the wrapper's `as i64` dropped.
 
-It then stopped on `expected 'Map[usize, i32]', found 'Map[i64, i32]'`
-at `SparseVector { values }`, with no fix: `enumerate()` gives `i64`
-indices, and the fix that turns a written `usize` into `i64` is offered
-for a `Vec[usize]` field but not a `Map[usize, _]` one. Filed as
-B-2026-11-14-24. One hand edit, `values: Map[usize, i32]` to
-`Map[i64, i32]`, made it check and agree.
+At kara `5a1b79539` it then stopped on `expected 'Map[usize, i32]',
+found 'Map[i64, i32]'` at `SparseVector { values }`, with no fix:
+`enumerate()` gives `i64` indices, and the fix that turns a written
+`usize` into `i64` was offered for a `Vec[usize]` field but not a
+`Map[usize, _]` one, because a `Map.new()` carries its default hasher as
+a third type argument the written field leaves off. Filed as
+B-2026-11-14-24 and fixed in `9c19e5e6b`: a fourth round now writes
+`values: Map[i64, i32]`, the edit first made by hand, and the template
+checks and agrees with no hand edit.
+
+Since kara `940c5678af`, `karac fix` also drops the harness's
+`dot(a.clone(), b.clone())` to `dot(a, b)` (`redundant_clone`: `dot`
+only borrows), in every arm and in the differential.
