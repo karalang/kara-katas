@@ -1,0 +1,280 @@
+// LeetCode #2147: Number of Ways to Divide a Long Corridor -- the
+// differential. The six arms, against the statement read literally: every
+// set of places between two neighbours is tried as the dividers, and a set
+// counts when every section it makes holds exactly two seats. No pairing
+// and no gap is assumed. 300 random corridors of 1 to 12 places, a seat
+// one place in 2, 3 or 6 in turn; then 30 of seats only; then 30 at
+// random whose last place makes the seats even; every one drawn before
+// any arm answers.
+//
+// P1  the ways are the statement read literally
+// P2  the corridor reversed: the same ways
+// P3  the plants at both ends taken away: the same ways
+// P4  "SSP" put in front: the ways times the plants it now leads and two,
+//     or one way when the corridor has no seat
+// P5  a plant put just after the first seat of every pair: the same ways
+// P6  each arm agrees with at least three of the other five
+
+// ---- corridor.kara: the ★ arm, the seats' indices collected, the gaps multiplied
+fn star_number_of_ways(corridor: String) -> i64 {
+    let seats: Vec[i64] = corridor.chars().enumerate().filter(|(_, ch)| ch == 'S').map(|(i, _)| i).collect();
+    if seats.len() == 0 or seats.len() % 2 == 1 {
+        return 0;
+    }
+    let mut ways = 1;
+    for p in (2..seats.len()).step_by(2) {
+        ways = ways * (seats[p] - seats[p - 1]) % 1000000007;
+    }
+    ways
+}
+
+// ---- corridor_dp.kara: the ways counted by the open section's seats
+fn dp_number_of_ways(corridor: String) -> i64 {
+    let modulus = 1000000007;
+    let mut none = 1;
+    let mut one = 0;
+    let mut two = 0;
+    for ch in corridor.chars() {
+        if ch == 'S' {
+            let next_one = (none + two) % modulus;
+            two = one;
+            one = next_one;
+            none = 0;
+        } else {
+            none = (none + two) % modulus;
+        }
+    }
+    two
+}
+
+// ---- corridor_count.kara: the places since the last pair counted as it goes
+fn count_number_of_ways(corridor: String) -> i64 {
+    let mut seats = 0;
+    let mut places = 0;
+    let mut ways = 1;
+    for b in corridor.bytes().iter() {
+        if b == b'S' {
+            if seats >= 2 and seats % 2 == 0 {
+                ways = ways * places % 1000000007;
+            }
+            seats += 1;
+            places = 1;
+        } else {
+            places += 1;
+        }
+    }
+    if seats == 0 or seats % 2 == 1 { 0 } else { ways }
+}
+
+// ---- corridor_struct.kara: an `Usher` that passes each place
+struct Usher {
+    seen: i64,
+    last: i64,
+    ways: i64,
+}
+
+impl Usher {
+    fn passes(mut ref self, at: i64, place: char) {
+        if place != 'S' {
+            return;
+        }
+        if self.seen > 0 and self.seen % 2 == 0 {
+            self.ways = self.ways * (at - self.last) % 1000000007;
+        }
+        self.seen += 1;
+        self.last = at;
+    }
+
+    fn ways(ref self) -> i64 {
+        if self.seen > 0 and self.seen % 2 == 0 { self.ways } else { 0 }
+    }
+}
+
+fn usher_number_of_ways(corridor: String) -> i64 {
+    let mut usher = Usher { seen: 0, last: 0, ways: 1 };
+    for (at, place) in corridor.chars().enumerate() {
+        usher.passes(at, place);
+    }
+    usher.ways()
+}
+
+// ---- corridor_fold.kara: one `fold` carrying seats seen, the last seat, the ways
+fn fold_number_of_ways(corridor: String) -> i64 {
+    let (seen, _, ways) = corridor.chars().enumerate().fold((0, 0, 1), |(seen, last, ways), (at, place)| {
+        if place != 'S' {
+            (seen, last, ways)
+        } else if seen > 0 and seen % 2 == 0 {
+            (seen + 1, at, ways * (at - last) % 1000000007)
+        } else {
+            (seen + 1, at, ways)
+        }
+    });
+    match seen {
+        0 => 0,
+        s if s % 2 == 1 => 0,
+        _ => ways,
+    }
+}
+
+// ---- corridor_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn number_of_ways(corridor: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let seats: Vec[i64] = corridor
+            .bytes().iter()
+            .enumerate()
+            .filter(|(_, b)| b == b'S')
+            .map(|(i, _)| i)
+            .collect();
+        if seats.is_empty() or seats.len() % 2 == 1 {
+            return 0;
+        }
+        let mut ans: i64 = 1;
+        for i in (2..seats.len()).step_by(2) {
+            ans = ans * (seats[i] - seats[i - 1]) % MOD;
+        }
+        ans as i32
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_number_of_ways(corridor: String) -> i64 {
+    SolutionSolution.number_of_ways(corridor.clone())
+}
+
+
+// ---- the statement read literally
+
+fn literal(corridor: String) -> i64 {
+    let places: Vec[char] = corridor.chars().collect();
+    let n = places.len();
+    let mut ways = 0;
+    for dividers in 0..(1 << (n - 1)) {
+        let mut seats = 0;
+        let mut fits = true;
+        for i in 0..n {
+            if places[i] == 'S' {
+                seats += 1;
+            }
+            let closes = i == n - 1 or (dividers >> i) & 1 == 1;
+            if closes {
+                if seats != 2 {
+                    fits = false;
+                }
+                seats = 0;
+            }
+        }
+        if fits {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+fn answer(arm: i64, corridor: String) -> i64 {
+    match arm {
+        0 => star_number_of_ways(corridor),
+        1 => dp_number_of_ways(corridor),
+        2 => count_number_of_ways(corridor),
+        3 => usher_number_of_ways(corridor),
+        4 => fold_number_of_ways(corridor),
+        _ => solution_number_of_ways(corridor),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "dp", "count", "usher", "fold", "solution"];
+    let mut seed = 2147;
+    let mut corridors: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut corridor = String.new();
+        let mut seats = 0;
+        for i in 0..n {
+            let seat = if t >= 300 and t < 330 {
+                true
+            } else if t >= 330 and i == n - 1 {
+                seats % 2 == 1
+            } else {
+                next_random(mut seed) % [2, 3, 6][t % 3] == 0
+            };
+            if seat {
+                seats += 1;
+            }
+            corridor.push(if seat { 'S' } else { 'P' });
+        }
+        corridors.push(corridor);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for corridor in corridors.iter() {
+        let truth = literal(corridor);
+        check = (check * 31 + truth + corridor.len()) % 1000000007;
+        let reversed: String = corridor.chars().rev().collect();
+        let kept: Vec[char] = corridor.chars().skip_while(|ch| ch == 'P').collect();
+        let back: Vec[char] = kept.iter().rev().skip_while(|ch| ch == 'P').cloned().collect();
+        let trimmed: String = back.iter().rev().collect();
+        let lead = corridor.chars().take_while(|ch| ch == 'P').count();
+        let seats = corridor.chars().filter(|ch| ch == 'S').count();
+        let fronted = f"SSP{corridor}";
+        let mut spread = String.new();
+        let mut seen = 0;
+        for ch in corridor.chars() {
+            spread.push(ch);
+            if ch == 'S' {
+                seen += 1;
+                if seen % 2 == 1 {
+                    spread.push('P');
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, corridor)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let fronted_ways = if seats == 0 { 1 } else { x * (lead + 2) };
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                trimmed.len() == 0 or answer(arm, trimmed) == x,
+                answer(arm, fronted) == fronted_ways,
+                answer(arm, spread) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{corridor} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{corridors.len()} corridors: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

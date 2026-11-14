@@ -1,0 +1,79 @@
+// LeetCode #2147: Number of Ways to Divide a Long Corridor -- counting as
+// it goes. The seats are counted; once an even number is in, every place
+// walked before the next seat is one more place a divider could go, and
+// the next seat, which opens a pair, multiplies the ways by them. Read by
+// `bytes()`, with no list of the seats. O(n).
+
+fn number_of_ways(corridor: String) -> i64 {
+    let mut seats = 0;
+    let mut places = 0;
+    let mut ways = 1;
+    for b in corridor.bytes().iter() {
+        if b == b'S' {
+            if seats >= 2 and seats % 2 == 0 {
+                ways = ways * places % 1000000007;
+            }
+            seats += 1;
+            places = 1;
+        } else {
+            places += 1;
+        }
+    }
+    if seats == 0 or seats % 2 == 1 { 0 } else { ways }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(corridor: String) {
+    println(f"{corridor} -> {number_of_ways(corridor)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: no seat, one pair, and
+    // three pairs with gaps of two and three
+    show("SSPPSPS");
+    show("PPSPSP");
+    show("S");
+    show("PPPP");
+    show("SS");
+    show("SSPSSPPSS");
+    // 2000 random corridors of 1 to 20 places, a seat one place in 2, 3
+    // or 6 in turn
+    let mut seed = 2147;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let one_in = [2, 3, 6][round % 3];
+        let mut corridor = String.new();
+        for _ in 0..n {
+            corridor.push(if next_random(mut seed) % one_in == 0 { 'S' } else { 'P' });
+        }
+        let ways = number_of_ways(corridor);
+        total += ways;
+        check = (check * 31 + ways + n) % 1000000007;
+    }
+    println(f"2000 corridors: {total} ways in all, checksum {check}");
+    // the constraints' largest, 100000 places: every one a seat, seats
+    // and plants in turn, and at random, a seat one place in 4, with the
+    // last place making the seats even
+    let seats = "S".repeat(100000);
+    let spaced = "SPSP".repeat(25000);
+    let mut random = String.new();
+    let mut count = 0;
+    for _ in 0..99999 {
+        if next_random(mut seed) % 4 == 0 {
+            random.push('S');
+            count += 1;
+        } else {
+            random.push('P');
+        }
+    }
+    random.push(if count % 2 == 1 { 'S' } else { 'P' });
+    println(f"100000 places: {number_of_ways(seats)} all seats, {number_of_ways(spaced)} spaced, {number_of_ways(random)} at random");
+}

@@ -1,0 +1,87 @@
+// LeetCode #2147: Number of Ways to Divide a Long Corridor -- LeetCode's
+// Rust template: the seats' indices as `usize` from `bytes().enumerate()`
+// with `|&(_, b)|` and `b'S'`, `is_empty`, a `const MOD` and the gaps
+// multiplied `as i64`, written as Rust. Carried by `karac fix`. The
+// adapter below hands the harness's corridor to it.
+
+impl Solution {
+    pub fn number_of_ways(corridor: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let seats: Vec[i64] = corridor
+            .bytes().iter()
+            .enumerate()
+            .filter(|(_, b)| b == b'S')
+            .map(|(i, _)| i)
+            .collect();
+        if seats.is_empty() or seats.len() % 2 == 1 {
+            return 0;
+        }
+        let mut ans: i64 = 1;
+        for i in (2..seats.len()).step_by(2) {
+            ans = ans * (seats[i] - seats[i - 1]) % MOD;
+        }
+        ans as i32
+    }
+}
+
+struct Solution {}
+
+fn number_of_ways(corridor: String) -> i64 {
+    Solution.number_of_ways(corridor.clone())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(corridor: String) {
+    println(f"{corridor} -> {number_of_ways(corridor)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: no seat, one pair, and
+    // three pairs with gaps of two and three
+    show("SSPPSPS");
+    show("PPSPSP");
+    show("S");
+    show("PPPP");
+    show("SS");
+    show("SSPSSPPSS");
+    // 2000 random corridors of 1 to 20 places, a seat one place in 2, 3
+    // or 6 in turn
+    let mut seed = 2147;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let one_in = [2, 3, 6][round % 3];
+        let mut corridor = String.new();
+        for _ in 0..n {
+            corridor.push(if next_random(mut seed) % one_in == 0 { 'S' } else { 'P' });
+        }
+        let ways = number_of_ways(corridor);
+        total += ways;
+        check = (check * 31 + ways + n) % 1000000007;
+    }
+    println(f"2000 corridors: {total} ways in all, checksum {check}");
+    // the constraints' largest, 100000 places: every one a seat, seats
+    // and plants in turn, and at random, a seat one place in 4, with the
+    // last place making the seats even
+    let seats = "S".repeat(100000);
+    let spaced = "SPSP".repeat(25000);
+    let mut random = String.new();
+    let mut count = 0;
+    for _ in 0..99999 {
+        if next_random(mut seed) % 4 == 0 {
+            random.push('S');
+            count += 1;
+        } else {
+            random.push('P');
+        }
+    }
+    random.push(if count % 2 == 1 { 'S' } else { 'P' });
+    println(f"100000 places: {number_of_ways(seats)} all seats, {number_of_ways(spaced)} spaced, {number_of_ways(random)} at random");
+}

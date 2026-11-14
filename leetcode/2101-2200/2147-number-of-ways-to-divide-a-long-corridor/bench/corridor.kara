@@ -1,0 +1,54 @@
+// LeetCode #2147: Number of Ways to Divide a Long Corridor -- the
+// benchmark, corridor.kara's ★ arm. 4 corridors of 100000 places built
+// once, a seat one place in 3, the seats made even; then every corridor
+// counted 25 times, two neighbouring places swapped before each count so
+// that no count repeats the one before.
+
+fn number_of_ways(corridor: String) -> i64 {
+    let seats: Vec[i64] = corridor.chars().enumerate().filter(|(_, ch)| ch == 'S').map(|(i, _)| i).collect();
+    if seats.len() == 0 or seats.len() % 2 == 1 {
+        return 0;
+    }
+    let mut ways = 1;
+    for p in (2..seats.len()).step_by(2) {
+        ways = ways * (seats[p] - seats[p - 1]) % 1000000007;
+    }
+    ways
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2147;
+    let mut corridors: Vec[String] = Vec.new();
+    for _ in 0..4 {
+        let mut corridor = String.new();
+        let mut count = 0;
+        for _ in 0..99999 {
+            if next_random(mut seed) % 3 == 0 {
+                corridor.push('S');
+                count += 1;
+            } else {
+                corridor.push('P');
+            }
+        }
+        corridor.push(if count % 2 == 1 { 'S' } else { 'P' });
+        corridors.push(corridor);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..25 {
+        for c in 0..4 {
+            let i = next_random(mut seed) % 99999;
+            let place = corridors[c].clone();
+            corridors[c] = f"{place[..i]}{place[i + 1..i + 2]}{place[i..i + 1]}{place[i + 2..]}";
+            let ways = number_of_ways(corridors[c]);
+            total = (total + ways) % 1000000007;
+            check = (check * 31 + ways + round) % 1000000007;
+        }
+    }
+    println(f"100 counts: {total} ways in all, checksum {check}");
+}
