@@ -1,0 +1,62 @@
+// LeetCode #2120: Execution of All Suffix Instructions Staying in a Grid
+// -- the benchmark, the ★ arm: each suffix simulated. 40 grids of side
+// 100 to 500, each with a start inside and 500 random moves, built once;
+// then 20 rounds over all of them, every start one row lower (wrapping)
+// than in the round before.
+
+fn execute_instructions(n: i64, start_pos: Vec[i64], s: String) -> Vec[i64] {
+    let moves = s.bytes();
+    let m = moves.len();
+    let mut answer: Vec[i64] = Vec.new();
+    for i in 0..m {
+        let mut row = start_pos[0];
+        let mut col = start_pos[1];
+        let mut count = 0;
+        for j in i..m {
+            match moves[j] {
+                b'L' => col -= 1,
+                b'R' => col += 1,
+                b'U' => row -= 1,
+                _ => row += 1,
+            }
+            if row < 0 or row >= n or col < 0 or col >= n {
+                break;
+            }
+            count += 1;
+        }
+        answer.push(count);
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2120;
+    let mut grids: Vec[(i64, i64, i64, String)] = Vec.new();
+    for _ in 0..40 {
+        let n = next_random(mut seed) % 401 + 100;
+        let row = next_random(mut seed) % n;
+        let col = next_random(mut seed) % n;
+        let mut s: String = "";
+        for _ in 0..500 {
+            s.push(['L', 'R', 'U', 'D'][next_random(mut seed) % 4]);
+        }
+        grids.push((n, row, col, s));
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..20 {
+        for (n, row, col, s) in grids.iter() {
+            let start = [(row + round) % n, col].to_vec();
+            for c in execute_instructions(n, start, s).iter() {
+                total += c;
+                check = (check * 31 + c) % 1000000007;
+            }
+        }
+    }
+    println(f"800 solves: {total} moves, checksum {check}");
+}

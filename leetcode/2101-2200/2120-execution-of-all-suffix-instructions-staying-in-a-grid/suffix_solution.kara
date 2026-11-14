@@ -1,0 +1,85 @@
+// LeetCode #2120: Execution of All Suffix Instructions Staying in a Grid
+// -- LeetCode's Rust template (`i32, Vec<i32>, String` to `Vec<i32>`):
+// each suffix simulated over `as_bytes()` with `i32` positions, written
+// as Rust. Carried by `karac fix`. The adapter below hands the harness's
+// grids to it and widens the answer.
+
+impl Solution {
+    pub fn execute_instructions(n: i32, start_pos: Vec[i32], s: String) -> Vec[i32] {
+        let s = s.bytes();
+        let m = s.len();
+        let mut ans = Vec.filled(m, 0);
+        for i in 0..m {
+            let mut (r, c) = (start_pos[0], start_pos[1]);
+            for j in i..m {
+                match s[j] {
+                    b'L' => c -= 1,
+                    b'R' => c += 1,
+                    b'U' => r -= 1,
+                    _ => r += 1,
+                }
+                if r < 0 or r >= n or c < 0 or c >= n {
+                    break;
+                }
+                ans[i] += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn execute_instructions(n: i64, start_pos: Vec[i64], s: String) -> Vec[i64] {
+    let start: Vec[i32] = start_pos.iter().map(|x| x as i32).collect();
+    Solution.execute_instructions(n as i32, start, s).iter().map(|x| x as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: a one-cell grid, a
+    // robot in a corner, and a walk along an edge
+    let examples: Vec[(i64, Vec[i64], String)] = [
+        (3, [0, 1].to_vec(), "RRDDLU"),
+        (2, [1, 1].to_vec(), "LURD"),
+        (1, [0, 0].to_vec(), "LRUD"),
+        (1, [0, 0].to_vec(), "R"),
+        (4, [3, 3].to_vec(), "DRULUL"),
+        (5, [0, 2].to_vec(), "LLLRRRRU"),
+    ].to_vec();
+    for (n, start, s) in examples.iter() {
+        println(f"n={n} start={start} {s} -> {execute_instructions(n, start, s)}");
+    }
+    // 2000 random grids of side 1 to 8, a start inside, and 1 to 30 moves
+    let mut seed = 2120;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let start = [next_random(mut seed) % n, next_random(mut seed) % n].to_vec();
+        let m = next_random(mut seed) % 30 + 1;
+        let mut s: String = "";
+        for _ in 0..m {
+            s.push(['L', 'R', 'U', 'D'][next_random(mut seed) % 4]);
+        }
+        for c in execute_instructions(n, start, s).iter() {
+            total += c;
+            check = (check * 31 + c) % 1000000007;
+        }
+    }
+    println(f"2000 grids: {total} moves, checksum {check}");
+    // the constraints' largest: a 500-side grid, 500 moves going round a
+    // square from the centre
+    let mut round: String = "";
+    for k in 0..500 {
+        round.push(['R', 'D', 'L', 'U'][k / 125]);
+    }
+    let big = execute_instructions(500, [250, 250].to_vec(), round);
+    println(f"500 moves round a square: {big.iter().sum()} moves, first {big[0]}, last {big[499]}");
+}
