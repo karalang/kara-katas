@@ -1,0 +1,87 @@
+// LeetCode #1563: Stone Game V -- LeetCode's Rust template as karac fix
+// left it: the ★ arm over `i32` stones, the sums and scores in `i32` as
+// the template keeps them (a row of 500 stones of 10^6 sums to 5 * 10^8).
+
+struct Solution {}
+
+impl Solution {
+    pub fn stone_game_v(stone_value: Vec[i32]) -> i32 {
+        let n = stone_value.len();
+        let mut pre = Vec.filled(n + 1, 0i32);
+        for i in 0..n {
+            pre[i + 1] = pre[i] + stone_value[i];
+        }
+        let mut dp = Vec.filled(n, Vec.filled(n, 0i32));
+        for len in 2..=n {
+            for i in 0..=n - len {
+                let j = i + len - 1;
+                for k in i..j {
+                    let l = pre[k + 1] - pre[i];
+                    let r = pre[j + 1] - pre[k + 1];
+                    if l < r {
+                        dp[i][j] = dp[i][j].max(l + dp[i][k]);
+                    } else if l > r {
+                        dp[i][j] = dp[i][j].max(r + dp[k + 1][j]);
+                    } else {
+                        dp[i][j] = dp[i][j].max(l + dp[i][k].max(dp[k + 1][j]));
+                    }
+                }
+            }
+        }
+        dp[0][n - 1]
+    }
+}
+
+fn stone_game_v(row: Vec[i64]) -> i64 {
+    let row: Vec[i32] = row.iter().map(|v| v as i32).collect();
+    Solution.stone_game_v(row)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` rows of 1 to `most` stones of 1 to `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let mut row = Vec.new();
+        for _ in 0..n {
+            row.push((next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1);
+        }
+        let score = stone_game_v(row);
+        total += score;
+        check = mix(check, score);
+    }
+    println(f"{count} rows of up to {most} stones of up to {top}: {total} points, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[i64]] = [
+        [6, 2, 3, 4, 5, 5],
+        [7, 7, 7, 7, 7, 7, 7],
+        [4],
+        [1, 1],
+        [1, 2],
+        [2, 1, 1],
+        [1, 1, 1, 1],
+        [10, 1, 1, 1],
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    ];
+    for row in examples.iter() {
+        println(f"{row} -> {stone_game_v(row.clone())}");
+    }
+    let mut seed = 1563;
+    batch(3000, 8, 10, mut seed);
+    batch(300, 60, 1000000, mut seed);
+    batch(20, 300, 1000000, mut seed);
+}
