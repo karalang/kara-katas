@@ -1,0 +1,203 @@
+// LeetCode #2124: Check if All A's Appears Before All B's -- the
+// differential. The six arms, against the statement read literally:
+// every pair of positions compared, false when a b stands before an a.
+// 300 random strings of 1 to 8 letters; then 30 of up to 100 letters,
+// some a's then some b's with one pair perhaps swapped; then 30 of one
+// letter repeated; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed with a and b swapped: the same answer
+// P3  an a put in front: the same answer
+// P4  a b put at the end: the same answer
+// P5  the string written twice: in order exactly when the string is,
+//     and has one letter only
+// P6  each arm agrees with at least three of the other five
+
+// ---- abba.kara: the ★ arm, no "ba"
+fn star_check_string(s: String) -> bool {
+    not s.contains("ba")
+}
+
+// ---- abba_scan.kara: the first b and the last a
+fn scan_check_string(s: String) -> bool {
+    let mut first_b = -1;
+    let mut last_a = -1;
+    for (i, c) in s.bytes().iter().enumerate() {
+        if c == b'b' and first_b < 0 {
+            first_b = i;
+        } else if c == b'a' {
+            last_a = i;
+        }
+    }
+    first_b < 0 or last_a < first_b
+}
+
+// ---- abba_iter.kara: `skip_while` then `all`
+fn iter_check_string(s: String) -> bool {
+    s.chars().skip_while(|c| c == 'a').all(|c| c == 'b')
+}
+
+// ---- abba_sorted.kara: the letters sorted, compared
+fn sorted_check_string(s: String) -> bool {
+    let mut letters: Vec[char] = s.chars().collect();
+    letters.sort();
+    let sorted: String = letters.iter().collect();
+    sorted == s
+}
+
+// ---- abba_struct.kara: a `Reader` with two states
+struct StructReader {
+    past_b: bool,
+}
+
+impl StructReader {
+    fn read(mut ref self, c: char) -> bool {
+        match c {
+            'b' => {
+                self.past_b = true;
+                true
+            }
+            _ => not self.past_b,
+        }
+    }
+}
+
+fn struct_check_string(s: String) -> bool {
+    let mut reader = StructReader { past_b: false };
+    for c in s.chars() {
+        if not reader.read(c) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- abba_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn check_string(s: String) -> bool {
+        s.find("b").map_or(true, |i| not s[i..].contains("a"))
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_check_string(s: Str) -> bool {
+    SolutionSolution.check_string(s.to_string())
+}
+
+// ---- the statement read literally
+
+fn literal(s: String) -> bool {
+    let letters: Vec[char] = s.chars().collect();
+    for i in 0..letters.len() {
+        for j in i + 1..letters.len() {
+            if letters[i] == 'b' and letters[j] == 'a' {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, s: String) -> bool {
+    match arm {
+        0 => star_check_string(s),
+        1 => scan_check_string(s),
+        2 => iter_check_string(s),
+        3 => sorted_check_string(s),
+        4 => struct_check_string(s),
+        _ => solution_check_string(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "scan", "iter", "sorted", "struct", "solution"];
+    let mut seed = 2124;
+    let mut problems: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let mut s = String.new();
+        if t < 300 {
+            let n = next_random(mut seed) % 8 + 1;
+            for _ in 0..n {
+                s.push(if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' });
+            }
+        } else if t < 330 {
+            let n = next_random(mut seed) % 100 + 1;
+            let split = next_random(mut seed) % (n + 1);
+            let swap = next_random(mut seed) % 2 == 0;
+            for i in 0..n {
+                let mut c = if i < split { 'a' } else { 'b' };
+                if swap and split > 0 and split < n and i + 1 == split {
+                    c = 'b';
+                } else if swap and split > 0 and split < n and i == split {
+                    c = 'a';
+                }
+                s.push(c);
+            }
+        } else {
+            let n = next_random(mut seed) % 10 + 1;
+            let c = if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' };
+            for _ in 0..n {
+                s.push(c);
+            }
+        }
+        problems.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in problems.iter() {
+        let truth = literal(s);
+        check = (check * 31 + s.len() * 2 + if truth { 1 } else { 0 }) % 1000000007;
+        let mirrored: String = s.chars().rev().map(|c| if c == 'a' { 'b' } else { 'a' }).collect();
+        let fronted = "a" + s;
+        let ended = s + "b";
+        let twice = s + s;
+        let one_letter = not s.contains("a") or not s.contains("b");
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, mirrored) == x,
+                answer(arm, fronted) == x,
+                answer(arm, ended) == x,
+                answer(arm, twice) == (x and one_letter),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,82 @@
+// LeetCode #2124: Check if All A's Appears Before All B's -- the struct
+// arm. A `Reader` is a two-state machine, before or after the first b;
+// `read` (`mut ref self`) takes one letter and says whether it is still
+// in order, which an a after a b is not. O(n).
+
+struct Reader {
+    past_b: bool,
+}
+
+impl Reader {
+    fn read(mut ref self, c: char) -> bool {
+        match c {
+            'b' => {
+                self.past_b = true;
+                true
+            }
+            _ => not self.past_b,
+        }
+    }
+}
+
+fn check_string(s: String) -> bool {
+    let mut reader = Reader { past_b: false };
+    for c in s.chars() {
+        if not reader.read(c) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one a, one b, a b
+    // before an a, and an a before a b
+    let examples = ["aaabbb", "abab", "bbb", "a", "b", "ba", "ab"];
+    for s in examples.iter() {
+        println(f"{s} -> {check_string(s)}");
+    }
+    // 5000 random strings of 1 to 20 letters, half of them built as some
+    // a's then some b's with one pair swapped or not
+    let mut seed = 2124;
+    let mut ordered = 0;
+    let mut check = 0;
+    for round in 0..5000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let mut s = String.new();
+        if round % 2 == 0 {
+            for _ in 0..n {
+                s.push(if next_random(mut seed) % 2 == 0 { 'a' } else { 'b' });
+            }
+        } else {
+            let split = next_random(mut seed) % (n + 1);
+            let swap = next_random(mut seed) % (n + 1);
+            for i in 0..n {
+                let mut c = if i < split { 'a' } else { 'b' };
+                if i + 1 == split and swap == split {
+                    c = 'b';
+                } else if i == split and swap == split {
+                    c = 'a';
+                }
+                s.push(c);
+            }
+        }
+        if check_string(s) {
+            ordered += 1;
+            check = (check * 31 + n) % 1000000007;
+        }
+    }
+    println(f"5000 strings: {ordered} in order, checksum {check}");
+    // the constraints' longest: 50 a's then 50 b's, and the same with the
+    // middle pair swapped
+    let long = "a".repeat(50) + "b".repeat(50);
+    let swapped = "a".repeat(49) + "ba" + "b".repeat(49);
+    println(f"100 letters: {check_string(long)}, middle swapped: {check_string(swapped)}");
+}
