@@ -115,17 +115,16 @@ crash, and no two kept ones fail the same checks.
 
 P1 and P6 kill all seventeen, P2 twelve, P5 four, P4 three and P3 one.
 The four other properties all keep the answer as it is, and three of
-them move the points in ways that keep every line a line, so most wrong
-edits, which give a wrong count whichever way the plane is turned, fail
-P1 and P6 alone, and the edits are told apart by how many sets they get
-wrong. P2 lists the points from the other end, which sees an edit tied
+them move the points in ways that keep every line a line, so a wrong
+edit that reads every point alike gives the same wrong count after the
+move and passes them; the edits are told apart mostly by how many sets
+they get wrong and by P2. P2 lists the points from the other end, which sees an edit tied
 to which point comes first or next (M1, M3, M4, M8, M10, M14, M16, M21,
 M24, M27, M29, M30). P4 and P5 turn and shear the plane, which change
 the coordinates a broken collinear test reads while keeping which points
-are collinear (M4, M8, M17); P5 also sees the adapter's halving (M30),
-since halving after a shear rounds other points together. P3 moves
-every point, which sees the halving too (M30), since the move changes
-which coordinates are odd.
+are collinear (M4, M8, M17); P3 and P5 also see the adapter's
+halving (M30), since moving or shearing the points changes
+which of them the halving runs together.
 
 Of the thirty-one, fourteen were not kept. Six are equivalent: the ★
 arm extending masks no line reaches, which only offers counts above the
