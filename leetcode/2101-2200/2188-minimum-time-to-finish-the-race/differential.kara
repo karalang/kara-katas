@@ -1,0 +1,375 @@
+// LeetCode #2188: Minimum Time to Finish the Race -- the differential.
+// The six arms, against the statement read literally: every race tried,
+// lap by lap, each lap either run on the tire already on, its next lap
+// f * r^(x - 1), or on a fresh tire of any kind after a change; and the
+// least total kept. No runs worked out first and no table over the
+// laps. 300 random races of 1 to 3 tires with f of 1 to 5 and r of 2 to
+// 4, a change of 1 to 10 and 1 to 6 laps; then 30 of one tire; then 30
+// with a change of 20 to 40; every one drawn before any arm answers.
+//
+// P1  the time is the statement read literally
+// P2  the tires reversed: the same time
+// P3  a tire added one slower on its first lap than one there: the same
+//     time
+// P4  a change one dearer: a time no less, and at most the laps less
+//     one more
+// P5  the time at least the laps times the least f, and at most a fresh
+//     tire of the least f every lap
+// P6  each arm agrees with at least three of the other five
+
+// ---- race.kara: the ★ arm, runs on one tire, then the laps bottom up
+fn star_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    // run[k]: the least time for k laps on one tire, for as many k as pay
+    let mut run: Vec[i64] = [0].to_vec();
+    for tire in tires.iter() {
+        let f = tire[0];
+        let r = tire[1];
+        let mut lap = f;
+        let mut sum = 0;
+        let mut k = 1;
+        while k <= num_laps and lap <= change_time + f {
+            sum += lap;
+            if k == run.len() {
+                run.push(sum);
+            } else if sum < run[k] {
+                run[k] = sum;
+            }
+            lap *= r;
+            k += 1;
+        }
+    }
+    // best[n]: the least time for n laps, each run after the first
+    // paying for a change
+    let mut best: Vec[i64] = Vec.filled(num_laps + 1, 0);
+    for n in 1..=num_laps {
+        let mut least = run[1] * n + change_time * (n - 1);
+        let mut k = 1;
+        while k < run.len() and k <= n {
+            let pit = if k == n { 0 } else { change_time };
+            least = least.min(best[n - k] + pit + run[k]);
+            k += 1;
+        }
+        best[n] = least;
+    }
+    best[num_laps]
+}
+
+// ---- race_memo.kara: top down, a memo passed `mut ref`
+fn memo_fastest(n: i64, run: Vec[i64], change_time: i64, memo: mut ref Vec[i64]) -> i64 {
+    if n == 0 {
+        return -change_time;
+    }
+    if memo[n] >= 0 {
+        return memo[n];
+    }
+    let mut least = -1;
+    for k in 1..run.len() {
+        if k > n {
+            break;
+        }
+        let t = memo_fastest(n - k, run, change_time, mut memo) + change_time + run[k];
+        if least < 0 or t < least {
+            least = t;
+        }
+    }
+    memo[n] = least;
+    least
+}
+
+fn memo_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    let mut run: Vec[i64] = [0].to_vec();
+    for tire in tires.iter() {
+        let mut lap = tire[0];
+        let mut sum = 0;
+        let mut k = 1;
+        while k <= num_laps and lap <= change_time + tire[0] {
+            sum += lap;
+            if k == run.len() {
+                run.push(sum);
+            } else {
+                run[k] = run[k].min(sum);
+            }
+            lap *= tire[1];
+            k += 1;
+        }
+    }
+    let mut memo: Vec[i64] = Vec.filled(num_laps + 1, -1);
+    memo_fastest(num_laps, run, change_time, mut memo)
+}
+
+// ---- race_pareto.kara: the tires thinned to those no other beats
+fn pareto_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    let mut sorted: Vec[(i64, i64)] = tires.iter().map(|t| (t[0], t[1])).collect();
+    sorted.sort();
+    let mut kept: Vec[(i64, i64)] = Vec.new();
+    for (f, r) in sorted.iter() {
+        if kept.is_empty() or r < kept[kept.len() - 1].1 {
+            kept.push((f, r));
+        }
+    }
+    let mut run: Vec[i64] = [0].to_vec();
+    for (f, r) in kept.iter() {
+        let mut lap = f;
+        let mut sum = 0;
+        let mut k = 1;
+        while k <= num_laps and lap <= change_time + f {
+            sum += lap;
+            if k == run.len() {
+                run.push(sum);
+            } else if sum < run[k] {
+                run[k] = sum;
+            }
+            lap *= r;
+            k += 1;
+        }
+    }
+    let mut best: Vec[i64] = Vec.filled(num_laps + 1, 0);
+    for n in 1..=num_laps {
+        let mut least = best[n - 1] + change_time + run[1];
+        for k in 2..run.len() {
+            if k > n {
+                break;
+            }
+            least = least.min(best[n - k] + change_time + run[k]);
+        }
+        best[n] = least;
+    }
+    best[num_laps] - change_time
+}
+
+// ---- race_struct.kara: a `Stint` extended by each tire
+struct Stint {
+    least: Vec[i64],
+    change_time: i64,
+    laps: i64,
+}
+
+impl Stint {
+    fn of(tires: Vec[Vec[i64]], change_time: i64, laps: i64) -> Stint {
+        let mut stint = Stint { least: [0].to_vec(), change_time: change_time, laps: laps };
+        for tire in tires.iter() {
+            stint.extend(tire[0], tire[1]);
+        }
+        stint
+    }
+
+    fn extend(mut ref self, f: i64, r: i64) {
+        let mut lap = f;
+        let mut sum = 0;
+        let mut k = 1;
+        while k <= self.laps and lap <= self.change_time + f {
+            sum += lap;
+            if k == self.least.len() {
+                self.least.push(sum);
+            } else if sum < self.least[k] {
+                self.least[k] = sum;
+            }
+            lap *= r;
+            k += 1;
+        }
+    }
+
+    fn longest(ref self) -> i64 {
+        self.least.len() - 1
+    }
+
+    fn finish(ref self) -> i64 {
+        let mut best: Vec[i64] = Vec.filled(self.laps + 1, 0);
+        best[0] = -self.change_time;
+        for n in 1..=self.laps {
+            let mut fastest = best[n - 1] + self.change_time + self.least[1];
+            for k in 2..=self.longest().min(n) {
+                fastest = fastest.min(best[n - k] + self.change_time + self.least[k]);
+            }
+            best[n] = fastest;
+        }
+        best[self.laps]
+    }
+}
+
+fn struct_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    Stint.of(tires, change_time, num_laps).finish()
+}
+
+// ---- race_iter.kara: `successors`, `take_while`, `scan`, a `fold` over the laps
+fn iter_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    let runs: Vec[Vec[i64]] = tires
+        .iter()
+        .map(|t| {
+            let f = t[0];
+            let r = t[1];
+            successors(Some(f), |lap| Some(lap * r))
+                .take_while(|lap| lap <= change_time + f)
+                .take(num_laps)
+                .scan(0, |sum, lap| { let sum = sum + lap; Some((sum, sum)) })
+                .collect()
+        })
+        .collect();
+    let longest = runs.iter().map(|r| r.len()).max().unwrap();
+    let run: Vec[i64] = (0..longest).map(|k| runs.iter().filter_map(|r| r.get(k)).min().unwrap()).collect();
+    let best = (1..=num_laps).fold([-change_time].to_vec(), |acc, n| {
+        let least = (1..=n.min(longest)).map(|k| acc[n - k] + change_time + run[k - 1]).min().unwrap();
+        let mut next = acc;
+        next.push(least);
+        next
+    });
+    best[num_laps]
+}
+
+// ---- race_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_finish_time(tires: Vec[Vec[i32]], change_time: i32, num_laps: i32) -> i32 {
+        let n = num_laps as i64;
+        let change = change_time as i64;
+        let mut run = Vec.filled(20, i64.MAX);
+        for t in ref tires {
+            let (f, r) = (t[0] as i64, t[1] as i64);
+            let mut lap = f;
+            let mut sum = 0;
+            for k in 1..20 {
+                if lap > change + f {
+                    break;
+                }
+                sum += lap;
+                run[k] = run[k].min(sum);
+                lap *= r;
+            }
+        }
+        let mut dp = Vec.filled(n + 1, i64.MAX);
+        dp[0] = -change;
+        for i in 1..=n {
+            for k in 1..20.min(i + 1) {
+                if run[k] == i64.MAX {
+                    break;
+                }
+                dp[i] = dp[i].min(dp[i - k] + change + run[k]);
+            }
+        }
+        dp[n] as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_finish_time(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    let narrow: Vec[Vec[i32]] = tires.iter().map(|t| t.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_finish_time(narrow, change_time as i32, num_laps as i32)
+}
+
+// ---- the statement read literally
+
+fn literal_from(tires: Vec[Vec[i64]], change_time: i64, laps_left: i64, tire: i64, next_lap: i64) -> i64 {
+    if laps_left == 0 {
+        return 0;
+    }
+    // the tire on now, its next lap
+    let mut least = next_lap + literal_from(tires, change_time, laps_left - 1, tire, next_lap * tires[tire][1]);
+    // or a change to a fresh tire of any kind
+    for i in 0..tires.len() {
+        let f = tires[i][0];
+        let t = change_time + f + literal_from(tires, change_time, laps_left - 1, i, f * tires[i][1]);
+        least = least.min(t);
+    }
+    least
+}
+
+fn literal(tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    let mut least = -1;
+    for i in 0..tires.len() {
+        let f = tires[i][0];
+        let t = f + literal_from(tires, change_time, num_laps - 1, i, f * tires[i][1]);
+        if least < 0 or t < least {
+            least = t;
+        }
+    }
+    least
+}
+
+fn answer(arm: i64, tires: Vec[Vec[i64]], change_time: i64, num_laps: i64) -> i64 {
+    match arm {
+        0 => star_minimum_finish_time(tires, change_time, num_laps),
+        1 => memo_minimum_finish_time(tires, change_time, num_laps),
+        2 => pareto_minimum_finish_time(tires, change_time, num_laps),
+        3 => struct_minimum_finish_time(tires, change_time, num_laps),
+        4 => iter_minimum_finish_time(tires, change_time, num_laps),
+        _ => solution_minimum_finish_time(tires, change_time, num_laps),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "memo", "pareto", "struct", "iter", "solution"];
+    let mut seed = 2188;
+    let mut cases: Vec[(Vec[Vec[i64]], i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c >= 300 and c < 330 { 1 } else { next_random(mut seed) % 3 + 1 };
+        let mut tires: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..n {
+            let f = next_random(mut seed) % 5 + 1;
+            let r = next_random(mut seed) % 3 + 2;
+            tires.push([f, r].to_vec());
+        }
+        let change_time = if c >= 330 { next_random(mut seed) % 21 + 20 } else { next_random(mut seed) % 10 + 1 };
+        let num_laps = next_random(mut seed) % 6 + 1;
+        cases.push((tires, change_time, num_laps));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (tires, change_time, num_laps) in cases.iter() {
+        let truth = literal(tires, change_time, num_laps);
+        check = (check * 31 + tires.len() * 7 + change_time + num_laps + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tires, change_time, num_laps)).collect();
+        let back: Vec[Vec[i64]] = tires.iter().rev().cloned().collect();
+        let mut slower = tires.clone();
+        slower.push([tires[0][0] + 1, tires[0][1]].to_vec());
+        let mut least_f = tires[0][0];
+        for t in tires.iter() {
+            least_f = least_f.min(t[0]);
+        }
+        for arm in 0..6 {
+            let time = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == time {
+                    same += 1;
+                }
+            }
+            let dearer = answer(arm, tires, change_time + 1, num_laps);
+            let verdicts = [
+                time == truth,
+                answer(arm, back, change_time, num_laps) == time,
+                answer(arm, slower, change_time, num_laps) == time,
+                dearer >= time and dearer <= time + num_laps - 1,
+                time >= num_laps * least_f and time <= num_laps * least_f + (num_laps - 1) * change_time,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{tires}, {change_time}, {num_laps} arm {names[arm]}: P{q + 1} fails, answered {time}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} races: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
