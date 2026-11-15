@@ -1,0 +1,251 @@
+// LeetCode #2180: Count Integers With Even Digit Sum -- the
+// differential. The six arms, against the statement read literally:
+// every number from 1 to num written out, each of its characters read
+// as the digit it stands for by finding it in "0123456789", the digits
+// added, and the number counted when the sum is even. No remainders and
+// no division. 300 random numbers of 1 to 300; then 30 multiples of 10
+// up to 300; then 30 of 1 to 30; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the number 1 less: one fewer when its own digits sum evenly, the
+//     same otherwise
+// P3  the decade the number is in, from 10a to 10a + 9: five of them
+// P4  the number times 10, plus 9: five times the number, plus 4
+// P5  the count from (num - 1) / 2 to num / 2
+// P6  each arm agrees with at least three of the other five
+
+// ---- even_digits.kara: the ★ arm, every number's digits by remainders
+fn star_count_even(num: i64) -> i64 {
+    let mut count = 0;
+    for x in 1..(num + 1) {
+        let mut total = 0;
+        let mut rest = x;
+        while rest > 0 {
+            total += rest % 10;
+            rest /= 10;
+        }
+        if total % 2 == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- even_digits_formula.kara: num / 2, or (num - 1) / 2 for an odd digit sum
+fn formula_digit_sum(x: i64) -> i64 {
+    let mut total = 0;
+    let mut rest = x;
+    while rest > 0 {
+        total += rest % 10;
+        rest /= 10;
+    }
+    total
+}
+
+fn formula_count_even(num: i64) -> i64 {
+    if formula_digit_sum(num) % 2 == 0 {
+        num / 2
+    } else {
+        (num - 1) / 2
+    }
+}
+
+// ---- even_digits_table.kara: each parity from the number with its last digit dropped
+fn table_count_even(num: i64) -> i64 {
+    let mut odd: Vec[bool] = Vec.filled(num + 1, false);
+    let mut count = 0;
+    for x in 1..(num + 1) {
+        odd[x] = odd[x / 10] != (x % 2 == 1);
+        if not odd[x] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- even_digits_struct.kara: an `Odometer` that ticks and carries
+struct Odometer {
+    digits: Vec[i64],
+    total: i64,
+}
+
+impl Odometer {
+    fn at_zero() -> Odometer {
+        Odometer { digits: [0], total: 0 }
+    }
+
+    fn tick(mut ref self) {
+        let mut place = 0;
+        while place < self.digits.len() and self.digits[place] == 9 {
+            self.digits[place] = 0;
+            self.total -= 9;
+            place += 1;
+        }
+        if place == self.digits.len() {
+            self.digits.push(0);
+        }
+        self.digits[place] += 1;
+        self.total += 1;
+    }
+
+    fn even(ref self) -> bool {
+        self.total % 2 == 0
+    }
+}
+
+fn struct_count_even(num: i64) -> i64 {
+    let mut odometer = Odometer.at_zero();
+    let mut count = 0;
+    for _ in 0..num {
+        odometer.tick();
+        if odometer.even() {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- even_digits_iter.kara: `chars`, `to_digit`, `sum`, `filter` and `count`
+fn iter_count_even(num: i64) -> i64 {
+    (1..(num + 1))
+        .filter(|x| {
+            let total: i64 = f"{x}".chars().map(|c| c.to_digit(10).unwrap()).sum();
+            total % 2 == 0
+        })
+        .count()
+}
+
+// ---- even_digits_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_even(num: i32) -> i32 {
+        let mut ans = 0;
+        for x in 1..=num {
+            let mut s = 0;
+            let mut y = x;
+            while y > 0 {
+                s += y % 10;
+                y /= 10;
+            }
+            if s % 2 == 0 {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_count_even(num: i64) -> i64 {
+    Solution.count_even(num as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal_digit_sum(x: i64) -> i64 {
+    let names = "0123456789";
+    let mut total = 0;
+    for c in f"{x}".chars() {
+        let mut digit = 0;
+        for d in names.chars() {
+            if d == c {
+                break;
+            }
+            digit += 1;
+        }
+        total += digit;
+    }
+    total
+}
+
+fn literal(num: i64) -> i64 {
+    let mut count = 0;
+    for x in 1..(num + 1) {
+        if literal_digit_sum(x) % 2 == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, num: i64) -> i64 {
+    match arm {
+        0 => star_count_even(num),
+        1 => formula_count_even(num),
+        2 => table_count_even(num),
+        3 => struct_count_even(num),
+        4 => iter_count_even(num),
+        _ => solution_count_even(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "formula", "table", "struct", "iter", "solution"];
+    let mut seed = 2180;
+    let mut cases: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let x = next_random(mut seed);
+        cases.push(if t < 300 {
+            x % 300 + 1
+        } else if t < 330 {
+            (x % 30 + 1) * 10
+        } else {
+            x % 30 + 1
+        });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in cases.iter() {
+        let truth = literal(num);
+        check = (check * 31 + num * 7 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, num)).collect();
+        let step = if literal_digit_sum(num) % 2 == 0 { 1 } else { 0 };
+        let decade = 10 * (num / 10);
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                count == truth,
+                count - answer(arm, num - 1) == step,
+                num < 10 or answer(arm, decade + 9) - answer(arm, decade - 1) == 5,
+                answer(arm, 10 * num + 9) == 5 * num + 4,
+                (num - 1) / 2 <= count and count <= num / 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
