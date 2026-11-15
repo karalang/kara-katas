@@ -1,0 +1,277 @@
+// LeetCode #2194: Cells in a Range on an Excel Sheet -- the differential.
+// The six arms, against the statement read literally: every cell of the
+// sheet, A1 to Z9, listed column by column, and kept when its column and
+// its row both lie between the range's. 300 random ranges; then 30 of
+// one column; then 30 of one row. Every range is drawn before any arm
+// answers.
+//
+// P1  the cells are the statement read literally
+// P2  as many cells as the columns times the rows
+// P3  the cells rise strictly, and each lies in the range
+// P4  the first cell is the range's first corner, the last its second
+// P5  the range less its last column (or row), then that column (or
+//     row): the same cells
+// P6  each arm agrees with at least three of the other five
+
+// ---- cells.kara: the ★ arm, two loops over the range's bytes
+fn star_cells_in_range(s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let mut cells: Vec[String] = Vec.new();
+    for col in b[0]..=b[3] {
+        for row in b[1]..=b[4] {
+            cells.push(String.from_utf8([col, row].to_vec()).unwrap());
+        }
+    }
+    cells
+}
+
+// ---- cells_format.kara: a `char` range and an `f`-string
+fn format_cells_in_range(s: String) -> Vec[String] {
+    let ends: Vec[Str] = s.split(":").collect();
+    let first: Vec[char] = ends[0].chars().collect();
+    let last: Vec[char] = ends[1].chars().collect();
+    let top = i64.parse(ends[0][1..]).unwrap();
+    let bottom = i64.parse(ends[1][1..]).unwrap();
+    let mut cells: Vec[String] = Vec.new();
+    for col in first[0]..=last[0] {
+        for row in top..=bottom {
+            cells.push(f"{col}{row}");
+        }
+    }
+    cells
+}
+
+// ---- cells_iter.kara: `flat_map` over the bytes into `String`s
+fn iter_cells_in_range(s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let (rows_from, rows_to) = (b[1], b[4]);
+    (b[0]..=b[3])
+        .flat_map(|col| (rows_from..=rows_to).map(|row| [col as char, row as char].iter().collect()))
+        .collect()
+}
+
+// ---- cells_struct.kara: a `Cell` with `impl Display`, `Corners` that walks
+struct Cell {
+    col: char,
+    row: i64,
+}
+
+impl Display for Cell {
+    fn to_string(ref self) -> String {
+        f"{self.col}{self.row}"
+    }
+}
+
+struct Corners {
+    from: Cell,
+    to: Cell,
+}
+
+impl Corners {
+    fn parse(s: String) -> Corners {
+        let b: Vec[u8] = s.bytes().to_vec();
+        Corners {
+            from: Cell { col: b[0] as char, row: b[1] - 48 },
+            to: Cell { col: b[3] as char, row: b[4] - 48 },
+        }
+    }
+
+    fn cells(ref self) -> Vec[Cell] {
+        let mut out: Vec[Cell] = Vec.new();
+        for col in self.from.col..=self.to.col {
+            for row in self.from.row..=self.to.row {
+                out.push(Cell { col: col, row: row });
+            }
+        }
+        out
+    }
+}
+
+fn struct_cells_in_range(s: String) -> Vec[String] {
+    Corners.parse(s).cells().iter().map(|c| c.to_string()).collect()
+}
+
+// ---- cells_count.kara: `Vec.from_fn` from each cell's index
+fn count_cells_in_range(s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let cols = (b[3] - b[0] + 1) as i64;
+    let rows = (b[4] - b[1] + 1) as i64;
+    Vec.from_fn(cols * rows, |i| {
+        let col = b[0] + (i / rows) as u8;
+        let row = b[1] + (i % rows) as u8;
+        String.from_utf8([col, row].to_vec()).unwrap()
+    })
+}
+
+// ---- cells_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn cells_in_range(s: String) -> Vec[String] {
+        let b = s.bytes();
+        let mut res = Vec.new();
+        for c in b[0]..=b[3] {
+            for r in b[1]..=b[4] {
+                res.push(f"{c as char}{r as char}");
+            }
+        }
+        res
+    }
+}
+
+struct Solution {}
+
+fn solution_cells_in_range(s: String) -> Vec[String] {
+    Solution.cells_in_range(s)
+}
+
+// ---- the statement read literally
+
+fn literal(s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let mut out: Vec[String] = Vec.new();
+    for col in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".bytes().iter() {
+        for row in "123456789".bytes().iter() {
+            if col >= b[0] and col <= b[3] and row >= b[1] and row <= b[4] {
+                out.push(String.from_utf8([col, row].to_vec()).unwrap());
+            }
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, s: String) -> Vec[String] {
+    match arm {
+        0 => star_cells_in_range(s),
+        1 => format_cells_in_range(s),
+        2 => iter_cells_in_range(s),
+        3 => struct_cells_in_range(s),
+        4 => count_cells_in_range(s),
+        _ => solution_cells_in_range(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn range_of(c1: u8, r1: u8, c2: u8, r2: u8) -> String {
+    String.from_utf8([c1, r1, 58, c2, r2].to_vec()).unwrap()
+}
+
+// P3: rising strictly, each cell two bytes inside the range
+fn rising_inside(s: String, cells: Vec[String]) -> bool {
+    let b: Vec[u8] = s.bytes().to_vec();
+    for i in 0..cells.len() {
+        let c: Vec[u8] = cells[i].bytes().to_vec();
+        if c.len() != 2 or c[0] < b[0] or c[0] > b[3] or c[1] < b[1] or c[1] > b[4] {
+            return false;
+        }
+        if i > 0 and cells[i - 1] >= cells[i] {
+            return false;
+        }
+    }
+    true
+}
+
+// P5: the range less its last column, then that column; or, in one
+// column, less its last row, then that row
+fn split(arm: i64, s: String) -> Vec[String] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    if b[0] < b[3] {
+        let mut out = answer(arm, range_of(b[0], b[1], b[3] - 1, b[4]));
+        for c in answer(arm, range_of(b[3], b[1], b[3], b[4])).iter() {
+            out.push(c.clone());
+        }
+        out
+    } else if b[1] < b[4] {
+        let mut out = answer(arm, range_of(b[0], b[1], b[3], b[4] - 1));
+        for c in answer(arm, range_of(b[3], b[4], b[3], b[4])).iter() {
+            out.push(c.clone());
+        }
+        out
+    } else {
+        answer(arm, s)
+    }
+}
+
+fn main() {
+    let names = ["star", "format", "iter", "struct", "count", "solution"];
+    let mut seed = 2194;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut c1 = next_random(mut seed) % 26;
+        let mut c2 = next_random(mut seed) % 26;
+        let mut r1 = next_random(mut seed) % 9;
+        let mut r2 = next_random(mut seed) % 9;
+        if c1 > c2 {
+            let t = c1;
+            c1 = c2;
+            c2 = t;
+        }
+        if r1 > r2 {
+            let t = r1;
+            r1 = r2;
+            r2 = t;
+        }
+        if c >= 300 and c < 330 {
+            c2 = c1;
+        } else if c >= 330 {
+            r2 = r1;
+        }
+        cases.push(range_of((65 + c1) as u8, (49 + r1) as u8, (65 + c2) as u8, (49 + r2) as u8));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let truth = literal(s);
+        for cell in truth.iter() {
+            for b in cell.bytes().iter() {
+                check = (check * 31 + b) % 1000000007;
+            }
+        }
+        let b: Vec[u8] = s.bytes().to_vec();
+        let area = (b[3] - b[0] + 1) as i64 * (b[4] - b[1] + 1) as i64;
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let cells = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == cells {
+                    same += 1;
+                }
+            }
+            let ends = cells.len() > 0 and cells[0] == s[0..2] and cells[cells.len() - 1] == s[3..5];
+            let verdicts = [
+                cells == truth,
+                cells.len() == area,
+                rising_inside(s, cells),
+                ends,
+                split(arm, s) == cells,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, answered {cells}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} ranges: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
