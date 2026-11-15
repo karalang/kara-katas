@@ -1,0 +1,89 @@
+// LeetCode #2177: Find Three Consecutive Integers That Sum to a Given
+// Number -- a `struct Run` of three consecutive integers by its first,
+// whose `sum` is three times its middle; a run is made `summing_to` a
+// number from the floor of its third, and kept only if its sum is the
+// number; its `to_vec` gives the three. O(1).
+
+struct Run {
+    first: i64,
+}
+
+impl Run {
+    fn summing_to(num: i64) -> Option[Run] {
+        let run = Run { first: num.div_euclid(3) - 1 };
+        if run.sum() == num { Some(run) } else { None }
+    }
+
+    fn sum(ref self) -> i64 {
+        3 * self.first + 3
+    }
+
+    fn to_vec(ref self) -> Vec[i64] {
+        [self.first, self.first + 1, self.first + 2]
+    }
+}
+
+fn sum_of_three(num: i64) -> Vec[i64] {
+    match Run.summing_to(num) {
+        Some(run) => run.to_vec(),
+        None => Vec.new(),
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(num: i64) {
+    println(f"{num} -> {sum_of_three(num)}");
+}
+
+fn fold(check: i64, num: i64, three: Vec[i64]) -> i64 {
+    let mut check = (check * 31 + num % 1000000007 + three.len()) % 1000000007;
+    for x in three.iter() {
+        check = (check * 31 + (x % 1000000007 + 1000000007) % 1000000007) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: 0, 3, 10^15, and the
+    // largest multiple of 3 under it
+    show(33);
+    show(4);
+    show(0);
+    show(3);
+    show(1000000000000000);
+    show(999999999999999);
+    // 2000 random numbers of up to 10, 1000 or 10^15 in turn
+    let mut seed = 2177;
+    let mut found = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let top = [11, 1001, 1000000000000001][round % 3];
+        let a = next_random(mut seed);
+        let b = next_random(mut seed);
+        let c = next_random(mut seed);
+        let num = ((a * 32768 + b) * 32768 + c) % top;
+        let three = sum_of_three(num);
+        if three.len() > 0 {
+            found += 1;
+        }
+        check = fold(check, num, three);
+    }
+    println(f"2000 numbers: {found} found, checksum {check}");
+    // every number from 0 to 3000
+    let mut every = 0;
+    let mut found = 0;
+    for num in 0..3001 {
+        let three = sum_of_three(num);
+        if three.len() > 0 {
+            found += 1;
+        }
+        every = fold(every, num, three);
+    }
+    println(f"0 to 3000: {found} found, checksum {every}");
+}

@@ -1,0 +1,205 @@
+// LeetCode #2177: Find Three Consecutive Integers That Sum to a Given
+// Number -- the differential. The six arms, against the statement read
+// literally: every first integer from -1 up to the number tried, and the
+// first whose run of three sums to the number kept; none if none does.
+// No division. 300 random numbers of up to 10, 100 or 3000 in turn; then
+// 30 multiples of 3; then 30 one off a multiple of 3; every one drawn
+// before any arm answers.
+//
+// P1  the three are the statement read literally
+// P2  the number 3 more: each of the three 1 more, or none again
+// P3  the number times 4: the middle times 4, or none again
+// P4  the number 1 more and 2 more: none, when the number has three
+// P5  three found are consecutive and sum to the number, and none are
+//     found only when 3 does not divide it
+// P6  each arm agrees with at least three of the other five
+
+// ---- three.kara: the ★ arm, the number's third when 3 divides it
+fn star_sum_of_three(num: i64) -> Vec[i64] {
+    if num % 3 != 0 {
+        return Vec.new();
+    }
+    let x = num / 3;
+    [x - 1, x, x + 1]
+}
+
+// ---- three_search.kara: a binary search for the middle
+fn search_sum_of_three(num: i64) -> Vec[i64] {
+    let mut low = -1;
+    let mut high = num;
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if 3 * mid < num {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    if 3 * low == num { [low - 1, low, low + 1] } else { Vec.new() }
+}
+
+// ---- three_option.kara: the middle as an `Option`, and a `match`
+fn option_middle(num: i64) -> Option[i64] {
+    if num % 3 == 0 { Some(num / 3) } else { None }
+}
+
+fn option_sum_of_three(num: i64) -> Vec[i64] {
+    match option_middle(num) {
+        Some(x) => [x - 1, x, x + 1],
+        None => Vec.new(),
+    }
+}
+
+// ---- three_struct.kara: a `Run` of three, `summing_to` the number
+struct Run {
+    first: i64,
+}
+
+impl Run {
+    fn summing_to(num: i64) -> Option[Run] {
+        let run = Run { first: num.div_euclid(3) - 1 };
+        if run.sum() == num { Some(run) } else { None }
+    }
+
+    fn sum(ref self) -> i64 {
+        3 * self.first + 3
+    }
+
+    fn to_vec(ref self) -> Vec[i64] {
+        [self.first, self.first + 1, self.first + 2]
+    }
+}
+
+fn struct_sum_of_three(num: i64) -> Vec[i64] {
+    match Run.summing_to(num) {
+        Some(run) => run.to_vec(),
+        None => Vec.new(),
+    }
+}
+
+// ---- three_iter.kara: `filter`, `map` and `unwrap_or` on an `Option`
+fn iter_sum_of_three(num: i64) -> Vec[i64] {
+    Some(num / 3).filter(|x| 3 * x == num).map(|x| ((x - 1)..(x + 2)).collect()).unwrap_or(Vec.new())
+}
+
+// ---- three_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn sum_of_three(num: i64) -> Vec[i64] {
+        if num % 3 != 0 {
+            return Vec.new();
+        }
+        let x = num / 3;
+        [x - 1, x, x + 1]
+    }
+}
+
+struct Solution {}
+
+fn solution_sum_of_three(num: i64) -> Vec[i64] {
+    Solution.sum_of_three(num)
+}
+
+
+// ---- the statement read literally
+
+fn literal(num: i64) -> Vec[i64] {
+    let mut first = -1;
+    while first <= num {
+        if first + (first + 1) + (first + 2) == num {
+            return [first, first + 1, first + 2];
+        }
+        first += 1;
+    }
+    Vec.new()
+}
+
+fn answer(arm: i64, num: i64) -> Vec[i64] {
+    match arm {
+        0 => star_sum_of_three(num),
+        1 => search_sum_of_three(num),
+        2 => option_sum_of_three(num),
+        3 => struct_sum_of_three(num),
+        4 => iter_sum_of_three(num),
+        _ => solution_sum_of_three(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "search", "option", "struct", "iter", "solution"];
+    let mut seed = 2177;
+    let mut cases: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let x = next_random(mut seed);
+        cases.push(if t < 300 {
+            x % [11, 101, 3001][t % 3]
+        } else if t < 330 {
+            3 * (x % 1000)
+        } else {
+            3 * (x % 1000) + 1 + t % 2
+        });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in cases.iter() {
+        let truth = literal(num);
+        check = (check * 31 + num + truth.len()) % 1000000007;
+        for x in truth.iter() {
+            check = (check * 31 + x + 1) % 1000000007;
+        }
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let three = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == three {
+                    same += 1;
+                }
+            }
+            let up: Vec[i64] = three.iter().map(|x| x + 1).collect();
+            let fourfold = answer(arm, 4 * num);
+            let p3 = if three.len() == 3 { fourfold.len() == 3 and fourfold[1] == 4 * three[1] } else { fourfold.len() == 0 };
+            let p4 = three.len() == 0 or (answer(arm, num + 1).len() == 0 and answer(arm, num + 2).len() == 0);
+            let p5 = if three.len() == 3 {
+                three[1] == three[0] + 1 and three[2] == three[1] + 1 and three[0] + three[1] + three[2] == num
+            } else {
+                three.len() == 0 and num % 3 != 0
+            };
+            let verdicts = [
+                three == truth,
+                answer(arm, num + 3) == up,
+                p3,
+                p4,
+                p5,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, answered {three}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
