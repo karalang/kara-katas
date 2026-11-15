@@ -1,0 +1,265 @@
+// LeetCode #2185: Counting Words With a Given Prefix -- the
+// differential. The six arms, against the statement read literally: a
+// word counted when it is at least as long as the prefix and its first
+// |pref| letters, cut out as a slice, are the prefix. No `starts_with`,
+// no trie. 300 random lists of 1 to 8 words of 1 to 4 letters, from a to
+// b or a to c in turn, with a prefix of 1 to 3 letters; then 30 whose
+// prefix is the start of one of the words; then 30 of one word over
+// and over; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the words reversed: the same count
+// P3  the prefix one letter longer, for each of a to c: counts that add
+//     up to the count, less the words that are the prefix itself
+// P4  the same letter put before every word and the prefix: the same
+// P5  the count at most the words that start with the prefix's first
+//     letter; and one more with the prefix itself added as a word
+// P6  each arm agrees with at least three of the other five
+
+// ---- prefix_count.kara: the ★ arm, `starts_with`
+fn star_prefix_count(words: Vec[String], pref: String) -> i64 {
+    let mut count = 0;
+    for w in words.iter() {
+        if w.starts_with(pref) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- prefix_count_bytes.kara: the first bytes compared one by one
+fn bytes_prefix_count(words: Vec[String], pref: String) -> i64 {
+    let p = pref.bytes();
+    let mut count = 0;
+    for w in words.iter() {
+        let b = w.bytes();
+        if b.len() < p.len() {
+            continue;
+        }
+        let mut i = 0;
+        while i < p.len() and b[i] == p[i] {
+            i += 1;
+        }
+        if i == p.len() {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- prefix_count_trie.kara: a trie of counts in a flat `Vec`
+fn trie_prefix_count(words: Vec[String], pref: String) -> i64 {
+    let mut children: Vec[i64] = Vec.filled(26, -1);
+    let mut through: Vec[i64] = [0].to_vec();
+    for w in words.iter() {
+        let mut node = 0;
+        for b in w.bytes() {
+            let slot = node * 26 + (b - 97);
+            if children[slot] < 0 {
+                children[slot] = through.len();
+                through.push(0);
+                for _ in 0..26 {
+                    children.push(-1);
+                }
+            }
+            node = children[slot];
+            through[node] += 1;
+        }
+    }
+    let mut node = 0;
+    for b in pref.bytes() {
+        let next = children[node * 26 + (b - 97)];
+        if next < 0 {
+            return 0;
+        }
+        node = next;
+    }
+    through[node]
+}
+
+// ---- prefix_count_struct.kara: a `Prefix` that opens a word
+struct Prefix {
+    letters: Vec[char],
+}
+
+impl Prefix {
+    fn of(text: String) -> Prefix {
+        Prefix { letters: text.chars().collect() }
+    }
+
+    fn opens(ref self, word: String) -> bool {
+        let mut at = 0;
+        for c in word.chars() {
+            if at == self.letters.len() {
+                break;
+            }
+            if c != self.letters[at] {
+                return false;
+            }
+            at += 1;
+        }
+        at == self.letters.len()
+    }
+
+    fn count_in(ref self, words: Vec[String]) -> i64 {
+        let mut count = 0;
+        for w in words.iter() {
+            if self.opens(w) {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+fn struct_prefix_count(words: Vec[String], pref: String) -> i64 {
+    Prefix.of(pref).count_in(words)
+}
+
+// ---- prefix_count_iter.kara: `zip`, `all`, `filter`, `count`
+fn iter_prefix_count(words: Vec[String], pref: String) -> i64 {
+    words
+        .iter()
+        .filter(|w| w.len() >= pref.len() and w.bytes().iter().zip(pref.bytes().iter()).all(|(a, b)| a == b))
+        .count()
+}
+
+// ---- prefix_count_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn prefix_count(words: Vec[String], pref: String) -> i32 {
+        words.iter().filter(|w| w.starts_with(pref)).count() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_prefix_count(words: Vec[String], pref: String) -> i64 {
+    Solution.prefix_count(words, pref)
+}
+
+
+// ---- the statement read literally
+
+fn literal(words: Vec[String], pref: String) -> i64 {
+    let mut count = 0;
+    for w in words.iter() {
+        if w.len() >= pref.len() and w[0..pref.len()] == pref {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, words: Vec[String], pref: String) -> i64 {
+    match arm {
+        0 => star_prefix_count(words, pref),
+        1 => bytes_prefix_count(words, pref),
+        2 => trie_prefix_count(words, pref),
+        3 => struct_prefix_count(words, pref),
+        4 => iter_prefix_count(words, pref),
+        _ => solution_prefix_count(words, pref),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn main() {
+    let names = ["star", "bytes", "trie", "struct", "iter", "solution"];
+    let mut seed = 2185;
+    let mut cases: Vec[(Vec[String], String)] = Vec.new();
+    for t in 0..360 {
+        let letters = [2, 3][t % 2];
+        let n = next_random(mut seed) % 8 + 1;
+        let mut words: Vec[String] = Vec.new();
+        if t < 330 {
+            for _ in 0..n {
+                let length = next_random(mut seed) % 4 + 1;
+                words.push(random_word(length, letters, mut seed));
+            }
+        } else {
+            let length = next_random(mut seed) % 4 + 1;
+            let w = random_word(length, letters, mut seed);
+            for _ in 0..n {
+                words.push(w.clone());
+            }
+        }
+        let pref = if t >= 300 and t < 330 {
+            let w = words[next_random(mut seed) % n].clone();
+            let cut = next_random(mut seed) % w.len() + 1;
+            w[0..cut].to_string()
+        } else {
+            let length = next_random(mut seed) % 3 + 1;
+            random_word(length, letters, mut seed)
+        };
+        cases.push((words, pref));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (words, pref) in cases.iter() {
+        let truth = literal(words, pref);
+        check = (check * 31 + words.len() * 7 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, words, pref)).collect();
+        let back: Vec[String] = words.iter().rev().cloned().collect();
+        let fronted: Vec[String] = words.iter().map(|w| f"c{w}").collect();
+        let first = pref[0..1].to_string();
+        let opening = words.iter().filter(|w| w[0..1] == first).count();
+        let itself = words.iter().filter(|w| w == pref).count();
+        let mut with_it = words.clone();
+        with_it.push(pref.clone());
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let mut longer = 0;
+            for c in ["a", "b", "c"] {
+                longer += answer(arm, words, f"{pref}{c}");
+            }
+            let verdicts = [
+                count == truth,
+                answer(arm, back, pref) == count,
+                longer == count - itself,
+                answer(arm, fronted, f"c{pref}") == count,
+                count <= opening and answer(arm, with_it, pref) == count + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{words}, \"{pref}\" arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

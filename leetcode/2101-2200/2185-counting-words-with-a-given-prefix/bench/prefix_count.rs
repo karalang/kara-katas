@@ -1,0 +1,42 @@
+// LeetCode #2185: Counting Words With a Given Prefix -- the benchmark's
+// Rust mirror of prefix_count.kara: each word asked whether it
+// `starts_with` the prefix.
+
+fn prefix_count(words: &[String], pref: &str) -> i64 {
+    let mut count = 0;
+    for w in words {
+        if w.starts_with(pref) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, seed: &mut i64) -> String {
+    let mut w = String::new();
+    for _ in 0..n {
+        w.push((97 + next_random(seed) % 2) as u8 as char);
+    }
+    w
+}
+
+fn main() {
+    let mut seed = 2185;
+    let mut words: Vec<String> = Vec::new();
+    for _ in 0..100 {
+        let length = next_random(&mut seed) % 100 + 1;
+        words.push(random_word(length, &mut seed));
+    }
+    let mut check: i64 = 0;
+    for _ in 0..100000 {
+        let length = next_random(&mut seed) % 8 + 1;
+        let pref = random_word(length, &mut seed);
+        check = (check * 31 + prefix_count(&words, &pref)) % 1000000007;
+    }
+    println!("100000 solves: checksum {}", check);
+}

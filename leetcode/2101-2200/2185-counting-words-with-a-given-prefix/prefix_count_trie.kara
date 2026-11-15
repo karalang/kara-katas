@@ -1,0 +1,97 @@
+// LeetCode #2185: Counting Words With a Given Prefix -- by a trie: every
+// word walked into a tree of letters, each node keeping how many words
+// pass through it, in a flat `Vec` of child indices; the answer is the
+// count at the node the prefix leads to, or none if it leads nowhere.
+// O(total letters + |pref|).
+
+fn prefix_count(words: Vec[String], pref: String) -> i64 {
+    let mut children: Vec[i64] = Vec.filled(26, -1);
+    let mut through: Vec[i64] = [0].to_vec();
+    for w in words.iter() {
+        let mut node = 0;
+        for b in w.bytes() {
+            let slot = node * 26 + (b - 97);
+            if children[slot] < 0 {
+                children[slot] = through.len();
+                through.push(0);
+                for _ in 0..26 {
+                    children.push(-1);
+                }
+            }
+            node = children[slot];
+            through[node] += 1;
+        }
+    }
+    let mut node = 0;
+    for b in pref.bytes() {
+        let next = children[node * 26 + (b - 97)];
+        if next < 0 {
+            return 0;
+        }
+        node = next;
+    }
+    through[node]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn show(words: Vec[String], pref: String) {
+    let quoted: Vec[String] = words.iter().map(|w| f"\"{w}\"").collect();
+    println(f"[{quoted.join(", ")}], \"{pref}\" -> {prefix_count(words, pref)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one word that is the
+    // prefix, a prefix longer than two words, every word, and a prefix
+    // found inside a word but not at its start
+    show(["pay", "attention", "practice", "attend"].to_vec(), "at");
+    show(["leetcode", "win", "loops", "success"].to_vec(), "code");
+    show(["a"].to_vec(), "a");
+    show(["ab", "abc", "a"].to_vec(), "abc");
+    show(["xyz", "xy", "x", "xyzw"].to_vec(), "x");
+    show(["ba", "ab", "aba"].to_vec(), "ab");
+    // 2000 random lists of 1 to 20 words of 1 to 6 letters, from a to b,
+    // a to c or a to z in turn, with a prefix of 1 to 3 letters
+    let mut seed = 2185;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let letters = [2, 3, 26][round % 3];
+        let n = next_random(mut seed) % 20 + 1;
+        let mut words: Vec[String] = Vec.new();
+        for _ in 0..n {
+            let length = next_random(mut seed) % 6 + 1;
+            words.push(random_word(length, letters, mut seed));
+        }
+        let length = next_random(mut seed) % 3 + 1;
+        let pref = random_word(length, letters, mut seed);
+        let found = prefix_count(words, pref);
+        total += found;
+        check = (check * 31 + found + n) % 1000000007;
+    }
+    println(f"2000 lists: {total} words in all, checksum {check}");
+    // the constraints' largest: 100 words of 100 letters, half a run of
+    // a and half ending in b, against prefixes of 100, 99 and 1 letters
+    let long_word = "a".repeat(100);
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..50 {
+        words.push(long_word.clone());
+    }
+    for _ in 0..50 {
+        words.push(f"{"a".repeat(99)}b");
+    }
+    println(f"100 words of 100 letters: {prefix_count(words, long_word)} {prefix_count(words, "a".repeat(99))} {prefix_count(words, "b")}");
+}
