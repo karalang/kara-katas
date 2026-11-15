@@ -1,0 +1,106 @@
+// LeetCode #2183: Count Array Pairs Divisible by K -- by a running count
+// over the divisors of k: for each number, the earlier ones that pair
+// with it are the multiples of k / gcd(x, k), which a table over the
+// divisors of k already holds; the number is then added under every
+// divisor of k it is a multiple of. O(n * divisors).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+// the divisors of k, found in pairs d and k / d up to the square root
+fn divisors_of(k: i64) -> Vec[i64] {
+    let mut divisors: Vec[i64] = Vec.new();
+    let mut d = 1;
+    while d * d <= k {
+        if k % d == 0 {
+            divisors.push(d);
+            if d * d != k {
+                divisors.push(k / d);
+            }
+        }
+        d += 1;
+    }
+    divisors
+}
+
+fn count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let divisors = divisors_of(k);
+    let mut multiples: Vec[i64] = Vec.filled(k + 1, 0);
+    let mut pairs = 0;
+    for x in nums.iter() {
+        pairs += multiples[k / gcd(x, k)];
+        for d in divisors.iter() {
+            if x % d == 0 {
+                multiples[d] += 1;
+            }
+        }
+    }
+    pairs
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn big_random(seed: mut ref i64) -> i64 {
+    let a = next_random(mut seed);
+    let b = next_random(mut seed);
+    a * 32768 + b
+}
+
+fn show(nums: Vec[i64], k: i64) {
+    println(f"{nums}, {k} -> {count_pairs(nums, k)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, three that
+    // pair only two by two, two whose product alone is a multiple, and
+    // the constraints' largest three times
+    show([1, 2, 3, 4, 5], 2);
+    show([1, 2, 3, 4], 5);
+    show([7], 1);
+    show([6, 10, 15], 30);
+    show([4, 9], 6);
+    show([100000, 100000, 100000], 100000);
+    // 2000 random lists of 1 to 30 numbers: of 1 to 20 with a k of 1 to
+    // 12, and of 1 to 10^5 with a k of 1 to 10^5, in turn
+    let mut seed = 2183;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        let mut k = 0;
+        if round % 2 == 0 {
+            k = next_random(mut seed) % 12 + 1;
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % 20 + 1);
+            }
+        } else {
+            k = big_random(mut seed) % 100000 + 1;
+            for _ in 0..n {
+                nums.push(big_random(mut seed) % 100000 + 1);
+            }
+        }
+        let found = count_pairs(nums, k);
+        total += found;
+        check = (check * 31 + found % 1000000007 + k) % 1000000007;
+    }
+    println(f"2000 lists: {total} pairs in all, checksum {check}");
+    // the constraints' largest, 10^5 numbers: all 10^5 with k 10^5, then
+    // at random with k 10^5, 83160 (128 divisors) and 99991 (a prime)
+    let same: Vec[i64] = Vec.filled(100000, 100000);
+    let mixed: Vec[i64] = (0..100000).map(|_| big_random(mut seed) % 100000 + 1).collect();
+    println(f"100000 numbers: {count_pairs(same, 100000)} {count_pairs(mixed, 100000)} {count_pairs(mixed, 83160)} {count_pairs(mixed, 99991)}");
+}

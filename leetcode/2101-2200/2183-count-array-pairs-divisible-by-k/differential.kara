@@ -1,0 +1,377 @@
+// LeetCode #2183: Count Array Pairs Divisible by K -- the differential.
+// The six arms, against the statement read literally: every pair of
+// indices i < j tried, and counted when the product of their numbers is
+// a multiple of k. No gcds and no divisors. 300 random lists of 1 to 10
+// numbers of 1 to 30, with a k of 1 to 30; then 30 with k a prime, 13,
+// 17, 19 or 23; then 30 with k 36 or 60, which have many divisors;
+// every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the list reversed: the same count
+// P3  a k of 1: every pair
+// P4  every number k more: the same count
+// P5  the count at least the pairs with a multiple of k in them, and at
+//     most every pair
+// P6  each arm agrees with at least three of the other five
+
+// ---- pairs_divisible.kara: the ★ arm, the numbers counted by gcd, gcds paired
+fn star_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn star_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let mut by_gcd: Vec[i64] = Vec.filled(k + 1, 0);
+    for x in nums.iter() {
+        by_gcd[star_gcd(x, k)] += 1;
+    }
+    // the divisors of k that some number has as its star_gcd, found in pairs
+    // d and k / d up to the square root
+    let mut divisors: Vec[i64] = Vec.new();
+    let mut d = 1;
+    while d * d <= k {
+        if k % d == 0 {
+            if by_gcd[d] > 0 {
+                divisors.push(d);
+            }
+            if d * d != k and by_gcd[k / d] > 0 {
+                divisors.push(k / d);
+            }
+        }
+        d += 1;
+    }
+    let mut pairs = 0;
+    for a in 0..divisors.len() {
+        for b in a..divisors.len() {
+            let g = divisors[a];
+            let h = divisors[b];
+            if g * h % k == 0 {
+                if a == b {
+                    pairs += by_gcd[g] * (by_gcd[g] - 1) / 2;
+                } else {
+                    pairs += by_gcd[g] * by_gcd[h];
+                }
+            }
+        }
+    }
+    pairs
+}
+
+// ---- pairs_divisible_running.kara: earlier multiples of k / gcd(x, k), by divisor
+fn running_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+// the divisors of k, found in pairs d and k / d up to the square root
+fn running_divisors_of(k: i64) -> Vec[i64] {
+    let mut divisors: Vec[i64] = Vec.new();
+    let mut d = 1;
+    while d * d <= k {
+        if k % d == 0 {
+            divisors.push(d);
+            if d * d != k {
+                divisors.push(k / d);
+            }
+        }
+        d += 1;
+    }
+    divisors
+}
+
+fn running_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let divisors = running_divisors_of(k);
+    let mut multiples: Vec[i64] = Vec.filled(k + 1, 0);
+    let mut pairs = 0;
+    for x in nums.iter() {
+        pairs += multiples[k / running_gcd(x, k)];
+        for d in divisors.iter() {
+            if x % d == 0 {
+                multiples[d] += 1;
+            }
+        }
+    }
+    pairs
+}
+
+// ---- pairs_divisible_multiples.kara: multiples of each divisor, both ways, halved
+fn multiples_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+// the divisors of k, found in pairs d and k / d up to the square root
+fn multiples_divisors_of(k: i64) -> Vec[i64] {
+    let mut divisors: Vec[i64] = Vec.new();
+    let mut d = 1;
+    while d * d <= k {
+        if k % d == 0 {
+            divisors.push(d);
+            if d * d != k {
+                divisors.push(k / d);
+            }
+        }
+        d += 1;
+    }
+    divisors
+}
+
+fn multiples_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let mut by_gcd: Vec[i64] = Vec.filled(k + 1, 0);
+    for x in nums.iter() {
+        by_gcd[multiples_gcd(x, k)] += 1;
+    }
+    let divisors = multiples_divisors_of(k);
+    let mut multiples: Vec[i64] = Vec.filled(k + 1, 0);
+    for d in divisors.iter() {
+        for e in divisors.iter() {
+            if e % d == 0 {
+                multiples[d] += by_gcd[e];
+            }
+        }
+    }
+    let mut both_ways = 0;
+    for x in nums.iter() {
+        both_ways += multiples[k / multiples_gcd(x, k)];
+        if x * x % k == 0 {
+            both_ways -= 1;
+        }
+    }
+    both_ways / 2
+}
+
+// ---- pairs_divisible_struct.kara: a `GcdTally` over a `SortedMap`
+fn struct_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+struct GcdTally {
+    k: i64,
+    counts: SortedMap[i64, i64],
+}
+
+impl GcdTally {
+    fn for_k(k: i64) -> GcdTally {
+        GcdTally { k: k, counts: SortedMap.new() }
+    }
+
+    fn add(mut ref self, x: i64) {
+        *self.counts.entry(struct_gcd(x, self.k)).or_insert(0) += 1;
+    }
+
+    fn pairs(ref self) -> i64 {
+        let mut pairs = 0;
+        for (g, cg) in self.counts.iter() {
+            for (h, ch) in self.counts.iter() {
+                if g <= h and g * h % self.k == 0 {
+                    pairs += if g == h { cg * (cg - 1) / 2 } else { cg * ch };
+                }
+            }
+        }
+        pairs
+    }
+}
+
+fn struct_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let mut tally = GcdTally.for_k(k);
+    for x in nums.iter() {
+        tally.add(x);
+    }
+    tally.pairs()
+}
+
+// ---- pairs_divisible_iter.kara: `fold`, `enumerate`, `skip`, `filter`, `sum`
+fn iter_gcd(a: i64, b: i64) -> i64 {
+    let mut a = a;
+    let mut b = b;
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn iter_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let counts: SortedMap[i64, i64] = nums.iter().fold(SortedMap.new(), |counts, x| {
+        let mut counts = counts;
+        *counts.entry(iter_gcd(x, k)).or_insert(0) += 1;
+        counts
+    });
+    let groups: Vec[(i64, i64)] = counts.into_iter().collect();
+    groups
+        .iter()
+        .enumerate()
+        .map(|(a, (g, cg))| {
+            groups
+                .iter()
+                .skip(a)
+                .filter(|(h, _)| g * h % k == 0)
+                .map(|(h, ch)| if h == g { cg * (cg - 1) / 2 } else { cg * ch })
+                .sum()
+        })
+        .sum()
+}
+
+// ---- pairs_divisible_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { solution_gcd(b, a % b) }
+}
+
+impl Solution {
+    pub fn count_pairs(nums: Vec[i32], k: i32) -> i64 {
+        let k = k as i64;
+        let mut cnt: Map[i64, i64] = Map.new();
+        for x in nums.iter() {
+            *cnt.entry(solution_gcd(x, k)).or_insert(0) += 1;
+        }
+        let mut ans: i64 = 0;
+        for (a, ca) in cnt.iter() {
+            for (b, cb) in cnt.iter() {
+                if a <= b and a * b % k == 0 {
+                    if a == b {
+                        ans += ca * (ca - 1) / 2;
+                    } else {
+                        ans += ca * cb;
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_count_pairs(nums: Vec[i64], k: i64) -> i64 {
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_pairs(v, k as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let mut pairs = 0;
+    for i in 0..nums.len() {
+        for j in (i + 1)..nums.len() {
+            if nums[i] * nums[j] % k == 0 {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_count_pairs(nums, k),
+        1 => running_count_pairs(nums, k),
+        2 => multiples_count_pairs(nums, k),
+        3 => struct_count_pairs(nums, k),
+        4 => iter_count_pairs(nums, k),
+        _ => solution_count_pairs(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "running", "multiples", "struct", "iter", "solution"];
+    let mut seed = 2183;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let x = next_random(mut seed);
+        let k = if t < 300 {
+            x % 30 + 1
+        } else if t < 330 {
+            [13, 17, 19, 23][x % 4]
+        } else {
+            [36, 60][x % 2]
+        };
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 30 + 1).collect();
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k) in cases.iter() {
+        let n = nums.len();
+        let truth = literal(nums, k);
+        check = (check * 31 + k * 7 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        let back: Vec[i64] = nums.iter().rev().collect();
+        let more: Vec[i64] = nums.iter().map(|x| x + k).collect();
+        let m = nums.iter().filter(|x| x % k == 0).count();
+        let every = n * (n - 1) / 2;
+        let least = m * (m - 1) / 2 + m * (n - m);
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                count == truth,
+                answer(arm, back, k) == count,
+                answer(arm, nums, 1) == every,
+                answer(arm, more, k) == count,
+                least <= count and count <= every,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, {k} arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
