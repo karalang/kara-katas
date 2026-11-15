@@ -67,10 +67,13 @@ sticks.into_iter().map(Reverse).collect();`, and `karac fix` renamed the
 type to `PriorityQueue[Reverse[i32]]` but, with no constructor to rewrite,
 kept the `Reverse`: Kāra's queue then pops the smallest `Reverse`, the
 longest stick, and the mended program, once its last error was finished
-by hand, answers 16 for `[2,4,3]`. That is kara B-2026-11-15-86, open; the arm is
-written with the constructor until it is fixed. On the way, `let Reverse
-{ value: a } = heap.pop().unwrap();` read `a` as moved after one use,
-because the binding took the field's declared type, the parameter `T`.
+by hand, answers 16 for `[2,4,3]`. That is kara B-2026-11-15-86, fixed
+at `ed156ca6d4`: the collected heap now goes to
+`PriorityQueue.max_first_from(..)` and `.map(Reverse)` gets a fix, so
+that form mends to 14 too. The arm keeps the constructor form. On the
+way, `let Reverse { value: a } = heap.pop().unwrap();` read `a` as moved
+after one use, because the binding took the field's declared type, the
+parameter `T`.
 That is kara B-2026-11-15-79, which kata 2208 found the same day, fixed
 at `ee3c8ec9c4`.
 
