@@ -1,0 +1,117 @@
+// LeetCode #2201: Count Artifacts That Can Be Extracted -- the ★ arm: the
+// dug cells put in a `Set`, each as one number r * n + c, and an artifact
+// counted when every cell of its rectangle is in the set. An artifact
+// covers at most 4 cells, so O(artifacts + dig).
+
+fn dig_artifacts(n: i64, artifacts: Vec[Array[i64, 4]], dig: Vec[Array[i64, 2]]) -> i64 {
+    let mut dug: Set[i64] = Set.new();
+    for d in dig.iter() {
+        dug.insert(d[0] * n + d[1]);
+    }
+    let mut count = 0;
+    for a in artifacts.iter() {
+        let mut whole = true;
+        for r in a[0]..=a[2] {
+            for c in a[1]..=a[3] {
+                if not dug.contains(r * n + c) {
+                    whole = false;
+                }
+            }
+        }
+        if whole {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// up to `tries` artifacts placed at random on an n by n grid, each one of
+// the eight shapes of at most 4 cells, dropped when it would overlap one
+// already placed; and `digs` distinct cells dug at random
+fn random_site(n: i64, tries: i64, digs: i64, seed: mut ref i64) -> (Vec[Array[i64, 4]], Vec[Array[i64, 2]]) {
+    let shapes = [(1, 1), (1, 2), (2, 1), (2, 2), (1, 3), (3, 1), (1, 4), (4, 1)];
+    let mut taken: Set[i64] = Set.new();
+    let mut artifacts: Vec[Array[i64, 4]] = Vec.new();
+    for _ in 0..tries {
+        let (h, w) = shapes[next_random(mut seed) % 8];
+        if h > n or w > n {
+            continue;
+        }
+        let r = wide_random(mut seed) % (n - h + 1);
+        let c = wide_random(mut seed) % (n - w + 1);
+        let mut free = true;
+        for i in r..(r + h) {
+            for j in c..(c + w) {
+                if taken.contains(i * n + j) {
+                    free = false;
+                }
+            }
+        }
+        if free {
+            for i in r..(r + h) {
+                for j in c..(c + w) {
+                    taken.insert(i * n + j);
+                }
+            }
+            artifacts.push([r, c, r + h - 1, c + w - 1]);
+        }
+    }
+    let mut dug: Set[i64] = Set.new();
+    let mut dig: Vec[Array[i64, 2]] = Vec.new();
+    while dig.len() < digs {
+        let cell = wide_random(mut seed) % (n * n);
+        if not dug.contains(cell) {
+            dug.insert(cell);
+            dig.push([cell / n, cell % n]);
+        }
+    }
+    (artifacts, dig)
+}
+
+fn show(n: i64, artifacts: Vec[Array[i64, 4]], dig: Vec[Array[i64, 2]]) {
+    println(f"n {n}, {artifacts}, dig {dig} -> {dig_artifacts(n, artifacts, dig)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a cell dug beside it, the
+    // one cell dug, a 2 by 2 missing one corner, and a 1 by 4 dug whole
+    show(2, [[0, 0, 0, 0], [0, 1, 1, 1]], [[0, 0], [0, 1]]);
+    show(2, [[0, 0, 0, 0], [0, 1, 1, 1]], [[0, 0], [0, 1], [1, 1]]);
+    show(3, [[0, 0, 1, 1]], [[2, 2]]);
+    show(1, [[0, 0, 0, 0]], [[0, 0]]);
+    show(3, [[1, 1, 2, 2]], [[1, 1], [1, 2], [2, 1]]);
+    show(4, [[3, 0, 3, 3], [0, 0, 1, 0]], [[3, 3], [3, 1], [3, 0], [3, 2], [1, 0]]);
+    // 2000 random sites on grids of 1 to 12, from 1 cell to half and one
+    // more dug
+    let mut seed = 2201;
+    let mut found = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let tries = next_random(mut seed) % 20 + 1;
+        let digs = next_random(mut seed) % (n * n / 2 + 1) + 1;
+        let (artifacts, dig) = random_site(n, tries, digs, mut seed);
+        if artifacts.len() == 0 {
+            continue;
+        }
+        let count = dig_artifacts(n, artifacts, dig);
+        found += count;
+        check = (check * 31 + count + artifacts.len()) % 1000000007;
+    }
+    println(f"2000 sites: {found} extracted, checksum {check}");
+    // the constraints' largest: n = 1000, up to 10^5 artifacts tried and
+    // 10^5 cells dug
+    let (artifacts, dig) = random_site(1000, 100000, 100000, mut seed);
+    println(f"n 1000: {artifacts.len()} artifacts, {dig.len()} dug, {dig_artifacts(1000, artifacts, dig)} extracted");
+}
