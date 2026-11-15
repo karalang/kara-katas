@@ -47,6 +47,12 @@ byte-identical.
 nums`, `|&x|` to `|x|`, `struct Solution;` to `struct Solution {}` and
 `Solution::` to `Solution.`; then the two `0i64` to `0`.
 
+The template loops `for a in 1..=100usize`, as Rust writes it, and adds
+and divides the counters. Until kara `B-2026-11-15-39` that passed the
+check and then stopped both backends with invalid MIR: the loop's
+counter took the unsuffixed start's `i64` while the checker had typed it
+`usize`. The fixed counter takes the suffixed end's type.
+
 The iter arm's closures each hand on an iterator over the values, so the
 arm binds `let held = ref values;` and the closures capture the view. A
 closure over the vector itself passes the check but takes the vector by
