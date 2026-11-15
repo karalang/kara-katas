@@ -1,0 +1,279 @@
+// LeetCode #2202: Maximize the Topmost Element After K Moves -- the
+// differential. The six arms, against the statement read literally: every
+// sequence of k moves played out, each a removal of the top or one of the
+// removed numbers put back, the piles each move can reach kept as a set,
+// and the largest top among those left after the last. 300 random piles of
+// 1 to 6 numbers up to 9, 20 and 10^9 in turn, k from 0 to 9; then 30 of
+// a single number; then 30 with k from 10^8 to 10^9. Every case is drawn
+// before any arm answers.
+//
+// P1  the top is the statement read literally
+// P2  it is one of the pile's numbers, or -1 only for a single number and
+//     an odd k
+// P3  k two more: a top at least as large
+// P4  every number past index k changed: the same top
+// P5  every number one more: the top one more, or -1 still
+// P6  each arm agrees with at least three of the other five
+
+// ---- top.kara: the ★ arm, the first k - 1 and the number at index k
+fn star_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    if n == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let mut best = -1;
+    for i in 0..(k - 1).min(n) {
+        best = best.max(nums[i]);
+    }
+    if k < n {
+        best = best.max(nums[k]);
+    }
+    best
+}
+
+// ---- top_prefix.kara: the running maxima
+fn prefix_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    if n == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let mut highest: Vec[i64] = Vec.new();
+    let mut run = -1;
+    for x in nums.iter() {
+        run = run.max(x);
+        highest.push(run);
+    }
+    let reach = (k - 1).min(n);
+    let put_back = if reach > 0 { highest[reach - 1] } else { -1 };
+    let exposed = if k < n { nums[k] } else { -1 };
+    put_back.max(exposed)
+}
+
+// ---- top_struct.kara: a `Pile` asked which index can be on top
+struct Pile {
+    nums: Vec[i64],
+    moves: i64,
+}
+
+impl Pile {
+    // the number at index i is on top after exactly `moves` when it is left
+    // exposed by i removals and nothing more, or when it is put back last
+    // after i + 1 removals, with any moves left spent taking another number
+    // off and putting it back; a lone number has no other to spend them on
+    fn can_top(self, i: i64) -> bool {
+        if self.nums.len() == 1 {
+            return self.moves % 2 == 0;
+        }
+        i == self.moves or i + 2 <= self.moves
+    }
+
+    fn best_top(self) -> i64 {
+        let mut best = -1;
+        for i in 0..self.nums.len() {
+            if self.can_top(i) and self.nums[i] > best {
+                best = self.nums[i];
+            }
+        }
+        best
+    }
+}
+
+fn struct_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    Pile { nums: nums.clone(), moves: k }.best_top()
+}
+
+// ---- top_iter.kara: `take`, `chain`, `skip`, `max`
+fn iter_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    if nums.len() == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let put_back = if k > 1 { k - 1 } else { 0 };
+    nums.iter()
+        .take(put_back)
+        .chain(nums.iter().skip(k).take(1))
+        .max()
+        .unwrap_or(-1)
+}
+
+// ---- top_rank.kara: the indices sorted by their numbers
+fn rank_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    if n == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let mut order: Vec[i64] = (0..n).collect();
+    order.sort_by(|a, b| nums[b].cmp(nums[a]));
+    for i in order.iter() {
+        if i == k or i + 2 <= k {
+            return nums[i];
+        }
+    }
+    -1
+}
+
+// ---- top_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_top(nums: Vec[i32], k: i32) -> i32 {
+        let n = nums.len();
+        let k = k as i64;
+        if n == 1 {
+            return if k % 2 == 1 { -1 } else { nums[0] };
+        }
+        let mut best: i32 = -1;
+        for i in 0..n.min(k.saturating_sub(1)) {
+            best = best.max(nums[i]);
+        }
+        if k < n {
+            best = best.max(nums[k]);
+        }
+        best
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.maximum_top(narrow, k as i32)
+}
+
+// ---- the statement read literally
+
+// the piles reachable after each move, each with the numbers in hand, as
+// one text key per pile and hand so that a pile reached two ways is kept
+// once; a long k is cut to the first k past n + 1 of the same parity,
+// from which every pile reachable once is reachable again two moves on
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    let moves = if k <= n + 1 { k } else if (k - n) % 2 == 0 { n + 2 } else { n + 3 };
+    let mut level: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    level.push((nums.clone(), Vec.new()));
+    for _ in 0..moves {
+        let mut seen: Set[String] = Set.new();
+        let mut next: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+        for (pile, hand) in level.iter() {
+            if pile.len() > 0 {
+                let mut p = pile.clone();
+                let top = p.remove(0);
+                let mut h = hand.clone();
+                h.push(top);
+                h.sort();
+                let key = f"{p}|{h}";
+                if not seen.contains(key) {
+                    seen.insert(key);
+                    next.push((p, h));
+                }
+            }
+            for j in 0..hand.len() {
+                let mut p = pile.clone();
+                p.insert(0, hand[j]);
+                let mut h = hand.clone();
+                h.remove(j);
+                let key = f"{p}|{h}";
+                if not seen.contains(key) {
+                    seen.insert(key);
+                    next.push((p, h));
+                }
+            }
+        }
+        level = next;
+    }
+    let mut best = -1;
+    for (pile, _) in level.iter() {
+        if pile.len() > 0 and pile[0] > best {
+            best = pile[0];
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_top(nums, k),
+        1 => prefix_maximum_top(nums, k),
+        2 => struct_maximum_top(nums, k),
+        3 => iter_maximum_top(nums, k),
+        4 => rank_maximum_top(nums, k),
+        _ => solution_maximum_top(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "prefix", "struct", "iter", "rank", "solution"];
+    let mut seed = 2202;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c >= 300 and c < 330 { 1 } else { next_random(mut seed) % 6 + 1 };
+        let top = [9, 20, 1000000000][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(wide_random(mut seed) % (top + 1));
+        }
+        let k = if c < 330 { next_random(mut seed) % 10 } else { wide_random(mut seed) % 900000001 + 100000000 };
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k) in cases.iter() {
+        let truth = literal(nums, k);
+        check = (check * 31 + truth + 1 + k % 1000) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        let mut beyond = nums.clone();
+        for i in 0..beyond.len() {
+            if i > k {
+                beyond[i] = (beyond[i] + 1) % 1000000001;
+            }
+        }
+        let raised: Vec[i64] = nums.iter().map(|x| x + 1).collect();
+        for arm in 0..6 {
+            let top = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == top {
+                    same += 1;
+                }
+            }
+            let up = answer(arm, raised, k);
+            let verdicts = [
+                top == truth,
+                if top == -1 { nums.len() == 1 and k % 2 == 1 } else { nums.contains(top) },
+                answer(arm, nums, k + 2) >= top,
+                answer(arm, beyond, k) == top,
+                if top == -1 { up == -1 } else { up == top + 1 },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, k {k} arm {names[arm]}: P{q + 1} fails, answered {top}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

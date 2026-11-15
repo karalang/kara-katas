@@ -1,0 +1,76 @@
+// LeetCode #2202: Maximize the Topmost Element After K Moves -- the ★ arm:
+// the top after exactly k moves is either a number taken off and put back
+// last, which needs it and everything above it removed and one move to
+// put it back, so any of the first k - 1; or the number left exposed by k
+// removals, the one at index k. A single number alternates between the
+// pile and the hand, so it is on top only after an even k. O(min(n, k)).
+
+fn maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    if n == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let mut best = -1;
+    for i in 0..(k - 1).min(n) {
+        best = best.max(nums[i]);
+    }
+    if k < n {
+        best = best.max(nums[k]);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(nums: Vec[i64], k: i64) {
+    println(f"{nums}, k {k} -> {maximum_top(nums, k)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one number after two moves,
+    // the second number after one, every number removed but the largest
+    // last, no move at all, and k far past the pile
+    show([5, 2, 2, 4, 0, 6], 4);
+    show([2], 1);
+    show([7], 2);
+    show([1, 9], 1);
+    show([3, 1, 8], 3);
+    show([4, 6, 1, 9], 0);
+    show([2, 5], 1000000000);
+    // 3000 random piles of 1 to 12 numbers up to 20, k from 0 to 15
+    let mut seed = 2202;
+    let mut empty = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % 21);
+        }
+        let k = next_random(mut seed) % 16;
+        let top = maximum_top(nums, k);
+        if top < 0 {
+            empty += 1;
+        }
+        check = (check * 31 + top + 1) % 1000000007;
+    }
+    println(f"3000 piles: {empty} empty, checksum {check}");
+    // the constraints' largest: 10^5 numbers up to 10^9, k at 0, 1, the
+    // middle, n - 1, n, n + 1 and 10^9
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        nums.push(wide_random(mut seed) % 1000000001);
+    }
+    for k in [0, 1, 50000, 99999, 100000, 100001, 1000000000] {
+        println(f"n 100000, k {k} -> {maximum_top(nums, k)}");
+    }
+}

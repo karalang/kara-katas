@@ -1,0 +1,53 @@
+// benchmark's Kāra version of top.kara (LeetCode #2202, the ★ arm): the
+// first k - 1 numbers and the one at index k.
+
+fn maximum_top(nums: Vec[i64], k: i64) -> i64 {
+    let n = nums.len();
+    if n == 1 {
+        return if k % 2 == 1 { -1 } else { nums[0] };
+    }
+    let mut best = -1;
+    for i in 0..(k - 1).min(n) {
+        best = best.max(nums[i]);
+    }
+    if k < n {
+        best = best.max(nums[k]);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2202;
+    let mut piles: Vec[Vec[i64]] = Vec.new();
+    let mut ks: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..10 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(wide_random(mut seed) % 1000000001);
+        }
+        piles.push(nums);
+        let mut k: Vec[i64] = Vec.new();
+        for _ in 0..10 {
+            k.push(wide_random(mut seed) % 100002);
+        }
+        ks.push(k);
+    }
+    let mut check = 0;
+    for _ in 0..50 {
+        for p in 0..10 {
+            for k in ks[p].iter() {
+                check = (check * 31 + maximum_top(piles[p], k) + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"50 passes over 10 piles: checksum {check}");
+}
