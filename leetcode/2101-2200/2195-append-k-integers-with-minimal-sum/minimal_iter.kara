@@ -1,0 +1,84 @@
+// LeetCode #2195: Append K Integers With Minimal Sum -- the distinct
+// numbers sorted with 0 put in front, their `windows(2)` the gaps between
+// them, `scan`ned with the count still wanted as the state, each gap
+// handing on what it takes as an arithmetic series, and `sum`med; what is
+// still wanted after the largest number runs on past it. O(n log n).
+
+fn minimal_k_sum(nums: Vec[i64], k: i64) -> i64 {
+    let mut bounds: Vec[i64] = once(0).chain(nums.iter().cloned()).collect();
+    bounds.sort();
+    bounds.dedup();
+    let top = bounds[bounds.len() - 1];
+    let taken: Vec[(i64, i64)] = bounds
+        .windows(2)
+        .into_iter()
+        .scan(k, |wanted, w| {
+            let gap = w[1] - w[0] - 1;
+            let take = if gap < wanted { gap } else { wanted };
+            Some((wanted - take, (take, (w[0] + 1 + w[0] + take) * take / 2)))
+        })
+        .collect();
+    let used: i64 = taken.iter().map(|(t, _)| t).sum();
+    let inside: i64 = taken.iter().map(|(_, s)| s).sum();
+    let rest = k - used;
+    inside + (top + 1 + top + rest) * rest / 2
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn big_random(seed: mut ref i64) -> i64 {
+    let a = next_random(mut seed);
+    let b = next_random(mut seed);
+    a * 32768 + b
+}
+
+fn show(nums: Vec[i64], k: i64) {
+    println(f"{nums}, {k} -> {minimal_k_sum(nums, k)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, the numbers
+    // 1 to 5 already there, repeats, and the constraints' largest
+    show([1, 4, 25, 10, 25].to_vec(), 2);
+    show([5, 6].to_vec(), 6);
+    show([1].to_vec(), 1);
+    show([3, 1, 2, 5, 4].to_vec(), 3);
+    show([2, 2, 2, 7, 7].to_vec(), 4);
+    show([1000000000].to_vec(), 100000000);
+    // 3000 random cases of 1 to 30 numbers below 10, 100 and 10^9 in
+    // turn, with k from 1 to 50, 1000 and 10^8
+    let mut seed = 2195;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let top = [10, 100, 1000000000][round % 3];
+        let reach = [50, 1000, 100000000][(round / 3) % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(big_random(mut seed) % top + 1);
+        }
+        let k = big_random(mut seed) % reach + 1;
+        check = (check * 31 + minimal_k_sum(nums, k) % 1000000007) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+    // the constraints' longest, 10^5 numbers below 10^9 and k = 10^8;
+    // and 10^5 numbers 1 to 10^5 shuffled, k = 1
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        wide.push(big_random(mut seed) % 1000000000 + 1);
+    }
+    let mut full: Vec[i64] = Vec.new();
+    for i in 0..100000 {
+        full.push(i + 1);
+    }
+    for i in (1..100000).rev() {
+        let j = big_random(mut seed) % (i + 1);
+        full.swap(i, j);
+    }
+    println(f"10^5 numbers: {minimal_k_sum(wide, 100000000)} {minimal_k_sum(full, 1)}");
+}
