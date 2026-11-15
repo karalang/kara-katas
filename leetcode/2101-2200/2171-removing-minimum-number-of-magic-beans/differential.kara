@@ -1,0 +1,256 @@
+// LeetCode #2171: Removing Minimum Number of Magic Beans -- the
+// differential. The six arms, against the statement read literally: every
+// level from 0 to the largest bag, each bag below it emptied and each at
+// or above it cut down to it, and the beans taken counted; the least
+// count. No sort and no running best. 300 random rows of 1 to 12 bags of
+// up to 2, 10 or 1000 beans in turn; then 30 rows of equal bags but one;
+// then 30 of bags that all differ; every one drawn before any arm answers.
+//
+// P1  the removal is the statement read literally
+// P2  the bags turned by one place: the same removal
+// P3  every bag three times as full: three times the removal
+// P4  a bag added as full as the largest: the removal no less, and less
+//     than the largest more
+// P5  the removal at most the total less the largest, and at most the
+//     total less the smallest times the bags
+// P6  each arm agrees with at least three of the other five
+
+// ---- beans.kara: the ★ arm, sorted, each bag tried as the smallest left
+fn star_minimum_removal(beans: Vec[i64]) -> i64 {
+    let mut sorted = beans.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut total = 0;
+    let mut kept = 0;
+    for i in 0..n {
+        total += sorted[i];
+        kept = kept.max(sorted[i] * (n - i));
+    }
+    total - kept
+}
+
+// ---- beans_count.kara: the sizes counted in a `SortedMap` and walked up
+fn count_minimum_removal(beans: Vec[i64]) -> i64 {
+    let mut sizes: SortedMap[i64, i64] = SortedMap.new();
+    let mut total = 0;
+    for b in beans.iter() {
+        *sizes.entry(b).or_insert(0) += 1;
+        total += b;
+    }
+    let mut left = beans.len();
+    let mut kept = 0;
+    for (size, count) in sizes.iter() {
+        kept = kept.max(size * left);
+        left -= count;
+    }
+    total - kept
+}
+
+// ---- beans_prefix.kara: the removal itself, from prefix sums
+fn prefix_minimum_removal(beans: Vec[i64]) -> i64 {
+    let mut sorted = beans.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + sorted[i];
+    }
+    let mut best = i64.MAX;
+    for i in 0..n {
+        let emptied = prefix[i];
+        let trimmed = prefix[n] - prefix[i] - sorted[i] * (n - i);
+        best = best.min(emptied + trimmed);
+    }
+    best
+}
+
+// ---- beans_struct.kara: a `Row` that `keeps` and has a `removal`
+struct Row {
+    bags: Vec[i64],
+    total: i64,
+}
+
+impl Row {
+    fn from(bags: own Vec[i64]) -> Row {
+        let mut bags = bags;
+        bags.sort();
+        let total = bags.iter().sum();
+        Row { bags, total }
+    }
+
+    fn keeps(self, i: i64) -> i64 {
+        self.bags[i] * (self.bags.len() - i)
+    }
+
+    fn removal(self) -> i64 {
+        let mut most = 0;
+        for i in 0..self.bags.len() {
+            most = most.max(self.keeps(i));
+        }
+        self.total - most
+    }
+}
+
+fn struct_minimum_removal(beans: Vec[i64]) -> i64 {
+    Row.from(beans.clone()).removal()
+}
+
+// ---- beans_iter.kara: `enumerate`, `map`, `max` and `sum`
+fn iter_minimum_removal(beans: Vec[i64]) -> i64 {
+    let mut sorted = beans.clone();
+    sorted.sort();
+    let n = sorted.len();
+    let total: i64 = sorted.iter().sum();
+    let kept = sorted.iter().enumerate().map(|(i, b)| b * (n - i)).max().unwrap();
+    total - kept
+}
+
+// ---- beans_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_removal(beans: own Vec[i32]) -> i64 {
+        let mut beans = beans;
+        beans.sort();
+        let n = beans.len();
+        let total: i64 = beans.iter().map(|b| b as i64).sum();
+        let mut best = 0;
+        for (i, b) in beans.iter().enumerate() {
+            best = best.max(b as i64 * (n - i));
+        }
+        total - best
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_removal(beans: Vec[i64]) -> i64 {
+    Solution.minimum_removal(beans.iter().map(|b| b as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+fn literal(beans: Vec[i64]) -> i64 {
+    let mut largest = 0;
+    for b in beans.iter() {
+        largest = largest.max(b);
+    }
+    let mut best = i64.MAX;
+    for level in 0..=largest {
+        let mut taken = 0;
+        for b in beans.iter() {
+            taken += if b < level { b } else { b - level };
+        }
+        best = best.min(taken);
+    }
+    best
+}
+
+fn answer(arm: i64, beans: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_removal(beans),
+        1 => count_minimum_removal(beans),
+        2 => prefix_minimum_removal(beans),
+        3 => struct_minimum_removal(beans),
+        4 => iter_minimum_removal(beans),
+        _ => solution_minimum_removal(beans),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "count", "prefix", "struct", "iter", "solution"];
+    let mut seed = 2171;
+    let mut rows: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let length = next_random(mut seed) % 12 + 1;
+        let mut beans: Vec[i64] = Vec.new();
+        if t < 300 {
+            let top = [2, 10, 1000][t % 3];
+            for _ in 0..length {
+                beans.push(next_random(mut seed) % top + 1);
+            }
+        } else if t < 330 {
+            let size = next_random(mut seed) % 50 + 1;
+            for _ in 0..length {
+                beans.push(size);
+            }
+            beans[next_random(mut seed) % length] = next_random(mut seed) % 100 + 1;
+        } else {
+            let mut size = 0;
+            for _ in 0..length {
+                size += next_random(mut seed) % 20 + 1;
+                beans.push(size);
+            }
+            if next_random(mut seed) % 2 == 0 {
+                beans.reverse();
+            }
+        }
+        rows.push(beans);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for beans in rows.iter() {
+        let truth = literal(beans);
+        check = (check * 31 + truth) % 1000000007;
+        let n = beans.len();
+        let mut total = 0;
+        let mut largest = 0;
+        let mut smallest = i64.MAX;
+        for b in beans.iter() {
+            total += b;
+            largest = largest.max(b);
+            smallest = smallest.min(b);
+        }
+        let mut turned: Vec[i64] = beans.iter().skip(1).collect();
+        turned.push(beans[0]);
+        let tripled: Vec[i64] = beans.iter().map(|b| 3 * b).collect();
+        let mut added = beans.clone();
+        added.push(largest);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, beans)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, added);
+            let verdicts = [
+                x == truth,
+                answer(arm, turned) == x,
+                answer(arm, tripled) == 3 * x,
+                more >= x and more < x + largest,
+                x >= 0 and x <= total - largest and x <= total - smallest * n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{beans} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{rows.len()} rows: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
