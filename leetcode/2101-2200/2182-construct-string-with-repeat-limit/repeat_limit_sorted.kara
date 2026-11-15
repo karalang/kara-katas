@@ -1,0 +1,97 @@
+// LeetCode #2182: Construct String With Repeat Limit -- by sorting: the
+// letters sorted from largest to smallest, then walked with a count of
+// the run so far; a letter that would run past the limit is swapped with
+// the first smaller letter further on, found by a second index that only
+// moves forward. The string ends where no smaller letter is left. O(n log
+// n).
+
+fn repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut letters: Vec[u8] = s.bytes().to_vec();
+    letters.sort();
+    letters.reverse();
+    let n = letters.len();
+    let mut run = 0;
+    let mut j = 0;
+    let mut i = 0;
+    while i < n {
+        if i > 0 and letters[i] == letters[i - 1] {
+            run += 1;
+        } else {
+            run = 1;
+        }
+        if run > repeat_limit {
+            if j <= i {
+                j = i + 1;
+            }
+            while j < n and letters[j] == letters[i] {
+                j += 1;
+            }
+            if j == n {
+                break;
+            }
+            letters.swap(i, j);
+            run = 1;
+        }
+        i += 1;
+    }
+    letters.truncate(i);
+    String.from_utf8(letters).unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn checksum(t: String) -> i64 {
+    t.bytes().iter().fold(0, |check, b| (check * 31 + b as i64) % 1000000007)
+}
+
+fn random_letters(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one letter, one letter
+    // past its limit, a limit of one with no repeats, two letters taking
+    // turns, and the largest letter run out with the next one left over
+    let examples = [("cczazcc", 3), ("aababab", 2), ("a", 1), ("zzzz", 1), ("abc", 1), ("zzzzyyyy", 2), ("bbbbba", 2)];
+    for (s, k) in examples.iter() {
+        println(f"\"{s}\", {k} -> \"{repeat_limited_string(s.to_string(), k)}\"");
+    }
+    // 2000 random strings of 1 to 30 letters, from a to c or a to z in
+    // turn, with a limit of 1 to 5
+    let mut seed = 2182;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let letters = [3, 26][round % 2];
+        let k = next_random(mut seed) % 5 + 1;
+        let s = random_letters(n, letters, mut seed);
+        let t = repeat_limited_string(s, k);
+        total += t.len();
+        check = (check * 31 + checksum(t) + k) % 1000000007;
+    }
+    println(f"2000 strings: {total} letters kept, checksum {check}");
+    // the constraints' largest, 10^5 letters: at random with a limit of
+    // 1, then all z but one a, with limits from 1 to the length
+    let s = random_letters(100000, 26, mut seed);
+    let t = repeat_limited_string(s, 1);
+    println(f"100000 random letters, limit 1: {t.len()} kept, checksum {checksum(t)}");
+    let mut s = String.new();
+    for _ in 0..99999 {
+        s.push('z');
+    }
+    s.push('a');
+    for k in [1, 50000, 100000] {
+        let t = repeat_limited_string(s, k);
+        println(f"99999 z and one a, limit {k}: {t.len()} kept, checksum {checksum(t)}");
+    }
+}

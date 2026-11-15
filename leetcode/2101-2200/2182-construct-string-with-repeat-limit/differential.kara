@@ -1,0 +1,408 @@
+// LeetCode #2182: Construct String With Repeat Limit -- the
+// differential. The six arms, against the statement read literally:
+// every string that can be made from some of the letters, no letter
+// more than the limit times in a row, built letter by letter by a
+// recursion, and the largest of them all kept. No counting down from
+// the largest letter and no greedy step. 300 random strings of 1 to 6
+// letters from a to c or a to e, with a limit of 1 to 3; then 30 of one
+// letter; then 30 with a limit of 6; every one drawn before any arm
+// answers.
+//
+// P1  the string is the statement read literally
+// P2  the letters reversed: the same string
+// P3  a limit of the length: every letter, largest first
+// P4  every letter 21 later in the alphabet, a to e made v to z: the
+//     string 21 later too
+// P5  the string uses no more of a letter than there is, runs no letter
+//     past the limit, and starts with the largest letter
+// P6  each arm agrees with at least three of the other five
+
+// ---- repeat_limit.kara: the ★ arm, the largest letter up to the limit, the next between
+fn star_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        counts[b - 97] += 1;
+    }
+    let mut out = String.new();
+    let mut big = 25;
+    loop {
+        while big >= 0 and counts[big] == 0 {
+            big -= 1;
+        }
+        if big < 0 {
+            break;
+        }
+        let take = counts[big].min(repeat_limit);
+        for _ in 0..take {
+            out.push((97 + big) as u8 as char);
+        }
+        counts[big] -= take;
+        if counts[big] == 0 {
+            continue;
+        }
+        let mut small = big - 1;
+        while small >= 0 and counts[small] == 0 {
+            small -= 1;
+        }
+        if small < 0 {
+            break;
+        }
+        out.push((97 + small) as u8 as char);
+        counts[small] -= 1;
+    }
+    out
+}
+
+// ---- repeat_limit_heap.kara: letters and counts in a `PriorityQueue.max_first()`
+fn heap_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        counts[b - 97] += 1;
+    }
+    let mut heap: PriorityQueue[(i64, i64)] = PriorityQueue.max_first();
+    for letter in 0..26 {
+        if counts[letter] > 0 {
+            heap.push((letter, counts[letter]));
+        }
+    }
+    let mut out = String.new();
+    while let Some((big, left)) = heap.pop() {
+        let take = left.min(repeat_limit);
+        for _ in 0..take {
+            out.push((97 + big) as u8 as char);
+        }
+        if left == take {
+            continue;
+        }
+        let Some((small, others)) = heap.pop() else {
+            break;
+        };
+        out.push((97 + small) as u8 as char);
+        if others > 1 {
+            heap.push((small, others - 1));
+        }
+        heap.push((big, left - take));
+    }
+    out
+}
+
+// ---- repeat_limit_sorted.kara: sorted largest first, a run past the limit swapped
+fn sorted_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut letters: Vec[u8] = s.bytes().to_vec();
+    letters.sort();
+    letters.reverse();
+    let n = letters.len();
+    let mut run = 0;
+    let mut j = 0;
+    let mut i = 0;
+    while i < n {
+        if i > 0 and letters[i] == letters[i - 1] {
+            run += 1;
+        } else {
+            run = 1;
+        }
+        if run > repeat_limit {
+            if j <= i {
+                j = i + 1;
+            }
+            while j < n and letters[j] == letters[i] {
+                j += 1;
+            }
+            if j == n {
+                break;
+            }
+            letters.swap(i, j);
+            run = 1;
+        }
+        i += 1;
+    }
+    letters.truncate(i);
+    String.from_utf8(letters).unwrap()
+}
+
+// ---- repeat_limit_struct.kara: a `Tally` that finds the largest below a letter
+struct Tally {
+    counts: Vec[i64],
+}
+
+impl Tally {
+    fn of(s: String) -> Tally {
+        let mut counts: Vec[i64] = Vec.filled(26, 0);
+        for b in s.bytes() {
+            counts[b - 97] += 1;
+        }
+        Tally { counts: counts }
+    }
+
+    fn largest_below(ref self, top: i64) -> Option[i64] {
+        let mut letter = top - 1;
+        while letter >= 0 {
+            if self.counts[letter] > 0 {
+                return Some(letter);
+            }
+            letter -= 1;
+        }
+        None
+    }
+
+    fn take(mut ref self, letter: i64, most: i64) -> i64 {
+        let took = self.counts[letter].min(most);
+        self.counts[letter] -= took;
+        took
+    }
+}
+
+fn struct_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut tally = Tally.of(s);
+    let mut out = String.new();
+    let mut top = 26;
+    while let Some(big) = tally.largest_below(top) {
+        let took = tally.take(big, repeat_limit);
+        for _ in 0..took {
+            out.push((97 + big) as u8 as char);
+        }
+        if tally.counts[big] == 0 {
+            top = big;
+            continue;
+        }
+        let Some(small) = tally.largest_below(big) else {
+            break;
+        };
+        tally.take(small, 1);
+        out.push((97 + small) as u8 as char);
+        top = big + 1;
+    }
+    out
+}
+
+// ---- repeat_limit_iter.kara: `fold`, `rev`, `find`, a run `collect`ed
+fn iter_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    let mut counts: Vec[i64] = s.bytes().iter().fold(Vec.filled(26, 0), |counts, b| {
+        let mut counts = counts;
+        counts[b - 97] += 1;
+        counts
+    });
+    let mut out = String.new();
+    while let Some(big) = (0..26).rev().find(|c| counts[c] > 0) {
+        let take = counts[big].min(repeat_limit);
+        let letter = (97 + big) as u8 as char;
+        let run: String = (0..take).map(|_| letter).collect();
+        out.push_str(run);
+        counts[big] -= take;
+        if counts[big] == 0 {
+            continue;
+        }
+        let Some(small) = (0..big).rev().find(|c| counts[c] > 0) else {
+            break;
+        };
+        out.push((97 + small) as u8 as char);
+        counts[small] -= 1;
+    }
+    out
+}
+
+// ---- repeat_limit_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn repeat_limited_string(s: String, repeat_limit: i32) -> String {
+        let mut cnt = [0usize; 26];
+        for b in s.bytes() {
+            cnt[(b - b'a') as usize] += 1;
+        }
+        let limit = repeat_limit as usize;
+        let mut ans: Vec[u8] = Vec.new();
+        let mut i = 25i32;
+        let mut j = 24i32;
+        loop {
+            while i >= 0 and cnt[i as usize] == 0 {
+                i -= 1;
+            }
+            if i < 0 {
+                break;
+            }
+            let take = cnt[i as usize].min(limit);
+            for _ in 0..take {
+                ans.push(b'a' + i as u8);
+            }
+            cnt[i as usize] -= take;
+            if cnt[i as usize] == 0 {
+                continue;
+            }
+            if j >= i {
+                j = i - 1;
+            }
+            while j >= 0 and cnt[j as usize] == 0 {
+                j -= 1;
+            }
+            if j < 0 {
+                break;
+            }
+            ans.push(b'a' + j as u8);
+            cnt[j as usize] -= 1;
+        }
+        String.from_utf8(ans).unwrap()
+    }
+}
+
+struct Solution {}
+
+fn solution_repeat_limited_string(s: String, repeat_limit: i64) -> String {
+    Solution.repeat_limited_string(s, repeat_limit as i32)
+}
+
+
+// ---- the statement read literally
+
+// The largest string that can follow, with `counts` of each letter left,
+// the last letter written and how long its run is.
+fn literal_from(counts: mut ref Vec[i64], last: i64, run: i64, limit: i64) -> String {
+    let mut best = String.new();
+    for c in 0..26 {
+        if counts[c] == 0 or (c == last and run == limit) {
+            continue;
+        }
+        counts[c] -= 1;
+        let rest = literal_from(mut counts, c, if c == last { run + 1 } else { 1 }, limit);
+        counts[c] += 1;
+        let mut candidate = String.new();
+        candidate.push((97 + c) as u8 as char);
+        candidate.push_str(rest);
+        if candidate > best {
+            best = candidate;
+        }
+    }
+    best
+}
+
+fn literal(s: String, limit: i64) -> String {
+    let mut counts: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        counts[b - 97] += 1;
+    }
+    literal_from(mut counts, -1, 0, limit)
+}
+
+fn answer(arm: i64, s: String, limit: i64) -> String {
+    match arm {
+        0 => star_repeat_limited_string(s, limit),
+        1 => heap_repeat_limited_string(s, limit),
+        2 => sorted_repeat_limited_string(s, limit),
+        3 => struct_repeat_limited_string(s, limit),
+        4 => iter_repeat_limited_string(s, limit),
+        _ => solution_repeat_limited_string(s, limit),
+    }
+}
+
+fn valid(t: String, s: String, limit: i64) -> bool {
+    let mut left: Vec[i64] = Vec.filled(26, 0);
+    let mut largest: u8 = 0;
+    for b in s.bytes() {
+        left[b - 97] += 1;
+        largest = largest.max(b);
+    }
+    let bytes = t.bytes();
+    if bytes.len() == 0 or bytes[0] != largest {
+        return false;
+    }
+    let mut run = 0;
+    for i in 0..bytes.len() {
+        left[bytes[i] - 97] -= 1;
+        if left[bytes[i] - 97] < 0 {
+            return false;
+        }
+        run = if i > 0 and bytes[i] == bytes[i - 1] { run + 1 } else { 1 };
+        if run > limit {
+            return false;
+        }
+    }
+    true
+}
+
+fn shifted(s: String) -> String {
+    let mut out = String.new();
+    for b in s.bytes() {
+        out.push((b + 21) as char);
+    }
+    out
+}
+
+fn largest_first(s: String) -> String {
+    let mut letters: Vec[u8] = s.bytes().to_vec();
+    letters.sort();
+    letters.reverse();
+    String.from_utf8(letters).unwrap()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "heap", "sorted", "struct", "iter", "solution"];
+    let mut seed = 2182;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 6 + 1;
+        let letters = if t < 300 { [3, 5][t % 2] } else if t < 330 { 1 } else { 5 };
+        let limit = if t < 330 { next_random(mut seed) % 3 + 1 } else { 6 };
+        let mut s = String.new();
+        let first = next_random(mut seed) % 5;
+        for _ in 0..n {
+            let letter = if letters == 1 { first } else { next_random(mut seed) % letters };
+            s.push((97 + letter) as u8 as char);
+        }
+        cases.push((s, limit));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, limit) in cases.iter() {
+        let truth = literal(s, limit);
+        for b in truth.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+        check = (check * 31 + limit) % 1000000007;
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, s, limit)).collect();
+        let back: String = s.chars().rev().collect();
+        let all = largest_first(s);
+        for arm in 0..6 {
+            let t = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == t {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                t == truth,
+                answer(arm, back, limit) == t,
+                answer(arm, s, s.len()) == all,
+                answer(arm, shifted(s), limit) == shifted(t),
+                valid(t, s, limit),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\", {limit} arm {names[arm]}: P{q + 1} fails, answered \"{t}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
