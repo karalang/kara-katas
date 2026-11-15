@@ -1,0 +1,336 @@
+// LeetCode #2172: Maximum AND Sum of Array -- the differential. The six
+// arms, against the statement read literally: every way to give each
+// number a slot with room left, tried by recursion, and the most any
+// gives. No fill in base 3 and no masks. 300 random cases of 1 to 4
+// slots and 1 to twice the slots numbers, at most 7, of 1 to 15, 1 to 3
+// or 8 to 15 in turn; then 30 with every slot full; then 30 of powers of
+// two; every one drawn before any arm answers.
+//
+// P1  the sum is the statement read literally
+// P2  the numbers reversed: the same sum
+// P3  one slot more: the sum no less
+// P4  every number 16 more: the same sum
+// P5  the sum at least the best one number gives alone, and at most what
+//     each number gives in its own best slot, added up
+// P6  each arm agrees with at least three of the other five
+
+// ---- and_sum.kara: the ★ arm, the fill in base 3 pushed forward
+fn star_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let mut powers: Vec[i64] = Vec.new();
+    let mut p = 1;
+    for _ in 0..num_slots {
+        powers.push(p);
+        p *= 3;
+    }
+    let mut best: Vec[i64] = Vec.filled(p, -1);
+    best[0] = 0;
+    let mut answer = 0;
+    for fill in 0..p {
+        if best[fill] < 0 {
+            continue;
+        }
+        let mut placed = 0;
+        let mut rest = fill;
+        while rest > 0 {
+            placed += rest % 3;
+            rest /= 3;
+        }
+        if placed == nums.len() {
+            answer = answer.max(best[fill]);
+            continue;
+        }
+        for slot in 0..num_slots {
+            if fill / powers[slot] % 3 < 2 {
+                let next = fill + powers[slot];
+                let sum = best[fill] + (nums[placed] & (slot + 1));
+                if sum > best[next] {
+                    best[next] = sum;
+                }
+            }
+        }
+    }
+    answer
+}
+
+// ---- and_sum_pairs.kara: two places a slot, a mask pulled from one place fewer
+fn pairs_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let places = 2 * num_slots;
+    let size = 1 << places;
+    let mut best: Vec[i64] = Vec.filled(size, 0);
+    let mut answer = 0;
+    for mask in 1..size {
+        let placed = mask.count_ones();
+        if placed > nums.len() {
+            continue;
+        }
+        let number = nums[placed - 1];
+        for place in 0..places {
+            if mask & (1 << place) != 0 {
+                let sum = best[mask ^ (1 << place)] + (number & (place / 2 + 1));
+                if sum > best[mask] {
+                    best[mask] = sum;
+                }
+            }
+        }
+        if placed == nums.len() {
+            answer = answer.max(best[mask]);
+        }
+    }
+    answer
+}
+
+// ---- and_sum_memo.kara: top down over the fill, with a memo
+fn memo_rest_best(nums: Vec[i64], powers: Vec[i64], fill: i64, placed: i64, memo: mut ref Vec[i64]) -> i64 {
+    if placed == nums.len() {
+        return 0;
+    }
+    if memo[fill] >= 0 {
+        return memo[fill];
+    }
+    let mut best = 0;
+    for slot in 0..powers.len() {
+        if fill / powers[slot] % 3 < 2 {
+            let sum = (nums[placed] & (slot + 1)) + memo_rest_best(nums, powers, fill + powers[slot], placed + 1, mut memo);
+            best = best.max(sum);
+        }
+    }
+    memo[fill] = best;
+    best
+}
+
+fn memo_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let powers: Vec[i64] = (0..num_slots).map(|k| 3.pow(k as u32)).collect();
+    let mut memo: Vec[i64] = Vec.filled(3.pow(num_slots as u32), -1);
+    memo_rest_best(nums, powers, 0, 0, mut memo)
+}
+
+// ---- and_sum_struct.kara: a `Ternary` that reads a fill's digits
+struct Ternary {
+    powers: Vec[i64],
+}
+
+impl Ternary {
+    fn of(slots: i64) -> Ternary {
+        let mut powers: Vec[i64] = Vec.new();
+        let mut p = 1;
+        for _ in 0..slots {
+            powers.push(p);
+            p *= 3;
+        }
+        Ternary { powers }
+    }
+
+    fn size(ref self) -> i64 {
+        let last = self.powers.len() - 1;
+        self.powers[last] * 3
+    }
+
+    fn digit(ref self, fill: i64, slot: i64) -> i64 {
+        fill / self.powers[slot] % 3
+    }
+
+    fn has_room(ref self, fill: i64, slot: i64) -> bool {
+        self.digit(fill, slot) < 2
+    }
+
+    fn placed(ref self, fill: i64) -> i64 {
+        let mut total = 0;
+        for slot in 0..self.powers.len() {
+            total += self.digit(fill, slot);
+        }
+        total
+    }
+}
+
+fn struct_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let fills = Ternary.of(num_slots);
+    let mut best: Vec[i64] = Vec.filled(fills.size(), -1);
+    best[0] = 0;
+    let mut answer = 0;
+    for fill in 0..fills.size() {
+        if best[fill] < 0 {
+            continue;
+        }
+        let placed = fills.placed(fill);
+        if placed == nums.len() {
+            answer = answer.max(best[fill]);
+            continue;
+        }
+        for slot in 0..num_slots {
+            if fills.has_room(fill, slot) {
+                let next = fill + fills.powers[slot];
+                best[next] = best[next].max(best[fill] + (nums[placed] & (slot + 1)));
+            }
+        }
+    }
+    answer
+}
+
+// ---- and_sum_iter.kara: pulled by `filter`, `map` and `max`
+fn iter_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let powers: Vec[i64] = (0..num_slots).map(|k| 3.pow(k as u32)).collect();
+    let size = 3.pow(num_slots as u32);
+    let mut best: Vec[i64] = Vec.filled(size, 0);
+    let mut placed: Vec[i64] = Vec.filled(size, 0);
+    for fill in 1..size {
+        let digits: Vec[i64] = powers.iter().map(|p| fill / p % 3).collect();
+        placed[fill] = digits.iter().sum();
+        if placed[fill] > nums.len() {
+            continue;
+        }
+        let number = nums[placed[fill] - 1];
+        best[fill] = (0..num_slots)
+            .filter(|s| digits[s] > 0)
+            .map(|s| best[fill - powers[s]] + (number & (s + 1)))
+            .max()
+            .unwrap();
+    }
+    (0..size).filter(|f| placed[f] == nums.len()).map(|f| best[f]).max().unwrap()
+}
+
+// ---- and_sum_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_and_sum(nums: Vec[i32], num_slots: i32) -> i32 {
+        let n = nums.len();
+        let m = (num_slots * 2) as i64;
+        let mut dp = Vec.filled(1 << m, 0i32);
+        let mut ans: i32 = 0;
+        for mask in 0..(1 << m) {
+            let c = mask.count_ones();
+            if c >= n {
+                ans = ans.max(dp[mask]);
+                continue;
+            }
+            for j in 0..m {
+                if mask & (1 << j) == 0 {
+                    let next = mask | (1 << j);
+                    dp[next] = dp[next].max(dp[mask] + (nums[c] & (j / 2 + 1) as i32));
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    Solution.maximum_and_sum(nums.iter().map(|x| x as i32).collect(), num_slots as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal_from(nums: Vec[i64], next: i64, room: mut ref Vec[i64]) -> i64 {
+    if next == nums.len() {
+        return 0;
+    }
+    let mut best = -1;
+    for slot in 0..room.len() {
+        if room[slot] > 0 {
+            room[slot] -= 1;
+            let sum = (nums[next] & (slot + 1)) + literal_from(nums, next + 1, mut room);
+            room[slot] += 1;
+            best = best.max(sum);
+        }
+    }
+    best
+}
+
+fn literal(nums: Vec[i64], num_slots: i64) -> i64 {
+    let mut room: Vec[i64] = Vec.filled(num_slots, 2);
+    literal_from(nums, 0, mut room)
+}
+
+fn answer(arm: i64, nums: Vec[i64], num_slots: i64) -> i64 {
+    match arm {
+        0 => star_maximum_and_sum(nums, num_slots),
+        1 => pairs_maximum_and_sum(nums, num_slots),
+        2 => memo_maximum_and_sum(nums, num_slots),
+        3 => struct_maximum_and_sum(nums, num_slots),
+        4 => iter_maximum_and_sum(nums, num_slots),
+        _ => solution_maximum_and_sum(nums, num_slots),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "pairs", "memo", "struct", "iter", "solution"];
+    let mut seed = 2172;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let num_slots = next_random(mut seed) % 4 + 1;
+        let n = if t >= 300 and t < 330 { 2 * num_slots } else { (next_random(mut seed) % (2 * num_slots) + 1).min(7) };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed);
+            nums.push(if t >= 330 {
+                1 << (x % 4)
+            } else if t >= 300 or t % 3 == 0 {
+                x % 15 + 1
+            } else if t % 3 == 1 {
+                x % 3 + 1
+            } else {
+                x % 8 + 8
+            });
+        }
+        cases.push((nums, num_slots));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, num_slots) in cases.iter() {
+        let truth = literal(nums, num_slots);
+        check = (check * 31 + truth + nums.len()) % 1000000007;
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let raised: Vec[i64] = nums.iter().map(|x| x + 16).collect();
+        let alone: Vec[i64] = nums.iter().map(|x| (1..(num_slots + 1)).map(|s| x & s).max().unwrap()).collect();
+        let lowest = alone.iter().max().unwrap();
+        let highest: i64 = alone.iter().sum();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, num_slots)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed, num_slots) == x,
+                answer(arm, nums, num_slots + 1) >= x,
+                answer(arm, raised, num_slots) == x,
+                lowest <= x and x <= highest,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, {num_slots} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

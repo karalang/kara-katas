@@ -1,0 +1,76 @@
+// LeetCode #2172: Maximum AND Sum of Array -- each slot split into two
+// places, so a fill is a bit mask over twice the slots, and its
+// `count_ones` the numbers placed; each mask's best is pulled from the
+// masks with one place fewer, the last number in that place. O(4^slots *
+// slots).
+
+fn maximum_and_sum(nums: Vec[i64], num_slots: i64) -> i64 {
+    let places = 2 * num_slots;
+    let size = 1 << places;
+    let mut best: Vec[i64] = Vec.filled(size, 0);
+    let mut answer = 0;
+    for mask in 1..size {
+        let placed = mask.count_ones();
+        if placed > nums.len() {
+            continue;
+        }
+        let number = nums[placed - 1];
+        for place in 0..places {
+            if mask & (1 << place) != 0 {
+                let sum = best[mask ^ (1 << place)] + (number & (place / 2 + 1));
+                if sum > best[mask] {
+                    best[mask] = sum;
+                }
+            }
+        }
+        if placed == nums.len() {
+            answer = answer.max(best[mask]);
+        }
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64], num_slots: i64) {
+    println(f"{nums}, {num_slots} -> {maximum_and_sum(nums, num_slots)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number in one slot, two
+    // numbers sharing one slot, eighteen 15s in nine slots, and the slot
+    // numbers themselves
+    show([1, 2, 3, 4, 5, 6], 3);
+    show([1, 3, 10, 4, 7, 1], 9);
+    show([5], 1);
+    show([1, 3], 1);
+    show(Vec.filled(18, 15), 9);
+    show([1, 2, 3, 4, 5, 6, 7, 8, 9], 9);
+    // 2000 random cases of 1 to 6 slots, each holding 1 to twice the slots
+    // numbers of 1 to 15
+    let mut seed = 2172;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let num_slots = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % (2 * num_slots) + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 15 + 1).collect();
+        let best = maximum_and_sum(nums, num_slots);
+        total += best;
+        check = (check * 31 + best + n) % 1000000007;
+    }
+    println(f"2000 cases: {total} in all, checksum {check}");
+    // the constraints' largest: nine slots and eighteen numbers at random,
+    // three times
+    let mut largest: Vec[i64] = Vec.new();
+    for _ in 0..3 {
+        let nums: Vec[i64] = (0..18).map(|_| next_random(mut seed) % 15 + 1).collect();
+        largest.push(maximum_and_sum(nums, 9));
+    }
+    println(f"9 slots, 18 numbers: {largest}");
+}

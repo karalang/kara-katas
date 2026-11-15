@@ -1,0 +1,60 @@
+// LeetCode #2172: Maximum AND Sum of Array -- the benchmark's ★ arm: the
+// slots' fill in base 3, each fill's best pushed forward, over a window
+// of eighteen numbers in nine slots.
+
+fn maximum_and_sum(nums: Slice[i64], num_slots: i64) -> i64 {
+    let mut powers: Vec[i64] = Vec.new();
+    let mut p = 1;
+    for _ in 0..num_slots {
+        powers.push(p);
+        p *= 3;
+    }
+    let mut best: Vec[i64] = Vec.filled(p, -1);
+    best[0] = 0;
+    let mut answer = 0;
+    for fill in 0..p {
+        if best[fill] < 0 {
+            continue;
+        }
+        let mut placed = 0;
+        let mut rest = fill;
+        while rest > 0 {
+            placed += rest % 3;
+            rest /= 3;
+        }
+        if placed == nums.len() {
+            answer = answer.max(best[fill]);
+            continue;
+        }
+        for slot in 0..num_slots {
+            if fill / powers[slot] % 3 < 2 {
+                let next = fill + powers[slot];
+                let sum = best[fill] + (nums[placed] & (slot + 1));
+                if sum > best[next] {
+                    best[next] = sum;
+                }
+            }
+        }
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2172;
+    let mut row: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        row.push(next_random(mut seed) % 15 + 1);
+    }
+    let mut check = 0;
+    for _ in 0..200 {
+        let start = next_random(mut seed) % 99983;
+        let best = maximum_and_sum(row[start..(start + 18)], 9);
+        check = (check * 31 + best) % 1000000007;
+    }
+    println(f"200 solves: checksum {check}");
+}
