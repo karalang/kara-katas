@@ -1,0 +1,301 @@
+// LeetCode #2164: Sort Even and Odd Indices Independently -- the
+// differential. The six arms, against the statement read literally: two
+// numbers two places apart swapped whenever they are out of the parity's
+// order, rising on the even places and falling on the odd, until a pass
+// swaps none; no sort, no list taken out. 300 random lists of 1 to 12
+// numbers from 1 to 3, 10 or 100 in turn; then 30 of one or two numbers;
+// then 30 already in the other order, even places falling and odd places
+// rising; every one drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every number doubled, when none is over 50: the answer doubled
+// P3  the numbers at even places put in reverse among themselves: the same
+//     answer
+// P4  every number x made 101 - x: each parity of the answer made so and
+//     its order reversed
+// P5  the answer sorted again: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- parity.kara: the ★ arm, `step_by(2)`, sorted, woven back by place
+fn star_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    let mut even: Vec[i64] = nums.iter().step_by(2).collect();
+    let mut odd: Vec[i64] = nums.iter().skip(1).step_by(2).collect();
+    even.sort();
+    odd.sort_by(|a, b| b.cmp(a));
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..nums.len() {
+        if i % 2 == 0 {
+            out.push(even[i / 2]);
+        } else {
+            out.push(odd[i / 2]);
+        }
+    }
+    out
+}
+
+// ---- parity_count.kara: a counting sort for each parity
+fn count_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    let mut counts = [[0; 101], [0; 101]];
+    for i in 0..nums.len() {
+        counts[i % 2][nums[i]] += 1;
+    }
+    let mut out = nums.clone();
+    let mut value = 0;
+    let mut at = 0;
+    while at < nums.len() {
+        while counts[0][value] == 0 {
+            value += 1;
+        }
+        out[at] = value;
+        counts[0][value] -= 1;
+        at += 2;
+    }
+    let mut value = 100;
+    let mut at = 1;
+    while at < nums.len() {
+        while counts[1][value] == 0 {
+            value -= 1;
+        }
+        out[at] = value;
+        counts[1][value] -= 1;
+        at += 2;
+    }
+    out
+}
+
+// ---- parity_insertion.kara: an insertion sort in place, two places apart
+fn insertion_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    let mut out = nums.clone();
+    for start in 0..2 {
+        let mut i = start + 2;
+        while i < out.len() {
+            let x = out[i];
+            let mut j = i;
+            while j >= 2 and (if start == 0 { out[j - 2] > x } else { out[j - 2] < x }) {
+                out[j] = out[j - 2];
+                j -= 2;
+            }
+            out[j] = x;
+            i += 2;
+        }
+    }
+    out
+}
+
+// ---- parity_struct.kara: a `Deal` that deals, arranges and weaves two hands
+struct Deal {
+    even: VecDeque[i64],
+    odd: VecDeque[i64],
+}
+
+impl Deal {
+    fn deal(nums: own Vec[i64]) -> Deal {
+        let mut even: Vec[i64] = Vec.new();
+        let mut odd: Vec[i64] = Vec.new();
+        for (i, x) in nums.into_iter().enumerate() {
+            if i % 2 == 0 {
+                even.push(x);
+            } else {
+                odd.push(x);
+            }
+        }
+        Deal { even: even.into_iter().collect(), odd: odd.into_iter().collect() }
+    }
+
+    fn arrange(mut ref self) {
+        let mut even: Vec[i64] = mem.take(mut self.even).into_iter().collect();
+        let mut odd: Vec[i64] = mem.take(mut self.odd).into_iter().collect();
+        even.sort();
+        odd.sort();
+        odd.reverse();
+        self.even = even.into_iter().collect();
+        self.odd = odd.into_iter().collect();
+    }
+
+    fn weave(own self) -> Vec[i64] {
+        let mut deal = self;
+        let mut out: Vec[i64] = Vec.new();
+        loop {
+            match deal.even.pop_front() {
+                Some(x) => out.push(x),
+                None => break,
+            }
+            match deal.odd.pop_front() {
+                Some(x) => out.push(x),
+                None => break,
+            }
+        }
+        out
+    }
+}
+
+fn deal_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    let mut deal = Deal.deal(nums.clone());
+    deal.arrange();
+    deal.weave()
+}
+
+// ---- parity_iter.kara: `filter_map`, `zip`, `flat_map` and `chain`
+fn iter_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    let mut even: Vec[i64] = nums.iter().enumerate().filter_map(|(i, x)| if i % 2 == 0 { Some(x) } else { None }).collect();
+    let mut odd: Vec[i64] = nums.iter().enumerate().filter_map(|(i, x)| if i % 2 == 1 { Some(x) } else { None }).collect();
+    even.sort();
+    odd.sort_by_key(|x| -x);
+    let tail: Vec[i64] = even.iter().skip(odd.len()).collect();
+    even.iter()
+        .zip(odd.iter())
+        .flat_map(|(a, b)| [a, b].to_vec().into_iter())
+        .chain(tail.into_iter())
+        .collect()
+}
+
+// ---- parity_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn sort_even_odd(nums: own Vec[i32]) -> Vec[i32] {
+        let mut nums = nums;
+        let mut even: Vec[i32] = nums.iter().step_by(2).cloned().collect();
+        let mut odd: Vec[i32] = nums.iter().skip(1).step_by(2).cloned().collect();
+        even.sort();
+        odd.sort_by(|a, b| b.cmp(a));
+        for (i, x) in nums.iter_mut().enumerate() {
+            *x = if i % 2 == 0 { even[i / 2] } else { odd[i / 2] };
+        }
+        nums
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_sort_even_odd(nums: Vec[i64]) -> Vec[i64] {
+    SolutionSolution.sort_even_odd(nums.iter().map(|x| x as i32).collect()).iter().map(|x| x as i64).collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let mut out = nums.clone();
+    let mut swapped = true;
+    while swapped {
+        swapped = false;
+        for i in 2..out.len() {
+            let wrong = if i % 2 == 0 { out[i - 2] > out[i] } else { out[i - 2] < out[i] };
+            if wrong {
+                out.swap(i - 2, i);
+                swapped = true;
+            }
+        }
+    }
+    out
+}
+
+// each parity's numbers turned to 101 less themselves and put in reverse
+// among its own places
+fn turned(out: Vec[i64]) -> Vec[i64] {
+    let len = out.len();
+    let mut back = out.clone();
+    for i in 0..len {
+        // the last place of i's parity, less as far again as i is in
+        let last = if (len - 1) % 2 == i % 2 { len - 1 } else { len - 2 };
+        back[i] = 101 - out[last - i + i % 2];
+    }
+    back
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_sort_even_odd(nums),
+        1 => count_sort_even_odd(nums),
+        2 => insertion_sort_even_odd(nums),
+        3 => deal_sort_even_odd(nums),
+        4 => iter_sort_even_odd(nums),
+        _ => solution_sort_even_odd(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "count", "insertion", "deal", "iter", "solution"];
+    let mut seed = 2164;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let len = if t >= 300 and t < 330 { next_random(mut seed) % 2 + 1 } else { next_random(mut seed) % 12 + 1 };
+        let most = [3, 10, 100][t % 3];
+        let mut nums: Vec[i64] = (0..len).map(|_| next_random(mut seed) % most + 1).collect();
+        if t >= 330 {
+            let mut swapped = true;
+            while swapped {
+                swapped = false;
+                for i in 2..nums.len() {
+                    if (i % 2 == 0 and nums[i - 2] < nums[i]) or (i % 2 == 1 and nums[i - 2] > nums[i]) {
+                        nums.swap(i - 2, i);
+                        swapped = true;
+                    }
+                }
+            }
+        }
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let truth = literal(nums);
+        for x in truth.iter() {
+            check = (check * 31 + x) % 1000000007;
+        }
+        let doubled: Vec[i64] = nums.iter().map(|x| 2 * x).collect();
+        let small = nums.iter().all(|x| x <= 50);
+        let mut shuffled = nums.clone();
+        let evens = (nums.len() + 1) / 2;
+        for k in 0..evens / 2 {
+            shuffled.swap(2 * k, 2 * (evens - 1 - k));
+        }
+        let flipped: Vec[i64] = nums.iter().map(|x| 101 - x).collect();
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let twice: Vec[i64] = x.iter().map(|v| 2 * v).collect();
+            let verdicts = [
+                x == truth,
+                not small or answer(arm, doubled) == twice,
+                answer(arm, shuffled) == x,
+                answer(arm, flipped) == turned(x),
+                answer(arm, x) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
