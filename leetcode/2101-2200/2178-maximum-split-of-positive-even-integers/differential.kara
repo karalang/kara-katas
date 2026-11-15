@@ -1,0 +1,275 @@
+// LeetCode #2178: Maximum Split of Positive Even Integers -- the
+// differential. The six arms, against the statement read literally: a
+// table over every sum of the most distinct positive evens that make
+// it, each even from 2 up offered once; the most for the sum. No greedy
+// walk and no rest put on a last part. 300 random sums of 1 to 200; then
+// 30 that are exactly 2 + 4 + ... + 2k; then 30 just short of one; every
+// one drawn before any arm answers.
+//
+// P1  the number of parts is the statement read literally
+// P2  the sum 2(k + 1) more, for k parts: exactly one part more
+// P3  the sum 2 more: no fewer parts
+// P4  the sum doubled: no fewer parts
+// P5  the parts are distinct positive evens that make the sum, and there
+//     are none only for an odd sum
+// P6  each arm agrees with at least three of the other five
+
+// ---- split.kara: the ★ arm, 2, 4, 6, ... and the rest on the last
+fn star_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    let mut parts: Vec[i64] = Vec.new();
+    if final_sum % 2 != 0 {
+        return parts;
+    }
+    let mut left = final_sum;
+    let mut next = 2;
+    while left >= next {
+        parts.push(next);
+        left -= next;
+        next += 2;
+    }
+    let last = parts.len() - 1;
+    parts[last] += left;
+    parts
+}
+
+// ---- split_formula.kara: the most parts k from k(k + 1), by binary search
+fn formula_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    if final_sum % 2 != 0 {
+        return Vec.new();
+    }
+    let mut low = 1;
+    let mut high = 200000;
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        if mid * (mid + 1) <= final_sum {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    let k = low;
+    let mut parts: Vec[i64] = (1..(k + 1)).map(|i| 2 * i).collect();
+    parts[k - 1] += final_sum - k * (k + 1);
+    parts
+}
+
+// ---- split_rec.kara: a recursion that pushes a part or the rest
+fn rec_split_from(left: i64, smallest: i64, parts: mut ref Vec[i64]) {
+    if left - smallest >= smallest + 2 {
+        parts.push(smallest);
+        rec_split_from(left - smallest, smallest + 2, mut parts);
+    } else {
+        parts.push(left);
+    }
+}
+
+fn rec_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    let mut parts: Vec[i64] = Vec.new();
+    if final_sum % 2 == 0 {
+        rec_split_from(final_sum, 2, mut parts);
+    }
+    parts
+}
+
+// ---- split_struct.kara: a `Split` that takes the next even while it can
+struct Split {
+    parts: Vec[i64],
+    left: i64,
+}
+
+impl Split {
+    fn of(final_sum: i64) -> Split {
+        Split { parts: Vec.new(), left: final_sum }
+    }
+
+    fn next(ref self) -> i64 {
+        2 * (self.parts.len() + 1)
+    }
+
+    fn can_take(ref self) -> bool {
+        self.left >= self.next()
+    }
+
+    fn take(mut ref self) {
+        let part = self.next();
+        self.parts.push(part);
+        self.left -= part;
+    }
+
+    fn finish(own self) -> Vec[i64] {
+        let mut parts = self.parts;
+        let last = parts.len() - 1;
+        parts[last] += self.left;
+        parts
+    }
+}
+
+fn struct_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    if final_sum % 2 != 0 {
+        return Vec.new();
+    }
+    let mut split = Split.of(final_sum);
+    while split.can_take() {
+        split.take();
+    }
+    split.finish()
+}
+
+// ---- split_iter.kara: `scan`, `take_while` and `collect`
+fn iter_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    if final_sum % 2 != 0 {
+        return Vec.new();
+    }
+    let mut parts: Vec[i64] = (1..)
+        .map(|i| 2 * i)
+        .scan(0, |total, p| Some((total + p, (p, total + p))))
+        .take_while(|(_, total)| total <= final_sum)
+        .map(|(p, _)| p)
+        .collect();
+    let used: i64 = parts.iter().sum();
+    let last = parts.len() - 1;
+    parts[last] += final_sum - used;
+    parts
+}
+
+// ---- split_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_even_split(final_sum: i64) -> Vec[i64] {
+        if final_sum % 2 == 1 {
+            return Vec.new();
+        }
+        let mut res = Vec.new();
+        let mut rest = final_sum;
+        let mut cur = 2;
+        while rest >= cur {
+            res.push(cur);
+            rest -= cur;
+            cur += 2;
+        }
+        res[res.len() - 1] += rest;
+        res
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_even_split(final_sum: i64) -> Vec[i64] {
+    Solution.maximum_even_split(final_sum)
+}
+
+
+// ---- the statement read literally
+
+fn literal(final_sum: i64) -> i64 {
+    let mut most: Vec[i64] = Vec.filled(final_sum + 1, -1);
+    most[0] = 0;
+    let mut even = 2;
+    while even <= final_sum {
+        let mut s = final_sum;
+        while s >= even {
+            if most[s - even] >= 0 and most[s - even] + 1 > most[s] {
+                most[s] = most[s - even] + 1;
+            }
+            s -= 1;
+        }
+        even += 2;
+    }
+    most[final_sum].max(0)
+}
+
+fn answer(arm: i64, final_sum: i64) -> Vec[i64] {
+    match arm {
+        0 => star_maximum_even_split(final_sum),
+        1 => formula_maximum_even_split(final_sum),
+        2 => rec_maximum_even_split(final_sum),
+        3 => struct_maximum_even_split(final_sum),
+        4 => iter_maximum_even_split(final_sum),
+        _ => solution_maximum_even_split(final_sum),
+    }
+}
+
+fn valid(parts: Vec[i64], final_sum: i64) -> bool {
+    if parts.len() == 0 {
+        return final_sum % 2 != 0;
+    }
+    let mut sorted = parts.clone();
+    sorted.sort();
+    for i in 0..sorted.len() {
+        if sorted[i] <= 0 or sorted[i] % 2 != 0 or (i > 0 and sorted[i] == sorted[i - 1]) {
+            return false;
+        }
+    }
+    let total: i64 = sorted.iter().sum();
+    total == final_sum
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "formula", "rec", "struct", "iter", "solution"];
+    let mut seed = 2178;
+    let mut cases: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let x = next_random(mut seed);
+        let k = x % 13 + 1;
+        cases.push(if t < 300 {
+            x % 200 + 1
+        } else if t < 330 {
+            k * (k + 1)
+        } else {
+            k * (k + 1) + 2 * k
+        });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for final_sum in cases.iter() {
+        let truth = literal(final_sum);
+        check = (check * 31 + final_sum * 7 + truth) % 1000000007;
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, final_sum)).collect();
+        for arm in 0..6 {
+            let parts = got[arm].clone();
+            let k = parts.len();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == parts {
+                    same += 1;
+                }
+            }
+            let p2 = final_sum % 2 != 0 or answer(arm, final_sum + 2 * (k + 1)).len() == k + 1;
+            let verdicts = [
+                k == truth,
+                p2,
+                answer(arm, final_sum + 2).len() >= k,
+                answer(arm, 2 * final_sum).len() >= k,
+                valid(parts, final_sum),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{final_sum} arm {names[arm]}: P{q + 1} fails, answered {parts}, literal {truth} parts");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} sums: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

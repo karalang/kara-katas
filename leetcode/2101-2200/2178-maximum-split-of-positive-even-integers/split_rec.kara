@@ -1,0 +1,74 @@
+// LeetCode #2178: Maximum Split of Positive Even Integers -- by
+// recursion: the split of what is left from a smallest part on takes
+// that part when the rest can still hold a larger one, and is otherwise
+// the rest alone, the last part; each call pushes its part onto the
+// list it is handed (`mut ref`). O(sqrt(finalSum)) calls.
+
+fn split_from(left: i64, smallest: i64, parts: mut ref Vec[i64]) {
+    if left - smallest >= smallest + 2 {
+        parts.push(smallest);
+        split_from(left - smallest, smallest + 2, mut parts);
+    } else {
+        parts.push(left);
+    }
+}
+
+fn maximum_even_split(final_sum: i64) -> Vec[i64] {
+    let mut parts: Vec[i64] = Vec.new();
+    if final_sum % 2 == 0 {
+        split_from(final_sum, 2, mut parts);
+    }
+    parts
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(final_sum: i64) {
+    println(f"{final_sum} -> {maximum_even_split(final_sum)}");
+}
+
+fn fold(check: i64, parts: Vec[i64]) -> i64 {
+    let mut check = (check * 31 + parts.len()) % 1000000007;
+    for p in parts.iter() {
+        check = (check * 31 + p % 1000000007) % 1000000007;
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: 2, 4, 1, and 38, which
+    // leaves 8 after 2 to 10, too little for a 12
+    show(12);
+    show(7);
+    show(28);
+    show(2);
+    show(4);
+    show(1);
+    show(38);
+    // 2000 random sums of up to 100, 10^4 or 10^6 in turn, about half of
+    // them even
+    let mut seed = 2178;
+    let mut parts_in_all = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let top = [100, 10000, 1000000][round % 3];
+        let a = next_random(mut seed);
+        let b = next_random(mut seed);
+        let final_sum = (a * 32768 + b) % top + 1;
+        let parts = maximum_even_split(final_sum);
+        parts_in_all += parts.len();
+        check = fold(check, parts);
+    }
+    println(f"2000 sums: {parts_in_all} parts in all, checksum {check}");
+    // the constraints' largest: 10^10 and the even sum just under it
+    for final_sum in [10000000000, 9999999998] {
+        let parts = maximum_even_split(final_sum);
+        let last = parts[parts.len() - 1];
+        println(f"{final_sum}: {parts.len()} parts, the last {last}, checksum {fold(0, parts)}");
+    }
+}
