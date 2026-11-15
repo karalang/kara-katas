@@ -1,0 +1,79 @@
+// LeetCode #2168: Unique Substrings With Equal Digit Frequency -- for
+// each start, the digits after it by `scan`, its state the count of each
+// digit, giving for every end whether the substring is even; the even
+// ones `filter`ed, `map`ped to their text and gathered from every start
+// by `flat_map` into a `SortedSet[String]`. O(n^2) substrings.
+
+fn even_ends(s: Str, i: i64) -> Vec[i64] {
+    s[i..]
+        .bytes()
+        .iter()
+        .scan([0; 10], |counts, b| {
+            let mut counts = counts;
+            counts[b - b'0'] += 1;
+            let kinds = counts.iter().filter(|c| c > 0).count();
+            let most = counts.iter().max().unwrap();
+            let length = counts.iter().sum();
+            Some((counts, most * kinds == length))
+        })
+        .enumerate()
+        .filter(|(_, even)| even)
+        .map(|(k, _)| i + k + 1)
+        .collect()
+}
+
+fn equal_digit_frequency(s: Str) -> i64 {
+    let found: SortedSet[String] = (0..s.len())
+        .flat_map(|i| even_ends(s, i).into_iter().map(|j| s[i..j].to_string()))
+        .collect();
+    found.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(s: Str) {
+    println(f"\"{s}\" -> {equal_digit_frequency(s)}");
+}
+
+fn digits(length: i64, top: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    for _ in 0..length {
+        s.push_str(f"{next_random(mut seed) % top}");
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one digit, one digit
+    // repeated, every digit once, and two digits taking turns
+    show("1212");
+    show("12321");
+    show("7");
+    show("44444");
+    show("0123456789");
+    show("909090");
+    // 2000 random strings of 1 to 20 digits from 0 to 1, 0 to 2 or 0 to 9
+    // in turn
+    let mut seed = 2168;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let length = next_random(mut seed) % 20 + 1;
+        let s = digits(length, [2, 3, 10][round % 3], mut seed);
+        let u = equal_digit_frequency(s);
+        total += u;
+        check = (check * 31 + u) % 1000000007;
+    }
+    println(f"2000 strings: {total} in all, checksum {check}");
+    // the constraints' largest: 1000 digits at random from 0 to 9 and from
+    // 0 to 1, and the ten digits a hundred times over
+    let wide = digits(1000, 10, mut seed);
+    let narrow = digits(1000, 2, mut seed);
+    let cycle = "0123456789".repeat(100);
+    println(f"1000 digits: {equal_digit_frequency(wide)} {equal_digit_frequency(narrow)} {equal_digit_frequency(cycle)}");
+}
