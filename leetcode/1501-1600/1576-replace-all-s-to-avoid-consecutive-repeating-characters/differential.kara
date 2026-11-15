@@ -1,0 +1,237 @@
+// LeetCode #1576: Replace All ?'s to Avoid Consecutive Repeating
+// Characters -- the differential.
+//
+// Four arms against the statement read literally, on 3000 strings of 1 to
+// 7 characters, each a '?' or a letter from 'a' to 'd' that differs from
+// the letter before it, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally: of every valid filling,
+//     the first in dictionary order
+// P2  no two neighbours of the answer are equal
+// P3  every char that was not a '?' is unchanged, and the length too
+// P4  the answer given back as the input comes back unchanged
+// P5  every '?' became one of 'a', 'b', 'c'
+// P6  each arm agrees with at least two of the other three
+
+// ---- replace.kara: the ★ arm: the first of a, b, c that fits, in a Vec[char]
+
+fn star_arm(s: String) -> String {
+    let mut cs: Vec[char] = s.chars().collect();
+    let n = cs.len();
+    for i in 0..n {
+        if cs[i] == '?' {
+            for c in ['a', 'b', 'c'] {
+                if (i == 0 or cs[i - 1] != c) and (i + 1 == n or cs[i + 1] != c) {
+                    cs[i] = c;
+                    break;
+                }
+            }
+        }
+    }
+    cs.iter().collect()
+}
+
+// ---- replace_peek.kara: one pass over a peekable walk, building the answer
+
+fn peek_arm(s: String) -> String {
+    let mut out = String.new();
+    let mut last = ' ';
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let next = chars.peek().cloned().unwrap_or(' ');
+        let pick = if c != '?' {
+            c
+        } else if last != 'a' and next != 'a' {
+            'a'
+        } else if last != 'b' and next != 'b' {
+            'b'
+        } else {
+            'c'
+        };
+        out.push(pick);
+        last = pick;
+    }
+    out
+}
+
+// ---- replace_bytes.kara: over the bytes, the first byte from b'a' up that fits
+
+fn bytes_arm(s: String) -> String {
+    let mut b = s.bytes().to_vec();
+    let n = b.len();
+    for i in 0..n {
+        if b[i] == b'?' {
+            let mut c = b'a';
+            while (i > 0 and b[i - 1] == c) or (i + 1 < n and b[i + 1] == c) {
+                c += 1;
+            }
+            b[i] = c;
+        }
+    }
+    String.from_utf8(b).unwrap()
+}
+
+// ---- replace_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn modify_string(s: String) -> String {
+        let mut b = s.bytes().to_vec();
+        let n = b.len();
+        for i in 0..n {
+            if b[i] == b'?' {
+                for c in b'a'..=b'c' {
+                    if (i == 0 or b[i - 1] != c) and (i + 1 == n or b[i + 1] != c) {
+                        b[i] = c;
+                        break;
+                    }
+                }
+            }
+        }
+        String.from_utf8(b).unwrap()
+    }
+}
+
+fn solution_arm(s: String) -> String {
+    Solution.modify_string(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> String {
+    match a {
+        0 => star_arm(s),
+        1 => peek_arm(s),
+        2 => bytes_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["replace", "peek", "bytes", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every filling of the '?'s from 'a',
+// 'b' and 'c' tried in dictionary order, and the first with no two equal
+// neighbours kept. Three letters always leave one for each '?', and no
+// filling with a later letter comes first in dictionary order, so this is
+// the first valid filling over the whole alphabet.
+
+fn literal(s: String) -> String {
+    let cs: Vec[char] = s.chars().collect();
+    let marks: Vec[i64] = (0..cs.len()).filter(|i| cs[i] == '?').collect();
+    let mut total = 1;
+    for _ in 0..marks.len() {
+        total *= 3;
+    }
+    for code in 0..total {
+        let mut filled = cs.clone();
+        let mut rest = code;
+        for k in (0..marks.len()).rev() {
+            filled[marks[k]] = ['a', 'b', 'c'][rest % 3];
+            rest /= 3;
+        }
+        if filled.windows(2).into_iter().all(|w| w[0] != w[1]) {
+            return filled.iter().collect();
+        }
+    }
+    s.to_string()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15760;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 7 + 1;
+        let odds = next_random(mut seed) % 3 + 1;
+        let mut s = String.new();
+        let mut last = ' ';
+        for _ in 0..n {
+            if next_random(mut seed) % odds == 0 {
+                s.push('?');
+                last = '?';
+            } else {
+                let mut k = next_random(mut seed) % 4;
+                if (b'a' + k as u8) as char == last {
+                    k = (k + 1) % 4;
+                }
+                let c = (b'a' + k as u8) as char;
+                s.push(c);
+                last = c;
+            }
+        }
+        cases.push(s);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, s) in cases.iter().enumerate() {
+        let truth = literal(s);
+        let before: Vec[char] = s.chars().collect();
+        let mut answers: Vec[String] = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s);
+            for c in answer.chars() {
+                check = (check * 31 + c as i64 + 1) % 1000000007;
+            }
+            let after: Vec[char] = answer.chars().collect();
+            let kept = after.len() == before.len()
+                and (0..before.len()).all(|i| before[i] == '?' or before[i] == after[i]);
+            let small = (0..before.len().min(after.len())).all(|i| before[i] != '?' or ['a', 'b', 'c'].contains(after[i]));
+            let failed = [
+                answer != truth,
+                not after.windows(2).into_iter().all(|w| w[0] != w[1]),
+                not kept,
+                arm(a, answer) != answer,
+                not small,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+            answers.push(answer);
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

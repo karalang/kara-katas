@@ -1,0 +1,85 @@
+// LeetCode #1576: Replace All ?'s to Avoid Consecutive Repeating
+// Characters -- one pass that builds the answer: a `peekable` walk over
+// the chars, each '?' pushed as the first of 'a', 'b', 'c' that is neither
+// the last char pushed nor the char the walk will read next. O(n)
+
+fn modify_string(s: String) -> String {
+    let mut out = String.new();
+    let mut last = ' ';
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let next = chars.peek().cloned().unwrap_or(' ');
+        let pick = if c != '?' {
+            c
+        } else if last != 'a' and next != 'a' {
+            'a'
+        } else if last != 'b' and next != 'b' {
+            'b'
+        } else {
+            'c'
+        };
+        out.push(pick);
+        last = pick;
+    }
+    out
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a string of `n` characters, each a '?' one time in `odds`, else a letter
+// from the first `letters` that differs from the letter before it
+fn draw(n: i64, odds: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut s = String.new();
+    let mut last = ' ';
+    for _ in 0..n {
+        if next_random(mut seed) % odds == 0 {
+            s.push('?');
+            last = '?';
+        } else {
+            let mut k = next_random(mut seed) % letters;
+            if (b'a' + k as u8) as char == last {
+                k = (k + 1) % letters;
+            }
+            let c = (b'a' + k as u8) as char;
+            s.push(c);
+            last = c;
+        }
+    }
+    s
+}
+
+// `count` strings of 1 to `most` characters, each with its own odds of a '?'
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut marks = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let odds = next_random(mut seed) % 4 + 1;
+        let s = draw(n, odds, letters, mut seed);
+        marks += s.chars().filter(|c| c == '?').count();
+        for c in modify_string(s).chars() {
+            check = mix(check, c as i64);
+        }
+    }
+    println(f"{count} strings of up to {most} characters, {marks} marks: checksum {check}");
+}
+
+fn main() {
+    let examples = ["?zs", "ubv?w", "j?qg??b", "??yw?ipkj?", "?", "??", "a?a", "a?b", "???????", "ab?ba"];
+    for s in examples.iter() {
+        println(f"{s} -> {modify_string(s)}");
+    }
+    let mut seed = 1576;
+    batch(3000, 8, 3, mut seed);
+    batch(300, 1000, 26, mut seed);
+    batch(30, 100, 2, mut seed);
+}
