@@ -1,0 +1,298 @@
+// LeetCode #2187: Minimum Time to Complete Trips -- the differential.
+// The six arms, against the statement read literally: the clock run on
+// one unit at a time, each bus finishing a trip at every multiple of its
+// time, until the trips finished reach the total. No division and no
+// search. 300 random fleets of 1 to 5 buses with times of 1 to 6 and a
+// total of 1 to 20 trips; then 30 of one bus; then 30 whose buses share
+// one time; every one drawn before any arm answers.
+//
+// P1  the time is the statement read literally
+// P2  the buses reversed: the same time
+// P3  every bus's time doubled: the time doubled
+// P4  one trip more: a time no earlier, and at most the fastest bus's
+//     time later
+// P5  the trips finished by the time reach the total, and by one unit
+//     before it do not
+// P6  each arm agrees with at least three of the other five
+
+// ---- trips.kara: the ★ arm, a binary search with the count cut at the total
+fn star_trips_by(time: Vec[i64], t: i64, total_trips: i64) -> i64 {
+    let mut trips = 0;
+    for x in time.iter() {
+        trips += t / x;
+        if trips >= total_trips {
+            break;
+        }
+    }
+    trips
+}
+
+fn star_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let mut fastest = time[0];
+    for x in time.iter() {
+        fastest = fastest.min(x);
+    }
+    let mut lo = 1;
+    let mut hi = fastest * total_trips;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if star_trips_by(time, mid, total_trips) >= total_trips {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- trips_doubling.kara: the time doubled, then halved between
+fn doubling_enough(time: Vec[i64], t: i64, total_trips: i64) -> bool {
+    let mut trips = 0;
+    for x in time.iter() {
+        trips += t / x;
+        if trips >= total_trips {
+            return true;
+        }
+    }
+    false
+}
+
+fn doubling_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let mut short = 0;
+    let mut long = 1;
+    while not doubling_enough(time, long, total_trips) {
+        short = long;
+        long *= 2;
+    }
+    while long - short > 1 {
+        let mid = short + (long - short) / 2;
+        if doubling_enough(time, mid, total_trips) {
+            long = mid;
+        } else {
+            short = mid;
+        }
+    }
+    long
+}
+
+// ---- trips_sorted.kara: the buses fastest first
+fn sorted_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let mut buses = time.clone();
+    buses.sort();
+    let mut lo = buses[0];
+    let mut hi = buses[0] * total_trips;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let mut trips = 0;
+        for x in buses.iter() {
+            if x > mid or trips >= total_trips {
+                break;
+            }
+            trips += mid / x;
+        }
+        if trips >= total_trips {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- trips_struct.kara: a `Fleet` that finds its `first_time_for`
+struct Fleet {
+    times: Vec[i64],
+    fastest: i64,
+}
+
+impl Fleet {
+    fn of(times: Vec[i64]) -> Fleet {
+        let mut fastest = times[0];
+        for x in times.iter() {
+            if x < fastest {
+                fastest = x;
+            }
+        }
+        Fleet { times: times.clone(), fastest: fastest }
+    }
+
+    fn trips_by(ref self, t: i64, cap: i64) -> i64 {
+        let mut trips = 0;
+        for x in self.times.iter() {
+            trips += t / x;
+            if trips >= cap {
+                return cap;
+            }
+        }
+        trips
+    }
+
+    fn first_time_for(ref self, trips: i64) -> i64 {
+        let mut lo = 1;
+        let mut hi = self.fastest * trips;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.trips_by(mid, trips) == trips {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        lo
+    }
+}
+
+fn struct_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    Fleet.of(time).first_time_for(total_trips)
+}
+
+// ---- trips_iter.kara: `min`, `map`, `sum`, a `fold` over the bits
+fn iter_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let hi = time.iter().min().unwrap() * total_trips;
+    let trips: Fn(i64) -> i64 = |t: i64| { time.iter().map(|x| t / x).sum() };
+    // the largest time that falls short, built bit by bit; the answer is
+    // one past it
+    let short = (0..48).rev().fold(0, |acc, bit| {
+        let next = acc + (1 << bit);
+        if next < hi and trips(next) < total_trips { next } else { acc }
+    });
+    short + 1
+}
+
+// ---- trips_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_time(time: Vec[i32], total_trips: i32) -> i64 {
+        let total = total_trips as i64;
+        let mut lo: i64 = 1;
+        let mut hi: i64 = *time.iter().min().unwrap() * total;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let trips: i64 = time.iter().map(|x| mid / x as i64).sum();
+            if trips >= total {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        lo
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let narrow: Vec[i32] = time.iter().map(|x| x as i32).collect();
+    Solution.minimum_time(narrow, total_trips as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(time: Vec[i64], total_trips: i64) -> i64 {
+    let mut clock = 0;
+    let mut done = 0;
+    let mut next_finish = time.clone();
+    while done < total_trips {
+        clock += 1;
+        for i in 0..time.len() {
+            if next_finish[i] == clock {
+                done += 1;
+                next_finish[i] += time[i];
+            }
+        }
+    }
+    clock
+}
+
+fn answer(arm: i64, time: Vec[i64], total_trips: i64) -> i64 {
+    match arm {
+        0 => star_minimum_time(time, total_trips),
+        1 => doubling_minimum_time(time, total_trips),
+        2 => sorted_minimum_time(time, total_trips),
+        3 => struct_minimum_time(time, total_trips),
+        4 => iter_minimum_time(time, total_trips),
+        _ => solution_minimum_time(time, total_trips),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn finished(time: Vec[i64], t: i64) -> i64 {
+    let mut trips = 0;
+    for x in time.iter() {
+        trips += t / x;
+    }
+    trips
+}
+
+fn main() {
+    let names = ["star", "doubling", "sorted", "struct", "iter", "solution"];
+    let mut seed = 2187;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c >= 300 and c < 330 { 1 } else { next_random(mut seed) % 5 + 1 };
+        let shared = next_random(mut seed) % 6 + 1;
+        let mut time: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            time.push(if c >= 330 { shared } else { next_random(mut seed) % 6 + 1 });
+        }
+        let total_trips = next_random(mut seed) % 20 + 1;
+        cases.push((time, total_trips));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (time, total_trips) in cases.iter() {
+        let truth = literal(time, total_trips);
+        check = (check * 31 + time.len() * 7 + total_trips + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, time, total_trips)).collect();
+        let back: Vec[i64] = time.iter().rev().collect();
+        let doubled: Vec[i64] = time.iter().map(|x| x * 2).collect();
+        let mut fastest = time[0];
+        for x in time.iter() {
+            fastest = fastest.min(x);
+        }
+        for arm in 0..6 {
+            let t = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == t {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, time, total_trips + 1);
+            let verdicts = [
+                t == truth,
+                answer(arm, back, total_trips) == t,
+                answer(arm, doubled, total_trips) == t * 2,
+                more >= t and more <= t + fastest,
+                finished(time, t) >= total_trips and finished(time, t - 1) < total_trips,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{time}, {total_trips} arm {names[arm]}: P{q + 1} fails, answered {t}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} fleets: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

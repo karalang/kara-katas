@@ -1,0 +1,80 @@
+// LeetCode #2187: Minimum Time to Complete Trips -- over the times
+// sorted: the buses taken fastest first, so a count of the trips by
+// time t stops at the first bus slower than t, which makes none, as
+// well as once the total is reached; the bounds of the search are the
+// fastest bus's first trip and the fastest bus alone. O(n log n +
+// n log(min * total)).
+
+fn minimum_time(time: Vec[i64], total_trips: i64) -> i64 {
+    let mut buses = time.clone();
+    buses.sort();
+    let mut lo = buses[0];
+    let mut hi = buses[0] * total_trips;
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let mut trips = 0;
+        for x in buses.iter() {
+            if x > mid or trips >= total_trips {
+                break;
+            }
+            trips += mid / x;
+        }
+        if trips >= total_trips {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(time: Vec[i64], total_trips: i64) {
+    println(f"{time}, {total_trips} -> {minimum_time(time, total_trips)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one bus at the
+    // constraints' largest, buses of one time, a bus too slow to help,
+    // and a total met exactly at a time two buses share
+    show([1, 2, 3].to_vec(), 5);
+    show([2].to_vec(), 1);
+    show([10000000].to_vec(), 10000000);
+    show([3, 3, 3].to_vec(), 7);
+    show([1, 1000].to_vec(), 4);
+    show([2, 3, 4].to_vec(), 7);
+    // 2000 random fleets of 1 to 20 buses: times of 1 to 10 with 1 to 100
+    // trips, and of 1 to 10^7 with 1 to 10^7 trips, in turn
+    let mut seed = 2187;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let big = round % 2 == 1;
+        let n = next_random(mut seed) % 20 + 1;
+        let mut time: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let t = if big { (next_random(mut seed) * 32768 + next_random(mut seed)) % 10000000 + 1 } else { next_random(mut seed) % 10 + 1 };
+            time.push(t);
+        }
+        let trips = if big { (next_random(mut seed) * 32768 + next_random(mut seed)) % 10000000 + 1 } else { next_random(mut seed) % 100 + 1 };
+        let answer = minimum_time(time, trips);
+        total = (total + answer) % 1000000007;
+        check = (check * 31 + answer % 1000000007 + n) % 1000000007;
+    }
+    println(f"2000 fleets: {total} in all, checksum {check}");
+    // the constraints' largest, 10^5 buses and 10^7 trips: every time
+    // 10^7, every time 1, and times at random
+    let slow: Vec[i64] = Vec.filled(100000, 10000000);
+    let fast: Vec[i64] = Vec.filled(100000, 1);
+    let mut mixed: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        mixed.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 10000000 + 1);
+    }
+    println(f"10^5 buses: {minimum_time(slow, 10000000)} {minimum_time(fast, 10000000)} {minimum_time(mixed, 10000000)}");
+}
