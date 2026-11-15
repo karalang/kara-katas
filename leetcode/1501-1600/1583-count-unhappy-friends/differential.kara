@@ -1,0 +1,296 @@
+// LeetCode #1583: Count Unhappy Friends -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 2,
+// 4, 6 or 8 friends with random lists and pairs, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the pairs listed in reverse order, each pair flipped, leave the answer
+// P3  every friend renumbered x to x + 1 (mod n) leaves the answer
+// P4  a new pair who each list the other first, and come last in every
+//     other list, leaves the answer
+// P5  each list reversed before the partner and reversed after it leaves
+//     the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- friends.kara: the ★ arm: a table of ranks and each friend's partner
+
+fn star_arm(n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    let mut rank: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, 0));
+    for x in 0..n {
+        for (r, f) in preferences[x].iter().enumerate() {
+            rank[x][f] = r;
+        }
+    }
+    let mut partner = Vec.filled(n, 0);
+    for p in pairs.iter() {
+        partner[p[0]] = p[1];
+        partner[p[1]] = p[0];
+    }
+    let mut unhappy = 0;
+    for x in 0..n {
+        let y = partner[x];
+        for u in preferences[x].iter().take(rank[x][y]) {
+            if rank[u][x] < rank[u][partner[u]] {
+                unhappy += 1;
+                break;
+            }
+        }
+    }
+    unhappy
+}
+
+// ---- friends_pairs.kara: every two pairs in four orientations, preferences by position
+
+fn pairs_prefers(preferences: Vec[Vec[i64]], who: i64, a: i64, b: i64) -> bool {
+    let list = ref preferences[who];
+    list.iter().position(|f| f == a).unwrap() < list.iter().position(|f| f == b).unwrap()
+}
+
+fn pairs_arm(n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    let mut unhappy = Vec.filled(n, false);
+    for i in 0..pairs.len() {
+        for j in 0..pairs.len() {
+            if i == j {
+                continue;
+            }
+            for (x, y) in [(pairs[i][0], pairs[i][1]), (pairs[i][1], pairs[i][0])] {
+                for (u, v) in [(pairs[j][0], pairs[j][1]), (pairs[j][1], pairs[j][0])] {
+                    if pairs_prefers(preferences, x, u, y) and pairs_prefers(preferences, u, x, v) {
+                        unhappy[x] = true;
+                    }
+                }
+            }
+        }
+    }
+    unhappy.iter().filter(|b| b).count()
+}
+
+// ---- friends_sets.kara: each friend's set of the friends it lists before its partner
+
+fn sets_arm(n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    let mut partner = Vec.filled(n, 0);
+    for p in pairs.iter() {
+        partner[p[0]] = p[1];
+        partner[p[1]] = p[0];
+    }
+    let rather: Vec[Set[i64]] = (0..n).map(|x| preferences[x].iter().take_while(|f| f != partner[x]).collect()).collect();
+    (0..n).filter(|x| rather[x].iter().any(|u| rather[u].contains(x))).count()
+}
+
+// ---- friends_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn unhappy_friends(n: i32, preferences: Vec[Vec[i32]], pairs: Vec[Vec[i32]]) -> i32 {
+        let n = n as i64;
+        let mut order = Vec.filled(n, Vec.filled(n, 0));
+        for i in 0..n {
+            for j in 0..n - 1 {
+                order[i][preferences[i][j]] = j;
+            }
+        }
+        let mut matched = Vec.filled(n, 0);
+        for pair in ref pairs {
+            let (a, b) = (pair[0] as i64, pair[1] as i64);
+            matched[a] = b;
+            matched[b] = a;
+        }
+        let mut ans = 0;
+        for x in 0..n {
+            let y = matched[x];
+            for i in 0..order[x][y] {
+                let u = preferences[x][i] as i64;
+                let v = matched[u];
+                if order[u][x] < order[u][v] {
+                    ans += 1;
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    let p: Vec[Vec[i32]] = preferences.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    let q: Vec[Vec[i32]] = pairs.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.unhappy_friends(n as i32, p, q)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    match a {
+        0 => star_arm(n, preferences, pairs),
+        1 => pairs_arm(n, preferences, pairs),
+        2 => sets_arm(n, preferences, pairs),
+        _ => solution_arm(n, preferences, pairs),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["friends", "pairs", "sets", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: `x` paired with `y` is unhappy if `x`
+// prefers some `u` over `y`, and `u`, paired with `v`, prefers `x` over `v`
+
+fn place(list: Vec[i64], f: i64) -> i64 {
+    let mut at = 0;
+    while list[at] != f {
+        at += 1;
+    }
+    at
+}
+
+fn literal(n: i64, preferences: Vec[Vec[i64]], pairs: Vec[Vec[i64]]) -> i64 {
+    let mut count = 0;
+    for x in 0..n {
+        let mut y = -1;
+        for p in pairs.iter() {
+            if p[0] == x {
+                y = p[1];
+            }
+            if p[1] == x {
+                y = p[0];
+            }
+        }
+        let mut sad = false;
+        for p in pairs.iter() {
+            for (u, v) in [(p[0], p[1]), (p[1], p[0])] {
+                if u != x and u != y {
+                    let x_rather = place(preferences[x], u) < place(preferences[x], y);
+                    let u_rather = place(preferences[u], x) < place(preferences[u], v);
+                    if x_rather and u_rather {
+                        sad = true;
+                    }
+                }
+            }
+        }
+        if sad {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15830;
+    let mut cases: Vec[(i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..problems {
+        let n = 2 * (next_random(mut seed) % 4 + 1);
+        let mut preferences: Vec[Vec[i64]] = Vec.new();
+        for x in 0..n {
+            let mut order: Vec[i64] = (0..n).filter(|f| f != x).collect();
+            for i in (1..order.len()).rev() {
+                order.swap(i, next_random(mut seed) % (i + 1));
+            }
+            preferences.push(order);
+        }
+        let mut line: Vec[i64] = (0..n).collect();
+        for i in (1..n).rev() {
+            line.swap(i, next_random(mut seed) % (i + 1));
+        }
+        let pairs: Vec[Vec[i64]] = (0..n / 2).map(|k| [line[2 * k], line[2 * k + 1]]).collect();
+        cases.push((n, preferences, pairs));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (n, preferences, pairs)) in cases.iter().enumerate() {
+        let truth = literal(n, preferences, pairs);
+        let flipped: Vec[Vec[i64]] = pairs.iter().rev().map(|q| [q[1], q[0]]).collect();
+        let turned: Vec[Vec[i64]] = (0..n).map(|x| preferences[(x + n - 1) % n].iter().map(|f| (f + 1) % n).collect()).collect();
+        let turned_pairs: Vec[Vec[i64]] = pairs.iter().map(|q| [(q[0] + 1) % n, (q[1] + 1) % n]).collect();
+        let mut grown: Vec[Vec[i64]] = preferences.iter().map(|list| {
+            let mut l = list.clone();
+            l.push(n);
+            l.push(n + 1);
+            l
+        }).collect();
+        let mut a_list: Vec[i64] = [n + 1];
+        let mut b_list: Vec[i64] = [n];
+        for f in 0..n {
+            a_list.push(f);
+            b_list.push(f);
+        }
+        grown.push(a_list);
+        grown.push(b_list);
+        let mut grown_pairs = pairs.clone();
+        grown_pairs.push([n, n + 1]);
+        let mut partner = Vec.filled(n, 0);
+        for q in pairs.iter() {
+            partner[q[0]] = q[1];
+            partner[q[1]] = q[0];
+        }
+        let shuffled: Vec[Vec[i64]] = (0..n).map(|x| {
+            let list = ref preferences[x];
+            let cut = list.iter().position(|f| f == partner[x]).unwrap();
+            let mut l: Vec[i64] = list[0..cut].iter().rev().cloned().collect();
+            l.push(partner[x]);
+            for f in list[cut + 1..list.len()].iter().rev() {
+                l.push(f);
+            }
+            l
+        }).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n, preferences, pairs);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, n, preferences, flipped) != answer,
+                arm(a, n, turned, turned_pairs) != answer,
+                arm(a, n + 2, grown, grown_pairs) != answer,
+                arm(a, n, shuffled, pairs) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
