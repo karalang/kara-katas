@@ -1,0 +1,83 @@
+// LeetCode #2207: Maximize Number of Subsequences in a String -- the
+// prefix arm: the letters as a `Vec[char]`, a prefix count of the first
+// letter before each index, summed at every second letter; then the text
+// tried with each letter added at its best end.
+
+fn maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let s: Vec[char] = text.chars().collect();
+    let p: Vec[char] = pattern.chars().collect();
+    let n = s.len();
+    let mut before = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        before[i + 1] = before[i] + (if s[i] == p[0] { 1 } else { 0 });
+    }
+    let mut pairs = 0;
+    let mut seconds = 0;
+    for j in 0..n {
+        if s[j] == p[1] {
+            pairs += before[j];
+            seconds += 1;
+        }
+    }
+    let at_front = pairs + seconds;
+    let at_end = pairs + before[n];
+    at_front.max(at_end)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn show(text: String, pattern: String) {
+    println(f"\"{text}\", \"{pattern}\" -> {maximum_subsequence_count(text, pattern)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a pattern of one letter
+    // twice, a text holding neither letter, the second letter only, and
+    // the second letter before every first
+    show("abdcdbc", "ac");
+    show("aabb", "ab");
+    show("aaa", "aa");
+    show("xyz", "ab");
+    show("bbb", "ab");
+    show("bbaa", "ab");
+    // 3000 random texts of 1 to 30 letters from 2, 3 and 26 in turn, each
+    // pattern drawn from the same letters
+    let mut seed = 2207;
+    let mut best = 0;
+    let mut check = 0;
+    for c in 0..3000 {
+        let letters = [2, 3, 26][c % 3];
+        let n = next_random(mut seed) % 30 + 1;
+        let text = random_word(n, letters, mut seed);
+        let pattern = random_word(2, letters, mut seed);
+        let got = maximum_subsequence_count(text, pattern);
+        best = best.max(got);
+        check = (check * 31 + got) % 1000000007;
+    }
+    println(f"3000 texts: most {best}, checksum {check}");
+    // the constraints' largest: 10^5 letters, half a then half b, and all a
+    let mut half = String.new();
+    for i in 0..100000 {
+        half.push(if i < 50000 { 'a' } else { 'b' });
+    }
+    println(f"50000 a then 50000 b, \"ab\" -> {maximum_subsequence_count(half, "ab")}");
+    let mut same = String.new();
+    for _ in 0..100000 {
+        same.push('a');
+    }
+    println(f"10^5 a, \"aa\" -> {maximum_subsequence_count(same, "aa")}");
+    println(f"10^5 a, \"ba\" -> {maximum_subsequence_count(same, "ba")}");
+}

@@ -1,0 +1,296 @@
+// LeetCode #2207: Maximize Number of Subsequences in a String -- the
+// differential. The six arms, against the statement read literally: each
+// pattern letter put at every position of the text in turn, and each
+// text so made counted by every pair of indices i < j holding the
+// pattern's two letters; no running count. 300 random texts of 1 to 12
+// letters from 2, 3 and 26 in turn, the pattern from the same letters;
+// then 30 whose pattern is one letter twice; then 30 of 20 to 30 letters
+// from 3. Every case is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  it is at least how often either pattern letter appears, and at most
+//     the pairs among n + 1 letters
+// P3  the text reversed and the pattern's letters swapped: the same
+// P4  every letter not in the pattern made another not in it: the same
+// P5  one more of the pattern's second letter appended: at least one more
+// P6  each arm agrees with at least three of the other five
+
+// ---- subsequences.kara: the ★ arm, one pass with running counts
+fn star_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let p: Vec[char] = pattern.chars().collect();
+    let first = p[0];
+    let second = p[1];
+    let mut firsts = 0;
+    let mut seconds = 0;
+    let mut pairs = 0;
+    for ch in text.chars() {
+        if ch == second {
+            pairs += firsts;
+            seconds += 1;
+        }
+        if ch == first {
+            firsts += 1;
+        }
+    }
+    pairs + firsts.max(seconds)
+}
+
+// ---- subsequences_prefix.kara: a prefix count of the first letter
+fn prefix_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let s: Vec[char] = text.chars().collect();
+    let p: Vec[char] = pattern.chars().collect();
+    let n = s.len();
+    let mut before = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        before[i + 1] = before[i] + (if s[i] == p[0] { 1 } else { 0 });
+    }
+    let mut pairs = 0;
+    let mut seconds = 0;
+    for j in 0..n {
+        if s[j] == p[1] {
+            pairs += before[j];
+            seconds += 1;
+        }
+    }
+    let at_front = pairs + seconds;
+    let at_end = pairs + before[n];
+    at_front.max(at_end)
+}
+
+// ---- subsequences_insert.kara: the two best texts built and counted
+fn insert_occurrences(text: String, first: char, second: char) -> i64 {
+    let mut firsts = 0;
+    let mut pairs = 0;
+    for ch in text.chars() {
+        if ch == second {
+            pairs += firsts;
+        }
+        if ch == first {
+            firsts += 1;
+        }
+    }
+    pairs
+}
+
+fn insert_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let p: Vec[char] = pattern.chars().collect();
+    let mut front = String.new();
+    front.push(p[0]);
+    front.push_str(text);
+    let mut back = text.clone();
+    back.push(p[1]);
+    insert_occurrences(front, p[0], p[1]).max(insert_occurrences(back, p[0], p[1]))
+}
+
+// ---- subsequences_struct.kara: a `Tally` fed one letter at a time
+struct Tally {
+    first: char,
+    second: char,
+    firsts: i64,
+    seconds: i64,
+    pairs: i64,
+}
+
+impl Tally {
+    fn new(first: char, second: char) -> Tally {
+        Tally { first: first, second: second, firsts: 0, seconds: 0, pairs: 0 }
+    }
+
+    fn feed(mut ref self, ch: char) {
+        if ch == self.second {
+            self.pairs += self.firsts;
+            self.seconds += 1;
+        }
+        if ch == self.first {
+            self.firsts += 1;
+        }
+    }
+
+    fn best_with_one_more(self) -> i64 {
+        self.pairs + self.firsts.max(self.seconds)
+    }
+}
+
+fn struct_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let p: Vec[char] = pattern.chars().collect();
+    let mut tally = Tally.new(p[0], p[1]);
+    for ch in text.chars() {
+        tally.feed(ch);
+    }
+    tally.best_with_one_more()
+}
+
+// ---- subsequences_iter.kara: one `fold` carrying a tuple
+fn iter_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    let p: Vec[char] = pattern.chars().collect();
+    let (firsts, seconds, pairs) = text.chars().fold((0, 0, 0), |(a, b, pairs), ch| {
+        let pairs = if ch == p[1] { pairs + a } else { pairs };
+        let b = if ch == p[1] { b + 1 } else { b };
+        let a = if ch == p[0] { a + 1 } else { a };
+        (a, b, pairs)
+    });
+    pairs + firsts.max(seconds)
+}
+
+// ---- subsequences_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_subsequence_count(text: String, pattern: String) -> i64 {
+        let p = pattern.bytes();
+        let mut (a, b, ans) = (0, 0, 0);
+        for c in text.bytes() {
+            if c == p[1] {
+                ans += a;
+                b += 1;
+            }
+            if c == p[0] {
+                a += 1;
+            }
+        }
+        ans + a.max(b)
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_subsequence_count(text: String, pattern: String) -> i64 {
+    Solution.maximum_subsequence_count(text, pattern)
+}
+
+// ---- the statement read literally
+
+fn pairs_in(s: Vec[char], first: char, second: char) -> i64 {
+    let mut pairs = 0;
+    for i in 0..s.len() {
+        for j in (i + 1)..s.len() {
+            if s[i] == first and s[j] == second {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+fn literal(text: String, pattern: String) -> i64 {
+    let s: Vec[char] = text.chars().collect();
+    let p: Vec[char] = pattern.chars().collect();
+    let mut best = 0;
+    for letter in p.iter() {
+        for at in 0..(s.len() + 1) {
+            let mut made: Vec[char] = Vec.new();
+            for i in 0..s.len() {
+                if i == at {
+                    made.push(letter);
+                }
+                made.push(s[i]);
+            }
+            if at == s.len() {
+                made.push(letter);
+            }
+            best = best.max(pairs_in(made, p[0], p[1]));
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, text: String, pattern: String) -> i64 {
+    match arm {
+        0 => star_maximum_subsequence_count(text, pattern),
+        1 => prefix_maximum_subsequence_count(text, pattern),
+        2 => insert_maximum_subsequence_count(text, pattern),
+        3 => struct_maximum_subsequence_count(text, pattern),
+        4 => iter_maximum_subsequence_count(text, pattern),
+        _ => solution_maximum_subsequence_count(text, pattern),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn main() {
+    let names = ["star", "prefix", "insert", "struct", "iter", "solution"];
+    let mut seed = 2207;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for c in 0..360 {
+        let letters = if c < 330 { [2, 3, 26][c % 3] } else { 3 };
+        let n = if c < 330 { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 11 + 20 };
+        let text = random_word(n, letters, mut seed);
+        let mut pattern = random_word(2, letters, mut seed);
+        if c >= 300 and c < 330 {
+            let p: Vec[char] = pattern.chars().collect();
+            pattern = String.new();
+            pattern.push(p[0]);
+            pattern.push(p[0]);
+        }
+        cases.push((text, pattern));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (text, pattern) in cases.iter() {
+        let n = text.len();
+        let truth = literal(text, pattern);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, text, pattern)).collect();
+        let p: Vec[char] = pattern.chars().collect();
+        let firsts = text.chars().filter(|ch| ch == p[0]).count();
+        let seconds = text.chars().filter(|ch| ch == p[1]).count();
+        let reversed: String = text.chars().rev().collect();
+        let mut swapped = String.new();
+        swapped.push(p[1]);
+        swapped.push(p[0]);
+        let spare = ['x', 'y', 'z'];
+        let other = spare.iter().filter(|ch| ch != p[0] and ch != p[1]).next().unwrap();
+        let blurred: String = text.chars().map(|ch| if ch == p[0] or ch == p[1] { ch } else { other }).collect();
+        let mut longer = text.clone();
+        longer.push(p[1]);
+        for arm in 0..6 {
+            let best = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == best {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                best == truth,
+                best >= firsts and best >= seconds and best <= (n + 1) * n / 2,
+                answer(arm, reversed, swapped) == best,
+                answer(arm, blurred, pattern) == best,
+                answer(arm, longer, pattern) >= best + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{text}\", \"{pattern}\" arm {names[arm]}: P{q + 1} fails, answered {best}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
