@@ -1,0 +1,454 @@
+// LeetCode #2203: Minimum Weighted Subgraph With the Required Paths -- the
+// differential. The six arms, against the statement read literally: every
+// subset of the edges tried, kept when dest can be reached in it from both
+// src1 and src2, and the least total weight among those kept; no
+// distance. 300 random graphs of 3 to 6 nodes and 0 to 9 edges weighing up
+// to 3, 10 and 10^5 in turn; then 30 that hold a path src1 -> src2 ->
+// dest; then 30 of 7 or 8 nodes and 9 edges weighing up to 10^5. Every
+// case is drawn before any arm answers.
+//
+// P1  the weight is the statement read literally
+// P2  it is -1 exactly when dest cannot be reached from src1 or from src2,
+//     and otherwise at most the weight of every edge
+// P3  the edges listed in reverse: the same weight
+// P4  src1 and src2 swapped: the same weight
+// P5  every weight doubled: the weight doubled, or -1 still
+// P6  each arm agrees with at least three of the other five
+
+import std.cmp.Reverse;
+
+// ---- subgraph.kara: the ★ arm, three Dijkstras with a `PriorityQueue`
+fn star_dijkstra(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), -1);
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    queue.push((0, from));
+    while let Some((d, u)) = queue.pop() {
+        if dist[u] >= 0 {
+            continue;
+        }
+        dist[u] = d;
+        for (v, w) in adj[u].iter() {
+            if dist[v] < 0 {
+                queue.push((d + w, v));
+            }
+        }
+    }
+    dist
+}
+
+fn star_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut forward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    let mut backward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        forward[e[0]].push((e[1], e[2]));
+        backward[e[1]].push((e[0], e[2]));
+    }
+    let one = star_dijkstra(forward, src1);
+    let two = star_dijkstra(forward, src2);
+    let home = star_dijkstra(backward, dest);
+    let mut best = -1;
+    for v in 0..n {
+        if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 {
+            let total = one[v] + two[v] + home[v];
+            if best < 0 or total < best {
+                best = total;
+            }
+        }
+    }
+    best
+}
+
+// ---- subgraph_relax.kara: queue-driven Bellman-Ford
+fn relax_bellman_ford(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let n = adj.len();
+    let mut dist = Vec.filled(n, -1);
+    let mut queued = Vec.filled(n, false);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    dist[from] = 0;
+    queue.push_back(from);
+    queued[from] = true;
+    while let Some(u) = queue.pop_front() {
+        queued[u] = false;
+        for (v, w) in adj[u].iter() {
+            if dist[v] < 0 or dist[u] + w < dist[v] {
+                dist[v] = dist[u] + w;
+                if not queued[v] {
+                    queued[v] = true;
+                    queue.push_back(v);
+                }
+            }
+        }
+    }
+    dist
+}
+
+fn relax_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut forward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    let mut backward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        forward[e[0]].push((e[1], e[2]));
+        backward[e[1]].push((e[0], e[2]));
+    }
+    let one = relax_bellman_ford(forward, src1);
+    let two = relax_bellman_ford(forward, src2);
+    let home = relax_bellman_ford(backward, dest);
+    let mut best = -1;
+    for v in 0..n {
+        if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 {
+            let total = one[v] + two[v] + home[v];
+            if best < 0 or total < best {
+                best = total;
+            }
+        }
+    }
+    best
+}
+
+// ---- subgraph_ordered.kara: Dijkstra over a `SortedSet`
+fn ordered_shortest(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), -1);
+    let mut frontier: SortedSet[(i64, i64)] = SortedSet.new();
+    dist[from] = 0;
+    frontier.insert((0, from));
+    while let Some((d, u)) = frontier.pop_first() {
+        for (v, w) in adj[u].iter() {
+            if dist[v] < 0 or d + w < dist[v] {
+                if dist[v] >= 0 {
+                    frontier.remove((dist[v], v));
+                }
+                dist[v] = d + w;
+                frontier.insert((d + w, v));
+            }
+        }
+    }
+    dist
+}
+
+fn ordered_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut forward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    let mut backward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        forward[e[0]].push((e[1], e[2]));
+        backward[e[1]].push((e[0], e[2]));
+    }
+    let one = ordered_shortest(forward, src1);
+    let two = ordered_shortest(forward, src2);
+    let home = ordered_shortest(backward, dest);
+    let mut best = -1;
+    for v in 0..n {
+        if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 {
+            let total = one[v] + two[v] + home[v];
+            if best < 0 or total < best {
+                best = total;
+            }
+        }
+    }
+    best
+}
+
+// ---- subgraph_struct.kara: a `Graph` of `Edge`s
+struct Edge {
+    to: i64,
+    weight: i64,
+}
+
+struct Graph {
+    out: Vec[Vec[Edge]],
+}
+
+impl Graph {
+    fn new(n: i64) -> Graph {
+        let mut out: Vec[Vec[Edge]] = Vec.new();
+        for _ in 0..n {
+            out.push(Vec.new());
+        }
+        Graph { out: out }
+    }
+
+    fn add(mut ref self, from: i64, to: i64, weight: i64) {
+        self.out[from].push(Edge { to: to, weight: weight });
+    }
+
+    fn reversed(self) -> Graph {
+        let mut back = Graph.new(self.out.len());
+        for (from, edges) in self.out.iter().enumerate() {
+            for e in edges.iter() {
+                back.add(e.to, from, e.weight);
+            }
+        }
+        back
+    }
+
+    fn distances(self, from: i64) -> Vec[Option[i64]] {
+        let mut dist: Vec[Option[i64]] = Vec.filled(self.out.len(), None);
+        let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+        queue.push((0, from));
+        while let Some((d, u)) = queue.pop() {
+            if dist[u].is_some() {
+                continue;
+            }
+            dist[u] = Some(d);
+            for e in self.out[u].iter() {
+                if dist[e.to].is_none() {
+                    queue.push((d + e.weight, e.to));
+                }
+            }
+        }
+        dist
+    }
+}
+
+fn struct_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut graph = Graph.new(n);
+    for e in edges.iter() {
+        graph.add(e[0], e[1], e[2]);
+    }
+    let one = graph.distances(src1);
+    let two = graph.distances(src2);
+    let home = graph.reversed().distances(dest);
+    let mut best: Option[i64] = None;
+    for v in 0..n {
+        if let (Some(a), Some(b), Some(c)) = (one[v], two[v], home[v]) {
+            if best.is_none() or a + b + c < best.unwrap() {
+                best = Some(a + b + c);
+            }
+        }
+    }
+    best.unwrap_or(-1)
+}
+
+// ---- subgraph_iter.kara: `fold`, `Reverse`, `filter_map`, `min`
+
+fn iter_lists(n: i64, edges: Vec[Array[i64, 3]], turned: bool) -> Vec[Vec[(i64, i64)]] {
+    edges.iter().fold(Vec.filled(n, Vec.new()), |adj, e| {
+        let mut a = adj;
+        if turned {
+            a[e[1]].push((e[0], e[2]));
+        } else {
+            a[e[0]].push((e[1], e[2]));
+        }
+        a
+    })
+}
+
+fn iter_reach(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), -1);
+    let mut queue: PriorityQueue[(Reverse[i64], i64)] = PriorityQueue.max_first();
+    queue.push((Reverse { value: 0 }, from));
+    while let Some((Reverse { value: d }, u)) = queue.pop() {
+        if dist[u] < 0 {
+            dist[u] = d;
+            adj[u].iter().filter(|(v, _)| dist[v] < 0).for_each(|(v, w)| queue.push((Reverse { value: d + w }, v)));
+        }
+    }
+    dist
+}
+
+fn iter_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let forward = iter_lists(n, edges, false);
+    let one = iter_reach(forward, src1);
+    let two = iter_reach(forward, src2);
+    let home = iter_reach(iter_lists(n, edges, true), dest);
+    (0..n)
+        .filter_map(|v| if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 { Some(one[v] + two[v] + home[v]) } else { None })
+        .min()
+        .unwrap_or(-1)
+}
+
+// ---- subgraph_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_dijkstra(g: Vec[Vec[(i64, i64)]], s: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(g.len(), i64.MAX);
+    let mut heap = PriorityQueue.new();
+    dist[s] = 0;
+    heap.push((0, s));
+    while let Some((d, u)) = heap.pop() {
+        if d > dist[u] {
+            continue;
+        }
+        for (v, w) in ref g[u] {
+            let nd = d + w;
+            if nd < dist[v] {
+                dist[v] = nd;
+                heap.push((nd, v));
+            }
+        }
+    }
+    dist
+}
+
+impl Solution {
+    pub fn minimum_weight(n: i32, edges: Vec[Vec[i32]], src1: i32, src2: i32, dest: i32) -> i64 {
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        let mut rg = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (u, v, w) = (e[0] as i64, e[1] as i64, e[2] as i64);
+            g[u].push((v, w));
+            rg[v].push((u, w));
+        }
+        let a = solution_dijkstra(g, src1);
+        let b = solution_dijkstra(g, src2);
+        let c = solution_dijkstra(rg, dest);
+        let mut ans = i64.MAX;
+        for i in 0..n {
+            if a[i] < i64.MAX and b[i] < i64.MAX and c[i] < i64.MAX {
+                ans = ans.min(a[i] + b[i] + c[i]);
+            }
+        }
+        if ans == i64.MAX { -1 } else { ans }
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let rows: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_weight(n as i32, rows, src1 as i32, src2 as i32, dest as i32)
+}
+
+// ---- the statement read literally
+
+// whether `to` can be reached from `from` over the edges whose bit is set
+// in `mask`, by a search over nodes marked as they are reached
+fn reaches(n: i64, edges: Vec[Array[i64, 3]], mask: i64, from: i64, to: i64) -> bool {
+    let mut seen = Vec.filled(n, false);
+    seen[from] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (i, e) in edges.iter().enumerate() {
+            if (mask >> i) & 1 == 1 and seen[e[0]] and not seen[e[1]] {
+                seen[e[1]] = true;
+                grew = true;
+            }
+        }
+    }
+    seen[to]
+}
+
+fn literal(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut best = -1;
+    for mask in 0..(1 << edges.len()) {
+        let mut weight = 0;
+        for (i, e) in edges.iter().enumerate() {
+            if (mask >> i) & 1 == 1 {
+                weight += e[2];
+            }
+        }
+        if (best < 0 or weight < best) and reaches(n, edges, mask, src1, dest) and reaches(n, edges, mask, src2, dest) {
+            best = weight;
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    match arm {
+        0 => star_minimum_weight(n, edges, src1, src2, dest),
+        1 => relax_minimum_weight(n, edges, src1, src2, dest),
+        2 => ordered_minimum_weight(n, edges, src1, src2, dest),
+        3 => struct_minimum_weight(n, edges, src1, src2, dest),
+        4 => iter_minimum_weight(n, edges, src1, src2, dest),
+        _ => solution_minimum_weight(n, edges, src1, src2, dest),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "relax", "ordered", "struct", "iter", "solution"];
+    let mut seed = 2203;
+    let mut cases: Vec[(i64, Vec[Array[i64, 3]], i64, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 330 { next_random(mut seed) % 4 + 3 } else { next_random(mut seed) % 2 + 7 };
+        let m = if c < 330 { next_random(mut seed) % 10 } else { 9 };
+        let top = if c < 330 { [3, 10, 100000][c % 3] } else { 100000 };
+        let src1 = next_random(mut seed) % n;
+        let src2 = (src1 + next_random(mut seed) % (n - 1) + 1) % n;
+        let mut dest = next_random(mut seed) % n;
+        while dest == src1 or dest == src2 {
+            dest = next_random(mut seed) % n;
+        }
+        let mut edges: Vec[Array[i64, 3]] = Vec.new();
+        if c >= 300 and c < 330 {
+            edges.push([src1, src2, next_random(mut seed) % top + 1]);
+            edges.push([src2, dest, next_random(mut seed) % top + 1]);
+        }
+        while edges.len() < m {
+            let from = next_random(mut seed) % n;
+            let to = next_random(mut seed) % n;
+            if from != to {
+                edges.push([from, to, wide_random(mut seed) % top + 1]);
+            }
+        }
+        cases.push((n, edges, src1, src2, dest));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, edges, src1, src2, dest) in cases.iter() {
+        let truth = literal(n, edges, src1, src2, dest);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, edges, src1, src2, dest)).collect();
+        let all = (1 << edges.len()) - 1;
+        let joined = reaches(n, edges, all, src1, dest) and reaches(n, edges, all, src2, dest);
+        let heaviest = edges.iter().map(|e| e[2]).sum();
+        let reversed: Vec[Array[i64, 3]] = edges.iter().rev().collect();
+        // a list literal a closure returns is a `Vec` (kara B-2026-11-15-38),
+        // so each doubled edge is a typed binding
+        let doubled: Vec[Array[i64, 3]] = edges
+            .iter()
+            .map(|e| {
+                let d: Array[i64, 3] = [e[0], e[1], e[2] * 2];
+                d
+            })
+            .collect();
+        for arm in 0..6 {
+            let weight = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == weight {
+                    same += 1;
+                }
+            }
+            let twice = answer(arm, n, doubled, src1, src2, dest);
+            let verdicts = [
+                weight == truth,
+                if joined { weight >= 0 and weight <= heaviest } else { weight == -1 },
+                answer(arm, n, reversed, src1, src2, dest) == weight,
+                answer(arm, n, edges, src2, src1, dest) == weight,
+                if weight < 0 { twice == -1 } else { twice == weight * 2 },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n}, {edges}, {src1} {src2} -> {dest} arm {names[arm]}: P{q + 1} fails, answered {weight}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

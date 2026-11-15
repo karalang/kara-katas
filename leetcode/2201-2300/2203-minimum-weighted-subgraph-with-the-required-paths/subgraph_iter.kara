@@ -1,0 +1,116 @@
+// LeetCode #2203: Minimum Weighted Subgraph With the Required Paths -- the
+// iterator arm: the adjacency lists by `fold`, Dijkstra with a largest-
+// first `PriorityQueue` of `Reverse` distances, and the meeting node by
+// `filter_map` and `min`.
+
+import std.cmp.Reverse;
+
+fn lists(n: i64, edges: Vec[Array[i64, 3]], turned: bool) -> Vec[Vec[(i64, i64)]] {
+    edges.iter().fold(Vec.filled(n, Vec.new()), |adj, e| {
+        let mut a = adj;
+        if turned {
+            a[e[1]].push((e[0], e[2]));
+        } else {
+            a[e[0]].push((e[1], e[2]));
+        }
+        a
+    })
+}
+
+fn reach(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), -1);
+    let mut queue: PriorityQueue[(Reverse[i64], i64)] = PriorityQueue.max_first();
+    queue.push((Reverse { value: 0 }, from));
+    while let Some((Reverse { value: d }, u)) = queue.pop() {
+        if dist[u] < 0 {
+            dist[u] = d;
+            adj[u].iter().filter(|(v, _)| dist[v] < 0).for_each(|(v, w)| queue.push((Reverse { value: d + w }, v)));
+        }
+    }
+    dist
+}
+
+fn minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let forward = lists(n, edges, false);
+    let one = reach(forward, src1);
+    let two = reach(forward, src2);
+    let home = reach(lists(n, edges, true), dest);
+    (0..n)
+        .filter_map(|v| if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 { Some(one[v] + two[v] + home[v]) } else { None })
+        .min()
+        .unwrap_or(-1)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// m random edges on n nodes, never a loop, weights from 1 to `top`
+fn random_edges(n: i64, m: i64, top: i64, seed: mut ref i64) -> Vec[Array[i64, 3]] {
+    let mut edges: Vec[Array[i64, 3]] = Vec.new();
+    while edges.len() < m {
+        let from = wide_random(mut seed) % n;
+        let to = wide_random(mut seed) % n;
+        if from != to {
+            edges.push([from, to, wide_random(mut seed) % top + 1]);
+        }
+    }
+    edges
+}
+
+fn show(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) {
+    println(f"n {n}, {edges}, {src1} {src2} -> {dest}: {minimum_weight(n, edges, src1, src2, dest)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one path through the other
+    // source, two paths that only meet at dest, parallel edges, and no
+    // edges at all
+    show(6, [[0, 2, 2], [0, 5, 6], [1, 0, 3], [1, 4, 5], [2, 1, 1], [2, 3, 3], [2, 3, 4], [3, 4, 2], [4, 5, 1]], 0, 1, 5);
+    show(3, [[0, 1, 1], [2, 1, 1]], 0, 1, 2);
+    show(3, [[0, 1, 4], [1, 2, 5]], 0, 1, 2);
+    show(4, [[0, 3, 7], [1, 3, 2], [0, 2, 1], [2, 1, 1]], 0, 1, 3);
+    show(3, [[0, 2, 9], [0, 2, 3], [1, 2, 5], [1, 2, 8]], 0, 1, 2);
+    show(3, [], 0, 1, 2);
+    // 2000 random graphs of 3 to 10 nodes and 0 to 20 edges weighing 1
+    // to 10, the three nodes drawn distinct
+    let mut seed = 2203;
+    let mut none = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 3;
+        let m = next_random(mut seed) % 21;
+        let edges = random_edges(n, m, 10, mut seed);
+        let src1 = next_random(mut seed) % n;
+        let mut src2 = next_random(mut seed) % n;
+        while src2 == src1 {
+            src2 = next_random(mut seed) % n;
+        }
+        let mut dest = next_random(mut seed) % n;
+        while dest == src1 or dest == src2 {
+            dest = next_random(mut seed) % n;
+        }
+        let weight = minimum_weight(n, edges, src1, src2, dest);
+        if weight < 0 {
+            none += 1;
+        }
+        check = (check * 31 + weight + 1) % 1000000007;
+    }
+    println(f"2000 graphs: {none} with no subgraph, checksum {check}");
+    // the constraints' largest: 10^5 nodes and 10^5 edges weighing up to
+    // 10^5 at random, then the same with a ring through every node added
+    let edges = random_edges(100000, 100000, 100000, mut seed);
+    println(f"n 100000, 100000 edges: {minimum_weight(100000, edges, 0, 1, 2)}");
+    let mut ringed = random_edges(100000, 90000, 100000, mut seed);
+    for v in 0..10000 {
+        ringed.push([v * 10, (v * 10 + 10) % 100000, 100000]);
+    }
+    println(f"n 100000, a ring of 10000 and 90000 edges: {minimum_weight(100000, ringed, 0, 50000, 99990)}");
+}

@@ -1,0 +1,79 @@
+// benchmark's Kāra version of subgraph.kara (LeetCode #2203, the ★ arm):
+// three Dijkstras with a `PriorityQueue`, the last over the edges turned
+// round, and the least sum over the meeting node.
+
+fn dijkstra(adj: Vec[Vec[(i64, i64)]], from: i64) -> Vec[i64] {
+    let mut dist = Vec.filled(adj.len(), -1);
+    let mut queue: PriorityQueue[(i64, i64)] = PriorityQueue.new();
+    queue.push((0, from));
+    while let Some((d, u)) = queue.pop() {
+        if dist[u] >= 0 {
+            continue;
+        }
+        dist[u] = d;
+        for (v, w) in adj[u].iter() {
+            if dist[v] < 0 {
+                queue.push((d + w, v));
+            }
+        }
+    }
+    dist
+}
+
+fn minimum_weight(n: i64, edges: Vec[Array[i64, 3]], src1: i64, src2: i64, dest: i64) -> i64 {
+    let mut forward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    let mut backward: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        forward[e[0]].push((e[1], e[2]));
+        backward[e[1]].push((e[0], e[2]));
+    }
+    let one = dijkstra(forward, src1);
+    let two = dijkstra(forward, src2);
+    let home = dijkstra(backward, dest);
+    let mut best = -1;
+    for v in 0..n {
+        if one[v] >= 0 and two[v] >= 0 and home[v] >= 0 {
+            let total = one[v] + two[v] + home[v];
+            if best < 0 or total < best {
+                best = total;
+            }
+        }
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2203;
+    let n = 20000;
+    let mut graphs: Vec[Vec[Array[i64, 3]]] = Vec.new();
+    for _ in 0..4 {
+        let mut edges: Vec[Array[i64, 3]] = Vec.new();
+        while edges.len() < 60000 {
+            let from = wide_random(mut seed) % n;
+            let to = wide_random(mut seed) % n;
+            if from != to {
+                edges.push([from, to, wide_random(mut seed) % 100000 + 1]);
+            }
+        }
+        graphs.push(edges);
+    }
+    let mut check = 0;
+    for _ in 0..5 {
+        for edges in graphs.iter() {
+            for t in 0..4 {
+                let weight = minimum_weight(n, edges, t * 3, t * 3 + 1, t * 3 + 2);
+                check = (check * 31 + weight + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"5 passes over 4 graphs: checksum {check}");
+}
