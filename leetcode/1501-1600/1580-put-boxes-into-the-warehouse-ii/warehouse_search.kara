@@ -1,0 +1,88 @@
+// LeetCode #1580: Put Boxes Into the Warehouse II -- the search arm: if k
+// boxes fit, the k smallest do, and they fit exactly when, sorted, the i-th
+// smallest of them is no taller than the i-th lowest of the k highest
+// usable rooms. A binary search on k over that test. O((n + m) log(n + m))
+
+fn usable_heights(warehouse: Vec[i64]) -> Vec[i64] {
+    let m = warehouse.len();
+    let mut from_right: Vec[i64] = warehouse.clone();
+    for i in (0..m - 1).rev() {
+        from_right[i] = from_right[i].min(from_right[i + 1]);
+    }
+    let mut lowest = i64.MAX;
+    let mut usable: Vec[i64] = warehouse.iter().enumerate().map(|(i, h)| {
+        lowest = lowest.min(h);
+        lowest.max(from_right[i])
+    }).collect();
+    usable.sort();
+    usable
+}
+
+// the k smallest of `boxes` fit the k highest of `rooms` (both sorted)
+fn fits(boxes: Vec[i64], rooms: Vec[i64], k: i64) -> bool {
+    let start = rooms.len() - k;
+    (0..k).all(|i| boxes[i] <= rooms[start + i])
+}
+
+fn max_boxes_in_warehouse(boxes: Vec[i64], warehouse: Vec[i64]) -> i64 {
+    let rooms = usable_heights(warehouse);
+    let mut sorted = boxes.clone();
+    sorted.sort();
+    let mut lo = 0;
+    let mut hi = sorted.len().min(rooms.len());
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if fits(sorted, rooms, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` problems of 1 to `most` boxes and 1 to `most` rooms, every
+// height from 1 to `top`
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let m = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let boxes: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let warehouse: Vec[i64] = (0..m).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let placed = max_boxes_in_warehouse(boxes, warehouse);
+        total += placed;
+        check = mix(check, placed);
+    }
+    println(f"{count} problems of up to {most} boxes and rooms: boxes placed {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i64], Vec[i64])] = [
+        ([1, 2, 2, 3, 4], [3, 4, 1, 2]),
+        ([3, 5, 5, 2], [2, 1, 3, 4, 5]),
+        ([1, 2, 3], [1, 2, 3, 4]),
+        ([4, 5, 6], [3, 3, 3, 3, 3]),
+        ([5], [1, 9, 1]),
+        ([2, 2, 2, 2], [5, 1, 5]),
+    ];
+    for (boxes, warehouse) in examples.iter() {
+        println(f"{boxes} {warehouse} -> {max_boxes_in_warehouse(boxes, warehouse)}");
+    }
+    let mut seed = 1580;
+    batch(3000, 6, 6, mut seed);
+    batch(300, 1000, 1000, mut seed);
+    batch(10, 100000, 1000000000, mut seed);
+}
