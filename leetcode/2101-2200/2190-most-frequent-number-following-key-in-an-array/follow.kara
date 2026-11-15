@@ -1,0 +1,103 @@
+// LeetCode #2190: Most Frequent Number Following Key In an Array -- the
+// ★ arm: each number that comes right after the key counted in a
+// `Vec.filled(1001, 0)`, the most counted kept as it is met. O(n).
+
+fn most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let mut counts: Vec[i64] = Vec.filled(1001, 0);
+    let mut best = 0;
+    let mut target = -1;
+    for i in 1..nums.len() {
+        if nums[i - 1] == key {
+            let x = nums[i];
+            counts[x] += 1;
+            if counts[x] > best {
+                best = counts[x];
+                target = x;
+            }
+        }
+    }
+    target
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the answer is unique when one target follows the key more often than
+// every other, as the constraints promise
+fn unique_answer(nums: Vec[i64], key: i64) -> bool {
+    let mut counts: Vec[i64] = Vec.filled(1001, 0);
+    for i in 0..(nums.len() - 1) {
+        if nums[i] == key {
+            counts[nums[i + 1]] += 1;
+        }
+    }
+    let mut best = 0;
+    let mut ties = 0;
+    for c in counts.iter() {
+        if c > best {
+            best = c;
+            ties = 1;
+        } else if c == best {
+            ties += 1;
+        }
+    }
+    best > 0 and ties == 1
+}
+
+// a list of n numbers of 1 to `values` whose key, one of them, has a
+// unique answer; drawn again until it does
+fn random_case(n: i64, values: i64, seed: mut ref i64) -> (Vec[i64], i64) {
+    loop {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % values + 1);
+        }
+        let key = nums[next_random(mut seed) % (n - 1)];
+        if unique_answer(nums, key) {
+            return (nums, key);
+        }
+    }
+}
+
+fn show(nums: Vec[i64], key: i64) {
+    println(f"{nums}, {key} -> {most_frequent(nums, key)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the shortest list, the
+    // key followed by itself, the key last as well, and the largest
+    // values
+    show([1, 100, 200, 1, 100].to_vec(), 1);
+    show([2, 2, 2, 2, 3].to_vec(), 2);
+    show([5, 7].to_vec(), 5);
+    show([3, 3, 1, 3, 3].to_vec(), 3);
+    show([4, 9, 4, 9, 4].to_vec(), 4);
+    show([1000, 999, 1000, 1, 1000, 999].to_vec(), 1000);
+    // 2000 random lists of 2 to 30 numbers, of 1 to 5 and 1 to 1000 in
+    // turn
+    let mut seed = 2190;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 29 + 2;
+        let values = [5, 1000][round % 2];
+        let (nums, key) = random_case(n, values, mut seed);
+        let target = most_frequent(nums, key);
+        total += target;
+        check = (check * 31 + target + n) % 1000000007;
+    }
+    println(f"2000 lists: targets add up to {total}, checksum {check}");
+    // the constraints' longest, 1000 numbers: a key followed by 1 to 3
+    // in turn, and at random of 1 to 1000
+    let mut turns: Vec[i64] = Vec.new();
+    for i in 0..500 {
+        turns.push(7);
+        turns.push([1, 2, 3, 1][i % 4]);
+    }
+    let (wide, key) = random_case(1000, 1000, mut seed);
+    println(f"1000 numbers: {most_frequent(turns, 7)} {most_frequent(wide, key)}");
+}

@@ -1,0 +1,300 @@
+// LeetCode #2190: Most Frequent Number Following Key In an Array -- the
+// differential. The six arms, against the statement read literally:
+// for every number in the list, its count the indices i with nums[i]
+// the key and nums[i + 1] that number, found by trying every i; the
+// number of the largest count kept. 300 random lists of 2 to 12 numbers
+// of 1 to 4; then 30 of 1 to 9; then 30 where the key is everywhere
+// but one place; each drawn again until its answer is unique, as the
+// constraints promise; every one drawn before any arm answers.
+//
+// P1  the target is the statement read literally
+// P2  every number v made 1001 - v, the key too: the target made so too
+// P3  the list twice, a number not the key between: the same target
+// P4  a number not the key put in front: the same target
+// P5  the target follows the key, and at least as often as the number
+//     after the key's first place
+// P6  each arm agrees with at least three of the other five
+
+// ---- follow.kara: the ★ arm, counts in a list, the leader kept as met
+fn star_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let mut counts: Vec[i64] = Vec.filled(1001, 0);
+    let mut best = 0;
+    let mut target = -1;
+    for i in 1..nums.len() {
+        if nums[i - 1] == key {
+            let x = nums[i];
+            counts[x] += 1;
+            if counts[x] > best {
+                best = counts[x];
+                target = x;
+            }
+        }
+    }
+    target
+}
+
+// ---- follow_map.kara: a `Map[i64, i64]` by `entry`
+fn map_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for i in 1..nums.len() {
+        if nums[i - 1] == key {
+            *counts.entry(nums[i]).or_insert(0) += 1;
+        }
+    }
+    let mut best = 0;
+    let mut target = -1;
+    for (x, c) in counts.iter() {
+        if c > best {
+            best = c;
+            target = x;
+        }
+    }
+    target
+}
+
+// ---- follow_sorted.kara: the followers sorted, the longest run
+fn sorted_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let mut after: Vec[i64] = Vec.new();
+    for i in 1..nums.len() {
+        if nums[i - 1] == key {
+            after.push(nums[i]);
+        }
+    }
+    after.sort();
+    let mut best = 0;
+    let mut target = -1;
+    let mut start = 0;
+    while start < after.len() {
+        let mut end = start;
+        while end < after.len() and after[end] == after[start] {
+            end += 1;
+        }
+        if end - start > best {
+            best = end - start;
+            target = after[start];
+        }
+        start = end;
+    }
+    target
+}
+
+// ---- follow_struct.kara: a `Tally` that records and names its leader
+struct Tally {
+    counts: Vec[i64],
+    leader: i64,
+}
+
+impl Tally {
+    fn empty() -> Tally {
+        Tally { counts: Vec.filled(1001, 0), leader: 0 }
+    }
+
+    fn record(mut ref self, x: i64) {
+        self.counts[x] += 1;
+        if self.counts[x] > self.counts[self.leader] {
+            self.leader = x;
+        }
+    }
+
+    fn leader(ref self) -> i64 {
+        self.leader
+    }
+}
+
+fn struct_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let mut tally = Tally.empty();
+    for pair in nums.windows(2) {
+        if pair[0] == key {
+            tally.record(pair[1]);
+        }
+    }
+    tally.leader()
+}
+
+// ---- follow_iter.kara: `zip`, `filter`, `fold`, `max_by_key`
+fn iter_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let counts = nums
+        .iter()
+        .zip(nums.iter().skip(1))
+        .filter(|(a, _)| a == key)
+        .fold(Vec.filled(1001, 0), |acc, (_, b)| {
+            let mut next = acc;
+            next[b] += 1;
+            next
+        });
+    let (target, _) = counts.iter().enumerate().max_by_key(|(_, c)| c).unwrap();
+    target
+}
+
+// ---- follow_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn most_frequent(nums: Vec[i32], key: i32) -> i32 {
+        let mut cnt: Map[i32, i32] = Map.new();
+        for w in nums.windows(2) {
+            if w[0] == key {
+                *cnt.entry(w[1]).or_insert(0) += 1;
+            }
+        }
+        *cnt.iter().max_by_key(|(_, c)| c).unwrap().0
+    }
+}
+
+struct Solution {}
+
+fn solution_most_frequent(nums: Vec[i64], key: i64) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.most_frequent(narrow, key as i32)
+}
+
+// ---- the statement read literally
+
+fn count_after(nums: Vec[i64], key: i64, target: i64) -> i64 {
+    let mut count = 0;
+    for i in 0..(nums.len() - 1) {
+        if nums[i] == key and nums[i + 1] == target {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn literal(nums: Vec[i64], key: i64) -> i64 {
+    let mut best = 0;
+    let mut target = -1;
+    for t in nums.iter() {
+        let c = count_after(nums, key, t);
+        if c > best {
+            best = c;
+            target = t;
+        }
+    }
+    target
+}
+
+fn unique_answer(nums: Vec[i64], key: i64) -> bool {
+    let target = literal(nums, key);
+    if target < 0 {
+        return false;
+    }
+    let best = count_after(nums, key, target);
+    for t in nums.iter() {
+        if t != target and count_after(nums, key, t) == best {
+            return false;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, nums: Vec[i64], key: i64) -> i64 {
+    match arm {
+        0 => star_most_frequent(nums, key),
+        1 => map_most_frequent(nums, key),
+        2 => sorted_most_frequent(nums, key),
+        3 => struct_most_frequent(nums, key),
+        4 => iter_most_frequent(nums, key),
+        _ => solution_most_frequent(nums, key),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "map", "sorted", "struct", "iter", "solution"];
+    let mut seed = 2190;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        loop {
+            let n = next_random(mut seed) % 11 + 2;
+            let values = if c >= 300 and c < 330 { 9 } else { 4 };
+            let mut nums: Vec[i64] = Vec.new();
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % values + 1);
+            }
+            let key = if c >= 330 {
+                let k = nums[0];
+                let odd = next_random(mut seed) % n;
+                for i in 0..n {
+                    if i != odd {
+                        nums[i] = k;
+                    }
+                }
+                k
+            } else {
+                nums[next_random(mut seed) % (n - 1)]
+            };
+            if unique_answer(nums, key) {
+                cases.push((nums, key));
+                break;
+            }
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, key) in cases.iter() {
+        let truth = literal(nums, key);
+        check = (check * 31 + nums.len() * 7 + key + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, key)).collect();
+        let mirrored: Vec[i64] = nums.iter().map(|v| 1001 - v).collect();
+        let other = if key == 1 { 2 } else { 1 };
+        let mut twice = nums.clone();
+        twice.push(other);
+        for v in nums.iter() {
+            twice.push(v);
+        }
+        let mut fronted: Vec[i64] = [other].to_vec();
+        for v in nums.iter() {
+            fronted.push(v);
+        }
+        let mut first_after = -1;
+        for i in 0..(nums.len() - 1) {
+            if nums[i] == key {
+                first_after = nums[i + 1];
+                break;
+            }
+        }
+        for arm in 0..6 {
+            let target = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == target {
+                    same += 1;
+                }
+            }
+            let follows = target >= 1 and target <= 1000 and count_after(nums, key, target) >= 1;
+            let verdicts = [
+                target == truth,
+                answer(arm, mirrored, 1001 - key) == 1001 - target,
+                answer(arm, twice, key) == target,
+                answer(arm, fronted, key) == target,
+                follows and count_after(nums, key, target) >= count_after(nums, key, first_after),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, {key} arm {names[arm]}: P{q + 1} fails, answered {target}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
