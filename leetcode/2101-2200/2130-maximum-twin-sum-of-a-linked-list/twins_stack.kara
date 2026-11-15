@@ -1,0 +1,87 @@
+// LeetCode #2130: Maximum Twin Sum of a Linked List -- the length counted
+// in one walk; a second walk pushes the first half's values onto a
+// `Vec` stack and pops one for each value of the second half, its twin.
+
+shared struct ListNode {
+    val: i64,
+    mut next: Option[ListNode],
+}
+
+fn pair_sum(head: Option[ListNode]) -> i64 {
+    let mut n = 0;
+    let mut node = head;
+    while let Some(x) = node {
+        n += 1;
+        node = x.next;
+    }
+    let mut stack: Vec[i64] = Vec.new();
+    let mut best = 0;
+    let mut i = 0;
+    node = head;
+    while let Some(x) = node {
+        if i < n / 2 {
+            stack.push(x.val);
+        } else {
+            best = best.max(x.val + stack.pop().unwrap());
+        }
+        i += 1;
+        node = x.next;
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn build(values: Vec[i64]) -> Option[ListNode] {
+    let mut head: Option[ListNode] = None;
+    for v in values.iter().rev() {
+        head = Some(ListNode { val: v, next: head });
+    }
+    head
+}
+
+fn show(values: Vec[i64]) {
+    println(f"{values} -> {pair_sum(build(values))}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one pair, the largest
+    // twins in the middle, at the ends, and two equal sums
+    show([5, 4, 2, 1].to_vec());
+    show([4, 2, 2, 3].to_vec());
+    show([1, 100000].to_vec());
+    show([7, 7].to_vec());
+    show([1, 2, 9, 9, 2, 1].to_vec());
+    show([9, 1, 2, 3, 4, 9].to_vec());
+    show([3, 5, 1, 2, 4, 6].to_vec());
+    // 2000 random lists of 2 to 20 values from 1 to 100
+    let mut seed = 2130;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = 2 * (next_random(mut seed) % 10 + 1);
+        let mut values: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            values.push(next_random(mut seed) % 100 + 1);
+        }
+        let sum = pair_sum(build(values));
+        total += sum;
+        check = (check * 31 + sum) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest: 100000 nodes of 1 to 100000 in order, and
+    // 100000 random ones
+    let ladder: Vec[i64] = (1..100001).collect();
+    let mut random: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        random.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+    }
+    let a = pair_sum(build(ladder));
+    let b = pair_sum(build(random));
+    println(f"100000 nodes: {a} in order, {b} at random");
+}

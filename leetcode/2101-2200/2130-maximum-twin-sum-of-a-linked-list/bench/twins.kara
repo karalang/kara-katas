@@ -1,0 +1,59 @@
+// LeetCode #2130: Maximum Twin Sum of a Linked List -- the benchmark,
+// twins.kara's ★ arm. 10 lists of 100000 nodes of 1 to 100000 built
+// once; then every list solved 50 times, one node a random way along
+// given a new value of 1 to 200000 before each solve.
+
+shared struct ListNode {
+    mut val: i64,
+    mut next: Option[ListNode],
+}
+
+fn pair_sum(head: Option[ListNode]) -> i64 {
+    let mut values: Vec[i64] = Vec.new();
+    let mut node = head;
+    while let Some(n) = node {
+        values.push(n.val);
+        node = n.next;
+    }
+    let len = values.len();
+    let mut best = 0;
+    for i in 0..len / 2 {
+        best = best.max(values[i] + values[len - 1 - i]);
+    }
+    best
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let n = 100000;
+    let mut seed = 2130;
+    let mut lists: Vec[Option[ListNode]] = Vec.new();
+    for _ in 0..10 {
+        let mut head: Option[ListNode] = None;
+        for _ in 0..n {
+            let v = (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1;
+            head = Some(ListNode { val: v, next: head });
+        }
+        lists.push(head);
+    }
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..50 {
+        for k in 0..10 {
+            let at = (next_random(mut seed) * 32768 + next_random(mut seed)) % n;
+            let mut node = lists[k].unwrap();
+            for _ in 0..at {
+                node = node.next.unwrap();
+            }
+            node.val = next_random(mut seed) % 200000 + 1;
+            let sum = pair_sum(lists[k]);
+            total += sum;
+            check = (check * 31 + sum + round) % 1000000007;
+        }
+    }
+    println(f"500 solves: {total} in all, checksum {check}");
+}
