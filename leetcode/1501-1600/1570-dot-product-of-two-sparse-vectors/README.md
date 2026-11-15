@@ -134,7 +134,10 @@ does with `(&self.pairs, &other.pairs)`. Written without a `ref`,
 and `karac check` offers a `.clone()` on each, which `karac fix` applies:
 it checks and is right, but copies both vectors on every product. The
 arms write `(ref self.pairs, ref other.pairs)`, which copies nothing and
-checks; filed as B-2026-11-14-23. The map arm was also first written
+checks; filed as B-2026-11-14-23 and fixed in kara `572956a03`, after which
+`karac fix` writes both `ref`s itself in the search arm. In the map arm
+it writes `ref` for `small` but keeps `.clone()` for `large`, which is
+read only inside the `map` closure; filed as B-2026-11-15-1. The map arm was also first written
 with Rust's `.copied()` on the `get`, which `karac fix` rewrote to
 `.cloned()` in one round.
 
