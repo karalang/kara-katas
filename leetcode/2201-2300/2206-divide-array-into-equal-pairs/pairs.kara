@@ -1,0 +1,80 @@
+// LeetCode #2206: Divide Array Into Equal Pairs -- the ★ arm: the array
+// splits into pairs of equal numbers exactly when every number appears an
+// even number of times, so a count per value up to 500, then one pass
+// over the counts. O(n + 500).
+
+fn divide_array(nums: Vec[i64]) -> bool {
+    let mut count = Vec.filled(501, 0);
+    for x in nums.iter() {
+        count[x] += 1;
+    }
+    for c in count.iter() {
+        if c % 2 == 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {divide_array(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one pair, one number four
+    // times, three of one and one of another, and both ends of the range
+    show([3, 2, 3, 2, 2, 2]);
+    show([1, 2, 3, 4]);
+    show([5, 5]);
+    show([1, 1, 1, 1]);
+    show([7, 7, 7, 8]);
+    show([500, 1, 1, 500]);
+    // 3000 random arrays of 2 to 20 numbers up to 2, 5 and 500 in turn,
+    // half of them built of pairs and shuffled
+    let mut seed = 2206;
+    let mut yes = 0;
+    let mut check = 0;
+    for c in 0..3000 {
+        let half = next_random(mut seed) % 10 + 1;
+        let top = [2, 5, 500][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        if c % 2 == 0 {
+            for _ in 0..half {
+                let x = next_random(mut seed) % top + 1;
+                nums.push(x);
+                nums.push(x);
+            }
+            for i in (1..nums.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+        } else {
+            for _ in 0..(2 * half) {
+                nums.push(next_random(mut seed) % top + 1);
+            }
+        }
+        let paired = divide_array(nums);
+        if paired {
+            yes += 1;
+        }
+        check = (check * 31 + (if paired { 2 } else { 1 }) + nums.len()) % 1000000007;
+    }
+    println(f"3000 arrays: {yes} divide, checksum {check}");
+    // the constraints' largest: 1000 numbers up to 500, in pairs, then
+    // with one number changed
+    let mut nums: Vec[i64] = Vec.new();
+    for i in 0..500 {
+        nums.push(i % 500 + 1);
+        nums.push((499 - i) % 500 + 1);
+    }
+    println(f"1000 numbers in pairs -> {divide_array(nums)}");
+    nums[999] = 250;
+    println(f"1000 numbers, the last changed -> {divide_array(nums)}");
+}

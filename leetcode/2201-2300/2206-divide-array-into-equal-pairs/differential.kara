@@ -1,0 +1,245 @@
+// LeetCode #2206: Divide Array Into Equal Pairs -- the differential. The
+// six arms, against the statement read literally: the first number not
+// yet paired tried with every later unpaired number equal to it, and the
+// rest paired the same way, backing up when none is left; no count. 300
+// random arrays of 2 to 12 numbers up to 2, 5 and 500 in turn; then 30
+// built of pairs and shuffled; then 30 of 40 to 60 numbers up to 500
+// built of pairs, with one number changed in every other one. Every case
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the array followed by itself: it divides
+// P3  the array reversed: the same answer
+// P4  every number x made 501 - x: the same answer
+// P5  two more of the first number appended: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- pairs.kara: the ★ arm, a count per value
+fn star_divide_array(nums: Vec[i64]) -> bool {
+    let mut count = Vec.filled(501, 0);
+    for x in nums.iter() {
+        count[x] += 1;
+    }
+    for c in count.iter() {
+        if c % 2 == 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- pairs_sort.kara: a sorted copy read two at a time
+fn sort_divide_array(nums: Vec[i64]) -> bool {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut i = 0;
+    while i < sorted.len() {
+        if sorted[i] != sorted[i + 1] {
+            return false;
+        }
+        i += 2;
+    }
+    true
+}
+
+// ---- pairs_toggle.kara: a `Set` of numbers waiting for their pair
+fn toggle_divide_array(nums: Vec[i64]) -> bool {
+    let mut waiting: Set[i64] = Set.new();
+    for x in nums.iter() {
+        if waiting.contains(x) {
+            waiting.remove(x);
+        } else {
+            waiting.insert(x);
+        }
+    }
+    waiting.is_empty()
+}
+
+// ---- pairs_struct.kara: a `Tally` in a `Map`
+struct Tally {
+    counts: Map[i64, i64],
+}
+
+impl Tally {
+    fn of(nums: Vec[i64]) -> Tally {
+        let mut counts: Map[i64, i64] = Map.new();
+        for x in nums.iter() {
+            *counts.entry(x).or_insert(0) += 1;
+        }
+        Tally { counts: counts }
+    }
+
+    fn all_even(self) -> bool {
+        for (_, c) in self.counts.iter() {
+            if c % 2 != 0 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn struct_divide_array(nums: Vec[i64]) -> bool {
+    Tally.of(nums).all_even()
+}
+
+// ---- pairs_iter.kara: `chunks(2)` and `all`
+fn iter_divide_array(nums: Vec[i64]) -> bool {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    sorted.chunks(2).into_iter().all(|pair| pair[0] == pair[1])
+}
+
+// ---- pairs_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn divide_array(nums: Vec[i32]) -> bool {
+        let mut cnt = Map.new();
+        for x in ref nums {
+            *cnt.entry(x).or_insert(0) += 1;
+        }
+        cnt.values().all(|c| c % 2 == 0)
+    }
+}
+
+struct Solution {}
+
+fn solution_divide_array(nums: Vec[i64]) -> bool {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.divide_array(narrow)
+}
+
+// ---- the statement read literally
+
+fn pairs_up(nums: Vec[i64], used: mut ref Vec[bool]) -> bool {
+    let mut first = -1;
+    for i in 0..nums.len() {
+        if not used[i] and first < 0 {
+            first = i;
+        }
+    }
+    if first < 0 {
+        return true;
+    }
+    used[first] = true;
+    for j in (first + 1)..nums.len() {
+        if not used[j] and nums[j] == nums[first] {
+            used[j] = true;
+            if pairs_up(nums, mut used) {
+                return true;
+            }
+            used[j] = false;
+        }
+    }
+    used[first] = false;
+    false
+}
+
+fn literal(nums: Vec[i64]) -> bool {
+    let mut used = Vec.filled(nums.len(), false);
+    pairs_up(nums, mut used)
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_divide_array(nums),
+        1 => sort_divide_array(nums),
+        2 => toggle_divide_array(nums),
+        3 => struct_divide_array(nums),
+        4 => iter_divide_array(nums),
+        _ => solution_divide_array(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "toggle", "struct", "iter", "solution"];
+    let mut seed = 2206;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            let n = 2 * (next_random(mut seed) % 6 + 1);
+            let top = [2, 5, 500][c % 3];
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % top + 1);
+            }
+        } else {
+            let half = if c < 330 { next_random(mut seed) % 6 + 1 } else { next_random(mut seed) % 11 + 20 };
+            let top = if c < 330 { [2, 5, 500][c % 3] } else { 500 };
+            for _ in 0..half {
+                let x = next_random(mut seed) % top + 1;
+                nums.push(x);
+                nums.push(x);
+            }
+            for i in (1..nums.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+            if c >= 330 and c % 2 == 1 {
+                let at = next_random(mut seed) % nums.len();
+                nums[at] = nums[at] % 500 + 1;
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + (if truth { 2 } else { 1 }) + nums.len()) % 1000000007;
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, nums)).collect();
+        let mut twice = nums.clone();
+        for x in nums.iter() {
+            twice.push(x);
+        }
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mirrored: Vec[i64] = nums.iter().map(|x| 501 - x).collect();
+        let mut more = nums.clone();
+        more.push(nums[0]);
+        more.push(nums[0]);
+        for arm in 0..6 {
+            let paired = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == paired {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                paired == truth,
+                answer(arm, twice),
+                answer(arm, reversed) == paired,
+                answer(arm, mirrored) == paired,
+                answer(arm, more) == paired,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {paired}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
