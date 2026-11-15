@@ -1,0 +1,266 @@
+// LeetCode #2189: Number of Ways to Build House of Cards -- the
+// differential. The six arms, against the statement read literally:
+// every house built row by row from the bottom, each row's triangles
+// fewer than the row's below and its cards two a triangle and one
+// between each two, until the cards run out exactly; and the houses
+// that use every card counted. No table and no memo. Every n from 1 to
+// 120.
+//
+// P1  the count is the statement read literally
+// P2  n one less than a multiple of 3: at least one house, a single row
+// P3  three cards more: at least as many houses
+// P4  three cards more: no more new houses than the houses of n + 1 - 3j
+//     cards, summed over j
+// P5  a house at all exactly when some number of rows r has n + r a
+//     multiple of 3 and n at least the least house of r rows
+// P6  each arm agrees with at least three of the other five
+
+// ---- cards.kara: the ★ arm, a 0/1 knapsack over the row widths
+fn star_house_of_cards(n: i64) -> i64 {
+    let mut ways: Vec[i64] = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    let mut k = 1;
+    while 3 * k - 1 <= n {
+        let cost = 3 * k - 1;
+        let mut s = n;
+        while s >= cost {
+            ways[s] += ways[s - cost];
+            s -= 1;
+        }
+        k += 1;
+    }
+    ways[n]
+}
+
+// ---- cards_memo.kara: top down, by the cards left and the row below
+fn memo_houses(left: i64, below: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if memo[left][below] >= 0 {
+        return memo[left][below];
+    }
+    let mut count = 0;
+    for k in 1..below {
+        let cost = 3 * k - 1;
+        if cost > left {
+            break;
+        }
+        count += memo_houses(left - cost, k, mut memo);
+    }
+    memo[left][below] = count;
+    count
+}
+
+fn memo_house_of_cards(n: i64) -> i64 {
+    let widest = (n + 1) / 3 + 1;
+    let mut memo: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..=n {
+        memo.push(Vec.filled(widest + 2, -1));
+    }
+    memo_houses(n, widest + 1, mut memo)
+}
+
+// ---- cards_table.kara: a table by the widest row
+fn table_house_of_cards(n: i64) -> i64 {
+    let widest = (n + 1) / 3;
+    // narrower[s]: the houses of s cards with every row narrower than k,
+    // the empty house among them
+    let mut narrower: Vec[i64] = Vec.filled(n + 1, 0);
+    narrower[0] = 1;
+    let mut total = 0;
+    for k in 1..=widest {
+        let cost = 3 * k - 1;
+        let mut top: Vec[i64] = Vec.filled(n + 1, 0);
+        for s in cost..=n {
+            top[s] = narrower[s - cost];
+        }
+        total += top[n];
+        for s in 0..=n {
+            narrower[s] += top[s];
+        }
+    }
+    total
+}
+
+// ---- cards_struct.kara: a `Deck` each width is offered to
+struct Deck {
+    ways: Vec[i64],
+}
+
+impl Deck {
+    fn of(size: i64) -> Deck {
+        let mut ways: Vec[i64] = Vec.filled(size + 1, 0);
+        ways[0] = 1;
+        Deck { ways: ways }
+    }
+
+    fn size(ref self) -> i64 {
+        self.ways.len() - 1
+    }
+
+    fn offer(mut ref self, width: i64) {
+        let cost = 3 * width - 1;
+        for s in (cost..=self.size()).rev() {
+            self.ways[s] += self.ways[s - cost];
+        }
+    }
+
+    fn use_all(ref self) -> i64 {
+        self.ways[self.size()]
+    }
+}
+
+fn struct_house_of_cards(n: i64) -> i64 {
+    let mut deck = Deck.of(n);
+    let mut width = 1;
+    while 3 * width - 1 <= n {
+        deck.offer(width);
+        width += 1;
+    }
+    deck.use_all()
+}
+
+// ---- cards_iter.kara: `take_while`, `fold`, a `map` per width
+fn iter_house_of_cards(n: i64) -> i64 {
+    let start: Vec[i64] = (0..=n).map(|s| if s == 0 { 1 } else { 0 }).collect();
+    let ways = (1..)
+        .map(|k| 3 * k - 1)
+        .take_while(|cost| cost <= n)
+        .fold(start, |prev, cost| {
+            (0..=n).map(|s| if s >= cost { prev[s] + prev[s - cost] } else { prev[s] }).collect()
+        });
+    ways[n]
+}
+
+// ---- cards_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn house_of_cards(n: i32) -> i32 {
+        let n = n as i64;
+        let mut dp = Vec.filled(n + 1, 0i32);
+        dp[0] = 1;
+        let mut k = 1;
+        while 3 * k - 1 <= n {
+            let cost = 3 * k - 1;
+            for s in (cost..=n).rev() {
+                dp[s] += dp[s - cost];
+            }
+            k += 1;
+        }
+        dp[n]
+    }
+}
+
+struct Solution {}
+
+fn solution_house_of_cards(n: i64) -> i64 {
+    Solution.house_of_cards(n as i32)
+}
+
+// ---- the statement read literally
+
+// the houses of `left` cards whose bottom row is narrower than `below`
+fn literal_houses(left: i64, below: i64) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    let mut count = 0;
+    for triangles in 1..below {
+        // two cards a triangle, one laid flat between each two
+        let cards = 2 * triangles + (triangles - 1);
+        if cards <= left {
+            count += literal_houses(left - cards, triangles);
+        }
+    }
+    count
+}
+
+fn literal(n: i64) -> i64 {
+    if n == 0 {
+        return 0;
+    }
+    literal_houses(n, n + 1)
+}
+
+fn answer(arm: i64, n: i64) -> i64 {
+    match arm {
+        0 => star_house_of_cards(n),
+        1 => memo_house_of_cards(n),
+        2 => table_house_of_cards(n),
+        3 => struct_house_of_cards(n),
+        4 => iter_house_of_cards(n),
+        _ => solution_house_of_cards(n),
+    }
+}
+
+// some number of rows r has n + r a multiple of 3 and n at least the
+// least house of r rows, r, r - 1, .., 1 triangles: 3 r (r + 1) / 2 - r
+fn some_rows_fit(n: i64) -> bool {
+    let mut r = 1;
+    while 3 * r * (r + 1) / 2 - r <= n {
+        if (n + r) % 3 == 0 {
+            return true;
+        }
+        r += 1;
+    }
+    false
+}
+
+fn main() {
+    let names = ["star", "memo", "table", "struct", "iter", "solution"];
+    let cases: Vec[i64] = (1..=120).collect();
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for n in cases.iter() {
+        let truth = literal(n);
+        check = (check * 31 + n * 7 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n)).collect();
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, n + 3);
+            let mut smaller = 0;
+            let mut j = 1;
+            while n + 1 - 3 * j > 0 {
+                smaller += answer(arm, n + 1 - 3 * j);
+                j += 1;
+            }
+            let verdicts = [
+                count == truth,
+                (n + 1) % 3 != 0 or count >= 1,
+                more >= count,
+                more - count <= smaller,
+                (count > 0) == some_rows_fit(n),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} counts: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

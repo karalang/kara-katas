@@ -1,0 +1,63 @@
+// LeetCode #2189: Number of Ways to Build House of Cards -- top down:
+// the houses of `left` cards whose bottom row has fewer than `below`
+// triangles, the sum over that row's width of the houses on top of it;
+// each answer kept in a `Vec[Vec[i64]]` memo passed `mut ref`, -1 while
+// not yet known. O(n^2 / 3).
+
+fn houses(left: i64, below: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if memo[left][below] >= 0 {
+        return memo[left][below];
+    }
+    let mut count = 0;
+    for k in 1..below {
+        let cost = 3 * k - 1;
+        if cost > left {
+            break;
+        }
+        count += houses(left - cost, k, mut memo);
+    }
+    memo[left][below] = count;
+    count
+}
+
+fn house_of_cards(n: i64) -> i64 {
+    let widest = (n + 1) / 3 + 1;
+    let mut memo: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..=n {
+        memo.push(Vec.filled(widest + 2, -1));
+    }
+    houses(n, widest + 1, mut memo)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn show(n: i64) {
+    println(f"{n} -> {house_of_cards(n)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: one card, the least
+    // house of two rows, and the constraints' largest
+    show(16);
+    show(2);
+    show(4);
+    show(1);
+    show(7);
+    show(500);
+    // every n the constraints allow, 1 to 500
+    let mut total = 0;
+    let mut check = 0;
+    let mut built = 0;
+    for n in 1..=500 {
+        let ways = house_of_cards(n);
+        total += ways;
+        if ways > 0 {
+            built += 1;
+        }
+        check = (check * 31 + ways % 1000000007) % 1000000007;
+    }
+    println(f"1 to 500 cards: {built} build a house, {total} houses in all, checksum {check}");
+}
