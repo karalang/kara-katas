@@ -1,0 +1,61 @@
+// LeetCode #1584 bench: the ★ arm (Prim's algorithm with no edge list) on
+// 100 problems of 1000 distinct points, every problem drawn first.
+
+fn min_cost_connect_points(points: Vec[Vec[i64]]) -> i64 {
+    let n = points.len();
+    let mut nearest = Vec.filled(n, i64.MAX);
+    let mut inside = Vec.filled(n, false);
+    nearest[0] = 0;
+    let mut cost = 0;
+    for _ in 0..n {
+        let mut next = -1;
+        for i in 0..n {
+            if not inside[i] and (next < 0 or nearest[i] < nearest[next]) {
+                next = i;
+            }
+        }
+        inside[next] = true;
+        cost += nearest[next];
+        for i in 0..n {
+            if not inside[i] {
+                let d = (points[i][0] - points[next][0]).abs() + (points[i][1] - points[next][1]).abs();
+                nearest[i] = nearest[i].min(d);
+            }
+        }
+    }
+    cost
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    let mut seed = 1584;
+    let mut problems: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..100 {
+        let mut seen: Set[(i64, i64)] = Set.new();
+        let mut points: Vec[Vec[i64]] = Vec.new();
+        while points.len() < 1000 {
+            let x = (next_random(mut seed) * 32768 + next_random(mut seed)) % 2000001 - 1000000;
+            let y = (next_random(mut seed) * 32768 + next_random(mut seed)) % 2000001 - 1000000;
+            if seen.insert((x, y)) {
+                points.push([x, y]);
+            }
+        }
+        problems.push(points);
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for points in problems.iter() {
+        let cost = min_cost_connect_points(points);
+        total += cost;
+        check = mix(check, cost);
+    }
+    println(f"100 problems of 1000 points: cost {total}, checksum {check}");
+}
