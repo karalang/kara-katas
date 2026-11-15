@@ -1,0 +1,109 @@
+// LeetCode #2165: Smallest Value of the Rearranged Number -- a `struct
+// Rearranged` holding the sign and the digits, made `of` a number; its
+// `smallest` puts the digits in order (`mut ref self`) and its `value`
+// reads them back (`ref self`). The leading zeros are kept in front of
+// the rest by moving the first digit other than 0 ahead of them with
+// `remove` and `insert`. O(d log d).
+
+struct Rearranged {
+    below_zero: bool,
+    digits: Vec[i64],
+}
+
+impl Rearranged {
+    fn of(num: i64) -> Rearranged {
+        let mut digits: Vec[i64] = Vec.new();
+        let mut rest = num.abs();
+        loop {
+            digits.push(rest % 10);
+            rest /= 10;
+            if rest == 0 {
+                break;
+            }
+        }
+        Rearranged { below_zero: num < 0, digits: digits }
+    }
+
+    fn smallest(mut ref self) {
+        self.digits.sort();
+        if self.below_zero {
+            self.digits.reverse();
+            return;
+        }
+        let zeros = self.digits.iter().filter(|d| d == 0).count();
+        if zeros < self.digits.len() {
+            let lead = self.digits.remove(zeros);
+            self.digits.insert(0, lead);
+        }
+    }
+
+    fn value(ref self) -> i64 {
+        let mut size = 0;
+        for d in self.digits.iter() {
+            size = size * 10 + d;
+        }
+        if self.below_zero { -size } else { size }
+    }
+}
+
+fn smallest_number(num: i64) -> i64 {
+    let mut r = Rearranged.of(num);
+    r.smallest();
+    r.value()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(num: i64) {
+    println(f"{num} -> {smallest_number(num)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then six more: zero, the least and the most
+    // the constraints allow, zeros inside, a single digit below zero, and
+    // ten below zero
+    show(310);
+    show(-7605);
+    show(0);
+    show(-1000000000000000);
+    show(1000000000000000);
+    show(1020);
+    show(-8);
+    show(-10);
+    // 2000 random numbers of 1 to 15 digits, about half of them below
+    // zero, the digits from 0 to 1, 0 to 4 or 0 to 9 in turn
+    let mut seed = 2165;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let length = next_random(mut seed) % 15 + 1;
+        let top = [2, 5, 10][round % 3];
+        let mut num = 0;
+        for _ in 0..length {
+            num = num * 10 + next_random(mut seed) % top;
+        }
+        if next_random(mut seed) % 2 == 1 {
+            num = -num;
+        }
+        let s = smallest_number(num);
+        total += s % 1000000007;
+        check = (check * 31 + s % 1000000007 + 1000000007) % 1000000007;
+    }
+    println(f"2000 numbers: {total} in all, checksum {check}");
+    // the digits 0 to 9 in every rotation, each way of signing
+    let mut every = 0;
+    for start in 0..10 {
+        let mut num = 0;
+        for k in 0..10 {
+            num = num * 10 + (start + k) % 10;
+        }
+        every = (every * 31 + smallest_number(num) % 1000000007 + 1000000007) % 1000000007;
+        every = (every * 31 + smallest_number(-num) % 1000000007 + 1000000007) % 1000000007;
+    }
+    println(f"20 rotations: checksum {every}");
+}

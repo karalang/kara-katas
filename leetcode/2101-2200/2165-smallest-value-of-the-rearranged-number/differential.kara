@@ -1,0 +1,314 @@
+// LeetCode #2165: Smallest Value of the Rearranged Number -- the
+// differential. The six arms, against the statement read literally: the
+// digits put in every order, an order that starts with 0 passed over
+// unless it is the only digit, each read back with the number's sign, and
+// the least taken; no sorting. 300 random numbers of 1 to 6 digits from 0
+// to 1, 0 to 4 or 0 to 9 in turn, about half below zero; then 30 mostly
+// zeros; then 30 of six different digits; every one drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer's digits are the number's digits
+// P3  the answer rearranged again: the same answer
+// P4  the number's digits put largest first: the same answer
+// P5  a 0 put after the number: below zero, the answer ten times as much;
+//     otherwise the answer with a 0 after its first digit
+// P6  each arm agrees with at least three of the other five
+
+// ---- smallest.kara: the ★ arm, the text's digits sorted, the first other than 0 swapped in front
+fn star_smallest_number(num: i64) -> i64 {
+    let mut digits: Vec[i64] = num.abs().to_string().chars().map(|c| c.to_digit(10).unwrap() as i64).collect();
+    if num < 0 {
+        digits.sort_by(|a, b| b.cmp(a));
+    } else {
+        digits.sort();
+        match digits.iter().position(|d| d != 0) {
+            Some(first) => digits.swap(0, first),
+            None => {}
+        }
+    }
+    let size = digits.iter().fold(0, |n, d| n * 10 + d);
+    if num < 0 { -size } else { size }
+}
+
+// ---- smallest_count.kara: the digits counted by `% 10`, the number built from the counts
+fn count_smallest_number(num: i64) -> i64 {
+    let mut counts = [0; 10];
+    let mut rest = num.abs();
+    while rest > 0 {
+        counts[rest % 10] += 1;
+        rest /= 10;
+    }
+    let mut size = 0;
+    if num < 0 {
+        for d in (0..10).rev() {
+            for _ in 0..counts[d] {
+                size = size * 10 + d;
+            }
+        }
+        return -size;
+    }
+    for d in 1..10 {
+        if counts[d] > 0 {
+            size = d;
+            counts[d] -= 1;
+            break;
+        }
+    }
+    for d in 0..10 {
+        for _ in 0..counts[d] {
+            size = size * 10 + d;
+        }
+    }
+    size
+}
+
+// ---- smallest_text.kara: the characters sorted, `remove` and `insert`, `i64.parse`
+fn text_smallest_number(num: i64) -> i64 {
+    let mut chars: Vec[char] = num.abs().to_string().chars().collect();
+    chars.sort();
+    if num < 0 {
+        chars.reverse();
+    }
+    if num >= 0 {
+        match chars.iter().position(|c| c != '0') {
+            Some(at) => {
+                let lead = chars.remove(at);
+                chars.insert(0, lead);
+            }
+            None => {}
+        }
+    }
+    let text: String = chars.into_iter().collect();
+    let size = i64.parse(text).unwrap();
+    if num < 0 { -size } else { size }
+}
+
+// ---- smallest_struct.kara: a `Rearranged` of the sign and the digits
+struct Rearranged {
+    below_zero: bool,
+    digits: Vec[i64],
+}
+
+impl Rearranged {
+    fn of(num: i64) -> Rearranged {
+        let mut digits: Vec[i64] = Vec.new();
+        let mut rest = num.abs();
+        loop {
+            digits.push(rest % 10);
+            rest /= 10;
+            if rest == 0 {
+                break;
+            }
+        }
+        Rearranged { below_zero: num < 0, digits: digits }
+    }
+
+    fn smallest(mut ref self) {
+        self.digits.sort();
+        if self.below_zero {
+            self.digits.reverse();
+            return;
+        }
+        let zeros = self.digits.iter().filter(|d| d == 0).count();
+        if zeros < self.digits.len() {
+            let lead = self.digits.remove(zeros);
+            self.digits.insert(0, lead);
+        }
+    }
+
+    fn value(ref self) -> i64 {
+        let mut size = 0;
+        for d in self.digits.iter() {
+            size = size * 10 + d;
+        }
+        if self.below_zero { -size } else { size }
+    }
+}
+
+fn rearranged_smallest_number(num: i64) -> i64 {
+    let mut r = Rearranged.of(num);
+    r.smallest();
+    r.value()
+}
+
+// ---- smallest_iter.kara: `successors`, `position`, `once` and `chain`, `fold`
+fn iter_smallest_number(num: i64) -> i64 {
+    let mut digits: Vec[i64] = successors(Some(num.abs()), |n| if n >= 10 { Some(n / 10) } else { None })
+        .map(|n| n % 10)
+        .collect();
+    digits.sort();
+    if num < 0 {
+        return -digits.iter().rev().fold(0, |n, d| n * 10 + d);
+    }
+    let lead = digits.iter().position(|d| d != 0).unwrap_or(0);
+    once(digits[lead])
+        .chain(digits.iter().take(lead).cloned())
+        .chain(digits.iter().skip(lead + 1).cloned())
+        .fold(0, |n, d| n * 10 + d)
+}
+
+// ---- smallest_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn smallest_number(num: i64) -> i64 {
+        let mut d: Vec[u8] = num.abs().to_string().bytes().to_vec();
+        if num < 0 {
+            d.sort_by(|a, b| b.cmp(a));
+            return -i64.parse(String.from_utf8(d).unwrap()).unwrap();
+        }
+        d.sort();
+        if let Some(i) = d.iter().position(|c| c != b'0') {
+            d.swap(0, i);
+        }
+        i64.parse(String.from_utf8(d).unwrap()).unwrap()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_smallest_number(num: i64) -> i64 {
+    SolutionSolution.smallest_number(num)
+}
+
+
+// ---- the statement read literally
+
+fn digits_of(num: i64) -> Vec[i64] {
+    num.abs().to_string().chars().map(|c| c.to_digit(10).unwrap() as i64).collect()
+}
+
+// every order of the digits not yet used, after `so_far`, its least value
+// with the sign folded into `best`
+fn orders(digits: Vec[i64], used: mut ref Vec[bool], so_far: i64, placed: i64, sign: i64, best: mut ref i64) {
+    if placed == digits.len() {
+        if sign * so_far < *best {
+            *best = sign * so_far;
+        }
+        return;
+    }
+    for k in 0..digits.len() {
+        if used[k] or (placed == 0 and digits[k] == 0 and digits.len() > 1) {
+            continue;
+        }
+        used[k] = true;
+        orders(digits, mut used, so_far * 10 + digits[k], placed + 1, sign, mut best);
+        used[k] = false;
+    }
+}
+
+fn literal(num: i64) -> i64 {
+    let digits = digits_of(num);
+    let mut used: Vec[bool] = Vec.filled(digits.len(), false);
+    let mut best = i64.MAX;
+    orders(digits, mut used, 0, 0, if num < 0 { -1 } else { 1 }, mut best);
+    best
+}
+
+fn sorted_digits(num: i64) -> Vec[i64] {
+    let mut d = digits_of(num);
+    d.sort();
+    d
+}
+
+fn answer(arm: i64, num: i64) -> i64 {
+    match arm {
+        0 => star_smallest_number(num),
+        1 => count_smallest_number(num),
+        2 => text_smallest_number(num),
+        3 => rearranged_smallest_number(num),
+        4 => iter_smallest_number(num),
+        _ => solution_smallest_number(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "count", "text", "rearranged", "iter", "solution"];
+    let mut seed = 2165;
+    let mut nums: Vec[i64] = Vec.new();
+    for t in 0..360 {
+        let mut num = 0;
+        if t < 330 {
+            let length = next_random(mut seed) % 6 + 1;
+            let top = [2, 5, 10][t % 3];
+            for _ in 0..length {
+                let d = next_random(mut seed) % top;
+                let zero = t >= 300 and next_random(mut seed) % 3 > 0;
+                num = num * 10 + if zero { 0 } else { d };
+            }
+        } else {
+            let mut pool: Vec[i64] = (0..10).collect();
+            for _ in 0..6 {
+                num = num * 10 + pool.remove(next_random(mut seed) % pool.len());
+            }
+        }
+        if next_random(mut seed) % 2 == 1 {
+            num = -num;
+        }
+        nums.push(num);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in nums.iter() {
+        let truth = literal(num);
+        check = (check * 31 + truth % 1000000007 + 1000000007) % 1000000007;
+        let mut falling = sorted_digits(num);
+        falling.reverse();
+        let largest_first = falling.iter().fold(0, |n, d| n * 10 + d) * if num < 0 { -1 } else { 1 };
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let with_zero = if x < 0 {
+                10 * x
+            } else {
+                let length = digits_of(x).len();
+                let mut ten = 1;
+                for _ in 1..length {
+                    ten *= 10;
+                }
+                x + 9 * (x / ten) * ten
+            };
+            let verdicts = [
+                x == truth,
+                sorted_digits(x) == sorted_digits(num),
+                answer(arm, x) == x,
+                answer(arm, largest_first) == x,
+                answer(arm, num * 10) == with_zero,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{nums.len()} numbers: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
