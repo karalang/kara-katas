@@ -1,0 +1,284 @@
+// LeetCode #2210: Count Hills and Valleys in an Array -- the differential.
+// The six arms, against the statement read literally: every index's
+// closest different neighbour found on each side, the index marked a hill
+// or a valley by them, and each block of equal marked neighbours counted
+// once; no running state. 300 random arrays of 3 to 12 numbers up to 3,
+// 10 and 100 in turn; then 30 made of runs of 1 to 4 equal numbers; then
+// 30 zigzags. Every case is drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  it is at most the runs of equal numbers less two
+// P3  the array reversed: the same count
+// P4  every number x made 101 - x, hills to valleys: the same count
+// P5  every number written twice: the same count
+// P6  each arm agrees with at least three of the other five
+
+// ---- hills.kara: the ★ arm, the last different number kept
+fn star_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let mut count = 0;
+    let mut left = nums[0];
+    for i in 1..nums.len() - 1 {
+        if nums[i] == nums[i + 1] {
+            continue;
+        }
+        let right = nums[i + 1];
+        if (nums[i] > left and nums[i] > right) or (nums[i] < left and nums[i] < right) {
+            count += 1;
+        }
+        if nums[i] != left {
+            left = nums[i];
+        }
+    }
+    count
+}
+
+// ---- hills_dedup.kara: runs squeezed by `dedup`
+fn dedup_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let mut squeezed = nums.clone();
+    squeezed.dedup();
+    let mut count = 0;
+    for i in 1..squeezed.len() - 1 {
+        let (a, b, c) = (squeezed[i - 1], squeezed[i], squeezed[i + 1]);
+        if (b > a and b > c) or (b < a and b < c) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- hills_trend.kara: an `enum Trend` and its turns
+#[derive(Copy, Clone)]
+enum Trend {
+    Unknown,
+    Rising,
+    Falling,
+}
+
+fn trend_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let mut trend = Trend.Unknown;
+    let mut turns = 0;
+    for i in 1..nums.len() {
+        let step = if nums[i] > nums[i - 1] {
+            Trend.Rising
+        } else if nums[i] < nums[i - 1] {
+            Trend.Falling
+        } else {
+            continue;
+        };
+        match (trend, step) {
+            (Trend.Rising, Trend.Falling) | (Trend.Falling, Trend.Rising) => turns += 1,
+            _ => {}
+        }
+        trend = step;
+    }
+    turns
+}
+
+// ---- hills_struct.kara: `Landscape` and its `neighbours`
+struct Landscape {
+    heights: Vec[i64],
+}
+
+impl Landscape {
+    fn neighbours(ref self, i: i64) -> Option[(i64, i64)] {
+        let here = self.heights[i];
+        let mut l = i - 1;
+        while l >= 0 and self.heights[l] == here {
+            l -= 1;
+        }
+        let mut r = i + 1;
+        while r < self.heights.len() and self.heights[r] == here {
+            r += 1;
+        }
+        if l < 0 or r == self.heights.len() {
+            None
+        } else {
+            Some((self.heights[l], self.heights[r]))
+        }
+    }
+
+    fn is_hill_or_valley(ref self, i: i64) -> bool {
+        let here = self.heights[i];
+        match self.neighbours(i) {
+            Some((l, r)) => (here > l and here > r) or (here < l and here < r),
+            None => false,
+        }
+    }
+}
+
+fn struct_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let land = Landscape { heights: nums.clone() };
+    let mut count = 0;
+    for i in 1..nums.len() {
+        if nums[i] != nums[i - 1] and land.is_hill_or_valley(i) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- hills_iter.kara: signs of `windows(2)` and their changes
+fn iter_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let signs: Vec[i64] = nums.windows(2).iter().map(|w| (w[1] - w[0]).signum()).filter(|s| s != 0).collect();
+    signs.windows(2).iter().filter(|w| w[0] != w[1]).count()
+}
+
+// ---- hills_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_hill_valley(nums: Vec[i32]) -> i32 {
+        let mut v = nums.clone();
+        v.dedup();
+        v.windows(3).into_iter()
+            .filter(|w| (w[1] > w[0] and w[1] > w[2]) or (w[1] < w[0] and w[1] < w[2]))
+            .count() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_hill_valley(nums: Vec[i64]) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_hill_valley(narrow)
+}
+
+// ---- the statement read literally
+
+// whether index i is part of a hill (+1), a valley (-1), or neither (0),
+// by its closest different neighbour on each side
+fn kind(nums: Vec[i64], i: i64) -> i64 {
+    let mut l = i;
+    while l >= 0 and nums[l] == nums[i] {
+        l -= 1;
+    }
+    let mut r = i;
+    while r < nums.len() and nums[r] == nums[i] {
+        r += 1;
+    }
+    if l < 0 or r == nums.len() {
+        0
+    } else if nums[l] < nums[i] and nums[r] < nums[i] {
+        1
+    } else if nums[l] > nums[i] and nums[r] > nums[i] {
+        -1
+    } else {
+        0
+    }
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let marks: Vec[i64] = (0..nums.len()).map(|i| kind(nums, i)).collect();
+    let mut count = 0;
+    for i in 0..nums.len() {
+        // a marked index joins the block before it when equal and marked
+        let joins = i > 0 and nums[i - 1] == nums[i] and marks[i - 1] != 0;
+        if marks[i] != 0 and not joins {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_count_hill_valley(nums),
+        1 => dedup_count_hill_valley(nums),
+        2 => trend_count_hill_valley(nums),
+        3 => struct_count_hill_valley(nums),
+        4 => iter_count_hill_valley(nums),
+        _ => solution_count_hill_valley(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "dedup", "trend", "struct", "iter", "solution"];
+    let mut seed = 2210;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 10 + 3;
+        let top = [3, 10, 100][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % top + 1);
+            }
+        } else if c < 330 {
+            while nums.len() < n {
+                let x = next_random(mut seed) % 10 + 1;
+                for _ in 0..(next_random(mut seed) % 4 + 1) {
+                    nums.push(x);
+                }
+            }
+        } else {
+            for i in 0..n {
+                let lift = next_random(mut seed) % 50 + 1;
+                nums.push(if i % 2 == 0 { 50 - lift % 50 } else { 50 + lift });
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let mut runs = 1;
+        for i in 1..nums.len() {
+            if nums[i] != nums[i - 1] {
+                runs += 1;
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let flipped: Vec[i64] = nums.iter().map(|x| 101 - x).collect();
+        let mut twice: Vec[i64] = Vec.new();
+        for x in nums.iter() {
+            twice.push(x);
+            twice.push(x);
+        }
+        for arm in 0..6 {
+            let found = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == found {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                found == truth,
+                found >= 0 and found <= (runs - 2).max(0),
+                answer(arm, reversed) == found,
+                answer(arm, flipped) == found,
+                answer(arm, twice) == found,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {found}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

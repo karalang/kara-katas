@@ -1,0 +1,67 @@
+// LeetCode #2210: Count Hills and Valleys in an Array -- LeetCode's Rust
+// template: `Vec<i32>` in, `i32` out, the runs squeezed by `dedup` on a
+// mutable copy, then `windows(3)` over the squeezed numbers, each window
+// a hill or valley when its middle is above or below both ends. Carried by
+// `karac fix`. The adapter below hands the harness's numbers to it.
+
+impl Solution {
+    pub fn count_hill_valley(nums: Vec[i32]) -> i32 {
+        let mut v = nums.clone();
+        v.dedup();
+        v.windows(3).into_iter()
+            .filter(|w| (w[1] > w[0] and w[1] > w[2]) or (w[1] < w[0] and w[1] < w[2]))
+            .count() as i32
+    }
+}
+
+struct Solution {}
+
+fn count_hill_valley(nums: Vec[i64]) -> i64 {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.count_hill_valley(narrow)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {count_hill_valley(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: three numbers alike, a
+    // plateau as a hill, a valley at either end that does not count, and
+    // a zigzag
+    show([2, 4, 1, 1, 6, 5]);
+    show([6, 6, 5, 5, 4, 1]);
+    show([7, 7, 7]);
+    show([1, 3, 3, 3, 2]);
+    show([1, 5, 5, 1, 1, 5, 5]);
+    show([1, 2, 1, 2, 1, 2, 1]);
+    // 3000 random arrays of 3 to 30 numbers up to 3, 10 and 100 in turn
+    let mut seed = 2210;
+    let mut most = 0;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 28 + 3;
+        let top = [3, 10, 100][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let found = count_hill_valley(nums);
+        most = most.max(found);
+        check = (check * 31 + found) % 1000000007;
+    }
+    println(f"3000 arrays: most {most}, checksum {check}");
+    // the constraints' longest: 100 numbers, a zigzag of 1 and 100, every
+    // number in pairs, and 100 alike
+    let zigzag: Vec[i64] = (0..100).map(|i| if i % 2 == 0 { 1 } else { 100 }).collect();
+    let pairs: Vec[i64] = (0..100).map(|i| if i / 2 % 2 == 0 { 1 } else { 100 }).collect();
+    let flat: Vec[i64] = Vec.filled(100, 100);
+    println(f"zigzag {count_hill_valley(zigzag)}, pairs {count_hill_valley(pairs)}, flat {count_hill_valley(flat)}");
+}
