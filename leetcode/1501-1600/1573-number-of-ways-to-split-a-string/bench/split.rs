@@ -1,0 +1,48 @@
+// LeetCode #1573: Number of Ways to Split a String -- bench: the ★ arm (the
+// two gaps between the ones multiplied) over 20 strings of 500000
+// characters, each with its own odds of a '1' from 1 in 1 to 1 in 1000,
+// built once; then 10 rounds answering all 20, 200 answers.
+
+fn num_ways(s: &str) -> i64 {
+    let m = 1000000007;
+    let ones: Vec<i64> = s.chars().enumerate().filter(|&(_, c)| c == '1').map(|(i, _)| i as i64).collect();
+    let n = s.len() as i64;
+    let t = ones.len();
+    if t == 0 {
+        return (n - 1) * (n - 2) / 2 % m;
+    }
+    if t % 3 != 0 {
+        return 0;
+    }
+    let k = t / 3;
+    (ones[k] - ones[k - 1]) * (ones[2 * k] - ones[2 * k - 1]) % m
+}
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    let n = 500000;
+    let mut seed = 1573;
+    let mut strings: Vec<String> = Vec::new();
+    for _ in 0..20 {
+        let odds = next_random(&mut seed) % 1000 + 1;
+        let s: String = (0..n).map(|_| if next_random(&mut seed) % odds == 0 { '1' } else { '0' }).collect();
+        strings.push(s);
+    }
+    let (mut check, mut total) = (0i64, 0i64);
+    for _ in 0..10 {
+        for s in &strings {
+            let ways = num_ways(s);
+            total += ways;
+            check = mix(check, ways);
+        }
+    }
+    println!("200 answers over 20 strings of {} characters: ways total {}, checksum {}", n, total, check);
+}
