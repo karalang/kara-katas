@@ -1,0 +1,399 @@
+// LeetCode #2193: Minimum Number of Moves to Make Palindrome -- the
+// differential. The six arms, against the statement read literally: the
+// fewest swaps of two adjacent letters that reach a palindrome, found by
+// a breadth-first search over the words a swap at a time, with no
+// greedy rule. 300 random shuffled palindromes of 1 to 8 letters, of 2,
+// 3 and 4 letters in turn; then 30 palindromes as they are; then 30 of 7
+// or 8 letters of 2. Every word is drawn before any arm answers.
+//
+// P1  the moves are the statement read literally
+// P2  no moves exactly when the word is a palindrome already
+// P3  the word reversed: the same moves
+// P4  every letter c renamed to 'a' + 'z' - c: the same moves
+// P5  one adjacent swap made first: the moves within one of these
+// P6  each arm agrees with at least three of the other five
+
+// ---- moves.kara: the ★ arm, the twin swapped out to the end
+fn star_min_moves_to_make_palindrome(s: String) -> i64 {
+    let mut b: Vec[u8] = s.bytes().to_vec();
+    let mut left = 0;
+    let mut right = b.len() - 1;
+    let mut moves = 0;
+    while left < right {
+        let mut k = right;
+        while k > left and b[k] != b[left] {
+            k -= 1;
+        }
+        if k == left {
+            b.swap(left, left + 1);
+            moves += 1;
+            continue;
+        }
+        while k < right {
+            b.swap(k, k + 1);
+            k += 1;
+            moves += 1;
+        }
+        left += 1;
+        right -= 1;
+    }
+    moves
+}
+
+// ---- moves_remove.kara: a shrinking `Vec[char]`, `rposition` and `remove`
+fn remove_min_moves_to_make_palindrome(s: String) -> i64 {
+    let mut letters: Vec[char] = s.chars().collect();
+    let mut moves = 0;
+    while not letters.is_empty() {
+        let c = letters[0];
+        let twin = letters.iter().rposition(|x| x == c).unwrap();
+        if twin == 0 {
+            moves += letters.len() / 2;
+            letters.remove(0);
+        } else {
+            moves += letters.len() - 1 - twin;
+            letters.remove(twin);
+            letters.remove(0);
+        }
+    }
+    moves
+}
+
+// ---- moves_struct.kara: the places' inversions counted by a `Fenwick`
+struct Fenwick {
+    tree: Vec[i64],
+}
+
+impl Fenwick {
+    fn new(n: i64) -> Fenwick {
+        Fenwick { tree: Vec.filled(n + 1, 0) }
+    }
+
+    fn add(mut ref self, place: i64) {
+        let mut i = place + 1;
+        while i < self.tree.len() {
+            self.tree[i] += 1;
+            i += i & -i;
+        }
+    }
+
+    fn below(ref self, place: i64) -> i64 {
+        let mut i = place;
+        let mut count = 0;
+        while i > 0 {
+            count += self.tree[i];
+            i -= i & -i;
+        }
+        count
+    }
+}
+
+fn struct_targets(s: String) -> Vec[i64] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let n = b.len();
+    let mut at: Vec[Vec[i64]] = Vec.filled(26, Vec.new());
+    for i in 0..n {
+        at[b[i] - 97].push(i);
+    }
+    let mut hi: Vec[i64] = at.iter().map(|v| v.len() - 1).collect();
+    let mut target: Vec[i64] = Vec.filled(n, -1);
+    let mut next = 0;
+    for i in 0..n {
+        if target[i] >= 0 {
+            continue;
+        }
+        let c = b[i] - 97;
+        let j = at[c][hi[c]];
+        hi[c] -= 1;
+        if j == i {
+            target[i] = n / 2;
+        } else {
+            target[i] = next;
+            target[j] = n - 1 - next;
+            next += 1;
+        }
+    }
+    target
+}
+
+fn struct_min_moves_to_make_palindrome(s: String) -> i64 {
+    let target = struct_targets(s);
+    let n = target.len();
+    let mut seen = Fenwick.new(n);
+    let mut moves = 0;
+    for i in 0..n {
+        moves += i - seen.below(target[i] + 1);
+        seen.add(target[i]);
+    }
+    moves
+}
+
+// ---- moves_merge.kara: the places' inversions counted by a merge sort
+fn merge_targets(s: String) -> Vec[i64] {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let n = b.len();
+    let mut used: Vec[bool] = Vec.filled(n, false);
+    let mut target: Vec[i64] = Vec.filled(n, 0);
+    let mut next = 0;
+    let mut right = n - 1;
+    for i in 0..n {
+        if used[i] {
+            continue;
+        }
+        used[i] = true;
+        let mut j = right;
+        while j > i and (used[j] or b[j] != b[i]) {
+            j -= 1;
+        }
+        if j == i {
+            target[i] = n / 2;
+        } else {
+            used[j] = true;
+            target[i] = next;
+            target[j] = n - 1 - next;
+            next += 1;
+        }
+        while right > 0 and used[right] {
+            right -= 1;
+        }
+    }
+    target
+}
+
+// sorts `v` and returns its inversions
+fn merge_sort_count(v: own Vec[i64]) -> (Vec[i64], i64) {
+    if v.len() <= 1 {
+        return (v, 0);
+    }
+    let mid = v.len() / 2;
+    let (left, a) = merge_sort_count(v[0..mid].to_vec());
+    let (right, b) = merge_sort_count(v[mid..v.len()].to_vec());
+    let mut merged: Vec[i64] = Vec.new();
+    let mut count = a + b;
+    let mut i = 0;
+    let mut j = 0;
+    while i < left.len() or j < right.len() {
+        if j == right.len() or (i < left.len() and left[i] <= right[j]) {
+            merged.push(left[i]);
+            i += 1;
+        } else {
+            merged.push(right[j]);
+            count += left.len() - i;
+            j += 1;
+        }
+    }
+    (merged, count)
+}
+
+fn merge_min_moves_to_make_palindrome(s: String) -> i64 {
+    let (_, moves) = merge_sort_count(merge_targets(s));
+    moves
+}
+
+// ---- moves_iter.kara: the places by `scan`, `fold` and `position`
+fn iter_min_moves_to_make_palindrome(s: String) -> i64 {
+    let b: Vec[u8] = s.bytes().to_vec();
+    let n = b.len();
+    // the rank of each letter among its own kind, from the left
+    let rank: Vec[i64] = b
+        .iter()
+        .scan(Vec.filled(26, 0), |seen, c| {
+            let mut seen = seen;
+            let r = seen[c - 97];
+            seen[c - 97] += 1;
+            Some((seen, r))
+        })
+        .collect();
+    // how many of each letter there are
+    let counts: Vec[i64] = b.iter().fold(Vec.filled(26, 0), |acc, c| {
+        let mut acc = acc;
+        acc[c - 97] += 1;
+        acc
+    });
+    let mut target: Vec[i64] = Vec.filled(n, -1);
+    let mut next = 0;
+    for i in 0..n {
+        if target[i] >= 0 {
+            continue;
+        }
+        let twin_rank = counts[b[i] - 97] - 1 - rank[i];
+        let j = (0..n).position(|j| b[j] == b[i] and rank[j] == twin_rank).unwrap();
+        if j == i {
+            target[i] = n / 2;
+        } else {
+            target[i] = next;
+            target[j] = n - 1 - next;
+            next += 1;
+        }
+    }
+    (0..n).map(|i| (0..i).filter(|j| target[j] > target[i]).count()).sum()
+}
+
+// ---- moves_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn min_moves_to_make_palindrome(s: String) -> i32 {
+        let mut s = s.bytes().to_vec();
+        let mut ans: i32 = 0;
+        let mut (l, r) = (0, s.len() - 1);
+        while l < r {
+            let mut k = r;
+            while k > l and s[k] != s[l] {
+                k -= 1;
+            }
+            if k == l {
+                s.swap(l, l + 1);
+                ans += 1;
+                continue;
+            }
+            let c = s.remove(k);
+            s.insert(r, c);
+            ans += (r - k) as i32;
+            l += 1;
+            r -= 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_min_moves_to_make_palindrome(s: String) -> i64 {
+    Solution.min_moves_to_make_palindrome(s)
+}
+
+// ---- the statement read literally
+
+fn is_palindrome(s: String) -> bool {
+    let b: Vec[u8] = s.bytes().to_vec();
+    for i in 0..(b.len() / 2) {
+        if b[i] != b[b.len() - 1 - i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn swapped(s: String, i: i64) -> String {
+    let mut c: Vec[char] = s.chars().collect();
+    c.swap(i, i + 1);
+    c.iter().collect()
+}
+
+fn literal(s: String) -> i64 {
+    let mut seen: Set[String] = Set.new();
+    let mut queue: VecDeque[(String, i64)] = VecDeque.new();
+    seen.insert(s.clone());
+    queue.push_back((s.clone(), 0));
+    while let Some((w, d)) = queue.pop_front() {
+        if is_palindrome(w) {
+            return d;
+        }
+        for i in 0..(w.len() - 1) {
+            let next = swapped(w, i);
+            if seen.insert(next.clone()) {
+                queue.push_back((next, d + 1));
+            }
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_min_moves_to_make_palindrome(s),
+        1 => remove_min_moves_to_make_palindrome(s),
+        2 => struct_min_moves_to_make_palindrome(s),
+        3 => merge_min_moves_to_make_palindrome(s),
+        4 => iter_min_moves_to_make_palindrome(s),
+        _ => solution_min_moves_to_make_palindrome(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(i: i64) -> char {
+    char.try_from((97 + i) as u32).unwrap()
+}
+
+fn main() {
+    let names = ["star", "remove", "struct", "merge", "iter", "solution"];
+    let mut seed = 2193;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 330 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 2 + 7 };
+        let letters = if c < 300 { [2, 3, 4][c % 3] } else if c < 330 { 3 } else { 2 };
+        let mut half: Vec[char] = Vec.new();
+        for _ in 0..(n / 2) {
+            half.push(letter(next_random(mut seed) % letters));
+        }
+        let mut chars: Vec[char] = half.clone();
+        if n % 2 == 1 {
+            chars.push(letter(next_random(mut seed) % letters));
+        }
+        for x in half.iter().rev() {
+            chars.push(x);
+        }
+        if c < 300 or c >= 330 {
+            for i in (1..chars.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                chars.swap(i, j);
+            }
+        }
+        let at = if n > 1 { next_random(mut seed) % (n - 1) } else { 0 };
+        cases.push((chars.iter().collect(), at));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, at) in cases.iter() {
+        let truth = literal(s);
+        check = (check * 31 + truth + s.len()) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        let reversed: String = s.chars().rev().collect();
+        let renamed: String = s.chars().map(|c| letter(25 - (c as i64 - 97))).collect();
+        let nudged = if s.len() > 1 { swapped(s, at) } else { s.clone() };
+        for arm in 0..6 {
+            let moves = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == moves {
+                    same += 1;
+                }
+            }
+            let near = answer(arm, nudged);
+            let verdicts = [
+                moves == truth,
+                (moves == 0) == is_palindrome(s),
+                answer(arm, reversed) == moves,
+                answer(arm, renamed) == moves,
+                near >= moves - 1 and near <= moves + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, answered {moves}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} words: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

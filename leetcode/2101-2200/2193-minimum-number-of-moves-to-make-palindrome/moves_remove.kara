@@ -1,0 +1,87 @@
+// LeetCode #2193: Minimum Number of Moves to Make Palindrome -- the
+// letters as a `Vec[char]` that shrinks: the first letter's last twin,
+// found by `rposition`, costs its distance from the end, and both leave
+// by `remove`; a first letter with no twin is the middle one, costs the
+// half of what is left, and leaves alone. O(n^2).
+
+fn min_moves_to_make_palindrome(s: String) -> i64 {
+    let mut letters: Vec[char] = s.chars().collect();
+    let mut moves = 0;
+    while not letters.is_empty() {
+        let c = letters[0];
+        let twin = letters.iter().rposition(|x| x == c).unwrap();
+        if twin == 0 {
+            moves += letters.len() / 2;
+            letters.remove(0);
+        } else {
+            moves += letters.len() - 1 - twin;
+            letters.remove(twin);
+            letters.remove(0);
+        }
+    }
+    moves
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a shuffled palindrome of n letters from the first `letters` of the
+// alphabet: a random half, its mirror, and a middle letter when n is odd
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut chars: Vec[char] = Vec.new();
+    for _ in 0..(n / 2) {
+        let c = char.try_from((97 + next_random(mut seed) % letters) as u32).unwrap();
+        chars.push(c);
+        chars.push(c);
+    }
+    if n % 2 == 1 {
+        chars.push(char.try_from((97 + next_random(mut seed) % letters) as u32).unwrap());
+    }
+    for i in (1..chars.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        chars.swap(i, j);
+    }
+    chars.iter().collect()
+}
+
+fn show(s: String) {
+    println(f"{s} -> {min_moves_to_make_palindrome(s)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then six more: one letter, a palindrome
+    // already, the middle letter at the front, a palindrome twice over, a
+    // pair crossed, and pairs in the wrong halves
+    show("aabb");
+    show("letelt");
+    show("z");
+    show("racecar");
+    show("xaa");
+    show("abcdcbaabcdcba");
+    show("abab");
+    show("bbaaddcc");
+    // 3000 random words of 1 to 40 letters, of 2, 5 and 26 letters in turn
+    let mut seed = 2193;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let letters = [2, 5, 26][round % 3];
+        let s = random_word(n, letters, mut seed);
+        let moves = min_moves_to_make_palindrome(s);
+        total += moves;
+        check = (check * 31 + moves + n) % 1000000007;
+    }
+    println(f"3000 words: {total} moves, checksum {check}");
+    // the constraints' longest, 2000 letters: of 26, of 2, and a half
+    // followed by itself
+    let wide = random_word(2000, 26, mut seed);
+    let narrow = random_word(2000, 2, mut seed);
+    let half = random_word(1000, 26, mut seed);
+    let doubled = f"{half}{half}";
+    println(f"2000 letters: {min_moves_to_make_palindrome(wide)} {min_moves_to_make_palindrome(narrow)} {min_moves_to_make_palindrome(doubled)}");
+}

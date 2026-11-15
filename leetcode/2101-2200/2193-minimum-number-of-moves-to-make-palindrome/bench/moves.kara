@@ -1,0 +1,61 @@
+// benchmark copy of moves.kara (LeetCode #2193, the ★ arm): the twin
+// swapped out to the end. See ../README.md § Benchmarks.
+
+fn min_moves_to_make_palindrome(s: String) -> i64 {
+    let mut b: Vec[u8] = s.bytes().to_vec();
+    let mut left = 0;
+    let mut right = b.len() - 1;
+    let mut moves = 0;
+    while left < right {
+        let mut k = right;
+        while k > left and b[k] != b[left] {
+            k -= 1;
+        }
+        if k == left {
+            b.swap(left, left + 1);
+            moves += 1;
+            continue;
+        }
+        while k < right {
+            b.swap(k, k + 1);
+            k += 1;
+            moves += 1;
+        }
+        left += 1;
+        right -= 1;
+    }
+    moves
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a shuffled palindrome of 2000 letters of 26
+fn random_word(seed: mut ref i64) -> String {
+    let mut chars: Vec[char] = Vec.new();
+    for _ in 0..1000 {
+        let c = char.try_from((97 + next_random(mut seed) % 26) as u32).unwrap();
+        chars.push(c);
+        chars.push(c);
+    }
+    for i in (1..2000).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        chars.swap(i, j);
+    }
+    chars.iter().collect()
+}
+
+fn main() {
+    let mut seed = 2193;
+    let mut words: Vec[String] = Vec.new();
+    for _ in 0..20 {
+        words.push(random_word(mut seed));
+    }
+    let mut check = 0;
+    for r in 0..3000 {
+        check = (check * 31 + min_moves_to_make_palindrome(words[r % 20])) % 1000000007;
+    }
+    println(f"3000 solves: checksum {check}");
+}
