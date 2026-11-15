@@ -1,0 +1,82 @@
+// LeetCode #2209: Minimum White Tiles After Covering With Carpets --
+// LeetCode's Rust template: a `String` and two `i32` in, `i32` out, the
+// floor by `as_bytes()`, the table a `vec![vec![0i32; n + 1]; k + 1]`
+// indexed by `usize`, the first row a running count of `b'1'` and each
+// later one the smaller of leaving tile i - 1 and ending a carpet there.
+// Carried by `karac fix`. The adapter below hands the harness's values to
+// it.
+
+impl Solution {
+    pub fn minimum_white_tiles(floor: String, num_carpets: i32, carpet_len: i32) -> i32 {
+        let s = floor.bytes();
+        let n = s.len();
+        let k = num_carpets as i64;
+        let len = carpet_len as i64;
+        let mut dp = Vec.filled(k + 1, Vec.filled(n + 1, 0i32));
+        for i in 1..=n {
+            dp[0][i] = dp[0][i - 1] + (s[i - 1] == b'1') as i32;
+        }
+        for j in 1..=k {
+            for i in 1..=n {
+                let left = dp[j][i - 1] + (s[i - 1] == b'1') as i32;
+                let covered = if i >= len { dp[j - 1][i - len] } else { 0 };
+                dp[j][i] = left.min(covered);
+            }
+        }
+        dp[k][n]
+    }
+}
+
+struct Solution {}
+
+fn minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    Solution.minimum_white_tiles(floor, num_carpets as i32, carpet_len as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_floor(n: i64, white_in_8: i64, seed: mut ref i64) -> String {
+    let mut f = String.new();
+    for _ in 0..n {
+        f.push(if next_random(mut seed) % 8 < white_in_8 { '1' } else { '0' });
+    }
+    f
+}
+
+fn show(floor: String, num_carpets: i64, carpet_len: i64) {
+    println(f"\"{floor}\", {num_carpets} of {carpet_len} -> {minimum_white_tiles(floor, num_carpets, carpet_len)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one tile, no white tile, a
+    // carpet as long as the floor, and more carpets than the floor needs
+    show("10110101", 2, 2);
+    show("11111", 2, 3);
+    show("1", 1, 1);
+    show("0000", 1, 2);
+    show("1101011", 1, 7);
+    show("1010101", 9, 1);
+    // 2000 random floors of 1 to 40 tiles, white 2, 4 and 7 times in 8
+    let mut seed = 2209;
+    let mut check = 0;
+    for c in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let floor = random_floor(n, [2, 4, 7][c % 3], mut seed);
+        let len = next_random(mut seed) % n + 1;
+        let carpets = next_random(mut seed) % 6 + 1;
+        check = (check * 31 + minimum_white_tiles(floor, carpets, len)) % 1000000007;
+    }
+    println(f"2000 floors: checksum {check}");
+    // the constraints' largest: 1000 tiles and 1000 carpets of 1; then the
+    // same tiles under 100 carpets of 3, 30 of 7, and one of 999
+    let wide = random_floor(1000, 4, mut seed);
+    println(f"1000 carpets of 1 -> {minimum_white_tiles(wide, 1000, 1)}");
+    println(f"100 carpets of 3 -> {minimum_white_tiles(wide, 100, 3)}");
+    println(f"30 carpets of 7 -> {minimum_white_tiles(wide, 30, 7)}");
+    println(f"one carpet of 999 -> {minimum_white_tiles(wide, 1, 999)}");
+}

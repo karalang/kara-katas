@@ -1,0 +1,300 @@
+// LeetCode #2209: Minimum White Tiles After Covering With Carpets -- the
+// differential. The six arms, against the statement read literally: every
+// way to lay the carpets tried, each carpet at every start in turn (no
+// earlier than the one before), and the white tiles left uncovered
+// counted; no table. 300 random floors of 1 to 10 tiles, white 2, 4 and 7
+// times in 8 in turn; then 30 floors all white; then 30 whose carpets
+// together are longer than the floor. Every case is drawn before any arm
+// answers.
+//
+// P1  the count is the statement read literally
+// P2  it is at most the white tiles, and at least the white tiles less
+//     what the carpets can cover
+// P3  the floor reversed: the same count
+// P4  one more carpet: no more, and no fewer than one carpet's length less
+// P5  a black tile added at the front, and one at the back: the same count
+// P6  each arm agrees with at least three of the other five
+
+// ---- tiles.kara: the ★ arm, the whole table
+fn star_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let tiles: Vec[i64] = floor.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    let n = tiles.len();
+    let mut best: Vec[Vec[i64]] = Vec.filled(num_carpets + 1, Vec.filled(n + 1, 0));
+    for j in 0..num_carpets + 1 {
+        for i in 1..n + 1 {
+            let left = best[j][i - 1] + tiles[i - 1];
+            best[j][i] = if j == 0 {
+                left
+            } else {
+                left.min(best[j - 1][(i - carpet_len).max(0)])
+            };
+        }
+    }
+    best[num_carpets][n]
+}
+
+// ---- tiles_rolling.kara: two rows and a prefix count, swapped
+fn rolling_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let mut whites: Vec[i64] = [0];
+    for c in floor.chars() {
+        let last = whites[whites.len() - 1];
+        whites.push(last + (if c == '1' { 1 } else { 0 }));
+    }
+    let n = whites.len() - 1;
+    // no carpet: every white tile so far stays
+    let mut prev = whites.clone();
+    let mut cur: Vec[i64] = Vec.filled(n + 1, 0);
+    for _ in 0..num_carpets {
+        for i in 1..n + 1 {
+            let visible = cur[i - 1] + whites[i] - whites[i - 1];
+            cur[i] = visible.min(prev[(i - carpet_len).max(0)]);
+        }
+        mem.swap(mut prev, mut cur);
+    }
+    prev[n]
+}
+
+// ---- tiles_memo.kara: top-down, remembered in a flat `Vec`
+fn memo_fewest(tiles: Vec[bool], i: i64, j: i64, len: i64, memo: mut ref Vec[i64]) -> i64 {
+    let n = tiles.len();
+    if i >= n {
+        return 0;
+    }
+    let key = i * (memo.len() / n) + j;
+    if memo[key] >= 0 {
+        return memo[key];
+    }
+    let answer = if not tiles[i] {
+        memo_fewest(tiles, i + 1, j, len, mut memo)
+    } else if j == 0 {
+        1 + memo_fewest(tiles, i + 1, 0, len, mut memo)
+    } else {
+        (1 + memo_fewest(tiles, i + 1, j, len, mut memo)).min(memo_fewest(tiles, i + len, j - 1, len, mut memo))
+    };
+    memo[key] = answer;
+    answer
+}
+
+fn memo_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let tiles: Vec[bool] = floor.chars().map(|c| c == '1').collect();
+    let mut memo: Vec[i64] = Vec.filled(tiles.len() * (num_carpets + 1), -1);
+    memo_fewest(tiles, 0, num_carpets, carpet_len, mut memo)
+}
+
+// ---- tiles_struct.kara: `Floor` and `with_one_more`
+struct Floor {
+    whites: Vec[i64],
+    carpet_len: i64,
+}
+
+impl Floor {
+    fn new(floor: String, carpet_len: i64) -> Floor {
+        let mut whites: Vec[i64] = [0];
+        let mut seen = 0;
+        for c in floor.chars() {
+            if c == '1' {
+                seen += 1;
+            }
+            whites.push(seen);
+        }
+        Floor { whites: whites, carpet_len: carpet_len }
+    }
+
+    fn tiles(ref self) -> i64 {
+        self.whites.len() - 1
+    }
+
+    fn white(ref self, i: i64) -> i64 {
+        self.whites[i + 1] - self.whites[i]
+    }
+
+    fn with_one_more(ref self, row: Vec[i64]) -> Vec[i64] {
+        let mut next: Vec[i64] = [0];
+        for i in 1..self.tiles() + 1 {
+            let left = next[i - 1] + self.white(i - 1);
+            let covered = row[(i - self.carpet_len).max(0)];
+            next.push(left.min(covered));
+        }
+        next
+    }
+}
+
+fn struct_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let f = Floor.new(floor, carpet_len);
+    let mut row = f.whites.clone();
+    for _ in 0..num_carpets {
+        row = f.with_one_more(row);
+    }
+    row[f.tiles()]
+}
+
+// ---- tiles_iter.kara: `scan` rows laid by a `fold`
+fn iter_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let tiles: Vec[i64] = floor.chars().map(|c| if c == '1' { 1 } else { 0 }).collect();
+    let bare: Vec[i64] = once(0).chain(tiles.iter().scan(0, |seen, t| { let seen = seen + t; Some((seen, seen)) })).collect();
+    let last = (0..num_carpets).fold(bare, |prev, _| {
+        once(0).chain(tiles.iter().enumerate().scan(0, |left, (i, t)| { let left = (left + t).min(prev[(i + 1 - carpet_len).max(0)]); Some((left, left)) })).collect()
+    });
+    last[tiles.len()]
+}
+
+// ---- tiles_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_white_tiles(floor: String, num_carpets: i32, carpet_len: i32) -> i32 {
+        let s = floor.bytes();
+        let n = s.len();
+        let k = num_carpets as i64;
+        let len = carpet_len as i64;
+        let mut dp = Vec.filled(k + 1, Vec.filled(n + 1, 0i32));
+        for i in 1..=n {
+            dp[0][i] = dp[0][i - 1] + (s[i - 1] == b'1') as i32;
+        }
+        for j in 1..=k {
+            for i in 1..=n {
+                let left = dp[j][i - 1] + (s[i - 1] == b'1') as i32;
+                let covered = if i >= len { dp[j - 1][i - len] } else { 0 };
+                dp[j][i] = left.min(covered);
+            }
+        }
+        dp[k][n]
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_white_tiles(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    Solution.minimum_white_tiles(floor, num_carpets as i32, carpet_len as i32)
+}
+
+// ---- the statement read literally
+
+// the fewest white tiles left uncovered when `left` more carpets are laid
+// at starts from `from` on, `cover` counting the carpets over each tile
+fn lay(white: Vec[bool], cover: mut ref Vec[i64], left: i64, from: i64, len: i64) -> i64 {
+    let n = white.len();
+    if left == 0 {
+        let mut visible = 0;
+        for i in 0..n {
+            if white[i] and cover[i] == 0 {
+                visible += 1;
+            }
+        }
+        return visible;
+    }
+    let mut fewest = n;
+    for start in from..(n - len + 1) {
+        for i in start..(start + len) {
+            cover[i] += 1;
+        }
+        fewest = fewest.min(lay(white, mut cover, left - 1, start, len));
+        for i in start..(start + len) {
+            cover[i] -= 1;
+        }
+    }
+    fewest
+}
+
+fn literal(floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    let white: Vec[bool] = floor.chars().map(|c| c == '1').collect();
+    let mut cover: Vec[i64] = Vec.filled(white.len(), 0);
+    lay(white, mut cover, num_carpets, 0, carpet_len)
+}
+
+fn answer(arm: i64, floor: String, num_carpets: i64, carpet_len: i64) -> i64 {
+    match arm {
+        0 => star_minimum_white_tiles(floor, num_carpets, carpet_len),
+        1 => rolling_minimum_white_tiles(floor, num_carpets, carpet_len),
+        2 => memo_minimum_white_tiles(floor, num_carpets, carpet_len),
+        3 => struct_minimum_white_tiles(floor, num_carpets, carpet_len),
+        4 => iter_minimum_white_tiles(floor, num_carpets, carpet_len),
+        _ => solution_minimum_white_tiles(floor, num_carpets, carpet_len),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    floor: String,
+    carpets: i64,
+    len: i64,
+}
+
+fn main() {
+    let names = ["star", "rolling", "memo", "struct", "iter", "solution"];
+    let mut seed = 2209;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let white_in_8 = if c < 300 { [2, 4, 7][c % 3] } else if c < 330 { 8 } else { 4 };
+        let mut floor = String.new();
+        for _ in 0..n {
+            floor.push(if next_random(mut seed) % 8 < white_in_8 { '1' } else { '0' });
+        }
+        let len = next_random(mut seed) % n + 1;
+        let carpets = if c < 330 {
+            next_random(mut seed) % 4 + 1
+        } else {
+            // enough carpets of this length to reach past the floor's end
+            n / len + 1
+        };
+        cases.push(Case { floor: floor, carpets: carpets, len: len });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let floor = ref case.floor;
+        let k = case.carpets;
+        let len = case.len;
+        let truth = literal(floor, k, len);
+        check = (check * 31 + truth) % 1000000007;
+        let whites = floor.chars().filter(|c| c == '1').count();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, floor, k, len)).collect();
+        let reversed: String = floor.chars().rev().collect();
+        let front = f"0{floor}";
+        let back = f"{floor}0";
+        for arm in 0..6 {
+            let left = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == left {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, floor, k + 1, len);
+            let verdicts = [
+                left == truth,
+                left <= whites and left >= whites - k * len,
+                answer(arm, reversed, k, len) == left,
+                more <= left and more >= left - len,
+                answer(arm, front, k, len) == left and answer(arm, back, k, len) == left,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{floor}\" {k} of {len}, arm {names[arm]}: P{q + 1} fails, answered {left}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
