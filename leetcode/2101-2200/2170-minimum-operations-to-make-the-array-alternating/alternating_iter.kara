@@ -1,0 +1,72 @@
+// LeetCode #2170: Minimum Operations to Make the Array Alternating -- each
+// side's counts by `step_by` and `fold` into a `Map`, its two best by
+// `sort_by_key` on the count falling, number rising, and `take(2)`, with a
+// count of 0 `chain`ed on for a side too short; the best pair of
+// different numbers by `flat_map` over both sides, `filter` and `max`.
+// O(n log n).
+
+fn best_two(nums: Vec[i64], start: i64) -> Vec[(i64, i64)] {
+    let counts: Map[i64, i64] = nums.iter().skip(start).step_by(2).fold(Map.new(), |m, x| {
+        let mut m = m;
+        m.insert(x, m.get(x).unwrap_or(0) + 1);
+        m
+    });
+    let mut pairs: Vec[(i64, i64)] = counts.into_iter().collect();
+    pairs.sort_by_key(|(x, c)| (-c, x));
+    pairs.into_iter().take(2).chain([(0, 0)].into_iter()).collect()
+}
+
+fn minimum_operations(nums: Vec[i64]) -> i64 {
+    let even = best_two(nums, 0);
+    let odd = best_two(nums, 1);
+    let kept = even
+        .iter()
+        .flat_map(|(a, ca)| odd.iter().filter(|(b, _)| a != b or a == 0).map(|(_, cb)| ca + cb))
+        .max()
+        .unwrap();
+    nums.len() - kept
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {minimum_operations(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one number, two the same,
+    // two different, already alternating, and both places' favourite the
+    // same with a close second
+    show([3, 1, 3, 2, 4, 3]);
+    show([1, 2, 2, 2, 2]);
+    show([7]);
+    show([5, 5]);
+    show([5, 6]);
+    show([4, 9, 4, 9, 4]);
+    show([1, 1, 1, 1, 2, 1, 2]);
+    // 2000 random lists of 1 to 20 numbers from 1 to 2, 1 to 4 or 1 to 10^5
+    // in turn
+    let mut seed = 2170;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let length = next_random(mut seed) % 20 + 1;
+        let top = [2, 4, 100000][round % 3];
+        let nums: Vec[i64] = (0..length).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let ops = minimum_operations(nums);
+        total += ops;
+        check = (check * 31 + ops) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest: 10^5 numbers from 1 to 3, from 1 to 10^5,
+    // and one number throughout
+    let few: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 3 + 1).collect();
+    let many: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1).collect();
+    let same: Vec[i64] = Vec.filled(100000, 8);
+    println(f"100000 numbers: {minimum_operations(few)} {minimum_operations(many)} {minimum_operations(same)}");
+}

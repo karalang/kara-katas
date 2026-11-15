@@ -1,0 +1,91 @@
+// LeetCode #2170: Minimum Operations to Make the Array Alternating -- a
+// `struct Favourites` that keeps the two best `(number, count)` pairs it
+// is `offer`ed (`mut ref self`), made for a side `of` a `SortedMap` of its
+// counts, and asked for the most it can keep `beside` the other side's
+// (`ref self`): its first unless the numbers clash. O(n log n).
+
+struct Favourites {
+    first: (i64, i64),
+    second: (i64, i64),
+}
+
+impl Favourites {
+    fn of(nums: Vec[i64], start: i64) -> Favourites {
+        let mut counts: SortedMap[i64, i64] = SortedMap.new();
+        for x in nums.iter().skip(start).step_by(2) {
+            counts.insert(x, counts.get(x).unwrap_or(0) + 1);
+        }
+        let mut best = Favourites { first: (0, 0), second: (0, 0) };
+        for (x, c) in counts.iter() {
+            best.offer(x, c);
+        }
+        best
+    }
+
+    fn offer(mut ref self, number: i64, count: i64) {
+        if count > self.first.1 {
+            self.second = self.first;
+            self.first = (number, count);
+        } else if count > self.second.1 {
+            self.second = (number, count);
+        }
+    }
+
+    fn beside(self, other: Favourites) -> i64 {
+        if self.first.0 != other.first.0 {
+            self.first.1 + other.first.1
+        } else {
+            (self.first.1 + other.second.1).max(self.second.1 + other.first.1)
+        }
+    }
+}
+
+fn minimum_operations(nums: Vec[i64]) -> i64 {
+    let even = Favourites.of(nums, 0);
+    let odd = Favourites.of(nums, 1);
+    nums.len() - even.beside(odd)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {minimum_operations(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one number, two the same,
+    // two different, already alternating, and both places' favourite the
+    // same with a close second
+    show([3, 1, 3, 2, 4, 3]);
+    show([1, 2, 2, 2, 2]);
+    show([7]);
+    show([5, 5]);
+    show([5, 6]);
+    show([4, 9, 4, 9, 4]);
+    show([1, 1, 1, 1, 2, 1, 2]);
+    // 2000 random lists of 1 to 20 numbers from 1 to 2, 1 to 4 or 1 to 10^5
+    // in turn
+    let mut seed = 2170;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let length = next_random(mut seed) % 20 + 1;
+        let top = [2, 4, 100000][round % 3];
+        let nums: Vec[i64] = (0..length).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let ops = minimum_operations(nums);
+        total += ops;
+        check = (check * 31 + ops) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest: 10^5 numbers from 1 to 3, from 1 to 10^5,
+    // and one number throughout
+    let few: Vec[i64] = (0..100000).map(|_| next_random(mut seed) % 3 + 1).collect();
+    let many: Vec[i64] = (0..100000).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1).collect();
+    let same: Vec[i64] = Vec.filled(100000, 8);
+    println(f"100000 numbers: {minimum_operations(few)} {minimum_operations(many)} {minimum_operations(same)}");
+}

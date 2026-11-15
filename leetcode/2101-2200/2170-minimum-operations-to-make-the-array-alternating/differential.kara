@@ -1,0 +1,345 @@
+// LeetCode #2170: Minimum Operations to Make the Array Alternating -- the
+// differential. The six arms, against the statement read literally: every
+// pair of different numbers for the even and the odd places, each taken
+// from the list or one not in it, and the places that differ from their
+// number counted; the least count. No counting of favourites. 300 random
+// lists of 1 to 12 numbers from 1 to 2, 1 to 4 or 1 to 1000 in turn; then
+// 30 alternating lists with a few places changed; then 30 whose two sides
+// favour the same number; every one drawn before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  every number 7 more: the same count
+// P3  the list reversed: the same count
+// P4  every number x made 1001 - x: the same count
+// P5  the first number dropped: the count no more, and at most 1 less
+// P6  each arm agrees with at least three of the other five
+
+
+
+// ---- alternating.kara: the ★ arm, each side's two best counts from a `Map`
+fn star_top_two(nums: Vec[i64], start: i64) -> ((i64, i64), (i64, i64)) {
+    let mut counts: Map[i64, i64] = Map.new();
+    let mut i = start;
+    while i < nums.len() {
+        *counts.entry(nums[i]).or_insert(0) += 1;
+        i += 2;
+    }
+    let mut first = (0, 0);
+    let mut second = (0, 0);
+    for (value, count) in counts.iter() {
+        if count > first.1 {
+            second = first;
+            first = (value, count);
+        } else if count > second.1 {
+            second = (value, count);
+        }
+    }
+    (first, second)
+}
+
+fn star_minimum_operations(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let (even_first, even_second) = star_top_two(nums, 0);
+    let (odd_first, odd_second) = star_top_two(nums, 1);
+    if even_first.0 != odd_first.0 {
+        n - even_first.1 - odd_first.1
+    } else {
+        n - (even_first.1 + odd_second.1).max(even_second.1 + odd_first.1)
+    }
+}
+
+// ---- alternating_sorted.kara: each side sorted and its runs measured
+fn sorted_runs(nums: Vec[i64], start: i64) -> Vec[(i64, i64)] {
+    let mut side: Vec[i64] = nums.iter().skip(start).step_by(2).collect();
+    side.sort();
+    let mut found: Vec[(i64, i64)] = Vec.new();
+    for x in side.iter() {
+        let last = found.len() - 1;
+        if found.len() > 0 and found[last].0 == x {
+            found[last].1 += 1;
+        } else {
+            found.push((x, 1));
+        }
+    }
+    found.sort_by(|a, b| b.1.cmp(a.1));
+    found.truncate(2);
+    found.push((0, 0));
+    found
+}
+
+fn sorted_minimum_operations(nums: Vec[i64]) -> i64 {
+    let even = sorted_runs(nums, 0);
+    let odd = sorted_runs(nums, 1);
+    let mut kept = 0;
+    for (a, ca) in even.iter() {
+        for (b, cb) in odd.iter() {
+            if a != b or a == 0 {
+                kept = kept.max(ca + cb);
+            }
+        }
+    }
+    nums.len() - kept
+}
+
+// ---- alternating_array.kara: counts in two arrays indexed by the number
+fn array_minimum_operations(nums: Vec[i64]) -> i64 {
+    let mut even: Vec[i64] = Vec.filled(100001, 0);
+    let mut odd: Vec[i64] = Vec.filled(100001, 0);
+    for (i, x) in nums.iter().enumerate() {
+        if i % 2 == 0 {
+            even[x] += 1;
+        } else {
+            odd[x] += 1;
+        }
+    }
+    let mut e1 = 0;
+    let mut e2 = 0;
+    let mut o1 = 0;
+    let mut o2 = 0;
+    for v in 1..=100000 {
+        if even[v] > even[e1] {
+            e2 = e1;
+            e1 = v;
+        } else if even[v] > even[e2] {
+            e2 = v;
+        }
+        if odd[v] > odd[o1] {
+            o2 = o1;
+            o1 = v;
+        } else if odd[v] > odd[o2] {
+            o2 = v;
+        }
+    }
+    let kept = if e1 != o1 {
+        even[e1] + odd[o1]
+    } else {
+        (even[e1] + odd[o2]).max(even[e2] + odd[o1])
+    };
+    nums.len() - kept
+}
+
+// ---- alternating_struct.kara: a `Favourites` of each side, from a `SortedMap`
+struct Favourites {
+    first: (i64, i64),
+    second: (i64, i64),
+}
+
+impl Favourites {
+    fn of(nums: Vec[i64], start: i64) -> Favourites {
+        let mut counts: SortedMap[i64, i64] = SortedMap.new();
+        for x in nums.iter().skip(start).step_by(2) {
+            counts.insert(x, counts.get(x).unwrap_or(0) + 1);
+        }
+        let mut best = Favourites { first: (0, 0), second: (0, 0) };
+        for (x, c) in counts.iter() {
+            best.offer(x, c);
+        }
+        best
+    }
+
+    fn offer(mut ref self, number: i64, count: i64) {
+        if count > self.first.1 {
+            self.second = self.first;
+            self.first = (number, count);
+        } else if count > self.second.1 {
+            self.second = (number, count);
+        }
+    }
+
+    fn beside(self, other: Favourites) -> i64 {
+        if self.first.0 != other.first.0 {
+            self.first.1 + other.first.1
+        } else {
+            (self.first.1 + other.second.1).max(self.second.1 + other.first.1)
+        }
+    }
+}
+
+fn struct_minimum_operations(nums: Vec[i64]) -> i64 {
+    let even = Favourites.of(nums, 0);
+    let odd = Favourites.of(nums, 1);
+    nums.len() - even.beside(odd)
+}
+
+// ---- alternating_iter.kara: `fold` into a `Map`, `sort_by_key`, `flat_map` and `max`
+fn iter_best_two(nums: Vec[i64], start: i64) -> Vec[(i64, i64)] {
+    let counts: Map[i64, i64] = nums.iter().skip(start).step_by(2).fold(Map.new(), |m, x| {
+        let mut m = m;
+        m.insert(x, m.get(x).unwrap_or(0) + 1);
+        m
+    });
+    let mut pairs: Vec[(i64, i64)] = counts.into_iter().collect();
+    pairs.sort_by_key(|(x, c)| (-c, x));
+    pairs.into_iter().take(2).chain([(0, 0)].into_iter()).collect()
+}
+
+fn iter_minimum_operations(nums: Vec[i64]) -> i64 {
+    let even = iter_best_two(nums, 0);
+    let odd = iter_best_two(nums, 1);
+    let kept = even
+        .iter()
+        .flat_map(|(a, ca)| odd.iter().filter(|(b, _)| a != b or a == 0).map(|(_, cb)| ca + cb))
+        .max()
+        .unwrap();
+    nums.len() - kept
+}
+
+// ---- alternating_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_operations(nums: Vec[i32]) -> i32 {
+        let mut even: Map[i32, i32] = Map.new();
+        let mut odd: Map[i32, i32] = Map.new();
+        for (i, x) in nums.iter().enumerate() {
+            if i % 2 == 0 {
+                *even.entry(x).or_insert(0) += 1;
+            } else {
+                *odd.entry(x).or_insert(0) += 1;
+            }
+        }
+        let mut e: Vec[(i32, i32)] = even.into_iter().collect();
+        let mut o: Vec[(i32, i32)] = odd.into_iter().collect();
+        e.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        o.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        e.push((0, 0));
+        o.push((0, 0));
+        let n = nums.len() as i32;
+        if e[0].0 != o[0].0 {
+            n - e[0].1 - o[0].1
+        } else {
+            n - max(e[0].1 + o[1].1, e[1].1 + o[0].1)
+        }
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_operations(nums: Vec[i64]) -> i64 {
+    let v: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.minimum_operations(v)
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut candidates: Vec[i64] = nums.clone();
+    candidates.push(-1);
+    candidates.push(-2);
+    let mut best = i64.MAX;
+    for x in candidates.iter() {
+        for y in candidates.iter() {
+            if x == y {
+                continue;
+            }
+            let mut changes = 0;
+            for (i, v) in nums.iter().enumerate() {
+                let wanted = if i % 2 == 0 { x } else { y };
+                if v != wanted {
+                    changes += 1;
+                }
+            }
+            best = best.min(changes);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_operations(nums),
+        1 => sorted_minimum_operations(nums),
+        2 => array_minimum_operations(nums),
+        3 => struct_minimum_operations(nums),
+        4 => iter_minimum_operations(nums),
+        _ => solution_minimum_operations(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "array", "struct", "iter", "solution"];
+    let mut seed = 2170;
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for t in 0..360 {
+        let length = next_random(mut seed) % 12 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        if t < 300 {
+            let top = [2, 4, 1000][t % 3];
+            for _ in 0..length {
+                nums.push(next_random(mut seed) % top + 1);
+            }
+        } else if t < 330 {
+            let a = next_random(mut seed) % 5 + 1;
+            let b = next_random(mut seed) % 5 + 1;
+            for i in 0..length {
+                nums.push(if i % 2 == 0 { a } else { b });
+            }
+            for _ in 0..(next_random(mut seed) % 3) {
+                nums[next_random(mut seed) % length] = next_random(mut seed) % 5 + 1;
+            }
+        } else {
+            let common = next_random(mut seed) % 3 + 1;
+            for _ in 0..length {
+                nums.push(if next_random(mut seed) % 3 > 0 { common } else { next_random(mut seed) % 4 + 1 });
+            }
+        }
+        lists.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in lists.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let shifted: Vec[i64] = nums.iter().map(|x| x + 7).collect();
+        let mut reversed = nums.clone();
+        reversed.reverse();
+        let turned: Vec[i64] = nums.iter().map(|x| 1001 - x).collect();
+        let rest: Vec[i64] = nums.iter().skip(1).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let dropped = if nums.len() > 1 { answer(arm, rest) } else { x };
+            let verdicts = [
+                x == truth,
+                answer(arm, shifted) == x,
+                answer(arm, reversed) == x,
+                answer(arm, turned) == x,
+                dropped <= x and x <= dropped + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{lists.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
