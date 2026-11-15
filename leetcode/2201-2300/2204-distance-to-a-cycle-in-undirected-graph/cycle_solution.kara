@@ -1,0 +1,142 @@
+// LeetCode #2204: Distance to a Cycle in Undirected Graph -- LeetCode's
+// Rust template: an `i32` and a `Vec<Vec<i32>>` in, `Vec<i32>` out, the
+// graph as `vec![vec![]; n]` of `usize`, leaves peeled through a
+// `VecDeque` with `degree` kept as `Vec<usize>`, then a breadth-first
+// search from the cycle with `i32::MAX` for unreached. Carried by `karac
+// fix`. The adapter below hands the harness's graph to it.
+
+impl Solution {
+    pub fn distance_to_cycle(n: i32, edges: Vec[Vec[i32]]) -> Vec[i32] {
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        let mut deg = Vec.filled(n, 0);
+        for e in edges.iter() {
+            let (a, b) = (e[0] as i64, e[1] as i64);
+            g[a].push(b);
+            g[b].push(a);
+            deg[a] += 1;
+            deg[b] += 1;
+        }
+        let mut q = VecDeque.new();
+        for i in 0..n {
+            if deg[i] == 1 {
+                q.push_back(i);
+            }
+        }
+        while let Some(u) = q.pop_front() {
+            for v in ref g[u] {
+                deg[v] -= 1;
+                if deg[v] == 1 {
+                    q.push_back(v);
+                }
+            }
+            deg[u] = 0;
+        }
+        let mut ans = Vec.filled(n, i32.MAX);
+        for i in 0..n {
+            if deg[i] >= 2 {
+                ans[i] = 0;
+                q.push_back(i);
+            }
+        }
+        while let Some(u) = q.pop_front() {
+            for v in ref g[u] {
+                if ans[v] == i32.MAX {
+                    ans[v] = ans[u] + 1;
+                    q.push_back(v);
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn distance_to_cycle(n: i64, edges: Vec[Array[i64, 2]]) -> Vec[i64] {
+    let rows: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.distance_to_cycle(n as i32, rows).iter().map(|d| d as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a connected graph of n nodes with exactly one cycle, of `ring` nodes:
+// the nodes shuffled, the first `ring` joined in a ring, each later one
+// hung on a node before it, and the edges shuffled with each end order
+// drawn at random
+fn random_graph(n: i64, ring: i64, seed: mut ref i64) -> Vec[Array[i64, 2]] {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut edges: Vec[Array[i64, 2]] = Vec.new();
+    for i in 0..ring {
+        edges.push([order[i], order[(i + 1) % ring]]);
+    }
+    for i in ring..n {
+        edges.push([order[i], order[wide_random(mut seed) % i]]);
+    }
+    for i in (1..n).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    for i in 0..n {
+        if next_random(mut seed) % 2 == 1 {
+            edges[i] = [edges[i][1], edges[i][0]];
+        }
+    }
+    edges
+}
+
+fn show(n: i64, edges: Vec[Array[i64, 2]]) {
+    println(f"n {n}, {edges} -> {distance_to_cycle(n, edges)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a triangle alone, a path
+    // hung off a triangle, a star of leaves on a square, and the whole
+    // graph one ring
+    show(7, [[1, 2], [2, 4], [4, 3], [3, 1], [0, 1], [5, 2], [6, 5]]);
+    show(9, [[0, 1], [1, 2], [0, 2], [2, 6], [6, 7], [6, 8], [0, 3], [3, 4], [3, 5]]);
+    show(3, [[0, 1], [1, 2], [2, 0]]);
+    show(6, [[5, 4], [4, 3], [3, 2], [2, 0], [0, 1], [1, 2]]);
+    show(8, [[0, 1], [1, 2], [2, 3], [3, 0], [4, 0], [5, 0], [6, 2], [7, 6]]);
+    show(5, [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]]);
+    // 2000 random graphs of 3 to 12 nodes, the cycle from 3 nodes to all
+    let mut seed = 2204;
+    let mut far = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 10 + 3;
+        let ring = next_random(mut seed) % (n - 2) + 3;
+        let dist = distance_to_cycle(n, random_graph(n, ring, mut seed));
+        for d in dist.iter() {
+            far = far.max(d);
+            check = (check * 31 + d) % 1000000007;
+        }
+    }
+    println(f"2000 graphs: farthest {far}, checksum {check}");
+    // the constraints' largest: 10^5 nodes with a cycle of 3, of 1000 and
+    // of all of them, and a cycle of 3 with a path of 99997 hung off it
+    for ring in [3, 1000, 100000] {
+        let dist = distance_to_cycle(100000, random_graph(100000, ring, mut seed));
+        let total = dist.iter().sum();
+        println(f"n 100000, cycle {ring}: farthest {dist.iter().max().unwrap()}, total {total}");
+    }
+    let mut path: Vec[Array[i64, 2]] = [[0, 1], [1, 2], [2, 0]];
+    for v in 3..100000 {
+        path.push([v - 1, v]);
+    }
+    let dist = distance_to_cycle(100000, path);
+    println(f"n 100000, a path off a triangle: farthest {dist[99999]}, total {dist.iter().sum()}");
+}

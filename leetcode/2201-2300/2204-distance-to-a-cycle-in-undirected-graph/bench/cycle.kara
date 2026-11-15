@@ -1,0 +1,100 @@
+// benchmark's Kāra version of cycle.kara (LeetCode #2204, the ★ arm):
+// leaves peeled by degree, then one breadth-first search from the cycle.
+
+fn distance_to_cycle(n: i64, edges: Vec[Array[i64, 2]]) -> Vec[i64] {
+    let mut adj: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut degree = Vec.filled(n, 0);
+    for e in edges.iter() {
+        adj[e[0]].push(e[1]);
+        adj[e[1]].push(e[0]);
+        degree[e[0]] += 1;
+        degree[e[1]] += 1;
+    }
+    let mut leaves: VecDeque[i64] = VecDeque.new();
+    for v in 0..n {
+        if degree[v] == 1 {
+            leaves.push_back(v);
+        }
+    }
+    let mut peeled = Vec.filled(n, false);
+    while let Some(v) = leaves.pop_front() {
+        peeled[v] = true;
+        for u in adj[v].iter() {
+            degree[u] -= 1;
+            if degree[u] == 1 {
+                leaves.push_back(u);
+            }
+        }
+    }
+    let mut dist = Vec.filled(n, -1);
+    let mut frontier: VecDeque[i64] = VecDeque.new();
+    for v in 0..n {
+        if not peeled[v] {
+            dist[v] = 0;
+            frontier.push_back(v);
+        }
+    }
+    while let Some(v) = frontier.pop_front() {
+        for u in adj[v].iter() {
+            if dist[u] < 0 {
+                dist[u] = dist[v] + 1;
+                frontier.push_back(u);
+            }
+        }
+    }
+    dist
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a connected graph of n nodes with exactly one cycle, of `ring` nodes:
+// the nodes shuffled, the first `ring` joined in a ring, each later one
+// hung on a node before it, and the edges shuffled with each end order
+// drawn at random
+fn random_graph(n: i64, ring: i64, seed: mut ref i64) -> Vec[Array[i64, 2]] {
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut edges: Vec[Array[i64, 2]] = Vec.new();
+    for i in 0..ring {
+        edges.push([order[i], order[(i + 1) % ring]]);
+    }
+    for i in ring..n {
+        edges.push([order[i], order[wide_random(mut seed) % i]]);
+    }
+    for i in (1..n).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        edges.swap(i, j);
+    }
+    for i in 0..n {
+        if next_random(mut seed) % 2 == 1 {
+            edges[i] = [edges[i][1], edges[i][0]];
+        }
+    }
+    edges
+}
+
+fn main() {
+    let mut seed = 2204;
+    let mut graphs: Vec[Vec[Array[i64, 2]]] = Vec.new();
+    for ring in [3, 10, 100, 1000, 10000, 100000] {
+        graphs.push(random_graph(100000, ring, mut seed));
+    }
+    let mut check = 0;
+    for _ in 0..5 {
+        for edges in graphs.iter() {
+            let dist = distance_to_cycle(100000, edges);
+            check = (check * 31 + dist.iter().sum() + dist[dist.len() / 2]) % 1000000007;
+        }
+    }
+    println(f"5 passes over 6 graphs: checksum {check}");
+}
