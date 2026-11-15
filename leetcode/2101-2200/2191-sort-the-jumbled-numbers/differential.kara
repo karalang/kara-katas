@@ -1,0 +1,377 @@
+// LeetCode #2191: Sort the Jumbled Numbers -- the differential. The six
+// arms, against the statement read literally: each number's mapped
+// value its digits written out, each replaced by the mapping, and read
+// back; the numbers then taken one at a time, each the first left with
+// the smallest mapped value. No sort. 300 random cases of 1 to 12
+// numbers below 10, 100 and 1000 in turn; then 30 of numbers below 20
+// with a mapping that sends 1 to 0, so a leading 1 vanishes and 1x ties
+// x; then 30 of numbers below 10^9. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer holds the same numbers, as many times each
+// P3  the answer's mapped values never fall, and the numbers of each
+//     mapped value come in their order in the list
+// P4  the answer sorted again: the same answer
+// P5  the list reversed: the answer with each run of one mapped value
+//     reversed
+// P6  each arm agrees with at least three of the other five
+
+// ---- jumbled.kara: the ★ arm, (value, place) pairs sorted
+fn star_mapped(mapping: Vec[i64], n: i64) -> i64 {
+    if n == 0 {
+        return mapping[0];
+    }
+    let mut rest = n;
+    let mut value = 0;
+    let mut place = 1;
+    while rest > 0 {
+        value += mapping[rest % 10] * place;
+        place *= 10;
+        rest /= 10;
+    }
+    value
+}
+
+fn star_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut keyed: Vec[(i64, i64)] = Vec.new();
+    for i in 0..nums.len() {
+        keyed.push((star_mapped(mapping, nums[i]), i));
+    }
+    keyed.sort();
+    let mut sorted: Vec[i64] = Vec.new();
+    for (_, i) in keyed {
+        sorted.push(nums[i]);
+    }
+    sorted
+}
+
+// ---- jumbled_by_key.kara: `sort_by_key`, the value from the first digit
+fn key_mapped(mapping: Vec[i64], n: i64) -> i64 {
+    let mut top = 1;
+    while top * 10 <= n {
+        top *= 10;
+    }
+    let mut value = 0;
+    while top > 0 {
+        value = value * 10 + mapping[n / top % 10];
+        top /= 10;
+    }
+    value
+}
+
+fn key_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut sorted = nums.clone();
+    sorted.sort_by_key(|n| key_mapped(mapping, n));
+    sorted
+}
+
+// ---- jumbled_text.kara: the value as text, `sort_by` on it alone
+fn text_mapped(mapping: Vec[i64], n: i64) -> i64 {
+    let mut text = String.new();
+    for c in n.to_string().chars() {
+        let d = c.to_digit(10).unwrap();
+        text.push(char.from_digit(mapping[d] as u32, 10).unwrap());
+    }
+    i64.parse(text).unwrap()
+}
+
+fn text_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    for n in nums.iter() {
+        pairs.push((text_mapped(mapping, n), n));
+    }
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    let mut sorted: Vec[i64] = Vec.new();
+    for (_, n) in pairs {
+        sorted.push(n);
+    }
+    sorted
+}
+
+// ---- jumbled_struct.kara: a `Cipher` that encodes, `Coded` entries ordered by `impl Ord`
+struct Cipher {
+    digits: Vec[i64],
+}
+
+impl Cipher {
+    fn encode(ref self, n: i64) -> i64 {
+        if n < 10 {
+            return self.digits[n];
+        }
+        self.encode(n / 10) * 10 + self.digits[n % 10]
+    }
+}
+
+#[derive(PartialEq, Eq)]
+struct Coded {
+    code: i64,
+    place: i64,
+    value: i64,
+}
+
+impl PartialOrd for Coded {
+    fn partial_cmp(self, other: Coded) -> Option[Ordering] {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Coded {
+    fn cmp(self, other: Coded) -> Ordering {
+        self.code.cmp(other.code).then(self.place.cmp(other.place))
+    }
+}
+
+fn struct_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let cipher = Cipher { digits: mapping.clone() };
+    let mut entries: Vec[Coded] = Vec.new();
+    for i in 0..nums.len() {
+        entries.push(Coded { code: cipher.encode(nums[i]), place: i, value: nums[i] });
+    }
+    entries.sort();
+    let mut sorted: Vec[i64] = Vec.new();
+    for e in entries.iter() {
+        sorted.push(e.value);
+    }
+    sorted
+}
+
+// ---- jumbled_iter.kara: `successors`, `zip`, `sum`, `enumerate`, `collect`
+fn iter_mapped(mapping: Vec[i64], n: i64) -> i64 {
+    successors(Some(n), |m| if m >= 10 { Some(m / 10) } else { None })
+        .map(|m| mapping[m % 10])
+        .zip(successors(Some(1), |p| Some(p * 10)))
+        .map(|(d, p)| d * p)
+        .sum()
+}
+
+fn iter_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut keyed: Vec[(i64, i64, i64)] = nums
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (iter_mapped(mapping, n), i, n))
+        .collect();
+    keyed.sort();
+    keyed.into_iter().map(|(_, _, n)| n).collect()
+}
+
+// ---- jumbled_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn sort_jumbled(mapping: Vec[i32], nums: own Vec[i32]) -> Vec[i32] {
+        let map = |x: i32| {
+            let mut x = x;
+            if x == 0 {
+                return mapping[0];
+            }
+            let mut r: i32 = 0;
+            let mut p: i32 = 1;
+            while x > 0 {
+                r += mapping[(x % 10) as usize] * p;
+                p *= 10;
+                x /= 10;
+            }
+            r
+        };
+        let mut nums = nums;
+        nums.sort_by_key(|x| map(x));
+        nums
+    }
+}
+
+struct Solution {}
+
+fn solution_sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    let digits: Vec[i32] = mapping.iter().map(|d| d as i32).collect();
+    Solution.sort_jumbled(digits, narrow).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal_mapped(mapping: Vec[i64], n: i64) -> i64 {
+    let mut digits: Vec[i64] = Vec.new();
+    let mut rest = n;
+    loop {
+        digits.push(rest % 10);
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    let mut value = 0;
+    for i in (0..digits.len()).rev() {
+        value = value * 10 + mapping[digits[i]];
+    }
+    value
+}
+
+fn literal(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut taken: Vec[bool] = Vec.filled(nums.len(), false);
+    let mut out: Vec[i64] = Vec.new();
+    for _ in 0..nums.len() {
+        let mut pick = -1;
+        for i in 0..nums.len() {
+            if not taken[i] and (pick < 0 or literal_mapped(mapping, nums[i]) < literal_mapped(mapping, nums[pick])) {
+                pick = i;
+            }
+        }
+        taken[pick] = true;
+        out.push(nums[pick]);
+    }
+    out
+}
+
+fn answer(arm: i64, mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_sort_jumbled(mapping, nums),
+        1 => key_sort_jumbled(mapping, nums),
+        2 => text_sort_jumbled(mapping, nums),
+        3 => struct_sort_jumbled(mapping, nums),
+        4 => iter_sort_jumbled(mapping, nums),
+        _ => solution_sort_jumbled(mapping, nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the numbers of `xs` sorted, to compare two lists as multisets
+fn ascending(xs: Vec[i64]) -> Vec[i64] {
+    let mut s = xs.clone();
+    s.sort();
+    s
+}
+
+// the numbers of `xs` whose mapped value is `v`, in their order
+fn of_value(mapping: Vec[i64], xs: Vec[i64], v: i64) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    for x in xs.iter() {
+        if literal_mapped(mapping, x) == v {
+            out.push(x);
+        }
+    }
+    out
+}
+
+// P3: the mapped values never fall, and each value's numbers come in
+// the list's order
+fn ordered(mapping: Vec[i64], nums: Vec[i64], got: Vec[i64]) -> bool {
+    if got.len() != nums.len() {
+        return false;
+    }
+    for i in 1..got.len() {
+        if literal_mapped(mapping, got[i - 1]) > literal_mapped(mapping, got[i]) {
+            return false;
+        }
+    }
+    for x in nums.iter() {
+        let v = literal_mapped(mapping, x);
+        if of_value(mapping, got, v) != of_value(mapping, nums, v) {
+            return false;
+        }
+    }
+    true
+}
+
+// P5: `got` with each run of one mapped value reversed
+fn runs_reversed(mapping: Vec[i64], got: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut i = 0;
+    while i < got.len() {
+        let mut j = i;
+        while j < got.len() and literal_mapped(mapping, got[j]) == literal_mapped(mapping, got[i]) {
+            j += 1;
+        }
+        for k in (i..j).rev() {
+            out.push(got[k]);
+        }
+        i = j;
+    }
+    out
+}
+
+fn random_mapping(seed: mut ref i64) -> Vec[i64] {
+    let mut mapping: Vec[i64] = Vec.new();
+    for d in 0..10 {
+        mapping.push(d);
+    }
+    for i in (1..10).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        mapping.swap(i, j);
+    }
+    mapping
+}
+
+fn main() {
+    let names = ["star", "key", "text", "struct", "iter", "solution"];
+    let mut seed = 2191;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let mut mapping = random_mapping(mut seed);
+        if c >= 300 and c < 330 {
+            let one = mapping.iter().position(|d| d == 0).unwrap();
+            mapping.swap(1, one);
+        }
+        let n = next_random(mut seed) % 12 + 1;
+        let top = if c >= 330 { 1000000000 } else if c >= 300 { 20 } else { [10, 100, 1000][c % 3] };
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let high = next_random(mut seed) % 32768;
+            nums.push((high * 32768 + next_random(mut seed)) % top);
+        }
+        cases.push((mapping, nums));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (mapping, nums) in cases.iter() {
+        let truth = literal(mapping, nums);
+        for x in truth.iter() {
+            check = (check * 31 + x % 1000003) % 1000000007;
+        }
+        check = (check * 31 + nums.len()) % 1000000007;
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, mapping, nums)).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        for arm in 0..6 {
+            let sorted = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == sorted {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                sorted == truth,
+                ascending(sorted) == ascending(nums),
+                ordered(mapping, nums, sorted),
+                answer(arm, mapping, sorted) == sorted,
+                answer(arm, mapping, reversed) == runs_reversed(mapping, sorted),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{mapping}, {nums} arm {names[arm]}: P{q + 1} fails, answered {sorted}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

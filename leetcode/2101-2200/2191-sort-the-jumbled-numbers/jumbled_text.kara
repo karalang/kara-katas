@@ -1,0 +1,101 @@
+// LeetCode #2191: Sort the Jumbled Numbers -- the mapped value read as
+// text: each number written out by `to_string`, every `char` turned to
+// its digit by `to_digit`, mapped, and back by `char.from_digit`, the
+// text parsed by `i64.parse`; numbers and their values then sorted by
+// `sort_by` on the value alone, stably. O(n log n).
+
+fn mapped(mapping: Vec[i64], n: i64) -> i64 {
+    let mut text = String.new();
+    for c in n.to_string().chars() {
+        let d = c.to_digit(10).unwrap();
+        text.push(char.from_digit(mapping[d] as u32, 10).unwrap());
+    }
+    i64.parse(text).unwrap()
+}
+
+fn sort_jumbled(mapping: Vec[i64], nums: Vec[i64]) -> Vec[i64] {
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    for n in nums.iter() {
+        pairs.push((mapped(mapping, n), n));
+    }
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    let mut sorted: Vec[i64] = Vec.new();
+    for (_, n) in pairs {
+        sorted.push(n);
+    }
+    sorted
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a random order of the ten digits, by swaps from the back
+fn random_mapping(seed: mut ref i64) -> Vec[i64] {
+    let mut mapping: Vec[i64] = Vec.new();
+    for d in 0..10 {
+        mapping.push(d);
+    }
+    for i in (1..10).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        mapping.swap(i, j);
+    }
+    mapping
+}
+
+// n numbers below `top`
+fn random_nums(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        let high = next_random(mut seed) % 32768;
+        nums.push((high * 32768 + next_random(mut seed)) % top);
+    }
+    nums
+}
+
+fn checksum(sorted: Vec[i64], check: i64) -> i64 {
+    let mut c = check;
+    for x in sorted.iter() {
+        c = (c * 31 + x % 1000003) % 1000000007;
+    }
+    c
+}
+
+fn show(mapping: Vec[i64], nums: Vec[i64]) {
+    println(f"{mapping}, {nums} -> {sort_jumbled(mapping, nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, a zero among
+    // others, numbers that map alike once their leading 0s go, and 0
+    // and 9 swapped
+    show([8, 9, 4, 0, 2, 1, 3, 5, 7, 6].to_vec(), [991, 338, 38].to_vec());
+    show([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].to_vec(), [789, 456, 123].to_vec());
+    show([9, 8, 7, 6, 5, 4, 3, 2, 1, 0].to_vec(), [42].to_vec());
+    show([9, 8, 7, 6, 5, 4, 3, 2, 1, 0].to_vec(), [0, 9, 90, 999999999].to_vec());
+    show([1, 0, 2, 3, 4, 5, 6, 7, 8, 9].to_vec(), [12, 2, 112, 1, 0].to_vec());
+    show([9, 1, 2, 3, 4, 5, 6, 7, 8, 0].to_vec(), [9, 1000, 19, 0, 909].to_vec());
+    // 2000 random cases of 1 to 30 numbers, below 10, 1000 and 10^9 in
+    // turn, each with a mapping of its own
+    let mut seed = 2191;
+    let mut firsts = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let mapping = random_mapping(mut seed);
+        let n = next_random(mut seed) % 30 + 1;
+        let top = [10, 1000, 1000000000][round % 3];
+        let nums = random_nums(n, top, mut seed);
+        let sorted = sort_jumbled(mapping, nums);
+        firsts += sorted[0];
+        check = checksum(sorted, check);
+    }
+    println(f"2000 cases: first numbers add up to {firsts}, checksum {check}");
+    // the constraints' longest, 30000 numbers below 10^9
+    let mapping = random_mapping(mut seed);
+    let nums = random_nums(30000, 1000000000, mut seed);
+    let sorted = sort_jumbled(mapping, nums);
+    println(f"30000 numbers: first {sorted[0]}, last {sorted[29999]}, checksum {checksum(sorted, 0)}");
+}
