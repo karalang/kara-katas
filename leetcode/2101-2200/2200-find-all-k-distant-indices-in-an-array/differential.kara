@@ -1,0 +1,276 @@
+// LeetCode #2200: Find All K-Distant Indices in an Array -- the
+// differential. The six arms, against the statement read literally: every
+// index i tried against every index j, and listed when some j holds the
+// key with |i - j| <= k; no window, no pointer. 300 random arrays of 1 to
+// 50 numbers up to 2, 5 and 1000 in turn, the key one of them and k from
+// 1 to the length; then 30 with k the length; then 30 holding the key
+// once. Every case is drawn before any arm answers.
+//
+// P1  the indices are the statement read literally
+// P2  they rise strictly, lie in the array, and include every index that
+//     holds the key
+// P3  the array reversed: each index i becomes n - 1 - i, in reverse
+// P4  k one more: every index listed is listed still
+// P5  every number that is not the key made another one that is not:
+//     the same indices
+// P6  each arm agrees with at least three of the other five
+
+// ---- distant.kara: the ★ arm, the key's windows, a `next` index
+fn star_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    let mut next = 0;
+    for j in 0..n {
+        if nums[j] != key {
+            continue;
+        }
+        let from = if j - k > next { j - k } else { next };
+        let to = if j + k < n - 1 { j + k } else { n - 1 };
+        for i in from..=to {
+            out.push(i);
+        }
+        next = to + 1;
+    }
+    out
+}
+
+// ---- distant_scan.kara: each index's window searched by `any`
+fn scan_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let lo = if i < k { 0 } else { i - k };
+        let hi = if i + k >= n { n - 1 } else { i + k };
+        if (lo..=hi).any(|j| nums[j] == key) {
+            out.push(i);
+        }
+    }
+    out
+}
+
+// ---- distant_prefix.kara: prefix counts of the key
+fn prefix_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut seen: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        seen[i + 1] = seen[i] + (if nums[i] == key { 1 } else { 0 });
+    }
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let lo = if i < k { 0 } else { i - k };
+        let hi = if i + k + 1 > n { n } else { i + k + 1 };
+        if seen[hi] > seen[lo] {
+            out.push(i);
+        }
+    }
+    out
+}
+
+// ---- distant_struct.kara: `Cover` of merged `Reach`es
+struct Reach {
+    from: i64,
+    to: i64,
+}
+
+struct Cover {
+    spans: Vec[Reach],
+}
+
+impl Cover {
+    fn add(mut ref self, from: i64, to: i64) {
+        let last = self.spans.len() - 1;
+        if self.spans.len() > 0 and self.spans[last].to + 1 >= from {
+            if to > self.spans[last].to {
+                self.spans[last].to = to;
+            }
+        } else {
+            self.spans.push(Reach { from: from, to: to });
+        }
+    }
+
+    fn indices(ref self) -> Vec[i64] {
+        let mut out: Vec[i64] = Vec.new();
+        for s in self.spans.iter() {
+            for i in s.from..=s.to {
+                out.push(i);
+            }
+        }
+        out
+    }
+}
+
+fn struct_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut cover = Cover { spans: Vec.new() };
+    for j in 0..n {
+        if nums[j] == key {
+            cover.add(if j < k { 0 } else { j - k }, if j + k >= n { n - 1 } else { j + k });
+        }
+    }
+    cover.indices()
+}
+
+// ---- distant_iter.kara: `enumerate`, `filter`, `flat_map`, a `SortedSet`
+fn iter_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let covered: SortedSet[i64] = nums
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v == key)
+        .flat_map(|(j, _)| (j - k).max(0)..=(j + k).min(n - 1))
+        .collect();
+    covered.into_iter().collect()
+}
+
+// ---- distant_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn find_k_distant_indices(nums: Vec[i32], key: i32, k: i32) -> Vec[i32] {
+        let n = nums.len();
+        let k = k as i64;
+        let mut res = Vec.new();
+        let mut last = 0;
+        for (j, x) in nums.iter().enumerate() {
+            if x == key {
+                let lo = j.saturating_sub(k).max(last);
+                let hi = (j + k).min(n - 1);
+                for i in lo..=hi {
+                    res.push(i as i32);
+                }
+                last = hi + 1;
+            }
+        }
+        res
+    }
+}
+
+struct Solution {}
+
+fn solution_find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.find_k_distant_indices(narrow, key as i32, k as i32).iter().map(|i| i as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let mut near = false;
+        for j in 0..n {
+            let d = if i > j { i - j } else { j - i };
+            if nums[j] == key and d <= k {
+                near = true;
+            }
+        }
+        if near {
+            out.push(i);
+        }
+    }
+    out
+}
+
+fn answer(arm: i64, nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    match arm {
+        0 => star_find_k_distant_indices(nums, key, k),
+        1 => scan_find_k_distant_indices(nums, key, k),
+        2 => prefix_find_k_distant_indices(nums, key, k),
+        3 => struct_find_k_distant_indices(nums, key, k),
+        4 => iter_find_k_distant_indices(nums, key, k),
+        _ => solution_find_k_distant_indices(nums, key, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "scan", "prefix", "struct", "iter", "solution"];
+    let mut seed = 2200;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 50 + 1;
+        let top = [2, 5, 1000][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let at = next_random(mut seed) % n;
+        let key = nums[at];
+        let k = next_random(mut seed) % n + 1;
+        if c < 300 {
+            cases.push((nums, key, k));
+        } else if c < 330 {
+            cases.push((nums, key, n));
+        } else {
+            let other = key % 1000 + 1;
+            let once: Vec[i64] = (0..n).map(|i| if i == at { key } else { other }).collect();
+            cases.push((once, key, k));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, key, k) in cases.iter() {
+        let n = nums.len();
+        let truth = literal(nums, key, k);
+        for i in truth.iter() {
+            check = (check * 31 + i + 1) % 1000000007;
+        }
+        check = (check * 31 + truth.len()) % 1000000007;
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums, key, k)).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let other = key % 1000 + 1;
+        let blurred: Vec[i64] = nums.iter().map(|v| if v == key { v } else { other }).collect();
+        for arm in 0..6 {
+            let out = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == out {
+                    same += 1;
+                }
+            }
+            let mut rising = true;
+            for i in 0..out.len() {
+                if out[i] < 0 or out[i] >= n or (i > 0 and out[i] <= out[i - 1]) {
+                    rising = false;
+                }
+            }
+            let holds_keys = (0..n).all(|i| nums[i] != key or out.contains(i));
+            let mirrored: Vec[i64] = out.iter().rev().map(|i| n - 1 - i).collect();
+            let wider = answer(arm, nums, key, k + 1);
+            let verdicts = [
+                out == truth,
+                rising and holds_keys,
+                answer(arm, reversed, key, k) == mirrored,
+                out.iter().all(|i| wider.contains(i)),
+                answer(arm, blurred, key, k) == out,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, key {key}, k {k} arm {names[arm]}: P{q + 1} fails, answered {out}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

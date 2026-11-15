@@ -1,0 +1,53 @@
+// benchmark copy of distant.kara (LeetCode #2200, the ★ arm): the key's
+// windows, a `next` index. See ../README.md § Benchmarks.
+
+fn find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    let mut next = 0;
+    for j in 0..n {
+        if nums[j] != key {
+            continue;
+        }
+        let from = if j - k > next { j - k } else { next };
+        let to = if j + k < n - 1 { j + k } else { n - 1 };
+        for i in from..=to {
+            out.push(i);
+        }
+        next = to + 1;
+    }
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 1000 arrays of 1000 numbers up to 50, 200 or 1000 in turn, each with
+    // its key and a k from 1 to 20
+    let mut seed = 2200;
+    let mut cases: Vec[(Vec[i64], i64, i64)] = Vec.new();
+    for c in 0..1000 {
+        let top = [50, 200, 1000][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..1000 {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let key = nums[next_random(mut seed) % 1000];
+        let k = next_random(mut seed) % 20 + 1;
+        cases.push((nums, key, k));
+    }
+    let mut check = 0;
+    for _ in 0..600 {
+        for (nums, key, k) in cases.iter() {
+            let out = find_k_distant_indices(nums, key, k);
+            check = (check * 31 + out.len()) % 1000000007;
+            if out.len() > 0 {
+                check = (check * 31 + out[out.len() / 2]) % 1000000007;
+            }
+        }
+    }
+    println(f"600 passes over 1000 arrays: checksum {check}");
+}

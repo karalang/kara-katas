@@ -1,0 +1,68 @@
+// LeetCode #2200: Find All K-Distant Indices in an Array -- each index on
+// its own: kept when any index within k of it holds the key, the window
+// clipped to the array and searched by `any`. O(n k).
+
+fn find_k_distant_indices(nums: Vec[i64], key: i64, k: i64) -> Vec[i64] {
+    let n = nums.len();
+    let mut out: Vec[i64] = Vec.new();
+    for i in 0..n {
+        let lo = if i < k { 0 } else { i - k };
+        let hi = if i + k >= n { n - 1 } else { i + k };
+        if (lo..=hi).any(|j| nums[j] == key) {
+            out.push(i);
+        }
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64], key: i64, k: i64) {
+    println(f"{nums}, key {key}, k {k} -> {find_k_distant_indices(nums, key, k)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: windows apart, the key only
+    // at the ends, windows that touch, and k past the whole array
+    show([3, 4, 9, 1, 3, 9, 5], 9, 1);
+    show([2, 2, 2, 2, 2], 2, 2);
+    show([5, 1, 1, 1, 5, 1, 1, 1], 5, 1);
+    show([7, 1, 1, 1, 1, 1, 7], 7, 2);
+    show([4, 1, 1, 4, 1, 1, 4], 4, 1);
+    show([1, 2, 3], 3, 5);
+    // 3000 random arrays of 1 to 50 numbers up to 2, 5 and 1000 in turn,
+    // the key one of them, k from 1 to the length
+    let mut seed = 2200;
+    let mut listed = 0;
+    let mut check = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 50 + 1;
+        let top = [2, 5, 1000][round % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        let key = nums[next_random(mut seed) % n];
+        let k = next_random(mut seed) % n + 1;
+        let out = find_k_distant_indices(nums, key, k);
+        listed += out.len();
+        for i in out.iter() {
+            check = (check * 31 + i + 1) % 1000000007;
+        }
+        check = (check * 31 + out.len()) % 1000000007;
+    }
+    println(f"3000 arrays: {listed} listed, checksum {check}");
+    // the constraints' largest: 1000 numbers, the key one in a hundred
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..1000 {
+        wide.push(next_random(mut seed) % 100 + 1);
+    }
+    let out = find_k_distant_indices(wide, 7, 3);
+    let total: i64 = out.iter().sum();
+    println(f"1000 numbers, key 7, k 3: {out.len()} listed, sum {total}");
+}
