@@ -1,0 +1,471 @@
+// LeetCode #2196: Create Binary Tree From Descriptions -- the differential.
+// The six arms, against the statement read literally: the root is the one
+// value never named as a child, and each node's left and right children
+// are read off the descriptions that name it as the parent, the tree
+// written out level by level; no map, no set. 300 random trees of 2 to 61
+// nodes with values up to 100 or up to 1000 in turn; then 30 chains, each
+// node the only child of the one before on a random side; then 30 of one
+// description with values up to 10^5. Every case is drawn before any arm
+// answers.
+//
+// P1  the tree, written in level order, is the statement read literally
+// P2  it holds every value named, each once: one node more than the
+//     descriptions
+// P3  the descriptions in reverse order: the same tree
+// P4  every value v written m + 1 - v, for m the largest: the same tree
+//     with its values so written
+// P5  every side swapped: the tree's mirror image
+// P6  each arm agrees with at least three of the other five
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+// LeetCode's TreeNode for the Rust template's arm: an `i32` value.
+shared struct RustTreeNode {
+    mut val: i32,
+    mut left: Option[RustTreeNode],
+    mut right: Option[RustTreeNode],
+}
+
+impl RustTreeNode {
+    fn new(val: i32) -> RustTreeNode {
+        RustTreeNode { val: val, left: None, right: None }
+    }
+}
+
+fn from_rust(node: Option[RustTreeNode]) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: n.val, left: from_rust(n.left), right: from_rust(n.right) })
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+// ---- create.kara: the ★ arm, a `Map` of nodes made as named, a `Set` of children
+fn star_node_of(nodes: mut ref Map[i64, TreeNode], v: i64) -> TreeNode {
+    if let Some(n) = nodes.get(v) {
+        return n;
+    }
+    let n = leaf(v);
+    nodes.insert(v, n);
+    n
+}
+
+fn star_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let mut nodes: Map[i64, TreeNode] = Map.new();
+    let mut children: Set[i64] = Set.new();
+    for d in descriptions.iter() {
+        let parent = star_node_of(mut nodes, d[0]);
+        let child = star_node_of(mut nodes, d[1]);
+        if d[2] == 1 {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        children.insert(d[1]);
+    }
+    for d in descriptions.iter() {
+        if not children.contains(d[0]) {
+            return nodes.get(d[0]).cloned();
+        }
+    }
+    None
+}
+
+// ---- create_topdown.kara: each parent's pair of children, built down from the root
+fn topdown_build(v: i64, kids: Map[i64, (i64, i64)]) -> TreeNode {
+    let node = leaf(v);
+    if let Some((l, r)) = kids.get(v) {
+        if l != 0 {
+            node.left = Some(topdown_build(l, kids));
+        }
+        if r != 0 {
+            node.right = Some(topdown_build(r, kids));
+        }
+    }
+    node
+}
+
+fn topdown_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let mut kids: Map[i64, (i64, i64)] = Map.new();
+    let mut named: Set[i64] = Set.new();
+    for d in descriptions.iter() {
+        let (l, r) = kids.get(d[0]).cloned().unwrap_or((0, 0));
+        if d[2] == 1 {
+            kids.insert(d[0], (d[1], r));
+        } else {
+            kids.insert(d[0], (l, d[1]));
+        }
+        named.insert(d[1]);
+    }
+    let root = descriptions.iter().map(|d| d[0]).find(|p| not named.contains(p))?;
+    Some(topdown_build(root, kids))
+}
+
+// ---- create_table.kara: a table by value, the root by arithmetic
+fn table_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let top = descriptions.iter().map(|d| if d[0] > d[1] { d[0] } else { d[1] }).max().unwrap();
+    let mut table: Vec[Option[TreeNode]] = Vec.filled(top + 1, None);
+    let mut distinct = 0;
+    let mut children = 0;
+    for d in descriptions.iter() {
+        for v in [d[0], d[1]] {
+            if table[v].is_none() {
+                table[v] = Some(leaf(v));
+                distinct += v;
+            }
+        }
+        let parent = table[d[0]].clone().unwrap();
+        let child = table[d[1]].clone();
+        if d[2] == 1 {
+            parent.left = child;
+        } else {
+            parent.right = child;
+        }
+        children += d[1];
+    }
+    table[distinct - children].clone()
+}
+
+// ---- create_struct.kara: `Builder`, the root reached by parent links
+struct Builder {
+    nodes: Map[i64, TreeNode],
+    parent: Map[i64, i64],
+}
+
+impl Builder {
+    fn new() -> Builder {
+        Builder { nodes: Map.new(), parent: Map.new() }
+    }
+
+    fn node(mut ref self, v: i64) -> TreeNode {
+        match self.nodes.get(v) {
+            Some(n) => n,
+            None => {
+                let n = leaf(v);
+                self.nodes.insert(v, n);
+                n
+            }
+        }
+    }
+
+    fn add(mut ref self, d: Array[i64, 3]) {
+        let parent = self.node(d[0]);
+        let child = self.node(d[1]);
+        if d[2] == 1 {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        self.parent.insert(d[1], d[0]);
+    }
+
+    fn root(ref self, from: i64) -> Option[TreeNode] {
+        let mut at = from;
+        while let Some(up) = self.parent.get(at) {
+            at = up;
+        }
+        self.nodes.get(at).cloned()
+    }
+}
+
+fn struct_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let mut builder = Builder.new();
+    for d in descriptions.iter() {
+        builder.add(d);
+    }
+    builder.root(descriptions[0][0])
+}
+
+// ---- create_iter.kara: `flat_map`, `collect`, `for_each`, `find`
+fn iter_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let nodes: Map[i64, TreeNode] = descriptions
+        .iter()
+        .flat_map(|d| [d[0], d[1]].into_iter())
+        .map(|v| (v, leaf(v)))
+        .collect();
+    let children: Set[i64] = descriptions.iter().map(|d| d[1]).collect();
+    descriptions.iter().for_each(|d| {
+        let child = nodes.get(d[1]).cloned();
+        let parent = nodes.get(d[0]).cloned().unwrap();
+        if d[2] == 1 {
+            parent.left = child;
+        } else {
+            parent.right = child;
+        }
+    });
+    descriptions
+        .iter()
+        .map(|d| d[0])
+        .find(|p| not children.contains(p))
+        .and_then(|p| nodes.get(p).cloned())
+}
+
+// ---- create_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn create_binary_tree(descriptions: Vec[Vec[i32]]) -> Option[RustTreeNode] {
+        let mut nodes: Map[i32, RustTreeNode] = Map.new();
+        let mut children = Set.new();
+        for d in ref descriptions {
+            let (p, c, left) = (d[0], d[1], d[2] == 1);
+            let child = nodes.entry(c).or_insert_with(|| RustTreeNode.new(c)).clone();
+            let parent = nodes.entry(p).or_insert_with(|| RustTreeNode.new(p)).clone();
+            if left {
+                parent.left = Some(child);
+            } else {
+                parent.right = Some(child);
+            }
+            children.insert(c);
+        }
+        for d in ref descriptions {
+            if not children.contains(d[0]) {
+                return nodes.get(d[0]).cloned();
+            }
+        }
+        None
+    }
+}
+
+struct Solution {}
+
+fn solution_create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[RustTreeNode] {
+    let wide: Vec[Vec[i32]] = descriptions.iter().map(|d| [d[0] as i32, d[1] as i32, d[2] as i32]).collect();
+    Solution.create_binary_tree(wide)
+}
+
+// ---- the statement read literally
+
+fn child_of(descriptions: Vec[Array[i64, 3]], parent: i64, side: i64) -> Option[i64] {
+    for d in descriptions.iter() {
+        if d[0] == parent and d[2] == side {
+            return Some(d[1]);
+        }
+    }
+    None
+}
+
+fn literal(descriptions: Vec[Array[i64, 3]]) -> String {
+    let mut root = -1;
+    for d in descriptions.iter() {
+        let mut named = false;
+        for e in descriptions.iter() {
+            if e[1] == d[0] {
+                named = true;
+            }
+        }
+        if not named {
+            root = d[0];
+        }
+    }
+    let mut items: Vec[String] = Vec.new();
+    let mut queue: Vec[Option[i64]] = [Some(root)].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let at = queue[head];
+        head += 1;
+        match at {
+            Some(v) => {
+                items.push(f"{v}");
+                queue.push(child_of(descriptions, v, 1));
+                queue.push(child_of(descriptions, v, 0));
+            }
+            None => items.push("null"),
+        }
+    }
+    while items.len() > 0 and items[items.len() - 1] == "null" {
+        items.pop();
+    }
+    f"[{items.join(",")}]"
+}
+
+fn level_order(root: Option[TreeNode]) -> String {
+    let mut items: Vec[String] = Vec.new();
+    let mut queue: Vec[Option[TreeNode]] = [root].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let at = queue[head];
+        head += 1;
+        match at {
+            Some(n) => {
+                items.push(f"{n.val}");
+                queue.push(n.left);
+                queue.push(n.right);
+            }
+            None => items.push("null"),
+        }
+    }
+    while items.len() > 0 and items[items.len() - 1] == "null" {
+        items.pop();
+    }
+    f"[{items.join(",")}]"
+}
+
+fn mirror(node: Option[TreeNode]) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: n.val, left: mirror(n.right), right: mirror(n.left) })
+}
+
+fn renamed(node: Option[TreeNode], flip: i64) -> Option[TreeNode] {
+    let n = node?;
+    Some(TreeNode { val: flip - n.val, left: renamed(n.left, flip), right: renamed(n.right, flip) })
+}
+
+fn values_of(node: Option[TreeNode], out: mut ref Vec[i64]) {
+    if let Some(n) = node {
+        out.push(n.val);
+        values_of(n.left, mut out);
+        values_of(n.right, mut out);
+    }
+}
+
+fn answer(arm: i64, descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    match arm {
+        0 => star_create_binary_tree(descriptions),
+        1 => topdown_create_binary_tree(descriptions),
+        2 => table_create_binary_tree(descriptions),
+        3 => struct_create_binary_tree(descriptions),
+        4 => iter_create_binary_tree(descriptions),
+        _ => from_rust(solution_create_binary_tree(descriptions)),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` distinct values below `top`; each after the first hung below a
+// random earlier one on a random free side, or, for a chain, below the
+// one just before; written as descriptions in a random order
+fn random_descriptions(n: i64, top: i64, chain: bool, seed: mut ref i64) -> Vec[Array[i64, 3]] {
+    let mut used: Set[i64] = Set.new();
+    let mut values: Vec[i64] = Vec.new();
+    while values.len() < n {
+        let v = wide_random(mut seed) % top + 1;
+        if not used.contains(v) {
+            used.insert(v);
+            values.push(v);
+        }
+    }
+    let mut free: Vec[(i64, i64)] = [(0, 1), (0, 0)].to_vec();
+    let mut descriptions: Vec[Array[i64, 3]] = Vec.new();
+    for k in 1..n {
+        if chain {
+            descriptions.push([values[k - 1], values[k], next_random(mut seed) % 2]);
+        } else {
+            let pick = wide_random(mut seed) % free.len();
+            let (p, side) = free[pick];
+            free.swap_remove(pick);
+            descriptions.push([values[p], values[k], side]);
+            free.push((k, 1));
+            free.push((k, 0));
+        }
+    }
+    for i in (1..descriptions.len()).rev() {
+        descriptions.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    descriptions
+}
+
+fn main() {
+    let names = ["star", "topdown", "table", "struct", "iter", "solution"];
+    let mut seed = 2196;
+    let mut cases: Vec[Vec[Array[i64, 3]]] = Vec.new();
+    for c in 0..360 {
+        let top = if c >= 330 { 100000 } else if c % 2 == 0 { 100 } else { 1000 };
+        if c < 300 {
+            let n = next_random(mut seed) % 60 + 2;
+            cases.push(random_descriptions(n, top, false, mut seed));
+        } else if c < 330 {
+            let n = next_random(mut seed) % 60 + 2;
+            cases.push(random_descriptions(n, top, true, mut seed));
+        } else {
+            cases.push(random_descriptions(2, top, false, mut seed));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for d in cases.iter() {
+        let truth = literal(d);
+        for ch in truth.chars() {
+            check = (check * 31 + ch as i64) % 1000000007;
+        }
+        let got: Vec[String] = (0..6).map(|arm| level_order(answer(arm, d))).collect();
+        let reversed: Vec[Array[i64, 3]] = d.iter().rev().collect();
+        // a list literal a closure returns is a `Vec` (kara B-2026-11-15-38),
+        // so each new description is a typed binding
+        let flip = d.iter().map(|e| if e[0] > e[1] { e[0] } else { e[1] }).max().unwrap() + 1;
+        let renamed_d: Vec[Array[i64, 3]] = d
+            .iter()
+            .map(|e| {
+                let r: Array[i64, 3] = [flip - e[0], flip - e[1], e[2]];
+                r
+            })
+            .collect();
+        let swapped: Vec[Array[i64, 3]] = d
+            .iter()
+            .map(|e| {
+                let s: Array[i64, 3] = [e[0], e[1], 1 - e[2]];
+                s
+            })
+            .collect();
+        let mut named: Set[i64] = Set.new();
+        for e in d.iter() {
+            named.insert(e[0]);
+            named.insert(e[1]);
+        }
+        for arm in 0..6 {
+            let tree = answer(arm, d);
+            let text = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == text {
+                    same += 1;
+                }
+            }
+            let mut held: Vec[i64] = Vec.new();
+            values_of(tree, mut held);
+            let distinct: Set[i64] = held.iter().collect();
+            let every = held.len() == d.len() + 1 and distinct.len() == held.len() and held.iter().all(|v| named.contains(v));
+            let verdicts = [
+                text == truth,
+                every,
+                level_order(answer(arm, reversed)) == text,
+                level_order(answer(arm, renamed_d)) == level_order(renamed(tree, flip)),
+                level_order(answer(arm, swapped)) == level_order(mirror(tree)),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{d} arm {names[arm]}: P{q + 1} fails, answered {text}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

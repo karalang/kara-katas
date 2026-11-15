@@ -1,0 +1,150 @@
+// LeetCode #2196: Create Binary Tree From Descriptions -- a table by
+// value: each value's node sits at its own index of a
+// `Vec[Option[TreeNode]]` as long as the largest value, made the first
+// time it is named; the root found by arithmetic, the sum of the distinct
+// values less the sum of the children, since every value but the root is
+// a child exactly once. O(n + the largest value).
+
+fn create_binary_tree(descriptions: Vec[Array[i64, 3]]) -> Option[TreeNode] {
+    let top = descriptions.iter().map(|d| if d[0] > d[1] { d[0] } else { d[1] }).max().unwrap();
+    let mut table: Vec[Option[TreeNode]] = Vec.filled(top + 1, None);
+    let mut distinct = 0;
+    let mut children = 0;
+    for d in descriptions.iter() {
+        for v in [d[0], d[1]] {
+            if table[v].is_none() {
+                table[v] = Some(leaf(v));
+                distinct += v;
+            }
+        }
+        let parent = table[d[0]].clone().unwrap();
+        let child = table[d[1]].clone();
+        if d[2] == 1 {
+            parent.left = child;
+        } else {
+            parent.right = child;
+        }
+        children += d[1];
+    }
+    table[distinct - children].clone()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+shared struct TreeNode {
+    val: i64,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none, and the
+// trailing "null"s dropped
+fn level_order(root: Option[TreeNode]) -> String {
+    let mut items: Vec[String] = Vec.new();
+    let mut queue: Vec[Option[TreeNode]] = [root].to_vec();
+    let mut head = 0;
+    while head < queue.len() {
+        let at = queue[head];
+        head += 1;
+        match at {
+            Some(n) => {
+                items.push(f"{n.val}");
+                queue.push(n.left);
+                queue.push(n.right);
+            }
+            None => items.push("null"),
+        }
+    }
+    while items.len() > 0 and items[items.len() - 1] == "null" {
+        items.pop();
+    }
+    f"[{items.join(",")}]"
+}
+
+// a random tree of `n` nodes with distinct values below `top`, each after
+// the first hung below a random earlier one on a random free side, written
+// as its descriptions in a random order
+fn random_descriptions(n: i64, top: i64, seed: mut ref i64) -> Vec[Array[i64, 3]] {
+    let mut used: Set[i64] = Set.new();
+    let mut values: Vec[i64] = Vec.new();
+    while values.len() < n {
+        let v = wide_random(mut seed) % top + 1;
+        if not used.contains(v) {
+            used.insert(v);
+            values.push(v);
+        }
+    }
+    // each node's free sides: 1 for the left, 0 for the right
+    let mut free: Vec[(i64, i64)] = [(0, 1), (0, 0)].to_vec();
+    let mut descriptions: Vec[Array[i64, 3]] = Vec.new();
+    for k in 1..n {
+        let pick = wide_random(mut seed) % free.len();
+        let (p, side) = free[pick];
+        free.swap_remove(pick);
+        descriptions.push([values[p], values[k], side]);
+        free.push((k, 1));
+        free.push((k, 0));
+    }
+    for i in (1..descriptions.len()).rev() {
+        descriptions.swap(i, wide_random(mut seed) % (i + 1));
+    }
+    descriptions
+}
+
+fn show(descriptions: Vec[Array[i64, 3]]) {
+    println(f"{descriptions} -> {level_order(create_binary_tree(descriptions))}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one edge, a right chain, a
+    // full tree given bottom up, a zigzag
+    show([[20, 15, 1], [20, 17, 0], [50, 20, 1], [50, 80, 0], [80, 19, 1]]);
+    show([[1, 2, 1], [2, 3, 0], [3, 4, 1]]);
+    show([[7, 3, 0]]);
+    show([[1, 2, 0], [2, 3, 0], [3, 4, 0], [4, 5, 0]]);
+    show([[2, 4, 1], [2, 5, 0], [3, 6, 1], [3, 7, 0], [1, 2, 1], [1, 3, 0]]);
+    show([[9, 8, 1], [8, 7, 0], [7, 6, 1], [6, 5, 0]]);
+    // 2000 random trees of 2 to 60 nodes, values up to 100
+    // or up to 10^5 in turn
+    let mut seed = 2196;
+    let mut check = 0;
+    let mut nodes = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 59 + 2;
+        let top = if round % 2 == 0 { 100 } else { 100000 };
+        let text = level_order(create_binary_tree(random_descriptions(n, top, mut seed)));
+        nodes += n;
+        for c in text.chars() {
+            check = (check * 31 + c as i64) % 1000000007;
+        }
+    }
+    println(f"2000 trees of {nodes} nodes: checksum {check}");
+    // the constraints' largest: 10^4 descriptions of a random tree, and a
+    // chain of 10^4 alternating sides, given from the bottom up
+    let big = level_order(create_binary_tree(random_descriptions(10001, 100000, mut seed)));
+    let mut big_check = 0;
+    for c in big.chars() {
+        big_check = (big_check * 31 + c as i64) % 1000000007;
+    }
+    println(f"10^4 random descriptions: {big.len()} characters, checksum {big_check}");
+    let mut chain: Vec[Array[i64, 3]] = Vec.new();
+    for v in (1..10001).rev() {
+        chain.push([v, v + 1, v % 2]);
+    }
+    let long = level_order(create_binary_tree(chain));
+    println(f"a chain of 10^4: {long.len()} characters, starts {long.slice(0, 12)}, ends {long.slice(long.len() - 12, long.len())}");
+}
