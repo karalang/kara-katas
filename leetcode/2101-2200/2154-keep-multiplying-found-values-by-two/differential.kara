@@ -1,0 +1,214 @@
+// LeetCode #2154: Keep Multiplying Found Values by Two -- the
+// differential. The six arms, against the statement read literally: the
+// list is searched from its start for the value, and on each find the
+// value doubles and the search starts again; no set, sort or mask. 300
+// random lists of 1 to 10 numbers of 1 to 8 or 1 to 40 in turn, with a
+// start of 1 to 5; then 30 holding the start's chain of doubles in part,
+// shuffled; then 30 with no start's double in them; every one drawn
+// before any arm answers.
+//
+// P1  the final value is the statement read literally
+// P2  the list reversed: the same
+// P3  every number and the start tripled: three times the final value
+// P4  the final value itself taken as the start: the same
+// P5  the final value added to the list: the final value from twice it
+// P6  each arm agrees with at least three of the other five
+
+// ---- doubling.kara: the ★ arm, a `Set` asked while it holds the value
+fn star_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    let found: Set[i64] = nums.iter().cloned().collect();
+    let mut value = original;
+    while found.contains(value) {
+        value *= 2;
+    }
+    value
+}
+
+// ---- doubling_sorted.kara: one walk of the sorted numbers
+fn sorted_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    let mut value = original;
+    for x in sorted.iter() {
+        if x == value {
+            value *= 2;
+        }
+    }
+    value
+}
+
+// ---- doubling_bits.kara: a mask of the powers of two found, read by `trailing_ones`
+fn bits_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    let mut steps = 0;
+    for x in nums.iter() {
+        if x % original == 0 {
+            let ratio = x / original;
+            if ratio & (ratio - 1) == 0 {
+                steps |= ratio;
+            }
+        }
+    }
+    original << steps.trailing_ones()
+}
+
+// ---- doubling_struct.kara: a `Ledger` of counts that `follow`s a value
+struct Ledger {
+    met: Map[i64, i64],
+}
+
+impl Ledger {
+    fn of(nums: Vec[i64]) -> Ledger {
+        let mut met: Map[i64, i64] = Map.new();
+        for x in nums.iter() {
+            *met.entry(x).or_insert(0) += 1;
+        }
+        Ledger { met }
+    }
+
+    fn has(ref self, value: i64) -> bool {
+        self.met.get(value).unwrap_or(0) > 0
+    }
+
+    fn follow(ref self, start: i64) -> i64 {
+        let mut value = start;
+        while self.has(value) {
+            value *= 2;
+        }
+        value
+    }
+}
+
+fn ledger_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    Ledger.of(nums).follow(original)
+}
+
+// ---- doubling_rec.kara: a recursion over the list itself
+fn rec_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    if nums.contains(original) { rec_find_final_value(nums, original * 2) } else { original }
+}
+
+// ---- doubling_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn find_final_value(nums: Vec[i32], original: i32) -> i32 {
+        let mut original = original;
+        let set: Set[i32] = nums.clone().into_iter().collect();
+        while set.contains(original) {
+            original *= 2;
+        }
+        original
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_find_final_value(nums: Vec[i64], original: i64) -> i64 {
+    SolutionSolution.find_final_value(nums.iter().map(|x| x as i32).collect(), original as i32)
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], original: i64) -> i64 {
+    let mut value = original;
+    let mut i = 0;
+    while i < nums.len() {
+        if nums[i] == value {
+            value *= 2;
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+    value
+}
+
+fn answer(arm: i64, nums: Vec[i64], original: i64) -> i64 {
+    match arm {
+        0 => star_find_final_value(nums, original),
+        1 => sorted_find_final_value(nums, original),
+        2 => bits_find_final_value(nums, original),
+        3 => ledger_find_final_value(nums, original),
+        4 => rec_find_final_value(nums, original),
+        _ => solution_find_final_value(nums, original),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sorted", "bits", "ledger", "rec", "solution"];
+    let mut seed = 2154;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 10 + 1;
+        let original = next_random(mut seed) % 5 + 1;
+        let nums: Vec[i64] = if t < 300 {
+            let top = [8, 40][t % 2];
+            (0..n).map(|_| next_random(mut seed) % top + 1).collect()
+        } else if t < 330 {
+            let mut nums: Vec[i64] = (0..n).map(|k| if next_random(mut seed) % 3 == 0 { next_random(mut seed) % 50 + 1 } else { original << (k % 5) }).collect();
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+            nums
+        } else {
+            (0..n).map(|_| next_random(mut seed) % 40 + 1).filter(|x| x != 2 * original).collect()
+        };
+        cases.push((nums, original));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, original) in cases.iter() {
+        let truth = literal(nums, original);
+        check = (check * 31 + truth + nums.len()) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let tripled: Vec[i64] = nums.iter().map(|x| 3 * x).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, original)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let mut grown = nums.clone();
+            grown.push(x);
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed, original) == x,
+                answer(arm, tripled, 3 * original) == 3 * x,
+                answer(arm, nums, x) == x,
+                answer(arm, grown, original) == answer(arm, nums, 2 * x),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums}, {original} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} lists: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
