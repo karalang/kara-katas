@@ -1,0 +1,795 @@
+// LeetCode #2166: Design Bitset -- the differential. The six arms, against
+// the statement read literally: a list of bits, every one turned by a
+// flip, `all`, `one` and `count` asked of every bit; no flag, no count
+// kept. 300 random scripts of 1 to 30 calls on 1 to 8 bits; then 30 that
+// call on one place only; then 30 on 50 to 199 bits that flip more than
+// they do anything else; every one drawn before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  two flips put in the middle of the script: the same answers, but
+//     for their two nulls
+// P3  a flip put first and every fix and unfix, and every all and one,
+//     swapped: each answer turned (a count n - c, a text its complement,
+//     all and one each the other's negation)
+// P4  every place reversed: the same answers, each text reversed
+// P5  a count, an all, a one and a toString asked after every call: they
+//     agree (all when the count is n, one when it is over 0, the text n
+//     long with as many ones as the count)
+// P6  each arm agrees with at least three of the other five
+
+
+
+// ---- bitset.kara: the ★ arm, a `Vec[bool]` read through a flip flag, the ones counted
+struct StarBitset {
+    bits: Vec[bool],
+    flipped: bool,
+    ones: i64,
+}
+
+impl StarBitset {
+    fn new(size: i64) -> StarBitset {
+        StarBitset { bits: Vec.filled(size, false), flipped: false, ones: 0 }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        if self.bits[idx] == self.flipped {
+            self.bits[idx] = not self.flipped;
+            self.ones += 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        if self.bits[idx] != self.flipped {
+            self.bits[idx] = self.flipped;
+            self.ones -= 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        self.flipped = not self.flipped;
+        self.ones = self.bits.len() - self.ones;
+    }
+
+    fn all(self) -> bool {
+        self.ones == self.bits.len()
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i64 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        let mut text = String.new();
+        for bit in self.bits.iter() {
+            text.push(if bit != self.flipped { '1' } else { '0' });
+        }
+        text
+    }
+}
+
+fn star_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = StarBitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+// ---- bitset_pair.kara: the text and its complement, swapped by a flip
+struct PairBitset {
+    text: Vec[u8],
+    complement: Vec[u8],
+    ones: i64,
+    zeros: i64,
+}
+
+impl PairBitset {
+    fn new(size: i64) -> PairBitset {
+        PairBitset { text: Vec.filled(size, b'0'), complement: Vec.filled(size, b'1'), ones: 0, zeros: size }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        if self.text[idx] == b'0' {
+            self.text[idx] = b'1';
+            self.complement[idx] = b'0';
+            self.ones += 1;
+            self.zeros -= 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        if self.text[idx] == b'1' {
+            self.text[idx] = b'0';
+            self.complement[idx] = b'1';
+            self.ones -= 1;
+            self.zeros += 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        mem.swap(mut self.text, mut self.complement);
+        mem.swap(mut self.ones, mut self.zeros);
+    }
+
+    fn all(self) -> bool {
+        self.zeros == 0
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i64 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        String.from_utf8(self.text.clone()).unwrap()
+    }
+}
+
+fn pair_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = PairBitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+// ---- bitset_words.kara: 64 bits to a `u64`, read through a mask
+struct WordsBitset {
+    words: Vec[u64],
+    size: i64,
+    mask: u64,
+    ones: i64,
+}
+
+impl WordsBitset {
+    fn new(size: i64) -> WordsBitset {
+        WordsBitset { words: Vec.filled((size + 63) / 64, 0), size: size, mask: 0, ones: 0 }
+    }
+
+    fn get(self, idx: i64) -> bool {
+        (self.words[idx / 64] ^ self.mask) >> (idx % 64) & 1 == 1
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        if not self.get(idx) {
+            self.words[idx / 64] ^= 1 << (idx % 64);
+            self.ones += 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        if self.get(idx) {
+            self.words[idx / 64] ^= 1 << (idx % 64);
+            self.ones -= 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        self.mask = ~self.mask;
+        self.ones = self.size - self.ones;
+    }
+
+    fn all(self) -> bool {
+        self.ones == self.size
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i64 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        let mut text = String.with_capacity(self.size);
+        for idx in 0..self.size {
+            text.push(if self.get(idx) { '1' } else { '0' });
+        }
+        text
+    }
+}
+
+fn words_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = WordsBitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+// ---- bitset_set.kara: a `Set` of the places that differ from the background
+struct SetBitset {
+    marked: Set[i64],
+    size: i64,
+    background: bool,
+}
+
+impl SetBitset {
+    fn new(size: i64) -> SetBitset {
+        SetBitset { marked: Set.new(), size: size, background: false }
+    }
+
+    fn set(mut ref self, idx: i64, bit: bool) {
+        if bit == self.background {
+            self.marked.remove(idx);
+        } else {
+            self.marked.insert(idx);
+        }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        self.set(idx, true);
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        self.set(idx, false);
+    }
+
+    fn flip(mut ref self) {
+        self.background = not self.background;
+    }
+
+    fn all(self) -> bool {
+        self.count() == self.size
+    }
+
+    fn one(self) -> bool {
+        self.count() > 0
+    }
+
+    fn count(self) -> i64 {
+        if self.background { self.size - self.marked.len() } else { self.marked.len() }
+    }
+
+    fn to_string(self) -> String {
+        (0..self.size).map(|idx| if self.marked.contains(idx) != self.background { '1' } else { '0' }).collect()
+    }
+}
+
+fn set_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = SetBitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+// ---- bitset_calls.kara: an `enum Call` answered by `apply` with an `enum Answer`
+enum CallsCall {
+    Fix(i64),
+    Unfix(i64),
+    Flip,
+    All,
+    One,
+    Count,
+    Text,
+}
+
+enum CallsAnswer {
+    Done,
+    Truth(bool),
+    Number(i64),
+    Bits(String),
+}
+
+struct CallsBitset {
+    bits: Vec[u8],
+    flip: u8,
+    ones: i64,
+}
+
+impl CallsBitset {
+    fn new(size: i64) -> CallsBitset {
+        CallsBitset { bits: Vec.filled(size, 0), flip: 0, ones: 0 }
+    }
+
+    fn apply(mut ref self, call: CallsCall) -> CallsAnswer {
+        let n = self.bits.len();
+        match call {
+            CallsCall.Fix(idx) => {
+                if self.bits[idx] ^ self.flip == 0 {
+                    self.bits[idx] ^= 1;
+                    self.ones += 1;
+                }
+                CallsAnswer.Done
+            }
+            CallsCall.Unfix(idx) => {
+                if self.bits[idx] ^ self.flip == 1 {
+                    self.bits[idx] ^= 1;
+                    self.ones -= 1;
+                }
+                CallsAnswer.Done
+            }
+            CallsCall.Flip => {
+                self.flip ^= 1;
+                self.ones = n - self.ones;
+                CallsAnswer.Done
+            }
+            CallsCall.All => CallsAnswer.Truth(self.ones == n),
+            CallsCall.One => CallsAnswer.Truth(self.ones > 0),
+            CallsCall.Count => CallsAnswer.Number(self.ones),
+            CallsCall.Text => CallsAnswer.Bits(self.bits.iter().map(|b| if b ^ self.flip == 1 { '1' } else { '0' }).collect()),
+        }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        self.apply(CallsCall.Fix(idx));
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        self.apply(CallsCall.Unfix(idx));
+    }
+
+    fn flip(mut ref self) {
+        self.apply(CallsCall.Flip);
+    }
+
+    fn all(mut ref self) -> bool {
+        match self.apply(CallsCall.All) {
+            CallsAnswer.Truth(t) => t,
+            _ => panic("all answers with a truth"),
+        }
+    }
+
+    fn one(mut ref self) -> bool {
+        match self.apply(CallsCall.One) {
+            CallsAnswer.Truth(t) => t,
+            _ => panic("one answers with a truth"),
+        }
+    }
+
+    fn count(mut ref self) -> i64 {
+        match self.apply(CallsCall.Count) {
+            CallsAnswer.Number(n) => n,
+            _ => panic("count answers with a number"),
+        }
+    }
+
+    fn to_string(mut ref self) -> String {
+        match self.apply(CallsCall.Text) {
+            CallsAnswer.Bits(text) => text,
+            _ => panic("toString answers with the bits"),
+        }
+    }
+}
+
+fn calls_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = CallsBitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+// ---- bitset_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct SolutionBitset {
+    bits: Vec[bool],
+    flipped: bool,
+    ones: i32,
+}
+
+/**
+ * `&self` means the method takes an immutable reference.
+ * If you need a mutable reference, change it to `&mut self` instead.
+ */
+impl SolutionBitset {
+    fn new(size: i32) -> Self {
+        SolutionBitset {
+            bits: Vec.filled(size, false),
+            flipped: false,
+            ones: 0,
+        }
+    }
+
+    fn fix(mut ref self, idx: i32) {
+        let i = idx as i64;
+        if self.bits[i] == self.flipped {
+            self.bits[i] = not self.flipped;
+            self.ones += 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i32) {
+        let i = idx as i64;
+        if self.bits[i] != self.flipped {
+            self.bits[i] = self.flipped;
+            self.ones -= 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        self.flipped = not self.flipped;
+        self.ones = self.bits.len() as i32 - self.ones;
+    }
+
+    fn all(self) -> bool {
+        self.ones == self.bits.len() as i32
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i32 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        self.bits
+            .iter()
+            .map(|b| if b != self.flipped { '1' } else { '0' })
+            .collect()
+    }
+}
+
+struct SolutionBits {
+    inner: SolutionBitset,
+}
+
+impl SolutionBits {
+    fn new(size: i64) -> Self {
+        SolutionBits { inner: SolutionBitset.new(size as i32) }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        self.inner.fix(idx as i32);
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        self.inner.unfix(idx as i32);
+    }
+
+    fn flip(mut ref self) {
+        self.inner.flip();
+    }
+
+    fn all(self) -> bool {
+        self.inner.all()
+    }
+
+    fn one(self) -> bool {
+        self.inner.one()
+    }
+
+    fn count(self) -> i64 {
+        self.inner.count()
+    }
+
+    fn to_string(self) -> String {
+        self.inner.to_string()
+    }
+}
+
+fn solution_replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = SolutionBits.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+
+// ---- the statement read literally
+
+fn literal(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits: Vec[bool] = Vec.filled(size, false);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits[idx] = true;
+                "null"
+            }
+            1 => {
+                bits[idx] = false;
+                "null"
+            }
+            2 => {
+                for k in 0..size {
+                    bits[k] = not bits[k];
+                }
+                "null"
+            }
+            3 => bits.iter().all(|b| b).to_string(),
+            4 => bits.iter().any(|b| b).to_string(),
+            5 => bits.iter().filter(|b| b).count().to_string(),
+            _ => {
+                let mut text: String = "\"";
+                for b in bits.iter() {
+                    text.push(if b { '1' } else { '0' });
+                }
+                text.push('"');
+                text
+            }
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+fn answers(arm: i64, size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    match arm {
+        0 => star_replay(size, script),
+        1 => pair_replay(size, script),
+        2 => words_replay(size, script),
+        3 => set_replay(size, script),
+        4 => calls_replay(size, script),
+        _ => solution_replay(size, script),
+    }
+}
+
+// A text answer, quotes and all, with every bit turned.
+fn complement(text: Str) -> String {
+    text.chars().map(|c| if c == '0' { '1' } else if c == '1' { '0' } else { c }).collect()
+}
+
+fn reversed(text: Str) -> String {
+    text.chars().rev().collect()
+}
+
+fn fold(check: i64, answers: Vec[String]) -> i64 {
+    let mut check = check;
+    for answer in answers.iter() {
+        for b in answer.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    check
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "pair", "words", "set", "calls", "solution"];
+    let mut seed = 2166;
+    let mut scripts: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for t in 0..360 {
+        let mut script: Vec[(i64, i64)] = Vec.new();
+        let size = if t < 330 { next_random(mut seed) % 8 + 1 } else { next_random(mut seed) % 150 + 50 };
+        let length = next_random(mut seed) % 30 + 1;
+        for _ in 0..length {
+            let kind = if t < 300 {
+                [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 6][next_random(mut seed) % 13]
+            } else if t < 330 {
+                [0, 1, 3, 4, 5, 6][next_random(mut seed) % 6]
+            } else {
+                [2, 2, 2, 2, 0, 1, 3, 4, 5, 6][next_random(mut seed) % 10]
+            };
+            let idx = if t >= 300 and t < 330 { 0 } else { next_random(mut seed) % size };
+            script.push((kind, idx));
+        }
+        scripts.push((size, script));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for t in 0..scripts.len() {
+        let (size, script) = scripts[t].clone();
+        let truth = literal(size, script);
+        check = fold(check, truth);
+        let middle = script.len() / 2;
+        let mut flipped_twice = script.clone();
+        flipped_twice.insert(middle, (2, 0));
+        flipped_twice.insert(middle, (2, 0));
+        let mut turned: Vec[(i64, i64)] = [(2, 0)];
+        for (kind, idx) in script.iter() {
+            let k = match kind {
+                0 => 1,
+                1 => 0,
+                3 => 4,
+                4 => 3,
+                k => k,
+            };
+            turned.push((k, idx));
+        }
+        let mirrored: Vec[(i64, i64)] = script.iter().map(|(kind, idx)| (kind, size - 1 - idx)).collect();
+        let mut asked: Vec[(i64, i64)] = Vec.new();
+        for call in script.iter() {
+            asked.push(call);
+            asked.push((5, 0));
+            asked.push((3, 0));
+            asked.push((4, 0));
+            asked.push((6, 0));
+        }
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answers(arm, size, script)).collect();
+        for arm in 0..6 {
+            let x = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            // P2: the two nulls the flips answer taken out
+            let mut twice = answers(arm, size, flipped_twice);
+            twice.remove(middle + 1);
+            twice.remove(middle + 1);
+            // P3: each answer of the script turned as the turned script's is
+            let mut expected: Vec[String] = ["null", "null"];
+            for k in 1..x.len() {
+                let a = x[k].clone();
+                let (kind, _) = script[k - 1];
+                expected.push(match kind {
+                    3 | 4 => (a != "true").to_string(),
+                    5 => (size - i64.parse(a).unwrap()).to_string(),
+                    6 => complement(a),
+                    _ => a,
+                });
+            }
+            // P4: each text reversed
+            let mirror: Vec[String] = answers(arm, size, mirrored)
+                .iter()
+                .map(|a| if a.starts_with("\"") { reversed(a) } else { a.clone() })
+                .collect();
+            // P5: the four questions after every call agree
+            let all_asked = answers(arm, size, asked);
+            let mut agree = all_asked.len() == 1 + 5 * script.len();
+            let mut k = 2;
+            while agree and k + 3 < all_asked.len() {
+                let c = i64.parse(all_asked[k].clone()).unwrap_or(-1);
+                let text = all_asked[k + 3].clone();
+                let ones = text.chars().filter(|ch| ch == '1').count();
+                agree = all_asked[k + 1] == (c == size).to_string()
+                    and all_asked[k + 2] == (c > 0).to_string()
+                    and text.len() == size + 2
+                    and ones == c;
+                k += 5;
+            }
+            let verdicts = [
+                x == truth,
+                twice == x,
+                answers(arm, size, turned) == expected,
+                mirror == x,
+                agree,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"script {t} on {size} bits, arm {names[arm]}: P{q + 1} fails");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{scripts.len()} scripts: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

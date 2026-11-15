@@ -1,0 +1,91 @@
+// LeetCode #2166: Design Bitset -- the benchmark: the ★ arm over one
+// bitset of 100000 bits, 5000000 calls drawn as they are made, every
+// 500000th a toString.
+
+struct Bitset {
+    bits: Vec[bool],
+    flipped: bool,
+    ones: i64,
+}
+
+impl Bitset {
+    fn new(size: i64) -> Bitset {
+        Bitset { bits: Vec.filled(size, false), flipped: false, ones: 0 }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        if self.bits[idx] == self.flipped {
+            self.bits[idx] = not self.flipped;
+            self.ones += 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        if self.bits[idx] != self.flipped {
+            self.bits[idx] = self.flipped;
+            self.ones -= 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        self.flipped = not self.flipped;
+        self.ones = self.bits.len() - self.ones;
+    }
+
+    fn all(self) -> bool {
+        self.ones == self.bits.len()
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i64 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        let mut text = String.new();
+        for bit in self.bits.iter() {
+            text.push(if bit != self.flipped { '1' } else { '0' });
+        }
+        text
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let size = 100000;
+    let mut bits = Bitset.new(size);
+    let mut seed = 2166;
+    let mut check = 0;
+    for i in 0..5000000 {
+        if i % 500000 == 499999 {
+            for b in bits.to_string().bytes() {
+                check = (check * 31 + b) % 1000000007;
+            }
+            continue;
+        }
+        let pick = next_random(mut seed) % 16;
+        let answer = if pick < 7 {
+            bits.fix((next_random(mut seed) * 32768 + next_random(mut seed)) % size);
+            0
+        } else if pick < 13 {
+            bits.unfix((next_random(mut seed) * 32768 + next_random(mut seed)) % size);
+            0
+        } else if pick == 13 {
+            bits.flip();
+            0
+        } else if pick == 14 {
+            if bits.all() { 2 } else if bits.one() { 1 } else { 0 }
+        } else {
+            bits.count()
+        };
+        check = (check * 31 + answer) % 1000000007;
+    }
+    println(f"5000000 calls: checksum {check}");
+}

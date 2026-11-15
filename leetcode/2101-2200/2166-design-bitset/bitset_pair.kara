@@ -1,0 +1,150 @@
+// LeetCode #2166: Design Bitset -- the bits kept twice, as the text of
+// the bitset and the text of its complement, each a `Vec[u8]` of `b'0'`
+// and `b'1'`, with the count of ones in each. A fix or an unfix writes
+// both; a flip swaps them with `mem.swap`; `toString` is the first text
+// as it stands, by `String.from_utf8`.
+
+struct Bitset {
+    text: Vec[u8],
+    complement: Vec[u8],
+    ones: i64,
+    zeros: i64,
+}
+
+impl Bitset {
+    fn new(size: i64) -> Bitset {
+        Bitset { text: Vec.filled(size, b'0'), complement: Vec.filled(size, b'1'), ones: 0, zeros: size }
+    }
+
+    fn fix(mut ref self, idx: i64) {
+        if self.text[idx] == b'0' {
+            self.text[idx] = b'1';
+            self.complement[idx] = b'0';
+            self.ones += 1;
+            self.zeros -= 1;
+        }
+    }
+
+    fn unfix(mut ref self, idx: i64) {
+        if self.text[idx] == b'1' {
+            self.text[idx] = b'0';
+            self.complement[idx] = b'1';
+            self.ones -= 1;
+            self.zeros += 1;
+        }
+    }
+
+    fn flip(mut ref self) {
+        mem.swap(mut self.text, mut self.complement);
+        mem.swap(mut self.ones, mut self.zeros);
+    }
+
+    fn all(self) -> bool {
+        self.zeros == 0
+    }
+
+    fn one(self) -> bool {
+        self.ones > 0
+    }
+
+    fn count(self) -> i64 {
+        self.ones
+    }
+
+    fn to_string(self) -> String {
+        String.from_utf8(self.text.clone()).unwrap()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// The answers to a script of calls on a bitset of `size` bits, as LeetCode
+// prints them, the constructor's `null` first. A call is `(kind, idx)`:
+// kind 0 fixes, 1 unfixes, 2 flips, 3 asks `all`, 4 `one`, 5 `count` and
+// 6 `toString`.
+fn replay(size: i64, script: Vec[(i64, i64)]) -> Vec[String] {
+    let mut bits = Bitset.new(size);
+    let mut answers: Vec[String] = ["null"];
+    for (kind, idx) in script.iter() {
+        let answer = match kind {
+            0 => {
+                bits.fix(idx);
+                "null"
+            }
+            1 => {
+                bits.unfix(idx);
+                "null"
+            }
+            2 => {
+                bits.flip();
+                "null"
+            }
+            3 => bits.all().to_string(),
+            4 => bits.one().to_string(),
+            5 => bits.count().to_string(),
+            _ => f"\"{bits.to_string()}\"",
+        };
+        answers.push(answer);
+    }
+    answers
+}
+
+fn show(size: i64, script: Vec[(i64, i64)]) {
+    println(f"Bitset({size}) -> [{replay(size, script).join(", ")}]");
+}
+
+// A checksum of every answer's text.
+fn fold(check: i64, answers: Vec[String]) -> i64 {
+    let mut check = check;
+    for answer in answers.iter() {
+        for b in answer.bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    check
+}
+
+fn main() {
+    // LeetCode's example, then three more: one bit, every bit flipped on
+    // and then fixed again, and a flip undone
+    show(5, [(0, 3), (0, 1), (2, 0), (3, 0), (1, 0), (2, 0), (4, 0), (1, 0), (5, 0), (6, 0)]);
+    show(1, [(0, 0), (3, 0), (2, 0), (4, 0), (5, 0), (6, 0), (2, 0), (6, 0)]);
+    show(4, [(2, 0), (3, 0), (1, 2), (5, 0), (0, 2), (0, 2), (3, 0), (6, 0)]);
+    show(6, [(1, 5), (0, 5), (2, 0), (2, 0), (0, 0), (5, 0), (4, 0), (6, 0)]);
+    // 2000 random scripts of 1 to 30 calls on 1 to 8 bits, fixing and
+    // unfixing more often than the rest
+    let mut seed = 2166;
+    let mut calls = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let size = next_random(mut seed) % 8 + 1;
+        let length = next_random(mut seed) % 30 + 1;
+        let mut script: Vec[(i64, i64)] = Vec.new();
+        for _ in 0..length {
+            let pick = next_random(mut seed) % 13;
+            let kind = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 4, 5, 6][pick];
+            script.push((kind, next_random(mut seed) % size));
+        }
+        calls += length;
+        check = fold(check, replay(size, script));
+    }
+    println(f"2000 scripts: {calls} calls, checksum {check}");
+    // the constraints' largest: 100000 bits and 100000 calls, five of them
+    // toString
+    let size = 100000;
+    let mut script: Vec[(i64, i64)] = Vec.new();
+    for i in 0..100000 {
+        if i % 20000 == 19999 {
+            script.push((6, 0));
+        } else {
+            let kind = next_random(mut seed) % 6;
+            script.push((kind, (next_random(mut seed) * 32768 + next_random(mut seed)) % size));
+        }
+    }
+    println(f"100000 calls on 100000 bits: checksum {fold(0, replay(size, script))}");
+}
