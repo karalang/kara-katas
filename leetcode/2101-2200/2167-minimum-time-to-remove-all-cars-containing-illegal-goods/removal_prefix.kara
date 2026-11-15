@@ -1,0 +1,71 @@
+// LeetCode #2167: Minimum Time to Remove All Cars Containing Illegal Goods
+// -- by prefix sums. Taking a cars from the front and the cars from e on
+// from the back leaves the goods between, 2 each: a + (n - e) +
+// 2 * (P[e] - P[a]), where P counts the goods before a place. For each e
+// that is n - e + 2 * P[e] plus the least a - 2 * P[a] over every a up to
+// e, kept as the walk goes. O(n).
+
+fn minimum_time(s: Str) -> i64 {
+    let n = s.len();
+    let mut goods = 0;
+    let mut least_front = 0;
+    let mut best = n;
+    for (e, c) in s.chars().enumerate() {
+        if c == '1' {
+            goods += 1;
+        }
+        least_front = least_front.min(e + 1 - 2 * goods);
+        best = best.min(least_front + n - (e + 1) + 2 * goods);
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(s: Str) {
+    println(f"\"{s}\" -> {minimum_time(s)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one car without goods and
+    // one with, every car with goods, goods only in the middle, and goods
+    // at both ends
+    show("1100101");
+    show("0010");
+    show("0");
+    show("1");
+    show("11111");
+    show("0001000");
+    show("1000000001");
+    // 2000 random trains of 1 to 20 cars, a car with goods 1 in 2, 1 in 4
+    // or 1 in 8 in turn
+    let mut seed = 2167;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let length = next_random(mut seed) % 20 + 1;
+        let odds = [2, 4, 8][round % 3];
+        let mut s = String.new();
+        for _ in 0..length {
+            s.push(if next_random(mut seed) % odds == 0 { '1' } else { '0' });
+        }
+        let t = minimum_time(s);
+        total += t;
+        check = (check * 31 + t) % 1000000007;
+    }
+    println(f"2000 trains: {total} in all, checksum {check}");
+    // the constraints' largest: 200000 cars, at random, every one with
+    // goods, and goods in every other car
+    let mut s = String.new();
+    for _ in 0..200000 {
+        s.push(if next_random(mut seed) % 3 == 0 { '1' } else { '0' });
+    }
+    let all = "1".repeat(200000);
+    let every_other = "10".repeat(100000);
+    println(f"200000 cars: {minimum_time(s)} {minimum_time(all)} {minimum_time(every_other)}");
+}

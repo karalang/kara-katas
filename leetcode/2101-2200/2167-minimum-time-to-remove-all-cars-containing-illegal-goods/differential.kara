@@ -1,0 +1,255 @@
+// LeetCode #2167: Minimum Time to Remove All Cars Containing Illegal Goods
+// -- the differential. The six arms, against the statement read
+// literally: every count of cars taken from the front and from the back
+// that leaves a train between them, each car with goods left there taken
+// from the middle for 2, and the least time; no running minimum. 300
+// random trains of 1 to 12 cars, a car with goods 1 in 2, 1 in 4 or 1 in
+// 8 in turn; then 30 with goods in 7 cars in 8; then 30 with goods only
+// between two runs of cars without; every one drawn before any arm
+// answers.
+//
+// P1  the time is the statement read literally
+// P2  the train reversed: the same time
+// P3  the time at least the cars with goods, and at most every car and
+//     at most 2 for each car with goods
+// P4  the goods taken out of one car: the time no more, and at most 2
+//     less
+// P5  the last car taken off a train of two or more: the time no more,
+//     and at most 1 less
+// P6  each arm agrees with at least three of the other five
+
+
+
+// ---- removal.kara: the ★ arm, one pass, the least time that clears the cars so far
+fn star_minimum_time(s: Str) -> i64 {
+    let n = s.len();
+    let mut left = 0;
+    let mut best = n;
+    for (i, c) in s.chars().enumerate() {
+        if c == '1' {
+            left = (left + 2).min(i + 1);
+        }
+        best = best.min(left + n - 1 - i);
+    }
+    best
+}
+
+// ---- removal_split.kara: a table from the front and one from the back, cut once
+fn split_minimum_time(s: Str) -> i64 {
+    let cars = s.bytes();
+    let n = cars.len();
+    let mut front: Vec[i64] = Vec.filled(n + 1, 0);
+    for k in 1..=n {
+        front[k] = if cars[k - 1] == b'1' { (front[k - 1] + 2).min(k) } else { front[k - 1] };
+    }
+    let mut back: Vec[i64] = Vec.filled(n + 1, 0);
+    for k in (0..n).rev() {
+        back[k] = if cars[k] == b'1' { (back[k + 1] + 2).min(n - k) } else { back[k + 1] };
+    }
+    let mut best = i64.MAX;
+    for k in 0..=n {
+        best = best.min(front[k] + back[k]);
+    }
+    best
+}
+
+// ---- removal_prefix.kara: prefix sums of the goods and the least a - 2 * P[a]
+fn prefix_minimum_time(s: Str) -> i64 {
+    let n = s.len();
+    let mut goods = 0;
+    let mut least_front = 0;
+    let mut best = n;
+    for (e, c) in s.chars().enumerate() {
+        if c == '1' {
+            goods += 1;
+        }
+        least_front = least_front.min(e + 1 - 2 * goods);
+        best = best.min(least_front + n - (e + 1) + 2 * goods);
+    }
+    best
+}
+
+// ---- removal_struct.kara: a `Clearing` from each end
+struct Clearing {
+    times: Vec[i64],
+}
+
+impl Clearing {
+    fn from(cars: own Vec[bool]) -> Clearing {
+        let mut times: Vec[i64] = [0];
+        for (k, goods) in cars.iter().enumerate() {
+            let last = times[k];
+            times.push(if goods { (last + 2).min(k + 1) } else { last });
+        }
+        Clearing { times }
+    }
+
+    fn of(self, k: i64) -> i64 {
+        self.times[k]
+    }
+}
+
+fn struct_minimum_time(s: Str) -> i64 {
+    let cars: Vec[bool] = s.chars().map(|c| c == '1').collect();
+    let n = cars.len();
+    let mut reversed = cars.clone();
+    reversed.reverse();
+    let front = Clearing.from(cars);
+    let back = Clearing.from(reversed);
+    (0..=n).map(|k| front.of(k) + back.of(n - k)).min().unwrap()
+}
+
+// ---- removal_iter.kara: the walk as one `fold`
+fn iter_minimum_time(s: Str) -> i64 {
+    let n = s.len();
+    let (_, best) = s.bytes().iter().enumerate().fold((0, n), |(left, best), (i, car)| {
+        let left = if car == b'1' { (left + 2).min(i + 1) } else { left };
+        (left, best.min(left + n - 1 - i))
+    });
+    best
+}
+
+// ---- removal_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_time(s: String) -> i32 {
+        let bytes = s.bytes();
+        let n = bytes.len() as i32;
+        let mut left: i32 = 0;
+        let mut ans = n;
+        for (i, b) in bytes.iter().enumerate() {
+            if b == b'1' {
+                left = min(left + 2, i as i32 + 1);
+            }
+            ans = ans.min(left + n - 1 - i as i32);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_time(s: Str) -> i64 {
+    Solution.minimum_time(s.to_string())
+}
+
+
+// ---- the statement read literally
+
+fn literal(s: Str) -> i64 {
+    let cars = s.bytes();
+    let n = cars.len();
+    let mut best = i64.MAX;
+    for front in 0..=n {
+        for back in 0..=(n - front) {
+            let mut time = front + back;
+            for k in front..(n - back) {
+                if cars[k] == b'1' {
+                    time += 2;
+                }
+            }
+            best = best.min(time);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, s: Str) -> i64 {
+    match arm {
+        0 => star_minimum_time(s),
+        1 => split_minimum_time(s),
+        2 => prefix_minimum_time(s),
+        3 => struct_minimum_time(s),
+        4 => iter_minimum_time(s),
+        _ => solution_minimum_time(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "split", "prefix", "struct", "iter", "solution"];
+    let mut seed = 2167;
+    let mut trains: Vec[String] = Vec.new();
+    for t in 0..360 {
+        let mut s = String.new();
+        if t < 330 {
+            let length = next_random(mut seed) % 12 + 1;
+            for _ in 0..length {
+                let goods = if t < 300 {
+                    next_random(mut seed) % [2, 4, 8][t % 3] == 0
+                } else {
+                    next_random(mut seed) % 8 > 0
+                };
+                s.push(if goods { '1' } else { '0' });
+            }
+        } else {
+            let outside = next_random(mut seed) % 4 + 1;
+            let inside = next_random(mut seed) % 4 + 1;
+            for k in 0..(2 * outside + inside) {
+                let goods = k >= outside and k < outside + inside and next_random(mut seed) % 2 == 0;
+                s.push(if goods { '1' } else { '0' });
+            }
+        }
+        trains.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in trains.iter() {
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let n = s.len();
+        let goods = s.chars().filter(|c| c == '1').count();
+        let reversed: String = s.chars().rev().collect();
+        let cleared = match s.find("1") {
+            Some(at) => f"{s[..at]}0{s[(at + 1)..]}",
+            None => s.to_string(),
+        };
+        let shorter = s[..(n - 1)].to_string();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let less_goods = answer(arm, cleared);
+            let less_cars = if n >= 2 { answer(arm, shorter) } else { x };
+            let verdicts = [
+                x == truth,
+                answer(arm, reversed) == x,
+                x >= goods and x <= n and x <= 2 * goods,
+                less_goods <= x and x <= less_goods + 2,
+                less_cars <= x and x <= less_cars + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\" arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{trains.len()} trains: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
