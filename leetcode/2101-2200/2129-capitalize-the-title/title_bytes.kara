@@ -1,0 +1,91 @@
+// LeetCode #2129: Capitalize the Title -- one pass over the title's
+// `bytes()`, each word's start remembered; at the space or the end that
+// closes a word, its bytes are pushed lowered, the first raised when the
+// word has three letters or more, through `char.try_from`.
+
+fn capitalize_title(title: Str) -> String {
+    let bytes = title.bytes();
+    let n = bytes.len();
+    let mut out = String.new();
+    let mut start = 0;
+    for i in 0..n + 1 {
+        if i < n and bytes[i] != 32 {
+            continue;
+        }
+        for k in start..i {
+            let mut b = bytes[k];
+            if b >= 65 and b <= 90 {
+                b += 32;
+            }
+            if k == start and i - start > 2 {
+                b -= 32;
+            }
+            out.push(char.try_from(b as u32).ok().unwrap());
+        }
+        if i < n {
+            out.push(' ');
+        }
+        start = i + 1;
+    }
+    out
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(title: Str) {
+    println(f"\"{title}\" -> \"{capitalize_title(title)}\"");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one letter, two, three,
+    // and words of every length up to five
+    show("capiTalIze tHe titLe");
+    show("First leTTeR of EACH Word");
+    show("i lOve leetcode");
+    show("A");
+    show("OF");
+    show("thE");
+    show("a Bc DEF ghIj klmnO");
+    // 3000 random titles of 1 to 8 words of 1 to 6 letters, each letter
+    // a capital with chance a half
+    let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut seed = 2129;
+    let mut capitals = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let words = next_random(mut seed) % 8 + 1;
+        let mut title = String.new();
+        for w in 0..words {
+            if w > 0 {
+                title.push_str(" ");
+            }
+            let len = next_random(mut seed) % 6 + 1;
+            for _ in 0..len {
+                let k = next_random(mut seed) % 52;
+                title.push_str(letters[k..k + 1]);
+            }
+        }
+        let answer = capitalize_title(title);
+        for b in answer.bytes() {
+            if b >= 65 and b <= 90 {
+                capitals += 1;
+            }
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"3000 titles: {capitals} capitals, checksum {check}");
+    // the constraints' longest: 50 words of one letter, 33 of two, and 25
+    // of three
+    let ones = Vec.filled(50, "X").join(" ");
+    let twos = Vec.filled(33, "xY").join(" ");
+    let threes = Vec.filled(25, "xYz").join(" ");
+    let a = capitalize_title(ones);
+    let b = capitalize_title(twos);
+    let c = capitalize_title(threes);
+    println(f"{a.len()}, {b.len()} and {c.len()} long: \"{a[..5]} ..\", \"{b[..8]} ..\", \"{c[..11]} ..\"");
+}
