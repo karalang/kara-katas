@@ -1,0 +1,432 @@
+// LeetCode #2192: All Ancestors of a Node in a Directed Acyclic Graph --
+// the differential. The six arms, against the statement read literally:
+// u is an ancestor of v when u can reach v along the edges, found by
+// closing a table of who reaches whom (Warshall's), with no walk and no
+// queue. 300 random DAGs of 1 to 10 nodes, sparse to dense; then 30
+// paths of up to 15 nodes in a random order; then 30 complete DAGs of up
+// to 12. Every DAG is drawn before any arm answers.
+//
+// P1  the lists are the statement read literally
+// P2  each list rises strictly, within 0..n, and never holds its node
+// P3  each list is its node's parents and their lists, and no more
+// P4  the nodes renumbered v to n - 1 - v: the lists renumbered, sorted
+// P5  the edges given in the reverse order: the same lists
+// P6  each arm agrees with at least three of the other five
+
+// ---- ancestors.kara: the ★ arm, a walk down from every node by a stack
+fn star_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        children[e[0]].push(e[1]);
+    }
+    let mut ancestors: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for start in 0..n {
+        let mut seen: Vec[bool] = Vec.filled(n, false);
+        seen[start] = true;
+        let mut stack: Vec[i64] = [start].to_vec();
+        while let Some(u) = stack.pop() {
+            for v in children[u].iter() {
+                if not seen[v] {
+                    seen[v] = true;
+                    ancestors[v].push(start);
+                    stack.push(v);
+                }
+            }
+        }
+    }
+    ancestors
+}
+
+// ---- ancestors_topo.kara: Kahn's order, a `SortedSet` per node
+fn topo_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut waiting: Vec[i64] = Vec.filled(n, 0);
+    for e in edges.iter() {
+        children[e[0]].push(e[1]);
+        waiting[e[1]] += 1;
+    }
+    let mut ready: VecDeque[i64] = VecDeque.new();
+    for v in 0..n {
+        if waiting[v] == 0 {
+            ready.push_back(v);
+        }
+    }
+    let mut sets: Vec[SortedSet[i64]] = Vec.filled(n, SortedSet.new());
+    while let Some(u) = ready.pop_front() {
+        let mine = sets[u].clone();
+        for c in children[u].iter() {
+            sets[c].insert(u);
+            for a in mine.iter() {
+                sets[c].insert(a);
+            }
+            waiting[c] -= 1;
+            if waiting[c] == 0 {
+                ready.push_back(c);
+            }
+        }
+    }
+    let mut ancestors: Vec[Vec[i64]] = Vec.new();
+    for s in sets.iter() {
+        ancestors.push(s.iter().collect());
+    }
+    ancestors
+}
+
+// ---- ancestors_reverse.kara: a breadth-first walk up from every node
+fn reverse_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut parents: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        parents[e[1]].push(e[0]);
+    }
+    let mut ancestors: Vec[Vec[i64]] = Vec.new();
+    for v in 0..n {
+        let mut met: Vec[bool] = Vec.filled(n, false);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(v);
+        while let Some(u) = queue.pop_front() {
+            for p in parents[u].iter() {
+                if not met[p] {
+                    met[p] = true;
+                    queue.push_back(p);
+                }
+            }
+        }
+        let mut list: Vec[i64] = Vec.new();
+        for a in 0..n {
+            if met[a] {
+                list.push(a);
+            }
+        }
+        ancestors.push(list);
+    }
+    ancestors
+}
+
+// ---- ancestors_struct.kara: `Bits` sets filled by memoized recursion
+#[derive(Clone)]
+struct Bits {
+    words: Vec[u64],
+}
+
+impl Bits {
+    fn empty(n: i64) -> Bits {
+        Bits { words: Vec.filled(n / 64 + 1, 0u64) }
+    }
+
+    fn add(mut ref self, i: i64) {
+        self.words[i / 64] |= 1u64 << (i % 64);
+    }
+
+    fn absorb(mut ref self, other: Bits) {
+        for w in 0..self.words.len() {
+            self.words[w] |= other.words[w];
+        }
+    }
+
+    fn members(ref self) -> Vec[i64] {
+        let mut out: Vec[i64] = Vec.new();
+        for w in 0..self.words.len() {
+            for b in 0..64 {
+                if self.words[w] >> b & 1u64 == 1u64 {
+                    out.push(w * 64 + b);
+                }
+            }
+        }
+        out
+    }
+}
+
+fn struct_fill(v: i64, n: i64, parents: Vec[Vec[i64]], memo: mut ref Vec[Option[Bits]]) -> Bits {
+    if let Some(done) = memo[v].clone() {
+        return done;
+    }
+    let mut set = Bits.empty(n);
+    for p in parents[v].iter() {
+        set.add(p);
+        let above = struct_fill(p, n, parents, mut memo);
+        set.absorb(above);
+    }
+    memo[v] = Some(set.clone());
+    set
+}
+
+fn struct_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut parents: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        parents[e[1]].push(e[0]);
+    }
+    let mut memo: Vec[Option[Bits]] = Vec.filled(n, None);
+    let mut ancestors: Vec[Vec[i64]] = Vec.new();
+    for v in 0..n {
+        ancestors.push(struct_fill(v, n, parents, mut memo).members());
+    }
+    ancestors
+}
+
+// ---- ancestors_iter.kara: `flat_map`, `once`, `chain` into a `SortedSet`
+fn iter_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut parents: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        parents[e[1]].push(e[0]);
+        children[e[0]].push(e[1]);
+    }
+    let mut waiting: Vec[i64] = parents.iter().map(|ps| ps.len()).collect();
+    let mut ready: VecDeque[i64] = (0..n).filter(|v| waiting[v] == 0).collect();
+    let mut ancestors: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    while let Some(u) = ready.pop_front() {
+        let set: SortedSet[i64] = parents[u].iter().flat_map(|p| once(p).chain(ancestors[p].iter())).collect();
+        ancestors[u] = set.into_iter().collect();
+        for c in children[u].iter() {
+            waiting[c] -= 1;
+            if waiting[c] == 0 {
+                ready.push_back(c);
+            }
+        }
+    }
+    ancestors
+}
+
+// ---- ancestors_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn get_ancestors(n: i32, edges: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            g[e[0]].push(e[1] as i64);
+        }
+        let mut ans = Vec.filled(n, Vec.new());
+        for s in 0..n {
+            let mut seen = Vec.filled(n, false);
+            seen[s] = true;
+            let mut stack = [s];
+            while let Some(u) = stack.pop() {
+                for v in ref g[u] {
+                    if not seen[v] {
+                        seen[v] = true;
+                        ans[v].push(s as i32);
+                        stack.push(v);
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let narrow: Vec[Vec[i32]] = edges.iter().map(|e| e.iter().map(|x| x as i32).collect()).collect();
+    Solution.get_ancestors(n as i32, narrow).iter().map(|l| l.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut reach: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for e in edges.iter() {
+        reach[e[0]][e[1]] = true;
+    }
+    for k in 0..n {
+        for u in 0..n {
+            if reach[u][k] {
+                for v in 0..n {
+                    if reach[k][v] {
+                        reach[u][v] = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for v in 0..n {
+        let mut list: Vec[i64] = Vec.new();
+        for u in 0..n {
+            if reach[u][v] {
+                list.push(u);
+            }
+        }
+        lists.push(list);
+    }
+    lists
+}
+
+fn answer(arm: i64, n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_get_ancestors(n, edges),
+        1 => topo_get_ancestors(n, edges),
+        2 => reverse_get_ancestors(n, edges),
+        3 => struct_get_ancestors(n, edges),
+        4 => iter_get_ancestors(n, edges),
+        _ => solution_get_ancestors(n, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_order(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut order: Vec[i64] = Vec.new();
+    for v in 0..n {
+        order.push(v);
+    }
+    for i in (1..n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    order
+}
+
+// P2: rising strictly, within 0..n, never the node itself
+fn well_formed(n: i64, lists: Vec[Vec[i64]]) -> bool {
+    if lists.len() != n {
+        return false;
+    }
+    for v in 0..n {
+        let list = lists[v].clone();
+        for i in 0..list.len() {
+            if list[i] < 0 or list[i] >= n or list[i] == v {
+                return false;
+            }
+            if i > 0 and list[i - 1] >= list[i] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// P3: each list is its parents and their lists, and nothing else
+fn closed(n: i64, edges: Vec[Vec[i64]], lists: Vec[Vec[i64]]) -> bool {
+    if lists.len() != n {
+        return false;
+    }
+    for v in 0..n {
+        let mut want: Vec[bool] = Vec.filled(n, false);
+        for e in edges.iter() {
+            if e[1] == v {
+                want[e[0]] = true;
+                for a in lists[e[0]].iter() {
+                    if a < 0 or a >= n {
+                        return false;
+                    }
+                    want[a] = true;
+                }
+            }
+        }
+        let mut got: Vec[bool] = Vec.filled(n, false);
+        for a in lists[v].iter() {
+            if a < 0 or a >= n {
+                return false;
+            }
+            got[a] = true;
+        }
+        if got != want {
+            return false;
+        }
+    }
+    true
+}
+
+// P4: the lists of the DAG renumbered v to n - 1 - v
+fn renumbered(n: i64, lists: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for v in (0..n).rev() {
+        let mut list: Vec[i64] = lists[v].iter().map(|a| n - 1 - a).collect();
+        list.sort();
+        out.push(list);
+    }
+    out
+}
+
+fn main() {
+    let names = ["star", "topo", "reverse", "struct", "iter", "solution"];
+    let mut seed = 2192;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 300 { next_random(mut seed) % 10 + 1 } else if c < 330 { next_random(mut seed) % 15 + 1 } else { next_random(mut seed) % 12 + 1 };
+        let order = random_order(n, mut seed);
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        if c < 300 {
+            let chance = c % 5 + 1;
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    if next_random(mut seed) % 6 < chance {
+                        edges.push([order[i], order[j]].to_vec());
+                    }
+                }
+            }
+        } else if c < 330 {
+            for i in 1..n {
+                edges.push([order[i - 1], order[i]].to_vec());
+            }
+        } else {
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    edges.push([order[i], order[j]].to_vec());
+                }
+            }
+        }
+        let shuffle = random_order(edges.len(), mut seed);
+        let shuffled: Vec[Vec[i64]] = shuffle.iter().map(|k| edges[k].clone()).collect();
+        cases.push((n, shuffled));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, edges) in cases.iter() {
+        let truth = literal(n, edges);
+        for list in truth.iter() {
+            check = (check * 31 + list.len()) % 1000000007;
+            for a in list.iter() {
+                check = (check * 31 + a + 1) % 1000000007;
+            }
+        }
+        check = (check * 31 + edges.len()) % 1000000007;
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, n, edges)).collect();
+        let flipped: Vec[Vec[i64]] = edges.iter().map(|e| [n - 1 - e[0], n - 1 - e[1]].to_vec()).collect();
+        let backward: Vec[Vec[i64]] = edges.iter().rev().map(|e| e.clone()).collect();
+        for arm in 0..6 {
+            let lists = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == lists {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                lists == truth,
+                well_formed(n, lists),
+                closed(n, edges, lists),
+                lists.len() == n and answer(arm, n, flipped) == renumbered(n, lists),
+                answer(arm, n, backward) == lists,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n}, {edges} arm {names[arm]}: P{q + 1} fails, answered {lists}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} DAGs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,70 @@
+// benchmark copy of ancestors.kara (LeetCode #2192, the ★ arm): a walk
+// down from every node by a stack. See ../README.md § Benchmarks.
+
+fn get_ancestors(n: i64, edges: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for e in edges.iter() {
+        children[e[0]].push(e[1]);
+    }
+    let mut ancestors: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for start in 0..n {
+        let mut seen: Vec[bool] = Vec.filled(n, false);
+        seen[start] = true;
+        let mut stack: Vec[i64] = [start].to_vec();
+        while let Some(u) = stack.pop() {
+            for v in children[u].iter() {
+                if not seen[v] {
+                    seen[v] = true;
+                    ancestors[v].push(start);
+                    stack.push(v);
+                }
+            }
+        }
+    }
+    ancestors
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// 2000 edges over 1000 nodes, each from an earlier node to a later one
+// in a random order of the nodes; a repeated edge is rare and kept
+fn random_dag(seed: mut ref i64) -> Vec[Vec[i64]] {
+    let mut order: Vec[i64] = (0..1000).collect();
+    for i in (1..1000).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        order.swap(i, j);
+    }
+    let mut edges: Vec[Vec[i64]] = Vec.new();
+    while edges.len() < 2000 {
+        let a = next_random(mut seed) % 1000;
+        let b = next_random(mut seed) % 1000;
+        if a < b {
+            edges.push([order[a], order[b]].to_vec());
+        } else if b < a {
+            edges.push([order[b], order[a]].to_vec());
+        }
+    }
+    edges
+}
+
+fn main() {
+    let mut seed = 2192;
+    let mut dags: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..20 {
+        dags.push(random_dag(mut seed));
+    }
+    let mut check = 0;
+    for r in 0..2000 {
+        let lists = get_ancestors(1000, dags[r % 20].clone());
+        for list in lists.iter() {
+            check = (check * 31 + list.len()) % 1000000007;
+            for a in list.iter() {
+                check = (check * 31 + a + 1) % 1000000007;
+            }
+        }
+    }
+    println(f"2000 solves: checksum {check}");
+}
