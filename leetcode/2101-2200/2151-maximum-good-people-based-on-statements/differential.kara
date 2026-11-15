@@ -1,0 +1,328 @@
+// LeetCode #2151: Maximum Good People Based on Statements -- the
+// differential. The six arms, against the statement read literally: every
+// way to call each person good or bad is listed as a `Vec[bool]`, built
+// digit by digit, and every statement is checked as a (speaker, subject,
+// claim) triple, a good speaker's claim having to be true; no mask is
+// formed. 300 random villages of 1 to 5 people, at random and with a
+// hidden truthful set in turn; then 30 where everyone says nothing about
+// one person in two; then 30 of 6 people with a hidden truthful set;
+// every one drawn before any arm answers.
+//
+// P1  the most good people is the statement read literally
+// P2  the people numbered from the other end: the same answer
+// P3  a person added who says nothing and of whom nothing is said: one
+//     more
+// P4  a person added who says nothing and whom everyone accuses: the
+//     same, or 1 where it was 0
+// P5  everyone but the first person made silent: everyone good, less one
+//     if the first person accuses anyone
+// P6  each arm agrees with at least three of the other five
+
+// ---- statements.kara: the ★ arm, every mask tried by loops
+fn star_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut holds = true;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 {
+                for j in 0..n {
+                    let say = statements[i][j];
+                    if say != 2 and say != (mask >> j) & 1 {
+                        holds = false;
+                    }
+                }
+            }
+        }
+        if holds {
+            best = best.max(mask.count_ones());
+        }
+    }
+    best
+}
+
+// ---- statements_search.kara: one person settled at a time, failed branches cut
+fn search_fits(statements: Vec[Vec[i64]], who: Vec[i64], p: i64) -> bool {
+    for q in 0..p + 1 {
+        if who[p] == 1 and statements[p][q] != 2 and statements[p][q] != who[q] {
+            return false;
+        }
+        if who[q] == 1 and statements[q][p] != 2 and statements[q][p] != who[p] {
+            return false;
+        }
+    }
+    true
+}
+
+fn search_settle(statements: Vec[Vec[i64]], who: mut ref Vec[i64], p: i64, good: i64, best: mut ref i64) {
+    let n = statements.len();
+    if good + (n - p) <= *best {
+        return;
+    }
+    if p == n {
+        *best = good;
+        return;
+    }
+    for choice in [1, 0] {
+        who[p] = choice;
+        if search_fits(statements, *who, p) {
+            search_settle(statements, mut who, p + 1, good + choice, mut best);
+        }
+    }
+    who[p] = -1;
+}
+
+fn search_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let mut who: Vec[i64] = Vec.filled(statements.len(), -1);
+    let mut best = 0;
+    search_settle(statements, mut who, 0, 0, mut best);
+    best
+}
+
+// ---- statements_ranked.kara: the masks ranked most good first, the first that holds
+fn ranked_holds(statements: Vec[Vec[i64]], mask: i64) -> bool {
+    let n = statements.len();
+    (0..n).all(|i| (mask >> i) & 1 == 0 or (0..n).all(|j| statements[i][j] == 2 or statements[i][j] == (mask >> j) & 1))
+}
+
+fn ranked_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    let mut masks: Vec[i64] = (0..(1 << n)).collect();
+    masks.sort_by_key(|mask| -mask.count_ones());
+    match masks.iter().find(|mask| ranked_holds(statements, mask)) {
+        Some(mask) => mask.count_ones(),
+        None => 0,
+    }
+}
+
+// ---- statements_struct.kara: a `Testimony` of two masks per person
+struct Testimony {
+    vouch: i64,
+    accuse: i64,
+}
+
+impl Testimony {
+    fn of(row: Vec[i64]) -> Testimony {
+        let mut testimony = Testimony { vouch: 0, accuse: 0 };
+        for (j, say) in row.iter().enumerate() {
+            if say == 1 {
+                testimony.vouch |= 1 << j;
+            } else if say == 0 {
+                testimony.accuse |= 1 << j;
+            }
+        }
+        testimony
+    }
+
+    fn borne_out(ref self, mask: i64) -> bool {
+        mask & self.vouch == self.vouch and mask & self.accuse == 0
+    }
+}
+
+fn testimony_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    let testimonies: Vec[Testimony] = statements.iter().map(|row| Testimony.of(row)).collect();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut holds = true;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 and not testimonies[i].borne_out(mask) {
+                holds = false;
+                break;
+            }
+        }
+        if holds {
+            best = best.max(mask.count_ones());
+        }
+    }
+    best
+}
+
+// ---- statements_iter.kara: one chain of `filter`, `flat_map` and `max`
+fn iter_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    (0..(1 << n))
+        .filter(|mask| (0..n).flat_map(|i| (0..n).map(|j| (i, j))).filter(|(i, j)| (mask >> i) & 1 == 1 and statements[i][j] != 2 and statements[i][j] != (mask >> j) & 1).count() == 0)
+        .map(|mask| mask.count_ones())
+        .max()
+        .unwrap()
+}
+
+// ---- statements_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn maximum_good(statements: Vec[Vec[i32]]) -> i32 {
+        let n = statements.len();
+        let mut ans: i32 = 0;
+        'outer: for mask in 0..(1u32 << n) {
+            for i in 0..n {
+                if mask >> i & 1 == 1 {
+                    for j in 0..n {
+                        let s = statements[i][j];
+                        if s != 2 and s as u32 != (mask >> j & 1) {
+                            continue 'outer;
+                        }
+                    }
+                }
+            }
+            ans = ans.max(mask.count_ones() as i32);
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = statements.iter().map(|row| row.iter().map(|s| s as i32).collect()).collect();
+    SolutionSolution.maximum_good(rows)
+}
+
+
+// ---- the statement read literally
+
+fn literal(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    let mut claims: Vec[(i64, i64, bool)] = Vec.new();
+    for speaker in 0..n {
+        for subject in 0..n {
+            let say = statements[speaker][subject];
+            if say != 2 {
+                claims.push((speaker, subject, say == 1));
+            }
+        }
+    }
+    let mut best = 0;
+    let mut ways = 1;
+    for _ in 0..n {
+        ways *= 2;
+    }
+    for way in 0..ways {
+        let mut good: Vec[bool] = Vec.new();
+        let mut rest = way;
+        for _ in 0..n {
+            good.push(rest % 2 == 1);
+            rest /= 2;
+        }
+        let mut holds = true;
+        for (speaker, subject, claim) in claims.iter() {
+            if good[speaker] and good[subject] != claim {
+                holds = false;
+            }
+        }
+        if holds {
+            best = best.max(good.iter().filter(|g| g).count());
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, statements: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_maximum_good(statements),
+        1 => search_maximum_good(statements),
+        2 => ranked_maximum_good(statements),
+        3 => testimony_maximum_good(statements),
+        4 => iter_maximum_good(statements),
+        _ => solution_maximum_good(statements),
+    }
+}
+
+// one more person, saying nothing, of whom everyone says `said`
+fn joined(statements: Vec[Vec[i64]], said: i64) -> Vec[Vec[i64]] {
+    let n = statements.len();
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for row in statements.iter() {
+        let mut longer = row.clone();
+        longer.push(said);
+        out.push(longer);
+    }
+    out.push(Vec.filled(n + 1, 2));
+    out
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "search", "ranked", "testimony", "iter", "solution"];
+    let mut seed = 2151;
+    let mut villages: Vec[Vec[Vec[i64]]] = Vec.new();
+    for t in 0..360 {
+        let n = if t < 330 { next_random(mut seed) % 5 + 1 } else { 6 };
+        let truthful = t >= 330 or t % 2 == 1;
+        let hidden = next_random(mut seed) % (1 << n);
+        let mut statements: Vec[Vec[i64]] = Vec.new();
+        for i in 0..n {
+            let mut row: Vec[i64] = Vec.new();
+            for j in 0..n {
+                let say = if i == j or (t >= 300 and t < 330 and j % 2 == 1) {
+                    2
+                } else if truthful and (hidden >> i) & 1 == 1 {
+                    if next_random(mut seed) % 3 == 0 { 2 } else { (hidden >> j) & 1 }
+                } else {
+                    next_random(mut seed) % 3
+                };
+                row.push(say);
+            }
+            statements.push(row);
+        }
+        villages.push(statements);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for statements in villages.iter() {
+        let n = statements.len();
+        let truth = literal(statements);
+        check = (check * 31 + truth + n) % 1000000007;
+        let renumbered: Vec[Vec[i64]] = statements.iter().rev().map(|row| row.iter().rev().cloned().collect()).collect();
+        let quiet = joined(statements, 2);
+        let accused = joined(statements, 0);
+        let mut first_only: Vec[Vec[i64]] = (0..n).map(|_| Vec.filled(n, 2)).collect();
+        first_only[0] = statements[0].clone();
+        let first_accuses = statements[0].iter().any(|say| say == 0);
+        let first_only_good = if first_accuses { n - 1 } else { n };
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, statements)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, renumbered) == x,
+                answer(arm, quiet) == x + 1,
+                answer(arm, accused) == x.max(1),
+                answer(arm, first_only) == first_only_good,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{statements} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{villages.len()} villages: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

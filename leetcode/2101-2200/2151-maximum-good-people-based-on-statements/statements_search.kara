@@ -1,0 +1,109 @@
+// LeetCode #2151: Maximum Good People Based on Statements -- a search
+// that settles one person at a time, good or bad, and stops a branch as
+// soon as a good person's statement about anyone settled, or anyone's
+// statement about them while they are settled good by a good speaker,
+// fails; a branch that cannot beat the best so far even with everyone
+// left good is cut too. Recursive, the choice in a `Vec[i64]` of -1, 0
+// or 1. O(2^n n) at worst, usually far less.
+
+fn fits(statements: Vec[Vec[i64]], who: Vec[i64], p: i64) -> bool {
+    for q in 0..p + 1 {
+        if who[p] == 1 and statements[p][q] != 2 and statements[p][q] != who[q] {
+            return false;
+        }
+        if who[q] == 1 and statements[q][p] != 2 and statements[q][p] != who[p] {
+            return false;
+        }
+    }
+    true
+}
+
+fn settle(statements: Vec[Vec[i64]], who: mut ref Vec[i64], p: i64, good: i64, best: mut ref i64) {
+    let n = statements.len();
+    if good + (n - p) <= *best {
+        return;
+    }
+    if p == n {
+        *best = good;
+        return;
+    }
+    for choice in [1, 0] {
+        who[p] = choice;
+        if fits(statements, *who, p) {
+            settle(statements, mut who, p + 1, good + choice, mut best);
+        }
+    }
+    who[p] = -1;
+}
+
+fn maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let mut who: Vec[i64] = Vec.filled(statements.len(), -1);
+    let mut best = 0;
+    settle(statements, mut who, 0, 0, mut best);
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n people; with `truthful`, a hidden set of good people tells the truth
+// about everyone, or says nothing one time in 3, and the rest say 0, 1 or
+// 2 at random; without it, everyone does
+fn draw(n: i64, truthful: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let hidden = next_random(mut seed) % (1 << n);
+    let mut statements: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let say = if i == j {
+                2
+            } else if truthful and (hidden >> i) & 1 == 1 {
+                if next_random(mut seed) % 3 == 0 { 2 } else { (hidden >> j) & 1 }
+            } else {
+                next_random(mut seed) % 3
+            };
+            row.push(say);
+        }
+        statements.push(row);
+    }
+    statements
+}
+
+fn show(statements: Vec[Vec[i64]]) {
+    println(f"{statements} -> {maximum_good(statements)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one person, three who say
+    // nothing, two who vouch for each other, and one who accuses the
+    // person who vouches for them
+    show([[2, 1, 2].to_vec(), [1, 2, 2].to_vec(), [2, 0, 2].to_vec()].to_vec());
+    show([[2, 0].to_vec(), [0, 2].to_vec()].to_vec());
+    show([[2].to_vec()].to_vec());
+    show([[2, 2, 2].to_vec(), [2, 2, 2].to_vec(), [2, 2, 2].to_vec()].to_vec());
+    show([[2, 1].to_vec(), [1, 2].to_vec()].to_vec());
+    show([[2, 0].to_vec(), [1, 2].to_vec()].to_vec());
+    // 2000 random villages of 2 to 7 people, at random and with a hidden
+    // truthful set in turn
+    let mut seed = 2151;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 6 + 2;
+        let statements = draw(n, round % 2 == 1, mut seed);
+        let good = maximum_good(statements);
+        total += good;
+        check = (check * 31 + good + n) % 1000000007;
+    }
+    println(f"2000 villages: {total} good in all, checksum {check}");
+    // the constraints' largest, 15 people: all saying nothing, with a
+    // hidden truthful set, and at random
+    let silent: Vec[Vec[i64]] = (0..15).map(|_| Vec.filled(15, 2)).collect();
+    let truthful = draw(15, true, mut seed);
+    let random = draw(15, false, mut seed);
+    println(f"15 people: {maximum_good(silent)} all silent, {maximum_good(truthful)} truthful, {maximum_good(random)} at random");
+}

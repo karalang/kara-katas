@@ -1,0 +1,113 @@
+// LeetCode #2151: Maximum Good People Based on Statements -- each
+// person's statements folded once into a `struct Testimony` of two
+// masks, who they `vouch` for and who they `accuse`; a choice holds when
+// every good person's testimony is `borne_out` by it (`ref self`): all
+// they vouch for good, none they accuse good. Each choice is then
+// checked in O(n), not O(n^2). O(2^n n).
+
+struct Testimony {
+    vouch: i64,
+    accuse: i64,
+}
+
+impl Testimony {
+    fn of(row: Vec[i64]) -> Testimony {
+        let mut testimony = Testimony { vouch: 0, accuse: 0 };
+        for (j, say) in row.iter().enumerate() {
+            if say == 1 {
+                testimony.vouch |= 1 << j;
+            } else if say == 0 {
+                testimony.accuse |= 1 << j;
+            }
+        }
+        testimony
+    }
+
+    fn borne_out(ref self, mask: i64) -> bool {
+        mask & self.vouch == self.vouch and mask & self.accuse == 0
+    }
+}
+
+fn maximum_good(statements: Vec[Vec[i64]]) -> i64 {
+    let n = statements.len();
+    let testimonies: Vec[Testimony] = statements.iter().map(|row| Testimony.of(row)).collect();
+    let mut best = 0;
+    for mask in 0..(1 << n) {
+        let mut holds = true;
+        for i in 0..n {
+            if (mask >> i) & 1 == 1 and not testimonies[i].borne_out(mask) {
+                holds = false;
+                break;
+            }
+        }
+        if holds {
+            best = best.max(mask.count_ones());
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n people; with `truthful`, a hidden set of good people tells the truth
+// about everyone, or says nothing one time in 3, and the rest say 0, 1 or
+// 2 at random; without it, everyone does
+fn draw(n: i64, truthful: bool, seed: mut ref i64) -> Vec[Vec[i64]] {
+    let hidden = next_random(mut seed) % (1 << n);
+    let mut statements: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let say = if i == j {
+                2
+            } else if truthful and (hidden >> i) & 1 == 1 {
+                if next_random(mut seed) % 3 == 0 { 2 } else { (hidden >> j) & 1 }
+            } else {
+                next_random(mut seed) % 3
+            };
+            row.push(say);
+        }
+        statements.push(row);
+    }
+    statements
+}
+
+fn show(statements: Vec[Vec[i64]]) {
+    println(f"{statements} -> {maximum_good(statements)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one person, three who say
+    // nothing, two who vouch for each other, and one who accuses the
+    // person who vouches for them
+    show([[2, 1, 2].to_vec(), [1, 2, 2].to_vec(), [2, 0, 2].to_vec()].to_vec());
+    show([[2, 0].to_vec(), [0, 2].to_vec()].to_vec());
+    show([[2].to_vec()].to_vec());
+    show([[2, 2, 2].to_vec(), [2, 2, 2].to_vec(), [2, 2, 2].to_vec()].to_vec());
+    show([[2, 1].to_vec(), [1, 2].to_vec()].to_vec());
+    show([[2, 0].to_vec(), [1, 2].to_vec()].to_vec());
+    // 2000 random villages of 2 to 7 people, at random and with a hidden
+    // truthful set in turn
+    let mut seed = 2151;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 6 + 2;
+        let statements = draw(n, round % 2 == 1, mut seed);
+        let good = maximum_good(statements);
+        total += good;
+        check = (check * 31 + good + n) % 1000000007;
+    }
+    println(f"2000 villages: {total} good in all, checksum {check}");
+    // the constraints' largest, 15 people: all saying nothing, with a
+    // hidden truthful set, and at random
+    let silent: Vec[Vec[i64]] = (0..15).map(|_| Vec.filled(15, 2)).collect();
+    let truthful = draw(15, true, mut seed);
+    let random = draw(15, false, mut seed);
+    println(f"15 people: {maximum_good(silent)} all silent, {maximum_good(truthful)} truthful, {maximum_good(random)} at random");
+}
