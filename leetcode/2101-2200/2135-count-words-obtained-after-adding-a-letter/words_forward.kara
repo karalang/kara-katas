@@ -1,0 +1,97 @@
+// LeetCode #2135: Count Words Obtained After Adding a Letter -- forwards.
+// Every word one letter longer that a start word can make is listed up
+// front: each start's letter set with each letter it lacks added, all in
+// one `Set[i64]`. A target then counts when its own set is listed.
+// O(s * 26 + t).
+
+fn word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let mut reachable: Set[i64] = Set.new();
+    for w in start_words.iter() {
+        let mask = w.bytes().iter().fold(0, |m, b| m | 1 << (b - 97));
+        for letter in 0..26 {
+            if mask & (1 << letter) == 0 {
+                reachable.insert(mask | 1 << letter);
+            }
+        }
+    }
+    target_words.iter().filter(|w| reachable.contains(w.bytes().iter().fold(0, |m, b| m | 1 << (b - 97)))).count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of len distinct letters from the first k of the alphabet
+fn word(len: i64, k: i64, seed: mut ref i64) -> String {
+    let mut letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().take(k).collect();
+    let mut out = String.new();
+    for i in 0..len {
+        let j = i + next_random(mut seed) % (k - i);
+        letters.swap(i, j);
+        out.push(letters[i]);
+    }
+    out
+}
+
+fn words(list: Vec[Str]) -> Vec[String] {
+    list.iter().map(|w| w.to_string()).collect()
+}
+
+fn show(start_words: Vec[String], target_words: Vec[String]) {
+    println(f"{start_words} {target_words} -> {word_count(start_words, target_words)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a target the same as a start,
+    // the same letters in another order, one letter added and moved, and a
+    // target met three times
+    show(words(["ant", "act", "tack"].to_vec()), words(["tack", "act", "acti"].to_vec()));
+    show(words(["ab", "a"].to_vec()), words(["abc", "abcd"].to_vec()));
+    show(words(["a"].to_vec()), words(["a"].to_vec()));
+    show(words(["ab"].to_vec()), words(["ba"].to_vec()));
+    show(words(["ab"].to_vec()), words(["bac"].to_vec()));
+    show(words(["a"].to_vec()), words(["ab", "ba", "ab"].to_vec()));
+    // 2000 random pairs of lists of 1 to 6 words, each of distinct letters
+    // from the first 3, 4 or 6 in turn
+    let mut seed = 2135;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let k = [3, 4, 6][round % 3];
+        let s = next_random(mut seed) % 6 + 1;
+        let t = next_random(mut seed) % 6 + 1;
+        let mut starts: Vec[String] = Vec.new();
+        for _ in 0..s {
+            let len = next_random(mut seed) % k + 1;
+            starts.push(word(len, k, mut seed));
+        }
+        let mut targets: Vec[String] = Vec.new();
+        for _ in 0..t {
+            let len = next_random(mut seed) % k + 1;
+            targets.push(word(len, k, mut seed));
+        }
+        let count = word_count(starts, targets);
+        total += count;
+        check = (check * 31 + count + s * 7 + t) % 1000000007;
+    }
+    println(f"2000 pairs: {total} words in all, checksum {check}");
+    // the constraints' largest: 50000 words in each list, of 1 to 8 letters
+    // from the first 10, and of 1 to 26 from all 26
+    for k in [10, 26] {
+        let longest = if k == 10 { 8 } else { 26 };
+        let mut starts: Vec[String] = Vec.new();
+        let mut targets: Vec[String] = Vec.new();
+        for _ in 0..50000 {
+            let len = next_random(mut seed) % longest + 1;
+            starts.push(word(len, k, mut seed));
+        }
+        for _ in 0..50000 {
+            let len = next_random(mut seed) % longest + 1;
+            targets.push(word(len, k, mut seed));
+        }
+        println(f"50000 words of the first {k} letters: {word_count(starts, targets)}");
+    }
+}

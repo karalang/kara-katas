@@ -1,0 +1,325 @@
+// LeetCode #2135: Count Words Obtained After Adding a Letter -- the
+// differential. The six arms, against the statement read literally: a
+// target counts when some start word, with some letter of the alphabet it
+// lacks appended, can be rearranged into it, the rearranging checked by
+// sorting both; no letter set is formed. 300 random pairs of lists of 1
+// to 5 words of distinct letters from the first 3, 4 or 6 in turn; then
+// 30 whose targets are mostly starts with a letter added and shuffled;
+// then 30 of words of 1 to 4 letters from all 26; every one drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the targets in reverse order: the same answer
+// P3  every word of both lists reversed: the same answer
+// P4  every letter moved on by one, z to a: the same answer
+// P5  every start word listed twice: the same answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- words.kara: the ★ arm, letter masks in a `Set`, each letter taken away
+fn star_letters(w: Str) -> i64 {
+    let mut mask = 0;
+    for b in w.bytes() {
+        mask |= 1 << (b - 97);
+    }
+    mask
+}
+
+fn star_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let starts: Set[i64] = start_words.iter().map(|w| star_letters(w)).collect();
+    let mut count = 0;
+    for w in target_words.iter() {
+        let mask = star_letters(w);
+        for b in w.bytes() {
+            if starts.contains(mask ^ (1 << (b - 97))) {
+                count += 1;
+                break;
+            }
+        }
+    }
+    count
+}
+
+// ---- words_sorted.kara: sorted letters in a `Set[String]`
+fn sorted_sorted_letters(w: Str) -> String {
+    let mut cs: Vec[char] = w.chars().collect();
+    cs.sort();
+    cs.iter().collect()
+}
+
+fn sorted_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let starts: Set[String] = start_words.iter().map(|w| sorted_sorted_letters(w)).collect();
+    let mut count = 0;
+    for w in target_words.iter() {
+        let t = sorted_sorted_letters(w);
+        let found = (0..t.len()).any(|i| {
+            let left = f"{t[..i]}{t[i + 1..]}";
+            starts.contains(left)
+        });
+        if found {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- words_forward.kara: every word one letter longer listed up front
+fn forward_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let mut reachable: Set[i64] = Set.new();
+    for w in start_words.iter() {
+        let mask = w.bytes().iter().fold(0, |m, b| m | 1 << (b - 97));
+        for letter in 0..26 {
+            if mask & (1 << letter) == 0 {
+                reachable.insert(mask | 1 << letter);
+            }
+        }
+    }
+    target_words.iter().filter(|w| reachable.contains(w.bytes().iter().fold(0, |m, b| m | 1 << (b - 97)))).count()
+}
+
+// ---- words_struct.kara: a `Letters` struct and a `Map` of starts
+struct StructLetters {
+    bits: i64,
+}
+
+impl StructLetters {
+    fn of(w: Str) -> StructLetters {
+        let mut bits = 0;
+        for b in w.bytes() {
+            bits |= 1 << (b - 97);
+        }
+        StructLetters { bits }
+    }
+
+    fn has(ref self, letter: i64) -> bool {
+        self.bits & (1 << letter) != 0
+    }
+
+    fn without(ref self, letter: i64) -> StructLetters {
+        StructLetters { bits: self.bits & ~(1 << letter) }
+    }
+}
+
+fn struct_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let mut starts: Map[i64, i64] = Map.new();
+    for w in start_words.iter() {
+        *starts.entry(StructLetters.of(w).bits).or_insert(0) += 1;
+    }
+    let mut count = 0;
+    for w in target_words.iter() {
+        let target = StructLetters.of(w);
+        if (0..26).any(|letter| target.has(letter) and starts.contains_key(target.without(letter).bits)) {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- words_search.kara: sorted masks and `binary_search`
+fn search_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let mask_of = |w: Str| w.bytes().iter().fold(0, |m, b| m | 1 << (b - 97));
+    let mut starts: Vec[i64] = start_words.iter().map(|w| mask_of(w)).collect();
+    starts.sort();
+    let mut count = 0;
+    for w in target_words.iter() {
+        let mask = mask_of(w);
+        let mut rest = mask;
+        while rest != 0 {
+            let lowest = rest & -rest;
+            if starts.binary_search(mask ^ lowest).is_some() {
+                count += 1;
+                break;
+            }
+            rest ^= lowest;
+        }
+    }
+    count
+}
+
+// ---- words_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn word_count(start_words: Vec[String], target_words: Vec[String]) -> i32 {
+        let mut seen = Set.new();
+        for w in ref start_words {
+            let mut mask = 0;
+            for c in w.chars() {
+                mask |= 1 << (c as u32 as u8 - b'a');
+            }
+            seen.insert(mask);
+        }
+        let mut ans = 0;
+        for w in ref target_words {
+            let mut mask = 0;
+            for c in w.chars() {
+                mask |= 1 << (c as u32 as u8 - b'a');
+            }
+            for c in w.chars() {
+                if seen.contains(mask ^ (1 << (c as u32 as u8 - b'a'))) {
+                    ans += 1;
+                    break;
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_word_count(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    SolutionSolution.word_count(start_words, target_words)
+}
+
+
+// ---- the statement read literally
+
+fn sorted_chars(w: Str) -> Vec[char] {
+    let mut cs: Vec[char] = w.chars().collect();
+    cs.sort();
+    cs
+}
+
+fn literal(start_words: Vec[String], target_words: Vec[String]) -> i64 {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut count = 0;
+    for t in target_words.iter() {
+        let want = sorted_chars(t);
+        let mut found = false;
+        for s in start_words.iter() {
+            for c in alphabet.chars() {
+                if not s.contains(c.to_string()) and sorted_chars(f"{s}{c}") == want {
+                    found = true;
+                }
+            }
+        }
+        if found {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, starts: Vec[String], targets: Vec[String]) -> i64 {
+    match arm {
+        0 => star_word_count(starts, targets),
+        1 => sorted_word_count(starts, targets),
+        2 => forward_word_count(starts, targets),
+        3 => struct_word_count(starts, targets),
+        4 => search_word_count(starts, targets),
+        _ => solution_word_count(starts, targets),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(len: i64, k: i64, seed: mut ref i64) -> String {
+    let mut letters: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().take(k).collect();
+    let mut out = String.new();
+    for i in 0..len {
+        let j = i + next_random(mut seed) % (k - i);
+        letters.swap(i, j);
+        out.push(letters[i]);
+    }
+    out
+}
+
+// a start word with one letter it lacks put in at random, from the first k
+fn grown(w: Str, k: i64, seed: mut ref i64) -> String {
+    let missing: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().take(k).filter(|c| not w.contains(c.to_string())).collect();
+    if missing.len() == 0 {
+        return w.to_string();
+    }
+    let c = missing[next_random(mut seed) % missing.len()];
+    let mut cs: Vec[char] = w.chars().collect();
+    cs.insert(next_random(mut seed) % (cs.len() + 1), c);
+    cs.iter().collect()
+}
+
+struct Problem {
+    starts: Vec[String],
+    targets: Vec[String],
+}
+
+fn main() {
+    let names = ["star", "sorted", "forward", "struct", "search", "solution"];
+    let mut seed = 2135;
+    let mut problems: Vec[Problem] = Vec.new();
+    for t in 0..360 {
+        let k = if t < 300 { [3, 4, 6][t % 3] } else if t < 330 { 6 } else { 26 };
+        let longest = if t < 330 { k } else { 4 };
+        let s = next_random(mut seed) % 5 + 1;
+        let mut starts: Vec[String] = Vec.new();
+        for _ in 0..s {
+            let len = next_random(mut seed) % longest + 1;
+            starts.push(word(len, k, mut seed));
+        }
+        let n = next_random(mut seed) % 5 + 1;
+        let mut targets: Vec[String] = Vec.new();
+        for _ in 0..n {
+            if t >= 300 and t < 330 and next_random(mut seed) % 4 != 0 {
+                let from = starts[next_random(mut seed) % s].clone();
+                targets.push(grown(from, k, mut seed));
+            } else {
+                let len = next_random(mut seed) % longest + 1;
+                targets.push(word(len, k, mut seed));
+            }
+        }
+        problems.push(Problem { starts, targets });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for p in problems.iter() {
+        let truth = literal(p.starts, p.targets);
+        check = (check * 31 + truth * 8 + p.starts.len() * 64 + p.targets.len()) % 1000000007;
+        let backwards: Vec[String] = p.targets.iter().rev().map(|w| w.clone()).collect();
+        let turn = |list: Vec[String]| { list.iter().map(|w| w.chars().rev().collect()).collect() };
+        let shift = |list: Vec[String]| {
+            list.iter().map(|w| w.bytes().iter().map(|b| char.try_from((b - 97 + 1) % 26 + 97).ok().unwrap()).collect()).collect()
+        };
+        let twice: Vec[String] = p.starts.iter().chain(p.starts.iter()).map(|w| w.clone()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, p.starts, p.targets)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                x == truth,
+                answer(arm, p.starts, backwards) == x,
+                answer(arm, turn(p.starts), turn(p.targets)) == x,
+                answer(arm, shift(p.starts), shift(p.targets)) == x,
+                answer(arm, twice, p.targets) == x,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{p.starts} {p.targets} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{problems.len()} pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
