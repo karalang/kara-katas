@@ -1,0 +1,114 @@
+// LeetCode #2184: Number of Ways to Build Sturdy Brick Wall -- a `struct
+// Courses` of the rows a width can be laid in, as joint masks, and the
+// rows each one can carry, made `of` a width and the bricks; it says how
+// many walls it can `stack` to a height (`ref self`). O(rows^2 + height *
+// pairs).
+
+struct Courses {
+    rows: Vec[i64],
+    carries: Vec[Vec[i64]],
+}
+
+impl Courses {
+    fn of(width: i64, bricks: Vec[i64]) -> Courses {
+        // the rows, grown brick by brick from an empty one: each partial
+        // row is its end and its joints
+        let mut rows: Vec[i64] = Vec.new();
+        let mut partial: Vec[(i64, i64)] = [(0, 0)].to_vec();
+        while let Some((at, joints)) = partial.pop() {
+            for b in bricks.iter() {
+                let end = at + b;
+                if end == width {
+                    rows.push(joints);
+                } else if end < width {
+                    partial.push((end, joints | (1 << end)));
+                }
+            }
+        }
+        let mut carries: Vec[Vec[i64]] = Vec.new();
+        for a in rows.iter() {
+            let mut on: Vec[i64] = Vec.new();
+            for b in 0..rows.len() {
+                if a & rows[b] == 0 {
+                    on.push(b);
+                }
+            }
+            carries.push(on);
+        }
+        Courses { rows: rows, carries: carries }
+    }
+
+    fn stack(ref self, height: i64) -> i64 {
+        let n = self.rows.len();
+        let mut ways: Vec[i64] = Vec.filled(n, 1);
+        for _ in 1..height {
+            let mut next: Vec[i64] = Vec.filled(n, 0);
+            for a in 0..n {
+                for b in self.carries[a].iter() {
+                    next[b] = (next[b] + ways[a]) % 1000000007;
+                }
+            }
+            ways = next;
+        }
+        let mut total = 0;
+        for w in ways.iter() {
+            total = (total + w) % 1000000007;
+        }
+        total
+    }
+}
+
+fn build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    Courses.of(width, bricks).stack(height)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(height: i64, width: i64, bricks: Vec[i64]) {
+    println(f"{height}, {width}, {bricks} -> {build_wall(height, width, bricks)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one row of every brick,
+    // a column of one brick, two rows that must share a joint, and the
+    // constraints' largest wall
+    show(2, 3, [1, 2]);
+    show(1, 1, [5]);
+    show(1, 4, [1, 2, 3, 4]);
+    show(3, 1, [1]);
+    show(2, 2, [1]);
+    show(100, 10, [1, 2, 3]);
+    // 300 random walls up to 10 x 10, each length of brick from 1 to 10
+    // had with a chance of a third
+    let mut seed = 2184;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let height = next_random(mut seed) % 10 + 1;
+        let width = next_random(mut seed) % 10 + 1;
+        let mut bricks: Vec[i64] = Vec.new();
+        for b in 1..11 {
+            if next_random(mut seed) % 3 == 0 {
+                bricks.push(b);
+            }
+        }
+        if bricks.is_empty() {
+            bricks.push(next_random(mut seed) % 10 + 1);
+        }
+        let found = build_wall(height, width, bricks);
+        total = (total + found) % 1000000007;
+        check = (check * 31 + found + height * width) % 1000000007;
+    }
+    println(f"300 walls: {total} in all mod 10^9 + 7, checksum {check}");
+    // the constraints' largest, 100 x 10: every brick, two that leave one
+    // wall, and three
+    for bricks in [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].to_vec(), [1, 2].to_vec(), [2, 3, 5].to_vec()] {
+        let names: Vec[String] = bricks.iter().map(|b| f"{b}").collect();
+        println(f"100 x 10 of {names.join(", ")}: {build_wall(100, 10, bricks)}");
+    }
+}

@@ -1,0 +1,422 @@
+// LeetCode #2184: Number of Ways to Build Sturdy Brick Wall -- the
+// differential. The six arms, against the statement read literally:
+// every wall laid brick by brick, row by row, a brick refused when it
+// would end where a brick of the row below ends inside the wall, and the
+// walls that fill every row counted. No joint masks and no row-by-row
+// count. 300 random walls of 1 to 3 rows of width 1 to 5, each length of
+// brick from 1 to 6 had with a chance of a half; then 30 with a brick of
+// 1 among them; then 30 of 4 or 5 rows of width 1 to 4; every one drawn
+// before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the bricks in the other order: the same count
+// P3  a brick longer than the width added: the same count
+// P4  one row more: at most the count times the ways to lay one row
+// P5  one row: the ways to make the width of the bricks, counted on their
+//     own; and at least 1 when a brick is the width
+// P6  each arm agrees with at least three of the other five
+
+// ---- sturdy_wall.kara: the ★ arm, rows by recursion, the pairs that fit listed
+fn star_fill(at: i64, joints: i64, width: i64, bricks: Vec[i64], rows: mut ref Vec[i64]) {
+    if at == width {
+        rows.push(joints);
+        return;
+    }
+    for b in bricks.iter() {
+        let end = at + b;
+        if end < width {
+            star_fill(end, joints | (1 << end), width, bricks, mut rows);
+        } else if end == width {
+            star_fill(end, joints, width, bricks, mut rows);
+        }
+    }
+}
+
+fn star_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let mut rows: Vec[i64] = Vec.new();
+    star_fill(0, 0, width, bricks, mut rows);
+    let n = rows.len();
+    let mut fits: Vec[Vec[i64]] = Vec.new();
+    for a in 0..n {
+        let mut on: Vec[i64] = Vec.new();
+        for b in 0..n {
+            if rows[a] & rows[b] == 0 {
+                on.push(b);
+            }
+        }
+        fits.push(on);
+    }
+    let mut ways: Vec[i64] = Vec.filled(n, 1);
+    for _ in 1..height {
+        let mut next: Vec[i64] = Vec.filled(n, 0);
+        for a in 0..n {
+            for b in fits[a].iter() {
+                next[b] = (next[b] + ways[a]) % 1000000007;
+            }
+        }
+        ways = next;
+    }
+    let mut total = 0;
+    for w in ways.iter() {
+        total = (total + w) % 1000000007;
+    }
+    total
+}
+
+// ---- sturdy_wall_bits.kara: every joint mask tried, rows compared afresh
+fn bits_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let mut is_brick: Vec[bool] = Vec.filled(width + 1, false);
+    for b in bricks.iter() {
+        if b <= width {
+            is_brick[b] = true;
+        }
+    }
+    let mut rows: Vec[i64] = Vec.new();
+    for mask in 0..(1 << (width - 1)) {
+        let joints = mask << 1;
+        let mut last = 0;
+        let mut ok = true;
+        for at in 1..(width + 1) {
+            if at == width or joints & (1 << at) != 0 {
+                if not is_brick[at - last] {
+                    ok = false;
+                    break;
+                }
+                last = at;
+            }
+        }
+        if ok {
+            rows.push(joints);
+        }
+    }
+    let n = rows.len();
+    let mut ways: Vec[i64] = Vec.filled(n, 1);
+    for _ in 1..height {
+        let mut next: Vec[i64] = Vec.filled(n, 0);
+        for a in 0..n {
+            for b in 0..n {
+                if rows[a] & rows[b] == 0 {
+                    next[b] = (next[b] + ways[a]) % 1000000007;
+                }
+            }
+        }
+        ways = next;
+    }
+    let mut total = 0;
+    for w in ways.iter() {
+        total = (total + w) % 1000000007;
+    }
+    total
+}
+
+// ---- sturdy_wall_memo.kara: top down, the rows left and the row below
+fn memo_fill(at: i64, joints: i64, width: i64, bricks: Vec[i64], rows: mut ref Vec[i64]) {
+    if at == width {
+        rows.push(joints);
+        return;
+    }
+    for b in bricks.iter() {
+        let end = at + b;
+        if end < width {
+            memo_fill(end, joints | (1 << end), width, bricks, mut rows);
+        } else if end == width {
+            memo_fill(end, joints, width, bricks, mut rows);
+        }
+    }
+}
+
+fn memo_ways_on(left: i64, below: i64, rows: Vec[i64], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 1;
+    }
+    if memo[left][below] >= 0 {
+        return memo[left][below];
+    }
+    let mut total = 0;
+    for r in 0..rows.len() {
+        if rows[r] & rows[below] == 0 {
+            total = (total + memo_ways_on(left - 1, r, rows, mut memo)) % 1000000007;
+        }
+    }
+    memo[left][below] = total;
+    total
+}
+
+fn memo_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let mut rows: Vec[i64] = Vec.new();
+    memo_fill(0, 0, width, bricks, mut rows);
+    let n = rows.len();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(height, Vec.filled(n, -1));
+    let mut total = 0;
+    for r in 0..n {
+        total = (total + memo_ways_on(height - 1, r, rows, mut memo)) % 1000000007;
+    }
+    total
+}
+
+// ---- sturdy_wall_struct.kara: `Courses` that knows its rows and what each carries
+struct Courses {
+    rows: Vec[i64],
+    carries: Vec[Vec[i64]],
+}
+
+impl Courses {
+    fn of(width: i64, bricks: Vec[i64]) -> Courses {
+        // the rows, grown brick by brick from an empty one: each partial
+        // row is its end and its joints
+        let mut rows: Vec[i64] = Vec.new();
+        let mut partial: Vec[(i64, i64)] = [(0, 0)].to_vec();
+        while let Some((at, joints)) = partial.pop() {
+            for b in bricks.iter() {
+                let end = at + b;
+                if end == width {
+                    rows.push(joints);
+                } else if end < width {
+                    partial.push((end, joints | (1 << end)));
+                }
+            }
+        }
+        let mut carries: Vec[Vec[i64]] = Vec.new();
+        for a in rows.iter() {
+            let mut on: Vec[i64] = Vec.new();
+            for b in 0..rows.len() {
+                if a & rows[b] == 0 {
+                    on.push(b);
+                }
+            }
+            carries.push(on);
+        }
+        Courses { rows: rows, carries: carries }
+    }
+
+    fn stack(ref self, height: i64) -> i64 {
+        let n = self.rows.len();
+        let mut ways: Vec[i64] = Vec.filled(n, 1);
+        for _ in 1..height {
+            let mut next: Vec[i64] = Vec.filled(n, 0);
+            for a in 0..n {
+                for b in self.carries[a].iter() {
+                    next[b] = (next[b] + ways[a]) % 1000000007;
+                }
+            }
+            ways = next;
+        }
+        let mut total = 0;
+        for w in ways.iter() {
+            total = (total + w) % 1000000007;
+        }
+        total
+    }
+}
+
+fn struct_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    Courses.of(width, bricks).stack(height)
+}
+
+// ---- sturdy_wall_iter.kara: `chain`, `windows`, `all`, `fold` over the height
+fn iter_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let rows: Vec[i64] = (0..(1 << (width - 1)))
+        .map(|mask| mask << 1)
+        .filter(|joints| {
+            let cuts: Vec[i64] = [0]
+                .iter()
+                .cloned()
+                .chain((1..width).filter(|at| joints & (1 << at) != 0))
+                .chain([width].iter().cloned())
+                .collect();
+            cuts.windows(2).into_iter().all(|w| bricks.contains(w[1] - w[0]))
+        })
+        .collect();
+    let n = rows.len();
+    let fits: Vec[Vec[i64]] = rows
+        .iter()
+        .map(|a| (0..n).filter(|b| a & rows[b] == 0).collect())
+        .collect();
+    let first: Vec[i64] = Vec.filled(n, 1);
+    let top = (1..height).fold(first, |ways, _| {
+        fits.iter()
+            .map(|on| on.iter().fold(0, |s, a| (s + ways[a]) % 1000000007))
+            .collect()
+    });
+    top.iter().fold(0, |s, w| (s + w) % 1000000007)
+}
+
+// ---- sturdy_wall_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_dfs(pos: i32, mask: u32, width: i32, bricks: Vec[i32], rows: mut ref Vec[u32]) {
+    if pos == width {
+        rows.push(mask);
+        return;
+    }
+    for b in bricks {
+        let np = pos + b;
+        if np < width {
+            solution_dfs(np, mask | (1 << np), width, bricks, mut rows);
+        } else if np == width {
+            solution_dfs(np, mask, width, bricks, mut rows);
+        }
+    }
+}
+
+impl Solution {
+    pub fn build_wall(height: i32, width: i32, bricks: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let mut rows: Vec[u32] = Vec.new();
+        solution_dfs(0, 0, width, bricks, mut rows);
+        let n = rows.len();
+        let mut dp = Vec.filled(n, 1);
+        for _ in 1..height {
+            let mut ndp = Vec.filled(n, 0);
+            for i in 0..n {
+                for j in 0..n {
+                    if rows[i] & rows[j] == 0 {
+                        ndp[j] = (ndp[j] + dp[i]) % MOD;
+                    }
+                }
+            }
+            dp = ndp;
+        }
+        (dp.iter().sum() % MOD) as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let b: Vec[i32] = bricks.iter().map(|x| x as i32).collect();
+    Solution.build_wall(height as i32, width as i32, b)
+}
+
+
+// ---- the statement read literally
+
+// The walls that can be finished, with `rows` rows still to lay after
+// this one, at `at` in this row, `below` the bricks' ends of the row
+// below and `here` those of this row so far.
+fn literal_from(rows: i64, at: i64, width: i64, bricks: Vec[i64], below: mut ref Vec[bool], here: mut ref Vec[bool]) -> i64 {
+    if at == width {
+        if rows == 0 {
+            return 1;
+        }
+        let mut next_below: Vec[bool] = here.clone();
+        let mut next_here: Vec[bool] = Vec.filled(width + 1, false);
+        return literal_from(rows - 1, 0, width, bricks, mut next_below, mut next_here);
+    }
+    let mut walls = 0;
+    for b in bricks.iter() {
+        let end = at + b;
+        if end > width or (end < width and below[end]) {
+            continue;
+        }
+        here[end] = true;
+        walls += literal_from(rows, end, width, bricks, mut below, mut here);
+        here[end] = false;
+    }
+    walls
+}
+
+fn literal(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let mut below: Vec[bool] = Vec.filled(width + 1, false);
+    let mut here: Vec[bool] = Vec.filled(width + 1, false);
+    literal_from(height - 1, 0, width, bricks, mut below, mut here)
+}
+
+fn answer(arm: i64, height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_build_wall(height, width, bricks),
+        1 => bits_build_wall(height, width, bricks),
+        2 => memo_build_wall(height, width, bricks),
+        3 => struct_build_wall(height, width, bricks),
+        4 => iter_build_wall(height, width, bricks),
+        _ => solution_build_wall(height, width, bricks),
+    }
+}
+
+// the ways to make each length up to the width as a run of bricks
+fn compositions(width: i64, bricks: Vec[i64]) -> i64 {
+    let mut ways: Vec[i64] = Vec.filled(width + 1, 0);
+    ways[0] = 1;
+    for s in 1..(width + 1) {
+        for b in bricks.iter() {
+            if b <= s {
+                ways[s] += ways[s - b];
+            }
+        }
+    }
+    ways[width]
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "bits", "memo", "struct", "iter", "solution"];
+    let mut seed = 2184;
+    let mut cases: Vec[(i64, i64, Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let height = if t < 330 { next_random(mut seed) % 3 + 1 } else { next_random(mut seed) % 2 + 4 };
+        let width = if t < 330 { next_random(mut seed) % 5 + 1 } else { next_random(mut seed) % 4 + 1 };
+        let mut bricks: Vec[i64] = Vec.new();
+        for b in 1..7 {
+            if (b == 1 and t >= 300 and t < 330) or next_random(mut seed) % 2 == 0 {
+                bricks.push(b);
+            }
+        }
+        if bricks.is_empty() {
+            bricks.push(next_random(mut seed) % 6 + 1);
+        }
+        cases.push((height, width, bricks));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (height, width, bricks) in cases.iter() {
+        let truth = literal(height, width, bricks);
+        check = (check * 31 + height * 7 + width + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, height, width, bricks)).collect();
+        let back: Vec[i64] = bricks.iter().rev().collect();
+        let mut longer = bricks.clone();
+        longer.push(width + 1);
+        let one_row = compositions(width, bricks);
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                count == truth,
+                answer(arm, height, width, back) == count,
+                answer(arm, height, width, longer) == count,
+                answer(arm, height + 1, width, bricks) <= count * answer(arm, 1, width, bricks),
+                answer(arm, 1, width, bricks) == one_row and (not bricks.contains(width) or count >= 1),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{height}, {width}, {bricks} arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} walls: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

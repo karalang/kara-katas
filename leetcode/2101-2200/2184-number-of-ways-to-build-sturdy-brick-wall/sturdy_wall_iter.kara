@@ -1,0 +1,86 @@
+// LeetCode #2184: Number of Ways to Build Sturdy Brick Wall -- by
+// iterators: the joint masks `filter`ed to those whose gaps, the
+// joints' places `filter`ed out of a range with the ends `chain`ed on and
+// read pairwise by `windows`, are all bricks; the rows each can carry
+// `filter`ed and `collect`ed; and the stacking a `fold` over the height,
+// each next count a `map` over those rows of a `fold`ed sum, the rows
+// that fit being the same either way up. O(2^width * width + rows^2 +
+// height * pairs).
+
+fn build_wall(height: i64, width: i64, bricks: Vec[i64]) -> i64 {
+    let rows: Vec[i64] = (0..(1 << (width - 1)))
+        .map(|mask| mask << 1)
+        .filter(|joints| {
+            let cuts: Vec[i64] = [0]
+                .iter()
+                .cloned()
+                .chain((1..width).filter(|at| joints & (1 << at) != 0))
+                .chain([width].iter().cloned())
+                .collect();
+            cuts.windows(2).into_iter().all(|w| bricks.contains(w[1] - w[0]))
+        })
+        .collect();
+    let n = rows.len();
+    let fits: Vec[Vec[i64]] = rows
+        .iter()
+        .map(|a| (0..n).filter(|b| a & rows[b] == 0).collect())
+        .collect();
+    let first: Vec[i64] = Vec.filled(n, 1);
+    let top = (1..height).fold(first, |ways, _| {
+        fits.iter()
+            .map(|on| on.iter().fold(0, |s, a| (s + ways[a]) % 1000000007))
+            .collect()
+    });
+    top.iter().fold(0, |s, w| (s + w) % 1000000007)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(height: i64, width: i64, bricks: Vec[i64]) {
+    println(f"{height}, {width}, {bricks} -> {build_wall(height, width, bricks)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one row of every brick,
+    // a column of one brick, two rows that must share a joint, and the
+    // constraints' largest wall
+    show(2, 3, [1, 2]);
+    show(1, 1, [5]);
+    show(1, 4, [1, 2, 3, 4]);
+    show(3, 1, [1]);
+    show(2, 2, [1]);
+    show(100, 10, [1, 2, 3]);
+    // 300 random walls up to 10 x 10, each length of brick from 1 to 10
+    // had with a chance of a third
+    let mut seed = 2184;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..300 {
+        let height = next_random(mut seed) % 10 + 1;
+        let width = next_random(mut seed) % 10 + 1;
+        let mut bricks: Vec[i64] = Vec.new();
+        for b in 1..11 {
+            if next_random(mut seed) % 3 == 0 {
+                bricks.push(b);
+            }
+        }
+        if bricks.is_empty() {
+            bricks.push(next_random(mut seed) % 10 + 1);
+        }
+        let found = build_wall(height, width, bricks);
+        total = (total + found) % 1000000007;
+        check = (check * 31 + found + height * width) % 1000000007;
+    }
+    println(f"300 walls: {total} in all mod 10^9 + 7, checksum {check}");
+    // the constraints' largest, 100 x 10: every brick, two that leave one
+    // wall, and three
+    for bricks in [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].to_vec(), [1, 2].to_vec(), [2, 3, 5].to_vec()] {
+        let names: Vec[String] = bricks.iter().map(|b| f"{b}").collect();
+        println(f"100 x 10 of {names.join(", ")}: {build_wall(100, 10, bricks)}");
+    }
+}
