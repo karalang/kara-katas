@@ -1,0 +1,91 @@
+// LeetCode #2162: Minimum Cost to Set Cooking Time -- each way of writing
+// the time printed as the microwave reads it, four digits padded by
+// `f"{m:02}{s:02}"`, and the zeros it would put in front taken off one
+// at a time by `strip_prefix`; the moves are the places where a digit differs
+// from the one before, the start digit first. O(1).
+
+fn typed(m: i64, s: i64) -> String {
+    let mut keys = f"{m:02}{s:02}";
+    while let Some(rest) = keys.strip_prefix("0") {
+        keys = rest.to_string();
+    }
+    keys
+}
+
+fn price(keys: String, start_at: i64, move_cost: i64, push_cost: i64) -> i64 {
+    let mut before = char.from_digit(start_at as u32, 10).unwrap();
+    let mut moves = 0;
+    for c in keys.chars() {
+        if c != before {
+            moves += 1;
+        }
+        before = c;
+    }
+    moves * move_cost + keys.len() * push_cost
+}
+
+fn min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let m = target_seconds / 60;
+    let s = target_seconds % 60;
+    let mut best = i64.MAX;
+    if m <= 99 {
+        best = price(typed(m, s), start_at, move_cost, push_cost);
+    }
+    if m >= 1 and s + 60 <= 99 {
+        best = best.min(price(typed(m - 1, s + 60), start_at, move_cost, push_cost));
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) {
+    println(f"start {start_at}, move {move_cost}, push {push_cost}, {target_seconds} s -> {min_cost_set_time(start_at, move_cost, push_cost, target_seconds)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one second, the longest
+    // time, 100 minutes that only 99:60 can write, and a time whose second
+    // way of writing is cheaper
+    show(1, 2, 1, 600);
+    show(0, 1, 2, 76);
+    show(5, 1, 1, 1);
+    show(9, 3, 1, 6039);
+    show(0, 10, 1, 6000);
+    show(9, 100, 1, 599);
+    // 2000 random settings, the costs up to 10, 1000 or 10^5 in turn
+    let mut seed = 2162;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let most = [10, 1000, 100000][round % 3];
+        let start_at = next_random(mut seed) % 10;
+        let move_cost = next_random(mut seed) % most + 1;
+        let push_cost = next_random(mut seed) % most + 1;
+        let target_seconds = next_random(mut seed) % 6039 + 1;
+        let cost = min_cost_set_time(start_at, move_cost, push_cost, target_seconds);
+        total += cost;
+        check = (check * 31 + cost + 1) % 1000000007;
+    }
+    println(f"2000 settings: {total} in all, checksum {check}");
+    // every time the constraints allow, from every digit, moving dear and
+    // pushing dear
+    for costs in [(100000, 1), (1, 100000)] {
+        let (move_cost, push_cost) = costs;
+        let mut every = 0;
+        let mut hash = 0;
+        for start_at in 0..10 {
+            for target_seconds in 1..6040 {
+                let cost = min_cost_set_time(start_at, move_cost, push_cost, target_seconds);
+                every += cost;
+                hash = (hash * 31 + cost + 1) % 1000000007;
+            }
+        }
+        println(f"all 60390, move {move_cost}, push {push_cost}: {every} in all, checksum {hash}");
+    }
+}

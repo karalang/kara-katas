@@ -1,0 +1,352 @@
+// LeetCode #2162: Minimum Cost to Set Cooking Time -- the differential.
+// The six arms, against the statement read literally: every push of one to
+// four digits, each normalized to four digits by zeros in front, read as
+// minutes and seconds, and kept when it cooks for the time; each kept push
+// walked from the start digit, and the least cost taken. No rule about the
+// two ways of writing a time. 300 random settings, the costs up to 10, 1000
+// or 10^5 in turn; then 30 of the longest times, 5940 to 6039 seconds; then
+// 30 of the shortest, one in each three seconds from 1 to 90; every one
+// drawn before any arm answers.
+//
+// P1  the cost is the statement read literally
+// P2  both costs three times as much: the cost three times as much
+// P3  a push one dearer: the cost 1 to 4 more
+// P4  a move one dearer: the cost 0 to 4 more
+// P5  the finger starting on the next digit: the cost changed by at most
+//     one move
+// P6  each arm agrees with at least three of the other five
+
+// ---- cooking.kara: the ★ arm, the two ways as numbers, their text walked
+fn star_cost(digits: String, start_at: i64, move_cost: i64, push_cost: i64) -> i64 {
+    let mut at = start_at;
+    let mut total = 0;
+    for c in digits.chars() {
+        let d = c.to_digit(10).unwrap() as i64;
+        if d != at {
+            total += move_cost;
+            at = d;
+        }
+        total += push_cost;
+    }
+    total
+}
+
+fn star_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let minutes = target_seconds / 60;
+    let seconds = target_seconds % 60;
+    let mut best = i64.MAX;
+    for (m, s) in [(minutes, seconds), (minutes - 1, seconds + 60)] {
+        if m >= 0 and m <= 99 and s <= 99 {
+            best = best.min(star_cost((m * 100 + s).to_string(), start_at, move_cost, push_cost));
+        }
+    }
+    best
+}
+
+// ---- cooking_minutes.kara: every count of minutes, four digits by arithmetic
+fn minutes_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let mut best = -1;
+    for m in 0..100 {
+        let s = target_seconds - 60 * m;
+        if s < 0 or s > 99 {
+            continue;
+        }
+        let digits = [m / 10, m % 10, s / 10, s % 10];
+        let mut started = false;
+        let mut at = start_at;
+        let mut total = 0;
+        for d in digits.iter() {
+            if not started and d == 0 {
+                continue;
+            }
+            started = true;
+            if d != at {
+                total += move_cost;
+                at = d;
+            }
+            total += push_cost;
+        }
+        if best < 0 or total < best {
+            best = total;
+        }
+    }
+    best
+}
+
+// ---- cooking_pad.kara: padded by a format, the zeros taken off by `strip_prefix`
+fn pad_typed(m: i64, s: i64) -> String {
+    let mut keys = f"{m:02}{s:02}";
+    while let Some(rest) = keys.strip_prefix("0") {
+        keys = rest.to_string();
+    }
+    keys
+}
+
+fn pad_price(keys: String, start_at: i64, move_cost: i64, push_cost: i64) -> i64 {
+    let mut before = char.from_digit(start_at as u32, 10).unwrap();
+    let mut moves = 0;
+    for c in keys.chars() {
+        if c != before {
+            moves += 1;
+        }
+        before = c;
+    }
+    moves * move_cost + keys.len() * push_cost
+}
+
+fn pad_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let m = target_seconds / 60;
+    let s = target_seconds % 60;
+    let mut best = i64.MAX;
+    if m <= 99 {
+        best = pad_price(pad_typed(m, s), start_at, move_cost, push_cost);
+    }
+    if m >= 1 and s + 60 <= 99 {
+        best = best.min(pad_price(pad_typed(m - 1, s + 60), start_at, move_cost, push_cost));
+    }
+    best
+}
+
+// ---- cooking_struct.kara: a `Finger` that `push`es and types a number by recursion
+struct Finger {
+    at: i64,
+    move_cost: i64,
+    push_cost: i64,
+    spent: i64,
+}
+
+impl Finger {
+    fn new(at: i64, move_cost: i64, push_cost: i64) -> Finger {
+        Finger { at: at, move_cost: move_cost, push_cost: push_cost, spent: 0 }
+    }
+
+    fn push(mut ref self, digit: i64) {
+        if digit != self.at {
+            self.spent += self.move_cost;
+            self.at = digit;
+        }
+        self.spent += self.push_cost;
+    }
+
+    fn type_number(mut ref self, n: i64) {
+        if n >= 10 {
+            self.type_number(n / 10);
+        }
+        self.push(n % 10);
+    }
+}
+
+fn finger_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let mut ways: Vec[i64] = Vec.new();
+    let minutes = target_seconds / 60;
+    let seconds = target_seconds % 60;
+    if minutes <= 99 {
+        ways.push(minutes * 100 + seconds);
+    }
+    if minutes >= 1 and seconds + 60 <= 99 {
+        ways.push((minutes - 1) * 100 + seconds + 60);
+    }
+    let mut best = i64.MAX;
+    for way in ways.iter() {
+        let mut finger = Finger.new(start_at, move_cost, push_cost);
+        finger.type_number(way);
+        best = best.min(finger.spent);
+    }
+    best
+}
+
+// ---- cooking_iter.kara: `filter_map`, `once` and `chain`, moves by `windows(2)`
+fn iter_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    (0..100)
+        .filter_map(|m| {
+            let s = target_seconds - 60 * m;
+            if s >= 0 and s <= 99 { Some(m * 100 + s) } else { None }
+        })
+        .map(|way| {
+            let keys: Vec[i64] = once(start_at)
+                .chain(way.to_string().chars().map(|c| c.to_digit(10).unwrap() as i64))
+                .collect();
+            let moves = keys.windows(2).into_iter().filter(|w| w[0] != w[1]).count();
+            moves * move_cost + (keys.len() - 1) * push_cost
+        })
+        .min()
+        .unwrap()
+}
+
+// ---- cooking_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn min_cost_set_time(start_at: i32, move_cost: i32, push_cost: i32, target_seconds: i32) -> i32 {
+        let cost = |m: i32, s: i32| {
+            if m < 0 or m > 99 or s > 99 {
+                return i32.MAX;
+            }
+            let digits = [m / 10, m % 10, s / 10, s % 10];
+            let mut i = 0;
+            while i < 4 and digits[i] == 0 {
+                i += 1;
+            }
+            let mut at = start_at;
+            let mut total: i32 = 0;
+            for d in digits[i..] {
+                if d != at {
+                    total += move_cost;
+                    at = d;
+                }
+                total += push_cost;
+            }
+            total
+        };
+        let (m, s) = (target_seconds / 60, target_seconds % 60);
+        cost(m, s).min(cost(m - 1, s + 60))
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    SolutionSolution.min_cost_set_time(start_at as i32, move_cost as i32, push_cost as i32, target_seconds as i32)
+}
+
+
+// ---- the statement read literally
+
+struct Push {
+    digits: Vec[i64],
+    seconds: i64,
+}
+
+fn every_push() -> Vec[Push] {
+    let mut pushes: Vec[Push] = Vec.new();
+    for length in 1..5 {
+        let mut count = 1;
+        for _ in 0..length {
+            count *= 10;
+        }
+        for code in 0..count {
+            let mut digits: Vec[i64] = Vec.new();
+            let mut rest = code;
+            for _ in 0..length {
+                digits.insert(0, rest % 10);
+                rest /= 10;
+            }
+            let mut four = digits.clone();
+            while four.len() < 4 {
+                four.insert(0, 0);
+            }
+            let seconds = (four[0] * 10 + four[1]) * 60 + four[2] * 10 + four[3];
+            pushes.push(Push { digits: digits, seconds: seconds });
+        }
+    }
+    pushes
+}
+
+fn literal(pushes: Vec[Push], start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let mut best = -1;
+    for p in pushes.iter() {
+        if p.seconds != target_seconds {
+            continue;
+        }
+        let mut at = start_at;
+        let mut spent = 0;
+        for d in p.digits.iter() {
+            if d != at {
+                spent += move_cost;
+            }
+            at = d;
+            spent += push_cost;
+        }
+        if best < 0 or spent < best {
+            best = spent;
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    match arm {
+        0 => star_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+        1 => minutes_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+        2 => pad_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+        3 => finger_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+        4 => iter_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+        _ => solution_min_cost_set_time(start_at, move_cost, push_cost, target_seconds),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "minutes", "pad", "finger", "iter", "solution"];
+    let pushes = every_push();
+    let mut seed = 2162;
+    let mut cases: Vec[(i64, i64, i64, i64)] = Vec.new();
+    for t in 0..360 {
+        let most = [10, 1000, 100000][t % 3];
+        let start_at = next_random(mut seed) % 10;
+        let move_cost = next_random(mut seed) % most + 1;
+        let push_cost = next_random(mut seed) % most + 1;
+        let target_seconds = if t < 300 {
+            next_random(mut seed) % 6039 + 1
+        } else if t < 330 {
+            5940 + next_random(mut seed) % 100
+        } else {
+            (t - 330) * 3 + 1 + next_random(mut seed) % 3
+        };
+        cases.push((start_at, move_cost, push_cost, target_seconds));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let (start_at, move_cost, push_cost, target_seconds) = case;
+        let truth = literal(pushes, start_at, move_cost, push_cost, target_seconds);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, start_at, move_cost, push_cost, target_seconds)).collect();
+        for arm in 0..6 {
+            let x = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let tripled = answer(arm, start_at, 3 * move_cost, 3 * push_cost, target_seconds);
+            let dearer_push = answer(arm, start_at, move_cost, push_cost + 1, target_seconds) - x;
+            let dearer_move = answer(arm, start_at, move_cost + 1, push_cost, target_seconds) - x;
+            let moved = answer(arm, (start_at + 1) % 10, move_cost, push_cost, target_seconds) - x;
+            let verdicts = [
+                x == truth,
+                tripled % 3 == 0 and tripled / 3 == x,
+                dearer_push >= 1 and dearer_push <= 4,
+                dearer_move >= 0 and dearer_move <= 4,
+                moved.abs() <= move_cost,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"start {start_at}, move {move_cost}, push {push_cost}, {target_seconds} s, arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} settings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

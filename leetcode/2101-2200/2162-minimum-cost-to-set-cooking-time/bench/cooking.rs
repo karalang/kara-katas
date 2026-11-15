@@ -1,0 +1,45 @@
+// LeetCode #2162: Minimum Cost to Set Cooking Time -- the benchmark's Rust
+// mirror of cooking.kara.
+
+fn cost(digits: String, start_at: i64, move_cost: i64, push_cost: i64) -> i64 {
+    let mut at = start_at;
+    let mut total = 0;
+    for c in digits.chars() {
+        let d = c.to_digit(10).unwrap() as i64;
+        if d != at {
+            total += move_cost;
+            at = d;
+        }
+        total += push_cost;
+    }
+    total
+}
+
+fn min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let minutes = target_seconds / 60;
+    let seconds = target_seconds % 60;
+    let mut best = i64::MAX;
+    for (m, s) in [(minutes, seconds), (minutes - 1, seconds + 60)] {
+        if m >= 0 && m <= 99 && s <= 99 {
+            best = best.min(cost((m * 100 + s).to_string(), start_at, move_cost, push_cost));
+        }
+    }
+    best
+}
+
+fn main() {
+    let mut total = 0i64;
+    let mut check = 0i64;
+    for pass in 0..30i64 {
+        let move_cost = pass % 10 + 1;
+        let push_cost = pass * 3 % 10 + 1;
+        for start_at in 0..10i64 {
+            for target_seconds in 1..6040i64 {
+                let cost = min_cost_set_time(start_at, move_cost, push_cost, target_seconds);
+                total += cost;
+                check = (check * 31 + cost + pass) % 1000000007;
+            }
+        }
+    }
+    println!("1811700 solves: {} in all, checksum {}", total, check);
+}

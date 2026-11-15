@@ -1,0 +1,87 @@
+// LeetCode #2162: Minimum Cost to Set Cooking Time -- every count of
+// minutes from 0 to 99 tried, the seconds what is left of the time, kept
+// when they are 0 to 99. The four digits by `/ 10` and `% 10`, the leading
+// zeros skipped until a digit other than 0 starts the number, and the rest
+// walked from the start digit. O(100).
+
+fn min_cost_set_time(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) -> i64 {
+    let mut best = -1;
+    for m in 0..100 {
+        let s = target_seconds - 60 * m;
+        if s < 0 or s > 99 {
+            continue;
+        }
+        let digits = [m / 10, m % 10, s / 10, s % 10];
+        let mut started = false;
+        let mut at = start_at;
+        let mut total = 0;
+        for d in digits.iter() {
+            if not started and d == 0 {
+                continue;
+            }
+            started = true;
+            if d != at {
+                total += move_cost;
+                at = d;
+            }
+            total += push_cost;
+        }
+        if best < 0 or total < best {
+            best = total;
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(start_at: i64, move_cost: i64, push_cost: i64, target_seconds: i64) {
+    println(f"start {start_at}, move {move_cost}, push {push_cost}, {target_seconds} s -> {min_cost_set_time(start_at, move_cost, push_cost, target_seconds)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one second, the longest
+    // time, 100 minutes that only 99:60 can write, and a time whose second
+    // way of writing is cheaper
+    show(1, 2, 1, 600);
+    show(0, 1, 2, 76);
+    show(5, 1, 1, 1);
+    show(9, 3, 1, 6039);
+    show(0, 10, 1, 6000);
+    show(9, 100, 1, 599);
+    // 2000 random settings, the costs up to 10, 1000 or 10^5 in turn
+    let mut seed = 2162;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let most = [10, 1000, 100000][round % 3];
+        let start_at = next_random(mut seed) % 10;
+        let move_cost = next_random(mut seed) % most + 1;
+        let push_cost = next_random(mut seed) % most + 1;
+        let target_seconds = next_random(mut seed) % 6039 + 1;
+        let cost = min_cost_set_time(start_at, move_cost, push_cost, target_seconds);
+        total += cost;
+        check = (check * 31 + cost + 1) % 1000000007;
+    }
+    println(f"2000 settings: {total} in all, checksum {check}");
+    // every time the constraints allow, from every digit, moving dear and
+    // pushing dear
+    for costs in [(100000, 1), (1, 100000)] {
+        let (move_cost, push_cost) = costs;
+        let mut every = 0;
+        let mut hash = 0;
+        for start_at in 0..10 {
+            for target_seconds in 1..6040 {
+                let cost = min_cost_set_time(start_at, move_cost, push_cost, target_seconds);
+                every += cost;
+                hash = (hash * 31 + cost + 1) % 1000000007;
+            }
+        }
+        println(f"all 60390, move {move_cost}, push {push_cost}: {every} in all, checksum {hash}");
+    }
+}
