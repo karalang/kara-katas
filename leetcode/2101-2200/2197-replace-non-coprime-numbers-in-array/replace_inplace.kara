@@ -1,0 +1,115 @@
+// LeetCode #2197: Replace Non-Coprime Numbers in Array -- in place: the
+// array taken by `own`, its front `w` slots the settled run, each next
+// number merged backward into the run's last slot while the two share a
+// factor, then written at `w`; the array `truncate`d to the run.
+// O(n log m).
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn settle(nums: own Vec[i64]) -> Vec[i64] {
+    let mut v = nums;
+    let mut w = 0;
+    for r in 0..v.len() {
+        let mut cur = v[r];
+        while w > 0 {
+            let g = gcd(v[w - 1], cur);
+            if g == 1 {
+                break;
+            }
+            cur = v[w - 1] / g * cur;
+            w -= 1;
+        }
+        v[w] = cur;
+        w += 1;
+    }
+    v.truncate(w);
+    v
+}
+
+fn replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    settle(nums.clone())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {replace_non_coprimes(nums)}");
+}
+
+fn fold(v: Vec[i64], check: i64) -> i64 {
+    let mut c = check;
+    for x in v.iter() {
+        c = (c * 31 + x) % 1000000007;
+    }
+    (c * 31 + v.len()) % 1000000007
+}
+
+// the divisors up to 10^5 of `m`: every LCM of them divides `m`, so a
+// random array of them keeps the constraints' bound on the answer when
+// `m` is at most 10^8
+fn divisors(m: i64) -> Vec[i64] {
+    (1..100001).filter(|d| m % d == 0).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, all coprime,
+    // a merge that runs back to the start, and one that takes them all
+    show([6, 4, 3, 2, 7, 6, 2]);
+    show([2, 2, 1, 1, 3, 3, 3]);
+    show([5]);
+    show([2, 3, 5, 7, 11, 13]);
+    show([3, 5, 7, 11, 2, 2, 22]);
+    show([2, 6, 15, 35, 77, 143]);
+    // 3000 random arrays of 1 to 40 numbers, drawn in turn from the
+    // divisors of 2^4 3^3 5^2 7 11 13, of 2^6 3^4 17 19, and from 1 and
+    // six primes near 10^5
+    let pools = [
+        divisors(10810800),
+        divisors(1674432),
+        [1, 99991, 99989, 99971, 99961, 99929, 99923].to_vec(),
+    ];
+    let mut seed = 2197;
+    let mut check = 0;
+    let mut kept = 0;
+    for round in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let pool = ref pools[round % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(pool[wide_random(mut seed) % pool.len()]);
+        }
+        let out = replace_non_coprimes(nums);
+        kept += out.len();
+        check = fold(out, check);
+    }
+    println(f"3000 arrays: {kept} kept, checksum {check}");
+    // the constraints' longest, 10^5 numbers: from the first pool, and from
+    // the third
+    let mut first: Vec[i64] = Vec.new();
+    let mut third: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        first.push(pools[0][wide_random(mut seed) % pools[0].len()]);
+        third.push(pools[2][wide_random(mut seed) % pools[2].len()]);
+    }
+    let a = replace_non_coprimes(first);
+    let b = replace_non_coprimes(third);
+    println(f"10^5 numbers: {a.len()} kept, checksum {fold(a, 0)}; near primes: {b.len()} kept, checksum {fold(b, 0)}");
+}

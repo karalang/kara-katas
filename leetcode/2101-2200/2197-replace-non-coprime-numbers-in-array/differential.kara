@@ -1,0 +1,430 @@
+// LeetCode #2197: Replace Non-Coprime Numbers in Array -- the differential.
+// The six arms, against the statement read literally: find the first two
+// adjacent numbers that share a factor, replace them by their LCM, and
+// start again from the front until no such pair is left; no stack. 300
+// random arrays of 1 to 40 numbers, drawn in turn from the divisors of
+// 2^4 3^3 5^2 7 11 13, of 2^6 3^4 17 19, and from 1 and six primes near
+// 10^5, so every LCM stays within the constraints' 10^8; then 30 of one
+// number repeated; then 30 runs of consecutive numbers up to 10^5, no two
+// adjacent ones sharing a factor. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  no two adjacent numbers of it share a factor, and it is the array
+//     cut into runs, in order, each replaced by its LCM
+// P3  the array reversed: the answer reversed
+// P4  the answer replaced again: itself
+// P5  the array followed by itself reversed: the same as the two answers
+//     so joined, replaced again
+// P6  each arm agrees with at least three of the other five
+
+// ---- replace.kara: the ★ arm, a stack merged at its top
+fn star_gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn star_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    let mut stack: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        let mut cur = x;
+        while let Some(top) = stack.last() {
+            let g = star_gcd(top, cur);
+            if g == 1 {
+                break;
+            }
+            cur = top / g * cur;
+            stack.pop();
+        }
+        stack.push(cur);
+    }
+    stack
+}
+
+// ---- replace_linked.kara: `prev` and `next` over the array's slots
+fn linked_gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn linked_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    let n = nums.len();
+    let mut value = nums.clone();
+    let mut prev: Vec[i64] = (0..n).map(|i| i - 1).collect();
+    let mut next: Vec[i64] = (0..n).map(|i| i + 1).collect();
+    let mut head = 0;
+    for i in 1..n {
+        while prev[i] >= 0 {
+            let p = prev[i];
+            let g = linked_gcd(value[p], value[i]);
+            if g == 1 {
+                break;
+            }
+            value[i] = value[p] / g * value[i];
+            prev[i] = prev[p];
+            if prev[p] >= 0 {
+                next[prev[p]] = i;
+            } else {
+                head = i;
+            }
+        }
+    }
+    let mut out: Vec[i64] = Vec.new();
+    let mut at = head;
+    while at < n {
+        out.push(value[at]);
+        at = next[at];
+    }
+    out
+}
+
+// ---- replace_fold.kara: one `fold`, a recursive `settle`
+fn fold_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { fold_gcd(b, a % b) }
+}
+
+fn fold_settle(stack: mut ref Vec[i64], x: i64) {
+    match stack.last().cloned() {
+        Some(top) if fold_gcd(top, x) > 1 => {
+            let g = fold_gcd(top, x);
+            stack.pop();
+            fold_settle(mut stack, top / g * x);
+        }
+        _ => stack.push(x),
+    }
+}
+
+fn fold_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    nums.iter().fold(Vec.new(), |stack, x| {
+        let mut s = stack;
+        fold_settle(mut s, x);
+        s
+    })
+}
+
+// ---- replace_struct.kara: `Settled` and `Pair`
+struct Pair {
+    a: i64,
+    b: i64,
+}
+
+impl Pair {
+    fn gcd(ref self) -> i64 {
+        let mut x = self.a;
+        let mut y = self.b;
+        while y != 0 {
+            let r = x % y;
+            x = y;
+            y = r;
+        }
+        x
+    }
+
+    fn lcm(ref self) -> i64 {
+        self.a / self.gcd() * self.b
+    }
+}
+
+struct Settled {
+    run: Vec[i64],
+}
+
+impl Settled {
+    fn push(mut ref self, x: i64) {
+        let mut cur = x;
+        while self.run.len() > 0 {
+            let pair = Pair { a: self.run[self.run.len() - 1], b: cur };
+            if pair.gcd() == 1 {
+                break;
+            }
+            cur = pair.lcm();
+            self.run.pop();
+        }
+        self.run.push(cur);
+    }
+
+    fn into_vec(own self) -> Vec[i64] {
+        self.run
+    }
+}
+
+fn struct_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    let mut settled = Settled { run: Vec.new() };
+    for x in nums.iter() {
+        settled.push(x);
+    }
+    settled.into_vec()
+}
+
+// ---- replace_inplace.kara: the array's front as the run, `truncate`d
+fn inplace_gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn inplace_settle(nums: own Vec[i64]) -> Vec[i64] {
+    let mut v = nums;
+    let mut w = 0;
+    for r in 0..v.len() {
+        let mut cur = v[r];
+        while w > 0 {
+            let g = inplace_gcd(v[w - 1], cur);
+            if g == 1 {
+                break;
+            }
+            cur = v[w - 1] / g * cur;
+            w -= 1;
+        }
+        v[w] = cur;
+        w += 1;
+    }
+    v.truncate(w);
+    v
+}
+
+fn inplace_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    inplace_settle(nums.clone())
+}
+
+// ---- replace_solution.kara: LeetCode's Rust template, carried by `karac fix`
+fn solution_gcd(a: i64, b: i64) -> i64 {
+    if b == 0 { a } else { solution_gcd(b, a % b) }
+}
+
+impl Solution {
+    pub fn replace_non_coprimes(nums: Vec[i32]) -> Vec[i32] {
+        let mut st: Vec[i64] = Vec.new();
+        for x in nums.iter() {
+            let mut cur = x as i64;
+            while let Some(top) = st.last().cloned() {
+                let g = solution_gcd(top, cur);
+                if g == 1 {
+                    break;
+                }
+                cur = cur / g * top;
+                st.pop();
+            }
+            st.push(cur);
+        }
+        st.into_iter().map(|x| x as i32).collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_replace_non_coprimes(nums: Vec[i64]) -> Vec[i64] {
+    let narrow: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.replace_non_coprimes(narrow).iter().map(|x| x as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn plain_gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    x
+}
+
+fn literal(nums: Vec[i64]) -> Vec[i64] {
+    let mut v = nums.clone();
+    loop {
+        let mut found = -1;
+        for i in 0..(v.len() - 1) {
+            if found < 0 and plain_gcd(v[i], v[i + 1]) > 1 {
+                found = i;
+            }
+        }
+        if found < 0 {
+            return v;
+        }
+        let a = v[found];
+        let b = v[found + 1];
+        v[found] = a / plain_gcd(a, b) * b;
+        v.remove(found + 1);
+    }
+}
+
+// whether `out` is the array cut into runs, in order, each replaced by
+// its LCM. A 1 shares a factor with nothing, so it is a run of its own;
+// any other number divides the LCM of its run and of no other, since the
+// runs' LCMs are coprime, so a run ends where the next number stops
+// dividing its LCM, which by then it must have reached
+fn runs_of(nums: Vec[i64], out: Vec[i64]) -> bool {
+    let mut j = 0;
+    let mut l = 1;
+    for x in nums.iter() {
+        if l > 1 and (x == 1 or out[j] % x != 0) {
+            if l != out[j] {
+                return false;
+            }
+            j += 1;
+            l = 1;
+        }
+        if j >= out.len() or out[j] % x != 0 {
+            return false;
+        }
+        if x == 1 {
+            if out[j] != 1 {
+                return false;
+            }
+            j += 1;
+        } else {
+            l = l / plain_gcd(l, x) * x;
+        }
+    }
+    if l > 1 {
+        if l != out[j] {
+            return false;
+        }
+        j += 1;
+    }
+    j == out.len()
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> Vec[i64] {
+    match arm {
+        0 => star_replace_non_coprimes(nums),
+        1 => linked_replace_non_coprimes(nums),
+        2 => fold_replace_non_coprimes(nums),
+        3 => struct_replace_non_coprimes(nums),
+        4 => inplace_replace_non_coprimes(nums),
+        _ => solution_replace_non_coprimes(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn divisors(m: i64) -> Vec[i64] {
+    (1..100001).filter(|d| m % d == 0).collect()
+}
+
+fn joined(a: Vec[i64], b: Vec[i64]) -> Vec[i64] {
+    let mut v = a.clone();
+    for x in b.iter() {
+        v.push(x);
+    }
+    v
+}
+
+fn main() {
+    let names = ["star", "linked", "fold", "struct", "inplace", "solution"];
+    let pools = [
+        divisors(10810800),
+        divisors(1674432),
+        [1, 99991, 99989, 99971, 99961, 99929, 99923].to_vec(),
+    ];
+    let mut seed = 2197;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 40 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            let pool = ref pools[c % 3];
+            for _ in 0..n {
+                nums.push(pool[wide_random(mut seed) % pool.len()]);
+            }
+        } else if c < 330 {
+            let pool = ref pools[c % 3];
+            let x = pool[wide_random(mut seed) % pool.len()];
+            for _ in 0..n {
+                nums.push(x);
+            }
+        } else {
+            let start = wide_random(mut seed) % (100001 - n) + 1;
+            for i in 0..n {
+                nums.push(start + i);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        for x in truth.iter() {
+            check = (check * 31 + x) % 1000000007;
+        }
+        check = (check * 31 + truth.len()) % 1000000007;
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, nums)).collect();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let there_and_back = joined(nums, reversed);
+        for arm in 0..6 {
+            let out = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == out {
+                    same += 1;
+                }
+            }
+            let mut coprime = true;
+            for i in 1..out.len() {
+                if plain_gcd(out[i - 1], out[i]) > 1 {
+                    coprime = false;
+                }
+            }
+            let back: Vec[i64] = out.iter().rev().collect();
+            let halves = joined(out, answer(arm, reversed));
+            let verdicts = [
+                out == truth,
+                coprime and runs_of(nums, out),
+                answer(arm, reversed) == back,
+                answer(arm, out) == out,
+                answer(arm, there_and_back) == answer(arm, halves),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, answered {out}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
