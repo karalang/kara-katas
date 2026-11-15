@@ -1,0 +1,231 @@
+// LeetCode #1575: Count All Possible Routes -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 2
+// to 4 distinct locations below 8 and a fuel of 1 to 6, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every location moved by the same amount leaves the answer
+// P3  every location negated leaves the answer
+// P4  one more unit of fuel never lowers the answer
+// P5  the start and the finish swapped leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- routes.kara: the ★ arm: routes to the finish filled from no fuel up
+
+fn star_arm(locations: Vec[i64], start: i64, finish: i64, fuel: i64) -> i64 {
+    let m = 1000000007;
+    let n = locations.len();
+    let mut ways = Vec.filled(fuel + 1, Vec.filled(n, 0));
+    for f in 0..fuel + 1 {
+        for c in 0..n {
+            let mut total = if c == finish { 1 } else { 0 };
+            for d in 0..n {
+                let cost = (locations[c] - locations[d]).abs();
+                if d != c and cost <= f {
+                    total = (total + ways[f - cost][d]) % m;
+                }
+            }
+            ways[f][c] = total;
+        }
+    }
+    ways[fuel][start]
+}
+
+// ---- routes_memo.kara: a recursive walk with a Map memo
+
+fn routes_from(locations: Vec[i64], finish: i64, city: i64, fuel: i64, memo: mut ref Map[(i64, i64), i64]) -> i64 {
+    if let Some(known) = memo.get((city, fuel)) {
+        return known;
+    }
+    let mut total = if city == finish { 1 } else { 0 };
+    for next in 0..locations.len() {
+        let cost = (locations[city] - locations[next]).abs();
+        if next != city and cost <= fuel {
+            total = (total + routes_from(locations, finish, next, fuel - cost, mut memo)) % 1000000007;
+        }
+    }
+    memo.insert((city, fuel), total);
+    total
+}
+
+fn memo_arm(locations: Vec[i64], start: i64, finish: i64, fuel: i64) -> i64 {
+    let mut memo = Map.new();
+    routes_from(locations, finish, start, fuel, mut memo)
+}
+
+// ---- routes_forward.kara: the ways to stand at each city, from a full tank down
+
+fn forward_arm(locations: Vec[i64], start: i64, finish: i64, fuel: i64) -> i64 {
+    let m = 1000000007;
+    let n = locations.len();
+    let mut reach = Vec.filled(fuel + 1, Vec.filled(n, 0));
+    reach[fuel][start] = 1;
+    let mut answer = 0;
+    for f in (0..fuel + 1).rev() {
+        for c in 0..n {
+            let here = reach[f][c];
+            if here == 0 {
+                continue;
+            }
+            if c == finish {
+                answer = (answer + here) % m;
+            }
+            for d in 0..n {
+                let cost = (locations[c] - locations[d]).abs();
+                if d != c and cost <= f {
+                    reach[f - cost][d] = (reach[f - cost][d] + here) % m;
+                }
+            }
+        }
+    }
+    answer
+}
+
+// ---- routes_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+const SOLUTION_MOD: i64 = 1_000_000_007;
+
+fn solution_dfs(locations: Vec[i32], city: i64, fuel: i32, finish: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if memo[city][fuel] != -1 {
+        return memo[city][fuel];
+    }
+    let mut ans = if city == finish { 1 } else { 0 };
+    for next in 0..locations.len() {
+        let cost = (locations[city] - locations[next]).abs();
+        if next != city and cost <= fuel {
+            ans = (ans + solution_dfs(locations, next, fuel - cost, finish, mut memo)) % SOLUTION_MOD;
+        }
+    }
+    memo[city][fuel] = ans;
+    ans
+}
+
+impl Solution {
+    pub fn count_routes(locations: Vec[i32], start: i32, finish: i32, fuel: i32) -> i32 {
+        let n = locations.len();
+        let mut memo = Vec.filled(n, Vec.filled(fuel as i64 + 1, -1));
+        solution_dfs(locations, start, fuel, finish, mut memo) as i32
+    }
+}
+
+fn solution_arm(locations: Vec[i64], start: i64, finish: i64, fuel: i64) -> i64 {
+    let locations: Vec[i32] = locations.iter().map(|x| x as i32).collect();
+    Solution.count_routes(locations, start as i32, finish as i32, fuel as i32)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, locations: Vec[i64], start: i64, finish: i64, fuel: i64) -> i64 {
+    match a {
+        0 => star_arm(locations, start, finish, fuel),
+        1 => memo_arm(locations, start, finish, fuel),
+        2 => forward_arm(locations, start, finish, fuel),
+        _ => solution_arm(locations, start, finish, fuel),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["routes", "memo", "forward", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every route walked out from the start,
+// one city to another while the fuel lasts, counted each time it stands at
+// the finish
+
+fn literal(locations: Vec[i64], city: i64, finish: i64, fuel: i64) -> i64 {
+    let mut routes = if city == finish { 1 } else { 0 };
+    for next in 0..locations.len() {
+        let cost = (locations[city] - locations[next]).abs();
+        if next != city and cost <= fuel {
+            routes += literal(locations, next, finish, fuel - cost);
+        }
+    }
+    routes
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15750;
+    let mut cases: Vec[(Vec[i64], i64, i64, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 3 + 2;
+        let mut locations: Vec[i64] = Vec.new();
+        while locations.len() < n {
+            let x = next_random(mut seed) % 8;
+            if not locations.contains(x) {
+                locations.push(x);
+            }
+        }
+        let start = next_random(mut seed) % n;
+        let finish = next_random(mut seed) % n;
+        let fuel = next_random(mut seed) % 6 + 1;
+        cases.push((locations, start, finish, fuel));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (locations, start, finish, fuel)) in cases.iter().enumerate() {
+        let truth = literal(locations, start, finish, fuel);
+        let moved: Vec[i64] = locations.iter().map(|x| x + 100).collect();
+        let negated: Vec[i64] = locations.iter().map(|x| 7 - x).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, locations, start, finish, fuel);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, moved, start, finish, fuel) != answer,
+                arm(a, negated, start, finish, fuel) != answer,
+                arm(a, locations, start, finish, fuel + 1) < answer,
+                arm(a, locations, finish, start, fuel) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
