@@ -1,0 +1,100 @@
+// LeetCode #2186: Minimum Number of Steps to Make Two Strings Anagram II
+// -- a `struct Ledger` of how many more of each letter the left side has
+// than the right, made `empty`; a string is `credit`ed or `debit`ed to it
+// (`mut ref self`), and it says how many letters must be `appended` to
+// make the two sides even (`ref self`). O(|s| + |t|).
+
+struct Ledger {
+    owed: Vec[i64],
+}
+
+impl Ledger {
+    fn empty() -> Ledger {
+        Ledger { owed: Vec.filled(26, 0) }
+    }
+
+    fn credit(mut ref self, text: String) {
+        for b in text.bytes() {
+            self.owed[b - 97] += 1;
+        }
+    }
+
+    fn debit(mut ref self, text: String) {
+        for b in text.bytes() {
+            self.owed[b - 97] -= 1;
+        }
+    }
+
+    fn appended(ref self) -> i64 {
+        let mut total = 0;
+        for d in self.owed.iter() {
+            if d > 0 {
+                total += d;
+            } else {
+                total -= d;
+            }
+        }
+        total
+    }
+}
+
+fn min_steps(s: String, t: String) -> i64 {
+    let mut ledger = Ledger.empty();
+    ledger.credit(s);
+    ledger.debit(t);
+    ledger.appended()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn show(s: String, t: String) {
+    println(f"\"{s}\", \"{t}\" -> {min_steps(s, t)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one letter twice, two
+    // different letters, one string inside the other, and the same
+    // letters in another order
+    show("leetcode", "coats");
+    show("night", "thing");
+    show("a", "a");
+    show("a", "b");
+    show("aaab", "ab");
+    show("abcde", "edcba");
+    // 2000 random pairs of 1 to 30 letters, from a to c or a to z in turn
+    let mut seed = 2186;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let letters = [3, 26][round % 2];
+        let a = next_random(mut seed) % 30 + 1;
+        let b = next_random(mut seed) % 30 + 1;
+        let s = random_word(a, letters, mut seed);
+        let t = random_word(b, letters, mut seed);
+        let steps = min_steps(s, t);
+        total += steps;
+        check = (check * 31 + steps + a) % 1000000007;
+    }
+    println(f"2000 pairs: {total} steps in all, checksum {check}");
+    // the constraints' largest, 2 * 10^5 letters each: all a against all
+    // z, two at random, and one against itself reversed
+    let all_a = "a".repeat(200000);
+    let all_z = "z".repeat(200000);
+    let s = random_word(200000, 26, mut seed);
+    let t = random_word(200000, 26, mut seed);
+    let back: String = s.chars().rev().collect();
+    println(f"2 * 10^5 letters: {min_steps(all_a, all_z)} {min_steps(s, t)} {min_steps(s, back)}");
+}

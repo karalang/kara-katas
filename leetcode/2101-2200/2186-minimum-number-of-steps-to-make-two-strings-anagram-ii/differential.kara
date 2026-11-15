@@ -1,0 +1,288 @@
+// LeetCode #2186: Minimum Number of Steps to Make Two Strings Anagram II
+// -- the differential. The six arms, against the statement read
+// literally: the two strings sorted and compared, and at the first
+// place they differ, or where one runs out, the smaller letter appended
+// to the string that lacks it, one step at a time, until they sort the
+// same. No counts. 300 random pairs of 1 to 8 letters, from a to c or a
+// to e in turn; then 30 of a string against itself reversed; then 30
+// with one of them a single letter over and over; every one drawn
+// before any arm answers.
+//
+// P1  the steps are the statement read literally
+// P2  s and t swapped: the same steps
+// P3  the same word appended to both: the same steps
+// P4  every letter 21 later in the alphabet, a to e made v to z: the
+//     same steps
+// P5  the steps at least the lengths' difference and at most their sum,
+//     and of the same parity as the sum
+// P6  each arm agrees with at least three of the other five
+
+// ---- anagram_steps.kara: the ★ arm, one balance of 26 counts
+fn star_min_steps(s: String, t: String) -> i64 {
+    let mut balance: Vec[i64] = Vec.filled(26, 0);
+    for b in s.bytes() {
+        balance[b - 97] += 1;
+    }
+    for b in t.bytes() {
+        balance[b - 97] -= 1;
+    }
+    let mut steps = 0;
+    for d in balance.iter() {
+        steps += d.abs();
+    }
+    steps
+}
+
+// ---- anagram_steps_sorted.kara: both sorted and walked like a merge
+fn sorted_min_steps(s: String, t: String) -> i64 {
+    let mut a = s.bytes().to_vec();
+    let mut b = t.bytes().to_vec();
+    a.sort();
+    b.sort();
+    let mut i = 0;
+    let mut j = 0;
+    let mut steps = 0;
+    while i < a.len() and j < b.len() {
+        if a[i] == b[j] {
+            i += 1;
+            j += 1;
+        } else if a[i] < b[j] {
+            steps += 1;
+            i += 1;
+        } else {
+            steps += 1;
+            j += 1;
+        }
+    }
+    steps + (a.len() - i) + (b.len() - j)
+}
+
+// ---- anagram_steps_map.kara: a `Map[char, i64]` by `entry`
+fn map_min_steps(s: String, t: String) -> i64 {
+    let mut balance: Map[char, i64] = Map.new();
+    for c in s.chars() {
+        *balance.entry(c).or_insert(0) += 1;
+    }
+    for c in t.chars() {
+        *balance.entry(c).or_insert(0) -= 1;
+    }
+    let mut steps = 0;
+    for d in balance.values() {
+        steps += d.abs();
+    }
+    steps
+}
+
+// ---- anagram_steps_struct.kara: a `Ledger` credited and debited
+struct Ledger {
+    owed: Vec[i64],
+}
+
+impl Ledger {
+    fn empty() -> Ledger {
+        Ledger { owed: Vec.filled(26, 0) }
+    }
+
+    fn credit(mut ref self, text: String) {
+        for b in text.bytes() {
+            self.owed[b - 97] += 1;
+        }
+    }
+
+    fn debit(mut ref self, text: String) {
+        for b in text.bytes() {
+            self.owed[b - 97] -= 1;
+        }
+    }
+
+    fn appended(ref self) -> i64 {
+        let mut total = 0;
+        for d in self.owed.iter() {
+            if d > 0 {
+                total += d;
+            } else {
+                total -= d;
+            }
+        }
+        total
+    }
+}
+
+fn struct_min_steps(s: String, t: String) -> i64 {
+    let mut ledger = Ledger.empty();
+    ledger.credit(s);
+    ledger.debit(t);
+    ledger.appended()
+}
+
+// ---- anagram_steps_iter.kara: `fold`, `zip`, `map`, `sum`
+fn iter_counts(text: String) -> Vec[i64] {
+    text.bytes().iter().fold(Vec.filled(26, 0), |acc, b| {
+        let mut next = acc;
+        next[b - 97] += 1;
+        next
+    })
+}
+
+fn iter_min_steps(s: String, t: String) -> i64 {
+    iter_counts(s).iter().zip(iter_counts(t).iter()).map(|(x, y)| (x - y).abs()).sum()
+}
+
+// ---- anagram_steps_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn min_steps(s: String, t: String) -> i32 {
+        let mut cnt = [0i32; 26];
+        for b in s.bytes() {
+            cnt[(b - b'a') as usize] += 1;
+        }
+        for b in t.bytes() {
+            cnt[(b - b'a') as usize] -= 1;
+        }
+        cnt.iter().map(|x| x.abs()).sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_min_steps(s: String, t: String) -> i64 {
+    Solution.min_steps(s, t)
+}
+
+// ---- the statement read literally
+
+fn sorted_letters(text: String) -> Vec[u8] {
+    let mut v = text.bytes().to_vec();
+    v.sort();
+    v
+}
+
+fn literal(s: String, t: String) -> i64 {
+    let mut a = s.clone();
+    let mut b = t.clone();
+    let mut steps = 0;
+    loop {
+        let x = sorted_letters(a);
+        let y = sorted_letters(b);
+        if x == y {
+            return steps;
+        }
+        let mut i = 0;
+        while i < x.len() and i < y.len() and x[i] == y[i] {
+            i += 1;
+        }
+        if i == y.len() or (i < x.len() and x[i] < y[i]) {
+            b.push(x[i] as char);
+        } else {
+            a.push(y[i] as char);
+        }
+        steps += 1;
+    }
+}
+
+fn answer(arm: i64, s: String, t: String) -> i64 {
+    match arm {
+        0 => star_min_steps(s, t),
+        1 => sorted_min_steps(s, t),
+        2 => map_min_steps(s, t),
+        3 => struct_min_steps(s, t),
+        4 => iter_min_steps(s, t),
+        _ => solution_min_steps(s, t),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..n {
+        w.push((97 + next_random(mut seed) % letters) as u8 as char);
+    }
+    w
+}
+
+fn shifted(text: String) -> String {
+    let mut out = String.new();
+    for b in text.bytes() {
+        out.push((b + 21) as char);
+    }
+    out
+}
+
+fn main() {
+    let names = ["star", "sorted", "map", "struct", "iter", "solution"];
+    let mut seed = 2186;
+    let mut cases: Vec[(String, String, String)] = Vec.new();
+    for c in 0..360 {
+        let letters = [3, 5][c % 2];
+        let a = next_random(mut seed) % 8 + 1;
+        let s = random_word(a, letters, mut seed);
+        let t = if c < 300 {
+            let b = next_random(mut seed) % 8 + 1;
+            random_word(b, letters, mut seed)
+        } else if c < 330 {
+            s.chars().rev().collect()
+        } else {
+            let b = next_random(mut seed) % 8 + 1;
+            random_word(1, letters, mut seed).repeat(b)
+        };
+        let extra_len = next_random(mut seed) % 4 + 1;
+        let extra = random_word(extra_len, letters, mut seed);
+        cases.push((s, t, extra));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, t, extra) in cases.iter() {
+        let truth = literal(s, t);
+        check = (check * 31 + s.len() * 7 + t.len() + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, t)).collect();
+        let longer_s = f"{s}{extra}";
+        let longer_t = f"{t}{extra}";
+        let far_s = shifted(s);
+        let far_t = shifted(t);
+        let low = (s.len() - t.len()).abs();
+        let high = s.len() + t.len();
+        for arm in 0..6 {
+            let steps = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == steps {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                steps == truth,
+                answer(arm, t, s) == steps,
+                answer(arm, longer_s, longer_t) == steps,
+                answer(arm, far_s, far_t) == steps,
+                steps >= low and steps <= high and (high - steps) % 2 == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\", \"{t}\" arm {names[arm]}: P{q + 1} fails, answered {steps}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
