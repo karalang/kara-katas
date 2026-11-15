@@ -1,0 +1,88 @@
+// LeetCode #2163: Minimum Difference in Sums After Removal of Elements --
+// LeetCode's Rust template: `BinaryHeap` for the prefix's n smallest and
+// `BinaryHeap` of `Reverse` for the suffix's n largest, `vec![0i64; n +
+// 1]`, `nums[i] as i64`, written as Rust. Carried by `karac fix`. The
+// adapter below hands the harness's numbers to it as `i32`s.
+
+impl Solution {
+    pub fn minimum_difference(nums: Vec[i32]) -> i64 {
+        let n = nums.len() / 3;
+        let mut left = Vec.filled(n + 1, 0);
+        let mut heap = PriorityQueue.max_first();
+        let mut sum: i64 = 0;
+        for i in 0..2 * n {
+            heap.push(nums[i]);
+            sum += nums[i];
+            if heap.len() > n {
+                sum -= heap.pop().unwrap();
+            }
+            if i + 1 >= n {
+                left[i + 1 - n] = sum;
+            }
+        }
+        let mut heap = PriorityQueue.new();
+        let mut sum: i64 = 0;
+        let mut ans = i64.MAX;
+        for i in (n..3 * n).rev() {
+            heap.push(nums[i]);
+            sum += nums[i];
+            if heap.len() > n {
+                sum -= heap.pop().unwrap();
+            }
+            if i <= 2 * n {
+                ans = ans.min(left[i - n] - sum);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn minimum_difference(nums: Vec[i64]) -> i64 {
+    Solution.minimum_difference(nums.iter().map(|x| x as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {minimum_difference(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number a part, all the
+    // same, rising, and falling
+    show([3, 1, 2].to_vec());
+    show([7, 9, 5, 8, 1, 3].to_vec());
+    show([4, 4, 4].to_vec());
+    show([6, 6, 6, 6, 6, 6].to_vec());
+    show([1, 2, 3, 4, 5, 6, 7, 8, 9].to_vec());
+    show([9, 8, 7, 6, 5, 4, 3, 2, 1].to_vec());
+    // 2000 random lists of 3 to 15 numbers from 1 to 10, 100 or 10^5 in turn
+    let mut seed = 2163;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 5 + 1;
+        let most = [10, 100, 100000][round % 3];
+        let nums: Vec[i64] = (0..3 * n).map(|_| wide_random(mut seed) % most + 1).collect();
+        let d = minimum_difference(nums);
+        total += d;
+        check = (check * 31 + d + 1000000000) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest, 300000 numbers: at random, and all one number
+    let random: Vec[i64] = (0..300000).map(|_| wide_random(mut seed) % 100000 + 1).collect();
+    println(f"300000 at random: {minimum_difference(random)}");
+    let same: Vec[i64] = Vec.filled(300000, 100000);
+    println(f"300000 the same: {minimum_difference(same)}");
+}

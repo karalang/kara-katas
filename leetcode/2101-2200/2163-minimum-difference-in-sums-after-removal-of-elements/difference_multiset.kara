@@ -1,0 +1,100 @@
+// LeetCode #2163: Minimum Difference in Sums After Removal of Elements --
+// the kept numbers as a multiset, a `SortedMap` from each number to how
+// many times it is kept. The prefix drops one of its largest by `last`
+// whenever it keeps n + 1, the suffix one of its smallest by `first`; a
+// count that falls to 0 is `remove`d. O(n log n).
+
+fn take_one(counts: mut ref SortedMap[i64, i64], key: i64) {
+    let left = counts[key] - 1;
+    if left == 0 {
+        counts.remove(key);
+    } else {
+        counts[key] = left;
+    }
+}
+
+fn add_one(counts: mut ref SortedMap[i64, i64], key: i64) {
+    let had = counts.get(key).cloned().unwrap_or(0);
+    counts[key] = had + 1;
+}
+
+fn minimum_difference(nums: Vec[i64]) -> i64 {
+    let n = nums.len() / 3;
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    let mut sum = 0;
+    let mut left: Vec[i64] = Vec.new();
+    for i in 0..2 * n {
+        add_one(mut counts, nums[i]);
+        sum += nums[i];
+        if i >= n {
+            let (top, _) = counts.last().unwrap();
+            let top = *top;
+            take_one(mut counts, top);
+            sum -= top;
+        }
+        if i >= n - 1 {
+            left.push(sum);
+        }
+    }
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    let mut sum = 0;
+    let mut best = i64.MAX;
+    for i in (n..3 * n).rev() {
+        add_one(mut counts, nums[i]);
+        sum += nums[i];
+        if i < 2 * n {
+            let (low, _) = counts.first().unwrap();
+            let low = *low;
+            take_one(mut counts, low);
+            sum -= low;
+        }
+        if i <= 2 * n {
+            best = best.min(left[i - n] - sum);
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {minimum_difference(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number a part, all the
+    // same, rising, and falling
+    show([3, 1, 2].to_vec());
+    show([7, 9, 5, 8, 1, 3].to_vec());
+    show([4, 4, 4].to_vec());
+    show([6, 6, 6, 6, 6, 6].to_vec());
+    show([1, 2, 3, 4, 5, 6, 7, 8, 9].to_vec());
+    show([9, 8, 7, 6, 5, 4, 3, 2, 1].to_vec());
+    // 2000 random lists of 3 to 15 numbers from 1 to 10, 100 or 10^5 in turn
+    let mut seed = 2163;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % 5 + 1;
+        let most = [10, 100, 100000][round % 3];
+        let nums: Vec[i64] = (0..3 * n).map(|_| wide_random(mut seed) % most + 1).collect();
+        let d = minimum_difference(nums);
+        total += d;
+        check = (check * 31 + d + 1000000000) % 1000000007;
+    }
+    println(f"2000 lists: {total} in all, checksum {check}");
+    // the constraints' largest, 300000 numbers: at random, and all one number
+    let random: Vec[i64] = (0..300000).map(|_| wide_random(mut seed) % 100000 + 1).collect();
+    println(f"300000 at random: {minimum_difference(random)}");
+    let same: Vec[i64] = Vec.filled(300000, 100000);
+    println(f"300000 the same: {minimum_difference(same)}");
+}
