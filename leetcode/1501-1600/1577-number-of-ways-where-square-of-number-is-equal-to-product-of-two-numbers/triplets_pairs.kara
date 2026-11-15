@@ -1,0 +1,76 @@
+// LeetCode #1577: Number of Ways Where Square of Number Is Equal to
+// Product of Two Numbers -- the squares of one array counted in a `Map`,
+// then every pair j < k of the other looked up by its product. O(n + m^2)
+// expected
+
+fn ways(squares: Vec[i64], products: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in squares.iter() {
+        *count.entry(x * x).or_insert(0) += 1;
+    }
+    let mut total = 0;
+    for j in 0..products.len() {
+        for k in j + 1..products.len() {
+            total += count.get(products[j] * products[k]).cloned().unwrap_or(0);
+        }
+    }
+    total
+}
+
+fn num_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    ways(nums1, nums2) + ways(nums2, nums1)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` pairs of arrays of 1 to `most` values, each a power of 2 or 3
+// times a small factor below `top`, so that squares and products meet
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let mut pair: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..2 {
+            let n = next_random(mut seed) % most + 1;
+            let nums: Vec[i64] = (0..n).map(|_| {
+                let mut v = next_random(mut seed) % top + 1;
+                for _ in 0..next_random(mut seed) % 4 {
+                    v *= 2 + next_random(mut seed) % 2;
+                }
+                v.min(100000)
+            }).collect();
+            pair.push(nums);
+        }
+        let ways = num_triplets(pair[0], pair[1]);
+        total += ways;
+        check = mix(check, ways);
+    }
+    println(f"{count} pairs of up to {most} values: triplets total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i64], Vec[i64])] = [
+        ([7, 4], [5, 2, 8, 9]),
+        ([1, 1], [1, 1, 1]),
+        ([7, 7, 8, 3], [1, 2, 9, 7]),
+        ([4, 7, 9, 11, 23], [3, 5, 1024, 12, 18]),
+        ([1], [1]),
+        ([100000], [100000, 100000]),
+    ];
+    for (a, b) in examples.iter() {
+        println(f"{a}, {b} -> {num_triplets(a, b)}");
+    }
+    let mut seed = 1577;
+    batch(3000, 6, 4, mut seed);
+    batch(300, 100, 20, mut seed);
+    batch(10, 1000, 100, mut seed);
+}

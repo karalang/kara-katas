@@ -1,0 +1,253 @@
+// LeetCode #1577: Number of Ways Where Square of Number Is Equal to
+// Product of Two Numbers -- the differential.
+//
+// Four arms against the statement read literally, on 3000 pairs of arrays
+// of 1 to 6 values from 1 to 12, with six properties. Every random choice
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the two arrays swapped leave the answer
+// P3  every value doubled leaves the answer
+// P4  both arrays reversed leave the answer
+// P5  both arrays sorted leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- triplets.kara: the ★ arm: a walk with a Map of the values seen
+
+fn star_ways(squares: Vec[i64], products: Vec[i64]) -> i64 {
+    let mut total = 0;
+    for x in squares.iter() {
+        let target = x * x;
+        let mut seen: Map[i64, i64] = Map.new();
+        for y in products.iter() {
+            if target % y == 0 {
+                total += seen.get(target / y).cloned().unwrap_or(0);
+            }
+            *seen.entry(y).or_insert(0) += 1;
+        }
+    }
+    total
+}
+
+fn star_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    star_ways(nums1, nums2) + star_ways(nums2, nums1)
+}
+
+// ---- triplets_pairs.kara: squares counted, every pair looked up
+
+fn pairs_ways(squares: Vec[i64], products: Vec[i64]) -> i64 {
+    let mut count: Map[i64, i64] = Map.new();
+    for x in squares.iter() {
+        *count.entry(x * x).or_insert(0) += 1;
+    }
+    let mut total = 0;
+    for j in 0..products.len() {
+        for k in j + 1..products.len() {
+            total += count.get(products[j] * products[k]).cloned().unwrap_or(0);
+        }
+    }
+    total
+}
+
+fn pairs_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    pairs_ways(nums1, nums2) + pairs_ways(nums2, nums1)
+}
+
+// ---- triplets_sorted.kara: two pointers over the sorted other array
+
+fn sorted_ways(squares: Vec[i64], products: Vec[i64]) -> i64 {
+    let mut sorted = products.clone();
+    sorted.sort();
+    let mut total = 0;
+    for x in squares.iter() {
+        let target = x * x;
+        let mut lo = 0;
+        let mut hi = sorted.len() - 1;
+        while lo < hi {
+            let product = sorted[lo] * sorted[hi];
+            if product < target {
+                lo += 1;
+            } else if product > target {
+                hi -= 1;
+            } else if sorted[lo] == sorted[hi] {
+                let run = hi - lo + 1;
+                total += run * (run - 1) / 2;
+                break;
+            } else {
+                let mut left = 1;
+                while sorted[lo + left] == sorted[lo] {
+                    left += 1;
+                }
+                let mut right = 1;
+                while sorted[hi - right] == sorted[hi] {
+                    right += 1;
+                }
+                total += left * right;
+                lo += left;
+                hi -= right;
+            }
+        }
+    }
+    total
+}
+
+fn sorted_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    sorted_ways(nums1, nums2) + sorted_ways(nums2, nums1)
+}
+
+// ---- triplets_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+fn solution_count(a: Vec[i32], b: Vec[i32]) -> i64 {
+    let mut freq: Map[i64, i64] = Map.new();
+    for y in b {
+        *freq.entry(y).or_insert(0) += 1;
+    }
+    let mut res = 0;
+    for x in a {
+        let t = x as i64 * x as i64;
+        for (p, cp) in freq.iter() {
+            if t % p != 0 {
+                continue;
+            }
+            let q = t / p;
+            if p == q {
+                res += cp * (cp - 1) / 2;
+            } else if p < q {
+                if let Some(cq) = freq.get(q).cloned() {
+                    res += cp * cq;
+                }
+            }
+        }
+    }
+    res
+}
+
+impl Solution {
+    pub fn num_triplets(nums1: Vec[i32], nums2: Vec[i32]) -> i32 {
+        (solution_count(nums1, nums2) + solution_count(nums2, nums1)) as i32
+    }
+}
+
+fn solution_arm(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.num_triplets(a, b)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(nums1, nums2),
+        1 => pairs_arm(nums1, nums2),
+        2 => sorted_arm(nums1, nums2),
+        _ => solution_arm(nums1, nums2),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["triplets", "pairs", "sorted", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every triplet of each type tried
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let mut total = 0;
+    for (squares, products) in [(nums1, nums2), (nums2, nums1)] {
+        for i in 0..squares.len() {
+            for j in 0..products.len() {
+                for k in j + 1..products.len() {
+                    if squares[i] * squares[i] == products[j] * products[k] {
+                        total += 1;
+                    }
+                }
+            }
+        }
+    }
+    total
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15770;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let m = next_random(mut seed) % 6 + 1;
+        let nums1: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 12 + 1).collect();
+        let nums2: Vec[i64] = (0..m).map(|_| next_random(mut seed) % 12 + 1).collect();
+        cases.push((nums1, nums2));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (nums1, nums2)) in cases.iter().enumerate() {
+        let truth = literal(nums1, nums2);
+        let doubled1: Vec[i64] = nums1.iter().map(|v| 2 * v).collect();
+        let doubled2: Vec[i64] = nums2.iter().map(|v| 2 * v).collect();
+        let back1: Vec[i64] = nums1.iter().rev().cloned().collect();
+        let back2: Vec[i64] = nums2.iter().rev().cloned().collect();
+        let mut sorted1 = nums1.clone();
+        sorted1.sort();
+        let mut sorted2 = nums2.clone();
+        sorted2.sort();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums1, nums2);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, nums2, nums1) != answer,
+                arm(a, doubled1, doubled2) != answer,
+                arm(a, back1, back2) != answer,
+                arm(a, sorted1, sorted2) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
