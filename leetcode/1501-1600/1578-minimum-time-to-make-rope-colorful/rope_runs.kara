@@ -1,0 +1,73 @@
+// LeetCode #1578: Minimum Time to Make Rope Colorful -- the rope cut into
+// its runs of one colour, and each run's times summed less the largest of
+// them. O(n)
+
+fn min_cost(colors: String, needed_time: Vec[i64]) -> i64 {
+    let cs: Vec[char] = colors.chars().collect();
+    let n = cs.len();
+    let mut total = 0;
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end < n and cs[end] == cs[start] {
+            end += 1;
+        }
+        let run = needed_time[start..end];
+        total += run.iter().sum() - run.iter().max().unwrap();
+        start = end;
+    }
+    total
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` ropes of 1 to `most` balloons in the first `letters` colours,
+// each the colour before it one time in `stay`, with times from 1 to `top`
+fn batch(count: i64, most: i64, letters: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let stay = next_random(mut seed) % 3 + 1;
+        let mut colors = String.new();
+        let mut last = b'a';
+        for _ in 0..n {
+            if next_random(mut seed) % stay != 0 {
+                last = b'a' + (next_random(mut seed) % letters) as u8;
+            }
+            colors.push(last as char);
+        }
+        let times: Vec[i64] = (0..n).map(|_| (next_random(mut seed) * 32768 + next_random(mut seed)) % top + 1).collect();
+        let cost = min_cost(colors, times);
+        total += cost;
+        check = mix(check, cost);
+    }
+    println(f"{count} ropes of up to {most} balloons: time total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(String, Vec[i64])] = [
+        ("abaac", [1, 2, 3, 4, 5]),
+        ("abc", [1, 2, 3]),
+        ("aabaa", [1, 2, 3, 4, 1]),
+        ("a", [7]),
+        ("aaaa", [4, 9, 3, 8]),
+        ("bbbaaa", [4, 9, 3, 8, 1, 2]),
+    ];
+    for (colors, times) in examples.iter() {
+        println(f"{colors} {times} -> {min_cost(colors, times)}");
+    }
+    let mut seed = 1578;
+    batch(3000, 8, 3, 9, mut seed);
+    batch(300, 1000, 26, 10000, mut seed);
+    batch(30, 100000, 2, 10000, mut seed);
+}

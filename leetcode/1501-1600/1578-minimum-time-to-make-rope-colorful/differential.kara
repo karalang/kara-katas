@@ -1,0 +1,208 @@
+// LeetCode #1578: Minimum Time to Make Rope Colorful -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 ropes of 1 to 9
+// balloons in 3 colours with times from 1 to 9, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the rope reversed leaves the answer
+// P3  every time doubled doubles the answer
+// P4  the colours renamed (a to b, b to c, c to a) leave the answer
+// P5  a balloon of a new colour put at the end leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- rope.kara: the ★ arm: one pass keeping the run's largest time
+
+fn star_arm(colors: String, needed_time: Vec[i64]) -> i64 {
+    let cs = colors.bytes();
+    let mut total = 0;
+    let mut keep = 0;
+    for i in 0..cs.len() {
+        if i > 0 and cs[i] != cs[i - 1] {
+            keep = 0;
+        }
+        total += keep.min(needed_time[i]);
+        keep = keep.max(needed_time[i]);
+    }
+    total
+}
+
+// ---- rope_runs.kara: each run summed less its largest time
+
+fn runs_arm(colors: String, needed_time: Vec[i64]) -> i64 {
+    let cs: Vec[char] = colors.chars().collect();
+    let n = cs.len();
+    let mut total = 0;
+    let mut start = 0;
+    while start < n {
+        let mut end = start;
+        while end < n and cs[end] == cs[start] {
+            end += 1;
+        }
+        let run = needed_time[start..end];
+        total += run.iter().sum() - run.iter().max().unwrap();
+        start = end;
+    }
+    total
+}
+
+// ---- rope_fold.kara: a fold over the balloons zipped with their times
+
+fn fold_arm(colors: String, needed_time: Vec[i64]) -> i64 {
+    let (_, _, paid) = colors.chars().zip(needed_time.iter()).fold((' ', 0, 0), |(color, keep, paid), (c, t)| {
+        if c == color {
+            (c, keep.max(t), paid + keep.min(t))
+        } else {
+            (c, t, paid)
+        }
+    });
+    paid
+}
+
+// ---- rope_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_cost(colors: String, needed_time: Vec[i32]) -> i32 {
+        let c = colors.bytes();
+        let mut ans: i32 = 0;
+        let mut prev = 0;
+        for i in 1..c.len() {
+            if c[i] == c[prev] {
+                if needed_time[i] < needed_time[prev] {
+                    ans += needed_time[i];
+                } else {
+                    ans += needed_time[prev];
+                    prev = i;
+                }
+            } else {
+                prev = i;
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(colors: String, needed_time: Vec[i64]) -> i64 {
+    let t: Vec[i32] = needed_time.iter().map(|x| x as i32).collect();
+    Solution.min_cost(colors, t)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, colors: String, times: Vec[i64]) -> i64 {
+    match a {
+        0 => star_arm(colors, times),
+        1 => runs_arm(colors, times),
+        2 => fold_arm(colors, times),
+        _ => solution_arm(colors, times),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["rope", "runs", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every set of balloons to remove tried,
+// and the cheapest whose removal leaves no two neighbours of one colour
+
+fn literal(colors: String, times: Vec[i64]) -> i64 {
+    let cs: Vec[char] = colors.chars().collect();
+    let n = cs.len();
+    let mut best = times.iter().sum();
+    for mask in 0..(1 << n) {
+        let kept: Vec[char] = (0..n).filter(|i| mask >> i & 1 == 0).map(|i| cs[i]).collect();
+        if kept.windows(2).into_iter().all(|w| w[0] != w[1]) {
+            let cost = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| times[i]).sum();
+            best = best.min(cost);
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15780;
+    let mut cases: Vec[(String, Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 1;
+        let colors: String = (0..n).map(|_| (b'a' + (next_random(mut seed) % 3) as u8) as char).collect();
+        let times: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 9 + 1).collect();
+        cases.push((colors, times));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (colors, times)) in cases.iter().enumerate() {
+        let truth = literal(colors, times);
+        let colors_back: String = colors.chars().rev().collect();
+        let times_back: Vec[i64] = times.iter().rev().cloned().collect();
+        let doubled: Vec[i64] = times.iter().map(|t| 2 * t).collect();
+        let renamed: String = colors.chars().map(|c| match c {
+            'a' => 'b',
+            'b' => 'c',
+            _ => 'a',
+        }).collect();
+        let longer = f"{colors}z";
+        let mut times_longer = times.clone();
+        times_longer.push(5);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, colors, times);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, colors_back, times_back) != answer,
+                arm(a, colors, doubled) != 2 * answer,
+                arm(a, renamed, times) != answer,
+                arm(a, longer, times_longer) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
