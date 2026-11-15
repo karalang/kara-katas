@@ -65,7 +65,7 @@ already returned 0), and the removed suffix starting one value longer
 | # | mutation | failures by property |
 |---|---|---|
 | M1 | ★: the suffix pointer passes equal values | P1 280, P5 276, P6 280 |
-| M2 | ★: the start the larger of the two one-sided removals | P1 427, P4 835, P6 427 |
+| M2 | ★: the starting answer the larger of the two one-sided removals | P1 427, P4 835, P6 427 |
 | M3 | ★: the prefix's last value never tried | P1 299, P4 262, P5 408, P6 299 |
 | M4 | search: the search passes equal values | P1 280, P5 276, P6 280 |
 | M5 | search: the prefix's first value never tried | P1 176, P4 281, P6 176 |
