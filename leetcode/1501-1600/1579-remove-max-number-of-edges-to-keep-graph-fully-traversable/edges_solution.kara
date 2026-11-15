@@ -1,0 +1,143 @@
+// LeetCode #1579: Remove Max Number of Edges to Keep Graph Fully Traversable
+// -- LeetCode's Rust template as karac fix left it: a `UnionFind` struct
+// over 0-based `usize` nodes with a recursive, path-compressing find; the
+// type 3 edges first, an edge that joins nothing counted as removable.
+
+struct Solution {}
+
+struct UnionFind {
+    parent: Vec[usize],
+    count: usize,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        UnionFind { parent: (0..n).collect(), count: n }
+    }
+
+    fn find(mut ref self, x: usize) -> usize {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, x: usize, y: usize) -> bool {
+        let (rx, ry) = (self.find(x), self.find(y));
+        if rx == ry {
+            return false;
+        }
+        self.parent[rx] = ry;
+        self.count -= 1;
+        true
+    }
+}
+
+impl Solution {
+    pub fn max_num_edges_to_remove(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+        let n = n as usize;
+        let mut alice = UnionFind.new(n);
+        let mut bob = UnionFind.new(n);
+        let mut ans = 0;
+        for e in edges.iter() {
+            if e[0] == 3 {
+                let (u, v) = (e[1] as usize - 1, e[2] as usize - 1);
+                if alice.union(u, v) {
+                    bob.union(u, v);
+                } else {
+                    ans += 1;
+                }
+            }
+        }
+        for e in edges.iter() {
+            let (u, v) = (e[1] as usize - 1, e[2] as usize - 1);
+            match e[0] {
+                1 => {
+                    if not alice.union(u, v) {
+                        ans += 1;
+                    }
+                }
+                2 => {
+                    if not bob.union(u, v) {
+                        ans += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if alice.count == 1 and bob.count == 1 {
+            ans
+        } else {
+            -1
+        }
+    }
+}
+
+fn max_num_edges_to_remove(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let e: Vec[Vec[i32]] = edges.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.max_num_edges_to_remove(n as i32, e)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` graphs of 2 to `most` + 1 nodes: from each node but the last, 1
+// to `draws` edges to a node at most `reach` further on, half of them type
+// 3 and a quarter each type 1 and 2 (a repeated edge dropped), then the
+// edges shuffled
+fn batch(count: i64, most: i64, draws: i64, reach: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    let mut stuck = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 2;
+        let mut seen: Set[i64] = Set.new();
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for u in 1..n {
+            for _ in 0..next_random(mut seed) % draws + 1 {
+                let kind = (next_random(mut seed) % 4).min(2) + 1;
+                let v = (u + 1 + next_random(mut seed) % reach).min(n);
+                if seen.insert((kind * (n + 1) + u) * (n + 1) + v) {
+                    edges.push([kind, u, v]);
+                }
+            }
+        }
+        for i in (1..edges.len()).rev() {
+            edges.swap(i, (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1));
+        }
+        let removed = max_num_edges_to_remove(n, edges);
+        if removed < 0 {
+            stuck += 1;
+        } else {
+            total += removed;
+        }
+        check = mix(check, removed + 1);
+    }
+    println(f"{count} graphs of up to {most + 1} nodes: {stuck} not traversable, edges removed {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(i64, Vec[Vec[i64]])] = [
+        (4, [[3, 1, 2], [3, 2, 3], [1, 1, 3], [1, 2, 4], [1, 1, 2], [2, 3, 4]]),
+        (4, [[3, 1, 2], [3, 2, 3], [1, 1, 4], [2, 1, 4]]),
+        (4, [[3, 2, 3], [1, 1, 2], [2, 3, 4]]),
+        (2, [[1, 1, 2], [2, 1, 2], [3, 1, 2]]),
+        (3, [[3, 1, 2], [3, 2, 3], [3, 1, 3], [1, 1, 3], [2, 1, 2]]),
+        (3, [[1, 1, 2], [1, 2, 3], [2, 1, 3]]),
+    ];
+    for (n, edges) in examples.iter() {
+        println(f"{n} {edges} -> {max_num_edges_to_remove(n, edges)}");
+    }
+    let mut seed = 1579;
+    batch(3000, 5, 3, 2, mut seed);
+    batch(300, 300, 8, 8, mut seed);
+    batch(10, 10000, 14, 12, mut seed);
+}

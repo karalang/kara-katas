@@ -1,0 +1,119 @@
+// LeetCode #1579: Remove Max Number of Edges to Keep Graph Fully Traversable
+// -- the recursive arm: Kruskal over the edges sorted by type, 3 first,
+// with each forest a bare `Vec[i64]` of parents passed by `mut ref` to a
+// recursive find that compresses the path it walks. The parts are counted
+// at the end as the nodes that are their own parent. O(m log m)
+
+fn find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let root = find(mut parent, parent[x]);
+    parent[x] = root;
+    root
+}
+
+// links the parts of `a` and `b` in `parent`; false when they were one
+fn link(parent: mut ref Vec[i64], a: i64, b: i64) -> bool {
+    let ra = find(mut parent, a);
+    let rb = find(mut parent, b);
+    if ra == rb {
+        return false;
+    }
+    parent[ra] = rb;
+    true
+}
+
+fn roots(parent: mut ref Vec[i64]) -> i64 {
+    (1..parent.len()).filter(|x| find(mut parent, x) == x).count()
+}
+
+fn max_num_edges_to_remove(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut order = edges.clone();
+    order.sort_by_key(|e| 3 - e[0]);
+    let mut alice: Vec[i64] = (0..n + 1).collect();
+    let mut bob: Vec[i64] = (0..n + 1).collect();
+    let mut removed = 0;
+    for e in order.iter() {
+        let used = match e[0] {
+            1 => link(mut alice, e[1], e[2]),
+            2 => link(mut bob, e[1], e[2]),
+            _ => {
+                let a = link(mut alice, e[1], e[2]);
+                let b = link(mut bob, e[1], e[2]);
+                a or b
+            }
+        };
+        if not used {
+            removed += 1;
+        }
+    }
+    if roots(mut alice) != 1 or roots(mut bob) != 1 {
+        return -1;
+    }
+    removed
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` graphs of 2 to `most` + 1 nodes: from each node but the last, 1
+// to `draws` edges to a node at most `reach` further on, half of them type
+// 3 and a quarter each type 1 and 2 (a repeated edge dropped), then the
+// edges shuffled
+fn batch(count: i64, most: i64, draws: i64, reach: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    let mut stuck = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 2;
+        let mut seen: Set[i64] = Set.new();
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for u in 1..n {
+            for _ in 0..next_random(mut seed) % draws + 1 {
+                let kind = (next_random(mut seed) % 4).min(2) + 1;
+                let v = (u + 1 + next_random(mut seed) % reach).min(n);
+                if seen.insert((kind * (n + 1) + u) * (n + 1) + v) {
+                    edges.push([kind, u, v]);
+                }
+            }
+        }
+        for i in (1..edges.len()).rev() {
+            edges.swap(i, (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1));
+        }
+        let removed = max_num_edges_to_remove(n, edges);
+        if removed < 0 {
+            stuck += 1;
+        } else {
+            total += removed;
+        }
+        check = mix(check, removed + 1);
+    }
+    println(f"{count} graphs of up to {most + 1} nodes: {stuck} not traversable, edges removed {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(i64, Vec[Vec[i64]])] = [
+        (4, [[3, 1, 2], [3, 2, 3], [1, 1, 3], [1, 2, 4], [1, 1, 2], [2, 3, 4]]),
+        (4, [[3, 1, 2], [3, 2, 3], [1, 1, 4], [2, 1, 4]]),
+        (4, [[3, 2, 3], [1, 1, 2], [2, 3, 4]]),
+        (2, [[1, 1, 2], [2, 1, 2], [3, 1, 2]]),
+        (3, [[3, 1, 2], [3, 2, 3], [3, 1, 3], [1, 1, 3], [2, 1, 2]]),
+        (3, [[1, 1, 2], [1, 2, 3], [2, 1, 3]]),
+    ];
+    for (n, edges) in examples.iter() {
+        println(f"{n} {edges} -> {max_num_edges_to_remove(n, edges)}");
+    }
+    let mut seed = 1579;
+    batch(3000, 5, 3, 2, mut seed);
+    batch(300, 300, 8, 8, mut seed);
+    batch(10, 10000, 14, 12, mut seed);
+}

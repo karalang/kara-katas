@@ -1,0 +1,383 @@
+// LeetCode #1579: Remove Max Number of Edges to Keep Graph Fully
+// Traversable -- the differential.
+//
+// Four arms against the statement read literally, on 3000 graphs of 2 to
+// 5 nodes and 1 to 8 distinct edges, with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the edges in reverse order leave the answer
+// P3  the nodes numbered backwards (x to n + 1 - x) leave the answer
+// P4  the type 1 and type 2 edges swapped leave the answer
+// P5  a new node joined to node 1 by a type 3 edge leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- edges.kara: the ★ arm: two union-find structs, path halving and union by size
+
+struct StarDsu {
+    parent: Vec[i64],
+    size: Vec[i64],
+    parts: i64,
+}
+
+impl StarDsu {
+    fn new(n: i64) -> StarDsu {
+        StarDsu { parent: (0..n + 1).collect(), size: Vec.filled(n + 1, 1), parts: n }
+    }
+
+    fn find(mut ref self, x: i64) -> i64 {
+        let mut x = x;
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    // joins the parts of `a` and `b`; false when they were one already
+    fn join(mut ref self, a: i64, b: i64) -> bool {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra == rb {
+            return false;
+        }
+        let (big, small) = if self.size[ra] < self.size[rb] { (rb, ra) } else { (ra, rb) };
+        self.parent[small] = big;
+        self.size[big] += self.size[small];
+        self.parts -= 1;
+        true
+    }
+}
+
+fn star_arm(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut alice = StarDsu.new(n);
+    let mut bob = StarDsu.new(n);
+    let mut kept = 0;
+    for e in edges.iter() {
+        if e[0] == 3 {
+            let a = alice.join(e[1], e[2]);
+            let b = bob.join(e[1], e[2]);
+            if a or b {
+                kept += 1;
+            }
+        }
+    }
+    for e in edges.iter() {
+        if e[0] == 1 and alice.join(e[1], e[2]) {
+            kept += 1;
+        }
+        if e[0] == 2 and bob.join(e[1], e[2]) {
+            kept += 1;
+        }
+    }
+    if alice.parts != 1 or bob.parts != 1 {
+        return -1;
+    }
+    edges.len() - kept
+}
+
+// ---- edges_parts.kara: the parts counted by a walk, no union-find
+
+// how many parts the nodes 1..n fall into over the edges of type `kind`
+// or 3
+fn parts_of(n: i64, edges: Vec[Vec[i64]], kind: i64) -> i64 {
+    let mut next: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+    for e in edges.iter() {
+        if e[0] == kind or e[0] == 3 {
+            next[e[1]].push(e[2]);
+            next[e[2]].push(e[1]);
+        }
+    }
+    let mut seen = Vec.filled(n + 1, false);
+    let mut count = 0;
+    for start in 1..n + 1 {
+        if seen[start] {
+            continue;
+        }
+        count += 1;
+        seen[start] = true;
+        let mut stack = [start];
+        while let Some(x) = stack.pop() {
+            for y in next[x].iter() {
+                if not seen[y] {
+                    seen[y] = true;
+                    stack.push(y);
+                }
+            }
+        }
+    }
+    count
+}
+
+fn parts_arm(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    if parts_of(n, edges, 1) != 1 or parts_of(n, edges, 2) != 1 {
+        return -1;
+    }
+    let shared = parts_of(n, edges, 3);
+    edges.len() - (n - shared) - 2 * (shared - 1)
+}
+
+// ---- edges_kruskal.kara: Kruskal over a bare parent Vec with a recursive find
+
+fn kruskal_find(parent: mut ref Vec[i64], x: i64) -> i64 {
+    if parent[x] == x {
+        return x;
+    }
+    let root = kruskal_find(mut parent, parent[x]);
+    parent[x] = root;
+    root
+}
+
+// links the parts of `a` and `b` in `parent`; false when they were one
+fn kruskal_link(parent: mut ref Vec[i64], a: i64, b: i64) -> bool {
+    let ra = kruskal_find(mut parent, a);
+    let rb = kruskal_find(mut parent, b);
+    if ra == rb {
+        return false;
+    }
+    parent[ra] = rb;
+    true
+}
+
+fn kruskal_roots(parent: mut ref Vec[i64]) -> i64 {
+    (1..parent.len()).filter(|x| kruskal_find(mut parent, x) == x).count()
+}
+
+fn kruskal_arm(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let mut order = edges.clone();
+    order.sort_by_key(|e| 3 - e[0]);
+    let mut alice: Vec[i64] = (0..n + 1).collect();
+    let mut bob: Vec[i64] = (0..n + 1).collect();
+    let mut removed = 0;
+    for e in order.iter() {
+        let used = match e[0] {
+            1 => kruskal_link(mut alice, e[1], e[2]),
+            2 => kruskal_link(mut bob, e[1], e[2]),
+            _ => {
+                let a = kruskal_link(mut alice, e[1], e[2]);
+                let b = kruskal_link(mut bob, e[1], e[2]);
+                a or b
+            }
+        };
+        if not used {
+            removed += 1;
+        }
+    }
+    if kruskal_roots(mut alice) != 1 or kruskal_roots(mut bob) != 1 {
+        return -1;
+    }
+    removed
+}
+
+// ---- edges_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+struct UnionFind {
+    parent: Vec[usize],
+    count: usize,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        UnionFind { parent: (0..n).collect(), count: n }
+    }
+
+    fn find(mut ref self, x: usize) -> usize {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+
+    fn union(mut ref self, x: usize, y: usize) -> bool {
+        let (rx, ry) = (self.find(x), self.find(y));
+        if rx == ry {
+            return false;
+        }
+        self.parent[rx] = ry;
+        self.count -= 1;
+        true
+    }
+}
+
+impl Solution {
+    pub fn max_num_edges_to_remove(n: i32, edges: Vec[Vec[i32]]) -> i32 {
+        let n = n as usize;
+        let mut alice = UnionFind.new(n);
+        let mut bob = UnionFind.new(n);
+        let mut ans = 0;
+        for e in edges.iter() {
+            if e[0] == 3 {
+                let (u, v) = (e[1] as usize - 1, e[2] as usize - 1);
+                if alice.union(u, v) {
+                    bob.union(u, v);
+                } else {
+                    ans += 1;
+                }
+            }
+        }
+        for e in edges.iter() {
+            let (u, v) = (e[1] as usize - 1, e[2] as usize - 1);
+            match e[0] {
+                1 => {
+                    if not alice.union(u, v) {
+                        ans += 1;
+                    }
+                }
+                2 => {
+                    if not bob.union(u, v) {
+                        ans += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if alice.count == 1 and bob.count == 1 {
+            ans
+        } else {
+            -1
+        }
+    }
+}
+
+fn solution_arm(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let e: Vec[Vec[i32]] = edges.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect();
+    Solution.max_num_edges_to_remove(n as i32, e)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    match a {
+        0 => star_arm(n, edges),
+        1 => parts_arm(n, edges),
+        2 => kruskal_arm(n, edges),
+        _ => solution_arm(n, edges),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["edges", "parts", "kruskal", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every set of edges to keep tried, and
+// the answer the most edges left out of a set over which both Alice and
+// Bob reach every node from node 1
+
+fn reaches_all(n: i64, kept: Vec[Vec[i64]], kind: i64) -> bool {
+    let mut seen = Vec.filled(n + 1, false);
+    seen[1] = true;
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for e in kept.iter() {
+            if (e[0] == kind or e[0] == 3) and seen[e[1]] != seen[e[2]] {
+                seen[e[1]] = true;
+                seen[e[2]] = true;
+                grew = true;
+            }
+        }
+    }
+    (1..n + 1).all(|x| seen[x])
+}
+
+fn literal(n: i64, edges: Vec[Vec[i64]]) -> i64 {
+    let m = edges.len();
+    let mut best = -1;
+    for mask in 0..(1 << m) {
+        let kept: Vec[Vec[i64]] = (0..m).filter(|i| mask >> i & 1 == 1).map(|i| edges[i].clone()).collect();
+        if reaches_all(n, kept, 1) and reaches_all(n, kept, 2) {
+            best = best.max(m - kept.len());
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15790;
+    let mut cases: Vec[(i64, Vec[Vec[i64]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 4 + 2;
+        let m = next_random(mut seed) % 8 + 1;
+        let mut edges: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..4 * m {
+            let kind = next_random(mut seed) % 3 + 1;
+            let u = next_random(mut seed) % (n - 1) + 1;
+            let v = u + 1 + next_random(mut seed) % (n - u);
+            let e = [kind, u, v];
+            if edges.len() < m and not edges.contains(e) {
+                edges.push(e);
+            }
+        }
+        cases.push((n, edges));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (n, edges)) in cases.iter().enumerate() {
+        let truth = literal(n, edges);
+        let back: Vec[Vec[i64]] = edges.iter().rev().cloned().collect();
+        let mirrored: Vec[Vec[i64]] = edges.iter().map(|e| [e[0], n + 1 - e[2], n + 1 - e[1]]).collect();
+        let swapped: Vec[Vec[i64]] = edges.iter().map(|e| [if e[0] == 3 { 3 } else { 3 - e[0] }, e[1], e[2]]).collect();
+        let mut longer = edges.clone();
+        longer.push([3, 1, n + 1]);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, n, edges);
+            answers.push(answer);
+            check = (check * 31 + answer + 2) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, n, back) != answer,
+                arm(a, n, mirrored) != answer,
+                arm(a, n, swapped) != answer,
+                arm(a, n + 1, longer) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
