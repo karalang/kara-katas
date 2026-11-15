@@ -1,0 +1,274 @@
+// LeetCode #2138: Divide a String Into Groups of Size k -- the
+// differential. The six arms, against the statement read literally: there
+// are as many groups as k goes into the length, rounded up, and the j-th
+// letter of group g is the letter at g * k + j, or the fill when there is
+// none; no slice is cut and no group is grown. 300 random strings of 1 to
+// 12 letters from the first 2, 3 or 26 in turn, k of 1 to 6 and a random
+// fill; then 30 whose length k divides; then 30 with k longer than the
+// string; every one drawn before any arm answers.
+//
+// P1  the groups are the statement read literally
+// P2  the groups joined are the string, then fills, to a whole number of k
+// P3  every group is k letters long
+// P4  the string cut to its whole groups: the same groups but the last
+//     when it was short
+// P5  k the string's length: one group, the string itself
+// P6  each arm agrees with at least three of the other five
+
+// ---- divide.kara: the ★ arm, a slice every k letters
+fn star_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    let n = s.len();
+    let mut groups: Vec[String] = Vec.new();
+    let mut start = 0;
+    while start < n {
+        let mut group = s[start..(start + k).min(n)].to_string();
+        while group.len() < k {
+            group.push(fill);
+        }
+        groups.push(group);
+        start += k;
+    }
+    groups
+}
+
+// ---- divide_padded.kara: made up to whole groups first
+fn padded_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    let mut padded = s.clone();
+    while padded.len() % k != 0 {
+        padded.push(fill);
+    }
+    (0..padded.len() / k).map(|g| padded[g * k..g * k + k].to_string()).collect()
+}
+
+// ---- divide_chunks.kara: `chunks` over the letters
+fn chunks_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    let letters: Vec[char] = s.chars().collect();
+    letters
+        .chunks(k)
+        .into_iter()
+        .map(|chunk| {
+            let mut group: String = chunk.iter().collect();
+            while group.len() < k {
+                group.push(fill);
+            }
+            group
+        })
+        .collect()
+}
+
+// ---- divide_struct.kara: a `Grouper` fed one letter at a time
+struct GrouperGrouper {
+    size: i64,
+    fill: char,
+    done: Vec[String],
+    open: String,
+}
+
+impl GrouperGrouper {
+    fn new(size: i64, fill: char) -> GrouperGrouper {
+        GrouperGrouper { size, fill, done: Vec.new(), open: String.new() }
+    }
+
+    fn add(mut ref self, c: char) {
+        self.open.push(c);
+        if self.open.len() == self.size {
+            self.done.push(self.open.clone());
+            self.open = String.new();
+        }
+    }
+
+    fn finish(own self) -> Vec[String] {
+        let mut done = self.done;
+        let mut open = self.open;
+        if open.len() > 0 {
+            while open.len() < self.size {
+                open.push(self.fill);
+            }
+            done.push(open);
+        }
+        done
+    }
+}
+
+fn grouper_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    let mut grouper = GrouperGrouper.new(k, fill);
+    for c in s.chars() {
+        grouper.add(c);
+    }
+    grouper.finish()
+}
+
+// ---- divide_fold.kara: one `fold` carrying (closed, open)
+fn fold_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    let mut (groups, open) = s.chars().fold((Vec.new(), String.new()), |(groups, open), c| {
+        let mut groups: Vec[String] = groups;
+        let mut open: String = open;
+        open.push(c);
+        if open.len() == k {
+            groups.push(open);
+            open = String.new();
+        }
+        (groups, open)
+    });
+    if open.len() > 0 {
+        while open.len() < k {
+            open.push(fill);
+        }
+        groups.push(open);
+    }
+    groups
+}
+
+// ---- divide_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl SolutionSolution {
+    pub fn divide_string(s: String, k: i32, fill: char) -> Vec[String] {
+        let k = k as i64;
+        Vec[char].from_iter(s.chars())
+            .chunks(k).into_iter()
+            .map(|c| {
+                let mut g: String = c.iter().collect();
+                while g.len() < k {
+                    g.push(fill);
+                }
+                g
+            })
+            .collect()
+    }
+}
+
+struct SolutionSolution {}
+
+fn solution_divide_string(s: String, k: i64, fill: char) -> Vec[String] {
+    SolutionSolution.divide_string(s, k as i32, fill)
+}
+
+
+// ---- the statement read literally
+
+fn literal(s: String, k: i64, fill: char) -> Vec[String] {
+    let letters: Vec[char] = s.chars().collect();
+    let n = letters.len();
+    let mut groups: Vec[String] = Vec.new();
+    for g in 0..(n + k - 1) / k {
+        let mut group = String.new();
+        for j in 0..k {
+            let at = g * k + j;
+            group.push(if at < n { letters[at] } else { fill });
+        }
+        groups.push(group);
+    }
+    groups
+}
+
+fn answer(arm: i64, s: String, k: i64, fill: char) -> Vec[String] {
+    match arm {
+        0 => star_divide_string(s, k, fill),
+        1 => padded_divide_string(s, k, fill),
+        2 => chunks_divide_string(s, k, fill),
+        3 => grouper_divide_string(s, k, fill),
+        4 => fold_divide_string(s, k, fill),
+        _ => solution_divide_string(s, k, fill),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(seed: mut ref i64, n: i64, kinds: i64) -> String {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let mut s = String.new();
+    for _ in 0..n {
+        let at = next_random(mut seed) % kinds;
+        s.push_str(alphabet[at..at + 1]);
+    }
+    s
+}
+
+struct Case {
+    s: String,
+    k: i64,
+    fill: char,
+}
+
+fn main() {
+    let names = ["star", "padded", "chunks", "grouper", "fold", "solution"];
+    let mut seed = 2138;
+    let mut cases: Vec[Case] = Vec.new();
+    for t in 0..360 {
+        let k = next_random(mut seed) % 6 + 1;
+        let n = if t < 300 {
+            next_random(mut seed) % 12 + 1
+        } else if t < 330 {
+            k * (next_random(mut seed) % 3 + 1)
+        } else {
+            next_random(mut seed) % k + 1
+        };
+        let kinds = if t < 300 { [2, 3, 26][t % 3] } else { 3 };
+        let s = letters(mut seed, n, kinds);
+        let fill = letters(mut seed, 1, 26).chars().next().unwrap();
+        cases.push(Case { s, k, fill });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for c in cases.iter() {
+        let truth = literal(c.s, c.k, c.fill);
+        for g in truth.iter() {
+            for b in g.bytes().iter() {
+                check = (check * 131 + b as i64) % 1000000007;
+            }
+            check = (check * 131 + 1) % 1000000007;
+        }
+        let n = c.s.len();
+        let mut padded = c.s.clone();
+        while padded.len() % c.k != 0 {
+            padded.push(c.fill);
+        }
+        let whole = n / c.k;
+        let cut = c.s[..whole * c.k].to_string();
+        let got: Vec[Vec[String]] = (0..6).map(|arm| answer(arm, c.s, c.k, c.fill)).collect();
+        for arm in 0..6 {
+            let x = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == x {
+                    same += 1;
+                }
+            }
+            let joined: String = x.join("");
+            let first: Vec[String] = if x.len() >= whole { x[..whole].to_vec() } else { x.clone() };
+            let verdicts = [
+                x == truth,
+                joined == padded,
+                x.iter().all(|g| g.len() == c.k),
+                n < c.k or answer(arm, cut, c.k, c.fill) == first,
+                answer(arm, c.s, n, c.fill) == [c.s.clone()].to_vec(),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{c.s}\" {c.k} {c.fill} arm {names[arm]}: P{q + 1} fails, answered {x}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} strings: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
