@@ -1,0 +1,99 @@
+// LeetCode #2179: Count Good Triplets in an Array -- LeetCode's Rust
+// template: `Vec<i32>` arrays, `vec![0; n]` and `vec![0i64; n + 1]`,
+// `as usize` indices, `i & (!i + 1)` for the lowest bit, written as
+// Rust. Carried by `karac fix`. The adapter below hands the harness's
+// arrays to it.
+
+impl Solution {
+    pub fn good_triplets(nums1: Vec[i32], nums2: Vec[i32]) -> i64 {
+        let n = nums1.len();
+        let mut pos = Vec.filled(n, 0);
+        for (i, v) in nums2.iter().enumerate() {
+            pos[v] = i;
+        }
+        let mut tree = Vec.filled(n + 1, 0);
+        let mut ans: i64 = 0;
+        for (i, v) in nums1.iter().enumerate() {
+            let p = pos[v];
+            let mut left: i64 = 0;
+            let mut j = p;
+            while j > 0 {
+                left += tree[j];
+                j -= j & (~j + 1);
+            }
+            let right = (n - 1 - p) - (i - left);
+            ans += left * right;
+            let mut j = p + 1;
+            while j <= n {
+                tree[j] += 1;
+                j += j & (~j + 1);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.good_triplets(a, b)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut perm: Vec[i64] = (0..n).collect();
+    let mut i = n - 1;
+    while i > 0 {
+        let a = next_random(mut seed);
+        let b = next_random(mut seed);
+        let j = (a * 32768 + b) % (i + 1);
+        perm.swap(i, j);
+        i -= 1;
+    }
+    perm
+}
+
+fn show(nums1: Vec[i64], nums2: Vec[i64]) {
+    println(f"{nums1}, {nums2} -> {good_triplets(nums1, nums2)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one triplet, the same
+    // three reversed, a permutation against itself, and three swapped
+    // neighbours, one of each pair to choose
+    show([2, 0, 1, 3], [0, 1, 2, 3]);
+    show([4, 0, 1, 3, 2], [4, 1, 0, 2, 3]);
+    show([0, 1, 2], [0, 1, 2]);
+    show([0, 1, 2], [2, 1, 0]);
+    show([3, 1, 4, 0, 2], [3, 1, 4, 0, 2]);
+    show([1, 0, 3, 2, 5, 4], [0, 1, 2, 3, 4, 5]);
+    // 2000 random pairs of permutations of 3 to 10 or 3 to 32 values
+    let mut seed = 2179;
+    let mut total = 0;
+    let mut check = 0;
+    for round in 0..2000 {
+        let n = next_random(mut seed) % [8, 30][round % 2] + 3;
+        let nums1 = shuffled(n, mut seed);
+        let nums2 = shuffled(n, mut seed);
+        let found = good_triplets(nums1, nums2);
+        total += found;
+        check = (check * 31 + found % 1000000007 + n) % 1000000007;
+    }
+    println(f"2000 pairs: {total} in all, checksum {check}");
+    // the constraints' largest, 10^5 values: one order twice, against its
+    // reverse, and two at random
+    let n = 100000;
+    let same: Vec[i64] = (0..n).collect();
+    let back: Vec[i64] = (0..n).rev().collect();
+    let a = shuffled(n, mut seed);
+    let b = shuffled(n, mut seed);
+    println(f"{n} values: {good_triplets(same, same)} {good_triplets(same, back)} {good_triplets(a, b)}");
+}

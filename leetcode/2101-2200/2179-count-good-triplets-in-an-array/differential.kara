@@ -1,0 +1,384 @@
+// LeetCode #2179: Count Good Triplets in an Array -- the differential.
+// The six arms, against the statement read literally: every three
+// values tried, and counted when their places rise in nums1 and in
+// nums2 alike. No places read in one order, no tree and no sort. 300
+// random pairs of permutations of 3 to 9 values; then 30 of one
+// permutation twice; then 30 of one against its reverse; every one drawn
+// before any arm answers.
+//
+// P1  the count is the statement read literally
+// P2  the two arrays swapped: the same count
+// P3  every value v made n - 1 - v in both: the same count
+// P4  both arrays reversed: the same count
+// P5  a new value n put at the end of both: the count, plus the pairs of
+//     values in the same order in both
+// P6  each arm agrees with at least three of the other five
+
+// ---- triplets.kara: the ★ arm, a Fenwick tree over the places in nums2
+fn star_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        place[nums2[i]] = i;
+    }
+    let mut tree: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut total = 0;
+    for i in 0..n {
+        let p = place[nums1[i]];
+        let mut smaller = 0;
+        let mut j = p;
+        while j > 0 {
+            smaller += tree[j];
+            j -= j & -j;
+        }
+        let larger = (n - 1 - p) - (i - smaller);
+        total += smaller * larger;
+        j = p + 1;
+        while j <= n {
+            tree[j] += 1;
+            j += j & -j;
+        }
+    }
+    total
+}
+
+// ---- triplets_merge.kara: the earlier smaller places counted by merge sort
+fn merge_sort_counting(seq: Vec[i64], order: mut ref Vec[i64], low: i64, high: i64, smaller: mut ref Vec[i64]) {
+    if high - low < 2 {
+        return;
+    }
+    let mid = (low + high) / 2;
+    merge_sort_counting(seq, mut order, low, mid, mut smaller);
+    merge_sort_counting(seq, mut order, mid, high, mut smaller);
+    let mut merged: Vec[i64] = Vec.new();
+    let mut i = low;
+    let mut j = mid;
+    while i < mid or j < high {
+        if j == high or (i < mid and seq[order[i]] < seq[order[j]]) {
+            merged.push(order[i]);
+            i += 1;
+        } else {
+            smaller[order[j]] += i - low;
+            merged.push(order[j]);
+            j += 1;
+        }
+    }
+    for k in 0..merged.len() {
+        order[low + k] = merged[k];
+    }
+}
+
+fn merge_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        place[nums2[i]] = i;
+    }
+    let seq: Vec[i64] = nums1.iter().map(|v| place[v]).collect();
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut smaller: Vec[i64] = Vec.filled(n, 0);
+    merge_sort_counting(seq, mut order, 0, n, mut smaller);
+    let mut total = 0;
+    for i in 0..n {
+        let larger = (n - 1 - seq[i]) - (i - smaller[i]);
+        total += smaller[i] * larger;
+    }
+    total
+}
+
+// ---- triplets_segment.kara: a bottom-up segment tree of counts
+fn segment_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        place[nums2[i]] = i;
+    }
+    let mut tree: Vec[i64] = Vec.filled(2 * n, 0);
+    let mut total = 0;
+    for i in 0..n {
+        let p = place[nums1[i]];
+        // the count over the leaves n to n + p, the half open range
+        let mut smaller = 0;
+        let mut low = n;
+        let mut high = n + p;
+        while low < high {
+            if low % 2 == 1 {
+                smaller += tree[low];
+                low += 1;
+            }
+            if high % 2 == 1 {
+                high -= 1;
+                smaller += tree[high];
+            }
+            low /= 2;
+            high /= 2;
+        }
+        let larger = (n - 1 - p) - (i - smaller);
+        total += smaller * larger;
+        let mut at = n + p;
+        while at >= 1 {
+            tree[at] += 1;
+            at /= 2;
+        }
+    }
+    total
+}
+
+// ---- triplets_struct.kara: a `Fenwick` that marks a place and counts below one
+struct Fenwick {
+    counts: Vec[i64],
+}
+
+impl Fenwick {
+    fn of(size: i64) -> Fenwick {
+        Fenwick { counts: Vec.filled(size + 1, 0) }
+    }
+
+    fn mark(mut ref self, place: i64) {
+        let mut i = place + 1;
+        while i < self.counts.len() {
+            self.counts[i] += 1;
+            i += i & -i;
+        }
+    }
+
+    fn below(ref self, place: i64) -> i64 {
+        let mut met = 0;
+        let mut i = place;
+        while i > 0 {
+            met += self.counts[i];
+            i -= i & -i;
+        }
+        met
+    }
+}
+
+fn struct_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for (i, v) in nums2.iter().enumerate() {
+        place[v] = i;
+    }
+    let mut met = Fenwick.of(n);
+    let mut total = 0;
+    for (i, v) in nums1.iter().enumerate() {
+        let p = place[v];
+        let smaller = met.below(p);
+        let larger = (n - 1 - p) - (i - smaller);
+        total += smaller * larger;
+        met.mark(p);
+    }
+    total
+}
+
+// ---- triplets_iter.kara: `partition_point` and `insert` into a sorted list, `zip`, `sum`
+fn iter_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for (i, v) in nums2.iter().enumerate() {
+        place[v] = i;
+    }
+    let seq: Vec[i64] = nums1.iter().map(|v| place[v]).collect();
+    let mut met: Vec[i64] = Vec.new();
+    let smaller: Vec[i64] = seq
+        .iter()
+        .map(|p| {
+            let below = met.partition_point(|m| m < p);
+            met.insert(below, p);
+            below
+        })
+        .collect();
+    seq.iter()
+        .zip(smaller.iter())
+        .enumerate()
+        .map(|(i, (p, s))| s * ((n - 1 - p) - (i - s)))
+        .sum()
+}
+
+// ---- triplets_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn good_triplets(nums1: Vec[i32], nums2: Vec[i32]) -> i64 {
+        let n = nums1.len();
+        let mut pos = Vec.filled(n, 0);
+        for (i, v) in nums2.iter().enumerate() {
+            pos[v] = i;
+        }
+        let mut tree = Vec.filled(n + 1, 0);
+        let mut ans: i64 = 0;
+        for (i, v) in nums1.iter().enumerate() {
+            let p = pos[v];
+            let mut left: i64 = 0;
+            let mut j = p;
+            while j > 0 {
+                left += tree[j];
+                j -= j & (~j + 1);
+            }
+            let right = (n - 1 - p) - (i - left);
+            ans += left * right;
+            let mut j = p + 1;
+            while j <= n {
+                tree[j] += 1;
+                j += j & (~j + 1);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_good_triplets(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let a: Vec[i32] = nums1.iter().map(|x| x as i32).collect();
+    let b: Vec[i32] = nums2.iter().map(|x| x as i32).collect();
+    Solution.good_triplets(a, b)
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut count = 0;
+    for x in 0..n {
+        for y in 0..n {
+            for z in 0..n {
+                let mut p1 = [0, 0, 0];
+                let mut p2 = [0, 0, 0];
+                for i in 0..n {
+                    for (k, v) in [x, y, z].iter().enumerate() {
+                        if nums1[i] == v {
+                            p1[k] = i;
+                        }
+                        if nums2[i] == v {
+                            p2[k] = i;
+                        }
+                    }
+                }
+                if p1[0] < p1[1] and p1[1] < p1[2] and p2[0] < p2[1] and p2[1] < p2[2] {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_good_triplets(nums1, nums2),
+        1 => merge_good_triplets(nums1, nums2),
+        2 => segment_good_triplets(nums1, nums2),
+        3 => struct_good_triplets(nums1, nums2),
+        4 => iter_good_triplets(nums1, nums2),
+        _ => solution_good_triplets(nums1, nums2),
+    }
+}
+
+// the pairs of values in the same order in both
+fn same_order_pairs(nums1: Vec[i64], nums2: Vec[i64]) -> i64 {
+    let n = nums1.len();
+    let mut place: Vec[i64] = Vec.filled(n, 0);
+    for i in 0..n {
+        place[nums2[i]] = i;
+    }
+    let mut pairs = 0;
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if place[nums1[i]] < place[nums1[j]] {
+                pairs += 1;
+            }
+        }
+    }
+    pairs
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffled(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut perm: Vec[i64] = (0..n).collect();
+    let mut i = n - 1;
+    while i > 0 {
+        let j = next_random(mut seed) % (i + 1);
+        perm.swap(i, j);
+        i -= 1;
+    }
+    perm
+}
+
+fn main() {
+    let names = ["star", "merge", "segment", "struct", "iter", "solution"];
+    let mut seed = 2179;
+    let mut cases: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for t in 0..360 {
+        let n = next_random(mut seed) % 7 + 3;
+        let nums1 = shuffled(n, mut seed);
+        let nums2 = if t < 300 {
+            shuffled(n, mut seed)
+        } else if t < 330 {
+            nums1.clone()
+        } else {
+            nums1.iter().rev().collect()
+        };
+        cases.push((nums1, nums2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums1, nums2) in cases.iter() {
+        let n = nums1.len();
+        let truth = literal(nums1, nums2);
+        check = (check * 31 + n * 7 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums1, nums2)).collect();
+        let flip1: Vec[i64] = nums1.iter().map(|v| n - 1 - v).collect();
+        let flip2: Vec[i64] = nums2.iter().map(|v| n - 1 - v).collect();
+        let back1: Vec[i64] = nums1.iter().rev().collect();
+        let back2: Vec[i64] = nums2.iter().rev().collect();
+        let mut more1 = nums1.clone();
+        more1.push(n);
+        let mut more2 = nums2.clone();
+        more2.push(n);
+        let pairs = same_order_pairs(nums1, nums2);
+        for arm in 0..6 {
+            let count = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == count {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                count == truth,
+                answer(arm, nums2, nums1) == count,
+                answer(arm, flip1, flip2) == count,
+                answer(arm, back1, back2) == count,
+                answer(arm, more1, more2) == count + pairs,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums1}, {nums2} arm {names[arm]}: P{q + 1} fails, answered {count}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} pairs: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
