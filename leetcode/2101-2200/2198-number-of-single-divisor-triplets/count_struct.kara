@@ -1,0 +1,104 @@
+// LeetCode #2198: Number of Single Divisor Triplets -- a `struct Tally`
+// of the counts by value, with `ordered` (`ref self`) giving how many
+// index triples take the values (a, b, c) in that order and a `Triple`
+// of three values whose `is_single` says if exactly one divides their
+// sum, tried for every ordered triple of the values held. O(n + 100^3).
+
+struct Triple {
+    a: i64,
+    b: i64,
+    c: i64,
+}
+
+impl Triple {
+    fn is_single(ref self) -> bool {
+        let sum = self.a + self.b + self.c;
+        let by_a = sum % self.a == 0;
+        let by_b = sum % self.b == 0;
+        let by_c = sum % self.c == 0;
+        by_a != by_b != by_c and not (by_a and by_b and by_c)
+    }
+}
+
+struct Tally {
+    count: Vec[i64],
+}
+
+impl Tally {
+    fn of(nums: Vec[i64]) -> Tally {
+        let mut count = Vec.filled(101, 0);
+        for x in nums.iter() {
+            count[x] += 1;
+        }
+        Tally { count: count }
+    }
+
+    fn ordered(ref self, t: Triple) -> i64 {
+        let first = self.count[t.a];
+        let second = self.count[t.b] - (if t.b == t.a { 1 } else { 0 });
+        let third = self.count[t.c] - (if t.c == t.a { 1 } else { 0 }) - (if t.c == t.b { 1 } else { 0 });
+        first * second * third
+    }
+}
+
+fn single_divisor_triplet(nums: Vec[i64]) -> i64 {
+    let tally = Tally.of(nums);
+    let mut total = 0;
+    let held: Vec[i64] = (1..101).filter(|v| tally.count[v] > 0).collect();
+    for a in held.iter() {
+        for b in held.iter() {
+            for c in held.iter() {
+                let t = Triple { a: a, b: b, c: c };
+                if t.is_single() {
+                    total += tally.ordered(t);
+                }
+            }
+        }
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {single_divisor_triplet(nums)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then three more: three numbers that are
+    // a single divisor triplet in every order, one value with one other,
+    // and every value once
+    show([4, 6, 7, 3, 2]);
+    show([1, 2, 2]);
+    show([1, 1, 1]);
+    show([2, 3, 4]);
+    show([3, 3, 3, 3, 1]);
+    show((1..101).collect());
+    // 200 random arrays of 3 to 60 numbers up to 6, 20 and 100 in turn
+    let mut seed = 2198;
+    let mut check = 0;
+    for round in 0..200 {
+        let n = next_random(mut seed) % 58 + 3;
+        let top = [6, 20, 100][round % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % top + 1);
+        }
+        check = (check * 31 + single_divisor_triplet(nums)) % 1000000007;
+    }
+    println(f"200 arrays: checksum {check}");
+    // the constraints' longest: 10^5 numbers up to 100, and 10^5 numbers
+    // of two values
+    let mut wide: Vec[i64] = Vec.new();
+    let mut two: Vec[i64] = Vec.new();
+    for i in 0..100000 {
+        wide.push(next_random(mut seed) % 100 + 1);
+        two.push(if i % 3 == 0 { 2 } else { 4 });
+    }
+    println(f"10^5 numbers: {single_divisor_triplet(wide)}; two values: {single_divisor_triplet(two)}");
+}
