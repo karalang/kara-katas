@@ -48,21 +48,25 @@ byte-identical; a Python reading that walks the keyboard from its left
 end for every letter gives the same output.
 
 The Mend loop: the map arm checks clean as written. The ★ arm takes one
-round of two edits, the `as i64` dropped from `place[(c - b'a') as
-i64]`, since a `u8` index needs no cast. The search arm takes one,
+round of two edits, `place[(c - b'a') as i64]` to `place[c - b'a']`,
+since a `u8` index needs no cast. The search arm takes one,
 `keyboard.find(c)` to `keyboard.find(c.to_string())`: Kāra's `find`
 takes a `Str`, not a `char`. The pairs arm takes one, `.into_iter()`
-after `windows(2)`. The Rust arm takes four rounds (3, 1, 6 and 2
+after `windows(2)`. The Rust arm takes four rounds (3, 1, 6 and 1
 edits): `&str` to `Str` and `Solution::` to `Solution.`; then `struct
 Solution {}`; then `[0usize; 26]` to `[0; 26]`, `.iter()` before
-`enumerate()`, the `as usize` indices to `as i64`, `ans` annotated `i32`
-and the adapter's `as i64` dropped; then the `as i64` indices dropped.
+`enumerate()`, the read's `pos[(b - b'a') as usize]` to `pos[b - b'a']`,
+the assignment's `as usize` to `as i64`, `ans` annotated `i32` and the
+adapter's `as i64` dropped; then the assignment's `as i64` dropped.
 Its output matches on the first run.
 
-The Rust arm's last round is a gap in the Mend loop: an `as usize` index
-over a `u8` is first rewritten to `as i64`, which the next round finds
-redundant and drops, so every such index costs two rounds and is left
-in parentheses, `pos[(b - b'a')]`. That is kara B-2026-11-15-50.
+Until kara `88d7d6ee97` every `as usize` index over a `u8` took two rounds,
+`as i64` and then nothing, and was left in parentheses, `pos[(b -
+b'a')]` (kara B-2026-11-15-50). A cast that is a whole index now goes
+in one round with its parentheses. The assignment's still takes two:
+its byte comes from `keyboard.bytes().enumerate()`, whose items have no
+known type until that round adds `.iter()`, so the cast cannot yet be
+shown to widen and becomes `as i64` first.
 
 ## Differential
 
