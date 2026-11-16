@@ -190,24 +190,24 @@ overflow-checked Rust programs are also built at `-march=x86-64-v3`:
 
 | | time | median |
 |---|---|---|
-| Kāra (`karac build`) | 0.213 to 0.272 s | 0.223 s |
-| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.212 to 0.280 s | 0.226 s |
-| Rust (`rustc -O`) | 0.173 to 0.233 s | 0.185 s |
-| Rust (`rustc -O -C overflow-checks=on`) | 0.191 to 0.255 s | 0.195 s |
-| Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 0.191 to 0.270 s | 0.202 s |
-| C (`clang -O3 -march=x86-64-v3`) | 0.074 to 0.094 s | 0.076 s |
-| C (`clang -O3`) | 0.069 to 0.104 s | 0.071 s |
-| Go | 0.182 to 0.227 s | 0.203 s |
+| Kāra (`karac build`) | 0.212 to 0.246 s | 0.217 s |
+| Kāra (`KARAC_AUTO_PAR=0 karac build`) | 0.213 to 0.264 s | 0.220 s |
+| Rust (`rustc -O`) | 0.168 to 0.182 s | 0.173 s |
+| Rust (`rustc -O -C overflow-checks=on`) | 0.190 to 0.245 s | 0.195 s |
+| Rust (`rustc -O -C overflow-checks=on -C target-cpu=x86-64-v3`) | 0.184 to 0.214 s | 0.192 s |
+| C (`clang -O3 -march=x86-64-v3`) | 0.073 to 0.098 s | 0.077 s |
+| C (`clang -O3`) | 0.068 to 0.092 s | 0.070 s |
+| Go | 0.182 to 0.236 s | 0.193 s |
 | Python | 3.92 to 4.22 s | |
 
 `bench.sh` builds the Kāra program with `KARAC_AUTO_PAR=0 karac build`,
-the sequential lane; user time is within 4% of wall time for both Kāra
-rows, so both ran on one core. Kāra takes about 1.12x the time of
+the sequential lane; user time is within 3% of wall time for both Kāra
+rows, so both ran on one core. Kāra takes about 1.15x the time of
 overflow-checked Rust built for the same baseline, the equal-safety
-comparison, 3.0x C's and 1.11x Go's; Python takes about 18x. Building the
+comparison, 2.9x C's and 1.14x Go's; Python takes about 18x. Building the
 words and puzzles once takes 24 ms in Kāra, 23 ms in checked Rust and 5
-ms in C (each measured with no calls), so a call takes about 10.1 ms in
-Kāra, 9.0 ms in checked Rust and 3.6 ms in C. A call hashes 100000 sets
+ms in C (each measured with no calls), so a call takes about 9.8 ms in
+Kāra, 8.5 ms in checked Rust and 3.6 ms in C. A call hashes 100000 sets
 into the map and looks up 640000, and Kāra's `Map` and Rust's `HashMap`
 both hash with SipHash, which resists collision attacks, where C's table
 hashes with one multiply; that the hash is most of C's lead was inferred
