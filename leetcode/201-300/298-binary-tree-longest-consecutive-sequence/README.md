@@ -283,6 +283,17 @@ word: a `shared TreeNode` carries a control block that a `Node *` and a
 Kāra, C and Rust all peak at 33.2 MiB, because macOS malloc's 16-byte quantum
 gives the 24-byte and 32-byte nodes the same 32-byte slot.
 
+## x86 Callgrind (2026-11-16)
+
+`down` binds each child out of `n.left` and `n.right`, and takes a
+`mut ref i64` best-so-far, so the compiled walk retained and released
+both children at every node: two writes per child, which dirtied every
+node of the 1M-node tree on each of the 40 passes (2.79x Rust's wall
+time). It now executes Rust's instruction count, 2.65G; the 2.1x wall
+time left is the node's size, a 32-byte node with its count in a 48-byte
+`malloc` chunk against Rust's 24 bytes in 32. That was kara
+`B-2026-11-16-242`.
+
 ## Running it
 
 ```bash

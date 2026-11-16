@@ -50,6 +50,15 @@ Against the 2026-09-08 run (karac gc9032a670), Kāra improved about 1.6× agains
 
 Kāra checks integer overflow by default, so the honest Rust baseline is the `-C overflow-checks=on` row, not `rustc -O`. Single-machine snapshot (`bench/results.json`, karac g6697158fa); see [`BENCHMARKS.md`](../../../BENCHMARKS.md) for methodology and caveats. Re-run with `bash bench/bench.sh` (add `KARA_BENCH_INCLUDE_PY=1` for the Python lane).
 
+## x86 Callgrind (2026-11-16)
+
+The window inserts one bucket and removes one per element, 16M removals
+over the bench. Kāra's `Map` keeps entries in slot order beside its
+index, so a removal leaves a hole, and once the holes outnumber the
+entries the table moves every entry down and rebuilds the index: 15.6G
+instructions against Rust's 9.1G (hashbrown erases in place), 1.73x
+Rust's wall time. Open as kara `B-2026-11-16-243`.
+
 ## Running
 
 ```bash

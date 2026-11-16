@@ -163,6 +163,15 @@ The rebuild arm took 3 `karac fix` edits and then checked:
 `position(|c| *c == p)` on the same list takes the `*`). The other arms
 were written in Kāra and `karac fix` had nothing to change.
 
+## x86 Callgrind (2026-11-16)
+
+The search walks `for child in node.children.iter()` over a `mut` field
+of a `shared` node, so every visit took the field's borrow flag in the
+runtime's table and gave it back: 14.6G instructions against Rust's
+2.5G, 1.89x Rust's wall time. A body that writes nothing through a
+`shared` handle now checks the flag once instead, and the bench runs at
+1.02x Rust's wall time. That was kara `B-2026-11-16-241`.
+
 ## B-2026-11-08-31
 
 The harness first folded the printed answer into its checksum with
