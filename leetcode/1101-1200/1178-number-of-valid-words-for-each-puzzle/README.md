@@ -168,9 +168,11 @@ An edit planned for the chain arm, counting each set once with
 `*count.entry(m).or_insert(0) = 1;`, was refused instead of running. Rust
 types that `1` from the map, but Kāra fixed the map's open counts to
 `i64` at the store through `*`, and the `Vec[i32]` answer they are summed
-into was refused as a narrowing (kara B-2026-11-16-230, open). The
-`v[i] = 7` of an open `Vec` already leaves the element open; a store
-through `*` does not yet. R3 gives every word an `a` instead.
+into was refused as a narrowing (kara B-2026-11-16-230). The `v[i] = 7`
+of an open `Vec` already left the element open. Fixed in kara
+`5ed35584c3`: a value stored through `*` now fixes an open count as one
+assigned to an open binding does, a literal joining it, and the edited
+arm runs. R3 gives every word an `a` instead.
 
 ## Benchmarks
 
