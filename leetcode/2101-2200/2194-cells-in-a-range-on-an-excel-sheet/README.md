@@ -176,3 +176,9 @@ Python and Kāra build a list of strings. Every implementation prints
 `20 passes over 15795 ranges: checksum 842920152`.
 
 BENCHTAB
+
+On x86 (Callgrind, 2026-11-16), `String.from_utf8([col, row].to_vec())`
+copied each fresh `Vec` into a new allocation, and the bench ran 1.85x
+checked Rust's instructions; an ASCII `Vec` now becomes the `String`,
+and it runs at parity. That was kara `B-2026-11-16-11`, fixed at
+817ac3649e.

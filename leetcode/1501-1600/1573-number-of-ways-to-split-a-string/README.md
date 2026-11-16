@@ -112,6 +112,12 @@ s, Rust's time, and even a plain `for c in s.chars()` takes 0.148 s.
 Filed as B-2026-11-15-2. The bench keeps `chars()`, which is how the
 problem reads.
 
+On x86 (Callgrind, 2026-11-16), the setup's `(0..n).map(|_|
+..).collect()` into a `String` ran the library's `map` adaptor and
+`collect` through an erased closure; it now runs as the push loop it
+stands for, at Rust's instruction count. That was kara `B-2026-11-16-7`,
+fixed at 817ac3649e.
+
 ## Verification
 
 All four arms print the same output as `split.py` under `karac __mir-run`

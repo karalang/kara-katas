@@ -171,3 +171,9 @@ time (0.375 s) is not above its real time (0.379 s).
 
 The sequential Kāra program is 1.71x Rust under overflow checks and 1.97x
 C.
+
+On x86 (Callgrind, 2026-11-16), `i64.parse(token)` of each word called
+the runtime's parser to learn it held no number, and the bench ran 2.55x
+checked Rust's instructions; a first byte that cannot start a number now
+answers in line, and it runs 1.48x. That was kara `B-2026-11-16-10`,
+fixed at 817ac3649e.

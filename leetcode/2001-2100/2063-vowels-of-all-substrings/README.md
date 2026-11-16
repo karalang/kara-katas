@@ -159,3 +159,10 @@ The ★ arm's vowel test, `"aeiou".contains(c.to_string())`, allocates a
 is about 5.8 times faster (B-2026-11-10-25).
 
 BENCHTAB
+
+On x86 (Callgrind, 2026-11-16), `"aeiou".contains(c.to_string())`
+searched a literal whose length the loop could not see, through the
+general search, and the bench ran 3.37x checked Rust's instructions; a
+one-byte needle in a short haystack is now a byte scan over a constant
+literal, and it runs 1.17x. That was kara `B-2026-11-16-9`, fixed at
+817ac3649e.

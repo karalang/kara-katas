@@ -175,3 +175,10 @@ order. Every implementation prints `20000 answers: 10026650 numbers,
 checksum 332166571`.
 
 BENCHTAB
+
+On x86 (2026-11-16), the comparator's tie break put a branch on
+`nums[b] > nums[a]` inside the sort's merge, mispredicted half the time
+(104M mispredicts against Rust's 40M), and the bench took 1.87 s against
+checked Rust's 0.85 s; integer `cmp` now picks its variant with selects,
+and it takes 0.80 s. That was kara `B-2026-11-16-12`, fixed at
+817ac3649e.

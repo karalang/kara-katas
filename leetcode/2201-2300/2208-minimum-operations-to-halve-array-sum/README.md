@@ -172,3 +172,8 @@ hand-written heap of doubles, Go's `container/heap` and Python's
 prints `12 arrays of 10^5: checksum 515617734`.
 
 BENCHTAB
+
+On x86 (Callgrind, 2026-11-16), each heap comparison's `total_cmp` was a
+call into the runtime, and the bench ran 2.43x checked Rust's
+instructions; `total_cmp` is now compared in line, and it runs 1.33x.
+That was kara `B-2026-11-16-8`, fixed at 817ac3649e.
