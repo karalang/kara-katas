@@ -1,0 +1,145 @@
+// LeetCode #2213: Longest Substring of One Repeating Character -- the
+// struct arm: a `struct Stretch` sums up a stretch of letters by its
+// first and last letter, its length, its longest run from the start,
+// from the end and inside, and `join` (`ref self`) puts two side by side.
+// The stretches sit in a bottom-up tree whose leaves are padded to a
+// power of two with empty ones; a query sets a leaf and joins the nodes
+// above it again. O((n + k) log n).
+
+#[derive(Copy, Clone)]
+struct Stretch {
+    first: char,
+    last: char,
+    length: i64,
+    prefix: i64,
+    suffix: i64,
+    best: i64,
+}
+
+impl Stretch {
+    fn letter(c: char) -> Stretch {
+        Stretch { first: c, last: c, length: 1, prefix: 1, suffix: 1, best: 1 }
+    }
+
+    fn empty() -> Stretch {
+        Stretch { first: 'a', last: 'a', length: 0, prefix: 0, suffix: 0, best: 0 }
+    }
+
+    fn join(ref self, other: Stretch) -> Stretch {
+        if other.length == 0 {
+            return *self;
+        }
+        if self.length == 0 {
+            return other;
+        }
+        let meet = self.last == other.first;
+        let prefix = if meet and self.prefix == self.length { self.length + other.prefix } else { self.prefix };
+        let suffix = if meet and other.suffix == other.length { other.length + self.suffix } else { other.suffix };
+        let across = if meet { self.suffix + other.prefix } else { 0 };
+        Stretch {
+            first: self.first,
+            last: other.last,
+            length: self.length + other.length,
+            prefix: prefix,
+            suffix: suffix,
+            best: self.best.max(other.best).max(across),
+        }
+    }
+}
+
+fn longest_repeating(s: String, query_characters: String, query_indices: Vec[i64]) -> Vec[i64] {
+    let n = s.len();
+    let mut size = 1;
+    while size < n {
+        size *= 2;
+    }
+    let mut tree: Vec[Stretch] = Vec.filled(2 * size, Stretch.empty());
+    for (i, c) in s.chars().enumerate() {
+        tree[size + i] = Stretch.letter(c);
+    }
+    for node in (1..size).rev() {
+        tree[node] = tree[2 * node].join(tree[2 * node + 1]);
+    }
+    let mut lengths: Vec[i64] = Vec.new();
+    for (letter, at) in query_characters.chars().zip(query_indices.iter()) {
+        let mut node = size + at;
+        tree[node] = Stretch.letter(letter);
+        while node > 1 {
+            node /= 2;
+            tree[node] = tree[2 * node].join(tree[2 * node + 1]);
+        }
+        lengths.push(tree[1].best);
+    }
+    lengths
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut word = String.new();
+    for _ in 0..n {
+        word.push(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'][next_random(mut seed) % letters]);
+    }
+    word
+}
+
+fn random_indices(k: i64, n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut indices: Vec[i64] = Vec.new();
+    for _ in 0..k {
+        indices.push(next_random(mut seed) % n);
+    }
+    indices
+}
+
+fn show(s: String, query_characters: String, query_indices: Vec[i64]) {
+    println(f"\"{s}\" with \"{query_characters}\" at {query_indices} -> {longest_repeating(s, query_characters, query_indices)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one letter, a run broken in
+    // the middle, two runs joined, and a letter set to what it was
+    show("babacc", "bcb", [1, 3, 3]);
+    show("abyzz", "aa", [2, 1]);
+    show("a", "b", [0]);
+    show("aaaaaaa", "ba", [3, 3]);
+    show("aabaa", "a", [2]);
+    show("abcabc", "aab", [0, 0, 4]);
+    // 3000 random words of 1 to 30 letters, each with 1 to 30 queries,
+    // the letters drawn from 2, 3 and 26 in turn
+    let mut seed = 2213;
+    let mut check = 0;
+    for t in 0..3000 {
+        let letters = [2, 3, 26][t % 3];
+        let n = next_random(mut seed) % 30 + 1;
+        let k = next_random(mut seed) % 30 + 1;
+        let s = random_word(n, letters, mut seed);
+        let query_characters = random_word(k, letters, mut seed);
+        let query_indices = random_indices(k, n, mut seed);
+        for length in longest_repeating(s, query_characters, query_indices) {
+            check = (check * 31 + length) % 1000000007;
+        }
+    }
+    println(f"3000 words: checksum {check}");
+    // the constraints' largest: 10^5 letters of 'a' and 'b' with 10^5
+    // random queries, then 10^5 'a's with the middle letter broken and
+    // mended in turn
+    let s = random_word(100000, 2, mut seed);
+    let query_characters = random_word(100000, 2, mut seed);
+    let query_indices = random_indices(100000, 100000, mut seed);
+    let lengths = longest_repeating(s, query_characters, query_indices);
+    let total = lengths.iter().sum();
+    println(f"10^5 random: total {total}, last {lengths[99999]}");
+    let mut plain = String.new();
+    let mut flips = String.new();
+    for i in 0..100000 {
+        plain.push('a');
+        flips.push(if i % 2 == 0 { 'b' } else { 'a' });
+    }
+    let lengths = longest_repeating(plain, flips, Vec.filled(100000, 50000));
+    println(f"10^5 alike: first {lengths[0]}, last {lengths[99999]}, total {lengths.iter().sum()}");
+}
