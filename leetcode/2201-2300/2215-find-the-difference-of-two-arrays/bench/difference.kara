@@ -1,0 +1,51 @@
+// LeetCode #2215: Find the Difference of Two Arrays -- each array put in
+// a `Set`, and each list the distinct numbers of one set the other lacks,
+// taken by `filter` over the set. O(n + m).
+
+fn find_difference(nums1: Vec[i64], nums2: Vec[i64]) -> Vec[Vec[i64]] {
+    let first: Set[i64] = nums1.iter().collect();
+    let second: Set[i64] = nums2.iter().collect();
+    let only_first: Vec[i64] = first.iter().filter(|x| not second.contains(x)).collect();
+    let only_second: Vec[i64] = second.iter().filter(|x| not first.contains(x)).collect();
+    [only_first, only_second]
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2215;
+    let mut pairs: Vec[(Vec[i64], Vec[i64])] = Vec.new();
+    for p in 0..200 {
+        // 1000 numbers each, spread over -30..30, -300..300 and -1000..1000
+        let spread = [30, 300, 1000][p % 3];
+        let mut nums1: Vec[i64] = Vec.new();
+        let mut nums2: Vec[i64] = Vec.new();
+        for _ in 0..1000 {
+            nums1.push(next_random(mut seed) % (2 * spread + 1) - spread);
+        }
+        for _ in 0..1000 {
+            nums2.push(next_random(mut seed) % (2 * spread + 1) - spread);
+        }
+        pairs.push((nums1, nums2));
+    }
+    let mut check = 0;
+    for p in 0..200 {
+        for r in 0..10 {
+            // punch: one number of the first array moves before each answer
+            pairs[p].0[r * 97] = (pairs[p].0[r * 97] + 1001) % 2001 - 1000;
+            let (nums1, nums2) = ref pairs[p];
+            let answer = find_difference(nums1, nums2);
+            for list in answer.iter() {
+                // the lists come in any order: their lengths and sums do not
+                check = (check * 31 + list.len()) % 1000000007;
+                check = (check * 31 + list.iter().sum() + 1000000) % 1000000007;
+            }
+        }
+    }
+    println(f"200 pairs of 1000, 10 punches: checksum {check}");
+}

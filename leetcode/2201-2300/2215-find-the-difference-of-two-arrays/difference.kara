@@ -1,0 +1,77 @@
+// LeetCode #2215: Find the Difference of Two Arrays -- each array put in
+// a `Set`, and each list the distinct numbers of one set the other lacks,
+// taken by `filter` over the set. O(n + m).
+
+fn find_difference(nums1: Vec[i64], nums2: Vec[i64]) -> Vec[Vec[i64]] {
+    let first: Set[i64] = nums1.iter().collect();
+    let second: Set[i64] = nums2.iter().collect();
+    let only_first: Vec[i64] = first.iter().filter(|x| not second.contains(x)).collect();
+    let only_second: Vec[i64] = second.iter().filter(|x| not first.contains(x)).collect();
+    [only_first, only_second]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// the two lists sorted, since either may come in any order
+fn sorted_answer(nums1: Vec[i64], nums2: Vec[i64]) -> Vec[Vec[i64]] {
+    let mut answer = find_difference(nums1, nums2);
+    for list in answer.iter_mut() {
+        list.sort();
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_nums(n: i64, spread: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(next_random(mut seed) % (2 * spread + 1) - spread);
+    }
+    nums
+}
+
+fn show(nums1: Vec[i64], nums2: Vec[i64]) {
+    println(f"{nums1} and {nums2} -> {sorted_answer(nums1, nums2)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the same numbers twice,
+    // nothing shared, negatives and repeats, and one number each
+    show([1, 2, 3], [2, 4, 6]);
+    show([1, 2, 3, 3], [1, 1, 2, 2]);
+    show([5, 5, 5], [5]);
+    show([1, 2], [3, 4]);
+    show([-1000, 0, 1000, -1000], [1000, -999]);
+    show([7], [-7]);
+    // 3000 random pairs of 1 to 30 numbers, spread over -3..3, -30..30
+    // and -1000..1000 in turn
+    let mut seed = 2215;
+    let mut check = 0;
+    for t in 0..3000 {
+        let spread = [3, 30, 1000][t % 3];
+        let n1 = next_random(mut seed) % 30 + 1;
+        let n2 = next_random(mut seed) % 30 + 1;
+        let nums1 = random_nums(n1, spread, mut seed);
+        let nums2 = random_nums(n2, spread, mut seed);
+        for list in sorted_answer(nums1, nums2).iter() {
+            check = (check * 31 + 1001) % 1000000007;
+            for x in list.iter() {
+                check = (check * 31 + x + 1000) % 1000000007;
+            }
+        }
+    }
+    println(f"3000 pairs: checksum {check}");
+    // the constraints' largest: 1000 numbers each over the whole range,
+    // then 1000 each that share nothing
+    let wide1 = random_nums(1000, 1000, mut seed);
+    let wide2 = random_nums(1000, 1000, mut seed);
+    let wide = sorted_answer(wide1, wide2);
+    let low: Vec[i64] = (0..1000).map(|i| -1000 + i).collect();
+    let high: Vec[i64] = (0..1000).map(|i| 1000 - i).collect();
+    let apart = sorted_answer(low, high);
+    println(f"1000 random: {wide[0].len()} and {wide[1].len()}, sums {wide[0].iter().sum()} and {wide[1].iter().sum()}; 1000 apart: {apart[0].len()} and {apart[1].len()}");
+}
