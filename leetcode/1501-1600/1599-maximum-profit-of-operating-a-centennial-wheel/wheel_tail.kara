@@ -1,0 +1,84 @@
+// LeetCode #1599: Maximum Profit of Operating a Centennial Wheel -- the
+// tail in closed form.
+//
+// While groups still arrive the wheel is run as the ★ arm runs it. After
+// that every rotation but the last boards a full gondola of four, so each
+// of those changes the profit by the same amount: if it is positive they
+// all raise it and the best of them is after the last, otherwise none
+// is a new best. The last rotation, boarding what is left, is weighed on its own.
+// O(n).
+
+fn min_operations_max_profit(customers: Vec[i32], boarding_cost: i32, running_cost: i32) -> i32 {
+    let mut waiting: i64 = 0;
+    let mut profit: i64 = 0;
+    let mut best: i64 = 0;
+    let mut answer: i64 = -1;
+    for (i, arriving) in customers.iter().enumerate() {
+        waiting += arriving;
+        let board = waiting.min(4);
+        waiting -= board;
+        profit += board * boarding_cost - running_cost;
+        if profit > best {
+            best = profit;
+            answer = i + 1;
+        }
+    }
+    let full = waiting / 4;
+    let rest = waiting % 4;
+    let per_full = 4 * boarding_cost - running_cost;
+    profit += full * per_full;
+    if per_full > 0 and full > 0 and profit > best {
+        best = profit;
+        answer = customers.len() + full;
+    }
+    if rest > 0 {
+        profit += rest * boarding_cost - running_cost;
+        if profit > best {
+            answer = customers.len() + full + 1;
+        }
+    }
+    answer as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut never = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let customers: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 51) as i32).collect();
+        let boarding = (next_random(mut seed) % 100 + 1) as i32;
+        let running = (next_random(mut seed) % 100 + 1) as i32;
+        let answer = min_operations_max_profit(customers, boarding, running);
+        if answer == -1 {
+            never += 1;
+        }
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} days of up to {most} arrivals: {never} never in profit, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i32], i32, i32)] = [
+        ([8, 3], 5, 6),
+        ([10, 9, 6], 6, 4),
+        ([3, 4, 0, 5, 1], 1, 92),
+        ([0, 0, 0], 5, 1),
+        ([4], 1, 4),
+        ([50, 50, 50], 100, 1),
+        ([0, 0, 13], 10, 39),
+    ];
+    for (customers, boarding, running) in examples.iter() {
+        println(f"{customers}, {boarding}, {running} -> {min_operations_max_profit(customers, boarding, running)}");
+    }
+    let mut seed = 1599;
+    batch(3000, 6, mut seed);
+    batch(300, 100, mut seed);
+    batch(3, 100000, mut seed);
+}
