@@ -1,0 +1,173 @@
+// LeetCode #2227: Encrypt and Decrypt Strings -- nothing counted ahead:
+// the `Encrypter` keeps the dictionary, and each `decrypt` encrypts every
+// word of it again and counts those that come out equal to the string.
+// O(dictionary letters) a decryption, which 100 words of 100 letters
+// keep small.
+
+struct Encrypter {
+    table: Map[char, String],
+    dictionary: Vec[String],
+}
+
+impl Encrypter {
+    fn new(keys: Vec[char], values: Vec[String], dictionary: Vec[String]) -> Encrypter {
+        let mut table: Map[char, String] = Map.new();
+        for i in 0..keys.len() {
+            table.insert(keys[i], values[i].clone());
+        }
+        Encrypter { table: table, dictionary: dictionary.clone() }
+    }
+
+    fn encrypt(self, word1: String) -> String {
+        let mut secret = String.new();
+        for c in word1.chars() {
+            match self.table.get(c) {
+                Some(value) => secret.push_str(value),
+                None => return String.new(),
+            }
+        }
+        secret
+    }
+
+    fn decrypt(self, word2: String) -> i64 {
+        let mut found = 0;
+        for word in self.dictionary.iter() {
+            if self.encrypt(word) == word2 {
+                found += 1;
+            }
+        }
+        found
+    }
+}
+
+// the answers of `calls` on a new `Encrypter`, each an encryption (true)
+// or a decryption, its count written out
+fn replay(keys: Vec[char], values: Vec[String], dictionary: Vec[String], calls: Vec[(bool, String)]) -> Vec[String] {
+    let encrypter = Encrypter.new(keys, values, dictionary);
+    let mut answers: Vec[String] = Vec.new();
+    for (encrypting, word) in calls.iter() {
+        if encrypting {
+            answers.push(encrypter.encrypt(word));
+        } else {
+            answers.push(f"{encrypter.decrypt(word)}");
+        }
+    }
+    answers
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of `length` letters drawn from the first `letters` of the
+// alphabet
+fn draw_word(seed: mut ref i64, length: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    word
+}
+
+// One random case: keys the first `m` letters, each value two letters of
+// the first `v`, so that values repeat; a dictionary of distinct words of
+// 1 to `longest` letters of the first m + 1 (26 at most), so that some
+// cannot be encrypted while m < 26; and `count` calls, an encryption of
+// a word of keys, or a decryption of a dictionary word's encryption, of
+// a random word's, or of random letters.
+struct Case {
+    keys: Vec[char],
+    values: Vec[String],
+    dictionary: Vec[String],
+    calls: Vec[(bool, String)],
+}
+
+fn draw_case(seed: mut ref i64, m: i64, v: i64, words: i64, longest: i64, count: i64) -> Case {
+    let mut keys: Vec[char] = Vec.new();
+    let mut values: Vec[String] = Vec.new();
+    for i in 0..m {
+        keys.push(char.try_from((97 + i) as u32).ok().unwrap());
+        values.push(draw_word(mut seed, 2, v));
+    }
+    let mut dictionary: Vec[String] = Vec.new();
+    let mut seen: Set[String] = Set.new();
+    for _ in 0..words {
+        let length = next_random(mut seed) % longest + 1;
+        let word = draw_word(mut seed, length, (m + 1).min(26));
+        if not seen.contains(word) {
+            seen.insert(word.clone());
+            dictionary.push(word);
+        }
+    }
+    let mut calls: Vec[(bool, String)] = Vec.new();
+    for _ in 0..count {
+        let kind = next_random(mut seed) % 4;
+        let length = next_random(mut seed) % longest + 1;
+        if kind == 0 {
+            calls.push((true, draw_word(mut seed, length, m)));
+        } else {
+            let plain = if kind == 1 {
+                dictionary[next_random(mut seed) % dictionary.len()].clone()
+            } else {
+                draw_word(mut seed, length, m)
+            };
+            let mut secret = String.new();
+            for c in plain.chars() {
+                let at = (c as i64) - 97;
+                if kind == 3 or at >= m {
+                    secret.push_str(draw_word(mut seed, 2, v));
+                } else {
+                    secret.push_str(values[at]);
+                }
+            }
+            calls.push((false, secret));
+        }
+    }
+    Case { keys: keys, values: values, dictionary: dictionary, calls: calls }
+}
+
+fn main() {
+    // LeetCode's example, then one with no repeated values and one where
+    // every key shares a value
+    let keys = ['a', 'b', 'c', 'd'].to_vec();
+    let values = ["ei", "zf", "ei", "am"].to_vec();
+    let dictionary = ["abcd", "acbd", "adbc", "badc", "dacb", "cadb", "cbda", "abad"].to_vec();
+    let calls = [(true, "abcd"), (false, "eizfeiam")].to_vec();
+    println(f"{replay(keys, values, dictionary, calls.iter().map(|c| (c.0, c.1.to_string())).collect())}");
+    let calls = [(true, "ab"), (false, "xyzw"), (false, "zwxy"), (false, "xyxy"), (true, "ba")].to_vec();
+    println(f"{replay(['a', 'b'].to_vec(), ["xy", "zw"].to_vec(), ["ab", "ba", "aa", "c"].to_vec(), calls.iter().map(|c| (c.0, c.1.to_string())).collect())}");
+    let calls = [(false, "qqqq"), (false, "qq"), (true, "cab"), (false, "qqqqqq")].to_vec();
+    println(f"{replay(['a', 'b', 'c'].to_vec(), ["qq", "qq", "qq"].to_vec(), ["ab", "ba", "cc", "abc", "d", "a"].to_vec(), calls.iter().map(|c| (c.0, c.1.to_string())).collect())}");
+    // 2000 random cases of 1 to 26 keys, values of 2 to 4 letters, up to
+    // 30 dictionary words of 1 to 5 letters, and 20 calls
+    let mut seed = 2227;
+    let mut check = 0;
+    for c in 0..2000 {
+        let m = next_random(mut seed) % 26 + 1;
+        let case = draw_case(mut seed, m, c % 3 + 2, 30, 5, 20);
+        for answer in replay(case.keys, case.values, case.dictionary, case.calls).iter() {
+            for b in answer.bytes() {
+                check = (check * 31 + b) % 1000000007;
+            }
+            check = (check * 31 + 7) % 1000000007;
+        }
+    }
+    println(f"2000 cases: checksum {check}");
+    // the constraints' largest: 26 keys, 100 dictionary words of 100
+    // letters, 200 calls of up to 100 letters
+    let case = draw_case(mut seed, 26, 3, 100, 100, 200);
+    let answers = replay(case.keys, case.values, case.dictionary, case.calls);
+    let mut found = 0;
+    let mut letters = 0;
+    for (i, answer) in answers.iter().enumerate() {
+        if case.calls[i].0 {
+            letters += answer.len();
+        } else {
+            found += i64.parse(answer).unwrap();
+        }
+    }
+    println(f"200 calls: {letters} letters encrypted, {found} words found");
+}

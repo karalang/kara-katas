@@ -1,0 +1,109 @@
+// LeetCode #2227: Encrypt and Decrypt Strings -- an `Encrypter` holding a
+// `Map` from key to value, and a `Map` from each dictionary word's
+// encryption to how many words share it: since values may repeat, a
+// string decrypts to every word that encrypts to it, so `decrypt` only
+// looks the string up. A word with a letter that is no key never
+// encrypts, and is left out. O(total dictionary letters) to build, then
+// O(length) a call.
+
+struct Encrypter {
+    table: Map[char, String],
+    counts: Map[String, i64],
+}
+
+impl Encrypter {
+    fn new(keys: Vec[char], values: Vec[String], dictionary: Vec[String]) -> Encrypter {
+        let mut table: Map[char, String] = Map.new();
+        for i in 0..keys.len() {
+            table.insert(keys[i], values[i].clone());
+        }
+        let mut encrypter = Encrypter { table: table, counts: Map.new() };
+        for word in dictionary.iter() {
+            let secret = encrypter.encrypt(word);
+            if not secret.is_empty() {
+                let before = encrypter.counts.get(secret).unwrap_or(0);
+                encrypter.counts.insert(secret, before + 1);
+            }
+        }
+        encrypter
+    }
+
+    // "" when a letter is no key
+    fn encrypt(self, word1: String) -> String {
+        let mut secret = String.new();
+        for c in word1.chars() {
+            match self.table.get(c) {
+                Some(value) => secret.push_str(value),
+                None => return String.new(),
+            }
+        }
+        secret
+    }
+
+    fn decrypt(self, word2: String) -> i64 {
+        self.counts.get(word2).unwrap_or(0)
+    }
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw_word(seed: mut ref i64, length: i64, letters: i64) -> String {
+    let mut word = String.new();
+    for _ in 0..length {
+        word.push(char.try_from((97 + next_random(mut seed) % letters) as u32).ok().unwrap());
+    }
+    word
+}
+
+fn main() {
+    let mut seed = 2227;
+    // 26 keys, values of 3 letters so that they repeat, 100 dictionary
+    // words of 100 letters, and 200 calls: encryptions of up to 2000
+    // letters and decryptions of dictionary words' encryptions or of
+    // random letters
+    let mut keys: Vec[char] = Vec.new();
+    let mut values: Vec[String] = Vec.new();
+    for i in 0..26 {
+        keys.push(char.try_from((97 + i) as u32).ok().unwrap());
+        values.push(draw_word(mut seed, 2, 3));
+    }
+    let mut dictionary: Vec[String] = Vec.new();
+    for _ in 0..100 {
+        dictionary.push(draw_word(mut seed, 100, 26));
+    }
+    let mut words: Vec[String] = Vec.new();
+    for i in 0..200 {
+        if i % 2 == 0 {
+            words.push(draw_word(mut seed, next_random(mut seed) % 2000 + 1, 26));
+        } else if i % 4 == 1 {
+            let mut secret = String.new();
+            for c in dictionary[next_random(mut seed) % 100].chars() {
+                secret.push_str(values[(c as i64) - 97]);
+            }
+            words.push(secret);
+        } else {
+            words.push(draw_word(mut seed, 200, 3));
+        }
+    }
+    let mut check = 0;
+    for _ in 0..500 {
+        // punch: one dictionary word drawn again before each round
+        let at = next_random(mut seed) % 100;
+        dictionary[at] = draw_word(mut seed, 100, 26);
+        let encrypter = Encrypter.new(keys, values, dictionary);
+        for i in 0..200 {
+            if i % 2 == 0 {
+                let secret = encrypter.encrypt(words[i]);
+                check = (check * 31 + secret.len() + secret.bytes()[secret.len() / 2]) % 1000000007;
+            } else {
+                check = (check * 31 + encrypter.decrypt(words[i])) % 1000000007;
+            }
+        }
+    }
+    println(f"500 rounds of 200 calls: checksum {check}");
+}
