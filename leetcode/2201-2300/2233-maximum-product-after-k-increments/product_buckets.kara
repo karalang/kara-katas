@@ -1,0 +1,101 @@
+// LeetCode #2233: Maximum Product After K Increments -- a count of the
+// numbers at each value, walked up from the smallest: moving all of a
+// value's numbers up one costs as many increments as there are of them,
+// and the last, partial move takes only some. The product is then each
+// value raised to its count, by fast powers. O(n + largest value).
+
+fn power(base: i64, exponent: i64) -> i64 {
+    let mut result = 1;
+    let mut b = base % 1000000007;
+    let mut e = exponent;
+    while e > 0 {
+        if e % 2 == 1 {
+            result = result * b % 1000000007;
+        }
+        b = b * b % 1000000007;
+        e /= 2;
+    }
+    result
+}
+
+fn maximum_product(nums: Vec[i64], k: i64) -> i64 {
+    let mut largest = 0;
+    for x in nums.iter() {
+        largest = largest.max(x);
+    }
+    let mut count = Vec.filled(largest + k + 2, 0);
+    for x in nums.iter() {
+        count[x] += 1;
+    }
+    let mut left = k;
+    let mut v = 0;
+    while left > 0 {
+        if count[v] > 0 {
+            let moving = count[v].min(left);
+            count[v] -= moving;
+            count[v + 1] += moving;
+            left -= moving;
+        }
+        v += 1;
+    }
+    let mut product = 1;
+    for value in 0..count.len() {
+        if count[value] > 0 {
+            product = product * power(value, count[value]) % 1000000007;
+        }
+    }
+    product
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(nums: Vec[i64], k: i64) {
+    println(f"{nums}, k = {k} -> {maximum_product(nums, k)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one number, two zeros and
+    // one increment, increments enough to level everything, a product
+    // past the modulus, and all equal
+    show([0, 4], 5);
+    show([6, 3, 3, 2], 2);
+    show([0], 1);
+    show([0, 0], 1);
+    show([1, 2, 3, 4], 10);
+    show([1000000, 999999, 999998], 3);
+    show([5, 5, 5], 4);
+    // 3000 random cases of 1 to 20 numbers of up to 10, 1000 and 10^6 in
+    // turn, k from 1 to 100
+    let mut seed = 2233;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let top = [10, 1000, 1000000][c % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(wide_random(mut seed) % (top + 1));
+        }
+        let k = next_random(mut seed) % 100 + 1;
+        check = (check * 31 + maximum_product(nums, k)) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+    // the constraints' largest: 10^5 numbers of up to 10^6, k = 10^5;
+    // then 10^5 numbers of up to 10, so that the increments level them
+    for top in [1000000, 10] {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(wide_random(mut seed) % (top + 1));
+        }
+        println(f"10^5 numbers of up to {top}, k = 10^5: {maximum_product(nums, 100000)}");
+    }
+}
