@@ -1,0 +1,74 @@
+// LeetCode #2220: Minimum Bit Flips to Convert Number -- both numbers
+// written in binary with `{:b}`, the shorter padded with 0s on the left
+// to the longer's length, and the places whose characters differ
+// counted. O(log of the larger).
+
+fn min_bit_flips(start: i64, goal: i64) -> i64 {
+    let mut a: Vec[char] = f"{start:b}".chars().collect();
+    let mut b: Vec[char] = f"{goal:b}".chars().collect();
+    while a.len() < b.len() {
+        a.insert(0, '0');
+    }
+    while b.len() < a.len() {
+        b.insert(0, '0');
+    }
+    let mut flips = 0;
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            flips += 1;
+        }
+    }
+    flips
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(start: i64, goal: i64) {
+    println(f"{start} -> {goal}: {min_bit_flips(start, goal)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the same number, 0 to
+    // 10^9, 10^9 to one less, and 29 ones to 0
+    show(10, 7);
+    show(3, 4);
+    show(0, 0);
+    show(0, 1000000000);
+    show(1000000000, 999999999);
+    show(536870911, 0);
+    // 3000 random pairs up to 10^9; every third goal the start with one
+    // to three bits flipped
+    let mut seed = 2220;
+    let mut check = 0;
+    for c in 0..3000 {
+        let start = wide_random(mut seed) % 1000000001;
+        let mut goal = wide_random(mut seed) % 1000000001;
+        if c % 3 == 0 {
+            goal = start;
+            for _ in 0..next_random(mut seed) % 3 + 1 {
+                let bit = next_random(mut seed) % 29;
+                goal = goal ^ (1 << bit);
+            }
+        }
+        check = (check * 31 + min_bit_flips(start, goal)) % 1000000007;
+    }
+    println(f"3000 pairs: checksum {check}");
+    // 10^5 pairs up to 10^9, the flips summed
+    let mut total = 0;
+    for _ in 0..100000 {
+        let start = wide_random(mut seed) % 1000000001;
+        let goal = wide_random(mut seed) % 1000000001;
+        total += min_bit_flips(start, goal);
+    }
+    println(f"10^5 random pairs: {total} flips");
+}

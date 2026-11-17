@@ -1,0 +1,226 @@
+// LeetCode #2220: Minimum Bit Flips to Convert Number -- the
+// differential. The six arms, against the statement read literally: a
+// breadth-first search from start over the numbers below 2^11, one move
+// flipping any one bit, until goal is reached; no xor counting. 300
+// random pairs below 2^10; then 30 of a number and itself; then 30 of a
+// number and its ten low bits all flipped. Every case is drawn before
+// any arm answers.
+//
+// P1  the flips are the statement read literally
+// P2  they are from 0 to 30, and 0 exactly when start is goal
+// P3  start and goal swapped: the same flips
+// P4  both xored with one random mask below 2^30: the same flips
+// P5  one bit of goal flipped: one flip more or one fewer
+// P6  each arm agrees with at least three of the other five
+
+// ---- flips.kara: the ★ arm, the lowest 1 of start ^ goal cleared
+fn star_min_bit_flips(start: i64, goal: i64) -> i64 {
+    let mut differ = start ^ goal;
+    let mut flips = 0;
+    while differ != 0 {
+        differ = differ & (differ - 1);
+        flips += 1;
+    }
+    flips
+}
+
+// ---- flips_shift.kara: both numbers read a bit at a time
+fn shift_min_bit_flips(start: i64, goal: i64) -> i64 {
+    let mut a = start;
+    let mut b = goal;
+    let mut flips = 0;
+    while a > 0 or b > 0 {
+        if a % 2 != b % 2 {
+            flips += 1;
+        }
+        a /= 2;
+        b /= 2;
+    }
+    flips
+}
+
+// ---- flips_text.kara: both written in binary and compared
+fn text_min_bit_flips(start: i64, goal: i64) -> i64 {
+    let mut a: Vec[char] = f"{start:b}".chars().collect();
+    let mut b: Vec[char] = f"{goal:b}".chars().collect();
+    while a.len() < b.len() {
+        a.insert(0, '0');
+    }
+    while b.len() < a.len() {
+        b.insert(0, '0');
+    }
+    let mut flips = 0;
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            flips += 1;
+        }
+    }
+    flips
+}
+
+// ---- flips_struct.kara: `Register`, `bit`, `flip` and `toward`
+struct Register {
+    value: i64,
+}
+
+impl Register {
+    fn bit(ref self, place: i64) -> i64 {
+        (self.value >> place) & 1
+    }
+
+    fn flip(mut ref self, place: i64) {
+        self.value = self.value ^ (1 << place);
+    }
+
+    fn toward(mut ref self, goal: i64) -> i64 {
+        let mut flips = 0;
+        for place in 0..31 {
+            if self.bit(place) != (goal >> place) & 1 {
+                self.flip(place);
+                flips += 1;
+            }
+        }
+        flips
+    }
+}
+
+fn struct_min_bit_flips(start: i64, goal: i64) -> i64 {
+    let mut register = Register { value: start };
+    let flips = register.toward(goal);
+    assert(register.value == goal);
+    flips
+}
+
+// ---- flips_iter.kara: `filter` and `count` over the places
+fn iter_min_bit_flips(start: i64, goal: i64) -> i64 {
+    (0..31).filter(|place| (start >> place) & 1 != (goal >> place) & 1).count()
+}
+
+// ---- flips_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn min_bit_flips(start: i32, goal: i32) -> i32 {
+        (start ^ goal).count_ones() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_min_bit_flips(start: i64, goal: i64) -> i64 {
+    Solution.min_bit_flips(start as i32, goal as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(start: i64, goal: i64) -> i64 {
+    let mut distance: Vec[i64] = Vec.filled(2048, -1);
+    let mut queue: Vec[i64] = [start].to_vec();
+    distance[start] = 0;
+    let mut head = 0;
+    while head < queue.len() {
+        let x = queue[head];
+        head += 1;
+        if x == goal {
+            return distance[x];
+        }
+        for b in 0..11 {
+            let y = x ^ (1 << b);
+            if distance[y] == -1 {
+                distance[y] = distance[x] + 1;
+                queue.push(y);
+            }
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, start: i64, goal: i64) -> i64 {
+    match arm {
+        0 => star_min_bit_flips(start, goal),
+        1 => shift_min_bit_flips(start, goal),
+        2 => text_min_bit_flips(start, goal),
+        3 => struct_min_bit_flips(start, goal),
+        4 => iter_min_bit_flips(start, goal),
+        _ => solution_min_bit_flips(start, goal),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+struct Case {
+    start: i64,
+    goal: i64,
+    mask: i64,
+    bit: i64,
+}
+
+fn main() {
+    let names = ["star", "shift", "text", "struct", "iter", "solution"];
+    let mut seed = 2220;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let start = next_random(mut seed) % 1024;
+        let drawn = next_random(mut seed) % 1024;
+        let goal = if c < 300 { drawn } else if c < 330 { start } else { start ^ 1023 };
+        let mask = wide_random(mut seed) % 1073741824;
+        let bit = next_random(mut seed) % 30;
+        cases.push(Case { start: start, goal: goal, mask: mask, bit: bit });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let start = case.start;
+        let goal = case.goal;
+        let truth = literal(start, goal);
+        check = (check * 31 + truth) % 1000000007;
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, start, goal)).collect();
+        for arm in 0..6 {
+            let flips = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == flips {
+                    same += 1;
+                }
+            }
+            let moved = answer(arm, start, goal ^ (1 << case.bit));
+            let verdicts = [
+                flips == truth,
+                flips >= 0 and flips <= 30 and (flips == 0) == (start == goal),
+                answer(arm, goal, start) == flips,
+                answer(arm, start ^ case.mask, goal ^ case.mask) == flips,
+                moved == flips + 1 or moved == flips - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{start} -> {goal} arm {names[arm]}: P{q + 1} fails, gave {flips}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
