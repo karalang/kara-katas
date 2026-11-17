@@ -1,0 +1,109 @@
+// LeetCode #2234: Maximum Total Beauty of the Gardens -- the prefix
+// sums and the costs of completing each suffix built by `fold`s, the
+// splits a `filter` and `map` over `0..=n` and the best their `max`;
+// each split's level from `partition_point`-style search written as a
+// closure over how many gardens to raise. O(n log n).
+
+fn maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+    sorted.sort();
+    let n = sorted.len();
+    let prefix: Vec[i64] = sorted.iter().fold(vec_of(0), |sums, f| {
+        let last = sums[sums.len() - 1];
+        pushed(sums, last + f)
+    });
+    let suffix: Vec[i64] = sorted.iter().rev().fold(vec_of(0), |sums, f| {
+        let last = sums[sums.len() - 1];
+        pushed(sums, last + target - f)
+    });
+    // to_complete(c): the cost of completing the gardens from c on
+    let to_complete = |c: i64| suffix[n - c];
+    let level = |c: i64, budget: i64| {
+        let mut low = 1;
+        let mut high = c;
+        while low < high {
+            let m = (low + high + 1) / 2;
+            if sorted[m - 1] * m - prefix[m] <= budget {
+                low = m;
+            } else {
+                high = m - 1;
+            }
+        }
+        ((budget + prefix[low]) / low).min(target - 1)
+    };
+    (0..=n)
+        .filter(|c| to_complete(c) <= new_flowers and (c == 0 or sorted[c - 1] < target))
+        .map(|c| (n - c) * full + if c == 0 { 0 } else { level(c, new_flowers - to_complete(c)) * partial })
+        .max()
+        .unwrap()
+}
+
+fn vec_of(x: i64) -> Vec[i64] {
+    let mut v: Vec[i64] = Vec.new();
+    v.push(x);
+    v
+}
+
+fn pushed(sums: own Vec[i64], x: i64) -> Vec[i64] {
+    let mut sums = sums;
+    sums.push(x);
+    sums
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) {
+    println(f"{flowers}, new {new_flowers}, target {target}, full {full}, partial {partial} -> {maximum_beauty(flowers, new_flowers, target, full, partial)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: every garden complete
+    // already, one garden, flowers enough to complete everything yet one
+    // garden better left just short, partial worth nothing beside full,
+    // and gardens past the target
+    show([1, 3, 1, 1], 7, 6, 12, 1);
+    show([2, 4, 5, 3], 10, 5, 2, 6);
+    show([5, 5, 5], 1, 5, 3, 9);
+    show([4], 3, 10, 7, 2);
+    show([1, 1], 10000000000, 10, 1, 100);
+    show([1, 2, 3], 3, 4, 100000, 1);
+    show([20, 1, 15, 2], 6, 10, 5, 3);
+    // 3000 random cases of 1 to 20 gardens; the flowers and the target
+    // up to 10, 1000 and 10^5 in turn, the new flowers up to 3 times the
+    // target per garden, full and partial up to 10^5
+    let mut seed = 2234;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let top = [10, 1000, 100000][c % 3];
+        let mut flowers: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            flowers.push(wide_random(mut seed) % top + 1);
+        }
+        let target = wide_random(mut seed) % top + 1;
+        let new_flowers = wide_random(mut seed) % (3 * top * n) + 1;
+        let full = wide_random(mut seed) % 100000 + 1;
+        let partial = wide_random(mut seed) % 100000 + 1;
+        check = (check * 31 + maximum_beauty(flowers, new_flowers, target, full, partial)) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+    // the constraints' largest: 10^5 gardens of up to 10^5 flowers, the
+    // target 10^5; the new flowers 10^10, then 10^9, then 10^5
+    let mut flowers: Vec[i64] = Vec.new();
+    for _ in 0..100000 {
+        flowers.push(wide_random(mut seed) % 100000 + 1);
+    }
+    for new_flowers in [10000000000, 1000000000, 100000] {
+        println(f"10^5 gardens, new {new_flowers}: {maximum_beauty(flowers, new_flowers, 100000, 100000, 100000)}");
+    }
+}

@@ -1,0 +1,445 @@
+// LeetCode #2234: Maximum Total Beauty of the Gardens -- the
+// differential. The six arms, against the statement read literally:
+// every way of planting at most the new flowers among the gardens
+// tried, each garden then complete when it holds at least the target,
+// the beauty the complete ones times full plus the fewest flowers of an
+// incomplete one times partial (0 when none is incomplete), and the
+// largest; no sorting, no capping and no splits. 300 random cases of 1
+// to 4 gardens of up to 6 flowers, the target up to 7, up to 6 new
+// flowers, full and partial up to 10; then 30 with gardens up to 10
+// flowers and the target up to 4, so that many are complete already;
+// then 30 with full up to 3 and partial from 50 to 100, so that
+// leaving a garden incomplete pays. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the largest beauty, read literally
+// P2  the answer is at least the beauty with nothing planted, and at
+//     most every garden complete plus partial times one short of the
+//     target
+// P3  the gardens reversed: the same answer
+// P4  one new flower more: no smaller answer
+// P5  full one higher, and partial one higher: no smaller answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- beauty.kara: the ★ arm, every split, the level by binary search on the level
+fn star_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+    sorted.sort();
+    let n = sorted.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + sorted[i];
+    }
+    let mut best = 0;
+    let mut cost = 0;
+    let mut c = n;
+    while c >= 0 {
+        if c < n {
+            cost += target - sorted[c];
+        }
+        if cost > new_flowers {
+            break;
+        }
+        let complete = (n - c) * full;
+        if c == 0 {
+            best = best.max(complete);
+        } else if sorted[c - 1] < target {
+            let left = new_flowers - cost;
+            let mut low = sorted[0];
+            let mut high = target - 1;
+            while low < high {
+                let m = (low + high + 1) / 2;
+                // how many of the first c lie below m
+                let mut a = 0;
+                let mut b = c;
+                while a < b {
+                    let mid = (a + b) / 2;
+                    if sorted[mid] < m {
+                        a = mid + 1;
+                    } else {
+                        b = mid;
+                    }
+                }
+                if m * a - prefix[a] <= left {
+                    low = m;
+                } else {
+                    high = m - 1;
+                }
+            }
+            best = best.max(complete + low * partial);
+        }
+        c -= 1;
+    }
+    best
+}
+
+// ---- beauty_pointer.kara: the splits walked down with one pointer
+fn pointer_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+    sorted.sort();
+    let n = sorted.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + sorted[i];
+    }
+    let mut best = 0;
+    let mut cost = 0;
+    let mut p = n;
+    for c in (0..=n).rev() {
+        if c < n {
+            cost += target - sorted[c];
+        }
+        if cost > new_flowers {
+            break;
+        }
+        let complete = (n - c) * full;
+        if c == 0 {
+            best = best.max(complete);
+        } else if sorted[c - 1] < target {
+            let left = new_flowers - cost;
+            p = p.min(c);
+            while sorted[p - 1] * p - prefix[p] > left {
+                p -= 1;
+            }
+            let level = ((left + prefix[p]) / p).min(target - 1);
+            best = best.max(complete + level * partial);
+        }
+    }
+    best
+}
+
+// ---- beauty_rising.kara: the splits walked up with one pointer
+fn rising_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+    sorted.sort();
+    let n = sorted.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    let mut cost = 0;
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + sorted[i];
+        cost += target - sorted[i];
+    }
+    let mut best = 0;
+    if cost <= new_flowers {
+        best = n * full;
+    }
+    let mut p = 0;
+    for c in 1..=n {
+        if sorted[c - 1] == target {
+            break;
+        }
+        cost -= target - sorted[c - 1];
+        if cost > new_flowers {
+            continue;
+        }
+        let left = new_flowers - cost;
+        while p < c and sorted[p] * (p + 1) - prefix[p + 1] <= left {
+            p += 1;
+        }
+        let level = ((left + prefix[p]) / p).min(target - 1);
+        best = best.max((n - c) * full + level * partial);
+    }
+    best
+}
+
+// ---- beauty_struct.kara: `Gardens`, `level` and `beauty`
+struct Gardens {
+    sorted: Vec[i64],
+    prefix: Vec[i64],
+    to_complete: Vec[i64],
+    target: i64,
+}
+
+impl Gardens {
+    fn new(flowers: Vec[i64], target: i64) -> Gardens {
+        let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+        sorted.sort();
+        let n = sorted.len();
+        let mut prefix = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            prefix[i + 1] = prefix[i] + sorted[i];
+        }
+        let mut to_complete = Vec.filled(n + 1, 0);
+        for i in (0..n).rev() {
+            to_complete[i] = to_complete[i + 1] + target - sorted[i];
+        }
+        Gardens { sorted: sorted, prefix: prefix, to_complete: to_complete, target: target }
+    }
+
+    fn len(ref self) -> i64 {
+        self.sorted.len()
+    }
+
+    // the cost of raising the first p gardens to the p-th
+    fn raise_cost(ref self, p: i64) -> i64 {
+        self.sorted[p - 1] * p - self.prefix[p]
+    }
+
+    fn level(ref self, c: i64, budget: i64) -> i64 {
+        let mut low = 1;
+        let mut high = c;
+        while low < high {
+            let m = (low + high + 1) / 2;
+            if self.raise_cost(m) <= budget {
+                low = m;
+            } else {
+                high = m - 1;
+            }
+        }
+        ((budget + self.prefix[low]) / low).min(self.target - 1)
+    }
+
+    // the beauty with the gardens from c on completed, or -1 when that
+    // costs too much or would leave a complete garden among the rest
+    fn beauty(ref self, c: i64, new_flowers: i64, full: i64, partial: i64) -> i64 {
+        let cost = self.to_complete[c];
+        if cost > new_flowers or (c > 0 and self.sorted[c - 1] == self.target) {
+            return -1;
+        }
+        let complete = (self.len() - c) * full;
+        if c == 0 {
+            complete
+        } else {
+            complete + self.level(c, new_flowers - cost) * partial
+        }
+    }
+}
+
+fn struct_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let gardens = Gardens.new(flowers, target);
+    let mut best = 0;
+    for c in 0..=gardens.len() {
+        best = best.max(gardens.beauty(c, new_flowers, full, partial));
+    }
+    best
+}
+
+// ---- beauty_iter.kara: `fold`s, `filter`, `map` and `max`
+fn iter_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut sorted: Vec[i64] = flowers.iter().map(|f| f.min(target)).collect();
+    sorted.sort();
+    let n = sorted.len();
+    let prefix: Vec[i64] = sorted.iter().fold(iter_vec_of(0), |sums, f| {
+        let last = sums[sums.len() - 1];
+        iter_pushed(sums, last + f)
+    });
+    let suffix: Vec[i64] = sorted.iter().rev().fold(iter_vec_of(0), |sums, f| {
+        let last = sums[sums.len() - 1];
+        iter_pushed(sums, last + target - f)
+    });
+    // to_complete(c): the cost of completing the gardens from c on
+    let to_complete = |c: i64| suffix[n - c];
+    let level = |c: i64, budget: i64| {
+        let mut low = 1;
+        let mut high = c;
+        while low < high {
+            let m = (low + high + 1) / 2;
+            if sorted[m - 1] * m - prefix[m] <= budget {
+                low = m;
+            } else {
+                high = m - 1;
+            }
+        }
+        ((budget + prefix[low]) / low).min(target - 1)
+    };
+    (0..=n)
+        .filter(|c| to_complete(c) <= new_flowers and (c == 0 or sorted[c - 1] < target))
+        .map(|c| (n - c) * full + if c == 0 { 0 } else { level(c, new_flowers - to_complete(c)) * partial })
+        .max()
+        .unwrap()
+}
+
+fn iter_vec_of(x: i64) -> Vec[i64] {
+    let mut v: Vec[i64] = Vec.new();
+    v.push(x);
+    v
+}
+
+fn iter_pushed(sums: own Vec[i64], x: i64) -> Vec[i64] {
+    let mut sums = sums;
+    sums.push(x);
+    sums
+}
+
+// ---- beauty_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_beauty(flowers: Vec[i32], new_flowers: i64, target: i32, full: i32, partial: i32) -> i64 {
+        let (target, full, partial) = (target as i64, full as i64, partial as i64);
+        let mut f: Vec[i64] = flowers.iter().map(|x| (x as i64).min(target)).collect();
+        f.sort();
+        let n = f.len();
+        let mut prefix = Vec.filled(n + 1, 0);
+        for i in 0..n {
+            prefix[i + 1] = prefix[i] + f[i];
+        }
+        let mut ans = 0;
+        let mut cost = 0;
+        let mut p = n;
+        for c in (0..=n).rev() {
+            if c < n {
+                cost += target - f[c];
+            }
+            if cost > new_flowers {
+                break;
+            }
+            if c > 0 and f[c - 1] == target {
+                continue;
+            }
+            let left = new_flowers - cost;
+            let complete = (n - c) * full;
+            if c == 0 {
+                ans = ans.max(complete);
+                continue;
+            }
+            p = p.min(c);
+            while f[p - 1] * p - prefix[p] > left {
+                p -= 1;
+            }
+            let level = ((left + prefix[p]) / p).min(target - 1);
+            ans = ans.max(complete + level * partial);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_beauty(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let flowers: Vec[i32] = flowers.iter().map(|x| x as i32).collect();
+    Solution.maximum_beauty(flowers, new_flowers, target as i32, full as i32, partial as i32)
+}
+
+// ---- the statement read literally
+
+// the beauty of the gardens as they stand
+fn literal_beauty(gardens: Vec[i64], target: i64, full: i64, partial: i64) -> i64 {
+    let mut complete = 0;
+    let mut fewest = -1;
+    for g in gardens.iter() {
+        if g >= target {
+            complete += 1;
+        } else if fewest < 0 or g < fewest {
+            fewest = g;
+        }
+    }
+    complete * full + if fewest < 0 { 0 } else { fewest * partial }
+}
+
+// the largest beauty with at most `left` new flowers planted among the
+// gardens from `at` on
+fn literal_best(gardens: mut ref Vec[i64], at: i64, left: i64, target: i64, full: i64, partial: i64) -> i64 {
+    if at == gardens.len() {
+        return literal_beauty(gardens, target, full, partial);
+    }
+    let mut best = -1;
+    for give in 0..=left {
+        gardens[at] += give;
+        best = best.max(literal_best(mut gardens, at + 1, left - give, target, full, partial));
+        gardens[at] -= give;
+    }
+    best
+}
+
+fn literal(flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    let mut gardens = flowers.clone();
+    literal_best(mut gardens, 0, new_flowers, target, full, partial)
+}
+
+fn answer(arm: i64, flowers: Vec[i64], new_flowers: i64, target: i64, full: i64, partial: i64) -> i64 {
+    match arm {
+        0 => star_maximum_beauty(flowers, new_flowers, target, full, partial),
+        1 => pointer_maximum_beauty(flowers, new_flowers, target, full, partial),
+        2 => rising_maximum_beauty(flowers, new_flowers, target, full, partial),
+        3 => struct_maximum_beauty(flowers, new_flowers, target, full, partial),
+        4 => iter_maximum_beauty(flowers, new_flowers, target, full, partial),
+        _ => solution_maximum_beauty(flowers, new_flowers, target, full, partial),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    flowers: Vec[i64],
+    new_flowers: i64,
+    target: i64,
+    full: i64,
+    partial: i64,
+}
+
+fn main() {
+    let names = ["star", "pointer", "rising", "struct", "iter", "solution"];
+    let mut seed = 2234;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 4 + 1;
+        let (top, target_top) = if c >= 300 and c < 330 { (10, 4) } else { (6, 7) };
+        let mut flowers: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            flowers.push(next_random(mut seed) % top + 1);
+        }
+        let target = next_random(mut seed) % target_top + 1;
+        let new_flowers = next_random(mut seed) % 6 + 1;
+        let (full, partial) = if c >= 330 {
+            (next_random(mut seed) % 3 + 1, next_random(mut seed) % 51 + 50)
+        } else {
+            (next_random(mut seed) % 10 + 1, next_random(mut seed) % 10 + 1)
+        };
+        cases.push(Case { flowers: flowers, new_flowers: new_flowers, target: target, full: full, partial: partial });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let flowers = case.flowers.clone();
+        let (new_flowers, target, full, partial) = (case.new_flowers, case.target, case.full, case.partial);
+        let truth = literal(flowers, new_flowers, target, full, partial);
+        check = (check * 31 + truth) % 1000000007;
+        let floor = literal_beauty(flowers, target, full, partial);
+        let ceiling = flowers.len() * full + (target - 1) * partial;
+        let reversed: Vec[i64] = flowers.iter().rev().collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, flowers, new_flowers, target, full, partial)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= floor and value <= ceiling,
+                answer(arm, reversed, new_flowers, target, full, partial) == value,
+                answer(arm, flowers, new_flowers + 1, target, full, partial) >= value,
+                answer(arm, flowers, new_flowers, target, full + 1, partial) >= value and answer(arm, flowers, new_flowers, target, full, partial + 1) >= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{flowers}, new {new_flowers}, target {target}, full {full}, partial {partial} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
