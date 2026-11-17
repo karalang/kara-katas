@@ -1,0 +1,318 @@
+// LeetCode #1594: Maximum Non Negative Product in a Matrix
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 grids of 1
+// to 3 by 1 to 4 cells from -4 to 4, with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the grid transposed leaves the answer
+// P3  the grid turned half way round leaves the answer
+// P4  the top left cell doubled doubles the answer, or leaves -1
+// P5  every cell negated leaves the answer when a path has an even
+//     number of cells (checked only then)
+// P6  each arm agrees with at least two of the other three
+
+// ---- product.kara: the ★ arm: largest and smallest product at each cell
+
+fn star_arm(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut hi = Vec.filled(rows, Vec.filled(cols, 0));
+    let mut lo = Vec.filled(rows, Vec.filled(cols, 0));
+    for r in 0..rows {
+        for c in 0..cols {
+            let v = grid[r][c] as i64;
+            if r == 0 and c == 0 {
+                hi[r][c] = v;
+                lo[r][c] = v;
+                continue;
+            }
+            let mut best = i64.MIN;
+            let mut worst = i64.MAX;
+            if r > 0 {
+                best = best.max(hi[r - 1][c] * v).max(lo[r - 1][c] * v);
+                worst = worst.min(hi[r - 1][c] * v).min(lo[r - 1][c] * v);
+            }
+            if c > 0 {
+                best = best.max(hi[r][c - 1] * v).max(lo[r][c - 1] * v);
+                worst = worst.min(hi[r][c - 1] * v).min(lo[r][c - 1] * v);
+            }
+            hi[r][c] = best;
+            lo[r][c] = worst;
+        }
+    }
+    let top = hi[rows - 1][cols - 1];
+    if top < 0 { -1 } else { (top % 1000000007) as i32 }
+}
+
+// ---- product_memo.kara: from the end, remembered in a Map
+
+fn memo_from_cell(grid: Vec[Vec[i32]], r: i64, c: i64, memo: mut ref Map[(i64, i64), (i64, i64)]) -> (i64, i64) {
+    if let Some(pair) = memo.get((r, c)) {
+        return *pair;
+    }
+    let v = grid[r][c] as i64;
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let pair = if r == rows - 1 and c == cols - 1 {
+        (v, v)
+    } else {
+        let mut ends: Vec[i64] = Vec.new();
+        if r + 1 < rows {
+            let (a, b) = memo_from_cell(grid, r + 1, c, mut memo);
+            ends.push(a);
+            ends.push(b);
+        }
+        if c + 1 < cols {
+            let (a, b) = memo_from_cell(grid, r, c + 1, mut memo);
+            ends.push(a);
+            ends.push(b);
+        }
+        let products: Vec[i64] = ends.iter().map(|e| *e * v).collect();
+        (*products.iter().max().unwrap(), *products.iter().min().unwrap())
+    };
+    memo.insert((r, c), pair);
+    pair
+}
+
+fn memo_arm(grid: Vec[Vec[i32]]) -> i32 {
+    let mut memo = Map.new();
+    let (top, _) = memo_from_cell(grid, 0, 0, mut memo);
+    if top < 0 { -1 } else { (top % 1000000007) as i32 }
+}
+
+// ---- product_sign.kara: a Reach struct per cell, by sign
+
+struct SignReach {
+    pos: Option[i64],
+    neg: Option[i64],
+    zero: bool,
+}
+
+fn sign_better(a: Option[i64], b: Option[i64]) -> Option[i64] {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.max(y)),
+        (Some(x), None) => Some(x),
+        (None, y) => y,
+    }
+}
+
+fn sign_step(from: SignReach, v: i64) -> SignReach {
+    if v == 0 {
+        return SignReach { pos: None, neg: None, zero: true };
+    }
+    let size = v.abs();
+    let pos = from.pos.map(|p| p * size);
+    let neg = from.neg.map(|n| n * size);
+    if v > 0 {
+        SignReach { pos: pos, neg: neg, zero: from.zero }
+    } else {
+        SignReach { pos: neg, neg: pos, zero: from.zero }
+    }
+}
+
+fn sign_arm(grid: Vec[Vec[i32]]) -> i32 {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut reach: Vec[Vec[SignReach]] = Vec.new();
+    for r in 0..rows {
+        let mut row: Vec[SignReach] = Vec.new();
+        for c in 0..cols {
+            let v = grid[r][c] as i64;
+            let here = if r == 0 and c == 0 {
+                sign_step(SignReach { pos: Some(1), neg: None, zero: false }, v)
+            } else {
+                let mut merged = SignReach { pos: None, neg: None, zero: false };
+                if r > 0 {
+                    let s = sign_step(reach[r - 1][c], v);
+                    merged = SignReach { pos: sign_better(merged.pos, s.pos), neg: sign_better(merged.neg, s.neg), zero: merged.zero or s.zero };
+                }
+                if c > 0 {
+                    let s = sign_step(row[c - 1], v);
+                    merged = SignReach { pos: sign_better(merged.pos, s.pos), neg: sign_better(merged.neg, s.neg), zero: merged.zero or s.zero };
+                }
+                merged
+            };
+            row.push(here);
+        }
+        reach.push(row);
+    }
+    let end = ref reach[rows - 1][cols - 1];
+    match end.pos {
+        Some(p) => (p % 1000000007) as i32,
+        None => if end.zero { 0 } else { -1 },
+    }
+}
+
+// ---- product_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_product_path(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut mx = Vec.filled(m, Vec.filled(n, 0));
+        let mut mn = Vec.filled(m, Vec.filled(n, 0));
+        mx[0][0] = grid[0][0] as i64;
+        mn[0][0] = grid[0][0] as i64;
+        for i in 1..m {
+            mx[i][0] = mx[i - 1][0] * grid[i][0];
+            mn[i][0] = mx[i][0];
+        }
+        for j in 1..n {
+            mx[0][j] = mx[0][j - 1] * grid[0][j];
+            mn[0][j] = mx[0][j];
+        }
+        for i in 1..m {
+            for j in 1..n {
+                let v = grid[i][j] as i64;
+                let a = mx[i - 1][j] * v;
+                let b = mn[i - 1][j] * v;
+                let c = mx[i][j - 1] * v;
+                let d = mn[i][j - 1] * v;
+                mx[i][j] = a.max(b).max(c).max(d);
+                mn[i][j] = a.min(b).min(c).min(d);
+            }
+        }
+        let res = mx[m - 1][n - 1];
+        if res < 0 {
+            -1
+        } else {
+            (res % 1_000_000_007) as i32
+        }
+    }
+}
+
+fn solution_arm(grid: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.max_product_path(grid)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, grid: Vec[Vec[i32]]) -> i32 {
+    match a {
+        0 => star_arm(grid),
+        1 => memo_arm(grid),
+        2 => sign_arm(grid),
+        _ => solution_arm(grid),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["product", "memo", "sign", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every path that moves right or down
+// from the top left to the bottom right, each one's product, the largest
+// of them, -1 when it is negative
+
+fn path_products(grid: Vec[Vec[i32]], r: i64, c: i64, sofar: i64, out: mut ref Vec[i64]) {
+    let here = sofar * grid[r][c];
+    let rows = grid.len();
+    let cols = grid[0].len();
+    if r == rows - 1 and c == cols - 1 {
+        out.push(here);
+        return;
+    }
+    if r + 1 < rows {
+        path_products(grid, r + 1, c, here, mut out);
+    }
+    if c + 1 < cols {
+        path_products(grid, r, c + 1, here, mut out);
+    }
+}
+
+fn literal(grid: Vec[Vec[i32]]) -> i32 {
+    let mut products = Vec.new();
+    path_products(grid, 0, 0, 1, mut products);
+    let best = *products.iter().max().unwrap();
+    if best < 0 { -1 } else { (best % 1000000007) as i32 }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15940;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 3 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let grid: Vec[Vec[i32]] = (0..rows).map(|_| (0..cols).map(|_| (next_random(mut seed) % 9 - 4) as i32).collect()).collect();
+        cases.push(grid);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, grid) in cases.iter().enumerate() {
+        let truth = literal(grid);
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let transposed: Vec[Vec[i32]] = (0..cols).map(|c| (0..rows).map(|r| grid[r][c]).collect()).collect();
+        let turned: Vec[Vec[i32]] = (0..rows).map(|r| (0..cols).map(|c| grid[rows - 1 - r][cols - 1 - c]).collect()).collect();
+        let mut doubled = grid.clone();
+        doubled[0][0] *= 2;
+        let negated: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| -*x).collect()).collect();
+        let even = (rows + cols - 1) % 2 == 0;
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, grid);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let twice = arm(a, doubled);
+            let failed = [
+                answer != truth,
+                arm(a, transposed) != answer,
+                arm(a, turned) != answer,
+                if answer < 0 { twice != -1 } else { twice != answer * 2 },
+                even and arm(a, negated) != answer,
+            ];
+            for q in 0..5 {
+                if q == 4 and not even {
+                    continue;
+                }
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
