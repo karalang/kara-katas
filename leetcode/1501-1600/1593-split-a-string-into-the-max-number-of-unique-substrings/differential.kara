@@ -1,0 +1,253 @@
+// LeetCode #1593: Split a String Into the Max Number of Unique Substrings
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 strings of 1
+// to 6 letters from a to c, with six properties. Every random choice is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed leaves the answer
+// P3  the letters renamed (a, b, c made c, a, b) leave the answer
+// P4  a letter not in the string added at the end adds one
+// P5  the string written twice gives at least the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- unique_split.kara: the ★ arm: backtracking over a Set, with a bound
+
+fn star_split_from(s: Str, at: i64, used: mut ref Set[String], best: mut ref i64) {
+    if at == s.len() {
+        *best = (*best).max(used.len());
+        return;
+    }
+    if used.len() + (s.len() - at) <= *best {
+        return;
+    }
+    for end in at + 1..s.len() + 1 {
+        let piece = s[at..end].to_string();
+        if not used.contains(piece) {
+            used.insert(piece.clone());
+            star_split_from(s, end, mut used, mut best);
+            used.remove(piece);
+        }
+    }
+}
+
+fn star_arm(s: String) -> i32 {
+    let mut used: Set[String] = Set.new();
+    let mut best = 0;
+    star_split_from(s, 0, mut used, mut best);
+    best as i32
+}
+
+// ---- unique_split_masks.kara: every mask of cuts, pieces sorted to find a repeat
+
+fn masks_arm(s: String) -> i32 {
+    let n = s.len();
+    let mut best = 1;
+    for mask in 0..1 << (n - 1) {
+        let mut pieces: Vec[Str] = Vec.new();
+        let mut start = 0;
+        for i in 0..n - 1 {
+            if mask >> i & 1 == 1 {
+                pieces.push(s[start..i + 1]);
+                start = i + 1;
+            }
+        }
+        pieces.push(s[start..n]);
+        if pieces.len() <= best {
+            continue;
+        }
+        pieces.sort();
+        if pieces.windows(2).into_iter().all(|w| w[0] != w[1]) {
+            best = pieces.len();
+        }
+    }
+    best as i32
+}
+
+// ---- unique_split_plain.kara: backtracking over a Vec of pieces, no bound
+
+fn plain_most_pieces(s: Str, at: i64, pieces: mut ref Vec[String]) -> i64 {
+    if at == s.len() {
+        return pieces.len();
+    }
+    let mut best = 0;
+    for end in at + 1..s.len() + 1 {
+        let piece = s[at..end].to_string();
+        if not pieces.contains(piece) {
+            pieces.push(piece);
+            best = best.max(plain_most_pieces(s, end, mut pieces));
+            pieces.pop();
+        }
+    }
+    best
+}
+
+fn plain_arm(s: String) -> i32 {
+    let mut pieces = Vec.new();
+    plain_most_pieces(s, 0, mut pieces) as i32
+}
+
+// ---- unique_split_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+fn solution_dfs(s: Str, start: i64, seen: mut ref Set[String], best: mut ref i32) {
+    if start == s.len() {
+        *best = (*best).max(seen.len() as i32);
+        return;
+    }
+    if seen.len() + (s.len() - start) <= *best {
+        return;
+    }
+    for end in start + 1..=s.len() {
+        let sub = s[start..end];
+        if not seen.contains(sub) {
+            seen.insert(sub.to_string());
+            solution_dfs(s, end, mut seen, mut best);
+            seen.remove(sub);
+        }
+    }
+}
+
+impl Solution {
+    pub fn max_unique_split(s: String) -> i32 {
+        let mut seen = Set.new();
+        let mut best: i32 = 0;
+        solution_dfs(s, 0, mut seen, mut best);
+        best
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    Solution.max_unique_split(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i32 {
+    match a {
+        0 => star_arm(s),
+        1 => masks_arm(s),
+        2 => plain_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["unique_split", "masks", "plain", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every way to split the string, each
+// split's pieces compared pair by pair, the most pieces among the splits
+// with no two the same
+
+fn all_splits(s: Str) -> Vec[Vec[String]] {
+    if s.is_empty() {
+        return [Vec.new()];
+    }
+    let mut out = Vec.new();
+    for end in 1..s.len() + 1 {
+        for rest in all_splits(s[end..]).iter() {
+            let mut split = [s[..end].to_string()];
+            split.extend(rest.iter().cloned());
+            out.push(split);
+        }
+    }
+    out
+}
+
+fn literal(s: String) -> i32 {
+    let mut best = 0;
+    for split in all_splits(s).iter() {
+        let mut unique = true;
+        for i in 0..split.len() {
+            for j in i + 1..split.len() {
+                if split[i] == split[j] {
+                    unique = false;
+                }
+            }
+        }
+        if unique {
+            best = best.max(split.len());
+        }
+    }
+    best as i32
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15930;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let b: Vec[u8] = (0..n).map(|_| b'a' + (next_random(mut seed) % 3) as u8).collect();
+        cases.push(String.from_utf8(b).unwrap());
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, s) in cases.iter().enumerate() {
+        let truth = literal(s);
+        let reversed: String = s.chars().rev().collect();
+        let renamed: String = s.chars().map(|c| if c == 'a' { 'c' } else if c == 'b' { 'a' } else { 'b' }).collect();
+        let extended = f"{s}d";
+        let twice = f"{s}{s}";
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, reversed) != answer,
+                arm(a, renamed) != answer,
+                arm(a, extended) != answer + 1,
+                arm(a, twice) < answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
