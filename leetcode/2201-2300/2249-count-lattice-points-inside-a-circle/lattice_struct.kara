@@ -1,0 +1,108 @@
+// LeetCode #2249: Count Lattice Points Inside a Circle -- a `#[derive(
+// Copy, Clone)] struct Circle` with `contains` (`ref self`) and a
+// `struct Board` of 201 * 201 marks and a count of them: `cover` (`mut
+// ref self`) marks every point a circle holds, from its square, counting
+// the ones not marked before, and `marked` (`ref self`) reads the count.
+// O(sum of r^2 + 201^2).
+
+#[derive(Copy, Clone)]
+struct Circle {
+    x: i64,
+    y: i64,
+    r: i64,
+}
+
+impl Circle {
+    fn contains(ref self, px: i64, py: i64) -> bool {
+        let dx = px - self.x;
+        let dy = py - self.y;
+        dx * dx + dy * dy <= self.r * self.r
+    }
+}
+
+struct Board {
+    marks: Vec[bool],
+    count: i64,
+}
+
+impl Board {
+    fn new() -> Board {
+        Board { marks: Vec.filled(201 * 201, false), count: 0 }
+    }
+
+    fn cover(mut ref self, c: Circle) {
+        for px in c.x - c.r..c.x + c.r + 1 {
+            for py in c.y - c.r..c.y + c.r + 1 {
+                if c.contains(px, py) and not self.marks[px * 201 + py] {
+                    self.marks[px * 201 + py] = true;
+                    self.count += 1;
+                }
+            }
+        }
+    }
+
+    fn marked(ref self) -> i64 {
+        self.count
+    }
+}
+
+fn count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let mut board = Board.new();
+    for c in circles.iter() {
+        board.cover(Circle { x: c[0], y: c[1], r: c[2] });
+    }
+    board.marked()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` circles with centres from 1 to `top` and radii up to the
+// nearer axis, as the constraints require
+fn random_circles(seed: mut ref i64, count: i64, top: i64) -> Vec[Vec[i64]] {
+    (0..count).map(|_| {
+        let x = next_random(mut seed) % top + 1;
+        let y = next_random(mut seed) % top + 1;
+        let r = next_random(mut seed) % x.min(y) + 1;
+        [x, y, r].to_vec()
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: the smallest circle, one
+    // circle twice, one inside another, and the largest beside the
+    // smallest
+    let examples = [
+        [[2, 2, 1].to_vec()].to_vec(),
+        [[2, 2, 2].to_vec(), [3, 4, 1].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec()].to_vec(),
+        [[5, 5, 3].to_vec(), [5, 5, 3].to_vec()].to_vec(),
+        [[10, 10, 5].to_vec(), [10, 10, 2].to_vec()].to_vec(),
+        [[1, 1, 1].to_vec(), [100, 100, 100].to_vec()].to_vec(),
+    ];
+    for circles in examples.iter() {
+        println(f"{circles} -> {count_lattice_points(circles)}");
+    }
+    // 2000 cases of 1 to 6 circles with centres from 1 to 12
+    let mut seed = 2249;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let count = next_random(mut seed) % 6 + 1;
+        let circles = random_circles(mut seed, count, 12);
+        let points = count_lattice_points(circles);
+        total += points;
+        check = (check * 31 + points) % 1000000007;
+    }
+    println(f"2000 cases: {total} points, checksum {check}");
+    // the constraints' largest: 200 circles anywhere; 200 copies of the
+    // largest circle
+    let circles = random_circles(mut seed, 200, 100);
+    println(f"200 circles: {count_lattice_points(circles)}");
+    let circles: Vec[Vec[i64]] = (0..200).map(|_| [100, 100, 100].to_vec()).collect();
+    println(f"200 of the largest: {count_lattice_points(circles)}");
+}

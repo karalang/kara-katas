@@ -1,0 +1,302 @@
+// LeetCode #2249: Count Lattice Points Inside a Circle -- the
+// differential. The six arms, against the statement read literally:
+// every lattice point from (0, 0) to (30, 30) tried, and counted when
+// its distance from some centre, a square root in floating point, is
+// at most that circle's radius; no integer squares. 300 random cases of
+// 1 to 5 circles with centres from 1 to 8; then 30 of one circle many
+// times; then 30 of rings about one centre. Every case is drawn before
+// any arm answers.
+//
+// P1  the answer is the count, read literally
+// P2  the circles in reverse order: the same answer
+// P3  every circle's x and y swapped: the same answer
+// P4  every circle moved by (3, 5): the same answer
+// P5  a circle added: at least the old count, and at most the old count
+//     plus the new circle's own
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- lattice.kara: the ★ arm, every point of the bounding box
+fn star_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let left = circles.iter().map(|c| c[0] - c[2]).min().unwrap();
+    let right = circles.iter().map(|c| c[0] + c[2]).max().unwrap();
+    let bottom = circles.iter().map(|c| c[1] - c[2]).min().unwrap();
+    let top = circles.iter().map(|c| c[1] + c[2]).max().unwrap();
+    let mut count = 0;
+    for px in left..right + 1 {
+        for py in bottom..top + 1 {
+            for c in circles.iter() {
+                let dx = px - c[0];
+                let dy = py - c[1];
+                if dx * dx + dy * dy <= c[2] * c[2] {
+                    count += 1;
+                    break;
+                }
+            }
+        }
+    }
+    count
+}
+
+// ---- lattice_set.kara: each circle's points in a `Set`
+fn set_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let mut points: Set[(i64, i64)] = Set.new();
+    for c in circles.iter() {
+        let (x, y, r) = (c[0], c[1], c[2]);
+        for px in x - r..x + r + 1 {
+            for py in y - r..y + r + 1 {
+                if (px - x) * (px - x) + (py - y) * (py - y) <= r * r {
+                    points.insert((px, py));
+                }
+            }
+        }
+    }
+    points.len()
+}
+
+// ---- lattice_rows.kara: each row's runs merged
+// the largest w with w * w <= n, for n >= 0
+fn rows_isqrt(n: i64) -> i64 {
+    let mut w = 0;
+    while (w + 1) * (w + 1) <= n {
+        w += 1;
+    }
+    w
+}
+
+fn rows_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let mut count = 0;
+    for py in 0..201 {
+        let mut runs: Vec[(i64, i64)] = Vec.new();
+        for c in circles.iter() {
+            let dy = py - c[1];
+            let room = c[2] * c[2] - dy * dy;
+            if room >= 0 {
+                let w = rows_isqrt(room);
+                runs.push((c[0] - w, c[0] + w));
+            }
+        }
+        runs.sort();
+        let mut covered_to = -1;
+        for (from, to) in runs.iter() {
+            let start = from.max(covered_to + 1);
+            if to >= start {
+                count += to - start + 1;
+                covered_to = to;
+            }
+        }
+    }
+    count
+}
+
+// ---- lattice_struct.kara: `Circle` and `Board`
+#[derive(Copy, Clone)]
+struct StructCircle {
+    x: i64,
+    y: i64,
+    r: i64,
+}
+
+impl StructCircle {
+    fn contains(ref self, px: i64, py: i64) -> bool {
+        let dx = px - self.x;
+        let dy = py - self.y;
+        dx * dx + dy * dy <= self.r * self.r
+    }
+}
+
+struct StructBoard {
+    marks: Vec[bool],
+    count: i64,
+}
+
+impl StructBoard {
+    fn new() -> StructBoard {
+        StructBoard { marks: Vec.filled(201 * 201, false), count: 0 }
+    }
+
+    fn cover(mut ref self, c: StructCircle) {
+        for px in c.x - c.r..c.x + c.r + 1 {
+            for py in c.y - c.r..c.y + c.r + 1 {
+                if c.contains(px, py) and not self.marks[px * 201 + py] {
+                    self.marks[px * 201 + py] = true;
+                    self.count += 1;
+                }
+            }
+        }
+    }
+
+    fn marked(ref self) -> i64 {
+        self.count
+    }
+}
+
+fn struct_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let mut board = StructBoard.new();
+    for c in circles.iter() {
+        board.cover(StructCircle { x: c[0], y: c[1], r: c[2] });
+    }
+    board.marked()
+}
+
+// ---- lattice_iter.kara: `flat_map`, `filter`, `any` and `count`
+fn iter_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let left = circles.iter().map(|c| c[0] - c[2]).min().unwrap_or(0);
+    let right = circles.iter().map(|c| c[0] + c[2]).max().unwrap_or(0);
+    let bottom = circles.iter().map(|c| c[1] - c[2]).min().unwrap_or(0);
+    let top = circles.iter().map(|c| c[1] + c[2]).max().unwrap_or(0);
+    (left..right + 1)
+        .flat_map(|px| (bottom..top + 1).map(|py| (px, py)))
+        .filter(|(px, py)| circles.iter().any(|c| (px - c[0]) * (px - c[0]) + (py - c[1]) * (py - c[1]) <= c[2] * c[2]))
+        .count()
+}
+
+// ---- lattice_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_lattice_points(circles: Vec[Vec[i32]]) -> i32 {
+        let max_x = circles.iter().map(|c| c[0] + c[2]).max().unwrap();
+        let max_y = circles.iter().map(|c| c[1] + c[2]).max().unwrap();
+        let mut ans = 0;
+        for i in 0..=max_x {
+            for j in 0..=max_y {
+                if circles.iter().any(|c| (i - c[0]) * (i - c[0]) + (j - c[1]) * (j - c[1]) <= c[2] * c[2]) {
+                    ans += 1;
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_count_lattice_points(circles: Vec[Vec[i64]]) -> i64 {
+    let circles: Vec[Vec[i32]] = circles.iter().map(|c| c.iter().map(|v| v as i32).collect()).collect();
+    Solution.count_lattice_points(circles)
+}
+
+// ---- the statement read literally
+
+fn literal(circles: Vec[Vec[i64]]) -> i64 {
+    let mut count = 0;
+    for px in 0..31 {
+        for py in 0..31 {
+            let mut inside = false;
+            for c in circles.iter() {
+                let dx = (px - c[0]) as f64;
+                let dy = (py - c[1]) as f64;
+                if (dx * dx + dy * dy).sqrt() <= c[2] as f64 {
+                    inside = true;
+                }
+            }
+            if inside {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, circles: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_count_lattice_points(circles),
+        1 => set_count_lattice_points(circles),
+        2 => rows_count_lattice_points(circles),
+        3 => struct_count_lattice_points(circles),
+        4 => iter_count_lattice_points(circles),
+        _ => solution_count_lattice_points(circles),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_circle(seed: mut ref i64) -> Vec[i64] {
+    let x = next_random(mut seed) % 8 + 1;
+    let y = next_random(mut seed) % 8 + 1;
+    let r = next_random(mut seed) % x.min(y) + 1;
+    [x, y, r].to_vec()
+}
+
+fn main() {
+    let names = ["star", "set", "rows", "struct", "iter", "solution"];
+    let mut seed = 2249;
+    // (circles, one more circle)
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let mut circles: Vec[Vec[i64]] = Vec.new();
+        let count = next_random(mut seed) % 5 + 1;
+        if c < 300 {
+            for _ in 0..count {
+                circles.push(random_circle(mut seed));
+            }
+        } else if c < 330 {
+            let one = random_circle(mut seed);
+            for _ in 0..count {
+                circles.push(one.clone());
+            }
+        } else {
+            for _ in 0..count {
+                circles.push([8, 8, next_random(mut seed) % 8 + 1].to_vec());
+            }
+        }
+        let extra = random_circle(mut seed);
+        cases.push((circles, extra));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (circles, extra) in cases.iter() {
+        let truth = literal(circles);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[Vec[i64]] = circles.iter().rev().map(|c| c.clone()).collect();
+        let swapped: Vec[Vec[i64]] = circles.iter().map(|c| [c[1], c[0], c[2]].to_vec()).collect();
+        let moved: Vec[Vec[i64]] = circles.iter().map(|c| [c[0] + 3, c[1] + 5, c[2]].to_vec()).collect();
+        let mut more = circles.clone();
+        more.push(extra.clone());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, circles)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = answer(arm, more);
+            let alone = answer(arm, [extra.clone()].to_vec());
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, swapped) == value,
+                answer(arm, moved) == value,
+                grown >= value and grown <= value + alone,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{circles} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
