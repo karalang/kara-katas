@@ -1,0 +1,67 @@
+// LeetCode #2232: Minimize Result by Adding Parentheses to Expression --
+// every place for the two parentheses tried: "(" before digit i of the
+// left number and ")" after digit j of the right one, the value a * (b +
+// c) * d with an empty a or d counting as 1, and the first smallest kept.
+// O(n^2) placements of O(n) each, for n <= 10 characters.
+
+fn minimize_result(expression: String) -> String {
+    let plus = expression.find("+").unwrap();
+    let left = expression.substring(0, plus);
+    let right = expression.substring(plus + 1, expression.len());
+    let mut best = i64.MAX;
+    let mut answer = String.new();
+    for i in 0..left.len() {
+        for j in 1..=right.len() {
+            let a = if i == 0 { 1 } else { i64.parse(left.substring(0, i)).unwrap() };
+            let b = i64.parse(left.substring(i, left.len())).unwrap();
+            let c = i64.parse(right.substring(0, j)).unwrap();
+            let d = if j == right.len() { 1 } else { i64.parse(right.substring(j, right.len())).unwrap() };
+            let value = a * (b + c) * d;
+            if value < best {
+                best = value;
+                answer = f"{left.substring(0, i)}({left.substring(i, left.len())}+{right.substring(0, j)}){right.substring(j, right.len())}";
+            }
+        }
+    }
+    answer
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw_expression(seed: mut ref i64) -> String {
+    let left = next_random(mut seed) % 8 + 1;
+    let right = next_random(mut seed) % (9 - left) + 1;
+    let mut expression = String.new();
+    for k in 0..left + right + 1 {
+        if k == left {
+            expression.push('+');
+        } else {
+            expression.push(char.try_from((49 + next_random(mut seed) % 9) as u32).ok().unwrap());
+        }
+    }
+    expression
+}
+
+fn main() {
+    let mut seed = 2232;
+    let mut expressions: Vec[String] = Vec.new();
+    for _ in 0..20000 {
+        expressions.push(draw_expression(mut seed));
+    }
+    let mut check = 0;
+    for _ in 0..20 {
+        // punch: one expression drawn again before each pass over all
+        let at = next_random(mut seed) % 20000;
+        expressions[at] = draw_expression(mut seed);
+        for expression in expressions.iter() {
+            let answer = minimize_result(expression);
+            check = (check * 31 + answer.len() + answer.find("(").unwrap() * 11 + answer.find(")").unwrap()) % 1000000007;
+        }
+    }
+    println(f"20 passes over 20000 expressions: checksum {check}");
+}

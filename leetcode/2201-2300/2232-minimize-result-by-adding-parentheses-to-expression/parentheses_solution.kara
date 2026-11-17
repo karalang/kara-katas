@@ -1,0 +1,88 @@
+// LeetCode #2232: Minimize Result by Adding Parentheses to Expression --
+// LeetCode's Rust template: the expression `split('+')` into a
+// `Vec<&str>`, the bounds a tuple of `&str`s, the numbers cut out as
+// slices `l[..i]` and `l[i..]` and parsed with the turbofish
+// `parse::<i32>()`, the best value starting at `i32::MAX`, and the answer
+// written with `format!` from slices taken by `&`. Carried by `karac
+// fix`. The adapter below hands the harness's values to it.
+
+impl Solution {
+    pub fn minimize_result(expression: String) -> String {
+        let parts: Vec[Str] = expression.split("+").collect();
+        let (l, r) = (parts[0], parts[1]);
+        let mut best = i32.MAX;
+        let mut ans = String.new();
+        for i in 0..l.len() {
+            for j in 1..=r.len() {
+                let a = if i == 0 { 1 } else { i32.parse(l[..i]).unwrap() };
+                let b = i32.parse(l[i..]).unwrap();
+                let c = i32.parse(r[..j]).unwrap();
+                let d = if j == r.len() { 1 } else { i32.parse(r[j..]).unwrap() };
+                let v = a * (b + c) * d;
+                if v < best {
+                    best = v;
+                    ans = f"{l[..i]}({l[i..]}+{r[..j]}){r[j..]}";
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn minimize_result(expression: String) -> String {
+    Solution.minimize_result(expression)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random digits of 1 to 9
+fn draw_digits(seed: mut ref i64, count: i64) -> String {
+    let mut digits = String.new();
+    for _ in 0..count {
+        digits.push(char.try_from((49 + next_random(mut seed) % 9) as u32).ok().unwrap());
+    }
+    digits
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one digit each side,
+    // both sides split, the longest left side, and the longest right side
+    for expression in ["247+38", "12+34", "999+999", "1+1", "11+11", "12345678+9", "1+23456789"] {
+        println(f"{expression} -> {minimize_result(expression)}");
+    }
+    // 3000 random expressions of 3 to 10 characters
+    let mut seed = 2232;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let left = next_random(mut seed) % 8 + 1;
+        let right = next_random(mut seed) % (9 - left) + 1;
+        let expression = f"{draw_digits(mut seed, left)}+{draw_digits(mut seed, right)}";
+        for b in minimize_result(expression).bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"3000 expressions: checksum {check}");
+    // every expression of two digits on each side, by its parentheses
+    let mut wrapped = 0;
+    let mut split = 0;
+    for a in 11..100 {
+        for b in 11..100 {
+            if a % 10 != 0 and b % 10 != 0 {
+                let answer = minimize_result(f"{a}+{b}");
+                if answer.starts_with("(") and answer.ends_with(")") {
+                    wrapped += 1;
+                } else {
+                    split += 1;
+                }
+            }
+        }
+    }
+    println(f"6561 two-digit sums: {wrapped} wrapped whole, {split} split");
+}

@@ -1,0 +1,97 @@
+// LeetCode #2232: Minimize Result by Adding Parentheses to Expression --
+// `Sides`, the two numbers as strings, with `value` (what a placement of
+// the parentheses comes to), `written` (the expression with them in) and
+// `best` (the first smallest placement).
+
+struct Sides {
+    left: String,
+    right: String,
+}
+
+impl Sides {
+    fn new(expression: String) -> Sides {
+        let parts: Vec[String] = expression.split("+").map(|p| p.to_string()).collect();
+        Sides { left: parts[0].clone(), right: parts[1].clone() }
+    }
+
+    // "(" before left digit i, ")" after right digit j - 1
+    fn value(ref self, i: i64, j: i64) -> i64 {
+        let a = if i == 0 { 1 } else { i64.parse(self.left.substring(0, i)).unwrap() };
+        let b = i64.parse(self.left.substring(i, self.left.len())).unwrap();
+        let c = i64.parse(self.right.substring(0, j)).unwrap();
+        let d = if j == self.right.len() { 1 } else { i64.parse(self.right.substring(j, self.right.len())).unwrap() };
+        a * (b + c) * d
+    }
+
+    fn written(ref self, i: i64, j: i64) -> String {
+        f"{self.left.substring(0, i)}({self.left.substring(i, self.left.len())}+{self.right.substring(0, j)}){self.right.substring(j, self.right.len())}"
+    }
+
+    fn best(ref self) -> String {
+        let mut best = (0, 1);
+        for i in 0..self.left.len() {
+            for j in 1..=self.right.len() {
+                if self.value(i, j) < self.value(best.0, best.1) {
+                    best = (i, j);
+                }
+            }
+        }
+        self.written(best.0, best.1)
+    }
+}
+
+fn minimize_result(expression: String) -> String {
+    Sides.new(expression).best()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `count` random digits of 1 to 9
+fn draw_digits(seed: mut ref i64, count: i64) -> String {
+    let mut digits = String.new();
+    for _ in 0..count {
+        digits.push(char.try_from((49 + next_random(mut seed) % 9) as u32).ok().unwrap());
+    }
+    digits
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one digit each side,
+    // both sides split, the longest left side, and the longest right side
+    for expression in ["247+38", "12+34", "999+999", "1+1", "11+11", "12345678+9", "1+23456789"] {
+        println(f"{expression} -> {minimize_result(expression)}");
+    }
+    // 3000 random expressions of 3 to 10 characters
+    let mut seed = 2232;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let left = next_random(mut seed) % 8 + 1;
+        let right = next_random(mut seed) % (9 - left) + 1;
+        let expression = f"{draw_digits(mut seed, left)}+{draw_digits(mut seed, right)}";
+        for b in minimize_result(expression).bytes() {
+            check = (check * 31 + b) % 1000000007;
+        }
+    }
+    println(f"3000 expressions: checksum {check}");
+    // every expression of two digits on each side, by its parentheses
+    let mut wrapped = 0;
+    let mut split = 0;
+    for a in 11..100 {
+        for b in 11..100 {
+            if a % 10 != 0 and b % 10 != 0 {
+                let answer = minimize_result(f"{a}+{b}");
+                if answer.starts_with("(") and answer.ends_with(")") {
+                    wrapped += 1;
+                } else {
+                    split += 1;
+                }
+            }
+        }
+    }
+    println(f"6561 two-digit sums: {wrapped} wrapped whole, {split} split");
+}

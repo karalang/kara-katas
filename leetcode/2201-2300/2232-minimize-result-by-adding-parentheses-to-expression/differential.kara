@@ -1,0 +1,437 @@
+// LeetCode #2232: Minimize Result by Adding Parentheses to Expression --
+// the differential. The six arms, against the statement read literally:
+// "(" tried at every place left of "+" and ")" at every place right of
+// it, each string kept when it is a well-formed expression, read by a
+// general evaluator where a number beside a parenthesis multiplies, and
+// the smallest value; no splitting into a * (b + c) * d. Since any
+// smallest answer is accepted, the arms are judged by the value of the
+// string they return. 300 random expressions of 3 to 10 characters;
+// then 30 with one side a single digit; then 30 of 1s only, where many
+// placements tie. Every case is drawn before any arm answers.
+//
+// P1  the answer's value is the smallest, read literally
+// P2  the answer is the expression with one "(" and one ")" added, "("
+//     left of "+" and ")" right of it, a digit inside each side
+// P3  its value is at most both the sum itself and the sum of the two
+//     digits beside "+" in parentheses
+// P4  the first digit of the left number raised: no smaller value
+// P5  the last digit of the right number raised: no smaller value
+// P6  each arm's value agrees with at least three of the other five
+
+
+// ---- parentheses.kara: the ★ arm, every placement by substrings and parsing
+fn star_minimize_result(expression: String) -> String {
+    let plus = expression.find("+").unwrap();
+    let left = expression.substring(0, plus);
+    let right = expression.substring(plus + 1, expression.len());
+    let mut best = i64.MAX;
+    let mut answer = String.new();
+    for i in 0..left.len() {
+        for j in 1..=right.len() {
+            let a = if i == 0 { 1 } else { i64.parse(left.substring(0, i)).unwrap() };
+            let b = i64.parse(left.substring(i, left.len())).unwrap();
+            let c = i64.parse(right.substring(0, j)).unwrap();
+            let d = if j == right.len() { 1 } else { i64.parse(right.substring(j, right.len())).unwrap() };
+            let value = a * (b + c) * d;
+            if value < best {
+                best = value;
+                answer = f"{left.substring(0, i)}({left.substring(i, left.len())}+{right.substring(0, j)}){right.substring(j, right.len())}";
+            }
+        }
+    }
+    answer
+}
+
+// ---- parentheses_digits.kara: the numbers read off their digits
+// the digits_number the digits `from` to `to` (exclusive) spell, 1 when empty
+fn digits_number(chars: Vec[char], from: i64, to: i64) -> i64 {
+    if from == to {
+        return 1;
+    }
+    let mut value = 0;
+    for k in from..to {
+        value = value * 10 + (chars[k] as i64) - 48;
+    }
+    value
+}
+
+fn digits_minimize_result(expression: String) -> String {
+    let chars: Vec[char] = expression.chars().collect();
+    let n = chars.len();
+    let mut plus = 0;
+    while chars[plus] != '+' {
+        plus += 1;
+    }
+    let mut best = i64.MAX;
+    let mut best_open = 0;
+    let mut best_close = n;
+    // "(" goes before character `open`, ")" after character `close - 1`
+    for open in 0..plus {
+        for close in plus + 2..=n {
+            let value = digits_number(chars, 0, open) * (digits_number(chars, open, plus) + digits_number(chars, plus + 1, close)) * digits_number(chars, close, n);
+            if value < best {
+                best = value;
+                best_open = open;
+                best_close = close;
+            }
+        }
+    }
+    let mut answer = String.new();
+    for k in 0..=n {
+        if k == best_open {
+            answer.push('(');
+        }
+        if k == best_close {
+            answer.push(')');
+        }
+        if k < n {
+            answer.push(chars[k]);
+        }
+    }
+    answer
+}
+
+// ---- parentheses_eval.kara: each candidate written out and evaluated
+// the value of a string such as "12(3+45)6"
+fn eval_evaluate(candidate: String) -> i64 {
+    let mut outside = 1;
+    let mut inside = 0;
+    let mut number = 0;
+    for c in candidate.chars() {
+        match c {
+            '(' => {
+                if number > 0 {
+                    outside *= number;
+                }
+                number = 0;
+            }
+            '+' => {
+                inside += number;
+                number = 0;
+            }
+            ')' => {
+                inside += number;
+                number = 0;
+            }
+            _ => number = number * 10 + (c as i64) - 48,
+        }
+    }
+    if number > 0 {
+        outside *= number;
+    }
+    outside * inside
+}
+
+fn eval_minimize_result(expression: String) -> String {
+    let plus = expression.find("+").unwrap();
+    let mut best = i64.MAX;
+    let mut answer = String.new();
+    for open in 0..plus {
+        for close in plus + 2..=expression.len() {
+            let mut chars: Vec[char] = expression.chars().collect();
+            chars.insert(close, ')');
+            chars.insert(open, '(');
+            let candidate: String = chars.iter().collect();
+            let value = eval_evaluate(candidate);
+            if value < best {
+                best = value;
+                answer = candidate;
+            }
+        }
+    }
+    answer
+}
+
+// ---- parentheses_struct.kara: `Sides`, `value`, `written` and `best`
+struct Sides {
+    left: String,
+    right: String,
+}
+
+impl Sides {
+    fn new(expression: String) -> Sides {
+        let parts: Vec[String] = expression.split("+").map(|p| p.to_string()).collect();
+        Sides { left: parts[0].clone(), right: parts[1].clone() }
+    }
+
+    // "(" before left digit i, ")" after right digit j - 1
+    fn value(ref self, i: i64, j: i64) -> i64 {
+        let a = if i == 0 { 1 } else { i64.parse(self.left.substring(0, i)).unwrap() };
+        let b = i64.parse(self.left.substring(i, self.left.len())).unwrap();
+        let c = i64.parse(self.right.substring(0, j)).unwrap();
+        let d = if j == self.right.len() { 1 } else { i64.parse(self.right.substring(j, self.right.len())).unwrap() };
+        a * (b + c) * d
+    }
+
+    fn written(ref self, i: i64, j: i64) -> String {
+        f"{self.left.substring(0, i)}({self.left.substring(i, self.left.len())}+{self.right.substring(0, j)}){self.right.substring(j, self.right.len())}"
+    }
+
+    fn best(ref self) -> String {
+        let mut best = (0, 1);
+        for i in 0..self.left.len() {
+            for j in 1..=self.right.len() {
+                if self.value(i, j) < self.value(best.0, best.1) {
+                    best = (i, j);
+                }
+            }
+        }
+        self.written(best.0, best.1)
+    }
+}
+
+fn struct_minimize_result(expression: String) -> String {
+    Sides.new(expression).best()
+}
+
+// ---- parentheses_iter.kara: `flat_map` and `min_by_key`
+fn iter_minimize_result(expression: String) -> String {
+    let parts: Vec[String] = expression.split("+").map(|p| p.to_string()).collect();
+    let left = parts[0].clone();
+    let right = parts[1].clone();
+    let number = |text: String| if text.is_empty() { 1 } else { i64.parse(text).unwrap() };
+    let value = |i: i64, j: i64| {
+        number(left.substring(0, i)) * (number(left.substring(i, left.len())) + number(right.substring(0, j))) * number(right.substring(j, right.len()))
+    };
+    let (i, j) = (0..left.len())
+        .flat_map(|i| (1..=right.len()).map(|j| (i, j)))
+        .min_by_key(|p| value(p.0, p.1))
+        .unwrap();
+    f"{left.substring(0, i)}({left.substring(i, left.len())}+{right.substring(0, j)}){right.substring(j, right.len())}"
+}
+
+// ---- parentheses_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimize_result(expression: String) -> String {
+        let parts: Vec[Str] = expression.split("+").collect();
+        let (l, r) = (parts[0], parts[1]);
+        let mut best = i32.MAX;
+        let mut ans = String.new();
+        for i in 0..l.len() {
+            for j in 1..=r.len() {
+                let a = if i == 0 { 1 } else { i32.parse(l[..i]).unwrap() };
+                let b = i32.parse(l[i..]).unwrap();
+                let c = i32.parse(r[..j]).unwrap();
+                let d = if j == r.len() { 1 } else { i32.parse(r[j..]).unwrap() };
+                let v = a * (b + c) * d;
+                if v < best {
+                    best = v;
+                    ans = f"{l[..i]}({l[i..]}+{r[..j]}){r[j..]}";
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimize_result(expression: String) -> String {
+    Solution.minimize_result(expression)
+}
+
+// ---- the statement read literally
+
+// the value of an expression of digits, "+" and one pair of
+// parentheses, a number beside a parenthesis multiplying it; -1 when the
+// string is not of that form
+fn literal_value(text: String) -> i64 {
+    let chars: Vec[char] = text.chars().collect();
+    let mut product = 1;
+    let mut sum = 0;
+    let mut number = -1;
+    let mut inside = false;
+    let mut seen_open = false;
+    let mut seen_plus = false;
+    let mut seen_close = false;
+    for c in chars.iter() {
+        if c >= '0' and c <= '9' {
+            number = if number < 0 { 0 } else { number } * 10 + (c as i64) - 48;
+        } else if c == '(' {
+            if seen_open or seen_plus {
+                return -1;
+            }
+            if number >= 0 {
+                product *= number;
+            }
+            number = -1;
+            inside = true;
+            seen_open = true;
+        } else if c == '+' {
+            if not inside or seen_plus or number < 0 {
+                return -1;
+            }
+            sum += number;
+            number = -1;
+            seen_plus = true;
+        } else if c == ')' {
+            if not inside or not seen_plus or number < 0 {
+                return -1;
+            }
+            sum += number;
+            number = -1;
+            inside = false;
+            seen_close = true;
+        } else {
+            return -1;
+        }
+    }
+    if not seen_close {
+        return -1;
+    }
+    if number >= 0 {
+        product *= number;
+    }
+    product * sum
+}
+
+fn literal(expression: String) -> i64 {
+    let chars: Vec[char] = expression.chars().collect();
+    let n = chars.len();
+    let mut best = i64.MAX;
+    for open in 0..=n {
+        for close in 0..=n {
+            if open <= close {
+                let mut text = String.new();
+                for k in 0..=n {
+                    if k == open {
+                        text.push('(');
+                    }
+                    if k == close {
+                        text.push(')');
+                    }
+                    if k < n {
+                        text.push(chars[k]);
+                    }
+                }
+                let value = literal_value(text);
+                if value >= 0 and value < best {
+                    best = value;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, expression: String) -> String {
+    match arm {
+        0 => star_minimize_result(expression),
+        1 => digits_minimize_result(expression),
+        2 => eval_minimize_result(expression),
+        3 => struct_minimize_result(expression),
+        4 => iter_minimize_result(expression),
+        _ => solution_minimize_result(expression),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn draw_digits(seed: mut ref i64, count: i64, ones: bool) -> String {
+    let mut digits = String.new();
+    for _ in 0..count {
+        let d = if ones { 1 } else { next_random(mut seed) % 9 + 1 };
+        digits.push(char.try_from((48 + d) as u32).ok().unwrap());
+    }
+    digits
+}
+
+// `text` with the character at `at` raised by one (a 9 kept)
+fn raised(text: String, at: i64) -> String {
+    let mut chars: Vec[char] = text.chars().collect();
+    if chars[at] != '9' {
+        chars[at] = char.try_from((chars[at] as u32) + 1).ok().unwrap();
+    }
+    chars.iter().collect()
+}
+
+fn main() {
+    let names = ["star", "digits", "eval", "struct", "iter", "solution"];
+    let mut seed = 2232;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut left = next_random(mut seed) % 8 + 1;
+        let mut right = next_random(mut seed) % (9 - left) + 1;
+        if c >= 300 and c < 330 {
+            if c % 2 == 0 {
+                left = 1;
+            } else {
+                right = 1;
+            }
+        }
+        let ones = c >= 330;
+        cases.push(f"{draw_digits(mut seed, left, ones)}+{draw_digits(mut seed, right, ones)}");
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for expression in cases.iter() {
+        let truth = literal(expression);
+        check = (check * 31 + truth) % 1000000007;
+        let plus = expression.find("+").unwrap();
+        let chars: Vec[char] = expression.chars().collect();
+        let sum = i64.parse(expression.substring(0, plus)).unwrap() + i64.parse(expression.substring(plus + 1, expression.len())).unwrap();
+        let mut tight = String.new();
+        for k in 0..chars.len() {
+            if k == plus - 1 {
+                tight.push('(');
+            }
+            tight.push(chars[k]);
+            if k == plus + 1 {
+                tight.push(')');
+            }
+        }
+        let tight_value = literal_value(tight);
+        let left_raised = raised(expression, 0);
+        let right_raised = raised(expression, chars.len() - 1);
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, expression)).collect();
+        let values: Vec[i64] = got.iter().map(|g| literal_value(g)).collect();
+        for arm in 0..6 {
+            let value = values[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and values[o] == value {
+                    same += 1;
+                }
+            }
+            let written: Vec[char] = got[arm].chars().collect();
+            let bare: String = written.iter().filter(|c| c != '(' and c != ')').collect();
+            let opens = written.iter().filter(|c| c == '(').count();
+            let closes = written.iter().filter(|c| c == ')').count();
+            let shaped = bare == expression and opens == 1 and closes == 1 and value >= 0;
+            let verdicts = [
+                value == truth,
+                shaped,
+                value >= 0 and value <= sum and value <= tight_value,
+                literal_value(answer(arm, left_raised)) >= value,
+                literal_value(answer(arm, right_raised)) >= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{expression} arm {names[arm]}: P{q + 1} fails, gave {got[arm]} = {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
