@@ -1,0 +1,319 @@
+// LeetCode #2218: Maximum Value of K Coins From Piles -- the
+// differential. The six arms, against the statement read literally:
+// every way to take some of each pile's top coins tried, the ways that
+// take k coins in all kept, and the most any of them is worth; no table.
+// 300 random cases of 1 to 4 piles of 1 to 4 coins, worth up to 10, 1000
+// and 10^5 in turn, k from 1 to every coin; then 30 of one pile; then 30
+// whose coins are all worth the same. Every case is drawn before any arm
+// answers.
+//
+// P1  the most is the statement read literally
+// P2  it is at least k times the cheapest coin and at most the k
+//     dearest coins together
+// P3  the piles reversed: the same most
+// P4  a pile of one coin dearer than all the others put in front, and k
+//     one more: the most grows by that coin
+// P5  k one fewer gives less, and k one more, while coins are left,
+//     gives more
+// P6  each arm agrees with at least three of the other five
+
+// ---- coins.kara: the ★ arm, one knapsack row, counts running down
+fn star_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(k + 1, 0);
+    for pile in piles.iter() {
+        let mut prefix: Vec[i64] = [0].to_vec();
+        for coin in pile.iter() {
+            prefix.push(prefix[prefix.len() - 1] + coin);
+        }
+        for j in (1..k + 1).rev() {
+            for t in 1..pile.len().min(j) + 1 {
+                best[j] = best[j].max(best[j - t] + prefix[t]);
+            }
+        }
+    }
+    best[k]
+}
+
+// ---- coins_memo.kara: top down, remembered in a table
+fn memo_most(piles: Vec[Vec[i64]], suffix: Vec[i64], at: i64, left: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if at == piles.len() or suffix[at] < left {
+        return -1;
+    }
+    if memo[at][left] != -1 {
+        return memo[at][left];
+    }
+    let mut best = memo_most(piles, suffix, at + 1, left, mut memo);
+    let mut taken = 0;
+    for t in 0..piles[at].len().min(left) {
+        taken += piles[at][t];
+        let rest = memo_most(piles, suffix, at + 1, left - t - 1, mut memo);
+        if rest >= 0 {
+            best = best.max(taken + rest);
+        }
+    }
+    memo[at][left] = best;
+    best
+}
+
+fn memo_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = piles.len();
+    // suffix[i]: the coins in the piles from i on
+    let mut suffix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = suffix[i + 1] + piles[i].len();
+    }
+    let mut memo: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(k + 1, -1));
+    memo_most(piles, suffix, 0, k, mut memo)
+}
+
+// ---- coins_table.kara: the whole table, a row for each pile
+fn table_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = piles.len();
+    let mut table: Vec[Vec[i64]] = Vec.new();
+    table.push(Vec.filled(k + 1, 0));
+    for i in 0..n {
+        let mut row = table[i].clone();
+        for j in 1..k + 1 {
+            let mut taken = 0;
+            for t in 0..piles[i].len() {
+                if t + 1 > j {
+                    break;
+                }
+                taken += piles[i][t];
+                if table[i][j - t - 1] + taken > row[j] {
+                    row[j] = table[i][j - t - 1] + taken;
+                }
+            }
+        }
+        table.push(row);
+    }
+    table[n][k]
+}
+
+// ---- coins_struct.kara: `Chest`, `add` and `best`
+struct Chest {
+    best: Vec[i64],
+}
+
+impl Chest {
+    fn new(capacity: i64) -> Chest {
+        Chest { best: Vec.filled(capacity + 1, 0) }
+    }
+
+    fn add(mut ref self, pile: Vec[i64]) {
+        let capacity = self.best.len() - 1;
+        let mut j = capacity;
+        while j > 0 {
+            let mut taken = 0;
+            let mut t = 1;
+            while t <= j and t <= pile.len() {
+                taken += pile[t - 1];
+                self.best[j] = self.best[j].max(self.best[j - t] + taken);
+                t += 1;
+            }
+            j -= 1;
+        }
+    }
+
+    fn best(ref self, count: i64) -> i64 {
+        self.best[count]
+    }
+}
+
+fn struct_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut chest = Chest.new(k);
+    for pile in piles.iter() {
+        chest.add(pile);
+    }
+    chest.best(k)
+}
+
+// ---- coins_iter.kara: `fold` over the piles, `map` and `max`
+fn iter_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let start: Vec[i64] = Vec.filled(k + 1, 0);
+    let best = piles.iter().fold(start, |best, pile| {
+        let prefix: Vec[i64] = pile.iter().fold([0].to_vec(), |sums, coin| {
+            let mut sums = sums;
+            sums.push(sums[sums.len() - 1] + coin);
+            sums
+        });
+        (0..k + 1).map(|j| (0..prefix.len().min(j + 1)).map(|t| best[j - t] + prefix[t]).max().unwrap()).collect()
+    });
+    best[k]
+}
+
+// ---- coins_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn max_value_of_coins(piles: Vec[Vec[i32]], k: i32) -> i32 {
+        let k = k as i64;
+        let mut dp = Vec.filled(k + 1, 0i32);
+        for pile in piles.iter() {
+            for j in (1..=k).rev() {
+                let mut sum: i32 = 0;
+                for (t, c) in pile.iter().enumerate().take(j) {
+                    sum += c;
+                    dp[j] = dp[j].max(dp[j - t - 1] + sum);
+                }
+            }
+        }
+        dp[k]
+    }
+}
+
+struct Solution {}
+
+fn solution_max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let piles: Vec[Vec[i32]] = piles.iter().map(|p| p.iter().map(|c| c as i32).collect()).collect();
+    Solution.max_value_of_coins(piles, k as i32)
+}
+
+// ---- the statement read literally
+
+// the most that `left` coins are worth from the piles from `at` on, every
+// count of each pile's top coins tried; -1 when they cannot make `left`
+fn exhaust(piles: Vec[Vec[i64]], at: i64, left: i64) -> i64 {
+    if at == piles.len() {
+        return if left == 0 { 0 } else { -1 };
+    }
+    let mut best = -1;
+    let mut taken = 0;
+    for t in 0..piles[at].len() + 1 {
+        if t > 0 {
+            taken += piles[at][t - 1];
+        }
+        if t <= left {
+            let rest = exhaust(piles, at + 1, left - t);
+            if rest >= 0 and taken + rest > best {
+                best = taken + rest;
+            }
+        }
+    }
+    best
+}
+
+fn literal(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    exhaust(piles, 0, k)
+}
+
+fn answer(arm: i64, piles: Vec[Vec[i64]], k: i64) -> i64 {
+    match arm {
+        0 => star_max_value_of_coins(piles, k),
+        1 => memo_max_value_of_coins(piles, k),
+        2 => table_max_value_of_coins(piles, k),
+        3 => struct_max_value_of_coins(piles, k),
+        4 => iter_max_value_of_coins(piles, k),
+        _ => solution_max_value_of_coins(piles, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+struct Case {
+    piles: Vec[Vec[i64]],
+    k: i64,
+}
+
+fn main() {
+    let names = ["star", "memo", "table", "struct", "iter", "solution"];
+    let mut seed = 2218;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let top = [10, 1000, 100000][c % 3];
+        let n = if c >= 300 and c < 330 { 1 } else { next_random(mut seed) % 4 + 1 };
+        let same = wide_random(mut seed) % top + 1;
+        let mut piles: Vec[Vec[i64]] = Vec.new();
+        let mut total = 0;
+        for _ in 0..n {
+            let size = next_random(mut seed) % 4 + 1;
+            let mut pile: Vec[i64] = Vec.new();
+            for _ in 0..size {
+                pile.push(if c >= 330 { same } else { wide_random(mut seed) % top + 1 });
+            }
+            total += size;
+            piles.push(pile);
+        }
+        let k = next_random(mut seed) % total + 1;
+        cases.push(Case { piles: piles, k: k });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let piles = ref case.piles;
+        let k = case.k;
+        let truth = literal(piles, k);
+        check = (check * 31 + truth) % 1000000007;
+        let mut coins: Vec[i64] = Vec.new();
+        for pile in piles.iter() {
+            for coin in pile.iter() {
+                coins.push(coin);
+            }
+        }
+        coins.sort();
+        let total = coins.len();
+        let low = k * coins[0];
+        let mut high = 0;
+        for i in total - k..total {
+            high += coins[i];
+        }
+        let reversed: Vec[Vec[i64]] = piles.iter().rev().cloned().collect();
+        let dear = coins[total - 1] + 1;
+        let mut fronted: Vec[Vec[i64]] = [[dear].to_vec()].to_vec();
+        for pile in piles.iter() {
+            fronted.push(pile.clone());
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, piles, k)).collect();
+        for arm in 0..6 {
+            let most = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == most {
+                    same += 1;
+                }
+            }
+            let fewer = k == 1 or answer(arm, piles, k - 1) < most;
+            let more = k == total or answer(arm, piles, k + 1) > most;
+            let verdicts = [
+                most == truth,
+                most >= low and most <= high,
+                answer(arm, reversed, k) == most,
+                answer(arm, fronted, k + 1) == most + dear,
+                fewer and more,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{piles} with k = {k} arm {names[arm]}: P{q + 1} fails, gave {most}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

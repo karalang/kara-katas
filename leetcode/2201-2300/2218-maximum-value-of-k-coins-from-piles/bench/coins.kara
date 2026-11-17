@@ -1,0 +1,60 @@
+// LeetCode #2218: Maximum Value of K Coins From Piles -- a knapsack over
+// the piles: best[j] is the most j coins can be worth from the piles so
+// far, and a pile is added by trying every count t of its top coins,
+// worth the prefix sum of t, with j - t taken from the piles before;
+// j runs down so each pile is used once. Every coin is worth at least
+// 1, so the most for at most j coins takes exactly j. O(k * total).
+
+fn max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut best: Vec[i64] = Vec.filled(k + 1, 0);
+    for pile in piles.iter() {
+        let mut prefix: Vec[i64] = [0].to_vec();
+        for coin in pile.iter() {
+            prefix.push(prefix[prefix.len() - 1] + coin);
+        }
+        for j in (1..k + 1).rev() {
+            for t in 1..pile.len().min(j) + 1 {
+                best[j] = best[j].max(best[j - t] + prefix[t]);
+            }
+        }
+    }
+    best[k]
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2218;
+    let mut chests: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..20 {
+        // 100 piles of 10 coins worth up to 10^5
+        let mut piles: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..100 {
+            let mut pile: Vec[i64] = Vec.new();
+            for _ in 0..10 {
+                pile.push(wide_random(mut seed) % 100000 + 1);
+            }
+            piles.push(pile);
+        }
+        chests.push(piles);
+    }
+    let mut check = 0;
+    for a in 0..20 {
+        for r in 0..4 {
+            // punch: one coin is drawn again before each answer
+            chests[a][r * 31 % 100][r] = wide_random(mut seed) % 100000 + 1;
+            check = (check * 31 + max_value_of_coins(chests[a], 600)) % 1000000007;
+        }
+    }
+    println(f"20 sets of 100 piles of 10, k = 600, 4 punches: checksum {check}");
+}

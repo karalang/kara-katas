@@ -1,0 +1,111 @@
+// LeetCode #2218: Maximum Value of K Coins From Piles -- top down: the
+// most that `left` coins are worth from the piles from `at` on is the
+// best over taking t of pile `at`'s top coins and the rest from the
+// piles after it, remembered in a table of (piles + 1) * (k + 1), -1
+// for not yet worked out. Piles that cannot supply `left` give -1 too,
+// and are never chosen. O(k * total).
+
+fn most(piles: Vec[Vec[i64]], suffix: Vec[i64], at: i64, left: i64, memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if at == piles.len() or suffix[at] < left {
+        return -1;
+    }
+    if memo[at][left] != -1 {
+        return memo[at][left];
+    }
+    let mut best = most(piles, suffix, at + 1, left, mut memo);
+    let mut taken = 0;
+    for t in 0..piles[at].len().min(left) {
+        taken += piles[at][t];
+        let rest = most(piles, suffix, at + 1, left - t - 1, mut memo);
+        if rest >= 0 {
+            best = best.max(taken + rest);
+        }
+    }
+    memo[at][left] = best;
+    best
+}
+
+fn max_value_of_coins(piles: Vec[Vec[i64]], k: i64) -> i64 {
+    let n = piles.len();
+    // suffix[i]: the coins in the piles from i on
+    let mut suffix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = suffix[i + 1] + piles[i].len();
+    }
+    let mut memo: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.filled(k + 1, -1));
+    most(piles, suffix, 0, k, mut memo)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(piles: Vec[Vec[i64]], k: i64) {
+    println(f"{piles} with k = {k} -> {max_value_of_coins(piles, k)}");
+}
+
+// piles of 1 to `most` coins, worth 1 to `top` each
+fn draw_piles(seed: mut ref i64, n: i64, most: i64, top: i64) -> Vec[Vec[i64]] {
+    let mut piles: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..n {
+        let size = next_random(mut seed) % most + 1;
+        let mut pile: Vec[i64] = Vec.new();
+        for _ in 0..size {
+            pile.push(wide_random(mut seed) % top + 1);
+        }
+        piles.push(pile);
+    }
+    piles
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one pile, every coin
+    // taken, a deep coin worth the shallow ones above it, and one coin
+    show([[1, 100, 3], [7, 8, 9]], 2);
+    show([[100], [100], [100], [100], [100], [100], [1, 1, 1, 1, 1, 1, 700]], 7);
+    show([[5, 4, 3, 2, 1]], 3);
+    show([[1, 2], [3]], 3);
+    show([[9, 9], [1, 1, 30]], 3);
+    show([[42]], 1);
+    // 3000 random cases of 1 to 6 piles of 1 to 5 coins, worth up to
+    // 10, 1000 and 10^5 in turn, k from 1 to every coin
+    let mut seed = 2218;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 6 + 1;
+        let piles = draw_piles(mut seed, n, 5, [10, 1000, 100000][c % 3]);
+        let mut total = 0;
+        for pile in piles.iter() {
+            total += pile.len();
+        }
+        let k = next_random(mut seed) % total + 1;
+        check = (check * 31 + max_value_of_coins(piles, k)) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+    // the constraints' largest: 1000 piles of 2 coins with k = 1999, and
+    // 10 piles of 200 with k = 1000, coins up to 10^5
+    let mut pairs: Vec[Vec[i64]] = Vec.new();
+    let mut tall: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..1000 {
+        pairs.push([wide_random(mut seed) % 100000 + 1, wide_random(mut seed) % 100000 + 1].to_vec());
+    }
+    for _ in 0..10 {
+        let mut pile: Vec[i64] = Vec.new();
+        for _ in 0..200 {
+            pile.push(wide_random(mut seed) % 100000 + 1);
+        }
+        tall.push(pile);
+    }
+    println(f"1000 piles of 2, k = 1999: {max_value_of_coins(pairs, 1999)}; 10 piles of 200, k = 1000: {max_value_of_coins(tall, 1000)}");
+}
