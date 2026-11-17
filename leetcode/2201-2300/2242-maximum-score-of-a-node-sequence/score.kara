@@ -1,0 +1,107 @@
+// LeetCode #2242: Maximum Score of a Node Sequence -- every sequence of
+// four is a middle edge (b, c) with a neighbour a of b and a neighbour d
+// of c, all four distinct; only the three best-scored neighbours of a
+// node can be its a or d, since at most two of them are ruled out (c and
+// d, or b and a). So each node's neighbours are sorted by score, largest
+// first, and cut to three; every edge as the middle one tries the nine
+// pairs, one way round only, since the other gives the same sequences
+// reversed. O(n + m log m).
+
+fn maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = scores.len();
+    let mut best3: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        best3[a].push(b);
+        best3[b].push(a);
+    }
+    for node in 0..n {
+        best3[node].sort_by(|x, y| scores[y].cmp(scores[x]));
+        best3[node].truncate(3);
+    }
+    let mut best = -1;
+    for (b, c) in edges.iter() {
+        for a in best3[b].iter() {
+            if a == c {
+                continue;
+            }
+            for d in best3[c].iter() {
+                if d != a and d != b {
+                    best = best.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `n` nodes scored up to `top`, and up to `m` edges drawn at random, a
+// repeat or a loop drawn again so that there is at most one edge
+// between two nodes
+fn graph(n: i64, m: i64, top: i64, seed: mut ref i64) -> (Vec[i64], Vec[(i64, i64)]) {
+    let scores: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % top + 1).collect();
+    let mut seen: Set[(i64, i64)] = Set.new();
+    let mut edges: Vec[(i64, i64)] = Vec.new();
+    let most = n * (n - 1) / 2;
+    while edges.len() < m.min(most) {
+        let a = wide_random(mut seed) % n;
+        let b = wide_random(mut seed) % n;
+        if a != b and not seen.contains((a.min(b), a.max(b))) {
+            seen.insert((a.min(b), a.max(b)));
+            edges.push((a, b));
+        }
+    }
+    (scores, edges)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a path of exactly four, a
+    // star (no four in a row), a triangle with a tail, and a square of
+    // the largest scores
+    let examples: Vec[(Vec[i64], Vec[(i64, i64)])] = [
+        ([5, 2, 9, 8, 4].to_vec(), [(0, 1), (1, 2), (2, 3), (0, 2), (1, 3), (2, 4)].to_vec()),
+        ([9, 20, 6, 4, 11, 12].to_vec(), [(0, 3), (5, 3), (2, 4), (1, 3)].to_vec()),
+        ([1, 2, 3, 4].to_vec(), [(0, 1), (1, 2), (2, 3)].to_vec()),
+        ([7, 1, 1, 1, 1].to_vec(), [(0, 1), (0, 2), (0, 3), (0, 4)].to_vec()),
+        ([1, 5, 5, 5, 9].to_vec(), [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4)].to_vec()),
+        ([100000000, 100000000, 100000000, 100000000].to_vec(), [(0, 1), (1, 2), (2, 3), (3, 0)].to_vec()),
+    ].to_vec();
+    for (scores, edges) in examples.iter() {
+        println(f"{scores} {edges} -> {maximum_score(scores, edges)}");
+    }
+    // 2000 graphs of 4 to 12 nodes and up to 20 edges, scores up to 1 to 100
+    let mut seed = 2242;
+    let mut found = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 9 + 4;
+        let m = next_random(mut seed) % 20 + 1;
+        let top = next_random(mut seed) % 100 + 1;
+        let (scores, edges) = graph(n, m, top, mut seed);
+        let best = maximum_score(scores, edges);
+        if best >= 0 {
+            found += 1;
+        }
+        check = (check * 31 + best + 1) % 1000000007;
+    }
+    println(f"2000 small graphs: {found} with a sequence, checksum {check}");
+    // the constraints' largest: 5 * 10^4 nodes and 5 * 10^4 edges, scores
+    // up to 10^8; then 5 * 10^4 nodes around one hub with 5 * 10^4 - 1
+    // spokes and one edge between two leaves
+    let (scores, edges) = graph(50000, 50000, 100000000, mut seed);
+    println(f"50000 nodes, 50000 edges: {maximum_score(scores, edges)}");
+    let hub_scores: Vec[i64] = (0..50000).map(|i| (i * 7919) % 100000000 + 1).collect();
+    let mut hub_edges: Vec[(i64, i64)] = (1..50000).map(|i| (0, i)).collect();
+    hub_edges.push((1, 2));
+    println(f"a hub of 49999 spokes: {maximum_score(hub_scores, hub_edges)}");
+}

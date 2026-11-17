@@ -1,0 +1,376 @@
+// LeetCode #2242: Maximum Score of a Node Sequence -- the differential.
+// The six arms, against the statement read literally: every ordered four
+// of distinct nodes tried, kept when each is joined to the next by an
+// edge, and the best score of those taken; no neighbour lists. 300
+// random graphs of 4 to 7 nodes and up to 12 edges, scores up to 50;
+// then 30 whose scores are 1 to 3, full of ties; then 30 stars with one
+// edge between two leaves. Every case is drawn before any arm answers.
+//
+// P1  the answer is the best sequence's score, read literally, or -1
+// P2  every edge written the other way round and the list reversed:
+//     the same answer
+// P3  the nodes renumbered by a rotation, their scores with them: the
+//     same answer
+// P4  one more edge: no lower answer
+// P5  every score one higher: four more, or -1 again
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- score.kara: the ★ arm, three best neighbours by sort and truncate
+fn star_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = scores.len();
+    let mut best3: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for (a, b) in edges.iter() {
+        best3[a].push(b);
+        best3[b].push(a);
+    }
+    for node in 0..n {
+        best3[node].sort_by(|x, y| scores[y].cmp(scores[x]));
+        best3[node].truncate(3);
+    }
+    let mut best = -1;
+    for (b, c) in edges.iter() {
+        for a in best3[b].iter() {
+            if a == c {
+                continue;
+            }
+            for d in best3[c].iter() {
+                if d != a and d != b {
+                    best = best.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- score_insert.kara: three best neighbours kept by insertion
+fn insert_keep(top: mut ref Vec[i64], node: i64, scores: Vec[i64]) {
+    top.push(node);
+    let mut i = top.len() - 1;
+    while i > 0 and scores[top[i - 1]] < scores[top[i]] {
+        top.swap(i - 1, i);
+        i -= 1;
+    }
+    if top.len() > 3 {
+        top.pop();
+    }
+}
+
+fn insert_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let mut top: Vec[Vec[i64]] = Vec.filled(scores.len(), Vec.new());
+    for (a, b) in edges.iter() {
+        insert_keep(mut top[a], b, scores);
+        insert_keep(mut top[b], a, scores);
+    }
+    let mut best = -1;
+    for (b, c) in edges.iter() {
+        for a in top[b].iter() {
+            for d in top[c].iter() {
+                if a != c and d != b and a != d {
+                    best = best.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- score_heap.kara: three best neighbours in a capped `PriorityQueue`
+fn heap_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = scores.len();
+    let mut queues: Vec[PriorityQueue[(i64, i64)]] = Vec.new();
+    for _ in 0..n {
+        queues.push(PriorityQueue.new());
+    }
+    for (a, b) in edges.iter() {
+        queues[a].push((scores[b], b));
+        if queues[a].len() > 3 {
+            queues[a].pop();
+        }
+        queues[b].push((scores[a], a));
+        if queues[b].len() > 3 {
+            queues[b].pop();
+        }
+    }
+    let mut near: Vec[Vec[i64]] = Vec.new();
+    for node in 0..n {
+        let mut list: Vec[i64] = Vec.new();
+        while let Some((_, neighbour)) = queues[node].pop() {
+            list.push(neighbour);
+        }
+        near.push(list);
+    }
+    let mut best = -1;
+    for (b, c) in edges.iter() {
+        for a in near[b].iter() {
+            for d in near[c].iter() {
+                if a != c and a != d and d != b {
+                    best = best.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- score_struct.kara: `Graph`, `build`, `end` and `through`
+struct StructGraph {
+    scores: Vec[i64],
+    near: Vec[Vec[i64]],
+}
+
+impl StructGraph {
+    fn build(scores: Vec[i64], edges: Vec[(i64, i64)]) -> StructGraph {
+        let mut near: Vec[Vec[i64]] = Vec.filled(scores.len(), Vec.new());
+        for (a, b) in edges.iter() {
+            near[a].push(b);
+            near[b].push(a);
+        }
+        for list in near.iter_mut() {
+            list.sort_by(|x, y| scores[y].cmp(scores[x]));
+            list.truncate(3);
+        }
+        StructGraph { scores: scores.clone(), near }
+    }
+
+    fn end(ref self, node: i64, not1: i64, not2: i64) -> Option[i64] {
+        for other in self.near[node].iter() {
+            if other != not1 and other != not2 {
+                return Some(other);
+            }
+        }
+        None
+    }
+
+    fn through(ref self, b: i64, c: i64) -> Option[i64] {
+        let mut best: Option[i64] = None;
+        for a in self.near[b].iter() {
+            if a == c {
+                continue;
+            }
+            if let Some(d) = self.end(c, b, a) {
+                let total = self.scores[a] + self.scores[b] + self.scores[c] + self.scores[d];
+                if best.is_none() or total > best.unwrap() {
+                    best = Some(total);
+                }
+            }
+        }
+        best
+    }
+}
+
+fn struct_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let graph = StructGraph.build(scores, edges);
+    let mut best = -1;
+    for (b, c) in edges.iter() {
+        if let Some(total) = graph.through(b, c) {
+            best = best.max(total);
+        }
+    }
+    best
+}
+
+// ---- score_iter.kara: `take(3)`, `filter_map` and `max`
+fn iter_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let mut near: Vec[Vec[i64]] = Vec.filled(scores.len(), Vec.new());
+    for (a, b) in edges.iter() {
+        near[a].push(b);
+        near[b].push(a);
+    }
+    let best3: Vec[Vec[i64]] = near.iter().map(|list| {
+        let mut sorted = list.clone();
+        sorted.sort_by(|x, y| scores[y].cmp(scores[x]));
+        sorted.iter().take(3).collect()
+    }).collect();
+    edges.iter().filter_map(|(b, c)| {
+        best3[b].iter().filter(|a| a != c).filter_map(|a| {
+            best3[c].iter().filter(|d| d != a and d != b).map(|d| scores[a] + scores[b] + scores[c] + scores[d]).max()
+        }).max()
+    }).max().unwrap_or(-1)
+}
+
+// ---- score_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_score(scores: Vec[i32], edges: Vec[Vec[i32]]) -> i32 {
+        let n = scores.len();
+        let mut g: Vec[Vec[usize]] = Vec.filled(n, Vec.new());
+        for e in ref edges {
+            let (a, b) = (e[0] as usize, e[1] as usize);
+            g[a].push(b);
+            g[b].push(a);
+        }
+        for v in g.iter_mut() {
+            v.sort_by(|x, y| scores[y].cmp(scores[x]));
+            v.truncate(3);
+        }
+        let mut ans: i32 = -1;
+        for e in ref edges {
+            let (b, c) = (e[0] as usize, e[1] as usize);
+            for a in ref g[b] {
+                for d in ref g[c] {
+                    if a != c and d != b and a != d {
+                        ans = ans.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_score(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let scores: Vec[i32] = scores.iter().map(|s| s as i32).collect();
+    let edges: Vec[Vec[i32]] = edges.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    Solution.maximum_score(scores, edges)
+}
+
+// ---- the statement read literally
+
+fn literal(scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    let n = scores.len();
+    let mut joined: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for (a, b) in edges.iter() {
+        joined[a][b] = true;
+        joined[b][a] = true;
+    }
+    let mut best = -1;
+    for a in 0..n {
+        for b in 0..n {
+            for c in 0..n {
+                for d in 0..n {
+                    let distinct = a != b and a != c and a != d and b != c and b != d and c != d;
+                    if distinct and joined[a][b] and joined[b][c] and joined[c][d] {
+                        best = best.max(scores[a] + scores[b] + scores[c] + scores[d]);
+                    }
+                }
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, scores: Vec[i64], edges: Vec[(i64, i64)]) -> i64 {
+    match arm {
+        0 => star_maximum_score(scores, edges),
+        1 => insert_maximum_score(scores, edges),
+        2 => heap_maximum_score(scores, edges),
+        3 => struct_maximum_score(scores, edges),
+        4 => iter_maximum_score(scores, edges),
+        _ => solution_maximum_score(scores, edges),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn has_edge(edges: Vec[(i64, i64)], a: i64, b: i64) -> bool {
+    edges.iter().any(|(x, y)| (x == a and y == b) or (x == b and y == a))
+}
+
+fn main() {
+    let names = ["star", "insert", "heap", "struct", "iter", "solution"];
+    let mut seed = 2242;
+    // (scores, edges, rotation, an edge to add or (0, 0) when full)
+    let mut cases: Vec[(Vec[i64], Vec[(i64, i64)], i64, (i64, i64))] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 4 + 4;
+        let top = if c >= 300 and c < 330 { 3 } else { 50 };
+        let scores: Vec[i64] = (0..n).map(|_| next_random(mut seed) % top + 1).collect();
+        let mut edges: Vec[(i64, i64)] = Vec.new();
+        if c >= 330 {
+            let hub = next_random(mut seed) % n;
+            for leaf in 0..n {
+                if leaf != hub {
+                    edges.push((hub, leaf));
+                }
+            }
+            let x = (hub + 1) % n;
+            let y = (hub + 2) % n;
+            edges.push((x, y));
+        } else {
+            let m = (next_random(mut seed) % 12 + 1).min(n * (n - 1) / 2);
+            while edges.len() < m {
+                let a = next_random(mut seed) % n;
+                let b = next_random(mut seed) % n;
+                if a != b and not has_edge(edges, a, b) {
+                    edges.push((a, b));
+                }
+            }
+        }
+        let rotation = next_random(mut seed) % n;
+        let mut extra = (0, 0);
+        if edges.len() < n * (n - 1) / 2 {
+            loop {
+                let a = next_random(mut seed) % n;
+                let b = next_random(mut seed) % n;
+                if a != b and not has_edge(edges, a, b) {
+                    extra = (a, b);
+                    break;
+                }
+            }
+        }
+        cases.push((scores, edges, rotation, extra));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (scores, edges, rotation, extra) in cases.iter() {
+        let n = scores.len();
+        let truth = literal(scores, edges);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let flipped: Vec[(i64, i64)] = edges.iter().rev().map(|(a, b)| (b, a)).collect();
+        let turned_scores: Vec[i64] = (0..n).map(|i| scores[(i + n - rotation) % n]).collect();
+        let turned_edges: Vec[(i64, i64)] = edges.iter().map(|(a, b)| ((a + rotation) % n, (b + rotation) % n)).collect();
+        let mut more = edges.clone();
+        if extra != (0, 0) {
+            more.push(extra);
+        }
+        let raised: Vec[i64] = scores.iter().map(|s| s + 1).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, scores, edges)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let up = answer(arm, raised, edges);
+            let verdicts = [
+                value == truth,
+                answer(arm, scores, flipped) == value,
+                answer(arm, turned_scores, turned_edges) == value,
+                answer(arm, scores, more) >= value,
+                (value == -1 and up == -1) or up == value + 4,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{scores} {edges} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
