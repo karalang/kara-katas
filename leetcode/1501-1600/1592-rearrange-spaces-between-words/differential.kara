@@ -1,0 +1,258 @@
+// LeetCode #1592: Rearrange Spaces Between Words -- the differential.
+//
+// Four arms against the statement read literally, on 3000 texts of 1 to
+// 9 characters, spaces and the letters a to c, with six properties.
+// Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the answer is as long as the text and has the text's words in order
+// P3  every letter moved one along (a to b, b to c, c to d) moves the
+//     answer's letters the same way
+// P4  the answer rearranged again is itself
+// P5  the text's leading spaces moved to its end leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- spaces.kara: the ★ arm: split_whitespace, the spaces shared out by join
+
+fn star_arm(text: String) -> String {
+    let words: Vec[Str] = text.split_whitespace().collect();
+    let spaces = text.bytes().iter().filter(|c| *c == b' ').count();
+    let gaps = words.len() - 1;
+    if gaps == 0 {
+        return f"{words[0]}{" ".repeat(spaces)}";
+    }
+    let between = " ".repeat(spaces / gaps);
+    f"{words.join(between)}{" ".repeat(spaces % gaps)}"
+}
+
+// ---- spaces_bytes.kara: one pass over the bytes into a Vec[u8]
+
+fn bytes_arm(text: String) -> String {
+    let b = text.bytes();
+    let n = b.len();
+    let mut words: Vec[(i64, i64)] = Vec.new();
+    let mut spaces = 0;
+    let mut i = 0;
+    while i < n {
+        if b[i] == b' ' {
+            spaces += 1;
+            i += 1;
+        } else {
+            let start = i;
+            while i < n and b[i] != b' ' {
+                i += 1;
+            }
+            words.push((start, i));
+        }
+    }
+    let gaps = words.len() - 1;
+    let between = if gaps == 0 { 0 } else { spaces / gaps };
+    let mut out: Vec[u8] = Vec.with_capacity(n);
+    for (k, (start, end)) in words.iter().enumerate() {
+        if k > 0 {
+            for _ in 0..between {
+                out.push(b' ');
+            }
+        }
+        out.extend_from_slice(b[start..end]);
+    }
+    while out.len() < n {
+        out.push(b' ');
+    }
+    String.from_utf8(out).unwrap()
+}
+
+// ---- spaces_split.kara: split on one space, empty pieces dropped, push_str
+
+fn split_arm(text: String) -> String {
+    let words: Vec[Str] = text.split(" ").filter(|w| not w.is_empty()).collect();
+    let letters: i64 = words.iter().map(|w| w.len()).sum();
+    let spaces = text.len() - letters;
+    let gaps = words.len() - 1;
+    let mut out = String.new();
+    for (k, w) in words.iter().enumerate() {
+        if k > 0 {
+            for _ in 0..spaces / gaps {
+                out.push_str(" ");
+            }
+        }
+        out.push_str(w);
+    }
+    while out.len() < text.len() {
+        out.push_str(" ");
+    }
+    out
+}
+
+// ---- spaces_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn reorder_spaces(text: String) -> String {
+        let spaces = text.chars().filter(|c| c == ' ').count();
+        let words: Vec[Str] = text.split_whitespace().collect();
+        if words.len() == 1 {
+            return f"{words[0]}{" ".repeat(spaces)}";
+        }
+        let gap = spaces / (words.len() - 1);
+        let rest = spaces % (words.len() - 1);
+        let mut res = words.join(" ".repeat(gap));
+        res.push_str(" ".repeat(rest));
+        res
+    }
+}
+
+fn solution_arm(text: String) -> String {
+    Solution.reorder_spaces(text)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, text: String) -> String {
+    match a {
+        0 => star_arm(text),
+        1 => bytes_arm(text),
+        2 => split_arm(text),
+        _ => solution_arm(text),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["spaces", "bytes", "split", "solution"][a].to_string()
+}
+
+// the text's words in order, found a character at a time
+fn words_of(text: String) -> Vec[String] {
+    let mut words = Vec.new();
+    let mut word = String.new();
+    for c in text.chars() {
+        if c == ' ' {
+            if not word.is_empty() {
+                words.push(word.clone());
+                word = String.new();
+            }
+        } else {
+            word.push(c);
+        }
+    }
+    if not word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
+// ---- the statement read literally: every way to place the text's
+// spaces between and after its words, kept when the gaps between words
+// are all equal, the one with the widest gaps taken
+
+fn literal(text: String) -> String {
+    let words = words_of(text);
+    let spaces = text.chars().filter(|c| c == ' ').count();
+    let mut best = String.new();
+    let mut widest = -1;
+    // each gap g and trailing t with g (words - 1) + t = spaces
+    for g in 0..spaces + 1 {
+        let used = g * (words.len() - 1);
+        if used <= spaces and (words.len() > 1 or g == 0) and g > widest {
+            widest = g;
+            let mut s = String.new();
+            for (k, w) in words.iter().enumerate() {
+                if k > 0 {
+                    for _ in 0..g {
+                        s.push(' ');
+                    }
+                }
+                s.push_str(w);
+            }
+            for _ in 0..spaces - used {
+                s.push(' ');
+            }
+            best = s;
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15920;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 9 + 1;
+        let mut b: Vec[u8] = (0..n).map(|_| {
+            let r = next_random(mut seed) % 5;
+            if r < 2 { b' ' } else { b'a' + (r - 2) as u8 }
+        }).collect();
+        b[next_random(mut seed) % n] = b'a';
+        cases.push(String.from_utf8(b).unwrap());
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, text) in cases.iter().enumerate() {
+        let truth = literal(text);
+        let along: String = text.chars().map(|c| if c == ' ' { c } else { ((c as u32 as u8) + 1) as char }).collect();
+        let trimmed = text.trim_start();
+        let moved = f"{trimmed}{" ".repeat(text.len() - trimmed.len())}";
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, text);
+            for c in answer.bytes().iter() {
+                check = (check * 31 + *c + 1) % 1000000007;
+            }
+            let answer_along: String = answer.chars().map(|c| if c == ' ' { c } else { ((c as u32 as u8) + 1) as char }).collect();
+            let failed = [
+                answer != truth,
+                answer.len() != text.len() or words_of(answer) != words_of(text),
+                arm(a, along) != answer_along,
+                arm(a, answer) != answer,
+                arm(a, moved) != answer,
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
