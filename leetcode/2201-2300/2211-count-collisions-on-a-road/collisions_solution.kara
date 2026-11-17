@@ -1,0 +1,74 @@
+// LeetCode #2211: Count Collisions on a Road -- LeetCode's Rust template:
+// a `String` in, `i32` out, the cars by `as_bytes()`, the two ends found
+// by `iter().position` and `rposition` on bytes other than `b'L'` and
+// `b'R'`, each in a `match` with a guard, and the bytes between that are
+// not `b'S'` counted. Carried by `karac fix`. The adapter below hands the
+// harness's road to it.
+
+impl Solution {
+    pub fn count_collisions(directions: String) -> i32 {
+        let s = directions.bytes();
+        let lo = match s.iter().position(|c| c != b'L') {
+            Some(i) => i,
+            None => return 0,
+        };
+        let hi = match s.iter().rposition(|c| c != b'R') {
+            Some(i) if i >= lo => i,
+            _ => return 0,
+        };
+        s[lo..=hi].iter().filter(|c| c != b'S').count() as i32
+    }
+}
+
+struct Solution {}
+
+fn count_collisions(directions: String) -> i64 {
+    Solution.count_collisions(directions)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_road(n: i64, seed: mut ref i64) -> String {
+    let mut road = String.new();
+    for _ in 0..n {
+        road.push(['L', 'R', 'S'][next_random(mut seed) % 3]);
+    }
+    road
+}
+
+fn show(directions: String) {
+    println(f"\"{directions}\" -> {count_collisions(directions)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one car, every car still,
+    // two cars head on, and a column of cars running into a still one
+    show("RLRSLL");
+    show("LLRR");
+    show("S");
+    show("SSSS");
+    show("RL");
+    show("RRRRS");
+    // 3000 random roads of 1 to 30 cars
+    let mut seed = 2211;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        check = (check * 31 + count_collisions(random_road(n, mut seed))) % 1000000007;
+    }
+    println(f"3000 roads: checksum {check}");
+    // the constraints' longest: 10^5 random cars, then 10^5 cars all
+    // driving right into one still car at the end
+    let wide = random_road(100000, mut seed);
+    let mut column = String.new();
+    for _ in 0..99999 {
+        column.push('R');
+    }
+    column.push('S');
+    println(f"10^5 random -> {count_collisions(wide)}, 10^5 into a still car -> {count_collisions(column)}");
+}

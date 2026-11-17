@@ -1,0 +1,287 @@
+// LeetCode #2211: Count Collisions on a Road -- the differential. The six
+// arms, against the statement read literally: the road simulated in half
+// steps, every car at twice its index, each moving car one place a half
+// step, and the cars that meet counted by the rules (two for a head-on
+// meeting, one for a moving car into a still one), until nothing more can
+// meet; no trimming. 300 random roads of 1 to 12 cars; then 30 with no
+// still car; then 30 with no left-mover. Every case is drawn before any
+// arm answers.
+//
+// P1  the count is the statement read literally
+// P2  it is at most the moving cars
+// P3  the road reversed and every 'L' and 'R' swapped: the same count
+// P4  an 'L' added at the front and an 'R' at the back: the same count
+// P5  an 'S' added at the back: more by the 'R's it is added after
+// P6  each arm agrees with at least three of the other five
+
+// ---- collisions.kara: the ★ arm, the ends trimmed and the moving cars counted
+fn star_count_collisions(directions: String) -> i64 {
+    let cars: Vec[char] = directions.chars().collect();
+    let mut lo = 0;
+    while lo < cars.len() and cars[lo] == 'L' {
+        lo += 1;
+    }
+    let mut hi = cars.len();
+    while hi > lo and cars[hi - 1] == 'R' {
+        hi -= 1;
+    }
+    let mut count = 0;
+    for i in lo..hi {
+        if cars[i] != 'S' {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- collisions_sweep.kara: runners and a wreck, left to right
+fn sweep_count_collisions(directions: String) -> i64 {
+    let mut running = 0;
+    let mut wreck = false;
+    let mut total = 0;
+    for car in directions.chars() {
+        if car == 'R' {
+            running += 1;
+        } else if car == 'S' {
+            total += running;
+            running = 0;
+            wreck = true;
+        } else if running > 0 {
+            // head on with the nearest, then each runner behind into them
+            total += 2 + (running - 1);
+            running = 0;
+            wreck = true;
+        } else if wreck {
+            total += 1;
+        }
+    }
+    total
+}
+
+// ---- collisions_stack.kara: a `Vec` as the stack of what is left
+fn stack_count_collisions(directions: String) -> i64 {
+    let mut road: Vec[char] = Vec.new();
+    let mut total = 0;
+    for car in directions.chars() {
+        let mut car = car;
+        if car == 'L' and road.len() > 0 and road[road.len() - 1] != 'L' {
+            // a right-mover just before it hits head on; a wreck takes it
+            total += if road[road.len() - 1] == 'R' { 2 } else { 1 };
+            road.pop();
+            car = 'S';
+        }
+        if car == 'S' {
+            while road.len() > 0 and road[road.len() - 1] == 'R' {
+                road.pop();
+                total += 1;
+            }
+        }
+        road.push(car);
+    }
+    total
+}
+
+// ---- collisions_struct.kara: `Road`, `enum Car`, and `escapes`
+#[derive(Copy, Clone)]
+#[derive(PartialEq)]
+enum Car {
+    Left,
+    Right,
+    Still,
+}
+
+struct Road {
+    cars: Vec[Car],
+    // the first car that is not a left-mover, and the last that is not a
+    // right-mover
+    first_stop: i64,
+    last_stop: i64,
+}
+
+impl Road {
+    fn from(directions: String) -> Road {
+        let cars: Vec[Car] = directions.chars().map(|c| match c {
+            'L' => Car.Left,
+            'R' => Car.Right,
+            _ => Car.Still,
+        }).collect();
+        let n = cars.len();
+        let mut first_stop = 0;
+        while first_stop < n and cars[first_stop] == Car.Left {
+            first_stop += 1;
+        }
+        let mut last_stop = n - 1;
+        while last_stop >= 0 and cars[last_stop] == Car.Right {
+            last_stop -= 1;
+        }
+        Road { cars: cars, first_stop: first_stop, last_stop: last_stop }
+    }
+
+    // a left-mover escapes when every car before it moves left too, a
+    // right-mover when every car after it moves right; a still car never
+    // collides of its own
+    fn escapes(ref self, i: i64) -> bool {
+        match self.cars[i] {
+            Car.Left => i < self.first_stop,
+            Car.Right => i > self.last_stop,
+            Car.Still => true,
+        }
+    }
+}
+
+fn struct_count_collisions(directions: String) -> i64 {
+    let road = Road.from(directions);
+    (0..road.cars.len()).filter(|i| not road.escapes(i)).count()
+}
+
+// ---- collisions_iter.kara: `skip_while` from both ends
+fn iter_count_collisions(directions: String) -> i64 {
+    let rest: Vec[char] = directions.chars().skip_while(|c| c == 'L').collect();
+    rest.iter().rev().skip_while(|c| c == 'R').filter(|c| c != 'S').count()
+}
+
+// ---- collisions_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_collisions(directions: String) -> i32 {
+        let s = directions.bytes();
+        let lo = match s.iter().position(|c| c != b'L') {
+            Some(i) => i,
+            None => return 0,
+        };
+        let hi = match s.iter().rposition(|c| c != b'R') {
+            Some(i) if i >= lo => i,
+            _ => return 0,
+        };
+        s[lo..=hi].iter().filter(|c| c != b'S').count() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_collisions(directions: String) -> i64 {
+    Solution.count_collisions(directions)
+}
+
+// ---- the statement read literally
+
+// the collisions on the road: every car at position 2 * index, moving one
+// place each half step until nothing more can meet; a car that collides
+// stops where it is, as does everything it hits
+fn literal(directions: String) -> i64 {
+    let cars: Vec[char] = directions.chars().collect();
+    let n = cars.len();
+    let mut at: Vec[i64] = (0..n).map(|i| 2 * i).collect();
+    let mut moving: Vec[i64] = cars.iter().map(|c| if c == 'L' { -1 } else if c == 'R' { 1 } else { 0 }).collect();
+    let mut total = 0;
+    for _ in 0..(2 * n + 2) {
+        for i in 0..n {
+            at[i] += moving[i];
+        }
+        // the cars sharing a position after the step meet there
+        for i in 0..n {
+            let mut here: Vec[i64] = Vec.new();
+            for j in 0..n {
+                if at[j] == at[i] {
+                    here.push(j);
+                }
+            }
+            if here.len() < 2 or here[0] != i {
+                continue;
+            }
+            let movers = here.iter().filter(|j| moving[j] != 0).count();
+            if movers == 0 {
+                continue;
+            }
+            // two meeting head on make 2, a moving car into a still one 1:
+            // each moving car there counts once
+            total += movers;
+            for j in here.iter() {
+                moving[j] = 0;
+            }
+        }
+    }
+    total
+}
+
+fn answer(arm: i64, directions: String) -> i64 {
+    match arm {
+        0 => star_count_collisions(directions),
+        1 => sweep_count_collisions(directions),
+        2 => stack_count_collisions(directions),
+        3 => struct_count_collisions(directions),
+        4 => iter_count_collisions(directions),
+        _ => solution_count_collisions(directions),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sweep", "stack", "struct", "iter", "solution"];
+    let mut seed = 2211;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let letters = if c < 300 { ['L', 'R', 'S'] } else if c < 330 { ['L', 'R', 'R'] } else { ['R', 'S', 'S'] };
+        let mut road = String.new();
+        for _ in 0..n {
+            road.push(letters[next_random(mut seed) % 3]);
+        }
+        cases.push(road);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for road in cases.iter() {
+        let truth = literal(road);
+        check = (check * 31 + truth) % 1000000007;
+        let movers = road.chars().filter(|c| c != 'S').count();
+        let trailing_r = road.chars().rev().take_while(|c| c == 'R').count();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, road)).collect();
+        let mirrored: String = road.chars().rev().map(|c| if c == 'L' { 'R' } else if c == 'R' { 'L' } else { c }).collect();
+        let padded = f"L{road}R";
+        let stopped = f"{road}S";
+        for arm in 0..6 {
+            let found = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == found {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                found == truth,
+                found >= 0 and found <= movers,
+                answer(arm, mirrored) == found,
+                answer(arm, padded) == found,
+                answer(arm, stopped) == found + trailing_r,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{road}\" arm {names[arm]}: P{q + 1} fails, answered {found}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

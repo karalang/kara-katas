@@ -1,0 +1,105 @@
+// LeetCode #2211: Count Collisions on a Road -- the struct arm: a `Road`
+// of the cars as an `enum Car`, which finds once where the leading
+// left-movers end and where the trailing right-movers begin; its
+// `escapes` (`ref self`) says whether a car drives off an end with
+// nothing in its way, and each car that does not escape is counted.
+// O(n).
+
+#[derive(Copy, Clone)]
+#[derive(PartialEq)]
+enum Car {
+    Left,
+    Right,
+    Still,
+}
+
+struct Road {
+    cars: Vec[Car],
+    // the first car that is not a left-mover, and the last that is not a
+    // right-mover
+    first_stop: i64,
+    last_stop: i64,
+}
+
+impl Road {
+    fn from(directions: String) -> Road {
+        let cars: Vec[Car] = directions.chars().map(|c| match c {
+            'L' => Car.Left,
+            'R' => Car.Right,
+            _ => Car.Still,
+        }).collect();
+        let n = cars.len();
+        let mut first_stop = 0;
+        while first_stop < n and cars[first_stop] == Car.Left {
+            first_stop += 1;
+        }
+        let mut last_stop = n - 1;
+        while last_stop >= 0 and cars[last_stop] == Car.Right {
+            last_stop -= 1;
+        }
+        Road { cars: cars, first_stop: first_stop, last_stop: last_stop }
+    }
+
+    // a left-mover escapes when every car before it moves left too, a
+    // right-mover when every car after it moves right; a still car never
+    // collides of its own
+    fn escapes(ref self, i: i64) -> bool {
+        match self.cars[i] {
+            Car.Left => i < self.first_stop,
+            Car.Right => i > self.last_stop,
+            Car.Still => true,
+        }
+    }
+}
+
+fn count_collisions(directions: String) -> i64 {
+    let road = Road.from(directions);
+    (0..road.cars.len()).filter(|i| not road.escapes(i)).count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_road(n: i64, seed: mut ref i64) -> String {
+    let mut road = String.new();
+    for _ in 0..n {
+        road.push(['L', 'R', 'S'][next_random(mut seed) % 3]);
+    }
+    road
+}
+
+fn show(directions: String) {
+    println(f"\"{directions}\" -> {count_collisions(directions)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one car, every car still,
+    // two cars head on, and a column of cars running into a still one
+    show("RLRSLL");
+    show("LLRR");
+    show("S");
+    show("SSSS");
+    show("RL");
+    show("RRRRS");
+    // 3000 random roads of 1 to 30 cars
+    let mut seed = 2211;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        check = (check * 31 + count_collisions(random_road(n, mut seed))) % 1000000007;
+    }
+    println(f"3000 roads: checksum {check}");
+    // the constraints' longest: 10^5 random cars, then 10^5 cars all
+    // driving right into one still car at the end
+    let wide = random_road(100000, mut seed);
+    let mut column = String.new();
+    for _ in 0..99999 {
+        column.push('R');
+    }
+    column.push('S');
+    println(f"10^5 random -> {count_collisions(wide)}, 10^5 into a still car -> {count_collisions(column)}");
+}
