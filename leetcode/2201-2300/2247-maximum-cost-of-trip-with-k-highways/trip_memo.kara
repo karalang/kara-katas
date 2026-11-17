@@ -1,0 +1,104 @@
+// LeetCode #2247: Maximum Cost of Trip With K Highways -- top-down: a
+// recursive `go` answers the dearest way to drive `left` more highways
+// from `v`, the cities of `mask` already used, and remembers it in
+// `memo[mask][v]`, since `left` follows from the mask's size. -1 is no
+// way; -2 not yet known. O(2^n * n + 2^n * m).
+
+fn go(v: i64, mask: i64, left: i64, roads: Vec[Vec[(i64, i64)]], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if memo[mask][v] != -2 {
+        return memo[mask][v];
+    }
+    let mut best = -1;
+    for (w, toll) in roads[v].iter() {
+        if mask & (1 << w) != 0 {
+            continue;
+        }
+        let rest = go(w, mask | (1 << w), left - 1, roads, mut memo);
+        if rest >= 0 {
+            best = best.max(rest + toll);
+        }
+    }
+    memo[mask][v] = best;
+    best
+}
+
+fn maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for h in highways.iter() {
+        roads[h[0]].push((h[1], h[2]));
+        roads[h[1]].push((h[0], h[2]));
+    }
+    let mut memo: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.filled(n, -2));
+    let mut answer = -1;
+    for v in 0..n {
+        answer = answer.max(go(v, 1 << v, k, roads, mut memo));
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m distinct highways among n cities, tolls 0 to 100
+fn random_highways(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    for a in 0..n {
+        for b in a + 1..n {
+            pairs.push((a, b));
+        }
+    }
+    for i in (1..pairs.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        pairs.swap(i, j);
+    }
+    pairs.iter().take(m).map(|(a, b)| {
+        let toll = next_random(mut seed) % 101;
+        if next_random(mut seed) % 2 == 0 { [a, b, toll].to_vec() } else { [b, a, toll].to_vec() }
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one highway, a trip
+    // longer than the cities allow, a triangle, and a path walked whole
+    let examples = [
+        (5, [[0, 1, 4].to_vec(), [2, 1, 3].to_vec(), [1, 4, 11].to_vec(), [3, 2, 3].to_vec(), [3, 4, 2].to_vec()].to_vec(), 3),
+        (4, [[0, 1, 3].to_vec(), [2, 3, 2].to_vec()].to_vec(), 2),
+        (2, [[1, 0, 7].to_vec()].to_vec(), 1),
+        (3, [[0, 1, 5].to_vec(), [1, 2, 5].to_vec()].to_vec(), 3),
+        (3, [[0, 1, 1].to_vec(), [1, 2, 10].to_vec(), [2, 0, 100].to_vec()].to_vec(), 2),
+        (4, [[0, 1, 0].to_vec(), [1, 2, 0].to_vec(), [2, 3, 0].to_vec()].to_vec(), 3),
+    ];
+    for (n, highways, k) in examples.iter() {
+        println(f"n={n} {highways} k={k} -> {maximum_cost(n, highways, k)}");
+    }
+    // 2000 trips: 2 to 7 cities, any number of highways, k from 1 to 7
+    let mut seed = 2247;
+    let mut possible = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 6 + 2;
+        let m = next_random(mut seed) % (n * (n - 1) / 2) + 1;
+        let highways = random_highways(mut seed, n, m);
+        let k = next_random(mut seed) % 7 + 1;
+        let cost = maximum_cost(n, highways, k);
+        if cost >= 0 {
+            possible += 1;
+        }
+        check = (check * 31 + cost + 1) % 1000000007;
+    }
+    println(f"2000 trips: {possible} possible, checksum {check}");
+    // the constraints' largest: 15 cities and 50 highways, k = 14 and 50
+    let highways = random_highways(mut seed, 15, 50);
+    println(f"15 cities, k=14: {maximum_cost(15, highways, 14)}");
+    println(f"15 cities, k=50: {maximum_cost(15, highways, 50)}");
+}

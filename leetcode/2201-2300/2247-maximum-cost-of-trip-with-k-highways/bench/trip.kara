@@ -1,0 +1,67 @@
+// LeetCode #2247: Maximum Cost of Trip With K Highways -- the benchmark's
+// Kāra arm, trip.kara: dynamic programming over subsets, masks in
+// increasing order. O(2^n * n + 2^n * m).
+
+fn maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for h in highways.iter() {
+        roads[h[0]].push((h[1], h[2]));
+        roads[h[1]].push((h[0], h[2]));
+    }
+    let full = 1 << n;
+    let mut best: Vec[Vec[i64]] = Vec.filled(full, Vec.filled(n, -1));
+    for v in 0..n {
+        best[1 << v][v] = 0;
+    }
+    let mut answer = -1;
+    for mask in 1..full {
+        let cities = mask.count_ones();
+        for v in 0..n {
+            let cost = best[mask][v];
+            if cost < 0 {
+                continue;
+            }
+            if cities == k + 1 {
+                answer = answer.max(cost);
+                continue;
+            }
+            for (w, toll) in roads[v].iter() {
+                if mask & (1 << w) == 0 {
+                    let next = mask | (1 << w);
+                    best[next][w] = best[next][w].max(cost + toll);
+                }
+            }
+        }
+    }
+    answer
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 16 maps of 15 cities: 50 of the 105 possible highways, drawn by a
+    // shuffle, tolls 0 to 100; every trip of 14 highways
+    let mut seed = 2247;
+    let mut check = 0;
+    for _ in 0..16 {
+        let mut pairs: Vec[(i64, i64)] = Vec.new();
+        for a in 0..15 {
+            for b in a + 1..15 {
+                pairs.push((a, b));
+            }
+        }
+        for i in (1..pairs.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            pairs.swap(i, j);
+        }
+        let highways: Vec[Vec[i64]] = pairs.iter().take(50).map(|(a, b)| [a, b, next_random(mut seed) % 101].to_vec()).collect();
+        check = (check * 31 + maximum_cost(15, highways, 14) + 1) % 1000000007;
+    }
+    println(f"16 maps of 15 cities: checksum {check}");
+}

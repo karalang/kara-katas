@@ -1,0 +1,112 @@
+// LeetCode #2247: Maximum Cost of Trip With K Highways -- LeetCode's
+// Rust template: `i32`, `Vec<Vec<i32>>` and `i32` in, `i32` out, the
+// roads in `vec![vec![]; n]` of `(usize, i32)`, the table `vec![vec![
+// i32::MIN; n]; 1 << n]` over `1usize << n` masks, `mask.count_ones()`,
+// and `mask >> v & 1` to test a city. Carried by `karac fix`. The adapter
+// below hands the harness's values to it.
+
+impl Solution {
+    pub fn maximum_cost(n: i32, highways: Vec[Vec[i32]], k: i32) -> i32 {
+        if k >= n {
+            return -1;
+        }
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        for h in ref highways {
+            let (a, b, c) = (h[0] as i64, h[1] as i64, h[2]);
+            g[a].push((b, c));
+            g[b].push((a, c));
+        }
+        let mut dp = Vec.filled(1 << n, Vec.filled(n, i32.MIN));
+        for i in 0..n {
+            dp[1 << i][i] = 0;
+        }
+        let mut ans: i32 = -1;
+        for mask in 1..(1 << n) {
+            for u in 0..n {
+                if dp[mask][u] == i32.MIN {
+                    continue;
+                }
+                if mask.count_ones() as i32 == k + 1 {
+                    ans = ans.max(dp[mask][u]);
+                    continue;
+                }
+                for (v, c) in ref g[u] {
+                    if mask >> v & 1 == 0 {
+                        let nm = mask | 1 << v;
+                        dp[nm][v] = dp[nm][v].max(dp[mask][u] + c);
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    let highways: Vec[Vec[i32]] = highways.iter().map(|h| h.iter().map(|x| x as i32).collect()).collect();
+    Solution.maximum_cost(n as i32, highways, k as i32)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// m distinct highways among n cities, tolls 0 to 100
+fn random_highways(seed: mut ref i64, n: i64, m: i64) -> Vec[Vec[i64]] {
+    let mut pairs: Vec[(i64, i64)] = Vec.new();
+    for a in 0..n {
+        for b in a + 1..n {
+            pairs.push((a, b));
+        }
+    }
+    for i in (1..pairs.len()).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        pairs.swap(i, j);
+    }
+    pairs.iter().take(m).map(|(a, b)| {
+        let toll = next_random(mut seed) % 101;
+        if next_random(mut seed) % 2 == 0 { [a, b, toll].to_vec() } else { [b, a, toll].to_vec() }
+    }).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one highway, a trip
+    // longer than the cities allow, a triangle, and a path walked whole
+    let examples = [
+        (5, [[0, 1, 4].to_vec(), [2, 1, 3].to_vec(), [1, 4, 11].to_vec(), [3, 2, 3].to_vec(), [3, 4, 2].to_vec()].to_vec(), 3),
+        (4, [[0, 1, 3].to_vec(), [2, 3, 2].to_vec()].to_vec(), 2),
+        (2, [[1, 0, 7].to_vec()].to_vec(), 1),
+        (3, [[0, 1, 5].to_vec(), [1, 2, 5].to_vec()].to_vec(), 3),
+        (3, [[0, 1, 1].to_vec(), [1, 2, 10].to_vec(), [2, 0, 100].to_vec()].to_vec(), 2),
+        (4, [[0, 1, 0].to_vec(), [1, 2, 0].to_vec(), [2, 3, 0].to_vec()].to_vec(), 3),
+    ];
+    for (n, highways, k) in examples.iter() {
+        println(f"n={n} {highways} k={k} -> {maximum_cost(n, highways, k)}");
+    }
+    // 2000 trips: 2 to 7 cities, any number of highways, k from 1 to 7
+    let mut seed = 2247;
+    let mut possible = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 6 + 2;
+        let m = next_random(mut seed) % (n * (n - 1) / 2) + 1;
+        let highways = random_highways(mut seed, n, m);
+        let k = next_random(mut seed) % 7 + 1;
+        let cost = maximum_cost(n, highways, k);
+        if cost >= 0 {
+            possible += 1;
+        }
+        check = (check * 31 + cost + 1) % 1000000007;
+    }
+    println(f"2000 trips: {possible} possible, checksum {check}");
+    // the constraints' largest: 15 cities and 50 highways, k = 14 and 50
+    let highways = random_highways(mut seed, 15, 50);
+    println(f"15 cities, k=14: {maximum_cost(15, highways, 14)}");
+    println(f"15 cities, k=50: {maximum_cost(15, highways, 50)}");
+}

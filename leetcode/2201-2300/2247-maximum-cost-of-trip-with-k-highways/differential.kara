@@ -1,0 +1,427 @@
+// LeetCode #2247: Maximum Cost of Trip With K Highways -- the
+// differential. The six arms, against the statement read literally:
+// every sequence of k + 1 distinct cities tried, kept when each is
+// joined to the next by a highway, and the dearest sum of tolls taken,
+// or -1; no table. 300 random trips of 2 to 6 cities, any number of
+// highways, k from 1 to 6; then 30 with every toll 0; then 30 complete
+// maps with k = n - 1, every city on the trip. Every case is drawn before
+// any arm answers.
+//
+// P1  the answer is the dearest trip, read literally, or -1
+// P2  every highway written the other way round and the list reversed:
+//     the same answer
+// P3  the cities renamed by a rotation: the same answer
+// P4  every toll one higher: k more, or -1 again
+// P5  one more highway: no lower answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- trip.kara: the ★ arm, dynamic programming over subsets
+fn star_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for h in highways.iter() {
+        roads[h[0]].push((h[1], h[2]));
+        roads[h[1]].push((h[0], h[2]));
+    }
+    let full = 1 << n;
+    let mut best: Vec[Vec[i64]] = Vec.filled(full, Vec.filled(n, -1));
+    for v in 0..n {
+        best[1 << v][v] = 0;
+    }
+    let mut answer = -1;
+    for mask in 1..full {
+        let cities = mask.count_ones();
+        for v in 0..n {
+            let cost = best[mask][v];
+            if cost < 0 {
+                continue;
+            }
+            if cities == k + 1 {
+                answer = answer.max(cost);
+                continue;
+            }
+            for (w, toll) in roads[v].iter() {
+                if mask & (1 << w) == 0 {
+                    let next = mask | (1 << w);
+                    best[next][w] = best[next][w].max(cost + toll);
+                }
+            }
+        }
+    }
+    answer
+}
+
+// ---- trip_memo.kara: top-down, remembered by (mask, city)
+fn memo_go(v: i64, mask: i64, left: i64, roads: Vec[Vec[(i64, i64)]], memo: mut ref Vec[Vec[i64]]) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    if memo[mask][v] != -2 {
+        return memo[mask][v];
+    }
+    let mut best = -1;
+    for (w, toll) in roads[v].iter() {
+        if mask & (1 << w) != 0 {
+            continue;
+        }
+        let rest = memo_go(w, mask | (1 << w), left - 1, roads, mut memo);
+        if rest >= 0 {
+            best = best.max(rest + toll);
+        }
+    }
+    memo[mask][v] = best;
+    best
+}
+
+fn memo_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for h in highways.iter() {
+        roads[h[0]].push((h[1], h[2]));
+        roads[h[1]].push((h[0], h[2]));
+    }
+    let mut memo: Vec[Vec[i64]] = Vec.filled(1 << n, Vec.filled(n, -2));
+    let mut answer = -1;
+    for v in 0..n {
+        answer = answer.max(memo_go(v, 1 << v, k, roads, mut memo));
+    }
+    answer
+}
+
+// ---- trip_layers.kara: a `Map` of states, one highway a round
+fn layers_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut roads: Vec[Vec[(i64, i64)]] = Vec.filled(n, Vec.new());
+    for h in highways.iter() {
+        roads[h[0]].push((h[1], h[2]));
+        roads[h[1]].push((h[0], h[2]));
+    }
+    let mut layer: Map[(i64, i64), i64] = Map.new();
+    for v in 0..n {
+        layer[(1 << v, v)] = 0;
+    }
+    for _ in 0..k {
+        let mut next: Map[(i64, i64), i64] = Map.new();
+        for ((mask, v), cost) in layer.iter() {
+            for (w, toll) in roads[v].iter() {
+                if mask & (1 << w) != 0 {
+                    continue;
+                }
+                let key = (mask | (1 << w), w);
+                let dearer = next.get(key).map_or(true, |seen| cost + toll > seen);
+                if dearer {
+                    next[key] = cost + toll;
+                }
+            }
+        }
+        layer = next;
+    }
+    layer.values().max().unwrap_or(-1)
+}
+
+// ---- trip_struct.kara: `Road` and `Planner`, `Option[i64]` states
+#[derive(Copy, Clone)]
+struct StructRoad {
+    to: i64,
+    toll: i64,
+}
+
+struct StructPlanner {
+    roads: Vec[Vec[StructRoad]],
+    best: Vec[Vec[Option[i64]]],
+    // by_size[c]: every mask of c cities
+    by_size: Vec[Vec[i64]],
+}
+
+impl StructPlanner {
+    fn new(n: i64, highways: Vec[Vec[i64]]) -> StructPlanner {
+        let mut roads: Vec[Vec[StructRoad]] = Vec.filled(n, Vec.new());
+        for h in highways.iter() {
+            roads[h[0]].push(StructRoad { to: h[1], toll: h[2] });
+            roads[h[1]].push(StructRoad { to: h[0], toll: h[2] });
+        }
+        let mut best: Vec[Vec[Option[i64]]] = Vec.filled(1 << n, Vec.filled(n, None));
+        for v in 0..n {
+            best[1 << v][v] = Some(0);
+        }
+        let mut by_size: Vec[Vec[i64]] = Vec.filled(n + 1, Vec.new());
+        for mask in 1..(1 << n) {
+            by_size[mask.count_ones()].push(mask);
+        }
+        StructPlanner { roads, best, by_size }
+    }
+
+    fn drive(mut ref self, size: i64) {
+        let n = self.roads.len();
+        for mask in self.by_size[size].clone().iter() {
+            for v in 0..n {
+                let Some(cost) = self.best[mask][v] else { continue };
+                for road in self.roads[v].clone().iter() {
+                    if mask & (1 << road.to) != 0 {
+                        continue;
+                    }
+                    let next = mask | (1 << road.to);
+                    let here = cost + road.toll;
+                    self.best[next][road.to] = match self.best[next][road.to] {
+                        Some(seen) => Some(seen.max(here)),
+                        None => Some(here),
+                    };
+                }
+            }
+        }
+    }
+
+    fn dearest(ref self, size: i64) -> Option[i64] {
+        let mut found: Option[i64] = None;
+        for mask in self.by_size[size].iter() {
+            for cost in self.best[mask].iter() {
+                if let Some(c) = cost {
+                    found = Some(found.map_or(c, |f| f.max(c)));
+                }
+            }
+        }
+        found
+    }
+}
+
+fn struct_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let mut planner = StructPlanner.new(n, highways);
+    for size in 1..k + 1 {
+        planner.drive(size);
+    }
+    planner.dearest(k + 1).unwrap_or(-1)
+}
+
+// ---- trip_iter.kara: `flat_map`, `filter_map`, `fold` and `max`
+fn iter_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    if k + 1 > n {
+        return -1;
+    }
+    let roads: Vec[Vec[(i64, i64)]] = highways
+        .iter()
+        .flat_map(|h| [(h[0], h[1], h[2]), (h[1], h[0], h[2])].into_iter())
+        .fold(Vec.filled(n, Vec.new()), |lists: own Vec[Vec[(i64, i64)]], (a, b, toll)| {
+            let mut lists = lists;
+            lists[a].push((b, toll));
+            lists
+        });
+    let full = 1 << n;
+    let mut best: Vec[Vec[i64]] = Vec.filled(full, Vec.filled(n, -1));
+    for v in 0..n {
+        best[1 << v][v] = 0;
+    }
+    for mask in (1..full).filter(|m| m.count_ones() <= k) {
+        // the steps' closures read the table through a borrow: a returned
+        // closure takes its captures by move (core-semantics.md §9.3)
+        let reached = ref best;
+        let steps: Vec[(i64, i64, i64)] = (0..n)
+            .filter(|v| reached[mask][v] >= 0)
+            .flat_map(|v| roads[v].iter().filter_map(|(w, toll)| if mask & (1 << w) == 0 { Some((mask | (1 << w), w, reached[mask][v] + toll)) } else { None }))
+            .collect();
+        for (next, w, cost) in steps.iter() {
+            best[next][w] = best[next][w].max(cost);
+        }
+    }
+    (1..full).filter(|m| m.count_ones() == k + 1).flat_map(|m| best[m].iter()).max().unwrap_or(-1)
+}
+
+// ---- trip_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn maximum_cost(n: i32, highways: Vec[Vec[i32]], k: i32) -> i32 {
+        if k >= n {
+            return -1;
+        }
+        let n = n as i64;
+        let mut g = Vec.filled(n, Vec.new());
+        for h in ref highways {
+            let (a, b, c) = (h[0] as i64, h[1] as i64, h[2]);
+            g[a].push((b, c));
+            g[b].push((a, c));
+        }
+        let mut dp = Vec.filled(1 << n, Vec.filled(n, i32.MIN));
+        for i in 0..n {
+            dp[1 << i][i] = 0;
+        }
+        let mut ans: i32 = -1;
+        for mask in 1..(1 << n) {
+            for u in 0..n {
+                if dp[mask][u] == i32.MIN {
+                    continue;
+                }
+                if mask.count_ones() as i32 == k + 1 {
+                    ans = ans.max(dp[mask][u]);
+                    continue;
+                }
+                for (v, c) in ref g[u] {
+                    if mask >> v & 1 == 0 {
+                        let nm = mask | 1 << v;
+                        dp[nm][v] = dp[nm][v].max(dp[mask][u] + c);
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_cost(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    let highways: Vec[Vec[i32]] = highways.iter().map(|h| h.iter().map(|x| x as i32).collect()).collect();
+    Solution.maximum_cost(n as i32, highways, k as i32)
+}
+
+// ---- the statement read literally
+
+// the dearest way to finish a trip of `left` more highways from the
+// last city of `trip`, trying every unused city next
+fn extend(trip: mut ref Vec[i64], left: i64, toll: Vec[Vec[i64]], n: i64) -> i64 {
+    if left == 0 {
+        return 0;
+    }
+    let last = trip[trip.len() - 1];
+    let mut best = -1;
+    for next in 0..n {
+        if trip.contains(next) or toll[last][next] < 0 {
+            continue;
+        }
+        trip.push(next);
+        let rest = extend(mut trip, left - 1, toll, n);
+        trip.pop();
+        if rest >= 0 {
+            best = best.max(rest + toll[last][next]);
+        }
+    }
+    best
+}
+
+fn literal(n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    let mut toll: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(n, -1));
+    for h in highways.iter() {
+        toll[h[0]][h[1]] = h[2];
+        toll[h[1]][h[0]] = h[2];
+    }
+    let mut best = -1;
+    for start in 0..n {
+        let mut trip: Vec[i64] = [start].to_vec();
+        best = best.max(extend(mut trip, k, toll, n));
+    }
+    best
+}
+
+fn answer(arm: i64, n: i64, highways: Vec[Vec[i64]], k: i64) -> i64 {
+    match arm {
+        0 => star_maximum_cost(n, highways, k),
+        1 => memo_maximum_cost(n, highways, k),
+        2 => layers_maximum_cost(n, highways, k),
+        3 => struct_maximum_cost(n, highways, k),
+        4 => iter_maximum_cost(n, highways, k),
+        _ => solution_maximum_cost(n, highways, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "memo", "layers", "struct", "iter", "solution"];
+    let mut seed = 2247;
+    // (n, highways, k, rotation, a highway to add or an empty one)
+    let mut cases: Vec[(i64, Vec[Vec[i64]], i64, i64, Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 5 + 2;
+        let mut pairs: Vec[(i64, i64)] = Vec.new();
+        for a in 0..n {
+            for b in a + 1..n {
+                pairs.push((a, b));
+            }
+        }
+        for i in (1..pairs.len()).rev() {
+            let j = next_random(mut seed) % (i + 1);
+            pairs.swap(i, j);
+        }
+        let m = if c >= 330 { pairs.len() } else { next_random(mut seed) % pairs.len() + 1 };
+        let mut highways: Vec[Vec[i64]] = Vec.new();
+        for i in 0..m {
+            let (a, b) = pairs[i];
+            let toll = if c >= 300 and c < 330 { 0 } else { next_random(mut seed) % 101 };
+            highways.push([a, b, toll].to_vec());
+        }
+        let k = if c >= 330 { n - 1 } else { next_random(mut seed) % 6 + 1 };
+        let rotation = next_random(mut seed) % n;
+        let extra = if m < pairs.len() {
+            let (a, b) = pairs[m];
+            [a, b, next_random(mut seed) % 101].to_vec()
+        } else {
+            Vec.new()
+        };
+        cases.push((n, highways, k, rotation, extra));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, highways, k, rotation, extra) in cases.iter() {
+        let truth = literal(n, highways, k);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let flipped: Vec[Vec[i64]] = highways.iter().rev().map(|h| [h[1], h[0], h[2]].to_vec()).collect();
+        let turned: Vec[Vec[i64]] = highways.iter().map(|h| [(h[0] + rotation) % n, (h[1] + rotation) % n, h[2]].to_vec()).collect();
+        let raised: Vec[Vec[i64]] = highways.iter().map(|h| [h[0], h[1], h[2] + 1].to_vec()).collect();
+        let mut more = highways.clone();
+        if not extra.is_empty() {
+            more.push(extra.clone());
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, highways, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let up = answer(arm, n, raised, k);
+            let verdicts = [
+                value == truth,
+                answer(arm, n, flipped, k) == value,
+                answer(arm, n, turned, k) == value,
+                (value == -1 and up == -1) or (value >= 0 and up == value + k),
+                answer(arm, n, more, k) >= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n={n} {highways} k={k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
