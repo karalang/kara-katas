@@ -1,0 +1,74 @@
+// LeetCode #2221: Find Triangular Sum of an Array -- a `struct Triangle`
+// holding the current row, with `step` (`mut ref self`) folding it down
+// one round in place and dropping its last digit, `done` (`ref self`)
+// true at one digit, and `top` (`ref self`) reading it. O(n^2).
+
+struct Triangle {
+    row: Vec[i64],
+}
+
+impl Triangle {
+    fn step(mut ref self) {
+        for i in 0..self.row.len() - 1 {
+            self.row[i] = (self.row[i] + self.row[i + 1]) % 10;
+        }
+        self.row.pop();
+    }
+
+    fn done(ref self) -> bool {
+        self.row.len() == 1
+    }
+
+    fn top(ref self) -> i64 {
+        self.row[0]
+    }
+}
+
+fn triangular_sum(nums: Vec[i64]) -> i64 {
+    let mut triangle = Triangle { row: nums.clone() };
+    while not triangle.done() {
+        triangle.step();
+    }
+    triangle.top()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {triangular_sum(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: two nines, all zeros, a
+    // lone 1 at the start of eight, and 1 to 9
+    show([1, 2, 3, 4, 5]);
+    show([5]);
+    show([9, 9]);
+    show([0, 0, 0, 0]);
+    show([1, 0, 0, 0, 0, 0, 0, 0]);
+    show([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // 3000 random arrays of 1 to 40 digits
+    let mut seed = 2221;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(next_random(mut seed) % 10);
+        }
+        check = (check * 31 + triangular_sum(nums)) % 1000000007;
+    }
+    println(f"3000 arrays: checksum {check}");
+    // the constraints' largest: 1000 random digits, and 1000 nines
+    let mut wide: Vec[i64] = Vec.new();
+    for _ in 0..1000 {
+        wide.push(next_random(mut seed) % 10);
+    }
+    let nines: Vec[i64] = Vec.filled(1000, 9);
+    println(f"1000 random digits: {triangular_sum(wide)}; 1000 nines: {triangular_sum(nines)}");
+}

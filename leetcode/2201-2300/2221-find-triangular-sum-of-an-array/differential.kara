@@ -1,0 +1,231 @@
+// LeetCode #2221: Find Triangular Sum of an Array -- the differential.
+// The six arms, against the statement read literally with the sums kept
+// whole: every round adds neighbours without taking mod 10, and the one
+// number left is taken mod 10 at the end, which agrees since mod 10
+// keeps sums. 300 random arrays of 1 to 14 digits; then 30 of one digit
+// throughout; then 30 of one digit among zeros. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  it is a digit, 0 to 9
+// P3  the digits reversed: the same answer
+// P4  every digit d made (10 - d) % 10: the answer made so too
+// P5  a second array of the same length added digit by digit mod 10:
+//     the two answers added mod 10
+// P6  each arm agrees with at least three of the other five
+
+// ---- triangle.kara: the ★ arm, the rounds in place
+fn star_triangular_sum(nums: Vec[i64]) -> i64 {
+    let mut row = nums.clone();
+    let n = row.len();
+    for live in (1..n).rev() {
+        for i in 0..live {
+            row[i] = (row[i] + row[i + 1]) % 10;
+        }
+    }
+    row[0]
+}
+
+// ---- triangle_rows.kara: a new row each round
+fn rows_triangular_sum(nums: Vec[i64]) -> i64 {
+    let mut row = nums.clone();
+    while row.len() > 1 {
+        let mut next: Vec[i64] = Vec.new();
+        for i in 0..row.len() - 1 {
+            next.push((row[i] + row[i + 1]) % 10);
+        }
+        row = next;
+    }
+    row[0]
+}
+
+// ---- triangle_binomial.kara: Pascal coefficients mod 10
+fn binomial_triangular_sum(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut pascal: Vec[i64] = Vec.filled(n, 0);
+    pascal[0] = 1;
+    for r in 1..n {
+        let mut i = r;
+        while i > 0 {
+            pascal[i] = (pascal[i] + pascal[i - 1]) % 10;
+            i -= 1;
+        }
+    }
+    let mut total = 0;
+    for i in 0..n {
+        total = (total + pascal[i] * nums[i]) % 10;
+    }
+    total
+}
+
+// ---- triangle_struct.kara: `Triangle`, `step`, `done` and `top`
+struct Triangle {
+    row: Vec[i64],
+}
+
+impl Triangle {
+    fn step(mut ref self) {
+        for i in 0..self.row.len() - 1 {
+            self.row[i] = (self.row[i] + self.row[i + 1]) % 10;
+        }
+        self.row.pop();
+    }
+
+    fn done(ref self) -> bool {
+        self.row.len() == 1
+    }
+
+    fn top(ref self) -> i64 {
+        self.row[0]
+    }
+}
+
+fn struct_triangular_sum(nums: Vec[i64]) -> i64 {
+    let mut triangle = Triangle { row: nums.clone() };
+    while not triangle.done() {
+        triangle.step();
+    }
+    triangle.top()
+}
+
+// ---- triangle_iter.kara: `fold`, `zip`, `skip` and `map`
+fn iter_triangular_sum(nums: Vec[i64]) -> i64 {
+    let last = (1..nums.len()).fold(nums.clone(), |row, _| {
+        row.iter().zip(row.iter().skip(1)).map(|(a, b)| (a + b) % 10).collect()
+    });
+    last[0]
+}
+
+// ---- triangle_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn triangular_sum(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        let n = nums.len();
+        for len in (1..n).rev() {
+            for i in 0..len {
+                nums[i] = (nums[i] + nums[i + 1]) % 10;
+            }
+        }
+        nums[0]
+    }
+}
+
+struct Solution {}
+
+fn solution_triangular_sum(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.triangular_sum(nums)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut row = nums.clone();
+    while row.len() > 1 {
+        let mut next: Vec[i64] = Vec.new();
+        for i in 0..row.len() - 1 {
+            next.push(row[i] + row[i + 1]);
+        }
+        row = next;
+    }
+    row[0] % 10
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_triangular_sum(nums),
+        1 => rows_triangular_sum(nums),
+        2 => binomial_triangular_sum(nums),
+        3 => struct_triangular_sum(nums),
+        4 => iter_triangular_sum(nums),
+        _ => solution_triangular_sum(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    nums: Vec[i64],
+    other: Vec[i64],
+}
+
+fn main() {
+    let names = ["star", "rows", "binomial", "struct", "iter", "solution"];
+    let mut seed = 2221;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 14 + 1;
+        let one = next_random(mut seed) % 9 + 1;
+        let at = next_random(mut seed) % n;
+        let mut nums: Vec[i64] = Vec.new();
+        let mut other: Vec[i64] = Vec.new();
+        for i in 0..n {
+            let x = if c < 300 {
+                next_random(mut seed) % 10
+            } else if c < 330 {
+                one
+            } else if i == at {
+                one
+            } else {
+                0
+            };
+            nums.push(x);
+            other.push(next_random(mut seed) % 10);
+        }
+        cases.push(Case { nums: nums, other: other });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let nums = ref case.nums;
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().cloned().collect();
+        let negated: Vec[i64] = nums.iter().map(|d| (10 - d) % 10).collect();
+        let summed: Vec[i64] = nums.iter().zip(case.other.iter()).map(|(a, b)| (a + b) % 10).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let top = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == top {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                top == truth,
+                top >= 0 and top <= 9,
+                answer(arm, reversed) == top,
+                answer(arm, negated) == (10 - top) % 10,
+                answer(arm, summed) == (top + answer(arm, case.other)) % 10,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {top}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
