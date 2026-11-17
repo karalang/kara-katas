@@ -1,0 +1,495 @@
+// LeetCode #1586: Binary Search Tree Iterator II -- the differential.
+//
+// Four arms against the statement read literally, on 3000 trees of 1 to
+// 7 values from 0 to 14 (repeats dropped), each driven by 1 to 25 valid
+// calls, with six properties. Every random choice is drawn before any arm
+// answers.
+//
+// P1  the answers are the statement read literally
+// P2  the same values inserted in reverse order leave the answers
+// P3  every value raised by 1000 raises each next and prev by 1000
+// P4  every value doubled doubles each next and prev
+// P5  a next and a prev put in where both are valid leave the rest
+// P6  each arm agrees with at least two of the other three
+
+// ---- bst_iterator.kara: the ★ arm: the lazy in-order stack and a list of the values met
+
+struct StarIterator {
+    spine: Vec[TreeNode],
+    seen: Vec[i32],
+    at: i64,
+}
+
+impl StarIterator {
+    fn new(root: Option[TreeNode]) -> StarIterator {
+        let mut it = StarIterator { spine: Vec.new(), seen: Vec.new(), at: -1 };
+        it.push_left(root);
+        it
+    }
+
+    fn push_left(mut ref self, node: Option[TreeNode]) {
+        let mut node = node;
+        while let Some(n) = node {
+            self.spine.push(n);
+            node = n.left;
+        }
+    }
+
+    fn has_next(self) -> bool {
+        self.at + 1 < self.seen.len() or not self.spine.is_empty()
+    }
+
+    fn next(mut ref self) -> i32 {
+        self.at += 1;
+        if self.at == self.seen.len() {
+            let n = self.spine.pop().unwrap();
+            self.seen.push(n.val);
+            self.push_left(n.right);
+        }
+        self.seen[self.at]
+    }
+
+    fn has_prev(self) -> bool {
+        self.at > 0
+    }
+
+    fn prev(mut ref self) -> i32 {
+        self.at -= 1;
+        self.seen[self.at]
+    }
+}
+
+fn drive_star(root: Option[TreeNode], calls: Slice[i64]) -> Vec[i64] {
+    let mut it = StarIterator.new(root);
+    let mut out = Vec.new();
+    for c in calls.iter() {
+        let answer = match *c {
+            0 => if it.has_next() { 1 } else { 0 },
+            1 => it.next() as i64,
+            2 => if it.has_prev() { 1 } else { 0 },
+            _ => it.prev() as i64,
+        };
+        out.push(answer);
+    }
+    out
+}
+
+// ---- bst_iterator_flat.kara: every value up front, by a recursive in-order walk
+
+struct FlatIterator {
+    values: Vec[i32],
+    at: i64,
+}
+
+fn flat_in_order(node: Option[TreeNode], out: mut ref Vec[i32]) {
+    if let Some(n) = node {
+        flat_in_order(n.left, mut out);
+        out.push(n.val);
+        flat_in_order(n.right, mut out);
+    }
+}
+
+impl FlatIterator {
+    fn new(root: Option[TreeNode]) -> FlatIterator {
+        let mut values = Vec.new();
+        flat_in_order(root, mut values);
+        FlatIterator { values: values, at: -1 }
+    }
+
+    fn has_next(self) -> bool {
+        self.at + 1 < self.values.len()
+    }
+
+    fn next(mut ref self) -> i32 {
+        self.at += 1;
+        self.values[self.at]
+    }
+
+    fn has_prev(self) -> bool {
+        self.at > 0
+    }
+
+    fn prev(mut ref self) -> i32 {
+        self.at -= 1;
+        self.values[self.at]
+    }
+}
+
+fn drive_flat(root: Option[TreeNode], calls: Slice[i64]) -> Vec[i64] {
+    let mut it = FlatIterator.new(root);
+    let mut out = Vec.new();
+    for c in calls.iter() {
+        let answer = match *c {
+            0 => if it.has_next() { 1 } else { 0 },
+            1 => it.next() as i64,
+            2 => if it.has_prev() { 1 } else { 0 },
+            _ => it.prev() as i64,
+        };
+        out.push(answer);
+    }
+    out
+}
+
+// ---- bst_iterator_search.kara: only the current value, each call a search from the root
+
+struct SearchIterator {
+    root: Option[TreeNode],
+    at: Option[i32],
+}
+
+// the smallest value search_above `low` (any value when `low` is None)
+fn search_above(root: Option[TreeNode], low: Option[i32]) -> Option[i32] {
+    let mut best = None;
+    let mut node = root;
+    while let Some(n) = node {
+        let higher = match low {
+            Some(v) => n.val > v,
+            None => true,
+        };
+        if higher {
+            best = Some(n.val);
+            node = n.left;
+        } else {
+            node = n.right;
+        }
+    }
+    best
+}
+
+// the largest value search_below `high`
+fn search_below(root: Option[TreeNode], high: i32) -> Option[i32] {
+    let mut best = None;
+    let mut node = root;
+    while let Some(n) = node {
+        if n.val < high {
+            best = Some(n.val);
+            node = n.right;
+        } else {
+            node = n.left;
+        }
+    }
+    best
+}
+
+impl SearchIterator {
+    fn new(root: Option[TreeNode]) -> SearchIterator {
+        SearchIterator { root: root, at: None }
+    }
+
+    fn has_next(self) -> bool {
+        search_above(self.root, self.at).is_some()
+    }
+
+    fn next(mut ref self) -> i32 {
+        let v = search_above(self.root, self.at).unwrap();
+        self.at = Some(v);
+        v
+    }
+
+    fn has_prev(self) -> bool {
+        match self.at {
+            Some(v) => search_below(self.root, v).is_some(),
+            None => false,
+        }
+    }
+
+    fn prev(mut ref self) -> i32 {
+        let v = search_below(self.root, self.at.unwrap()).unwrap();
+        self.at = Some(v);
+        v
+    }
+}
+
+fn drive_search(root: Option[TreeNode], calls: Slice[i64]) -> Vec[i64] {
+    let mut it = SearchIterator.new(root);
+    let mut out = Vec.new();
+    for c in calls.iter() {
+        let answer = match *c {
+            0 => if it.has_next() { 1 } else { 0 },
+            1 => it.next() as i64,
+            2 => if it.has_prev() { 1 } else { 0 },
+            _ => it.prev() as i64,
+        };
+        out.push(answer);
+    }
+    out
+}
+
+// ---- bst_iterator_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionIterator {
+    stack: Vec[TreeNode],
+    arr: Vec[i32],
+    idx: i64,
+}
+
+impl SolutionIterator {
+    fn new(root: Option[TreeNode]) -> Self {
+        let mut it = SolutionIterator {
+            stack: Vec.new(),
+            arr: Vec.new(),
+            idx: 0,
+        };
+        it.push_left(root);
+        it
+    }
+
+    fn push_left(mut ref self, node: own Option[TreeNode]) {
+        let mut node = node;
+        while let Some(n) = node {
+            node = n.left.clone();
+            self.stack.push(n);
+        }
+    }
+
+    fn has_next(self) -> bool {
+        self.idx < self.arr.len() or not self.stack.is_empty()
+    }
+
+    fn next(mut ref self) -> i32 {
+        if self.idx == self.arr.len() {
+            let n = self.stack.pop().unwrap();
+            self.arr.push(n.val);
+            let right = n.right.clone();
+            self.push_left(right);
+        }
+        self.idx += 1;
+        self.arr[self.idx - 1]
+    }
+
+    fn has_prev(self) -> bool {
+        self.idx > 1
+    }
+
+    fn prev(mut ref self) -> i32 {
+        self.idx -= 1;
+        self.arr[self.idx - 1]
+    }
+}
+
+fn drive_solution(root: Option[TreeNode], calls: Slice[i64]) -> Vec[i64] {
+    let mut it = SolutionIterator.new(root);
+    let mut out = Vec.new();
+    for c in calls.iter() {
+        let answer = match *c {
+            0 => if it.has_next() { 1 } else { 0 },
+            1 => it.next() as i64,
+            2 => if it.has_prev() { 1 } else { 0 },
+            _ => it.prev() as i64,
+        };
+        out.push(answer);
+    }
+    out
+}
+
+// ---- the harness ----------------------------------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn insert(root: TreeNode, v: i32) -> bool {
+    let mut node = root;
+    loop {
+        if v == node.val {
+            return false;
+        }
+        let child = if v < node.val { node.left } else { node.right };
+        match child {
+            Some(c) => node = c,
+            None => {
+                let leaf = TreeNode { val: v, left: None, right: None };
+                if v < node.val {
+                    node.left = Some(leaf);
+                } else {
+                    node.right = Some(leaf);
+                }
+                return true;
+            }
+        }
+    }
+}
+
+fn build(values: Slice[i32]) -> Option[TreeNode] {
+    if values.is_empty() {
+        return None;
+    }
+    let root = TreeNode { val: values[0], left: None, right: None };
+    for v in values[1..].iter() {
+        insert(root, *v);
+    }
+    Some(root)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, values: Slice[i32], calls: Slice[i64]) -> Vec[i64] {
+    let root = build(values);
+    match a {
+        0 => drive_star(root, calls),
+        1 => drive_flat(root, calls),
+        2 => drive_search(root, calls),
+        _ => drive_solution(root, calls),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["bst_iterator", "flat", "search", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the tree's values in ascending
+// order, from a walk in any order and a sort, and a pointer that starts
+// before the smallest and moves one place a next or prev
+
+fn literal(values: Slice[i32], calls: Slice[i64]) -> Vec[i64] {
+    let mut all: Vec[i32] = Vec.new();
+    let mut todo: Vec[TreeNode] = Vec.new();
+    if let Some(root) = build(values) {
+        todo.push(root);
+    }
+    while let Some(n) = todo.pop() {
+        all.push(n.val);
+        if let Some(l) = n.left {
+            todo.push(l);
+        }
+        if let Some(r) = n.right {
+            todo.push(r);
+        }
+    }
+    all.sort();
+    let mut pointer = -1;
+    let mut out = Vec.new();
+    for c in calls.iter() {
+        if *c == 0 {
+            out.push(if pointer + 1 < all.len() { 1 } else { 0 });
+        } else if *c == 1 {
+            pointer += 1;
+            out.push(all[pointer] as i64);
+        } else if *c == 2 {
+            out.push(if pointer > 0 { 1 } else { 0 });
+        } else {
+            pointer -= 1;
+            out.push(all[pointer]);
+        }
+    }
+    out
+}
+
+// each next and prev answer moved by `f`, the bools left alone
+fn moved(calls: Slice[i64], answers: Slice[i64], f: Fn(i64) -> i64) -> Vec[i64] {
+    calls.iter().zip(answers.iter()).map(|(c, a)| if *c % 2 == 1 { f(*a) } else { *a }).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15860;
+    let mut cases: Vec[(Vec[i32], Vec[i64], i64)] = Vec.new();
+    for _ in 0..problems {
+        let size = next_random(mut seed) % 7 + 1;
+        let values: Vec[i32] = (0..size).map(|_| (next_random(mut seed) % 15) as i32).collect();
+        let mut distinct = values.clone();
+        distinct.sort();
+        distinct.dedup();
+        let n = distinct.len();
+        let mut at = -1;
+        let mut calls = Vec.new();
+        let mut room = Vec.new();
+        for _ in 0..next_random(mut seed) % 25 + 1 {
+            if at >= 0 and at + 1 < n {
+                room.push(calls.len());
+            }
+            let r = next_random(mut seed) % 6;
+            if r >= 2 and r <= 4 and at + 1 < n {
+                at += 1;
+                calls.push(1);
+            } else if r == 5 and at > 0 {
+                at -= 1;
+                calls.push(3);
+            } else {
+                calls.push(r % 2 * 2);
+            }
+        }
+        if at >= 0 and at + 1 < n {
+            room.push(calls.len());
+        }
+        let place = if room.is_empty() { -1 } else { room[next_random(mut seed) % room.len()] };
+        cases.push((values, calls, place));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (values, calls, place)) in cases.iter().enumerate() {
+        let truth = literal(values, calls);
+        let reversed: Vec[i32] = values.iter().rev().map(|v| *v).collect();
+        let raised: Vec[i32] = values.iter().map(|v| *v + 1000).collect();
+        let doubled: Vec[i32] = values.iter().map(|v| *v * 2).collect();
+        let mut longer = calls.clone();
+        if place >= 0 {
+            longer.insert(place, 3);
+            longer.insert(place, 1);
+        }
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, values, calls);
+            for x in answer.iter() {
+                check = (check * 31 + *x + 1) % 1000000007;
+            }
+            let mut rest = arm(a, values, longer);
+            if place >= 0 {
+                rest.remove(place);
+                rest.remove(place);
+            }
+            let failed = [
+                answer != truth,
+                arm(a, reversed, calls) != answer,
+                arm(a, raised, calls) != moved(calls, answer, |x| x + 1000),
+                arm(a, doubled, calls) != moved(calls, answer, |x| x * 2),
+                rest != answer,
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
