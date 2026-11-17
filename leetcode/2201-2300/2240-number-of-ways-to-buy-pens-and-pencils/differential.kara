@@ -1,0 +1,230 @@
+// LeetCode #2240: Number of Ways to Buy Pens and Pencils -- the
+// differential. The six arms, against the statement read literally:
+// every pair of a number of pens and a number of pencils tried, and
+// those the money pays for counted; no division. 300 random cases, the
+// money up to 60 and the prices up to 20; then 30 with one price above
+// the money; then 30 with the two prices equal. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the count of affordable pairs, read literally
+// P2  the two prices swapped: the same answer
+// P3  one more unit of money: no fewer ways
+// P4  the prices doubled and the money doubled plus one: the same answer
+// P5  at least the pens alone, the pencils alone and nothing, and at
+//     most every number of pens with every number of pencils
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- ways.kara: the ★ arm, a loop over the pens
+fn star_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    let mut ways = 0;
+    let mut pens = 0;
+    while pens * cost1 <= total {
+        ways += (total - pens * cost1) / cost2 + 1;
+        pens += 1;
+    }
+    ways
+}
+
+// ---- ways_dearer.kara: a loop over the dearer item
+fn dearer_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    let (dear, cheap) = if cost1 >= cost2 { (cost1, cost2) } else { (cost2, cost1) };
+    let mut ways = 0;
+    let mut spent = 0;
+    while spent <= total {
+        ways += (total - spent) / cheap + 1;
+        spent += dear;
+    }
+    ways
+}
+
+// ---- ways_floor.kara: a floor sum by Euclid-like reduction
+// the sum over i in 0..n of floor((a * i + b) / m)
+fn floor_floor_sum(n: i64, m: i64, a: i64, b: i64) -> i64 {
+    let mut total = 0;
+    let mut n = n;
+    let mut m = m;
+    let mut a = a;
+    let mut b = b;
+    loop {
+        if a >= m {
+            total += (n - 1) * n / 2 * (a / m);
+            a %= m;
+        }
+        if b >= m {
+            total += n * (b / m);
+            b %= m;
+        }
+        let y_max = a * n + b;
+        if y_max < m {
+            break;
+        }
+        n = y_max / m;
+        b = y_max % m;
+        let swapped = m;
+        m = a;
+        a = swapped;
+    }
+    total
+}
+
+fn floor_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    let most_pens = total / cost1;
+    let left = total - most_pens * cost1;
+    (most_pens + 1) + floor_floor_sum(most_pens + 1, cost2, cost1, left)
+}
+
+// ---- ways_struct.kara: `Shop`, `most_pens`, `pencils_after` and `ways`
+struct Shop {
+    money: i64,
+    pen: i64,
+    pencil: i64,
+}
+
+impl Shop {
+    fn most_pens(ref self) -> i64 {
+        self.money / self.pen
+    }
+
+    fn pencils_after(ref self, pens: i64) -> i64 {
+        (self.money - pens * self.pen) / self.pencil
+    }
+
+    fn ways(ref self) -> i64 {
+        let mut ways = 0;
+        for pens in 0..=self.most_pens() {
+            ways += self.pencils_after(pens) + 1;
+        }
+        ways
+    }
+}
+
+fn struct_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    Shop { money: total, pen: cost1, pencil: cost2 }.ways()
+}
+
+// ---- ways_iter.kara: `map` and `sum` over the pens
+fn iter_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    (0..=total / cost1).map(|pens| (total - pens * cost1) / cost2 + 1).sum()
+}
+
+// ---- ways_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn ways_to_buy_pens_pencils(total: i32, cost1: i32, cost2: i32) -> i64 {
+        let mut ans: i64 = 0;
+        let mut pens = 0;
+        while pens * cost1 <= total {
+            ans += ((total - pens * cost1) / cost2 + 1);
+            pens += 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    Solution.ways_to_buy_pens_pencils(total as i32, cost1 as i32, cost2 as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(total: i64, cost1: i64, cost2: i64) -> i64 {
+    let mut ways = 0;
+    let mut pens = 0;
+    while pens * cost1 <= total {
+        let mut pencils = 0;
+        while pens * cost1 + pencils * cost2 <= total {
+            ways += 1;
+            pencils += 1;
+        }
+        pens += 1;
+    }
+    ways
+}
+
+fn answer(arm: i64, total: i64, cost1: i64, cost2: i64) -> i64 {
+    match arm {
+        0 => star_ways_to_buy_pens_pencils(total, cost1, cost2),
+        1 => dearer_ways_to_buy_pens_pencils(total, cost1, cost2),
+        2 => floor_ways_to_buy_pens_pencils(total, cost1, cost2),
+        3 => struct_ways_to_buy_pens_pencils(total, cost1, cost2),
+        4 => iter_ways_to_buy_pens_pencils(total, cost1, cost2),
+        _ => solution_ways_to_buy_pens_pencils(total, cost1, cost2),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "dearer", "floor", "struct", "iter", "solution"];
+    let mut seed = 2240;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let total = next_random(mut seed) % 60 + 1;
+        let mut cost1 = next_random(mut seed) % 20 + 1;
+        let mut cost2 = next_random(mut seed) % 20 + 1;
+        if c >= 300 and c < 330 {
+            if c % 2 == 0 {
+                cost1 = total + 1 + cost1;
+            } else {
+                cost2 = total + 1 + cost2;
+            }
+        } else if c >= 330 {
+            cost2 = cost1;
+        }
+        cases.push((total, cost1, cost2));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (total, cost1, cost2) in cases.iter() {
+        let truth = literal(total, cost1, cost2);
+        check = (check * 31 + truth) % 1000000007;
+        let floor = total / cost1 + total / cost2 + 1;
+        let ceiling = (total / cost1 + 1) * (total / cost2 + 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, total, cost1, cost2)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, total, cost2, cost1) == value,
+                answer(arm, total + 1, cost1, cost2) >= value,
+                answer(arm, 2 * total + 1, 2 * cost1, 2 * cost2) == value,
+                value >= floor and value <= ceiling,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"total {total}, cost1 {cost1}, cost2 {cost2} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,78 @@
+// LeetCode #2240: Number of Ways to Buy Pens and Pencils -- `Shop`, the
+// money and the two prices, with `most_pens`, `pencils_after` a number
+// of pens, and `ways` summing over the pens. O(total / cost1).
+
+struct Shop {
+    money: i64,
+    pen: i64,
+    pencil: i64,
+}
+
+impl Shop {
+    fn most_pens(ref self) -> i64 {
+        self.money / self.pen
+    }
+
+    fn pencils_after(ref self, pens: i64) -> i64 {
+        (self.money - pens * self.pen) / self.pencil
+    }
+
+    fn ways(ref self) -> i64 {
+        let mut ways = 0;
+        for pens in 0..=self.most_pens() {
+            ways += self.pencils_after(pens) + 1;
+        }
+        ways
+    }
+}
+
+fn ways_to_buy_pens_pencils(total: i64, cost1: i64, cost2: i64) -> i64 {
+    Shop { money: total, pen: cost1, pencil: cost2 }.ways()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(total: i64, cost1: i64, cost2: i64) {
+    println(f"total {total}, cost1 {cost1}, cost2 {cost2} -> {ways_to_buy_pens_pencils(total, cost1, cost2)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: everything costing 1,
+    // the constraints' largest with both at 1, everything at the
+    // constraints' top, prices that do not divide the money, and one
+    // price far above it
+    show(20, 10, 5);
+    show(5, 10, 10);
+    show(1, 1, 1);
+    show(1000000, 1, 1);
+    show(1000000, 1000000, 1000000);
+    show(7, 2, 3);
+    show(999, 1000000, 7);
+    // 3000 random cases, the money and the prices up to 100, 10^4 and
+    // 10^6 in turn
+    let mut seed = 2240;
+    let mut check = 0;
+    for c in 0..3000 {
+        let top = [100, 10000, 1000000][c % 3];
+        let total = wide_random(mut seed) % top + 1;
+        let cost1 = wide_random(mut seed) % top + 1;
+        let cost2 = wide_random(mut seed) % top + 1;
+        check = (check * 31 + ways_to_buy_pens_pencils(total, cost1, cost2)) % 1000000007;
+    }
+    println(f"3000 cases: checksum {check}");
+    // the money at 10^6, pens at 1 and the pencils at each of a few
+    // prices, so that every arm walks a million pens
+    for cost2 in [2, 999, 1000000] {
+        show(1000000, 1, cost2);
+    }
+}
