@@ -1,0 +1,80 @@
+// LeetCode #2214: Minimum Health to Beat Game -- the search arm: a binary
+// search over the starting health, each guess played through level by
+// level with the most health left both before and after the armor is
+// used; a guess wins when either way is still above 0 at the end, and
+// health never rises, so the end is the lowest point. O(n log(sum)).
+
+fn survives(damage: Vec[i64], armor: i64, health: i64) -> bool {
+    let mut unarmored = health;
+    let mut armored = health;
+    for d in damage.iter() {
+        armored = (armored - d).max(unarmored - (d - armor).max(0));
+        unarmored -= d;
+    }
+    armored > 0
+}
+
+fn minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let mut lo = 1;
+    let mut hi = 1;
+    for d in damage.iter() {
+        hi += d;
+    }
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if survives(damage, armor, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_damage(n: i64, top: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut damage: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        damage.push(next_random(mut seed) % (top + 1));
+    }
+    damage
+}
+
+fn show(damage: Vec[i64], armor: i64) {
+    println(f"{damage} with armor {armor} -> {minimum_health(damage, armor)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one level, no damage at
+    // all, armor beyond every level, and the largest level twice
+    show([2, 7, 4, 3], 4);
+    show([2, 5, 3, 4], 7);
+    show([3, 3, 3], 0);
+    show([5], 2);
+    show([0, 0, 0], 5);
+    show([1, 2, 3], 100);
+    show([9, 1, 9], 6);
+    // 3000 random games of 1 to 30 levels, damage up to 10, 1000 and
+    // 10^5 in turn, the armor up to the same
+    let mut seed = 2214;
+    let mut check = 0;
+    for t in 0..3000 {
+        let top = [10, 1000, 100000][t % 3];
+        let n = next_random(mut seed) % 30 + 1;
+        let damage = random_damage(n, top, mut seed);
+        let armor = next_random(mut seed) % (top + 1);
+        check = (check * 31 + minimum_health(damage, armor)) % 1000000007;
+    }
+    println(f"3000 games: checksum {check}");
+    // the constraints' largest: 10^5 levels of 10^5 damage with all the
+    // armor, then 10^5 random levels with none
+    let heavy: Vec[i64] = Vec.filled(100000, 100000);
+    let random = random_damage(100000, 100000, mut seed);
+    println(f"10^5 at 10^5 -> {minimum_health(heavy, 100000)}, 10^5 random -> {minimum_health(random, 0)}");
+}

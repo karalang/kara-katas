@@ -1,0 +1,242 @@
+// LeetCode #2214: Minimum Health to Beat Game -- the differential. The
+// six arms, against the statement read literally: every starting health
+// from 1 upward tried, with the armor worn on each level in turn or on
+// none, the game played level by level and lost as soon as health is
+// not above 0; the first health that wins any way. No sum, no largest
+// level. 300 random games of 1 to 8 levels, damage and armor up to 3, 10
+// and 20 in turn; then 30 with no armor; then 30 with armor beyond every
+// level. Every case is drawn before any arm answers.
+//
+// P1  the health is the statement read literally
+// P2  it is from the total damage less the armor, plus 1, to the total
+//     damage plus 1, and at least 1
+// P3  the levels in reverse order: the same health
+// P4  a level of no damage added at the end: the same health
+// P5  every damage and the armor doubled: twice the health, less 1
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- health.kara: the ★ arm, one pass for the sum and the worst level
+fn star_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let mut total = 0;
+    let mut worst = 0;
+    for d in damage.iter() {
+        total += d;
+        worst = worst.max(d);
+    }
+    total - worst.min(armor) + 1
+}
+
+// ---- health_levels.kara: the armor tried on every level
+fn levels_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let mut total = 0;
+    for d in damage.iter() {
+        total += d;
+    }
+    let mut cheapest = total;
+    for d in damage.iter() {
+        cheapest = cheapest.min(total - d.min(armor));
+    }
+    cheapest + 1
+}
+
+// ---- health_search.kara: a binary search over the starting health
+fn search_survives(damage: Vec[i64], armor: i64, health: i64) -> bool {
+    let mut unarmored = health;
+    let mut armored = health;
+    for d in damage.iter() {
+        armored = (armored - d).max(unarmored - (d - armor).max(0));
+        unarmored -= d;
+    }
+    armored > 0
+}
+
+fn search_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let mut lo = 1;
+    let mut hi = 1;
+    for d in damage.iter() {
+        hi += d;
+    }
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if search_survives(damage, armor, mid) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    lo
+}
+
+// ---- health_struct.kara: `Game`, `play` and `health`
+struct Game {
+    total: i64,
+    worst: i64,
+}
+
+impl Game {
+    fn new() -> Game {
+        Game { total: 0, worst: 0 }
+    }
+
+    fn play(mut ref self, damage: i64) {
+        self.total += damage;
+        self.worst = self.worst.max(damage);
+    }
+
+    fn health(ref self, armor: i64) -> i64 {
+        self.total - self.worst.min(armor) + 1
+    }
+}
+
+fn struct_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let mut game = Game.new();
+    for d in damage.iter() {
+        game.play(d);
+    }
+    game.health(armor)
+}
+
+// ---- health_iter.kara: `sum`, `max` and `min`
+fn iter_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let total: i64 = damage.iter().sum();
+    let saved = damage.iter().max().unwrap_or(0).min(armor);
+    total - saved + 1
+}
+
+// ---- health_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_health(damage: Vec[i32], armor: i32) -> i64 {
+        let total: i64 = damage.iter().map(|d| d as i64).sum();
+        let worst = *damage.iter().max().unwrap();
+        total - min(worst, armor) + 1
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_health(damage: Vec[i64], armor: i64) -> i64 {
+    let damage: Vec[i32] = damage.iter().map(|d| d as i32).collect();
+    Solution.minimum_health(damage, armor as i32)
+}
+
+
+// ---- the statement read literally
+
+// whether the game is won from `health`, the armor worn on level `armed`
+// (none when it is past the last level), health checked after every level
+fn wins(damage: Vec[i64], armor: i64, health: i64, armed: i64) -> bool {
+    let mut left = health;
+    for i in 0..damage.len() {
+        let saved = if i == armed { damage[i].min(armor) } else { 0 };
+        left -= damage[i] - saved;
+        if left <= 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(damage: Vec[i64], armor: i64) -> i64 {
+    let mut health = 1;
+    loop {
+        for armed in 0..=damage.len() {
+            if wins(damage, armor, health, armed) {
+                return health;
+            }
+        }
+        health += 1;
+    }
+}
+
+fn answer(arm: i64, damage: Vec[i64], armor: i64) -> i64 {
+    match arm {
+        0 => star_minimum_health(damage, armor),
+        1 => levels_minimum_health(damage, armor),
+        2 => search_minimum_health(damage, armor),
+        3 => struct_minimum_health(damage, armor),
+        4 => iter_minimum_health(damage, armor),
+        _ => solution_minimum_health(damage, armor),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    damage: Vec[i64],
+    armor: i64,
+}
+
+fn main() {
+    let names = ["star", "levels", "search", "struct", "iter", "solution"];
+    let mut seed = 2214;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let top = [3, 10, 20][c % 3];
+        let n = next_random(mut seed) % 8 + 1;
+        let mut damage: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            damage.push(next_random(mut seed) % (top + 1));
+        }
+        let drawn = next_random(mut seed) % (top + 1);
+        let armor = if c < 300 { drawn } else if c < 330 { 0 } else { top + 1 + drawn };
+        cases.push(Case { damage: damage, armor: armor });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let damage = ref case.damage;
+        let armor = case.armor;
+        let truth = literal(damage, armor);
+        check = (check * 31 + truth) % 1000000007;
+        let total = damage.iter().sum();
+        let reversed: Vec[i64] = damage.iter().rev().collect();
+        let mut padded = damage.clone();
+        padded.push(0);
+        let doubled: Vec[i64] = damage.iter().map(|d| 2 * d).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, damage, armor)).collect();
+        for arm in 0..6 {
+            let health = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == health {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                health == truth,
+                health >= 1 and health >= total - armor + 1 and health <= total + 1,
+                answer(arm, reversed, armor) == health,
+                answer(arm, padded, armor) == health,
+                answer(arm, doubled, 2 * armor) == 2 * health - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{damage} with armor {armor} arm {names[arm]}: P{q + 1} fails, gave {health}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
