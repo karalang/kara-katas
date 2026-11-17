@@ -1,0 +1,129 @@
+// LeetCode #1591: Strange Printer II -- printing backwards.
+//
+// The last colour printed shows its whole rectangle; take it off by
+// marking its cells as free (0, which matches anything), and repeat. The
+// grid can be printed when every colour comes off. O(C^2 mn).
+
+fn is_printable(target_grid: Vec[Vec[i32]]) -> bool {
+    let mut grid = target_grid.clone();
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut left: SortedSet[i32] = SortedSet.new();
+    for row in grid.iter() {
+        for k in row.iter() {
+            left.insert(*k);
+        }
+    }
+    while not left.is_empty() {
+        let mut peeled = None;
+        for k in left.iter() {
+            let mut cells: Vec[(i64, i64)] = Vec.new();
+            for r in 0..rows {
+                for c in 0..cols {
+                    if grid[r][c] == *k {
+                        cells.push((r, c));
+                    }
+                }
+            }
+            let top = cells.iter().map(|p| p.0).min().unwrap();
+            let bottom = cells.iter().map(|p| p.0).max().unwrap();
+            let lo = cells.iter().map(|p| p.1).min().unwrap();
+            let hi = cells.iter().map(|p| p.1).max().unwrap();
+            let mut whole = true;
+            for r in top..bottom + 1 {
+                for c in lo..hi + 1 {
+                    if grid[r][c] != *k and grid[r][c] != 0 {
+                        whole = false;
+                    }
+                }
+            }
+            if whole {
+                for r in top..bottom + 1 {
+                    for c in lo..hi + 1 {
+                        grid[r][c] = 0;
+                    }
+                }
+                peeled = Some(*k);
+                break;
+            }
+        }
+        match peeled {
+            Some(k) => {
+                left.remove(k);
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a grid of `rows` by `cols` printed by `prints` random rectangles of
+// colours below `colors`, the first one the whole grid, and a third of
+// the time one cell then given another colour
+fn draw(rows: i64, cols: i64, colors: i64, prints: i64, seed: mut ref i64) -> Vec[Vec[i32]] {
+    let first = (next_random(mut seed) % colors + 1) as i32;
+    let mut grid = Vec.filled(rows, Vec.filled(cols, first));
+    for _ in 1..prints {
+        let color = (next_random(mut seed) % colors + 1) as i32;
+        let r1 = next_random(mut seed) % rows;
+        let r2 = next_random(mut seed) % rows;
+        let c1 = next_random(mut seed) % cols;
+        let c2 = next_random(mut seed) % cols;
+        for r in r1.min(r2)..r1.max(r2) + 1 {
+            for c in c1.min(c2)..c1.max(c2) + 1 {
+                grid[r][c] = color;
+            }
+        }
+    }
+    if next_random(mut seed) % 3 == 0 {
+        let r = next_random(mut seed) % rows;
+        let c = next_random(mut seed) % cols;
+        grid[r][c] = (next_random(mut seed) % colors + 1) as i32;
+    }
+    grid
+}
+
+fn batch(count: i64, most: i64, colors: i64, prints: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut yes = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let grid = draw(rows, cols, colors, next_random(mut seed) % prints + 1, mut seed);
+        let ok = is_printable(grid);
+        if ok {
+            yes += 1;
+        }
+        check = mix(check, if ok { 1 } else { 0 });
+    }
+    println(f"{count} grids of up to {most} by {most}, {colors} colours: {yes} printable, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[Vec[i32]]] = [
+        [[1, 1, 1, 1], [1, 2, 2, 1], [1, 2, 2, 1], [1, 1, 1, 1]],
+        [[1, 1, 1, 1], [1, 1, 3, 3], [1, 1, 3, 4], [5, 5, 1, 4]],
+        [[1, 2, 1], [2, 1, 2], [1, 2, 1]],
+        [[7]],
+        [[1, 2], [2, 1]],
+        [[1, 1, 2], [3, 3, 2], [3, 3, 2]],
+    ];
+    for grid in examples.iter() {
+        println(f"{grid} -> {is_printable(grid)}");
+    }
+    let mut seed = 1591;
+    batch(3000, 4, 4, 5, mut seed);
+    batch(300, 20, 20, 30, mut seed);
+    batch(30, 60, 60, 80, mut seed);
+}

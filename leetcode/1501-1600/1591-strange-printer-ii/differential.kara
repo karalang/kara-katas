@@ -1,0 +1,418 @@
+// LeetCode #1591: Strange Printer II -- the differential.
+//
+// Four arms against the statement read literally, on 3000 grids of 1 to
+// 3 by 1 to 4 cells and colours 1 to 4, each printed by 1 to 4 random
+// rectangles and a third of the time one cell redrawn, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the grid turned upside down leaves the answer
+// P3  the grid transposed leaves the answer
+// P4  the colours renamed (k made 61 - k) leave the answer
+// P5  a row repeated leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- printer.kara: the ★ arm: bounding rectangles, an order graph, Kahn's algorithm
+
+fn star_arm(target_grid: Vec[Vec[i32]]) -> bool {
+    let rows = target_grid.len();
+    let cols = target_grid[0].len();
+    // each colour's bounding rectangle: top, bottom, left, right
+    let mut top = Vec.filled(61, rows);
+    let mut bottom = Vec.filled(61, -1);
+    let mut left = Vec.filled(61, cols);
+    let mut right = Vec.filled(61, -1);
+    for r in 0..rows {
+        for c in 0..cols {
+            let k = target_grid[r][c];
+            top[k] = top[k].min(r);
+            bottom[k] = bottom[k].max(r);
+            left[k] = left[k].min(c);
+            right[k] = right[k].max(c);
+        }
+    }
+    let mut after = Vec.filled(61, Vec.filled(61, false));
+    let mut before = Vec.filled(61, 0);
+    for k in 1..61 {
+        for r in top[k]..bottom[k] + 1 {
+            for c in left[k]..right[k] + 1 {
+                let other = target_grid[r][c];
+                if other != k and not after[k][other] {
+                    after[k][other] = true;
+                    before[other] += 1;
+                }
+            }
+        }
+    }
+    let mut ready: Vec[i64] = (1..61).filter(|k| before[k] == 0).collect();
+    let mut taken = 0;
+    while let Some(k) = ready.pop() {
+        taken += 1;
+        for other in 1..61 {
+            if after[k][other] {
+                before[other] -= 1;
+                if before[other] == 0 {
+                    ready.push(other);
+                }
+            }
+        }
+    }
+    taken == 60
+}
+
+// ---- printer_dfs.kara: the same graph searched depth first for a cycle
+
+struct DfsBox {
+    top: i64,
+    bottom: i64,
+    left: i64,
+    right: i64,
+}
+
+// 0 not seen, 1 on the path, 2 finished; true when a cycle is found
+fn dfs_cycle_from(k: i64, after: Vec[Vec[i64]], state: mut ref Vec[i64]) -> bool {
+    state[k] = 1;
+    for other in after[k].iter() {
+        if state[*other] == 1 {
+            return true;
+        }
+        if state[*other] == 0 and dfs_cycle_from(*other, after, mut state) {
+            return true;
+        }
+    }
+    state[k] = 2;
+    false
+}
+
+fn dfs_arm(target_grid: Vec[Vec[i32]]) -> bool {
+    let rows = target_grid.len();
+    let cols = target_grid[0].len();
+    let mut boxes: Map[i32, DfsBox] = Map.new();
+    for r in 0..rows {
+        for c in 0..cols {
+            let k = target_grid[r][c];
+            match boxes.get_mut(k) {
+                Some(b) => {
+                    b.top = b.top.min(r);
+                    b.bottom = b.bottom.max(r);
+                    b.left = b.left.min(c);
+                    b.right = b.right.max(c);
+                }
+                None => {
+                    boxes.insert(k, DfsBox { top: r, bottom: r, left: c, right: c });
+                }
+            }
+        }
+    }
+    let mut after: Vec[Vec[i64]] = Vec.filled(61, Vec.new());
+    for (k, b) in boxes.iter() {
+        let mut seen = Set.new();
+        for r in b.top..b.bottom + 1 {
+            for c in b.left..b.right + 1 {
+                let other = target_grid[r][c];
+                if other != *k and seen.insert(other) {
+                    after[*k].push(other);
+                }
+            }
+        }
+    }
+    let mut state = Vec.filled(61, 0);
+    for k in 1..61 {
+        if state[k] == 0 and dfs_cycle_from(k, after, mut state) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- printer_peel.kara: printing backwards: a whole rectangle taken off at a time
+
+fn peel_arm(target_grid: Vec[Vec[i32]]) -> bool {
+    let mut grid = target_grid.clone();
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut left: SortedSet[i32] = SortedSet.new();
+    for row in grid.iter() {
+        for k in row.iter() {
+            left.insert(*k);
+        }
+    }
+    while not left.is_empty() {
+        let mut peeled = None;
+        for k in left.iter() {
+            let mut cells: Vec[(i64, i64)] = Vec.new();
+            for r in 0..rows {
+                for c in 0..cols {
+                    if grid[r][c] == *k {
+                        cells.push((r, c));
+                    }
+                }
+            }
+            let top = cells.iter().map(|p| p.0).min().unwrap();
+            let bottom = cells.iter().map(|p| p.0).max().unwrap();
+            let lo = cells.iter().map(|p| p.1).min().unwrap();
+            let hi = cells.iter().map(|p| p.1).max().unwrap();
+            let mut whole = true;
+            for r in top..bottom + 1 {
+                for c in lo..hi + 1 {
+                    if grid[r][c] != *k and grid[r][c] != 0 {
+                        whole = false;
+                    }
+                }
+            }
+            if whole {
+                for r in top..bottom + 1 {
+                    for c in lo..hi + 1 {
+                        grid[r][c] = 0;
+                    }
+                }
+                peeled = Some(*k);
+                break;
+            }
+        }
+        match peeled {
+            Some(k) => {
+                left.remove(k);
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
+// ---- printer_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn is_printable(target_grid: Vec[Vec[i32]]) -> bool {
+        let m = target_grid.len();
+        let n = target_grid[0].len();
+        let mut bounds = Vec.filled(61, [i64.MAX, 0, i64.MAX, 0]);
+        let mut present = Vec.filled(61, false);
+        for i in 0..m {
+            for j in 0..n {
+                let c = target_grid[i][j] as i64;
+                present[c] = true;
+                bounds[c][0] = bounds[c][0].min(i);
+                bounds[c][1] = bounds[c][1].max(i);
+                bounds[c][2] = bounds[c][2].min(j);
+                bounds[c][3] = bounds[c][3].max(j);
+            }
+        }
+        let mut graph: Vec[Set[i64]] = Vec.filled(61, Set.new());
+        let mut indegree = Vec.filled(61, 0);
+        for c in 1..=60 {
+            if not present[c] {
+                continue;
+            }
+            for i in bounds[c][0]..=bounds[c][1] {
+                for j in bounds[c][2]..=bounds[c][3] {
+                    let d = target_grid[i][j] as i64;
+                    if d != c and graph[c].insert(d) {
+                        indegree[d] += 1;
+                    }
+                }
+            }
+        }
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        for c in 1..=60 {
+            if present[c] and indegree[c] == 0 {
+                queue.push_back(c);
+            }
+        }
+        let total = present.iter().filter(|p| p).count();
+        let mut seen = 0;
+        while let Some(c) = queue.pop_front() {
+            seen += 1;
+            for d in graph[c].iter() {
+                indegree[d] -= 1;
+                if indegree[d] == 0 {
+                    queue.push_back(d);
+                }
+            }
+        }
+        seen == total
+    }
+}
+
+fn solution_arm(target_grid: Vec[Vec[i32]]) -> bool {
+    Solution.is_printable(target_grid)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, grid: Vec[Vec[i32]]) -> bool {
+    match a {
+        0 => star_arm(grid),
+        1 => dfs_arm(grid),
+        2 => peel_arm(grid),
+        _ => solution_arm(grid),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["printer", "dfs", "peel", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every order of the colours present,
+// each printed as the rectangle that just covers its cells (a larger one
+// only covers cells a later colour covers again), the result compared
+// with the grid
+
+fn literal(grid: Vec[Vec[i32]]) -> bool {
+    let rows = grid.len();
+    let cols = grid[0].len();
+    let mut colours: Vec[i32] = Vec.new();
+    for row in grid.iter() {
+        for k in row.iter() {
+            if not colours.contains(k) {
+                colours.push(*k);
+            }
+        }
+    }
+    colours.sort();
+    loop {
+        let mut printed = Vec.filled(rows, Vec.filled(cols, 0));
+        for k in colours.iter() {
+            let mut top = rows;
+            let mut bottom = 0;
+            let mut left = cols;
+            let mut right = 0;
+            for r in 0..rows {
+                for c in 0..cols {
+                    if grid[r][c] == *k {
+                        top = top.min(r);
+                        bottom = bottom.max(r);
+                        left = left.min(c);
+                        right = right.max(c);
+                    }
+                }
+            }
+            for r in top..bottom + 1 {
+                for c in left..right + 1 {
+                    printed[r][c] = *k;
+                }
+            }
+        }
+        if printed == grid {
+            return true;
+        }
+        // the next order: the last rise, the smallest larger after it
+        // swapped in, the tail reversed
+        let n = colours.len();
+        let mut i = n - 1;
+        while i > 0 and colours[i - 1] >= colours[i] {
+            i -= 1;
+        }
+        if i == 0 {
+            return false;
+        }
+        let mut j = n - 1;
+        while colours[j] <= colours[i - 1] {
+            j -= 1;
+        }
+        colours.swap(i - 1, j);
+        colours[i..].reverse();
+    }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15910;
+    let mut cases: Vec[(Vec[Vec[i32]], i64)] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 3 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let first = (next_random(mut seed) % 4 + 1) as i32;
+        let mut grid = Vec.filled(rows, Vec.filled(cols, first));
+        for _ in 0..next_random(mut seed) % 4 {
+            let colour = (next_random(mut seed) % 4 + 1) as i32;
+            let r1 = next_random(mut seed) % rows;
+            let r2 = next_random(mut seed) % rows;
+            let c1 = next_random(mut seed) % cols;
+            let c2 = next_random(mut seed) % cols;
+            for r in r1.min(r2)..r1.max(r2) + 1 {
+                for c in c1.min(c2)..c1.max(c2) + 1 {
+                    grid[r][c] = colour;
+                }
+            }
+        }
+        if next_random(mut seed) % 3 == 0 {
+            let r = next_random(mut seed) % rows;
+            let c = next_random(mut seed) % cols;
+            grid[r][c] = (next_random(mut seed) % 4 + 1) as i32;
+        }
+        let repeat = next_random(mut seed) % rows;
+        cases.push((grid, repeat));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (grid, repeat)) in cases.iter().enumerate() {
+        let truth = literal(grid);
+        let rows = grid.len();
+        let cols = grid[0].len();
+        let flipped: Vec[Vec[i32]] = grid.iter().rev().map(|row| row.clone()).collect();
+        let transposed: Vec[Vec[i32]] = (0..cols).map(|c| (0..rows).map(|r| grid[r][c]).collect()).collect();
+        let renamed: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|k| 61 - *k).collect()).collect();
+        let mut longer = grid.clone();
+        longer.insert(repeat, grid[repeat].clone());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, grid);
+            answers.push(answer);
+            check = (check * 31 + (if answer { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, flipped) != answer,
+                arm(a, transposed) != answer,
+                arm(a, renamed) != answer,
+                arm(a, longer) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
