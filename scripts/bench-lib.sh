@@ -271,6 +271,16 @@ _isa_applies() {
 
 ISA_LEVEL="${ISA_LEVEL:-x86-64-v3}"
 
+# karac's own build pins the same level. A plain `karac build` is x86-64-v2 on
+# x86_64 and generic v8.0 on aarch64 Linux since kara B-2026-11-16-201, while
+# the Rust and C twins above build at x86-64-v3, so every bench.sh (each
+# sources this file) builds kāra at v3 too, and at apple-m1 + v8.4a on a Mac,
+# the levels it always measured at. An explicit KARAC_TARGET_CPU wins.
+case "$(uname -m)" in
+    x86_64 | amd64) export KARAC_TARGET_CPU="${KARAC_TARGET_CPU:-$ISA_LEVEL}" ;;
+    aarch64 | arm64) export KARAC_TARGET_FEATURES="${KARAC_TARGET_FEATURES:-+v8.4a}" ;;
+esac
+
 # Arguments after the source go to the link line (`isa_build_c x.c -lm`).
 isa_build_c() {
     _isa_applies || return 0
