@@ -1,0 +1,287 @@
+// LeetCode #1595: Minimum Cost to Connect Two Groups of Points
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of
+// 1 to 3 points in the first group and 1 to that many in the second,
+// costs from 0 to 20, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the first group in reverse order leaves the answer
+// P3  the second group in reverse order leaves the answer
+// P4  every cost doubled doubles the answer
+// P5  the first cost made 0 lowers the answer by at most that cost
+// P6  each arm agrees with at least two of the other three
+
+// ---- connect.kara: the ★ arm: one edge per first point, the cheapest closing
+
+fn star_arm(cost: Vec[Vec[i32]]) -> i32 {
+    let first = cost.len();
+    let second = cost[0].len();
+    let full = 1 << second;
+    let cheapest: Vec[i32] = (0..second).map(|j| (0..first).map(|i| cost[i][j]).min().unwrap()).collect();
+    let mut best = Vec.filled(full, i32.MAX);
+    best[0] = 0;
+    for i in 0..first {
+        let mut next = Vec.filled(full, i32.MAX);
+        for mask in 0..full {
+            if best[mask] == i32.MAX {
+                continue;
+            }
+            for j in 0..second {
+                let joined = mask | 1 << j;
+                next[joined] = next[joined].min(best[mask] + cost[i][j]);
+            }
+        }
+        best = next;
+    }
+    let mut answer = i32.MAX;
+    for mask in 0..full {
+        if best[mask] == i32.MAX {
+            continue;
+        }
+        let mut total = best[mask];
+        for j in 0..second {
+            if mask >> j & 1 == 0 {
+                total += cheapest[j];
+            }
+        }
+        answer = answer.min(total);
+    }
+    answer
+}
+
+// ---- connect_memo.kara: from the front, remembered in a Map
+
+fn memo_finish(cost: Vec[Vec[i32]], cheapest: Vec[i32], i: i64, joined: i64, memo: mut ref Map[(i64, i64), i32]) -> i32 {
+    if let Some(known) = memo.get((i, joined)) {
+        return *known;
+    }
+    let second = cost[0].len();
+    let answer = if i == cost.len() {
+        (0..second).filter(|j| joined >> j & 1 == 0).map(|j| cheapest[j]).sum()
+    } else {
+        (0..second).map(|j| cost[i][j] + memo_finish(cost, cheapest, i + 1, joined | 1 << j, mut memo)).min().unwrap()
+    };
+    memo.insert((i, joined), answer);
+    answer
+}
+
+fn memo_arm(cost: Vec[Vec[i32]]) -> i32 {
+    let cheapest: Vec[i32] = (0..cost[0].len()).map(|j| cost.iter().map(|row| row[j]).min().unwrap()).collect();
+    let mut memo = Map.new();
+    memo_finish(cost, cheapest, 0, 0, mut memo)
+}
+
+// ---- connect_subsets.kara: every subset, exactly
+
+fn subsets_arm(cost: Vec[Vec[i32]]) -> i32 {
+    let second = cost[0].len();
+    let full = (1 << second) - 1;
+    let unreached = i32.MAX;
+    let mut best: Vec[i32] = Vec.filled(full + 1, unreached);
+    best[0] = 0;
+    for row in cost.iter() {
+        let mut subset_cost: Vec[i32] = Vec.filled(full + 1, 0);
+        for s in 1..full + 1 {
+            let low = s & -s;
+            subset_cost[s] = subset_cost[s ^ low] + row[low.trailing_zeros()];
+        }
+        let mut next: Vec[i32] = Vec.filled(full + 1, unreached);
+        for joined in 0..full + 1 {
+            if best[joined] == unreached {
+                continue;
+            }
+            let back = (0..second).filter(|j| joined >> j & 1 == 1).map(|j| row[j]).min();
+            let alone = full ^ joined;
+            let mut s = alone;
+            loop {
+                let reached = joined | s;
+                if s != 0 {
+                    next[reached] = next[reached].min(best[joined] + subset_cost[s]);
+                }
+                if let Some(b) = back {
+                    next[reached] = next[reached].min(best[joined] + subset_cost[s] + b);
+                }
+                if s == 0 {
+                    break;
+                }
+                s = (s - 1) & alone;
+            }
+        }
+        best = next;
+    }
+    best[full]
+}
+
+// ---- connect_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn connect_two_groups(cost: Vec[Vec[i32]]) -> i32 {
+        let m = cost.len();
+        let n = cost[0].len();
+        let mut min_col = Vec.filled(n, i32.MAX);
+        for j in 0..n {
+            for i in 0..m {
+                min_col[j] = min_col[j].min(cost[i][j]);
+            }
+        }
+        let full = 1 << n;
+        let mut dp = Vec.filled(m + 1, Vec.filled(full, i32.MAX));
+        dp[0][0] = 0;
+        for i in 0..m {
+            for mask in 0..full {
+                if dp[i][mask] == i32.MAX {
+                    continue;
+                }
+                for j in 0..n {
+                    let next = mask | (1 << j);
+                    dp[i + 1][next] = dp[i + 1][next].min(dp[i][mask] + cost[i][j]);
+                }
+            }
+        }
+        let mut ans = i32.MAX;
+        for mask in 0..full {
+            if dp[m][mask] == i32.MAX {
+                continue;
+            }
+            let mut extra: i32 = 0;
+            for j in 0..n {
+                if mask & (1 << j) == 0 {
+                    extra += min_col[j];
+                }
+            }
+            ans = ans.min(dp[m][mask] + extra);
+        }
+        ans
+    }
+}
+
+fn solution_arm(cost: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.connect_two_groups(cost)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, cost: Vec[Vec[i32]]) -> i32 {
+    match a {
+        0 => star_arm(cost),
+        1 => memo_arm(cost),
+        2 => subsets_arm(cost),
+        _ => solution_arm(cost),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["connect", "memo", "subsets", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every set of edges, kept when each
+// point of either group is on one of them, the cheapest kept
+
+fn literal(cost: Vec[Vec[i32]]) -> i32 {
+    let first = cost.len();
+    let second = cost[0].len();
+    let edges = first * second;
+    let mut best = i32.MAX;
+    for chosen in 0..1 << edges {
+        let mut first_seen = Vec.filled(first, false);
+        let mut second_seen = Vec.filled(second, false);
+        let mut total: i32 = 0;
+        for e in 0..edges {
+            if chosen >> e & 1 == 1 {
+                let i = e / second;
+                let j = e % second;
+                first_seen[i] = true;
+                second_seen[j] = true;
+                total += cost[i][j];
+            }
+        }
+        if first_seen.iter().all(|s| *s) and second_seen.iter().all(|s| *s) {
+            best = best.min(total);
+        }
+    }
+    best
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15950;
+    let mut cases: Vec[Vec[Vec[i32]]] = Vec.new();
+    for _ in 0..problems {
+        let first = next_random(mut seed) % 3 + 1;
+        let second = next_random(mut seed) % first + 1;
+        let cost: Vec[Vec[i32]] = (0..first).map(|_| (0..second).map(|_| (next_random(mut seed) % 21) as i32).collect()).collect();
+        cases.push(cost);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, cost) in cases.iter().enumerate() {
+        let truth = literal(cost);
+        let rows_reversed: Vec[Vec[i32]] = cost.iter().rev().cloned().collect();
+        let columns_reversed: Vec[Vec[i32]] = cost.iter().map(|row| row.iter().rev().cloned().collect()).collect();
+        let doubled: Vec[Vec[i32]] = cost.iter().map(|row| row.iter().map(|x| *x * 2).collect()).collect();
+        let mut cheaper = cost.clone();
+        cheaper[0][0] = 0;
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, cost);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let lowered = arm(a, cheaper);
+            let failed = [
+                answer != truth,
+                arm(a, rows_reversed) != answer,
+                arm(a, columns_reversed) != answer,
+                arm(a, doubled) != answer * 2,
+                lowered > answer or lowered < answer - cost[0][0],
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

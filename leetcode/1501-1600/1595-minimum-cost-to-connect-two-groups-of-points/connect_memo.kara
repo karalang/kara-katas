@@ -1,0 +1,73 @@
+// LeetCode #1595: Minimum Cost to Connect Two Groups of Points -- from
+// the front, remembered.
+//
+// The same choice as the ★ arm read top down: the cheapest way to finish
+// from first point `i` with the second group's points in `joined`
+// already joined, by recursion that keeps each answer in a
+// `Map[(i64, i64), i32]`; past the last first point, every second point
+// still alone pays its cheapest edge. O(n1 n2 2^n2).
+
+fn finish(cost: Vec[Vec[i32]], cheapest: Vec[i32], i: i64, joined: i64, memo: mut ref Map[(i64, i64), i32]) -> i32 {
+    if let Some(known) = memo.get((i, joined)) {
+        return *known;
+    }
+    let second = cost[0].len();
+    let answer = if i == cost.len() {
+        (0..second).filter(|j| joined >> j & 1 == 0).map(|j| cheapest[j]).sum()
+    } else {
+        (0..second).map(|j| cost[i][j] + finish(cost, cheapest, i + 1, joined | 1 << j, mut memo)).min().unwrap()
+    };
+    memo.insert((i, joined), answer);
+    answer
+}
+
+fn connect_two_groups(cost: Vec[Vec[i32]]) -> i32 {
+    let cheapest: Vec[i32] = (0..cost[0].len()).map(|j| cost.iter().map(|row| row[j]).min().unwrap()).collect();
+    let mut memo = Map.new();
+    finish(cost, cheapest, 0, 0, mut memo)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let first = next_random(mut seed) % most + 1;
+        let second = next_random(mut seed) % first + 1;
+        let cost: Vec[Vec[i32]] = (0..first).map(|_| (0..second).map(|_| (next_random(mut seed) % 101) as i32).collect()).collect();
+        let answer = connect_two_groups(cost);
+        total += answer;
+        check = mix(check, answer);
+    }
+    println(f"{count} problems of up to {most} by {most}: total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[Vec[i32]]] = [
+        [[15, 96], [36, 2]],
+        [[1, 3, 5], [4, 1, 1], [1, 5, 3]],
+        [[2, 5, 1], [3, 4, 7], [8, 1, 2], [6, 2, 4], [3, 8, 8]],
+        [[7]],
+        [[0, 100], [100, 0], [50, 50]],
+        Vec.filled(12, Vec.filled(12, 1)),
+        Vec.filled(12, [5]),
+    ];
+    for cost in examples.iter() {
+        let shown = if cost.len() > 5 { f"[[{cost[0][0]}; {cost[0].len()}]; {cost.len()}]" } else { f"{cost}" };
+        println(f"{shown} -> {connect_two_groups(cost)}");
+    }
+    let mut seed = 1595;
+    batch(3000, 4, mut seed);
+    batch(300, 8, mut seed);
+    batch(10, 12, mut seed);
+}
