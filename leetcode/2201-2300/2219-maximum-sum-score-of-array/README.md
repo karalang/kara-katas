@@ -28,7 +28,7 @@ to the total less it. The answer is the largest of those. O(n).
 |---|---|
 | `score.kara` ★ | the total first, then one pass keeping the sum before each index, both sums at it read from that and the total |
 | `score_sums.kara` | both sums kept whole, a prefix `Vec` and a suffix `Vec` each filled by its own pass, the score at each index the larger of the two by `if` |
-| `score_ends.kara` | every score is a prefix sum or a suffix sum, and each of those is matched or beaten by the score at its index, so the answer is the largest of them all: two running sums walk in from both ends in one `while` loop |
+| `score_ends.kara` | every score is a prefix sum or a suffix sum, and each of those is matched or beaten by the score at its index, so the answer is the largest of them all: two running sums walk in from both ends in one `for` loop |
 | `score_struct.kara` | a `struct Ledger` of the total and the sum taken, `take` (`mut ref self`) moving one number across and returning the score at it, `left` (`ref self`) the sum not yet taken; the best kept as an `Option[i64]` by a `match` with a guard |
 | `score_iter.kara` | the prefix sums by `map` over a running sum the closure changes, `zip`ped with the numbers so the suffix sum is the total less the prefix plus the number, each pair's larger, then `max` |
 | `score_solution.kara` | LeetCode's Rust template: a `Vec<i32>` in, `i64` out, the total by `map(\|&x\| x as i64).sum()`, the answer from `i64::MIN`, each number widened with `as i64`; carried by `karac fix` in one round |
@@ -42,6 +42,10 @@ constraints' largest, 10^5 numbers from -10^5 to 10^5, 10^5 of -10^5 and
 10^5 of 10^5, whose answer of 10^10 is past `i32`. A number up to 10^5
 is drawn from two draws, since one stops at 32767. `score.py` mirrors
 the ★ arm and its output is byte-identical.
+
+The ends arm was first written as a `while` loop over an index it
+stepped by hand; `karac fix` rewrote it to `for i in 0..n` in three
+edits, and the mutations to the ends arm were run on the rewrite.
 
 `karac fix` carries the template in one round of 13 edits: `Vec<..>` to
 `Vec[..]`, the `|&x|` and `for &x` patterns to `|x|` and `for x`, `0i64`
