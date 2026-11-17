@@ -1,0 +1,96 @@
+// LeetCode #1589: Maximum Sum Obtained of Any Permutation -- counting.
+//
+// No comparison sort: each place's count by a difference array, then how
+// many places have each count and how many values each value has, both as
+// tallies, and the two tallies walked from the top, the largest values
+// given to the largest counts in runs. O(n + m + max value).
+
+fn max_sum_range_query(nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    let n = nums.len();
+    let mut asked = Vec.filled(n + 1, 0);
+    for r in requests.iter() {
+        asked[r[0]] += 1;
+        asked[r[1] + 1] -= 1;
+    }
+    let mut places = Vec.filled(requests.len() + 1, 0);
+    let mut running = 0;
+    for i in 0..n {
+        running += asked[i];
+        places[running] += 1;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut held = Vec.filled(*top as i64 + 1, 0);
+    for v in nums.iter() {
+        held[*v] += 1;
+    }
+    let mut total = 0;
+    let mut c = places.len() - 1;
+    let mut v = held.len() - 1;
+    loop {
+        while c > 0 and places[c] == 0 {
+            c -= 1;
+        }
+        if c == 0 {
+            break;
+        }
+        while held[v] == 0 {
+            v -= 1;
+        }
+        let take = places[c].min(held[v]);
+        total = (total + take * c % 1000000007 * v) % 1000000007;
+        places[c] -= take;
+        held[v] -= take;
+    }
+    total as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn wide(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn batch(count: i64, most: i64, top: i64, asks: i64, seed: mut ref i64) {
+    let mut check = 0;
+    for _ in 0..count {
+        let n = wide(mut seed) % most + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (wide(mut seed) % (top + 1)) as i32).collect();
+        let m = wide(mut seed) % asks + 1;
+        let mut requests: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..m {
+            let a = wide(mut seed) % n;
+            let b = wide(mut seed) % n;
+            requests.push([a.min(b) as i32, a.max(b) as i32]);
+        }
+        check = mix(check, max_sum_range_query(nums, requests));
+    }
+    println(f"{count} problems of up to {most} values and {asks} requests: checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(Vec[i32], Vec[Vec[i32]])] = [
+        ([1, 2, 3, 4, 5], [[1, 3], [0, 1]]),
+        ([1, 2, 3, 4, 5, 6], [[0, 1]]),
+        ([1, 2, 3, 4, 5, 10], [[0, 2], [1, 3], [1, 1]]),
+        ([7], [[0, 0], [0, 0]]),
+        ([0, 0, 9], [[0, 2]]),
+        (Vec.filled(100000, 100000), [[0, 99999], [0, 99999], [0, 99999]]),
+    ];
+    for (nums, requests) in examples.iter() {
+        let shown = if nums.len() > 10 { f"[{nums[0]}; {nums.len()}]" } else { f"{nums}" };
+        println(f"{shown} {requests} -> {max_sum_range_query(nums, requests)}");
+    }
+    let mut seed = 1589;
+    batch(3000, 8, 9, 5, mut seed);
+    batch(300, 1000, 100000, 1000, mut seed);
+    batch(3, 100000, 100000, 100000, mut seed);
+}

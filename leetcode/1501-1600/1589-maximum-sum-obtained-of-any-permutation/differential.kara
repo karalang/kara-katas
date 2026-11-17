@@ -1,0 +1,278 @@
+// LeetCode #1589: Maximum Sum Obtained of Any Permutation -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1
+// to 6 values from 0 to 9 and 1 to 5 requests, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the requests in reverse order leave the answer
+// P3  the values shuffled leave the answer
+// P4  every request mirrored (place i made n - 1 - i) leaves the answer
+// P5  every value doubled doubles the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- max_sum.kara: the ★ arm: a difference array, both lists sorted, paired
+
+fn star_arm(nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    let n = nums.len();
+    let mut asked = Vec.filled(n + 1, 0);
+    for r in requests.iter() {
+        asked[r[0]] += 1;
+        asked[r[1] + 1] -= 1;
+    }
+    for i in 1..n {
+        asked[i] += asked[i - 1];
+    }
+    asked.truncate(n);
+    asked.sort();
+    let mut values = nums.clone();
+    values.sort();
+    let mut total = 0;
+    for (count, v) in asked.iter().zip(values.iter()) {
+        total = (total + *count * *v) % 1000000007;
+    }
+    total as i32
+}
+
+// ---- max_sum_counts.kara: tallies of counts and values walked from the top
+
+fn counts_arm(nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    let n = nums.len();
+    let mut asked = Vec.filled(n + 1, 0);
+    for r in requests.iter() {
+        asked[r[0]] += 1;
+        asked[r[1] + 1] -= 1;
+    }
+    let mut places = Vec.filled(requests.len() + 1, 0);
+    let mut running = 0;
+    for i in 0..n {
+        running += asked[i];
+        places[running] += 1;
+    }
+    let top = nums.iter().max().unwrap();
+    let mut held = Vec.filled(*top as i64 + 1, 0);
+    for v in nums.iter() {
+        held[*v] += 1;
+    }
+    let mut total = 0;
+    let mut c = places.len() - 1;
+    let mut v = held.len() - 1;
+    loop {
+        while c > 0 and places[c] == 0 {
+            c -= 1;
+        }
+        if c == 0 {
+            break;
+        }
+        while held[v] == 0 {
+            v -= 1;
+        }
+        let take = places[c].min(held[v]);
+        total = (total + take * c % 1000000007 * v) % 1000000007;
+        places[c] -= take;
+        held[v] -= take;
+    }
+    total as i32
+}
+
+// ---- max_sum_sorted.kara: events and runs in two SortedMaps
+
+fn sorted_arm(nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    let n = nums.len() as i32;
+    let mut change: SortedMap[i32, i64] = SortedMap.new();
+    for r in requests.iter() {
+        *change.entry(r[0]).or_insert(0) += 1;
+        *change.entry(r[1] + 1).or_insert(0) -= 1;
+    }
+    let mut runs: SortedMap[i64, i64] = SortedMap.new();
+    let mut count = 0;
+    let mut from = 0;
+    for (place, delta) in change.iter() {
+        if *place > from and count > 0 {
+            *runs.entry(count).or_insert(0) += (*place).min(n) - from;
+        }
+        count += *delta;
+        from = *place;
+    }
+    let mut values = nums.clone();
+    values.sort_by(|a, b| b.cmp(a));
+    let mut total = 0;
+    let mut next = 0;
+    for (c, places) in runs.iter().rev() {
+        for _ in 0..*places {
+            total = (total + *c * values[next]) % 1000000007;
+            next += 1;
+        }
+    }
+    total as i32
+}
+
+// ---- max_sum_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_sum_range_query(nums: own Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = nums.len();
+        let mut freq = Vec.filled(n + 1, 0);
+        for r in ref requests {
+            freq[r[0] as usize] += 1;
+            freq[r[1] as usize + 1] -= 1;
+        }
+        for i in 1..n {
+            freq[i] += freq[i - 1];
+        }
+        freq.pop();
+        freq.sort();
+        let mut nums = nums;
+        nums.sort();
+        let ans = freq
+            .iter()
+            .zip(nums.iter())
+            .fold(0, |acc, (f, x)| (acc + f * x as i64) % MOD);
+        ans as i32
+    }
+}
+
+fn solution_arm(nums: own Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    Solution.max_sum_range_query(nums, requests)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    match a {
+        0 => star_arm(nums, requests),
+        1 => counts_arm(nums, requests),
+        2 => sorted_arm(nums, requests),
+        _ => solution_arm(nums.clone(), requests),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["max_sum", "counts", "sorted", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every permutation of the values, in
+// lexicographic order of their places, each request's sum added up, the
+// largest total kept
+
+fn literal(nums: Vec[i32], requests: Vec[Vec[i32]]) -> i32 {
+    let n = nums.len();
+    let mut order: Vec[i64] = (0..n).collect();
+    let mut best = 0;
+    loop {
+        let mut total = 0;
+        for r in requests.iter() {
+            for k in r[0]..r[1] + 1 {
+                total += nums[order[k]];
+            }
+        }
+        best = best.max(total);
+        // the next permutation: the last rise, the smallest larger after
+        // it swapped in, the tail reversed
+        let mut i = n - 1;
+        while i > 0 and order[i - 1] >= order[i] {
+            i -= 1;
+        }
+        if i == 0 {
+            break;
+        }
+        let mut j = n - 1;
+        while order[j] <= order[i - 1] {
+            j -= 1;
+        }
+        order.swap(i - 1, j);
+        order[i..].reverse();
+    }
+    (best % 1000000007) as i32
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15890;
+    let mut cases: Vec[(Vec[i32], Vec[Vec[i32]], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 6 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 10) as i32).collect();
+        let mut requests: Vec[Vec[i32]] = Vec.new();
+        for _ in 0..next_random(mut seed) % 5 + 1 {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            requests.push([a.min(b) as i32, a.max(b) as i32]);
+        }
+        let mut shuffled = nums.clone();
+        for i in (1..n).rev() {
+            shuffled.swap(i, next_random(mut seed) % (i + 1));
+        }
+        cases.push((nums, requests, shuffled));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (nums, requests, shuffled)) in cases.iter().enumerate() {
+        let truth = literal(nums, requests);
+        let n = nums.len() as i32;
+        let reversed: Vec[Vec[i32]] = requests.iter().rev().map(|r| r.clone()).collect();
+        let mirrored: Vec[Vec[i32]] = requests.iter().map(|r| [n - 1 - r[1], n - 1 - r[0]]).collect();
+        let doubled: Vec[i32] = nums.iter().map(|v| *v * 2).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums, requests);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, nums, reversed) != answer,
+                arm(a, shuffled, requests) != answer,
+                arm(a, nums, mirrored) != answer,
+                arm(a, doubled, requests) != answer * 2,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
