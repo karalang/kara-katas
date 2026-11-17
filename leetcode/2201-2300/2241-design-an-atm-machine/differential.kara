@@ -1,0 +1,579 @@
+// LeetCode #2241: Design an ATM Machine -- the differential. The six
+// arms, against the statement read literally: the machine's banknotes
+// handed out one at a time, always the largest that is held and not
+// more than the amount left, and all of them put back if the amount is
+// not reached; no division. 300 random call sequences of 1 to 12 calls,
+// up to 3 of each banknote a deposit and amounts up to 1500; then 30
+// that deposit only 200s and 500s; then 30 whose withdrawals ask for
+// sums of banknotes just deposited. Every case is drawn before any arm
+// answers.
+//
+// P1  the answers are the banknotes handed out, read literally
+// P2  each answer is [-1] or five counts, none negative, worth the
+//     amount
+// P3  the refused withdrawals left out: the same answers for the rest
+// P4  each deposit split in two, half and the rest: the same answers
+// P5  no answer hands out more of a banknote than was deposited and
+//     not yet handed out
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- atm.kara: the ★ arm, a plan taken largest first, then committed
+struct StarAtm {
+    counts: Vec[i64],
+}
+
+impl StarAtm {
+    fn new() -> StarAtm {
+        StarAtm { counts: Vec.filled(5, 0) }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        for i in 0..5 {
+            self.counts[i] += banknotes_count[i];
+        }
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        let values = [20, 50, 100, 200, 500];
+        let mut plan: Vec[i64] = Vec.filled(5, 0);
+        let mut left = amount;
+        for i in (0..5).rev() {
+            plan[i] = (left / values[i]).min(self.counts[i]);
+            left -= plan[i] * values[i];
+        }
+        if left != 0 {
+            return [-1].to_vec();
+        }
+        for i in 0..5 {
+            self.counts[i] -= plan[i];
+        }
+        plan
+    }
+}
+
+// ---- atm_map.kara: a `SortedMap` of banknote to count, walked from the top
+struct MapAtm {
+    notes: SortedMap[i64, i64],
+}
+
+impl MapAtm {
+    fn new() -> MapAtm {
+        let mut notes: SortedMap[i64, i64] = SortedMap.new();
+        for value in [20, 50, 100, 200, 500] {
+            notes.insert(value, 0);
+        }
+        MapAtm { notes }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        let values: Vec[i64] = self.notes.keys().collect();
+        for (value, more) in values.iter().zip(banknotes_count.iter()) {
+            self.notes[value] += more;
+        }
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        let mut plan: SortedMap[i64, i64] = SortedMap.new();
+        let mut left = amount;
+        for (value, held) in self.notes.iter().rev() {
+            let take = (left / value).min(held);
+            plan.insert(value, take);
+            left -= take * value;
+        }
+        if left != 0 {
+            return [-1].to_vec();
+        }
+        for (value, take) in plan.iter() {
+            self.notes[value] -= take;
+        }
+        plan.values().collect()
+    }
+}
+
+// ---- atm_result.kara: `plan` returning `Result[Vec[i64], Unpaid]`
+const VALUES: Array[i64, 5] = [20, 50, 100, 200, 500];
+
+struct ResultUnpaid {
+    left: i64,
+}
+
+struct ResultAtm {
+    counts: Array[i64, 5],
+}
+
+impl ResultAtm {
+    fn new() -> ResultAtm {
+        ResultAtm { counts: [0; 5] }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        for i in 0..5 {
+            self.counts[i] += banknotes_count[i];
+        }
+    }
+
+    fn plan(self, amount: i64) -> Result[Vec[i64], ResultUnpaid] {
+        let mut taken: Vec[i64] = Vec.filled(5, 0);
+        let mut left = amount;
+        for i in (0..5).rev() {
+            taken[i] = (left / VALUES[i]).min(self.counts[i]);
+            left -= taken[i] * VALUES[i];
+        }
+        if left == 0 { Ok(taken) } else { Err(ResultUnpaid { left }) }
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        match self.plan(amount) {
+            Ok(taken) => {
+                for i in 0..5 {
+                    self.counts[i] -= taken[i];
+                }
+                taken
+            }
+            Err(_) => [-1].to_vec(),
+        }
+    }
+}
+
+// ---- atm_enum.kara: `enum Note`, `struct Drawer` and `take`
+#[derive(Copy, Clone)]
+enum EnumNote {
+    Twenty,
+    Fifty,
+    Hundred,
+    TwoHundred,
+    FiveHundred,
+}
+
+impl EnumNote {
+    fn value(ref self) -> i64 {
+        match self {
+            EnumNote.Twenty => 20,
+            EnumNote.Fifty => 50,
+            EnumNote.Hundred => 100,
+            EnumNote.TwoHundred => 200,
+            EnumNote.FiveHundred => 500,
+        }
+    }
+
+    fn slot(ref self) -> i64 {
+        match self {
+            EnumNote.Twenty => 0,
+            EnumNote.Fifty => 1,
+            EnumNote.Hundred => 2,
+            EnumNote.TwoHundred => 3,
+            EnumNote.FiveHundred => 4,
+        }
+    }
+
+    fn largest_first() -> Vec[EnumNote] {
+        [EnumNote.FiveHundred, EnumNote.TwoHundred, EnumNote.Hundred, EnumNote.Fifty, EnumNote.Twenty].to_vec()
+    }
+}
+
+struct EnumDrawer {
+    note: EnumNote,
+    held: i64,
+}
+
+impl EnumDrawer {
+    fn take(ref self, left: i64) -> i64 {
+        (left / self.note.value()).min(self.held)
+    }
+}
+
+struct EnumAtm {
+    drawers: Vec[EnumDrawer],
+}
+
+impl EnumAtm {
+    fn new() -> EnumAtm {
+        let mut drawers: Vec[EnumDrawer] = Vec.new();
+        for note in [EnumNote.Twenty, EnumNote.Fifty, EnumNote.Hundred, EnumNote.TwoHundred, EnumNote.FiveHundred] {
+            drawers.push(EnumDrawer { note, held: 0 });
+        }
+        EnumAtm { drawers }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        for drawer in self.drawers.iter_mut() {
+            drawer.held += banknotes_count[drawer.note.slot()];
+        }
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        let mut plan: Vec[i64] = Vec.filled(5, 0);
+        let mut left = amount;
+        for note in EnumNote.largest_first() {
+            let slot = note.slot();
+            plan[slot] = self.drawers[slot].take(left);
+            left -= plan[slot] * note.value();
+        }
+        if left > 0 {
+            return [-1].to_vec();
+        }
+        for drawer in self.drawers.iter_mut() {
+            drawer.held -= plan[drawer.note.slot()];
+        }
+        plan
+    }
+}
+
+// ---- atm_iter.kara: `scan`, `rev`, `zip`, `map` and `sum`
+struct IterAtm {
+    counts: Vec[i64],
+}
+
+impl IterAtm {
+    fn new() -> IterAtm {
+        IterAtm { counts: [0, 0, 0, 0, 0].to_vec() }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        self.counts = self.counts.iter().zip(banknotes_count.iter()).map(|(have, more)| have + more).collect();
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        let values = [20, 50, 100, 200, 500];
+        let taken: Vec[i64] = (0..5).rev().scan(amount, |left, i| {
+            let take = (left / values[i]).min(self.counts[i]);
+            let left = left - take * values[i];
+            Some((left, take))
+        }).collect();
+        let plan: Vec[i64] = taken.iter().rev().collect();
+        let paid: i64 = plan.iter().zip(values.iter()).map(|(take, value)| take * value).sum();
+        if paid != amount {
+            return [-1].to_vec();
+        }
+        self.counts = self.counts.iter().zip(plan.iter()).map(|(have, take)| have - take).collect();
+        plan
+    }
+}
+
+// ---- atm_solution.kara: LeetCode's Rust template, carried by `karac fix`
+const VAL: Array[i64, 5] = [20, 50, 100, 200, 500];
+
+struct SolutionAtm {
+    cnt: Array[i64, 5],
+}
+
+impl SolutionAtm {
+    fn new() -> Self {
+        SolutionAtm { cnt: [0; 5] }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i32]) {
+        for i in 0..5 {
+            self.cnt[i] += banknotes_count[i];
+        }
+    }
+
+    fn withdraw(mut ref self, amount: i32) -> Vec[i32] {
+        let mut amount = amount as i64;
+        let mut res = Vec.filled(5, 0);
+        for i in (0..5).rev() {
+            let take = min(self.cnt[i], amount / VAL[i]);
+            res[i] = take as i32;
+            amount -= take * VAL[i];
+        }
+        if amount != 0 {
+            return [-1];
+        }
+        for i in 0..5 {
+            self.cnt[i] -= res[i];
+        }
+        res
+    }
+}
+
+// ---- the statement read literally
+
+fn literal(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let values = [20, 50, 100, 200, 500];
+    let mut held: Vec[i64] = Vec.filled(5, 0);
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            for i in 0..5 {
+                held[i] += args[i];
+            }
+            continue;
+        }
+        let mut given: Vec[i64] = Vec.filled(5, 0);
+        let mut left = args[0];
+        let mut stuck = false;
+        while left > 0 and not stuck {
+            stuck = true;
+            let mut i = 4;
+            while i >= 0 and stuck {
+                if held[i] > given[i] and values[i] <= left {
+                    given[i] += 1;
+                    left -= values[i];
+                    stuck = false;
+                }
+                i -= 1;
+            }
+        }
+        if left == 0 {
+            for i in 0..5 {
+                held[i] -= given[i];
+            }
+            answers.push(given);
+        } else {
+            answers.push([-1].to_vec());
+        }
+    }
+    answers
+}
+
+fn run_star(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = StarAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn run_map(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = MapAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn run_result(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = ResultAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn run_enum(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = EnumAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn run_iter(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = IterAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn run_solution(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = SolutionAtm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args.iter().map(|n| n as i32).collect());
+        } else {
+            answers.push(atm.withdraw(args[0] as i32).iter().map(|n| n as i64).collect());
+        }
+    }
+    answers
+}
+
+fn answer(arm: i64, calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => run_star(calls),
+        1 => run_map(calls),
+        2 => run_result(calls),
+        3 => run_enum(calls),
+        4 => run_iter(calls),
+        _ => run_solution(calls),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a deposit of up to `notes` of each banknote, those outside `only`
+// left at 0 when `only` is not empty
+fn deposit_of(notes: i64, only: Vec[i64], seed: mut ref i64) -> (i64, Vec[i64]) {
+    let mut counts: Vec[i64] = Vec.filled(5, 0);
+    for i in 0..5 {
+        let n = next_random(mut seed) % (notes + 1);
+        if only.is_empty() or only.contains(i) {
+            counts[i] = n;
+        }
+    }
+    (0, counts)
+}
+
+fn worth(counts: Vec[i64]) -> i64 {
+    let values = [20, 50, 100, 200, 500];
+    (0..5).map(|i| counts[i] * values[i]).sum()
+}
+
+fn main() {
+    let values = [20, 50, 100, 200, 500];
+    let names = ["star", "map", "result", "enum", "iter", "solution"];
+    let mut seed = 2241;
+    let mut cases: Vec[Vec[(i64, Vec[i64])]] = Vec.new();
+    for c in 0..360 {
+        let count = next_random(mut seed) % 12 + 1;
+        let only: Vec[i64] = if c >= 300 and c < 330 { [3, 4].to_vec() } else { Vec.new() };
+        let mut calls: Vec[(i64, Vec[i64])] = Vec.new();
+        let mut last: Vec[i64] = Vec.filled(5, 0);
+        for _ in 0..count {
+            if next_random(mut seed) % 2 == 0 {
+                let (kind, counts) = deposit_of(3, only, mut seed);
+                last = counts.clone();
+                calls.push((kind, counts));
+            } else if c >= 330 {
+                // a sum of banknotes from the last deposit
+                let part: Vec[i64] = last.iter().map(|n| next_random(mut seed) % (n + 1)).collect();
+                calls.push((1, [worth(part).max(10)].to_vec()));
+            } else {
+                let mut amount = next_random(mut seed) % 1500 + 1;
+                if next_random(mut seed) % 4 != 0 {
+                    amount = (amount + 9) / 10 * 10;
+                }
+                calls.push((1, [amount].to_vec()));
+            }
+        }
+        cases.push(calls);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for calls in cases.iter() {
+        let truth = literal(calls);
+        for a in truth.iter() {
+            for n in a.iter() {
+                check = (check * 31 + n + 1) % 1000000007;
+            }
+        }
+        let amounts: Vec[i64] = calls.iter().filter(|(kind, _)| kind == 1).map(|(_, args)| args[0]).collect();
+        // each deposit split into half and the rest
+        let mut split: Vec[(i64, Vec[i64])] = Vec.new();
+        for (kind, args) in calls.iter() {
+            if kind == 0 {
+                split.push((0, args.iter().map(|n| n / 2).collect()));
+                split.push((0, args.iter().map(|n| n - n / 2).collect()));
+            } else {
+                split.push((kind, args.clone()));
+            }
+        }
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, calls)).collect();
+        for arm in 0..6 {
+            let value = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            // P2: the shape and worth of each answer
+            let mut shaped = value.len() == amounts.len();
+            for w in 0..value.len().min(amounts.len()) {
+                let a = ref value[w];
+                let refused = a.len() == 1 and a[0] == -1;
+                let paid = a.len() == 5 and a.iter().all(|n| n >= 0) and worth(a) == amounts[w];
+                if not refused and not paid {
+                    shaped = false;
+                }
+            }
+            // P3: the refused withdrawals left out
+            let mut kept: Vec[(i64, Vec[i64])] = Vec.new();
+            let mut kept_answers: Vec[Vec[i64]] = Vec.new();
+            let mut w = 0;
+            for (kind, args) in calls.iter() {
+                if kind == 0 {
+                    kept.push((kind, args.clone()));
+                } else {
+                    if w < value.len() and not (value[w].len() == 1 and value[w][0] == -1) {
+                        kept.push((kind, args.clone()));
+                        kept_answers.push(value[w].clone());
+                    }
+                    w += 1;
+                }
+            }
+            // P5: never more out than in
+            let mut held: Vec[i64] = Vec.filled(5, 0);
+            let mut within = true;
+            w = 0;
+            for (kind, args) in calls.iter() {
+                if kind == 0 {
+                    for i in 0..5 {
+                        held[i] += args[i];
+                    }
+                } else {
+                    if w < value.len() and value[w].len() == 5 {
+                        for i in 0..5 {
+                            held[i] -= value[w][i];
+                            if held[i] < 0 {
+                                within = false;
+                            }
+                        }
+                    }
+                    w += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                shaped,
+                answer(arm, kept) == kept_answers,
+                answer(arm, split) == value,
+                within,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{calls} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

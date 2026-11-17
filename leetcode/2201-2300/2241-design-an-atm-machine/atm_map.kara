@@ -1,0 +1,140 @@
+// LeetCode #2241: Design an ATM Machine -- a `SortedMap[i64, i64]` from
+// each banknote's value to how many the machine holds, walked from the
+// largest value down with `iter().rev()`; the plan is a `SortedMap` of
+// the same keys, written back over the counts only when it pays the
+// whole amount. O(1) a call.
+
+struct Atm {
+    notes: SortedMap[i64, i64],
+}
+
+impl Atm {
+    fn new() -> Atm {
+        let mut notes: SortedMap[i64, i64] = SortedMap.new();
+        for value in [20, 50, 100, 200, 500] {
+            notes.insert(value, 0);
+        }
+        Atm { notes }
+    }
+
+    fn deposit(mut ref self, banknotes_count: Vec[i64]) {
+        let values: Vec[i64] = self.notes.keys().collect();
+        for (value, more) in values.iter().zip(banknotes_count.iter()) {
+            self.notes[value] += more;
+        }
+    }
+
+    fn withdraw(mut ref self, amount: i64) -> Vec[i64] {
+        let mut plan: SortedMap[i64, i64] = SortedMap.new();
+        let mut left = amount;
+        for (value, held) in self.notes.iter().rev() {
+            let take = (left / value).min(held);
+            plan.insert(value, take);
+            left -= take * value;
+        }
+        if left != 0 {
+            return [-1].to_vec();
+        }
+        for (value, take) in plan.iter() {
+            self.notes[value] -= take;
+        }
+        plan.values().collect()
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// a call: (0, the five counts) deposits them, (1, [amount]) withdraws
+fn run(calls: Vec[(i64, Vec[i64])]) -> Vec[Vec[i64]] {
+    let mut atm = Atm.new();
+    let mut answers: Vec[Vec[i64]] = Vec.new();
+    for (kind, args) in calls.iter() {
+        if kind == 0 {
+            atm.deposit(args);
+        } else {
+            answers.push(atm.withdraw(args[0]));
+        }
+    }
+    answers
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` calls, deposits of up to `notes` of each banknote and
+// withdrawals of up to `top` dollars, a multiple of 10 three times in four
+fn calls_of(count: i64, notes: i64, top: i64, seed: mut ref i64) -> Vec[(i64, Vec[i64])] {
+    let mut calls: Vec[(i64, Vec[i64])] = Vec.new();
+    for _ in 0..count {
+        if next_random(mut seed) % 2 == 0 {
+            let counts: Vec[i64] = (0..5).map(|_| wide_random(mut seed) % (notes + 1)).collect();
+            calls.push((0, counts));
+        } else {
+            let mut amount = wide_random(mut seed) % top + 1;
+            if next_random(mut seed) % 4 != 0 {
+                amount = (amount + 9) / 10 * 10;
+            }
+            calls.push((1, [amount].to_vec()));
+        }
+    }
+    calls
+}
+
+fn tally(answers: Vec[Vec[i64]], check: i64) -> i64 {
+    let mut c = check;
+    for answer in answers.iter() {
+        for n in answer.iter() {
+            c = (c * 31 + n % 1000000007 + 1) % 1000000007;
+        }
+    }
+    c
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: an empty machine, the
+    // greedy 500 that leaves 100 unpaid though three 200s would do, a
+    // refusal that must leave the machine as it was, and every
+    // banknote at the constraints' largest count
+    let examples: Vec[Vec[(i64, Vec[i64])]] = [
+        [(0, [0, 0, 1, 2, 1].to_vec()), (1, [600].to_vec()), (0, [0, 1, 0, 1, 1].to_vec()), (1, [600].to_vec()), (1, [550].to_vec())].to_vec(),
+        [(0, [1, 1, 1, 1, 1].to_vec()), (1, [890].to_vec()), (1, [20].to_vec())].to_vec(),
+        [(1, [20].to_vec()), (0, [0, 0, 0, 0, 0].to_vec()), (1, [10].to_vec())].to_vec(),
+        [(0, [0, 0, 0, 3, 1].to_vec()), (1, [600].to_vec()), (1, [700].to_vec()), (1, [600].to_vec())].to_vec(),
+        [(0, [2, 1, 0, 0, 0].to_vec()), (1, [60].to_vec()), (1, [90].to_vec()), (1, [40].to_vec()), (1, [50].to_vec())].to_vec(),
+        [(0, [1000000000, 1000000000, 1000000000, 1000000000, 1000000000].to_vec()), (1, [1000000000].to_vec()), (1, [999999990].to_vec()), (1, [30].to_vec())].to_vec(),
+    ].to_vec();
+    for calls in examples.iter() {
+        println(f"{calls} -> {run(calls)}");
+    }
+    // 3000 machines of 1 to 30 calls, up to 1 to 6 of each banknote,
+    // amounts up to 10 to 3000
+    let mut seed = 2241;
+    let mut paid = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let count = next_random(mut seed) % 30 + 1;
+        let notes = next_random(mut seed) % 6 + 1;
+        let top = (next_random(mut seed) % 300 + 1) * 10;
+        let answers = run(calls_of(count, notes, top, mut seed));
+        paid += answers.iter().filter(|a| a[0] >= 0).count();
+        check = tally(answers, check);
+    }
+    println(f"3000 small machines: {paid} withdrawals paid, checksum {check}");
+    // 4 machines of 5000 calls, the most the constraints allow, up to
+    // 10^9 of each banknote and amounts up to 10^9, 10^6, 10^4 and 10^3
+    paid = 0;
+    check = 0;
+    for r in 0..4 {
+        let top = [1000000000, 1000000, 10000, 1000][r];
+        let answers = run(calls_of(5000, 1000000000, top, mut seed));
+        paid += answers.iter().filter(|a| a[0] >= 0).count();
+        check = tally(answers, check);
+    }
+    println(f"4 large machines: {paid} withdrawals paid, checksum {check}");
+}
