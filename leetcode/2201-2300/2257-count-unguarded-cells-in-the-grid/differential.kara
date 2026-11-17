@@ -1,0 +1,400 @@
+// LeetCode #2257: Count Unguarded Cells in the Grid -- the differential.
+// The six arms, against the statement read literally: a cell is guarded
+// when some guard shares its row or column with no guard or wall
+// strictly between them; every empty cell is tried against every guard,
+// and the unguarded ones counted; no grid of marks, no walk. 300 random
+// grids of 1 to 6 by 1 to 6 with 1 to 3 guards and up to 4 walls; then
+// 30 of a single row or column of up to 20 cells; then 30 crowded ones,
+// half or more of their cells walls. Every case is drawn before any arm
+// answers.
+//
+// P1  the count is the literal reading's
+// P2  the grid transposed: the same count
+// P3  the grid mirrored left to right: the same count
+// P4  a wall put on the first unguarded cell, if there is one: the count
+//     one less
+// P5  every wall made a guard: no more than the count
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- unguarded.kara: the ★ arm, a grid of marks and a walk per guard
+fn star_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    // 0 empty, 1 seen, 2 guard, 3 wall
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for g in guards.iter() {
+        grid[g[0]][g[1]] = 2;
+    }
+    for w in walls.iter() {
+        grid[w[0]][w[1]] = 3;
+    }
+    for g in guards.iter() {
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let mut r = g[0] + dr;
+            let mut c = g[1] + dc;
+            while r >= 0 and r < m and c >= 0 and c < n and grid[r][c] < 2 {
+                grid[r][c] = 1;
+                r += dr;
+                c += dc;
+            }
+        }
+    }
+    grid.iter().map(|row| row.iter().filter(|cell| cell == 0).count()).sum()
+}
+
+// ---- unguarded_sweep.kara: four sweeps with a watching flag
+fn sweep_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    // 0 empty, 1 guard, 2 wall
+    let mut kind: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for g in guards.iter() {
+        kind[g[0]][g[1]] = 1;
+    }
+    for w in walls.iter() {
+        kind[w[0]][w[1]] = 2;
+    }
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    for r in 0..m {
+        let mut watching = false;
+        for c in 0..n {
+            if kind[r][c] == 1 {
+                watching = true;
+            } else if kind[r][c] == 2 {
+                watching = false;
+            } else if watching {
+                seen[r][c] = true;
+            }
+        }
+        watching = false;
+        for c in (0..n).rev() {
+            if kind[r][c] == 1 {
+                watching = true;
+            } else if kind[r][c] == 2 {
+                watching = false;
+            } else if watching {
+                seen[r][c] = true;
+            }
+        }
+    }
+    for c in 0..n {
+        let mut watching = false;
+        for r in 0..m {
+            if kind[r][c] == 1 {
+                watching = true;
+            } else if kind[r][c] == 2 {
+                watching = false;
+            } else if watching {
+                seen[r][c] = true;
+            }
+        }
+        watching = false;
+        for r in (0..m).rev() {
+            if kind[r][c] == 1 {
+                watching = true;
+            } else if kind[r][c] == 2 {
+                watching = false;
+            } else if watching {
+                seen[r][c] = true;
+            }
+        }
+    }
+    let mut count = 0;
+    for r in 0..m {
+        for c in 0..n {
+            if kind[r][c] == 0 and not seen[r][c] {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- unguarded_set.kara: sets of blocked and seen cells
+fn set_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    let mut blocked: Set[(i64, i64)] = Set.new();
+    for cell in guards.iter().chain(walls.iter()) {
+        blocked.insert((cell[0], cell[1]));
+    }
+    let mut seen: Set[(i64, i64)] = Set.new();
+    for g in guards.iter() {
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let mut at = (g[0] + dr, g[1] + dc);
+            while at.0 >= 0 and at.0 < m and at.1 >= 0 and at.1 < n and not blocked.contains(at) {
+                seen.insert(at);
+                at = (at.0 + dr, at.1 + dc);
+            }
+        }
+    }
+    m * n - blocked.len() - seen.len()
+}
+
+// ---- unguarded_struct.kara: `enum Cell` in a `struct Grid`
+#[derive(Copy, Clone, PartialEq)]
+enum StructCell {
+    Empty,
+    Seen,
+    Guard,
+    Wall,
+}
+
+impl StructCell {
+    fn blocks(self) -> bool {
+        self == StructCell.Guard or self == StructCell.Wall
+    }
+}
+
+struct StructGrid {
+    cells: Vec[StructCell],
+    m: i64,
+    n: i64,
+}
+
+impl StructGrid {
+    fn new(m: i64, n: i64) -> StructGrid {
+        StructGrid { cells: Vec.filled(m * n, StructCell.Empty), m, n }
+    }
+
+    fn set(mut ref self, r: i64, c: i64, cell: StructCell) {
+        self.cells[r * self.n + c] = cell;
+    }
+
+    fn inside(ref self, r: i64, c: i64) -> bool {
+        r >= 0 and r < self.m and c >= 0 and c < self.n
+    }
+
+    fn look(mut ref self, r: i64, c: i64, dr: i64, dc: i64) {
+        let mut (r, c) = (r + dr, c + dc);
+        while self.inside(r, c) and not self.cells[r * self.n + c].blocks() {
+            self.set(r, c, StructCell.Seen);
+            r += dr;
+            c += dc;
+        }
+    }
+
+    fn count(ref self, cell: StructCell) -> i64 {
+        self.cells.iter().filter(|x| x == cell).count()
+    }
+}
+
+fn struct_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    let mut grid = StructGrid.new(m, n);
+    for g in guards.iter() {
+        grid.set(g[0], g[1], StructCell.Guard);
+    }
+    for w in walls.iter() {
+        grid.set(w[0], w[1], StructCell.Wall);
+    }
+    for g in guards.iter() {
+        grid.look(g[0], g[1], -1, 0);
+        grid.look(g[0], g[1], 1, 0);
+        grid.look(g[0], g[1], 0, -1);
+        grid.look(g[0], g[1], 0, 1);
+    }
+    grid.count(StructCell.Empty)
+}
+
+// ---- unguarded_iter.kara: `scan` along every row and column
+// 0 empty, 1 guard, 2 wall
+fn iter_seen_along(line: Vec[i64]) -> Vec[bool] {
+    let watch = |up: own bool, kind: i64| if kind == 1 { true } else if kind == 2 { false } else { up };
+    let forward: Vec[bool] = line.iter().scan(false, |up, kind| Some((watch(up, kind), up))).collect();
+    let mut backward: Vec[bool] = line.iter().rev().scan(false, |up, kind| Some((watch(up, kind), up))).collect();
+    backward.reverse();
+    forward.iter().zip(backward.iter()).map(|(a, b)| a or b).collect()
+}
+
+fn iter_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    let mut kind: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for g in guards.iter() {
+        kind[g[0]][g[1]] = 1;
+    }
+    for w in walls.iter() {
+        kind[w[0]][w[1]] = 2;
+    }
+    let by_row: Vec[Vec[bool]] = kind.iter().map(|row| iter_seen_along(row)).collect();
+    let by_column: Vec[Vec[bool]] = (0..n).map(|c| iter_seen_along(kind.iter().map(|row| row[c]).collect())).collect();
+    (0..m * n)
+        .filter(|k| {
+            let (r, c) = (k / n, k % n);
+            kind[r][c] == 0 and not by_row[r][c] and not by_column[c][r]
+        })
+        .count()
+}
+
+// ---- unguarded_solution.kara: LeetCode's Rust template, carried by `karac fix`
+const DIRS: Array[(i32, i32), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+impl Solution {
+    pub fn count_unguarded(m: i32, n: i32, guards: Vec[Vec[i32]], walls: Vec[Vec[i32]]) -> i32 {
+        let mut g = Vec.filled(m, Vec.filled(n, 0u8));
+        for p in guards.iter().chain(walls.iter()) {
+            g[p[0] as usize][p[1] as usize] = 2;
+        }
+        for p in ref guards {
+            for (dr, dc) in DIRS.iter() {
+                let mut (r, c) = (p[0] + dr, p[1] + dc);
+                while (0..m).contains(r) and (0..n).contains(c) and g[r as usize][c as usize] < 2 {
+                    g[r as usize][c as usize] = 1;
+                    r += dr;
+                    c += dc;
+                }
+            }
+        }
+        g.iter().flat_map(|v| v.iter()).filter(|x| x == 0).count() as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    let guards: Vec[Vec[i32]] = guards.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    let walls: Vec[Vec[i32]] = walls.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.count_unguarded(m as i32, n as i32, guards, walls)
+}
+
+// ---- the statement read literally
+
+fn literal_guarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]], r: i64, c: i64) -> bool {
+    let blocked = |a: i64, b: i64| guards.iter().chain(walls.iter()).any(|p| p[0] == a and p[1] == b);
+    for g in guards.iter() {
+        if g[0] == r and g[1] != c {
+            let (lo, hi) = (g[1].min(c), g[1].max(c));
+            if (lo + 1..hi).all(|k| not blocked(r, k)) {
+                return true;
+            }
+        }
+        if g[1] == c and g[0] != r {
+            let (lo, hi) = (g[0].min(r), g[0].max(r));
+            if (lo + 1..hi).all(|k| not blocked(k, c)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn literal_cells(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut out: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            let taken = guards.iter().chain(walls.iter()).any(|p| p[0] == r and p[1] == c);
+            if not taken and not literal_guarded(m, n, guards, walls, r, c) {
+                out.push([r, c].to_vec());
+            }
+        }
+    }
+    out
+}
+
+// every cell's row and column swapped
+fn flip(cells: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    cells.iter().map(|p| [p[1], p[0]].to_vec()).collect()
+}
+
+// every cell's column counted from the right of a grid n wide
+fn mirror(cells: Vec[Vec[i64]], n: i64) -> Vec[Vec[i64]] {
+    cells.iter().map(|p| [p[0], n - 1 - p[1]].to_vec()).collect()
+}
+
+fn answer(arm: i64, m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_count_unguarded(m, n, guards, walls),
+        1 => sweep_count_unguarded(m, n, guards, walls),
+        2 => set_count_unguarded(m, n, guards, walls),
+        3 => struct_count_unguarded(m, n, guards, walls),
+        4 => iter_count_unguarded(m, n, guards, walls),
+        _ => solution_count_unguarded(m, n, guards, walls),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn place(seed: mut ref i64, m: i64, n: i64, guards: i64, walls: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut taken: Vec[bool] = Vec.filled(m * n, false);
+    let mut cells: Vec[Vec[i64]] = Vec.new();
+    while cells.len() < guards + walls {
+        let k = next_random(mut seed) % (m * n);
+        if not taken[k] {
+            taken[k] = true;
+            cells.push([k / n, k % n].to_vec());
+        }
+    }
+    let rest = cells.split_off(guards);
+    (cells, rest)
+}
+
+fn main() {
+    let names = ["star", "sweep", "set", "struct", "iter", "solution"];
+    let mut seed = 2257;
+    let mut cases: Vec[(i64, i64, Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let (m, n) = if c < 300 {
+            (next_random(mut seed) % 6 + 1, next_random(mut seed) % 6 + 1)
+        } else if c < 330 {
+            let long = next_random(mut seed) % 20 + 1;
+            if c % 2 == 0 { (1, long) } else { (long, 1) }
+        } else {
+            (next_random(mut seed) % 5 + 2, next_random(mut seed) % 5 + 2)
+        };
+        let g = (next_random(mut seed) % 3 + 1).min(m * n);
+        let w = if c < 330 { (next_random(mut seed) % 5).min(m * n - g) } else { (m * n - g) / 2 + next_random(mut seed) % ((m * n - g) / 2 + 1) };
+        let (guards, walls) = place(mut seed, m, n, g, w);
+        cases.push((m, n, guards, walls));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (m, n, guards, walls) in cases.iter() {
+        let open = literal_cells(m, n, guards, walls);
+        let truth = open.len();
+        check = (check * 31 + truth + 1) % 1000000007;
+        let mut walled = walls.clone();
+        if truth > 0 {
+            walled.push(open[0].clone());
+        }
+        let mut all_guards = guards.clone();
+        all_guards.extend(walls.iter().map(|w| w.clone()));
+        let no_walls: Vec[Vec[i64]] = Vec.new();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, m, n, guards, walls)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, n, m, flip(guards), flip(walls)) == value,
+                answer(arm, m, n, mirror(guards, n), mirror(walls, n)) == value,
+                truth == 0 or answer(arm, m, n, guards, walled) == value - 1,
+                answer(arm, m, n, all_guards, no_walls) <= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{m} x {n} {guards} {walls} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

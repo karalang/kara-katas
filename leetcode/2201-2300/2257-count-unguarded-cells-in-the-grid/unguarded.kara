@@ -1,0 +1,95 @@
+// LeetCode #2257: Count Unguarded Cells in the Grid -- a grid of marks:
+// guards and walls placed first, then from every guard a walk in each of
+// the four directions marking the cells it sees, until a wall, a guard or
+// the edge stops it. The unguarded cells are the ones left empty.
+// O(mn + guards * (m + n)).
+
+fn count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    // 0 empty, 1 seen, 2 guard, 3 wall
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for g in guards.iter() {
+        grid[g[0]][g[1]] = 2;
+    }
+    for w in walls.iter() {
+        grid[w[0]][w[1]] = 3;
+    }
+    for g in guards.iter() {
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let mut r = g[0] + dr;
+            let mut c = g[1] + dc;
+            while r >= 0 and r < m and c >= 0 and c < n and grid[r][c] < 2 {
+                grid[r][c] = 1;
+                r += dr;
+                c += dc;
+            }
+        }
+    }
+    grid.iter().map(|row| row.iter().filter(|cell| cell == 0).count()).sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `guards` guards and `walls` walls on distinct cells of an m by n grid,
+// each drawn until it lands on a free cell
+fn place(seed: mut ref i64, m: i64, n: i64, guards: i64, walls: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut taken: Vec[bool] = Vec.filled(m * n, false);
+    let mut cells: Vec[Vec[i64]] = Vec.new();
+    while cells.len() < guards + walls {
+        let k = wide_random(mut seed) % (m * n);
+        if not taken[k] {
+            taken[k] = true;
+            cells.push([k / n, k % n].to_vec());
+        }
+    }
+    let rest = cells.split_off(guards);
+    (cells, rest)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a single cell holding the
+    // guard, a wall that hides the far end of a row, two guards that see
+    // the whole row between them, and a guard boxed in by walls
+    let examples: Vec[(i64, i64, Vec[Vec[i64]], Vec[Vec[i64]])] = [
+        (4, 6, [[0, 0].to_vec(), [1, 1].to_vec(), [2, 3].to_vec()].to_vec(), [[0, 1].to_vec(), [2, 2].to_vec(), [1, 4].to_vec()].to_vec()),
+        (3, 3, [[1, 1].to_vec()].to_vec(), [[0, 1].to_vec(), [1, 0].to_vec(), [2, 1].to_vec(), [1, 2].to_vec()].to_vec()),
+        (1, 1, [[0, 0].to_vec()].to_vec(), Vec.new()),
+        (1, 5, [[0, 0].to_vec()].to_vec(), [[0, 2].to_vec()].to_vec()),
+        (1, 5, [[0, 0].to_vec(), [0, 4].to_vec()].to_vec(), Vec.new()),
+        (3, 4, [[1, 1].to_vec()].to_vec(), [[0, 1].to_vec(), [1, 0].to_vec(), [1, 2].to_vec(), [2, 1].to_vec(), [0, 3].to_vec()].to_vec()),
+    ].to_vec();
+    for (m, n, guards, walls) in examples.iter() {
+        println(f"{m} x {n}, guards {guards}, walls {walls} -> {count_unguarded(m, n, guards, walls)}");
+    }
+    // 2000 grids of 1 to 6 by 1 to 6, 1 to 3 guards and up to 4 walls
+    let mut seed = 2257;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let g = (next_random(mut seed) % 3 + 1).min(m * n);
+        let w = (next_random(mut seed) % 5).min(m * n - g);
+        let (guards, walls) = place(mut seed, m, n, g, w);
+        let count = count_unguarded(m, n, guards, walls);
+        total += count;
+        check = (check * 31 + count + 1) % 1000000007;
+    }
+    println(f"2000 grids: {total} unguarded in all, checksum {check}");
+    // the constraints' most cells, 10^5, as 1 by 10^5, 250 by 400 and
+    // 10^5 by 1, with a guard on one cell in 50 and a wall on one in 10
+    let mut answers: Vec[i64] = Vec.new();
+    for (m, n) in [(1, 100000), (250, 400), (100000, 1)] {
+        let (guards, walls) = place(mut seed, m, n, 2000, 10000);
+        answers.push(count_unguarded(m, n, guards, walls));
+    }
+    println(f"10^5 cells: {answers}");
+}

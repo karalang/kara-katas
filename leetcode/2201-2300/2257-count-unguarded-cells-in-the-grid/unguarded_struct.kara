@@ -1,0 +1,137 @@
+// LeetCode #2257: Count Unguarded Cells in the Grid -- `enum Cell {
+// Empty, Seen, Guard, Wall }` in a `struct Grid` of one flat `Vec` with
+// its width; `look` (`mut ref self`) walks from a guard in one
+// direction marking `Seen` until `blocks` says a guard or wall is in the
+// way, and `count` (`ref self`) counts the `Empty` cells that remain.
+// O(mn + guards * (m + n)).
+
+#[derive(Copy, Clone, PartialEq)]
+enum Cell {
+    Empty,
+    Seen,
+    Guard,
+    Wall,
+}
+
+impl Cell {
+    fn blocks(self) -> bool {
+        self == Cell.Guard or self == Cell.Wall
+    }
+}
+
+struct Grid {
+    cells: Vec[Cell],
+    m: i64,
+    n: i64,
+}
+
+impl Grid {
+    fn new(m: i64, n: i64) -> Grid {
+        Grid { cells: Vec.filled(m * n, Cell.Empty), m, n }
+    }
+
+    fn set(mut ref self, r: i64, c: i64, cell: Cell) {
+        self.cells[r * self.n + c] = cell;
+    }
+
+    fn inside(ref self, r: i64, c: i64) -> bool {
+        r >= 0 and r < self.m and c >= 0 and c < self.n
+    }
+
+    fn look(mut ref self, r: i64, c: i64, dr: i64, dc: i64) {
+        let mut (r, c) = (r + dr, c + dc);
+        while self.inside(r, c) and not self.cells[r * self.n + c].blocks() {
+            self.set(r, c, Cell.Seen);
+            r += dr;
+            c += dc;
+        }
+    }
+
+    fn count(ref self, cell: Cell) -> i64 {
+        self.cells.iter().filter(|x| x == cell).count()
+    }
+}
+
+fn count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    let mut grid = Grid.new(m, n);
+    for g in guards.iter() {
+        grid.set(g[0], g[1], Cell.Guard);
+    }
+    for w in walls.iter() {
+        grid.set(w[0], w[1], Cell.Wall);
+    }
+    for g in guards.iter() {
+        grid.look(g[0], g[1], -1, 0);
+        grid.look(g[0], g[1], 1, 0);
+        grid.look(g[0], g[1], 0, -1);
+        grid.look(g[0], g[1], 0, 1);
+    }
+    grid.count(Cell.Empty)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `guards` guards and `walls` walls on distinct cells of an m by n grid,
+// each drawn until it lands on a free cell
+fn place(seed: mut ref i64, m: i64, n: i64, guards: i64, walls: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut taken: Vec[bool] = Vec.filled(m * n, false);
+    let mut cells: Vec[Vec[i64]] = Vec.new();
+    while cells.len() < guards + walls {
+        let k = wide_random(mut seed) % (m * n);
+        if not taken[k] {
+            taken[k] = true;
+            cells.push([k / n, k % n].to_vec());
+        }
+    }
+    let rest = cells.split_off(guards);
+    (cells, rest)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a single cell holding the
+    // guard, a wall that hides the far end of a row, two guards that see
+    // the whole row between them, and a guard boxed in by walls
+    let examples: Vec[(i64, i64, Vec[Vec[i64]], Vec[Vec[i64]])] = [
+        (4, 6, [[0, 0].to_vec(), [1, 1].to_vec(), [2, 3].to_vec()].to_vec(), [[0, 1].to_vec(), [2, 2].to_vec(), [1, 4].to_vec()].to_vec()),
+        (3, 3, [[1, 1].to_vec()].to_vec(), [[0, 1].to_vec(), [1, 0].to_vec(), [2, 1].to_vec(), [1, 2].to_vec()].to_vec()),
+        (1, 1, [[0, 0].to_vec()].to_vec(), Vec.new()),
+        (1, 5, [[0, 0].to_vec()].to_vec(), [[0, 2].to_vec()].to_vec()),
+        (1, 5, [[0, 0].to_vec(), [0, 4].to_vec()].to_vec(), Vec.new()),
+        (3, 4, [[1, 1].to_vec()].to_vec(), [[0, 1].to_vec(), [1, 0].to_vec(), [1, 2].to_vec(), [2, 1].to_vec(), [0, 3].to_vec()].to_vec()),
+    ].to_vec();
+    for (m, n, guards, walls) in examples.iter() {
+        println(f"{m} x {n}, guards {guards}, walls {walls} -> {count_unguarded(m, n, guards, walls)}");
+    }
+    // 2000 grids of 1 to 6 by 1 to 6, 1 to 3 guards and up to 4 walls
+    let mut seed = 2257;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 6 + 1;
+        let n = next_random(mut seed) % 6 + 1;
+        let g = (next_random(mut seed) % 3 + 1).min(m * n);
+        let w = (next_random(mut seed) % 5).min(m * n - g);
+        let (guards, walls) = place(mut seed, m, n, g, w);
+        let count = count_unguarded(m, n, guards, walls);
+        total += count;
+        check = (check * 31 + count + 1) % 1000000007;
+    }
+    println(f"2000 grids: {total} unguarded in all, checksum {check}");
+    // the constraints' most cells, 10^5, as 1 by 10^5, 250 by 400 and
+    // 10^5 by 1, with a guard on one cell in 50 and a wall on one in 10
+    let mut answers: Vec[i64] = Vec.new();
+    for (m, n) in [(1, 100000), (250, 400), (100000, 1)] {
+        let (guards, walls) = place(mut seed, m, n, 2000, 10000);
+        answers.push(count_unguarded(m, n, guards, walls));
+    }
+    println(f"10^5 cells: {answers}");
+}

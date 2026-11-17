@@ -1,0 +1,66 @@
+// LeetCode #2257: Count Unguarded Cells in the Grid -- the benchmark copy
+// of unguarded.kara: a grid of marks, guards and walls placed first, then
+// from every guard a walk in each of the four directions marking the
+// cells it sees until a wall, a guard or the edge stops it.
+
+fn count_unguarded(m: i64, n: i64, guards: Vec[Vec[i64]], walls: Vec[Vec[i64]]) -> i64 {
+    // 0 empty, 1 seen, 2 guard, 3 wall
+    let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for g in guards.iter() {
+        grid[g[0]][g[1]] = 2;
+    }
+    for w in walls.iter() {
+        grid[w[0]][w[1]] = 3;
+    }
+    for g in guards.iter() {
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let mut r = g[0] + dr;
+            let mut c = g[1] + dc;
+            while r >= 0 and r < m and c >= 0 and c < n and grid[r][c] < 2 {
+                grid[r][c] = 1;
+                r += dr;
+                c += dc;
+            }
+        }
+    }
+    grid.iter().map(|row| row.iter().filter(|cell| cell == 0).count()).sum()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `guards` guards and `walls` walls on distinct cells of an m by n grid,
+// each drawn until it lands on a free cell
+fn place(seed: mut ref i64, m: i64, n: i64, guards: i64, walls: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut taken: Vec[bool] = Vec.filled(m * n, false);
+    let mut cells: Vec[Vec[i64]] = Vec.new();
+    while cells.len() < guards + walls {
+        let k = wide_random(mut seed) % (m * n);
+        if not taken[k] {
+            taken[k] = true;
+            cells.push([k / n, k % n].to_vec());
+        }
+    }
+    let rest = cells.split_off(guards);
+    (cells, rest)
+}
+
+fn main() {
+    // 300 grids of 10^5 cells, as 1 by 10^5, 250 by 400 and 10^5 by 1 in
+    // turn, each with 2000 guards and 10000 walls
+    let mut seed = 2257;
+    let mut check = 0;
+    let shapes = [(1, 100000), (250, 400), (100000, 1)];
+    for t in 0..300 {
+        let (m, n) = shapes[t % 3];
+        let (guards, walls) = place(mut seed, m, n, 2000, 10000);
+        check = (check * 31 + count_unguarded(m, n, guards, walls) + 1) % 1000000007;
+    }
+    println(f"300 grids of 10^5 cells: checksum {check}");
+}
