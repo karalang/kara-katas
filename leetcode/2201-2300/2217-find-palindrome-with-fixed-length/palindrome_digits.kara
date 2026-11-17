@@ -1,0 +1,90 @@
+// LeetCode #2217: Find Palindrome With Fixed Length -- the digits arm:
+// q - 1 counted out in the half's own digits, the first from 1 to 9 and
+// the rest from 0 to 9, into a `Vec` of the whole length, each digit set
+// at its place and its mirror; then the digits read as a number.
+// O(k * int_length).
+
+fn kth_palindrome(queries: Vec[i64], int_length: i64) -> Vec[i64] {
+    let half = (int_length + 1) / 2;
+    let mut answer: Vec[i64] = Vec.new();
+    for q in queries.iter() {
+        let mut left = q - 1;
+        let mut digits: Vec[i64] = Vec.filled(int_length, 0);
+        for place in (0..half).rev() {
+            let digit = if place == 0 { left + 1 } else { left % 10 };
+            left /= 10;
+            digits[place] = digit;
+            digits[int_length - 1 - place] = digit;
+        }
+        if digits[0] > 9 {
+            answer.push(-1);
+            continue;
+        }
+        let mut number = 0;
+        for d in digits.iter() {
+            number = number * 10 + d;
+        }
+        answer.push(number);
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(queries: Vec[i64], int_length: i64) {
+    println(f"{queries} of length {int_length} -> {kth_palindrome(queries, int_length)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: length 1 to its end and
+    // past it, length 2, the last of length 15, and 10^9
+    show([1, 2, 3, 4, 5, 90], 3);
+    show([2, 4, 6], 4);
+    show([1, 9, 10], 1);
+    show([1, 9, 10], 2);
+    show([90000000, 90000001], 15);
+    show([1000000000, 1], 15);
+    // 3000 random cases of 1 to 20 queries of length 1 to 15, each query
+    // up to twice the palindromes of that length, and at most 10^9
+    let mut seed = 2217;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let int_length = next_random(mut seed) % 15 + 1;
+        let k = next_random(mut seed) % 20 + 1;
+        let mut count = 9;
+        for _ in 0..(int_length - 1) / 2 {
+            count *= 10;
+        }
+        let mut queries: Vec[i64] = Vec.new();
+        for _ in 0..k {
+            queries.push(wide_random(mut seed) % (2 * count).min(1000000000) + 1);
+        }
+        for p in kth_palindrome(queries, int_length) {
+            check = (check * 31 + p + 1) % 1000000007;
+        }
+    }
+    println(f"3000 cases: checksum {check}");
+    // the constraints' largest: 5 * 10^4 queries of length 15 up to 10^9,
+    // and 5 * 10^4 of length 14 counting up from 1
+    let mut wide: Vec[i64] = Vec.new();
+    let mut counting: Vec[i64] = Vec.new();
+    for i in 0..50000 {
+        wide.push(wide_random(mut seed) % 1000000000 + 1);
+        counting.push(i + 1);
+    }
+    let long = kth_palindrome(wide, 15);
+    let found = long.iter().filter(|p| p != -1).count();
+    let total = long.iter().filter(|p| p != -1).map(|p| p % 1000000007).sum() % 1000000007;
+    let even = kth_palindrome(counting, 14);
+    println(f"5 * 10^4 of length 15: {found} found, sum {total}; 5 * 10^4 of length 14: last {even[49999]}");
+}
