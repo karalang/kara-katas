@@ -1,0 +1,282 @@
+// LeetCode #2216: Minimum Deletions to Make Array Beautiful -- the
+// differential. The six arms, against the statement read literally: every
+// way to keep some of the numbers in order tried, each kept array checked
+// for an even length and no pair at an even index alike, and the fewest
+// deletions that leave a beautiful array; no greed. 300 random arrays of
+// 1 to 12 numbers up to 1, 3 and 10^5 in turn; then 30 of one value; then
+// 30 of runs of 1 to 4 alike. Every case is drawn before any arm answers.
+//
+// P1  the deletions are the statement read literally
+// P2  they are from 0 to n, and n less them is even
+// P3  every number x made 10^5 - x: the same deletions
+// P4  a pair 0, 1 put in front: the same deletions
+// P5  the first number appended again: one deletion more or one fewer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- beautiful.kara: the ★ arm, greedy by the index a number keeps
+fn star_min_deletion(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut deleted = 0;
+    for i in 0..n - 1 {
+        if (i - deleted) % 2 == 0 and nums[i] == nums[i + 1] {
+            deleted += 1;
+        }
+    }
+    if (n - deleted) % 2 == 1 {
+        deleted += 1;
+    }
+    deleted
+}
+
+// ---- beautiful_stack.kara: the kept numbers in a `Vec`
+fn stack_min_deletion(nums: Vec[i64]) -> i64 {
+    let mut kept: Vec[i64] = Vec.new();
+    for x in nums.iter() {
+        if kept.len() % 2 == 0 or kept[kept.len() - 1] != x {
+            kept.push(x);
+        }
+    }
+    if kept.len() % 2 == 1 {
+        kept.pop();
+    }
+    nums.len() - kept.len()
+}
+
+// ---- beautiful_pairs.kara: each pair's partner looked for
+fn pairs_min_deletion(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut pairs = 0;
+    let mut i = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n and nums[j] == nums[i] {
+            j += 1;
+        }
+        if j == n {
+            break;
+        }
+        pairs += 1;
+        i = j + 1;
+    }
+    n - 2 * pairs
+}
+
+// ---- beautiful_struct.kara: `Beautifier` and `offer`
+struct Beautifier {
+    seen: i64,
+    pairs: i64,
+    open: Option[i64],
+}
+
+impl Beautifier {
+    fn new() -> Beautifier {
+        Beautifier { seen: 0, pairs: 0, open: None }
+    }
+
+    fn offer(mut ref self, x: i64) {
+        self.seen += 1;
+        match self.open {
+            Some(first) if first != x => {
+                self.pairs += 1;
+                self.open = None;
+            }
+            Some(_) => {}
+            None => self.open = Some(x),
+        }
+    }
+
+    fn deletions(ref self) -> i64 {
+        self.seen - 2 * self.pairs
+    }
+}
+
+fn struct_min_deletion(nums: Vec[i64]) -> i64 {
+    let mut beautifier = Beautifier.new();
+    for x in nums.iter() {
+        beautifier.offer(x);
+    }
+    beautifier.deletions()
+}
+
+// ---- beautiful_iter.kara: a `fold` over pairs and the open number
+fn iter_min_deletion(nums: Vec[i64]) -> i64 {
+    let (pairs, _) = nums.iter().fold((0, None), |(pairs, open), x| match open {
+        None => (pairs, Some(x)),
+        Some(first) if first != x => (pairs + 1, None),
+        _ => (pairs, open),
+    });
+    nums.len() - 2 * pairs
+}
+
+// ---- beautiful_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn min_deletion(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let mut ans: i32 = 0;
+        let mut i: i64 = 0;
+        while i + 1 < n {
+            if nums[i] == nums[i + 1] {
+                ans += 1;
+                i += 1;
+            } else {
+                i += 2;
+            }
+        }
+        if (n - ans) % 2 == 1 {
+            ans += 1;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_min_deletion(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.min_deletion(nums)
+}
+
+
+// ---- the statement read literally
+
+// whether the numbers kept by the bits of `keep` make a beautiful array
+fn beautiful(nums: Vec[i64], keep: i64) -> bool {
+    let mut kept: Vec[i64] = Vec.new();
+    for i in 0..nums.len() {
+        if keep >> i & 1 == 1 {
+            kept.push(nums[i]);
+        }
+    }
+    if kept.len() % 2 == 1 {
+        return false;
+    }
+    for i in 0..kept.len() {
+        if i % 2 == 0 and kept[i] == kept[i + 1] {
+            return false;
+        }
+    }
+    true
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut fewest = n;
+    for keep in 0..(1 << n) {
+        if beautiful(nums, keep) {
+            let mut kept = 0;
+            for i in 0..n {
+                kept += keep >> i & 1;
+            }
+            fewest = fewest.min(n - kept);
+        }
+    }
+    fewest
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_min_deletion(nums),
+        1 => stack_min_deletion(nums),
+        2 => pairs_min_deletion(nums),
+        3 => struct_min_deletion(nums),
+        4 => iter_min_deletion(nums),
+        _ => solution_min_deletion(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "stack", "pairs", "struct", "iter", "solution"];
+    let mut seed = 2216;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let top = [1, 3, 100000][c % 3];
+        let n = next_random(mut seed) % 12 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            for _ in 0..n {
+                nums.push(wide_random(mut seed) % (top + 1));
+            }
+        } else if c < 330 {
+            let one = wide_random(mut seed) % (top + 1);
+            for _ in 0..n {
+                nums.push(one);
+            }
+        } else {
+            while nums.len() < n {
+                let x = next_random(mut seed) % 4;
+                let run = next_random(mut seed) % 4 + 1;
+                for _ in 0..run {
+                    if nums.len() < n {
+                        nums.push(x);
+                    }
+                }
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let n = nums.len();
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let mirrored: Vec[i64] = nums.iter().map(|x| 100000 - x).collect();
+        let mut fronted: Vec[i64] = [0, 1];
+        fronted.extend(nums.iter());
+        let mut longer = nums.clone();
+        longer.push(nums[0]);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let deleted = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == deleted {
+                    same += 1;
+                }
+            }
+            let more = answer(arm, longer);
+            let verdicts = [
+                deleted == truth,
+                deleted >= 0 and deleted <= n and (n - deleted) % 2 == 0,
+                answer(arm, mirrored) == deleted,
+                answer(arm, fronted) == deleted,
+                more == deleted + 1 or more == deleted - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {deleted}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

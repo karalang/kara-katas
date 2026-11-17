@@ -1,0 +1,54 @@
+// LeetCode #2216: Minimum Deletions to Make Array Beautiful -- greedy:
+// walking left to right, a number that would start a pair is deleted
+// when the number after it is the same, since keeping it could only
+// force a deletion later; the index a number keeps is its own less the
+// deletions so far. An odd length left at the end costs one more. O(n).
+
+fn min_deletion(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut deleted = 0;
+    for i in 0..n - 1 {
+        if (i - deleted) % 2 == 0 and nums[i] == nums[i + 1] {
+            deleted += 1;
+        }
+    }
+    if (n - deleted) % 2 == 1 {
+        deleted += 1;
+    }
+    deleted
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2216;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for a in 0..60 {
+        // 10^5 numbers up to 1, 3 and 10^5 in turn
+        let top = [1, 3, 100000][a % 3];
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push(wide_random(mut seed) % (top + 1));
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for a in 0..60 {
+        for r in 0..20 {
+            // punch: one number takes its neighbour's value before each answer
+            arrays[a][r * 4999 + 1] = arrays[a][r * 4999];
+            check = (check * 31 + min_deletion(arrays[a])) % 1000000007;
+        }
+    }
+    println(f"60 arrays of 10^5, 20 punches: checksum {check}");
+}
