@@ -1,0 +1,285 @@
+// LeetCode #2244: Minimum Rounds to Complete All Tasks -- the
+// differential. The six arms, against the statement read literally: for
+// each difficulty every number of rounds of three and of two tried, kept
+// when they finish exactly its tasks, and the fewest taken; -1 when a
+// difficulty has none; no formula. 300 random lists of 1 to 30 tasks of
+// 1 to 8 difficulties; then 30 built of pairs and triples, so that every
+// difficulty can be done; then 30 of those with one lone task added.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the fewest rounds, read literally, or -1
+// P2  the tasks in reverse order: the same answer
+// P3  every difficulty renamed d -> 7d + 3: the same answer
+// P4  three tasks of a new difficulty: one round more, or -1 again
+// P5  -1 exactly when some difficulty has one task; otherwise at least
+//     a third and at most a half of the tasks
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- rounds.kara: the ★ arm, a `Map` of counts and ceil(c / 3)
+fn star_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for t in tasks.iter() {
+        counts[t] = counts.get(t).unwrap_or(0) + 1;
+    }
+    let mut rounds = 0;
+    for (_, c) in counts.iter() {
+        if c == 1 {
+            return -1;
+        }
+        rounds += (c + 2) / 3;
+    }
+    rounds
+}
+
+// ---- rounds_sort.kara: the tasks sorted into runs
+fn sort_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let mut sorted = tasks.clone();
+    sorted.sort();
+    let mut rounds = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j] == sorted[i] {
+            j += 1;
+        }
+        let c = j - i;
+        if c == 1 {
+            return -1;
+        }
+        rounds += (c + 2) / 3;
+        i = j;
+    }
+    rounds
+}
+
+// ---- rounds_dp.kara: the fewest rounds for every count, by DP
+fn dp_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let mut counts: SortedMap[i64, i64] = SortedMap.new();
+    for t in tasks.iter() {
+        counts[t] = counts.get(t).unwrap_or(0) + 1;
+    }
+    let largest = counts.values().max().unwrap_or(0);
+    let mut fewest: Vec[Option[i64]] = Vec.filled(largest + 1, None);
+    fewest[0] = Some(0);
+    for c in 2..largest + 1 {
+        let by_two = fewest[c - 2];
+        let by_three = if c >= 3 { fewest[c - 3] } else { None };
+        fewest[c] = match (by_two, by_three) {
+            (Some(a), Some(b)) => Some(a.min(b) + 1),
+            (Some(a), None) => Some(a + 1),
+            (None, Some(b)) => Some(b + 1),
+            (None, None) => None,
+        };
+    }
+    let mut rounds = 0;
+    for c in counts.values() {
+        match fewest[c] {
+            Some(r) => rounds += r,
+            None => return -1,
+        }
+    }
+    rounds
+}
+
+// ---- rounds_enum.kara: `enum Plan`, `for_count` and `then`
+enum EnumPlan {
+    Impossible,
+    Rounds(i64),
+}
+
+impl EnumPlan {
+    fn for_count(c: i64) -> EnumPlan {
+        match c % 3 {
+            0 => EnumPlan.Rounds(c / 3),
+            1 => if c >= 4 { EnumPlan.Rounds((c - 4) / 3 + 2) } else { EnumPlan.Impossible },
+            _ => EnumPlan.Rounds(c / 3 + 1),
+        }
+    }
+
+    fn then(ref self, other: EnumPlan) -> EnumPlan {
+        match (self, other) {
+            (EnumPlan.Rounds(a), EnumPlan.Rounds(b)) => EnumPlan.Rounds(a + b),
+            _ => EnumPlan.Impossible,
+        }
+    }
+}
+
+fn enum_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let mut counts: Map[i64, i64] = Map.new();
+    for t in tasks.iter() {
+        counts[t] = counts.get(t).unwrap_or(0) + 1;
+    }
+    let mut plan = EnumPlan.Rounds(0);
+    for c in counts.values() {
+        plan = plan.then(EnumPlan.for_count(c));
+    }
+    match plan {
+        EnumPlan.Rounds(r) => r,
+        EnumPlan.Impossible => -1,
+    }
+}
+
+// ---- rounds_iter.kara: `fold`, `map` and `collect` into `Option`
+fn iter_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let counts: Map[i64, i64] = tasks.iter().fold(Map.new(), |m: own Map[i64, i64], t| {
+        let mut m = m;
+        m[t] = m.get(t).unwrap_or(0) + 1;
+        m
+    });
+    let rounds: Option[Vec[i64]] = counts.values().map(|c| if c == 1 { None } else { Some((c + 2) / 3) }).collect();
+    rounds.map(|r| r.iter().sum()).unwrap_or(-1)
+}
+
+// ---- rounds_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_rounds(tasks: Vec[i32]) -> i32 {
+        let mut map: Map[i32, i32] = Map.new();
+        for t in ref tasks {
+            *map.entry(t).or_insert(0) += 1;
+        }
+        let mut ans: i32 = 0;
+        for c in map.values() {
+            if c == 1 {
+                return -1;
+            }
+            ans += (c + 2) / 3;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let tasks: Vec[i32] = tasks.iter().map(|t| t as i32).collect();
+    Solution.minimum_rounds(tasks)
+}
+
+// ---- the statement read literally
+
+fn literal(tasks: Vec[i64]) -> i64 {
+    let mut seen: Vec[i64] = Vec.new();
+    let mut total = 0;
+    for t in tasks.iter() {
+        if seen.contains(t) {
+            continue;
+        }
+        seen.push(t);
+        let c = tasks.iter().filter(|x| x == t).count();
+        let mut fewest = -1;
+        for threes in 0..c + 1 {
+            for twos in 0..c + 1 {
+                if threes * 3 + twos * 2 == c and (fewest < 0 or threes + twos < fewest) {
+                    fewest = threes + twos;
+                }
+            }
+        }
+        if fewest < 0 {
+            return -1;
+        }
+        total += fewest;
+    }
+    total
+}
+
+fn answer(arm: i64, tasks: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_rounds(tasks),
+        1 => sort_minimum_rounds(tasks),
+        2 => dp_minimum_rounds(tasks),
+        3 => enum_minimum_rounds(tasks),
+        4 => iter_minimum_rounds(tasks),
+        _ => solution_minimum_rounds(tasks),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "dp", "enum", "iter", "solution"];
+    let mut seed = 2244;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let kinds = next_random(mut seed) % 8 + 1;
+        let mut tasks: Vec[i64] = Vec.new();
+        if c < 300 {
+            let n = next_random(mut seed) % 30 + 1;
+            for _ in 0..n {
+                tasks.push(next_random(mut seed) % kinds + 1);
+            }
+        } else {
+            let groups = next_random(mut seed) % 8 + 1;
+            for _ in 0..groups {
+                let d = next_random(mut seed) % kinds + 1;
+                for _ in 0..(next_random(mut seed) % 2 + 2) {
+                    tasks.push(d);
+                }
+            }
+            if c >= 330 {
+                let at = next_random(mut seed) % (tasks.len() + 1);
+                tasks.insert(at, 100);
+            }
+        }
+        cases.push(tasks);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for tasks in cases.iter() {
+        let truth = literal(tasks);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let n = tasks.len();
+        let reversed: Vec[i64] = tasks.iter().rev().collect();
+        let renamed: Vec[i64] = tasks.iter().map(|t| 7 * t + 3).collect();
+        let mut more = tasks.clone();
+        for _ in 0..3 {
+            more.push(1000);
+        }
+        let lone = tasks.iter().any(|t| tasks.iter().filter(|x| x == t).count() == 1);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, tasks)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let plus_three = answer(arm, more);
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, renamed) == value,
+                (value == -1 and plus_three == -1) or (value >= 0 and plus_three == value + 1),
+                if lone { value == -1 } else { value * 3 >= n and value * 2 <= n },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{tasks} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

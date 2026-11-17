@@ -1,0 +1,81 @@
+// LeetCode #2244: Minimum Rounds to Complete All Tasks -- no map: the
+// tasks sorted, so each difficulty is a run, and each run's length c
+// gives -1 when it is 1 and ceil(c / 3) rounds otherwise. O(n log n).
+
+fn minimum_rounds(tasks: Vec[i64]) -> i64 {
+    let mut sorted = tasks.clone();
+    sorted.sort();
+    let mut rounds = 0;
+    let mut i = 0;
+    while i < sorted.len() {
+        let mut j = i;
+        while j < sorted.len() and sorted[j] == sorted[i] {
+            j += 1;
+        }
+        let c = j - i;
+        if c == 1 {
+            return -1;
+        }
+        rounds += (c + 2) / 3;
+        i = j;
+    }
+    rounds
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one task, two alike,
+    // four alike (two rounds of two), and seven alike beside a pair
+    let examples = [
+        [2, 2, 3, 3, 2, 4, 4, 4, 4, 4].to_vec(),
+        [2, 3, 3].to_vec(),
+        [7].to_vec(),
+        [5, 5].to_vec(),
+        [1, 1, 1, 1].to_vec(),
+        [9, 9, 9, 9, 9, 9, 9, 1000000000, 1000000000].to_vec(),
+    ];
+    for tasks in examples.iter() {
+        println(f"{tasks} -> {minimum_rounds(tasks)}");
+    }
+    // 3000 lists of 1 to 60 tasks of 1 to 20 difficulties
+    let mut seed = 2244;
+    let mut possible = 0;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let kinds = next_random(mut seed) % 20 + 1;
+        let tasks: Vec[i64] = (0..n).map(|_| next_random(mut seed) % kinds + 1).collect();
+        let rounds = minimum_rounds(tasks);
+        if rounds >= 0 {
+            possible += 1;
+        }
+        check = (check * 31 + rounds + 1) % 1000000007;
+    }
+    println(f"3000 lists: {possible} possible, checksum {check}");
+    // the constraints' longest: 10^5 tasks of difficulties up to 10^9
+    // drawn in pairs and triples, so that every count is at least 2; then
+    // the same with one task more of a fresh difficulty
+    let mut tasks: Vec[i64] = Vec.new();
+    while tasks.len() < 99997 {
+        let d = wide_random(mut seed) % 1000000000 + 1;
+        for _ in 0..(next_random(mut seed) % 2 + 2) {
+            tasks.push(d);
+        }
+    }
+    while tasks.len() < 100000 {
+        tasks.push(tasks[0]);
+    }
+    println(f"100000 tasks: {minimum_rounds(tasks)}");
+    tasks[99999] = 1000000001;
+    println(f"one lone task among them: {minimum_rounds(tasks)}");
+}
