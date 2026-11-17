@@ -1,0 +1,99 @@
+// LeetCode #1600: Throne Inheritance -- the bench: the ★ arm through 10
+// reigns of 50000 calls, drawn first: a birth to someone alive half the
+// time, a death of someone alive an eighth, and the order asked for once
+// in 1000 calls.
+//
+// The ★ arm: each person's children in a `Map[String, Vec[String]]`, the
+// dead in a `Set[String]`, the preorder walked with a stack.
+
+struct ThroneInheritance {
+    king: String,
+    children: Map[String, Vec[String]],
+    dead: Set[String],
+}
+
+impl ThroneInheritance {
+    fn new(king_name: own String) -> ThroneInheritance {
+        ThroneInheritance { king: king_name, children: Map.new(), dead: Set.new() }
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        self.children.entry(parent_name).or_insert(Vec.new()).push(child_name);
+    }
+
+    fn death(mut ref self, name: own String) {
+        self.dead.insert(name);
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut order = Vec.new();
+        let mut stack: Vec[Str] = [self.king.as_str()];
+        while let Some(name) = stack.pop() {
+            if not self.dead.contains(name) {
+                order.push(name.to_string());
+            }
+            if let Some(kids) = self.children.get(name) {
+                for kid in kids.iter().rev() {
+                    stack.push(kid.as_str());
+                }
+            }
+        }
+        order
+    }
+}
+
+enum Op {
+    Birth(String, String),
+    Death(String),
+    Ask,
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 1600;
+    let mut reigns: Vec[Vec[Op]] = Vec.new();
+    for _ in 0..10 {
+        let mut alive: Vec[String] = ["king"];
+        let mut born = 0;
+        let mut ops: Vec[Op] = Vec.new();
+        for _ in 0..50000 {
+            let r = next_random(mut seed) % 1000;
+            if r < 500 and not alive.is_empty() {
+                let parent = alive[next_random(mut seed) % alive.len()].clone();
+                born += 1;
+                let child = f"p{born}";
+                ops.push(Op.Birth(parent, child.clone()));
+                alive.push(child);
+            } else if r < 625 and not alive.is_empty() {
+                let at = next_random(mut seed) % alive.len();
+                ops.push(Op.Death(alive.swap_remove(at)));
+            } else if r < 626 {
+                ops.push(Op.Ask);
+            }
+        }
+        reigns.push(ops);
+    }
+    let mut check = 0;
+    let mut names = 0;
+    for ops in reigns.iter() {
+        let mut throne = ThroneInheritance.new("king");
+        for op in ops.iter() {
+            match op {
+                Op.Birth(parent, child) => throne.birth(parent.clone(), child.clone()),
+                Op.Death(name) => throne.death(name.clone()),
+                Op.Ask => {
+                    let order = throne.get_inheritance_order();
+                    names += order.len();
+                    for name in order.iter() {
+                        check = (check * 31 + name.len() + 1) % 1000000007;
+                    }
+                }
+            }
+        }
+    }
+    println(f"10 reigns of 50000 calls: {names} names in the orders, checksum {check}");
+}

@@ -1,0 +1,471 @@
+// LeetCode #1600: Throne Inheritance -- the differential.
+//
+// Four arms against the statement read literally, each struct renamed and
+// driven by its own copy of one `drive`, on 3000 reigns of 1 to 12 calls,
+// with six properties. Every random choice is drawn before any arm
+// answers.
+//
+// P1  every order asked for is the statement's Successor read literally
+// P2  every name but the king's renamed renames every order
+// P3  each order asked for twice in a row gives it twice
+// P4  one more death at the end takes exactly that name out of the order
+// P5  one more child of the king at the end is last in the order
+// P6  each arm agrees with at least two of the other three
+
+// ---- throne.kara: the ★ arm: a Map of children, a Set of the dead, a stack
+
+struct StarThrone {
+    king: String,
+    children: Map[String, Vec[String]],
+    dead: Set[String],
+}
+
+impl StarThrone {
+    fn new(king_name: own String) -> StarThrone {
+        StarThrone { king: king_name, children: Map.new(), dead: Set.new() }
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        self.children.entry(parent_name).or_insert(Vec.new()).push(child_name);
+    }
+
+    fn death(mut ref self, name: own String) {
+        self.dead.insert(name);
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut order = Vec.new();
+        let mut stack: Vec[Str] = [self.king.as_str()];
+        while let Some(name) = stack.pop() {
+            if not self.dead.contains(name) {
+                order.push(name.to_string());
+            }
+            if let Some(kids) = self.children.get(name) {
+                for kid in kids.iter().rev() {
+                    stack.push(kid.as_str());
+                }
+            }
+        }
+        order
+    }
+}
+
+fn star_drive(ops: Vec[Op]) -> Vec[Vec[String]] {
+    let mut throne = StarThrone.new("king");
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        match op {
+            Op.Birth(parent, child) => throne.birth(parent.clone(), child.clone()),
+            Op.Death(name) => throne.death(name.clone()),
+            Op.Ask => out.push(throne.get_inheritance_order()),
+        }
+    }
+    out.push(throne.get_inheritance_order());
+    out
+}
+
+// ---- throne_recursive.kara: numbered people, a recursive preorder
+
+struct RecursiveThrone {
+    names: Vec[String],
+    number: Map[String, i64],
+    children: Vec[Vec[i64]],
+    living: Vec[bool],
+}
+
+impl RecursiveThrone {
+    fn new(king_name: own String) -> RecursiveThrone {
+        let mut throne = RecursiveThrone { names: Vec.new(), number: Map.new(), children: Vec.new(), living: Vec.new() };
+        throne.add(king_name);
+        throne
+    }
+
+    fn add(mut ref self, name: own String) -> i64 {
+        let n = self.names.len();
+        self.number.insert(name.clone(), n);
+        self.names.push(name);
+        self.children.push(Vec.new());
+        self.living.push(true);
+        n
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        let parent = self.number[parent_name];
+        let child = self.add(child_name);
+        self.children[parent].push(child);
+    }
+
+    fn death(mut ref self, name: own String) {
+        let n = self.number[name];
+        self.living[n] = false;
+    }
+
+    fn visit(self, n: i64, order: mut ref Vec[String]) {
+        if self.living[n] {
+            order.push(self.names[n].clone());
+        }
+        for child in self.children[n].iter() {
+            self.visit(*child, mut order);
+        }
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut order = Vec.new();
+        self.visit(0, mut order);
+        order
+    }
+}
+
+fn recursive_drive(ops: Vec[Op]) -> Vec[Vec[String]] {
+    let mut throne = RecursiveThrone.new("king");
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        match op {
+            Op.Birth(parent, child) => throne.birth(parent.clone(), child.clone()),
+            Op.Death(name) => throne.death(name.clone()),
+            Op.Ask => out.push(throne.get_inheritance_order()),
+        }
+    }
+    out.push(throne.get_inheritance_order());
+    out
+}
+
+// ---- throne_tree.kara: a tree of shared Person nodes
+
+shared struct TreePerson {
+    name: String,
+    mut alive: bool,
+    mut children: Vec[TreePerson],
+}
+
+struct TreeThrone {
+    king: TreePerson,
+    people: Map[String, TreePerson],
+}
+
+impl TreeThrone {
+    fn new(king_name: own String) -> TreeThrone {
+        let king = TreePerson { name: king_name.clone(), alive: true, children: Vec.new() };
+        let mut people = Map.new();
+        people.insert(king_name, king);
+        TreeThrone { king: king, people: people }
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        let child = TreePerson { name: child_name.clone(), alive: true, children: Vec.new() };
+        self.people[parent_name].children.push(child);
+        self.people.insert(child_name, child);
+    }
+
+    fn death(mut ref self, name: own String) {
+        self.people[name].alive = false;
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut order = Vec.new();
+        let mut stack: Vec[TreePerson] = [self.king];
+        while let Some(person) = stack.pop() {
+            if person.alive {
+                order.push(person.name.clone());
+            }
+            for child in person.children.iter().rev() {
+                stack.push(child);
+            }
+        }
+        order
+    }
+}
+
+fn tree_drive(ops: Vec[Op]) -> Vec[Vec[String]] {
+    let mut throne = TreeThrone.new("king");
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        match op {
+            Op.Birth(parent, child) => throne.birth(parent.clone(), child.clone()),
+            Op.Death(name) => throne.death(name.clone()),
+            Op.Ask => out.push(throne.get_inheritance_order()),
+        }
+    }
+    out.push(throne.get_inheritance_order());
+    out
+}
+
+// ---- throne_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionThrone {
+    king: String,
+    tree: Map[String, Vec[String]],
+    dead: Set[String],
+}
+
+impl SolutionThrone {
+    fn new(king_name: own String) -> Self {
+        SolutionThrone {
+            king: king_name,
+            tree: Map.new(),
+            dead: Set.new(),
+        }
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        self.tree.entry(parent_name).or_insert_with(Vec.new).push(child_name);
+    }
+
+    fn death(mut ref self, name: own String) {
+        self.dead.insert(name);
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut res = Vec.new();
+        self.dfs(self.king, mut res);
+        res
+    }
+
+    fn dfs(self, name: String, res: mut ref Vec[String]) {
+        if not self.dead.contains(name) {
+            res.push(name.clone());
+        }
+        if let Some(children) = self.tree.get(name) {
+            for child in children {
+                self.dfs(child, res);
+            }
+        }
+    }
+}
+
+fn solution_drive(ops: Vec[Op]) -> Vec[Vec[String]] {
+    let mut throne = SolutionThrone.new("king");
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        match op {
+            Op.Birth(parent, child) => throne.birth(parent.clone(), child.clone()),
+            Op.Death(name) => throne.death(name.clone()),
+            Op.Ask => out.push(throne.get_inheritance_order()),
+        }
+    }
+    out.push(throne.get_inheritance_order());
+    out
+}
+
+// ---- the harness ----------------------------------------------------------
+
+#[derive(Clone)]
+enum Op {
+    Birth(String, String),
+    Death(String),
+    Ask,
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, ops: Vec[Op]) -> Vec[Vec[String]] {
+    match a {
+        0 => star_drive(ops),
+        1 => recursive_drive(ops),
+        2 => tree_drive(ops),
+        _ => solution_drive(ops),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["throne", "recursive", "tree", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the order built by its Successor
+// function, from the king, one call at a time until it answers no one;
+// then the dead taken out
+//
+//   Successor(x, curOrder):
+//       if x has no children or all of x's children are in curOrder:
+//           if x is the king return null
+//           else return Successor(x's parent, curOrder)
+//       else return x's oldest child who's not in curOrder
+
+struct Family {
+    parent: Map[String, String],
+    children: Map[String, Vec[String]],
+    dead: Set[String],
+}
+
+fn successor(family: Family, x: String, in_order: Set[String]) -> Option[String] {
+    let kids = match family.children.get(x) {
+        Some(k) => k.clone(),
+        None => Vec.new(),
+    };
+    match kids.iter().find(|k| not in_order.contains(k)) {
+        Some(k) => Some(k.clone()),
+        None => if x == "king" { None } else { successor(family, family.parent[x].clone(), in_order) },
+    }
+}
+
+fn literal_order(family: Family) -> Vec[String] {
+    let mut order: Vec[String] = ["king"];
+    let mut in_order: Set[String] = Set.new();
+    in_order.insert("king");
+    while let Some(next) = successor(family, order[order.len() - 1].clone(), in_order) {
+        in_order.insert(next.clone());
+        order.push(next);
+    }
+    order.into_iter().filter(|name| not family.dead.contains(name)).collect()
+}
+
+fn literal(ops: Vec[Op]) -> Vec[Vec[String]] {
+    let mut family = Family { parent: Map.new(), children: Map.new(), dead: Set.new() };
+    let mut out = Vec.new();
+    for op in ops.iter() {
+        match op {
+            Op.Birth(parent, child) => {
+                family.parent.insert(child.clone(), parent.clone());
+                family.children.entry(parent.clone()).or_insert(Vec.new()).push(child.clone());
+            }
+            Op.Death(name) => {
+                family.dead.insert(name.clone());
+            }
+            Op.Ask => out.push(literal_order(family)),
+        }
+    }
+    out.push(literal_order(family));
+    out
+}
+
+fn renamed(name: String) -> String {
+    if name == "king" { name.clone() } else { f"q{name}" }
+}
+
+fn rename_ops(ops: Vec[Op]) -> Vec[Op] {
+    ops.iter().map(|op| match op {
+        Op.Birth(parent, child) => Op.Birth(renamed(parent), renamed(child)),
+        Op.Death(name) => Op.Death(renamed(name)),
+        Op.Ask => Op.Ask,
+    }).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16000;
+    let mut cases: Vec[(Vec[Op], String)] = Vec.new();
+    for _ in 0..problems {
+        let steps = next_random(mut seed) % 12 + 1;
+        let mut alive: Vec[String] = ["king"];
+        let mut born = 0;
+        let mut ops: Vec[Op] = Vec.new();
+        for _ in 0..steps {
+            let r = next_random(mut seed) % 8;
+            if r < 4 and not alive.is_empty() {
+                let parent = alive[next_random(mut seed) % alive.len()].clone();
+                born += 1;
+                let child = f"p{born}";
+                ops.push(Op.Birth(parent, child.clone()));
+                alive.push(child);
+            } else if r < 6 and not alive.is_empty() {
+                let at = next_random(mut seed) % alive.len();
+                ops.push(Op.Death(alive.swap_remove(at)));
+            } else {
+                ops.push(Op.Ask);
+            }
+        }
+        let last_death = if alive.is_empty() { "" } else { alive[next_random(mut seed) % alive.len()].clone() };
+        cases.push((ops, last_death));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, case) in cases.iter().enumerate() {
+        let (ops, last_death) = case;
+        let truth = literal(ops);
+        let renamed_ops = rename_ops(ops);
+        let mut doubled: Vec[Op] = Vec.new();
+        for op in ops.iter() {
+            doubled.push(op.clone());
+            if let Op.Ask = op {
+                doubled.push(Op.Ask);
+            }
+        }
+        let mut one_more_death = ops.clone();
+        let mut heir = ops.clone();
+        if not last_death.is_empty() {
+            one_more_death.push(Op.Death(last_death.clone()));
+        }
+        heir.push(Op.Birth("king", "heir"));
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, ops);
+            for order in answer.iter() {
+                for name in order.iter() {
+                    for b in name.bytes() {
+                        check = (check * 31 + b + 1) % 1000000007;
+                    }
+                }
+                check = (check * 31 + 7) % 1000000007;
+            }
+            let final_order = answer[answer.len() - 1].clone();
+            let renamed_answer: Vec[Vec[String]] = answer.iter().map(|order| order.iter().map(|n| renamed(n)).collect()).collect();
+            let twice = arm(a, doubled);
+            let mut twice_ok = twice.len() == 2 * answer.len() - 1;
+            if twice_ok {
+                for i in 0..answer.len() - 1 {
+                    if twice[2 * i] != answer[i] or twice[2 * i + 1] != answer[i] {
+                        twice_ok = false;
+                    }
+                }
+                if twice[twice.len() - 1] != final_order {
+                    twice_ok = false;
+                }
+            }
+            let after_death = arm(a, one_more_death);
+            let expected_death: Vec[String] = final_order.iter().filter(|n| *n != last_death).cloned().collect();
+            let after_heir = arm(a, heir);
+            let mut expected_heir = final_order.clone();
+            expected_heir.push("heir");
+            let failed = [
+                answer != truth,
+                arm(a, renamed_ops) != renamed_answer,
+                not twice_ok,
+                after_death[after_death.len() - 1] != expected_death,
+                after_heir[after_heir.len() - 1] != expected_heir,
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

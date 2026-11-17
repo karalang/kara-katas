@@ -1,0 +1,139 @@
+// LeetCode #1600: Throne Inheritance -- the statement's Successor, by
+// recursion.
+//
+// Everyone gets a number at birth, with the children of each in a
+// `Vec[Vec[i64]]` by number and the living marked in a `Vec[bool]`, so
+// names are looked up once, in a `Map[String, i64]`. The order is a
+// recursive preorder from the king's number. O(1) a birth or death,
+// O(n) an order.
+
+struct ThroneInheritance {
+    names: Vec[String],
+    number: Map[String, i64],
+    children: Vec[Vec[i64]],
+    living: Vec[bool],
+}
+
+impl ThroneInheritance {
+    fn new(king_name: own String) -> ThroneInheritance {
+        let mut throne = ThroneInheritance { names: Vec.new(), number: Map.new(), children: Vec.new(), living: Vec.new() };
+        throne.add(king_name);
+        throne
+    }
+
+    fn add(mut ref self, name: own String) -> i64 {
+        let n = self.names.len();
+        self.number.insert(name.clone(), n);
+        self.names.push(name);
+        self.children.push(Vec.new());
+        self.living.push(true);
+        n
+    }
+
+    fn birth(mut ref self, parent_name: own String, child_name: own String) {
+        let parent = self.number[parent_name];
+        let child = self.add(child_name);
+        self.children[parent].push(child);
+    }
+
+    fn death(mut ref self, name: own String) {
+        let n = self.number[name];
+        self.living[n] = false;
+    }
+
+    fn visit(self, n: i64, order: mut ref Vec[String]) {
+        if self.living[n] {
+            order.push(self.names[n].clone());
+        }
+        for child in self.children[n].iter() {
+            self.visit(*child, mut order);
+        }
+    }
+
+    fn get_inheritance_order(self) -> Vec[String] {
+        let mut order = Vec.new();
+        self.visit(0, mut order);
+        order
+    }
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix_order(check: i64, order: Vec[String]) -> i64 {
+    let mut c = check;
+    for name in order.iter() {
+        for b in name.bytes() {
+            c = (c * 31 + b + 1) % 1000000007;
+        }
+        c = (c * 31 + 7) % 1000000007;
+    }
+    c
+}
+
+// A random reign: `steps` calls after the crowning, a birth to someone
+// alive (half the time), a death of someone alive (an eighth) or the
+// order asked for (the rest).
+fn reign(steps: i64, seed: mut ref i64) -> (i64, i64) {
+    let mut throne = ThroneInheritance.new("king");
+    let mut alive: Vec[String] = ["king"];
+    let mut born = 0;
+    let mut check = 0;
+    let mut asked = 0;
+    for _ in 0..steps {
+        let r = next_random(mut seed) % 8;
+        if r < 4 and not alive.is_empty() {
+            let parent = alive[next_random(mut seed) % alive.len()].clone();
+            born += 1;
+            let child = f"p{born}";
+            throne.birth(parent, child.clone());
+            alive.push(child);
+        } else if r == 4 and not alive.is_empty() {
+            let at = next_random(mut seed) % alive.len();
+            let name = alive.swap_remove(at);
+            throne.death(name);
+        } else {
+            let order = throne.get_inheritance_order();
+            check = mix_order(check, order);
+            asked += 1;
+        }
+    }
+    check = mix_order(check, throne.get_inheritance_order());
+    (check, asked + 1)
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut asked = 0;
+    for _ in 0..count {
+        let steps = next_random(mut seed) % most + 1;
+        let (c, a) = reign(steps, mut seed);
+        check = (check * 31 + c) % 1000000007;
+        asked += a;
+    }
+    println(f"{count} reigns of up to {most} calls: {asked} orders, checksum {check}");
+}
+
+fn main() {
+    let mut throne = ThroneInheritance.new("king");
+    throne.birth("king", "andy");
+    throne.birth("king", "bob");
+    throne.birth("king", "catherine");
+    throne.birth("andy", "matthew");
+    throne.birth("bob", "alexander");
+    throne.birth("bob", "asha");
+    println(f"{throne.get_inheritance_order()}");
+    throne.death("bob");
+    println(f"{throne.get_inheritance_order()}");
+    throne.death("king");
+    throne.birth("asha", "zoe");
+    println(f"{throne.get_inheritance_order()}");
+    let mut seed = 1600;
+    batch(3000, 10, mut seed);
+    batch(300, 200, mut seed);
+    batch(3, 5000, mut seed);
+}
