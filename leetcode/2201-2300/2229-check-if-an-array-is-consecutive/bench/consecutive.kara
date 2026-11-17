@@ -1,0 +1,65 @@
+// LeetCode #2229: Check if an Array Is Consecutive -- the numbers are
+// consecutive when the largest less the smallest is one less than how
+// many there are and no number repeats; a `Set` finds a repeat. O(n).
+
+fn is_consecutive(nums: Vec[i64]) -> bool {
+    let mut seen: Set[i64] = Set.new();
+    let mut smallest = nums[0];
+    let mut largest = nums[0];
+    for x in nums.iter() {
+        if seen.contains(x) {
+            return false;
+        }
+        seen.insert(x);
+        smallest = smallest.min(x);
+        largest = largest.max(x);
+    }
+    largest - smallest + 1 == nums.len()
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2229;
+    // four shuffled runs of 10^5 numbers; in the last two one number is
+    // then written over by another, so that they are not consecutive
+    let mut lists: Vec[Vec[i64]] = Vec.new();
+    for l in 0..4 {
+        let mut nums: Vec[i64] = (0..100000).collect();
+        for i in (1..100000).rev() {
+            let j = wide_random(mut seed) % (i + 1);
+            nums.swap(i, j);
+        }
+        if l >= 2 {
+            let from = wide_random(mut seed) % 100000;
+            let to = wide_random(mut seed) % 100000;
+            nums[to] = nums[from];
+        }
+        lists.push(nums);
+    }
+    let mut yes = 0;
+    let mut check = 0;
+    for _ in 0..25 {
+        for l in 0..4 {
+            // punch: two numbers trade places before each answer
+            let i = wide_random(mut seed) % 100000;
+            let j = wide_random(mut seed) % 100000;
+            lists[l].swap(i, j);
+            let answer = is_consecutive(lists[l]);
+            if answer {
+                yes += 1;
+            }
+            check = (check * 31 + lists[l][i] + if answer { 1 } else { 2 }) % 1000000007;
+        }
+    }
+    println(f"100 answers: {yes} consecutive, checksum {check}");
+}

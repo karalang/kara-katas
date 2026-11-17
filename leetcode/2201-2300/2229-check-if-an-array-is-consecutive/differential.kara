@@ -1,0 +1,263 @@
+// LeetCode #2229: Check if an Array Is Consecutive -- the differential.
+// The six arms, against the statement read literally: x the smallest
+// number, and every number from x to x + n - 1 looked for by a walk
+// over the array; no set, no sort. 300 random cases of a shuffled run
+// of 1 to 12 numbers, two in three of them with one number then drawn
+// again near the run; then 30 runs with one number written twice; then
+// 30 of 1 to 6 numbers each from 0 to 5. Every case is drawn before any
+// arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  when it is true, the numbers add up to n * x + n * (n - 1) / 2
+// P3  the numbers rotated by a random amount: the same answer
+// P4  every number 5 higher: the same answer
+// P5  one more number, one past the largest: the same answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- consecutive.kara: the ★ arm, the span against the count, a `Set` for repeats
+fn star_is_consecutive(nums: Vec[i64]) -> bool {
+    let mut seen: Set[i64] = Set.new();
+    let mut smallest = nums[0];
+    let mut largest = nums[0];
+    for x in nums.iter() {
+        if seen.contains(x) {
+            return false;
+        }
+        seen.insert(x);
+        smallest = smallest.min(x);
+        largest = largest.max(x);
+    }
+    largest - smallest + 1 == nums.len()
+}
+
+// ---- consecutive_sort.kara: sorted, each one more than the one before
+fn sort_is_consecutive(nums: Vec[i64]) -> bool {
+    let mut sorted = nums.clone();
+    sorted.sort();
+    for i in 1..sorted.len() {
+        if sorted[i] != sorted[i - 1] + 1 {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- consecutive_marks.kara: n slots from the smallest, each filled once
+fn marks_is_consecutive(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut smallest = nums[0];
+    for x in nums.iter() {
+        smallest = smallest.min(x);
+    }
+    let mut filled = Vec.filled(n, false);
+    for x in nums.iter() {
+        let slot = x - smallest;
+        if slot >= n or filled[slot] {
+            return false;
+        }
+        filled[slot] = true;
+    }
+    true
+}
+
+// ---- consecutive_struct.kara: `Run`, `add` and `consecutive`
+struct Run {
+    smallest: i64,
+    largest: i64,
+    seen: Set[i64],
+    repeated: bool,
+}
+
+impl Run {
+    fn new() -> Run {
+        Run { smallest: i64.MAX, largest: i64.MIN, seen: Set.new(), repeated: false }
+    }
+
+    fn add(mut ref self, x: i64) {
+        if self.seen.contains(x) {
+            self.repeated = true;
+        }
+        self.seen.insert(x);
+        self.smallest = self.smallest.min(x);
+        self.largest = self.largest.max(x);
+    }
+
+    fn consecutive(ref self) -> bool {
+        not self.repeated and self.largest - self.smallest + 1 == self.seen.len()
+    }
+}
+
+fn struct_is_consecutive(nums: Vec[i64]) -> bool {
+    let mut run = Run.new();
+    for x in nums.iter() {
+        run.add(x);
+    }
+    run.consecutive()
+}
+
+// ---- consecutive_iter.kara: `min`, `max` and a `Set` `collect`ed
+fn iter_is_consecutive(nums: Vec[i64]) -> bool {
+    let smallest = nums.iter().min().unwrap();
+    let largest = nums.iter().max().unwrap();
+    let distinct: Set[i64] = nums.iter().collect();
+    distinct.len() == nums.len() and largest - smallest + 1 == nums.len()
+}
+
+// ---- consecutive_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn is_consecutive(nums: Vec[i32]) -> bool {
+        let mn = *nums.iter().min().unwrap();
+        let mx = *nums.iter().max().unwrap();
+        if (mx - mn + 1) != nums.len() {
+            return false;
+        }
+        let set: Set[i32] = nums.iter().cloned().collect();
+        set.len() == nums.len()
+    }
+}
+
+struct Solution {}
+
+fn solution_is_consecutive(nums: Vec[i64]) -> bool {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.is_consecutive(nums)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> bool {
+    let n = nums.len();
+    let mut x = nums[0];
+    for v in nums.iter() {
+        if v < x {
+            x = v;
+        }
+    }
+    for want in x..x + n {
+        let mut found = false;
+        for v in nums.iter() {
+            if v == want {
+                found = true;
+            }
+        }
+        if not found {
+            return false;
+        }
+    }
+    true
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> bool {
+    match arm {
+        0 => star_is_consecutive(nums),
+        1 => sort_is_consecutive(nums),
+        2 => marks_is_consecutive(nums),
+        3 => struct_is_consecutive(nums),
+        4 => iter_is_consecutive(nums),
+        _ => solution_is_consecutive(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    nums: Vec[i64],
+    turn: i64,
+}
+
+fn main() {
+    let names = ["star", "sort", "marks", "struct", "iter", "solution"];
+    let mut seed = 2229;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 330 {
+            let n = next_random(mut seed) % 12 + 1;
+            let low = next_random(mut seed) % 50;
+            nums = (low..low + n).collect();
+            for i in (1..n).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                nums.swap(i, j);
+            }
+            if c < 300 and c % 3 != 0 {
+                let at = next_random(mut seed) % n;
+                nums[at] = (low + next_random(mut seed) % (n + 2) - 1).max(0);
+            } else if c >= 300 {
+                let from = next_random(mut seed) % n;
+                let to = next_random(mut seed) % n;
+                nums[to] = nums[from];
+            }
+        } else {
+            for _ in 0..next_random(mut seed) % 6 + 1 {
+                nums.push(next_random(mut seed) % 6);
+            }
+        }
+        let turn = next_random(mut seed) % nums.len();
+        cases.push(Case { nums: nums, turn: turn });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let nums = ref case.nums;
+        let n = nums.len();
+        let truth = literal(nums);
+        check = (check * 31 + if truth { 1 } else { 2 }) % 1000000007;
+        let mut smallest = nums[0];
+        let mut largest = nums[0];
+        let mut sum = 0;
+        for v in nums.iter() {
+            smallest = smallest.min(v);
+            largest = largest.max(v);
+            sum += v;
+        }
+        let rotated: Vec[i64] = nums.iter().skip(case.turn).chain(nums.iter().take(case.turn)).collect();
+        let raised: Vec[i64] = nums.iter().map(|v| v + 5).collect();
+        let mut longer = nums.clone();
+        longer.push(largest + 1);
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let says = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == says {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                says == truth,
+                not says or sum == n * smallest + n * (n - 1) / 2,
+                answer(arm, rotated) == says,
+                answer(arm, raised) == says,
+                answer(arm, longer) == says,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {says}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

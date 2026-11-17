@@ -1,0 +1,97 @@
+// LeetCode #2229: Check if an Array Is Consecutive -- LeetCode's Rust
+// template: `Vec<i32>` in, `bool` out, the smallest and largest through
+// `*nums.iter().min().unwrap()`, the span compared as `(mx - mn + 1) as
+// usize` with `nums.len()`, and the distinct numbers a `HashSet<i32>`
+// `collect`ed from `nums.iter()`. Carried by `karac fix`. The adapter
+// below hands the harness's values to it.
+
+impl Solution {
+    pub fn is_consecutive(nums: Vec[i32]) -> bool {
+        let mn = *nums.iter().min().unwrap();
+        let mx = *nums.iter().max().unwrap();
+        if (mx - mn + 1) != nums.len() {
+            return false;
+        }
+        let set: Set[i32] = nums.iter().cloned().collect();
+        set.len() == nums.len()
+    }
+}
+
+struct Solution {}
+
+fn is_consecutive(nums: Vec[i64]) -> bool {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.is_consecutive(nums)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// the numbers from `low` to `low + n - 1` in a random order
+fn shuffled_run(seed: mut ref i64, low: i64, n: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = (low..low + n).collect();
+    for i in (1..n).rev() {
+        let j = wide_random(mut seed) % (i + 1);
+        nums.swap(i, j);
+    }
+    nums
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {is_consecutive(nums)}");
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: one number, a repeat,
+    // the two ends of the range, and a run missing its middle
+    show([1, 3, 4, 2]);
+    show([1, 3]);
+    show([3, 5, 4]);
+    show([7]);
+    show([2, 2]);
+    show([0, 100000]);
+    show([5, 9, 6, 8, 4]);
+    // 3000 random cases of 1 to 20 numbers: a shuffled run, and two in
+    // three of them with one number then drawn again near the run
+    let mut seed = 2229;
+    let mut check = 0;
+    let mut yes = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 20 + 1;
+        let low = wide_random(mut seed) % (100001 - n);
+        let mut nums = shuffled_run(mut seed, low, n);
+        if c % 3 != 0 {
+            let at = next_random(mut seed) % n;
+            nums[at] = (low + next_random(mut seed) % (n + 2) - 1).max(0).min(100000);
+        }
+        let answer = is_consecutive(nums);
+        if answer {
+            yes += 1;
+        }
+        check = (check * 31 + if answer { 1 } else { 2 }) % 1000000007;
+    }
+    println(f"3000 cases: {yes} consecutive, checksum {check}");
+    // the constraints' largest: 10^5 numbers, all of 0 to 99999 shuffled,
+    // then the same with one moved to 100000, then with one repeated
+    let mut nums = shuffled_run(mut seed, 0, 100000);
+    show_large(nums);
+    let at = wide_random(mut seed) % 100000;
+    let kept = nums[at];
+    nums[at] = 100000;
+    show_large(nums);
+    nums[at] = (kept + 1) % 100000;
+    show_large(nums);
+}
+
+fn show_large(nums: Vec[i64]) {
+    println(f"10^5 numbers: {is_consecutive(nums)}");
+}
