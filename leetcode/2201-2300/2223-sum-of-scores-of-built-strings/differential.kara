@@ -1,0 +1,313 @@
+// LeetCode #2223: Sum of Scores of Built Strings -- the differential.
+// The six arms, against the statement read literally: s_1 to s_n built
+// by prepending one letter of s at a time from the back, each compared
+// with s letter by letter from the front, and the common prefixes
+// summed; no Z box. 300 random strings of 1 to 48 letters from 1, 2 and
+// 3 letters in turn; then 30 of 1 to 24 letters, a pattern of 1 to 4
+// repeated; then 30 of 1 to 24 letters all different. Every case is drawn before any arm
+// answers.
+//
+// P1  the sum is the statement read literally
+// P2  it is at least n and at most n * (n + 1) / 2
+// P3  every letter renamed one along the alphabet: the same sum
+// P4  a letter not in s appended: the sum one more
+// P5  s written twice: at least twice the sum, and n more
+// P6  each arm agrees with at least three of the other five
+
+// ---- scores.kara: the ★ arm, the Z-algorithm
+fn star_sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut z: Vec[i64] = Vec.filled(n, 0);
+    z[0] = n;
+    let mut l = 0;
+    let mut r = 0;
+    for i in 1..n {
+        if i < r {
+            z[i] = (r - i).min(z[i - l]);
+        }
+        while i + z[i] < n and chars[z[i]] == chars[i + z[i]] {
+            z[i] += 1;
+        }
+        if i + z[i] > r {
+            l = i;
+            r = i + z[i];
+        }
+    }
+    z.iter().sum()
+}
+
+// ---- scores_borders.kara: KMP borders counted along the chain
+fn borders_sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut pi: Vec[i64] = Vec.filled(n, 0);
+    let mut count: Vec[i64] = Vec.filled(n, 1);
+    let mut total = 1;
+    for p in 1..n {
+        let mut k = pi[p - 1];
+        while k > 0 and chars[p] != chars[k] {
+            k = pi[k - 1];
+        }
+        if chars[p] == chars[k] {
+            k += 1;
+        }
+        pi[p] = k;
+        if k > 0 {
+            count[p] = count[k - 1] + 1;
+        }
+        total += count[p];
+    }
+    total
+}
+
+// ---- scores_hash.kara: double hashing and binary search
+struct Hasher {
+    modulus: i64,
+    prefix: Vec[i64],
+    power: Vec[i64],
+}
+
+fn hash_hasher(chars: Vec[char], base: i64, modulus: i64) -> Hasher {
+    let n = chars.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    let mut power: Vec[i64] = Vec.filled(n + 1, 1);
+    for i in 0..n {
+        prefix[i + 1] = (prefix[i] * base + (chars[i] as i64)) % modulus;
+        power[i + 1] = power[i] * base % modulus;
+    }
+    Hasher { modulus: modulus, prefix: prefix, power: power }
+}
+
+// the hash of s[from..from + len]
+fn hash_hash_of(h: Hasher, from: i64, len: i64) -> i64 {
+    let m = h.modulus;
+    ((h.prefix[from + len] - h.prefix[from] * h.power[len]) % m + m) % m
+}
+
+fn hash_sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let a = hash_hasher(chars, 131, 1000000007);
+    let b = hash_hasher(chars, 137, 998244353);
+    let mut total = n;
+    for i in 1..n {
+        let mut low = 0;
+        let mut high = n - i;
+        while low < high {
+            let mid = (low + high + 1) / 2;
+            if hash_hash_of(a, i, mid) == hash_hash_of(a, 0, mid) and hash_hash_of(b, i, mid) == hash_hash_of(b, 0, mid) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        total += low;
+    }
+    total
+}
+
+// ---- scores_struct.kara: `ZBox`, `reach` and `score`
+struct ZBox {
+    chars: Vec[char],
+    z: Vec[i64],
+    left: i64,
+    right: i64,
+}
+
+impl ZBox {
+    fn reach(ref self, i: i64, from: i64) -> i64 {
+        let mut k = from;
+        while i + k < self.chars.len() and self.chars[k] == self.chars[i + k] {
+            k += 1;
+        }
+        k
+    }
+
+    fn score(mut ref self, i: i64) -> i64 {
+        let known = if i < self.right { (self.right - i).min(self.z[i - self.left]) } else { 0 };
+        let z = self.reach(i, known);
+        self.z.push(z);
+        if i + z > self.right {
+            self.left = i;
+            self.right = i + z;
+        }
+        z
+    }
+}
+
+fn struct_sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut zbox = ZBox { chars: chars, z: [n].to_vec(), left: 0, right: 0 };
+    let mut total = n;
+    for i in 1..n {
+        total += zbox.score(i);
+    }
+    total
+}
+
+// ---- scores_iter.kara: `map`, `zip`, `take_while`, `count` and `sum`
+fn iter_sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut z: Vec[i64] = [n].to_vec();
+    let mut left = 0;
+    let mut right = 0;
+    let rest: i64 = (1..n).map(|i| {
+        let known = if i < right { (right - i).min(z[i - left]) } else { 0 };
+        let more = chars.iter().skip(known).zip(chars.iter().skip(i + known)).take_while(|(a, b)| a == b).count();
+        let zi = known + more;
+        z.push(zi);
+        if i + zi > right {
+            left = i;
+            right = i + zi;
+        }
+        zi
+    }).sum();
+    n + rest
+}
+
+// ---- scores_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn sum_scores(s: String) -> i64 {
+        let s = s.bytes();
+        let n = s.len();
+        let mut z = Vec.filled(n, 0);
+        let mut (l, r) = (0, 0);
+        let mut ans = n;
+        for i in 1..n {
+            if i < r {
+                z[i] = (r - i).min(z[i - l]);
+            }
+            while i + z[i] < n and s[z[i]] == s[i + z[i]] {
+                z[i] += 1;
+            }
+            if i + z[i] > r {
+                l = i;
+                r = i + z[i];
+            }
+            ans += z[i];
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_sum_scores(s: String) -> i64 {
+    Solution.sum_scores(s)
+}
+
+// ---- the statement read literally
+
+fn literal(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut built: Vec[char] = Vec.new();
+    let mut total = 0;
+    for i in 1..n + 1 {
+        built.insert(0, chars[n - i]);
+        let mut common = 0;
+        while common < built.len() and built[common] == chars[common] {
+            common += 1;
+        }
+        total += common;
+    }
+    total
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_sum_scores(s),
+        1 => borders_sum_scores(s),
+        2 => hash_sum_scores(s),
+        3 => struct_sum_scores(s),
+        4 => iter_sum_scores(s),
+        _ => solution_sum_scores(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "borders", "hash", "struct", "iter", "solution"];
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut seed = 2223;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let longest = if c < 300 { 48 } else { 24 };
+        let n = next_random(mut seed) % longest + 1;
+        let period = next_random(mut seed) % 4 + 1;
+        let mut pattern: Vec[char] = Vec.new();
+        for _ in 0..period {
+            pattern.push(alphabet[next_random(mut seed) % 3]);
+        }
+        let mut s = String.new();
+        for i in 0..n {
+            let letter = if c < 300 {
+                alphabet[next_random(mut seed) % [1, 2, 3][c % 3]]
+            } else if c < 330 {
+                pattern[i % period]
+            } else {
+                alphabet[i]
+            };
+            s.push(letter);
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let n = s.len();
+        let renamed: String = s.chars().map(|c| alphabet[((c as i64) - ('a' as i64) + 1) % 26]).collect();
+        let appended = f"{s}z";
+        let twice = f"{s}{s}";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let total = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == total {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                total == truth,
+                total >= n and total <= n * (n + 1) / 2,
+                answer(arm, renamed) == total,
+                answer(arm, appended) == total + 1,
+                answer(arm, twice) >= 2 * total + n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\" arm {names[arm]}: P{q + 1} fails, gave {total}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

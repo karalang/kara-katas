@@ -1,0 +1,62 @@
+// LeetCode #2223: Sum of Scores of Built Strings -- the score of the
+// string built last-i-letters-first is the longest common prefix of the
+// suffix at n - i with s, which is the Z-function: z[i] for every i,
+// with z[0] = n. The Z-algorithm keeps the box [l, r) of the rightmost
+// match found, starts each z[i] inside it from z[i - l], and extends
+// past r by comparing letters. O(n).
+
+fn sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut z: Vec[i64] = Vec.filled(n, 0);
+    z[0] = n;
+    let mut l = 0;
+    let mut r = 0;
+    for i in 1..n {
+        if i < r {
+            z[i] = (r - i).min(z[i - l]);
+        }
+        while i + z[i] < n and chars[z[i]] == chars[i + z[i]] {
+            z[i] += 1;
+        }
+        if i + z[i] > r {
+            l = i;
+            r = i + z[i];
+        }
+    }
+    z.iter().sum()
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(seed: mut ref i64) -> char {
+    if next_random(mut seed) % 2 == 1 { 'b' } else { 'a' }
+}
+
+fn main() {
+    let mut seed = 2223;
+    let mut words: Vec[Vec[char]] = Vec.new();
+    for _ in 0..20 {
+        // 10^5 letters, each 'a' or 'b'
+        let mut word: Vec[char] = Vec.new();
+        for _ in 0..100000 {
+            word.push(letter(mut seed));
+        }
+        words.push(word);
+    }
+    let mut check = 0;
+    for a in 0..20 {
+        for r in 0..5 {
+            // punch: one letter is drawn again before each answer
+            words[a][r * 19999] = letter(mut seed);
+            let s: String = words[a].iter().collect();
+            check = (check * 31 + sum_scores(s)) % 1000000007;
+        }
+    }
+    println(f"20 strings of 10^5, 5 punches: checksum {check}");
+}

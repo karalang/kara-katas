@@ -1,0 +1,79 @@
+// LeetCode #2223: Sum of Scores of Built Strings -- counted from the
+// other end: the sum of the scores is the number of pairs (j, p) with
+// s[j..=p] a prefix of s, which for each end p is the number of
+// prefixes of s that end there: the prefix s[..=p] itself and its
+// borders. The KMP prefix function gives the longest border, and the
+// count follows the chain: count[p] = count[pi[p] - 1] + 1. O(n).
+
+fn sum_scores(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut pi: Vec[i64] = Vec.filled(n, 0);
+    let mut count: Vec[i64] = Vec.filled(n, 1);
+    let mut total = 1;
+    for p in 1..n {
+        let mut k = pi[p - 1];
+        while k > 0 and chars[p] != chars[k] {
+            k = pi[k - 1];
+        }
+        if chars[p] == chars[k] {
+            k += 1;
+        }
+        pi[p] = k;
+        if k > 0 {
+            count[p] = count[k - 1] + 1;
+        }
+        total += count[p];
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n letters from the first `letters` of the alphabet
+fn draw_word(seed: mut ref i64, n: i64, letters: i64) -> String {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(alphabet[next_random(mut seed) % letters]);
+    }
+    s
+}
+
+fn show(s: String) {
+    println(f"\"{s}\" -> {sum_scores(s)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one letter, one letter
+    // throughout, all different, and a repeated pair
+    show("babab");
+    show("azbazbzaz");
+    show("a");
+    show("aaaa");
+    show("abcd");
+    show("abab");
+    // 3000 random strings of 1 to 40 letters from 1, 2 and 26 letters in
+    // turn
+    let mut seed = 2223;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let s = draw_word(mut seed, n, [1, 2, 26][c % 3]);
+        check = (check * 31 + sum_scores(s)) % 1000000007;
+    }
+    println(f"3000 strings: checksum {check}");
+    // the constraints' largest: 10^5 of one letter, whose sum passes
+    // i32, and 10^5 random from two letters
+    let mut same = String.new();
+    for _ in 0..100000 {
+        same.push('a');
+    }
+    let wide = draw_word(mut seed, 100000, 2);
+    println(f"10^5 alike: {sum_scores(same)}; 10^5 of two letters: {sum_scores(wide)}");
+}
