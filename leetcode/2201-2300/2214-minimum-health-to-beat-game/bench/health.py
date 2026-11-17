@@ -21,12 +21,17 @@ def next_random():
     return seed // 65536
 
 
+# a draw of 30 bits, since one draw stops at 32767
+def wide_random():
+    return next_random() * 32768 + next_random()
+
+
 def main():
     games = []
     for g in range(100):
         # 10^5 levels, the damage up to 10, 1000 and 10^5 in turn
         top = [10, 1000, 100000][g % 3]
-        games.append([next_random() % (top + 1) for _ in range(100000)])
+        games.append([wide_random() % (top + 1) for _ in range(100000)])
     check = 0
     for damage in games:
         for a in range(20):

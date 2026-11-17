@@ -66,6 +66,12 @@ fn random_word(n: usize, letters: i64, seed: &mut i64) -> Vec<u8> {
     (0..n).map(|_| b'a' + (next_random(seed) % letters) as u8).collect()
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: &mut i64) -> i64 {
+    let high = next_random(seed);
+    high * 32768 + next_random(seed)
+}
+
 fn main() {
     let mut seed = 2213;
     let mut words = Vec::new();
@@ -74,7 +80,7 @@ fn main() {
         let letters = [2, 3, 26][w % 3];
         let s = random_word(100000, letters, &mut seed);
         let query_characters = random_word(100000, letters, &mut seed);
-        let query_indices: Vec<usize> = (0..100000).map(|_| (next_random(&mut seed) % 100000) as usize).collect();
+        let query_indices: Vec<usize> = (0..100000).map(|_| (wide_random(&mut seed) % 100000) as usize).collect();
         words.push((s, query_characters, query_indices));
     }
     let mut check: i64 = 0;

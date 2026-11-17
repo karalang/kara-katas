@@ -18,6 +18,12 @@ static long next_random(void) {
     return seed / 65536;
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+static long wide_random(void) {
+    long high = next_random();
+    return high * 32768 + next_random();
+}
+
 #define G 100
 #define N 100000
 static long games[G][N];
@@ -27,7 +33,7 @@ int main(void) {
     for (int g = 0; g < G; g++) {
         // 10^5 levels, the damage up to 10, 1000 and 10^5 in turn
         long top = tops[g % 3];
-        for (long i = 0; i < N; i++) games[g][i] = next_random() % (top + 1);
+        for (long i = 0; i < N; i++) games[g][i] = wide_random() % (top + 1);
     }
     long check = 0;
     for (int g = 0; g < G; g++)

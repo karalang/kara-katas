@@ -17,13 +17,19 @@ fn next_random(seed: &mut i64) -> i64 {
     *seed / 65536
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: &mut i64) -> i64 {
+    let high = next_random(seed);
+    high * 32768 + next_random(seed)
+}
+
 fn main() {
     let mut seed = 2214;
     let mut games: Vec<Vec<i64>> = Vec::new();
     for g in 0..100 {
         // 10^5 levels, the damage up to 10, 1000 and 10^5 in turn
         let top = [10, 1000, 100000][g % 3];
-        games.push((0..100000).map(|_| next_random(&mut seed) % (top + 1)).collect());
+        games.push((0..100000).map(|_| wide_random(&mut seed) % (top + 1)).collect());
     }
     let mut check: i64 = 0;
     for g in 0..100 {

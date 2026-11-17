@@ -21,6 +21,12 @@ func nextRandom() int64 {
 	return seed / 65536
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+func wideRandom() int64 {
+	high := nextRandom()
+	return high*32768 + nextRandom()
+}
+
 func main() {
 	var games [][]int64
 	for g := 0; g < 100; g++ {
@@ -28,7 +34,7 @@ func main() {
 		top := []int64{10, 1000, 100000}[g%3]
 		damage := make([]int64, 100000)
 		for i := range damage {
-			damage[i] = nextRandom() % (top + 1)
+			damage[i] = wideRandom() % (top + 1)
 		}
 		games = append(games, damage)
 	}

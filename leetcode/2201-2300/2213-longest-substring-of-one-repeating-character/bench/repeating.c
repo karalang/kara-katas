@@ -59,6 +59,12 @@ static long next_random(void) {
     return seed / 65536;
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+static long wide_random(void) {
+    long high = next_random();
+    return high * 32768 + next_random();
+}
+
 #define N 100000
 int main(void) {
     static char s[6][N], qc[6][N];
@@ -69,7 +75,7 @@ int main(void) {
         long a = alphabets[w % 3];
         for (long i = 0; i < N; i++) s[w][i] = 'a' + next_random() % a;
         for (long i = 0; i < N; i++) qc[w][i] = 'a' + next_random() % a;
-        for (long i = 0; i < N; i++) qi[w][i] = next_random() % N;
+        for (long i = 0; i < N; i++) qi[w][i] = wide_random() % N;
     }
     long check = 0;
     for (int w = 0; w < 6; w++) {

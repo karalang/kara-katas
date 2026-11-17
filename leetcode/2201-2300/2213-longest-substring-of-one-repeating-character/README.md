@@ -47,8 +47,9 @@ letters set to what they were), each with its lengths; then a checksum
 of 3000 random words of 1 to 30 letters with 1 to 30 queries, the
 letters drawn from 2, 3 and 26 in turn; then the constraints' largest,
 10^5 letters of `'a'` and `'b'` with 10^5 random queries, and 10^5 `'a'`s
-with the middle letter broken and mended in turn. `repeating.py` mirrors
-the ★ arm and its output is byte-identical.
+with the middle letter broken and mended in turn. An index into 10^5
+letters is drawn from two draws, since one stops at 32767.
+`repeating.py` mirrors the ★ arm and its output is byte-identical.
 
 `karac fix` carries the template in one round of 53 edits: the
 `Vec<..>`s to `Vec[..]`, every `usize` to `i64` and `as usize` to `as
@@ -179,6 +180,6 @@ the 2 * 10^5 queries of the long words; the differential takes 1.6 s.
 The bench draws 6 words of 10^5 letters once, from 2, 3 and 26 letters
 in turn, each with 10^5 random queries, then answers every query with
 the ★ arm in all five languages, the checksum running over every length.
-Every implementation prints `6 words of 10^5: checksum 429336849`.
+Every implementation prints `6 words of 10^5: checksum 240887663`.
 
 BENCHTAB

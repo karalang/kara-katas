@@ -21,8 +21,13 @@ def next_random():
     return seed // 65536
 
 
+# a draw of 30 bits, since one draw stops at 32767
+def wide_random():
+    return next_random() * 32768 + next_random()
+
+
 def random_damage(n, top):
-    return [next_random() % (top + 1) for _ in range(n)]
+    return [wide_random() % (top + 1) for _ in range(n)]
 
 
 def show(damage, armor):
@@ -46,7 +51,7 @@ def main():
         top = [10, 1000, 100000][t % 3]
         n = next_random() % 30 + 1
         damage = random_damage(n, top)
-        armor = next_random() % (top + 1)
+        armor = wide_random() % (top + 1)
         check = (check * 31 + minimum_health(damage, armor)) % 1000000007
     print(f"3000 games: checksum {check}")
     # the constraints' largest: 10^5 levels of 10^5 damage with all the

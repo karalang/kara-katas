@@ -74,6 +74,12 @@ func nextRandom() int64 {
 	return seed / 65536
 }
 
+// a draw of 30 bits, since one draw stops at 32767
+func wideRandom() int64 {
+	high := nextRandom()
+	return high*32768 + nextRandom()
+}
+
 func randomWord(n int, letters int64) []byte {
 	w := make([]byte, n)
 	for i := range w {
@@ -96,7 +102,7 @@ func main() {
 		qc := randomWord(100000, letters)
 		qi := make([]int, 100000)
 		for i := range qi {
-			qi[i] = int(nextRandom() % 100000)
+			qi[i] = int(wideRandom() % 100000)
 		}
 		words = append(words, word{s, qc, qi})
 	}

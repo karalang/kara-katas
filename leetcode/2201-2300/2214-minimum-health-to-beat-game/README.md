@@ -46,7 +46,8 @@ largest level twice), each with its answer; then a checksum of 3000
 random games of 1 to 30 levels, the damage and the armor up to 10, 1000
 and 10^5 in turn; then the constraints' largest, 10^5 levels of 10^5
 damage with 10^5 armor and 10^5 random levels with none, both past
-`i32`. `health.py` mirrors the ★ arm and its output is byte-identical.
+`i32`. A number up to 10^5 is drawn from two draws, since one stops at
+32767. `health.py` mirrors the ★ arm and its output is byte-identical.
 
 `karac fix` carries the template in one round of 14 edits: `Vec<..>` to
 `Vec[..]` three times, `sum::<i64>()` to `sum()` with the type moved to
@@ -162,6 +163,6 @@ hurting by one more each time, answering it after each punch for an
 armor of 0 to 95000 with the ★ arm in all five languages; the punch
 keeps a compiler from answering the 20 armors off one pass. Every
 implementation prints `100 games of 10^5, 20 armors: checksum
-584252522`.
+606701484`.
 
 BENCHTAB

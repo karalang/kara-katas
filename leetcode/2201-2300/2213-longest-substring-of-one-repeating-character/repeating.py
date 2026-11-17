@@ -65,8 +65,13 @@ def random_word(n, letters):
     return "".join("abcdefghijklmnopqrstuvwxyz"[next_random() % letters] for _ in range(n))
 
 
+# a draw of 30 bits, since one draw stops at 32767
+def wide_random():
+    return next_random() * 32768 + next_random()
+
+
 def random_indices(k, n):
-    return [next_random() % n for _ in range(k)]
+    return [wide_random() % n for _ in range(k)]
 
 
 def show(s, query_characters, query_indices):
