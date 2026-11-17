@@ -1,0 +1,80 @@
+// LeetCode #2256: Minimum Average Difference -- LeetCode's Rust template:
+// `Vec<i32>` in, `i32` out; the total by `iter().map(|&x| x as i64).sum()`,
+// the left sum an `i64` grown in a `for (i, &x) in nums.iter().enumerate()`
+// loop, the averages and the gap in `i64`, the rest's average `0` on the
+// last index, and the best kept as `(i64::MAX, 0)`. Carried by `karac
+// fix`. The adapter below hands the harness's values to it.
+
+impl Solution {
+    pub fn minimum_average_difference(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        let mut left: i64 = 0;
+        let mut (best, ans) = (i64.MAX, 0i32);
+        for (i, x) in nums.iter().enumerate() {
+            left += x as i64;
+            let i = i;
+            let a = left / (i + 1);
+            let b = if i + 1 == n { 0 } else { (total - left) / (n - i - 1) };
+            let d = (a - b).abs();
+            if d < best {
+                best = d;
+                ans = i as i32;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.minimum_average_difference(nums)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: every value alike, a tie
+    // the first index must win, the last index (whose right side is
+    // empty), and the constraints' largest values
+    let examples: Vec[Vec[i64]] = [
+        [2, 5, 3, 9, 5, 3].to_vec(),
+        [0].to_vec(),
+        [4, 4, 4, 4].to_vec(),
+        [1, 3, 2].to_vec(),
+        [9, 1, 1, 1, 30].to_vec(),
+        [100000, 0, 100000, 100000].to_vec(),
+    ].to_vec();
+    for nums in examples.iter() {
+        println(f"{nums} -> {minimum_average_difference(nums)}");
+    }
+    // 2000 cases of 1 to 12 values from 0 to 10
+    let mut seed = 2256;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 12 + 1;
+        let nums: Vec[i64] = (0..n).map(|_| next_random(mut seed) % 11).collect();
+        let index = minimum_average_difference(nums);
+        total += index;
+        check = (check * 31 + index + 1) % 1000000007;
+    }
+    println(f"2000 cases: indices summing to {total}, checksum {check}");
+    // the constraints' largest, 10^5 values up to 10^5, three times: any
+    // value, values near 10^5, and values that only grow
+    let any: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 100001).collect();
+    let high: Vec[i64] = (0..100000).map(|_| 100000 - next_random(mut seed) % 3).collect();
+    let rising: Vec[i64] = (0..100000).map(|i| i + 1).collect();
+    println(f"10^5 values: {minimum_average_difference(any)}, {minimum_average_difference(high)}, {minimum_average_difference(rising)}");
+}

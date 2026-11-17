@@ -1,0 +1,289 @@
+// LeetCode #2256: Minimum Average Difference -- the differential. The six
+// arms, against the statement read literally: for every index, the two
+// sides summed afresh over their own ranges and their averages rounded
+// down, an empty side's 0, and the first index with the smallest gap
+// found by comparing every pair; no running sums. 300 random cases of 1
+// to 12 values from 0 to 10; then 30 of values up to 10^5; then 30 of 2
+// to 12 values of 0 or 1, where ties are many. Every case is drawn
+// before any arm answers.
+//
+// P1  the index is the literal reading's
+// P2  the index is in range
+// P3  no index has a smaller gap than the index given
+// P4  no index before it has as small a gap
+// P5  every value set to the first: the index 0
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- average.kara: the ★ arm, one pass with the total known
+fn star_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let total: i64 = nums.iter().sum();
+    let mut left = 0;
+    let mut best = 0;
+    let mut best_gap = -1;
+    for i in 0..n {
+        left += nums[i];
+        let right = total - left;
+        let left_average = left / (i + 1);
+        let right_average = if i + 1 == n { 0 } else { right / (n - i - 1) };
+        let gap = (left_average - right_average).abs();
+        if best_gap < 0 or gap < best_gap {
+            best_gap = gap;
+            best = i;
+        }
+    }
+    best
+}
+
+// ---- average_prefix.kara: a prefix-sum array
+fn prefix_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut best = 0;
+    let mut best_gap = i64.MAX;
+    for i in 0..n {
+        let first = prefix[i + 1] / (i + 1);
+        let rest = if i == n - 1 { 0 } else { (prefix[n] - prefix[i + 1]) / (n - i - 1) };
+        let gap = (first - rest).abs();
+        if gap < best_gap {
+            best_gap = gap;
+            best = i;
+        }
+    }
+    best
+}
+
+// ---- average_suffix.kara: a suffix-sum array built backwards
+fn suffix_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut suffix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in (0..n).rev() {
+        suffix[i] = suffix[i + 1] + nums[i];
+    }
+    let mut best = 0;
+    let mut best_gap = i64.MAX;
+    for i in 0..n {
+        let right = suffix[i + 1];
+        let left = suffix[0] - right;
+        let gap = (left / (i + 1) - if i + 1 < n { right / (n - i - 1) } else { 0 }).abs();
+        if gap < best_gap {
+            best_gap = gap;
+            best = i;
+        }
+    }
+    best
+}
+
+// ---- average_struct.kara: `Split`, `shift` and `gap`
+struct StructSplit {
+    left_sum: i64,
+    left_count: i64,
+    right_sum: i64,
+    right_count: i64,
+}
+
+fn struct_average(sum: i64, count: i64) -> i64 {
+    if count == 0 { 0 } else { sum / count }
+}
+
+impl StructSplit {
+    fn of(nums: Vec[i64]) -> StructSplit {
+        StructSplit { left_sum: 0, left_count: 0, right_sum: nums.iter().sum(), right_count: nums.len() }
+    }
+
+    fn shift(mut ref self, value: i64) {
+        self.left_sum += value;
+        self.left_count += 1;
+        self.right_sum -= value;
+        self.right_count -= 1;
+    }
+
+    fn gap(ref self) -> i64 {
+        (struct_average(self.left_sum, self.left_count) - struct_average(self.right_sum, self.right_count)).abs()
+    }
+}
+
+fn struct_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let mut split = StructSplit.of(nums);
+    let mut best: Option[(i64, i64)] = None;
+    for (i, value) in nums.iter().enumerate() {
+        split.shift(value);
+        let gap = split.gap();
+        best = match best {
+            Some((g, _)) if g <= gap => best,
+            _ => Some((gap, i)),
+        };
+    }
+    best.unwrap().1
+}
+
+// ---- average_iter.kara: `scan`, `enumerate`, `map` and `min_by_key`
+fn iter_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let total: i64 = nums.iter().sum();
+    nums.iter()
+        .scan(0, |sum, v| Some((sum + v, sum + v)))
+        .enumerate()
+        .map(|(i, left)| {
+            let right = if i + 1 == n { 0 } else { (total - left) / (n - i - 1) };
+            ((left / (i + 1) - right).abs(), i)
+        })
+        .min_by_key(|(gap, _)| gap)
+        .map(|(_, i)| i)
+        .unwrap()
+}
+
+// ---- average_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn minimum_average_difference(nums: Vec[i32]) -> i32 {
+        let n = nums.len();
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        let mut left: i64 = 0;
+        let mut (best, ans) = (i64.MAX, 0i32);
+        for (i, x) in nums.iter().enumerate() {
+            left += x as i64;
+            let i = i;
+            let a = left / (i + 1);
+            let b = if i + 1 == n { 0 } else { (total - left) / (n - i - 1) };
+            let d = (a - b).abs();
+            if d < best {
+                best = d;
+                ans = i as i32;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_minimum_average_difference(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|v| v as i32).collect();
+    Solution.minimum_average_difference(nums)
+}
+
+// ---- the statement read literally
+
+fn literal_gap(nums: Vec[i64], i: i64) -> i64 {
+    let n = nums.len();
+    let mut first = 0;
+    for k in 0..i + 1 {
+        first += nums[k];
+    }
+    let mut rest = 0;
+    for k in i + 1..n {
+        rest += nums[k];
+    }
+    let first_average = first / (i + 1);
+    let rest_average = if n - i - 1 == 0 { 0 } else { rest / (n - i - 1) };
+    (first_average - rest_average).abs()
+}
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    for i in 0..n {
+        let mut smallest = true;
+        for j in 0..n {
+            if literal_gap(nums, j) < literal_gap(nums, i) or (j < i and literal_gap(nums, j) == literal_gap(nums, i)) {
+                smallest = false;
+            }
+        }
+        if smallest {
+            return i;
+        }
+    }
+    -1
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_minimum_average_difference(nums),
+        1 => prefix_minimum_average_difference(nums),
+        2 => suffix_minimum_average_difference(nums),
+        3 => struct_minimum_average_difference(nums),
+        4 => iter_minimum_average_difference(nums),
+        _ => solution_minimum_average_difference(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let names = ["star", "prefix", "suffix", "struct", "iter", "solution"];
+    let mut seed = 2256;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 330 { next_random(mut seed) % 12 + 1 } else { next_random(mut seed) % 11 + 2 };
+        let nums: Vec[i64] = (0..n).map(|_| {
+            if c < 300 {
+                next_random(mut seed) % 11
+            } else if c < 330 {
+                wide_random(mut seed) % 100001
+            } else {
+                next_random(mut seed) % 2
+            }
+        }).collect();
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let n = nums.len();
+        let flat: Vec[i64] = nums.iter().map(|_| nums[0]).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let in_range = 0 <= value and value < n;
+            let verdicts = [
+                value == truth,
+                in_range,
+                in_range and (0..n).all(|j| literal_gap(nums, j) >= literal_gap(nums, value)),
+                in_range and (0..value).all(|j| literal_gap(nums, j) > literal_gap(nums, value)),
+                answer(arm, flat) == 0,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
