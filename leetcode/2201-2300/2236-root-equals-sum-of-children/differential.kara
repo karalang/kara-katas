@@ -1,0 +1,240 @@
+// LeetCode #2236: Root Equals Sum of Children -- the differential. The
+// six arms, against the statement read literally on the three values
+// as drawn, before any tree is built: the root's value less the left
+// child's is the right child's; no tree and no `+`. 300 random trees,
+// the children from -50 to 50 and the root one below, at or one above
+// their sum, in turn; then 30 of the values -100, 0 and 100 only; then
+// 30 with a child of 0 and the root the other child or its negation.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the statement's
+// P2  the children swapped: the same answer
+// P3  where it holds, the root one higher or one lower: it does not
+// P4  every value negated: the same answer
+// P5  the root replaced by the children's sum (when in range): it holds
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- check.kara: the ★ arm, one `match` on the pair of children
+fn star_check_tree(root: Option[TreeNode]) -> bool {
+    match root {
+        Some(node) => match (node.left, node.right) {
+            (Some(left), Some(right)) => node.val == left.val + right.val,
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+// ---- check_walk.kara: a missing child read as 0
+fn walk_value(child: Option[TreeNode]) -> i64 {
+    match child {
+        Some(node) => node.val,
+        None => 0,
+    }
+}
+
+fn walk_check_tree(root: Option[TreeNode]) -> bool {
+    if let Some(node) = root {
+        node.val == walk_value(node.left) + walk_value(node.right)
+    } else {
+        true
+    }
+}
+
+// ---- check_levels.kara: breadth first, the sums of the first two levels
+fn levels_check_tree(root: Option[TreeNode]) -> bool {
+    let mut sums: Vec[i64] = Vec.new();
+    let mut level: Vec[TreeNode] = Vec.new();
+    if let Some(node) = root {
+        level.push(node);
+    }
+    while not level.is_empty() {
+        let mut total = 0;
+        let mut next: Vec[TreeNode] = Vec.new();
+        for node in level.iter() {
+            total += node.val;
+            if let Some(child) = node.left {
+                next.push(child);
+            }
+            if let Some(child) = node.right {
+                next.push(child);
+            }
+        }
+        sums.push(total);
+        level = next;
+    }
+    sums.len() >= 2 and sums[0] == sums[1]
+}
+
+// ---- check_struct.kara: `Family`, `from_tree` and `holds`
+struct Family {
+    parent: i64,
+    first: i64,
+    second: i64,
+}
+
+impl Family {
+    fn from_tree(node: TreeNode) -> Family {
+        Family {
+            parent: node.val,
+            first: node.left.unwrap().val,
+            second: node.right.unwrap().val,
+        }
+    }
+
+    fn holds(ref self) -> bool {
+        self.parent == self.first + self.second
+    }
+}
+
+fn struct_check_tree(root: Option[TreeNode]) -> bool {
+    Family.from_tree(root.unwrap()).holds()
+}
+
+// ---- check_iter.kara: the children `map`ped and `sum`med
+fn iter_check_tree(root: Option[TreeNode]) -> bool {
+    let node = root.unwrap();
+    let children = [node.left, node.right];
+    let total: i64 = children.iter().map(|c| c.map(|n| n.val as i64).unwrap_or(0)).sum();
+    node.val == total
+}
+
+// ---- check_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn check_tree(root: Option[TreeNode]) -> bool {
+        let root = root.unwrap();
+        let node = root;
+        let left = node.left.as_ref().unwrap().val;
+        let right = node.right.as_ref().unwrap().val;
+        node.val == left + right
+    }
+}
+
+struct Solution {}
+
+fn solution_check_tree(root: Option[TreeNode]) -> bool {
+    Solution.check_tree(root)
+}
+
+// ---- the tree and the statement read literally
+
+// LeetCode's TreeNode: an `i32` value and two children, with its `new`.
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val: val, left: None, right: None }
+    }
+}
+
+fn tree(root: i64, left: i64, right: i64) -> Option[TreeNode] {
+    let node = TreeNode.new(root as i32);
+    node.left = Some(TreeNode.new(left as i32));
+    node.right = Some(TreeNode.new(right as i32));
+    Some(node)
+}
+
+fn literal(root: i64, left: i64, right: i64) -> bool {
+    root - left == right
+}
+
+fn answer(arm: i64, root: i64, left: i64, right: i64) -> bool {
+    match arm {
+        0 => star_check_tree(tree(root, left, right)),
+        1 => walk_check_tree(tree(root, left, right)),
+        2 => levels_check_tree(tree(root, left, right)),
+        3 => struct_check_tree(tree(root, left, right)),
+        4 => iter_check_tree(tree(root, left, right)),
+        _ => solution_check_tree(tree(root, left, right)),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "walk", "levels", "struct", "iter", "solution"];
+    let ends = [-100, 0, 100];
+    let mut seed = 2236;
+    let mut cases: Vec[(i64, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        if c < 300 {
+            let left = next_random(mut seed) % 101 - 50;
+            let right = next_random(mut seed) % 101 - 50;
+            let mut root = left + right + c % 3 - 1;
+            if root < -100 or root > 100 {
+                root = left + right;
+            }
+            cases.push((root, left, right));
+        } else if c < 330 {
+            let root = ends[next_random(mut seed) % 3];
+            let left = ends[next_random(mut seed) % 3];
+            let right = ends[next_random(mut seed) % 3];
+            cases.push((root, left, right));
+        } else {
+            let other = next_random(mut seed) % 201 - 100;
+            let root = if c % 2 == 0 { other } else { -other };
+            if c % 4 < 2 {
+                cases.push((root, 0, other));
+            } else {
+                cases.push((root, other, 0));
+            }
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (root, left, right) in cases.iter() {
+        let truth = literal(root, left, right);
+        check = (check * 2 + if truth { 1 } else { 0 }) % 1000000007;
+        let sum = left + right;
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, root, left, right)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, root, right, left) == value,
+                not value or (not answer(arm, root + 1, left, right) and not answer(arm, root - 1, left, right)),
+                answer(arm, -root, -left, -right) == value,
+                sum < -100 or sum > 100 or answer(arm, sum, left, right),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"[{root}, {left}, {right}] arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    let holding = cases.iter().filter(|t| literal(t.0, t.1, t.2)).count();
+    println(f"{cases.len()} cases, {holding} holding: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

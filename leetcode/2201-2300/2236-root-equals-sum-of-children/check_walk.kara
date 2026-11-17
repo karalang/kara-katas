@@ -1,0 +1,89 @@
+// LeetCode #2236: Root Equals Sum of Children -- for any tree, not only
+// one of three nodes: each child's value through a helper that reads a
+// missing child as 0, and the root against their sum. O(1).
+
+fn value(child: Option[TreeNode]) -> i64 {
+    match child {
+        Some(node) => node.val,
+        None => 0,
+    }
+}
+
+fn check_tree(root: Option[TreeNode]) -> bool {
+    if let Some(node) = root {
+        node.val == value(node.left) + value(node.right)
+    } else {
+        true
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's TreeNode: an `i32` value and two children, with its `new`.
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+impl TreeNode {
+    fn new(val: i32) -> TreeNode {
+        TreeNode { val: val, left: None, right: None }
+    }
+}
+
+// the tree of the statement: a root and its two children
+fn tree(root: i64, left: i64, right: i64) -> Option[TreeNode] {
+    let node = TreeNode.new(root as i32);
+    node.left = Some(TreeNode.new(left as i32));
+    node.right = Some(TreeNode.new(right as i32));
+    Some(node)
+}
+
+fn show(root: i64, left: i64, right: i64) {
+    println(f"[{root}, {left}, {right}] -> {check_tree(tree(root, left, right))}");
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: all zero, both ends, the
+    // children cancelling, the sum one off, and the children swapped
+    show(10, 4, 6);
+    show(5, 3, 1);
+    show(0, 0, 0);
+    show(-100, -50, -50);
+    show(0, -100, 100);
+    show(100, 100, 1);
+    show(10, 6, 4);
+    // every pair of children from -100 to 100, each under the roots one
+    // below, at and one above their sum, those within -100 to 100
+    let mut trees = 0;
+    let mut holding = 0;
+    for left in -100..=100 {
+        for right in -100..=100 {
+            for root in left + right - 1..=left + right + 1 {
+                if root >= -100 and root <= 100 {
+                    trees += 1;
+                    if check_tree(tree(root, left, right)) {
+                        holding += 1;
+                    }
+                }
+            }
+        }
+    }
+    println(f"{trees} trees near the sum: {holding} hold");
+    // 3000 random trees of values from -100 to 100
+    let mut seed = 2236;
+    let mut check = 0;
+    for _ in 0..3000 {
+        let root = next_random(mut seed) % 201 - 100;
+        let left = next_random(mut seed) % 201 - 100;
+        let right = next_random(mut seed) % 201 - 100;
+        check = (check * 2 + if check_tree(tree(root, left, right)) { 1 } else { 0 }) % 1000000007;
+    }
+    println(f"3000 random trees: checksum {check}");
+}
