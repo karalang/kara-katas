@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2236 slug=root-equals-sum-of-children group=2201-2300 \
-    title="Minimize Result by Adding Parentheses to Expression" \
-    workload="build 20000 expressions once, then 20 passes over all of them, one redrawn before each; sink=checksum" sink="$expected"
+    title="Root Equals Sum of Children" \
+    workload="build and check 10^6 three-node trees; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

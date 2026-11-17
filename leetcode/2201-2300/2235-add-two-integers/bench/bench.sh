@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2235 slug=add-two-integers group=2201-2300 \
-    title="Minimize Result by Adding Parentheses to Expression" \
-    workload="build 20000 expressions once, then 20 passes over all of them, one redrawn before each; sink=checksum" sink="$expected"
+    title="Add Two Integers" \
+    workload="10^7 pairs from -100 to 100 drawn and added; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

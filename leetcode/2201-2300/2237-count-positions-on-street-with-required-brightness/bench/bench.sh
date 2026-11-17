@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2237 slug=count-positions-on-street-with-required-brightness group=2201-2300 \
-    title="Minimize Result by Adding Parentheses to Expression" \
-    workload="build 20000 expressions once, then 20 passes over all of them, one redrawn before each; sink=checksum" sink="$expected"
+    title="Count Positions on Street With Required Brightness" \
+    workload="build 10^5 lights over 10^5 positions once, then 100 passes, one light and one requirement redrawn before each; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30

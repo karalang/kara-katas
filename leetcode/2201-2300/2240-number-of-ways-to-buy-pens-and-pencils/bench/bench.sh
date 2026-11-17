@@ -121,8 +121,8 @@ fi
 echo
 
 bench_begin id=2240 slug=number-of-ways-to-buy-pens-and-pencils group=2201-2300 \
-    title="Minimize Result by Adding Parentheses to Expression" \
-    workload="build 20000 expressions once, then 20 passes over all of them, one redrawn before each; sink=checksum" sink="$expected"
+    title="Number of Ways to Buy Pens and Pencils" \
+    workload="300 cases with the money at 10^6, a pen from 1 to 10, a pencil up to 10^6; sink=checksum" sink="$expected"
 
 echo "=== runtime — short workloads (compiled) ==="
 rt_begin --warmup 5 --runs 30
