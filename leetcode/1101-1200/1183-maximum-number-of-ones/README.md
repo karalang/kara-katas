@@ -128,7 +128,7 @@ Python.
 
 Timings on a 4-core container (Intel Xeon, 2.1 GHz), twelve interleaved
 runs of each compiled program and two of Python, with karac `2a5724c2d4`
-and kata 1182's two fixes, on LLVM 22:
+and kata 1186's two fixes, on LLVM 22:
 
 | | time | median |
 |---|---|---|
