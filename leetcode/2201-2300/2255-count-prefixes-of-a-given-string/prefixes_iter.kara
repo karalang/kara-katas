@@ -1,0 +1,72 @@
+// LeetCode #2255: Count Prefixes of a Given String -- iterator chains: a
+// word counts when it is no longer than s and `all` of its characters
+// `zip`ped with s's match, the words that do kept by `filter` and
+// `count`ed. O(words * |s|).
+
+fn count_prefixes(words: Vec[String], s: String) -> i64 {
+    words
+        .iter()
+        .filter(|w| w.len() <= s.len() and w.chars().zip(s.chars()).all(|(a, b)| a == b))
+        .count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a word of 1 to `longest` letters from the first `letters` of the alphabet
+fn random_word(seed: mut ref i64, longest: i64, letters: i64) -> String {
+    let length = next_random(mut seed) % longest + 1;
+    let chars: Vec[String] = (0..length).map(|_| {
+        let k = next_random(mut seed) % letters;
+        "abcde".substring(k, k + 1)
+    }).collect();
+    chars.join("")
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a word longer than s, a
+    // word that is s itself, the same prefix many times, and a word that
+    // matches s but for its last letter
+    let examples: Vec[(Vec[String], String)] = [
+        (["a", "b", "c", "ab", "bc", "abc"].to_vec(), "abc"),
+        (["a", "a"].to_vec(), "aa"),
+        (["abcd", "abc"].to_vec(), "abc"),
+        (["z"].to_vec(), "z"),
+        (["ab", "ab", "ab", "b"].to_vec(), "abab"),
+        (["abd", "abc", "ab", "abcde"].to_vec(), "abcd"),
+    ].to_vec();
+    for (words, s) in examples.iter() {
+        println(f"{words} {s} -> {count_prefixes(words, s)}");
+    }
+    // 2000 cases of 1 to 8 words of 1 to 4 letters and an s of 1 to 6,
+    // from 2 letters
+    let mut seed = 2255;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 8 + 1;
+        let words: Vec[String] = (0..n).map(|_| random_word(mut seed, 4, 2)).collect();
+        let s = random_word(mut seed, 6, 2);
+        let count = count_prefixes(words, s);
+        total += count;
+        check = (check * 31 + count + 1) % 1000000007;
+    }
+    println(f"2000 cases: {total} prefixes in all, checksum {check}");
+    // 200 cases of the constraints' most words, 1000 of up to 10 letters,
+    // from 1 to 5 letters, and an s of up to 10
+    total = 0;
+    check = 0;
+    for c in 0..200 {
+        let letters = c % 5 + 1;
+        let words: Vec[String] = (0..1000).map(|_| random_word(mut seed, 10, letters)).collect();
+        let s = random_word(mut seed, 10, letters);
+        let count = count_prefixes(words, s);
+        total += count;
+        check = (check * 31 + count + 1) % 1000000007;
+    }
+    println(f"200 cases of 1000 words: {total} prefixes in all, checksum {check}");
+}
