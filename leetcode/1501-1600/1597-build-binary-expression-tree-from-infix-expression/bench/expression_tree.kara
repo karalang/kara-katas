@@ -1,0 +1,100 @@
+// LeetCode #1597: Build Binary Expression Tree From Infix Expression --
+// the bench: the ★ arm on 200000 expressions of up to 50 digits, all drawn
+// first, each tree folded to a hash.
+//
+// The ★ arm: two stacks, as the shunting-yard reads an expression.
+
+fn precedence(op: char) -> i64 {
+    match op {
+        '+' | '-' => 1,
+        '*' | '/' => 2,
+        _ => 0,
+    }
+}
+
+fn join(ops: mut ref Vec[char], trees: mut ref Vec[Node]) {
+    let op = ops.pop().unwrap();
+    let right = trees.pop().unwrap();
+    let left = trees.pop().unwrap();
+    trees.push(Node { val: op, left: Some(left), right: Some(right) });
+}
+
+fn exp_tree(s: String) -> Option[Node] {
+    let mut ops: Vec[char] = Vec.new();
+    let mut trees: Vec[Node] = Vec.new();
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            trees.push(Node.new(c));
+        } else if c == '(' {
+            ops.push(c);
+        } else if c == ')' {
+            while ops.last() != Some('(') {
+                join(mut ops, mut trees);
+            }
+            ops.pop();
+        } else {
+            while ops.last().is_some_and(|top| precedence(*top) >= precedence(c)) {
+                join(mut ops, mut trees);
+            }
+            ops.push(c);
+        }
+    }
+    while not ops.is_empty() {
+        join(mut ops, mut trees);
+    }
+    trees.pop()
+}
+
+// LeetCode's node: an operator or a digit, and two children.
+shared struct Node {
+    mut val: char,
+    mut left: Option[Node],
+    mut right: Option[Node],
+}
+
+impl Node {
+    fn new(val: char) -> Node {
+        Node { val: val, left: None, right: None }
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random expression of up to `operands` digits, a quarter of its parts
+// in parentheses.
+fn expression(operands: i64, seed: mut ref i64) -> String {
+    if operands <= 1 or next_random(mut seed) % 4 == 0 {
+        return f"{next_random(mut seed) % 10}";
+    }
+    let left = next_random(mut seed) % (operands - 1) + 1;
+    let op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    let body = f"{expression(left, mut seed)}{op}{expression(operands - left, mut seed)}";
+    if next_random(mut seed) % 4 == 0 { f"({body})" } else { body }
+}
+
+// Each node's character and its children's hashes, folded bottom up.
+fn fold(tree: Node) -> i64 {
+    let left = match tree.left.clone() { Some(l) => fold(l), None => 7 };
+    let right = match tree.right.clone() { Some(r) => fold(r), None => 11 };
+    ((tree.val as i64) * 1000003 + left * 31 + right * 17) % 1000000007
+}
+
+fn main() {
+    let mut seed = 1597;
+    let mut texts: Vec[String] = Vec.new();
+    for _ in 0..200000 {
+        let operands = next_random(mut seed) % 50 + 1;
+        texts.push(expression(operands, mut seed));
+    }
+    let mut check = 0;
+    let mut length = 0;
+    for s in texts.iter() {
+        length += s.len();
+        let tree = exp_tree(s).unwrap();
+        check = (check * 31 + fold(tree)) % 1000000007;
+    }
+    println(f"200000 expressions, {length} characters: checksum {check}");
+}

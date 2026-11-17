@@ -1,0 +1,452 @@
+// LeetCode #1597: Build Binary Expression Tree From Infix Expression
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 expressions
+// of up to 6 digits, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the tree is the one the order of operations builds, read literally
+// P2  the tree read in order is the expression without its parentheses
+// P3  the expression in one more pair of parentheses leaves the tree
+// P4  each digit d made 9 - d makes the same change to the tree
+// P5  + and - swapped, and * and /, make the same change to the tree
+// P6  each arm agrees with at least two of the other three
+
+// ---- expression_tree.kara: the ★ arm: two stacks, the shunting-yard
+
+fn star_precedence(op: char) -> i64 {
+    match op {
+        '+' | '-' => 1,
+        '*' | '/' => 2,
+        _ => 0,
+    }
+}
+
+fn star_join(ops: mut ref Vec[char], trees: mut ref Vec[Node]) {
+    let op = ops.pop().unwrap();
+    let right = trees.pop().unwrap();
+    let left = trees.pop().unwrap();
+    trees.push(Node { val: op, left: Some(left), right: Some(right) });
+}
+
+fn star_arm(s: String) -> Option[Node] {
+    let mut ops: Vec[char] = Vec.new();
+    let mut trees: Vec[Node] = Vec.new();
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            trees.push(Node.new(c));
+        } else if c == '(' {
+            ops.push(c);
+        } else if c == ')' {
+            while ops.last() != Some('(') {
+                star_join(mut ops, mut trees);
+            }
+            ops.pop();
+        } else {
+            while ops.last().is_some_and(|top| star_precedence(*top) >= star_precedence(c)) {
+                star_join(mut ops, mut trees);
+            }
+            ops.push(c);
+        }
+    }
+    while not ops.is_empty() {
+        star_join(mut ops, mut trees);
+    }
+    trees.pop()
+}
+
+// ---- expression_tree_descent.kara: recursive descent over a Parser struct
+
+struct DescentParser {
+    chars: Vec[char],
+    at: i64,
+}
+
+impl DescentParser {
+    fn peek(self) -> Option[char] {
+        if self.at < self.chars.len() { Some(self.chars[self.at]) } else { None }
+    }
+
+    fn expression(mut ref self) -> Node {
+        let mut tree = self.term();
+        while let Some(op) = self.peek() {
+            if op != '+' and op != '-' {
+                break;
+            }
+            self.at += 1;
+            let right = self.term();
+            tree = Node { val: op, left: Some(tree), right: Some(right) };
+        }
+        tree
+    }
+
+    fn term(mut ref self) -> Node {
+        let mut tree = self.factor();
+        while let Some(op) = self.peek() {
+            if op != '*' and op != '/' {
+                break;
+            }
+            self.at += 1;
+            let right = self.factor();
+            tree = Node { val: op, left: Some(tree), right: Some(right) };
+        }
+        tree
+    }
+
+    fn factor(mut ref self) -> Node {
+        let c = self.chars[self.at];
+        self.at += 1;
+        if c == '(' {
+            let inside = self.expression();
+            self.at += 1;
+            inside
+        } else {
+            Node.new(c)
+        }
+    }
+}
+
+fn descent_arm(s: String) -> Option[Node] {
+    let mut parser = DescentParser { chars: s.chars().collect(), at: 0 };
+    Some(parser.expression())
+}
+
+// ---- expression_tree_split.kara: by the last operator to apply, over Str slices
+
+fn split_wrapped(s: Str) -> bool {
+    if not s.starts_with("(") {
+        return false;
+    }
+    let mut depth = 0;
+    for (i, c) in s.char_indices() {
+        if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+            if depth == 0 {
+                return i == s.len() - 1;
+            }
+        }
+    }
+    false
+}
+
+fn split_build(s: Str) -> Node {
+    if split_wrapped(s) {
+        return split_build(s[1..s.len() - 1]);
+    }
+    let mut depth = 0;
+    let mut low: Option[i64] = None;
+    let mut high: Option[i64] = None;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '+' | '-' if depth == 0 => low = Some(i),
+            '*' | '/' if depth == 0 => high = Some(i),
+            _ => {}
+        }
+    }
+    match low.or(high) {
+        Some(at) => Node {
+            val: s[at..at + 1].chars().next().unwrap(),
+            left: Some(split_build(s[..at])),
+            right: Some(split_build(s[at + 1..])),
+        },
+        None => Node.new(s.chars().next().unwrap()),
+    }
+}
+
+fn split_arm(s: String) -> Option[Node] {
+    Some(split_build(s))
+}
+
+// ---- expression_tree_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+fn solution_prec(c: char) -> i32 {
+    match c {
+        '+' | '-' => 1,
+        '*' | '/' => 2,
+        _ => 0,
+    }
+}
+
+fn solution_combine(ops: mut ref Vec[char], nodes: mut ref Vec[Option[Node]]) {
+    let op = ops.pop().unwrap();
+    let right = nodes.pop().unwrap();
+    let left = nodes.pop().unwrap();
+    let node = Node.new(op);
+    node.left = left;
+    node.right = right;
+    nodes.push(Some(node));
+}
+
+impl SolutionArm {
+    pub fn exp_tree(s: String) -> Option[Node] {
+        let mut ops: Vec[char] = Vec.new();
+        let mut nodes: Vec[Option[Node]] = Vec.new();
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                nodes.push(Some(Node.new(c)));
+            } else if c == '(' {
+                ops.push(c);
+            } else if c == ')' {
+                while *ops.last().unwrap() != '(' {
+                    solution_combine(mut ops, mut nodes);
+                }
+                ops.pop();
+            } else {
+                while not ops.is_empty() and solution_prec(*ops.last().unwrap()) >= solution_prec(c) {
+                    solution_combine(mut ops, mut nodes);
+                }
+                ops.push(c);
+            }
+        }
+        while not ops.is_empty() {
+            solution_combine(mut ops, mut nodes);
+        }
+        nodes.pop().unwrap()
+    }
+}
+
+fn solution_arm(s: String) -> Option[Node] {
+    SolutionArm.exp_tree(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+// LeetCode's node: an operator or a digit, and two children.
+shared struct Node {
+    mut val: char,
+    mut left: Option[Node],
+    mut right: Option[Node],
+}
+
+impl Node {
+    fn new(val: char) -> Node {
+        Node { val: val, left: None, right: None }
+    }
+}
+
+// The tree as LeetCode prints it: level by level, `null` for a missing
+// child, trailing `null`s dropped.
+fn serialize(root: Option[Node]) -> String {
+    let mut queue: Vec[Option[Node]] = [root];
+    let mut out: Vec[String] = Vec.new();
+    let mut at = 0;
+    while at < queue.len() {
+        match queue[at].clone() {
+            Some(n) => {
+                out.push(n.val.to_string());
+                queue.push(n.left.clone());
+                queue.push(n.right.clone());
+            }
+            None => out.push("null"),
+        }
+        at += 1;
+    }
+    while out.last() == Some("null") {
+        out.pop();
+    }
+    f"[{out.join(",")}]"
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random expression of up to `operands` digits, a quarter of its parts
+// in parentheses.
+fn expression(operands: i64, seed: mut ref i64) -> String {
+    if operands <= 1 or next_random(mut seed) % 4 == 0 {
+        return f"{next_random(mut seed) % 10}";
+    }
+    let left = next_random(mut seed) % (operands - 1) + 1;
+    let op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    let body = f"{expression(left, mut seed)}{op}{expression(operands - left, mut seed)}";
+    if next_random(mut seed) % 4 == 0 { f"({body})" } else { body }
+}
+
+fn arm(a: i64, s: String) -> String {
+    serialize(match a {
+        0 => star_arm(s),
+        1 => descent_arm(s),
+        2 => split_arm(s),
+        _ => solution_arm(s),
+    })
+}
+
+fn arm_name(a: i64) -> String {
+    ["expression_tree", "descent", "split", "solution"][a].to_string()
+}
+
+fn in_order(tree: Option[Node]) -> String {
+    match tree {
+        Some(n) => f"{in_order(n.left.clone())}{n.val}{in_order(n.right.clone())}",
+        None => "",
+    }
+}
+
+fn rename(text: String, from: String, to: String) -> String {
+    text.chars().map(|c| match from.find(c.to_string()) {
+        Some(at) => to.chars().nth(at).unwrap(),
+        None => c,
+    }).collect()
+}
+
+// ---- the statement read literally: the order of operations applied by
+// hand. The innermost parentheses first (those holding no others); inside
+// them the leftmost `*` or `/` with its two neighbours, or failing that
+// the leftmost `+` or `-`, made one tree; a pair of parentheses around
+// one tree dropped; until one tree is left.
+
+enum Item {
+    Tree(Node),
+    Open,
+    Close,
+    Op(char),
+}
+
+fn literal(s: String) -> Option[Node] {
+    let mut items: Vec[Item] = s.chars().map(|c| match c {
+        '(' => Item.Open,
+        ')' => Item.Close,
+        '+' | '-' | '*' | '/' => Item.Op(c),
+        _ => Item.Tree(Node.new(c)),
+    }).collect();
+    loop {
+        let close = items.iter().position(|it| match it { Item.Close => true, _ => false });
+        let (from, to) = match close {
+            Some(c) => {
+                let mut o = c - 1;
+                while not (match items[o] { Item.Open => true, _ => false }) {
+                    o -= 1;
+                }
+                (o + 1, c)
+            }
+            None => (0, items.len()),
+        };
+        if to - from == 1 {
+            if close.is_none() {
+                break;
+            }
+            items.remove(to);
+            items.remove(from - 1);
+            continue;
+        }
+        let mut at: Option[i64] = None;
+        for k in from..to {
+            if let Item.Op(op) = ref items[k] {
+                if (op == '*' or op == '/') and at.is_none() {
+                    at = Some(k);
+                }
+            }
+        }
+        if at.is_none() {
+            for k in from..to {
+                if let Item.Op(_) = ref items[k] {
+                    if at.is_none() {
+                        at = Some(k);
+                    }
+                }
+            }
+        }
+        let k = at.unwrap();
+        let right = items.remove(k + 1);
+        let op = items.remove(k);
+        let left = items.remove(k - 1);
+        let joined = match (left, op, right) {
+            (Item.Tree(l), Item.Op(o), Item.Tree(r)) => Node { val: o, left: Some(l), right: Some(r) },
+            _ => panic("an operator between two trees"),
+        };
+        items.insert(k - 1, Item.Tree(joined));
+    }
+    match items.pop() {
+        Some(Item.Tree(t)) => Some(t),
+        _ => None,
+    }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15970;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let operands = next_random(mut seed) % 6 + 1;
+        cases.push(expression(operands, mut seed));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, s) in cases.iter().enumerate() {
+        let truth = serialize(literal(s));
+        let bare: String = s.chars().filter(|c| c != '(' and c != ')').collect();
+        let wrapped = f"({s})";
+        let digits = "0123456789";
+        let flipped = "9876543210";
+        let ops = "+-*/";
+        let swapped = "-+/*";
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, s);
+            for c in answer.chars() {
+                check = (check * 31 + c as i64 + 1) % 1000000007;
+            }
+            let tree = match a {
+                0 => star_arm(s),
+                1 => descent_arm(s),
+                2 => split_arm(s),
+                _ => solution_arm(s),
+            };
+            let failed = [
+                answer != truth,
+                in_order(tree) != bare,
+                arm(a, wrapped) != answer,
+                arm(a, rename(s, digits, flipped)) != rename(answer, digits, flipped),
+                arm(a, rename(s, ops, swapped)) != rename(answer, ops, swapped),
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} \"{s}\", {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

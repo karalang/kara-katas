@@ -1,0 +1,142 @@
+// LeetCode #1597: Build Binary Expression Tree From Infix Expression --
+// recursive descent.
+//
+// The grammar read by one function a level: an expression is terms
+// joined by `+` and `-`, a term is factors joined by `*` and `/`, and a
+// factor is a digit or an expression in parentheses; each loop joins
+// from the left. A `Parser` struct holds the characters and the place.
+// O(n).
+
+struct Parser {
+    chars: Vec[char],
+    at: i64,
+}
+
+impl Parser {
+    fn peek(self) -> Option[char] {
+        if self.at < self.chars.len() { Some(self.chars[self.at]) } else { None }
+    }
+
+    fn expression(mut ref self) -> Node {
+        let mut tree = self.term();
+        while let Some(op) = self.peek() {
+            if op != '+' and op != '-' {
+                break;
+            }
+            self.at += 1;
+            let right = self.term();
+            tree = Node { val: op, left: Some(tree), right: Some(right) };
+        }
+        tree
+    }
+
+    fn term(mut ref self) -> Node {
+        let mut tree = self.factor();
+        while let Some(op) = self.peek() {
+            if op != '*' and op != '/' {
+                break;
+            }
+            self.at += 1;
+            let right = self.factor();
+            tree = Node { val: op, left: Some(tree), right: Some(right) };
+        }
+        tree
+    }
+
+    fn factor(mut ref self) -> Node {
+        let c = self.chars[self.at];
+        self.at += 1;
+        if c == '(' {
+            let inside = self.expression();
+            self.at += 1;
+            inside
+        } else {
+            Node.new(c)
+        }
+    }
+}
+
+fn exp_tree(s: String) -> Option[Node] {
+    let mut parser = Parser { chars: s.chars().collect(), at: 0 };
+    Some(parser.expression())
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+// LeetCode's node: an operator or a digit, and two children.
+shared struct Node {
+    mut val: char,
+    mut left: Option[Node],
+    mut right: Option[Node],
+}
+
+impl Node {
+    fn new(val: char) -> Node {
+        Node { val: val, left: None, right: None }
+    }
+}
+
+// The tree as LeetCode prints it: level by level, `null` for a missing
+// child, trailing `null`s dropped.
+fn serialize(root: Option[Node]) -> String {
+    let mut queue: Vec[Option[Node]] = [root];
+    let mut out: Vec[String] = Vec.new();
+    let mut at = 0;
+    while at < queue.len() {
+        match queue[at].clone() {
+            Some(n) => {
+                out.push(n.val.to_string());
+                queue.push(n.left.clone());
+                queue.push(n.right.clone());
+            }
+            None => out.push("null"),
+        }
+        at += 1;
+    }
+    while out.last() == Some("null") {
+        out.pop();
+    }
+    f"[{out.join(",")}]"
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random expression of up to `operands` digits, a quarter of its parts
+// in parentheses.
+fn expression(operands: i64, seed: mut ref i64) -> String {
+    if operands <= 1 or next_random(mut seed) % 4 == 0 {
+        return f"{next_random(mut seed) % 10}";
+    }
+    let left = next_random(mut seed) % (operands - 1) + 1;
+    let op = ["+", "-", "*", "/"][next_random(mut seed) % 4].clone();
+    let body = f"{expression(left, mut seed)}{op}{expression(operands - left, mut seed)}";
+    if next_random(mut seed) % 4 == 0 { f"({body})" } else { body }
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut nodes = 0;
+    for _ in 0..count {
+        let s = expression(next_random(mut seed) % most + 1, mut seed);
+        let shown = serialize(exp_tree(s));
+        for c in shown.chars() {
+            check = (check * 31 + c as i64 + 1) % 1000000007;
+        }
+        nodes += shown.chars().filter(|c| c.is_ascii_digit() or c == '+' or c == '-' or c == '*' or c == '/').count();
+    }
+    println(f"{count} expressions of up to {most} digits: {nodes} nodes, checksum {check}");
+}
+
+fn main() {
+    let examples = ["3*4-2*5", "2-3/(5*2)+1", "1+2+3+4+5", "1", "(((7)))", "9-(8-(7-6))", "1*2+3*4/5-6"];
+    for s in examples.iter() {
+        println(f"\"{s}\" -> {serialize(exp_tree(s.to_string()))}");
+    }
+    let mut seed = 1597;
+    batch(3000, 4, mut seed);
+    batch(300, 12, mut seed);
+    batch(30, 25, mut seed);
+}
