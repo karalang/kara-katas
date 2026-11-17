@@ -1,0 +1,97 @@
+// LeetCode #2245: Maximum Trailing Zeros in a Cornered Path -- flat
+// storage: the factors of 1 to 1000 looked up in two tables built once
+// from the smaller values (`twos[v] = twos[v / 2] + 1` for even v), and
+// the row and column prefix sums kept in four flat `Vec[i64]`s indexed
+// by `i * (n + 1) + j` and `i * n + j`, since m * n is bounded but m and
+// n alone are not. O(m * n + 1000).
+
+fn max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let mut twos: Vec[i64] = Vec.filled(1001, 0);
+    let mut fives: Vec[i64] = Vec.filled(1001, 0);
+    for v in 2..1001 {
+        if v % 2 == 0 {
+            twos[v] = twos[v / 2] + 1;
+        }
+        if v % 5 == 0 {
+            fives[v] = fives[v / 5] + 1;
+        }
+    }
+    let m = grid.len();
+    let n = grid[0].len();
+    let w = n + 1;
+    let mut row_t: Vec[i64] = Vec.filled(m * w, 0);
+    let mut row_f: Vec[i64] = Vec.filled(m * w, 0);
+    let mut col_t: Vec[i64] = Vec.filled((m + 1) * n, 0);
+    let mut col_f: Vec[i64] = Vec.filled((m + 1) * n, 0);
+    for i in 0..m {
+        for j in 0..n {
+            let v = grid[i][j];
+            row_t[i * w + j + 1] = row_t[i * w + j] + twos[v];
+            row_f[i * w + j + 1] = row_f[i * w + j] + fives[v];
+            col_t[(i + 1) * n + j] = col_t[i * n + j] + twos[v];
+            col_f[(i + 1) * n + j] = col_f[i * n + j] + fives[v];
+        }
+    }
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let lt = row_t[i * w + j + 1];
+            let lf = row_f[i * w + j + 1];
+            let rt = row_t[i * w + n] - row_t[i * w + j];
+            let rf = row_f[i * w + n] - row_f[i * w + j];
+            let ut = col_t[i * n + j];
+            let uf = col_f[i * n + j];
+            let dt = col_t[m * n + j] - col_t[(i + 1) * n + j];
+            let df = col_f[m * n + j] - col_f[(i + 1) * n + j];
+            best = best.max((lt + ut).min(lf + uf)).max((lt + dt).min(lf + df));
+            best = best.max((rt + ut).min(rf + uf)).max((rt + dt).min(rf + df));
+        }
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i64]] {
+    (0..rows).map(|_| (0..cols).map(|_| next_random(mut seed) % top + 1).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one cell, one row, one
+    // column, and a 125 and an 8 joined only through a turn
+    let examples = [
+        [[23, 17, 15, 3, 20].to_vec(), [8, 1, 20, 27, 11].to_vec(), [9, 4, 6, 2, 21].to_vec(), [40, 9, 1, 10, 6].to_vec(), [22, 7, 4, 5, 3].to_vec()].to_vec(),
+        [[4, 3, 2].to_vec(), [7, 6, 1].to_vec(), [8, 8, 8].to_vec()].to_vec(),
+        [[10].to_vec()].to_vec(),
+        [[2, 5, 10, 1000].to_vec()].to_vec(),
+        [[25].to_vec(), [4].to_vec(), [1].to_vec()].to_vec(),
+        [[1, 125, 1].to_vec(), [1, 1, 1].to_vec(), [8, 1, 1].to_vec()].to_vec(),
+    ];
+    for grid in examples.iter() {
+        println(f"{grid} -> {max_trailing_zeros(grid)}");
+    }
+    // 2000 grids of 1 to 8 rows and 1 to 8 columns, values 1 to 50
+    let mut seed = 2245;
+    let mut check = 0;
+    let mut most = 0;
+    for _ in 0..2000 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 8 + 1;
+        let grid = random_grid(mut seed, rows, cols, 50);
+        let zeros = max_trailing_zeros(grid);
+        most = most.max(zeros);
+        check = (check * 31 + zeros + 1) % 1000000007;
+    }
+    println(f"2000 grids: most {most}, checksum {check}");
+    // the constraints' largest: 250 * 400 cells, values up to 1000; then
+    // one row of 10^5 cells
+    let grid = random_grid(mut seed, 250, 400, 1000);
+    println(f"250 x 400: {max_trailing_zeros(grid)}");
+    let grid = random_grid(mut seed, 1, 100000, 1000);
+    println(f"1 x 100000: {max_trailing_zeros(grid)}");
+}

@@ -1,0 +1,521 @@
+// LeetCode #2245: Maximum Trailing Zeros in a Cornered Path -- the
+// differential. The six arms, against the statement read literally:
+// every path tried, from every cell, in each of the four directions for
+// any number of steps, then turned either way for any number more; the
+// path's values multiplied and the product's trailing zeros counted by
+// dividing by ten; no factor counting. 300 random grids of 1 to 5 rows
+// and columns, values 1 to 50; then 30 of values rich in twos and
+// fives; then 30 of one row or one column of up to 9 cells. Every case
+// is drawn before any arm answers.
+//
+// P1  the answer is the best path's trailing zeros, read literally
+// P2  the grid transposed: the same answer
+// P3  the grid turned half round: the same answer
+// P4  the first cell times ten: the same answer or one more
+// P5  at least the zeros of any one cell, whole row or whole column;
+//     at most those of the whole grid
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- zeros.kara: the ★ arm, prefix sums of each row and column
+fn star_count_factor(value: i64, p: i64) -> i64 {
+    let mut v = value;
+    let mut count = 0;
+    while v % p == 0 {
+        v /= p;
+        count += 1;
+    }
+    count
+}
+
+fn star_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    // row_twos[i][j] counts the twos of grid[i][0..j]; col_twos[i][j]
+    // those of grid[0..i][j]
+    let mut row_twos: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n + 1, 0));
+    let mut row_fives: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n + 1, 0));
+    let mut col_twos: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n, 0));
+    let mut col_fives: Vec[Vec[i64]] = Vec.filled(m + 1, Vec.filled(n, 0));
+    for i in 0..m {
+        for j in 0..n {
+            let t = star_count_factor(grid[i][j], 2);
+            let f = star_count_factor(grid[i][j], 5);
+            row_twos[i][j + 1] = row_twos[i][j] + t;
+            row_fives[i][j + 1] = row_fives[i][j] + f;
+            col_twos[i + 1][j] = col_twos[i][j] + t;
+            col_fives[i + 1][j] = col_fives[i][j] + f;
+        }
+    }
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let left = (row_twos[i][j + 1], row_fives[i][j + 1]);
+            let right = (row_twos[i][n] - row_twos[i][j], row_fives[i][n] - row_fives[i][j]);
+            let up = (col_twos[i][j], col_fives[i][j]);
+            let down = (col_twos[m][j] - col_twos[i + 1][j], col_fives[m][j] - col_fives[i + 1][j]);
+            for (ht, hf) in [left, right] {
+                for (vt, vf) in [up, down] {
+                    best = best.max((ht + vt).min(hf + vf));
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- zeros_sweep.kara: four sweeps, no subtraction
+fn sweep_factors(value: i64) -> (i64, i64) {
+    let mut v = value;
+    let mut twos = 0;
+    while v % 2 == 0 {
+        v /= 2;
+        twos += 1;
+    }
+    let mut fives = 0;
+    while v % 5 == 0 {
+        v /= 5;
+        fives += 1;
+    }
+    (twos, fives)
+}
+
+fn sweep_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let cell: Vec[Vec[(i64, i64)]] = grid.iter().map(|row| row.iter().map(|v| sweep_factors(v)).collect()).collect();
+    let mut from_left = cell.clone();
+    let mut from_right = cell.clone();
+    let mut from_top = cell.clone();
+    let mut from_bottom = cell.clone();
+    for i in 0..m {
+        for j in 1..n {
+            let (t, f) = from_left[i][j - 1];
+            from_left[i][j] = (from_left[i][j].0 + t, from_left[i][j].1 + f);
+            let k = n - 1 - j;
+            let (t, f) = from_right[i][k + 1];
+            from_right[i][k] = (from_right[i][k].0 + t, from_right[i][k].1 + f);
+        }
+    }
+    for j in 0..n {
+        for i in 1..m {
+            let (t, f) = from_top[i - 1][j];
+            from_top[i][j] = (from_top[i][j].0 + t, from_top[i][j].1 + f);
+            let k = m - 1 - i;
+            let (t, f) = from_bottom[k + 1][j];
+            from_bottom[k][j] = (from_bottom[k][j].0 + t, from_bottom[k][j].1 + f);
+        }
+    }
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let (ct, cf) = cell[i][j];
+            for (ht, hf) in [from_left[i][j], from_right[i][j]] {
+                for (vt, vf) in [from_top[i][j], from_bottom[i][j]] {
+                    best = best.max((ht + vt - ct).min(hf + vf - cf));
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- zeros_struct.kara: `Factors` and `Prefix`
+#[derive(Copy, Clone)]
+struct StructFactors {
+    twos: i64,
+    fives: i64,
+}
+
+impl StructFactors {
+    fn none() -> StructFactors {
+        StructFactors { twos: 0, fives: 0 }
+    }
+
+    fn of(value: i64) -> StructFactors {
+        let mut v = value;
+        let mut f = StructFactors.none();
+        while v % 2 == 0 {
+            v /= 2;
+            f.twos += 1;
+        }
+        while v % 5 == 0 {
+            v /= 5;
+            f.fives += 1;
+        }
+        f
+    }
+
+    fn plus(ref self, other: StructFactors) -> StructFactors {
+        StructFactors { twos: self.twos + other.twos, fives: self.fives + other.fives }
+    }
+
+    fn minus(ref self, other: StructFactors) -> StructFactors {
+        StructFactors { twos: self.twos - other.twos, fives: self.fives - other.fives }
+    }
+
+    fn zeros(ref self) -> i64 {
+        self.twos.min(self.fives)
+    }
+}
+
+struct StructPrefix {
+    // rows[i][j]: grid[i][0..j]; cols[j][i]: grid[0..i][j]
+    rows: Vec[Vec[StructFactors]],
+    cols: Vec[Vec[StructFactors]],
+}
+
+impl StructPrefix {
+    fn build(grid: Vec[Vec[i64]]) -> StructPrefix {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut rows: Vec[Vec[StructFactors]] = Vec.filled(m, Vec.filled(n + 1, StructFactors.none()));
+        let mut cols: Vec[Vec[StructFactors]] = Vec.filled(n, Vec.filled(m + 1, StructFactors.none()));
+        for i in 0..m {
+            for j in 0..n {
+                let f = StructFactors.of(grid[i][j]);
+                rows[i][j + 1] = rows[i][j].plus(f);
+                cols[j][i + 1] = cols[j][i].plus(f);
+            }
+        }
+        StructPrefix { rows, cols }
+    }
+
+    // the cells from..to (to excluded) of row i
+    fn row_span(ref self, i: i64, from: i64, to: i64) -> StructFactors {
+        self.rows[i][to].minus(self.rows[i][from])
+    }
+
+    // the cells from..to (to excluded) of column j
+    fn col_span(ref self, j: i64, from: i64, to: i64) -> StructFactors {
+        self.cols[j][to].minus(self.cols[j][from])
+    }
+}
+
+fn struct_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let prefix = StructPrefix.build(grid);
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let sides = [prefix.row_span(i, 0, j + 1), prefix.row_span(i, j, n)];
+            let ends = [prefix.col_span(j, 0, i), prefix.col_span(j, i + 1, m)];
+            for h in sides.iter() {
+                for v in ends.iter() {
+                    best = best.max(h.plus(v).zeros());
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- zeros_flat.kara: factor tables and flat prefix sums
+fn flat_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let mut twos: Vec[i64] = Vec.filled(1001, 0);
+    let mut fives: Vec[i64] = Vec.filled(1001, 0);
+    for v in 2..1001 {
+        if v % 2 == 0 {
+            twos[v] = twos[v / 2] + 1;
+        }
+        if v % 5 == 0 {
+            fives[v] = fives[v / 5] + 1;
+        }
+    }
+    let m = grid.len();
+    let n = grid[0].len();
+    let w = n + 1;
+    let mut row_t: Vec[i64] = Vec.filled(m * w, 0);
+    let mut row_f: Vec[i64] = Vec.filled(m * w, 0);
+    let mut col_t: Vec[i64] = Vec.filled((m + 1) * n, 0);
+    let mut col_f: Vec[i64] = Vec.filled((m + 1) * n, 0);
+    for i in 0..m {
+        for j in 0..n {
+            let v = grid[i][j];
+            row_t[i * w + j + 1] = row_t[i * w + j] + twos[v];
+            row_f[i * w + j + 1] = row_f[i * w + j] + fives[v];
+            col_t[(i + 1) * n + j] = col_t[i * n + j] + twos[v];
+            col_f[(i + 1) * n + j] = col_f[i * n + j] + fives[v];
+        }
+    }
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            let lt = row_t[i * w + j + 1];
+            let lf = row_f[i * w + j + 1];
+            let rt = row_t[i * w + n] - row_t[i * w + j];
+            let rf = row_f[i * w + n] - row_f[i * w + j];
+            let ut = col_t[i * n + j];
+            let uf = col_f[i * n + j];
+            let dt = col_t[m * n + j] - col_t[(i + 1) * n + j];
+            let df = col_f[m * n + j] - col_f[(i + 1) * n + j];
+            best = best.max((lt + ut).min(lf + uf)).max((lt + dt).min(lf + df));
+            best = best.max((rt + ut).min(rf + uf)).max((rt + dt).min(rf + df));
+        }
+    }
+    best
+}
+
+// ---- zeros_iter.kara: `scan`, `flat_map` and `max`
+fn iter_factor(value: i64, p: i64) -> i64 {
+    if value % p == 0 { 1 + iter_factor(value / p, p) } else { 0 }
+}
+
+fn iter_add(a: (i64, i64), b: (i64, i64)) -> (i64, i64) {
+    (a.0 + b.0, a.1 + b.1)
+}
+
+fn iter_sub(a: (i64, i64), b: (i64, i64)) -> (i64, i64) {
+    (a.0 - b.0, a.1 - b.1)
+}
+
+fn iter_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let cells: Vec[Vec[(i64, i64)]] = grid.iter().map(|row| row.iter().map(|v| (iter_factor(v, 2), iter_factor(v, 5))).collect()).collect();
+    let rows: Vec[Vec[(i64, i64)]] = cells
+        .iter()
+        .map(|row| once((0, 0)).chain(row.iter().scan((0, 0), |sum, c| { let sum = iter_add(sum, c); Some((sum, sum)) })).collect())
+        .collect();
+    let cols: Vec[Vec[(i64, i64)]] = (0..n)
+        .map(|j| once((0, 0)).chain((0..m).scan((0, 0), |sum, i| { let sum = iter_add(sum, cells[i][j]); Some((sum, sum)) })).collect())
+        .collect();
+    (0..m)
+        .flat_map(|i| (0..n).map(|j| (i, j)))
+        .map(|(i, j)| {
+            let sides = [rows[i][j + 1], iter_sub(rows[i][n], rows[i][j])];
+            let ends = [cols[j][i], iter_sub(cols[j][m], cols[j][i + 1])];
+            sides.iter().flat_map(|h| ends.iter().map(|v| iter_add(h, v))).map(|(t, f)| t.min(f)).max().unwrap_or(0)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+// ---- zeros_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn max_trailing_zeros(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut row = Vec.filled(m, Vec.filled(n + 1, [0i32; 2]));
+        let mut col = Vec.filled(m + 1, Vec.filled(n, [0i32; 2]));
+        for i in 0..m {
+            for j in 0..n {
+                let mut x = grid[i][j];
+                let mut c = [0i32; 2];
+                while x % 2 == 0 {
+                    x /= 2;
+                    c[0] += 1;
+                }
+                while x % 5 == 0 {
+                    x /= 5;
+                    c[1] += 1;
+                }
+                for k in 0..2 {
+                    row[i][j + 1][k] = row[i][j][k] + c[k];
+                    col[i + 1][j][k] = col[i][j][k] + c[k];
+                }
+            }
+        }
+        let mut ans: i32 = 0;
+        for i in 0..m {
+            for j in 0..n {
+                for (h0, h1) in [(0, j + 1), (j, n)] {
+                    for (v0, v1) in [(0, i), (i + 1, m)] {
+                        let t = row[i][h1][0] - row[i][h0][0] + col[v1][j][0] - col[v0][j][0];
+                        let f = row[i][h1][1] - row[i][h0][1] + col[v1][j][1] - col[v0][j][1];
+                        ans = ans.max(t.min(f));
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    Solution.max_trailing_zeros(grid)
+}
+
+// ---- the statement read literally
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let steps = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    let mut best = 0;
+    for i in 0..m {
+        for j in 0..n {
+            for d in 0..4 {
+                let (di, dj) = steps[d];
+                // the first leg: k cells beyond the start
+                let mut k = 0;
+                let mut product = grid[i][j];
+                let mut ei = i;
+                let mut ej = j;
+                loop {
+                    // the second leg turns either way from (ei, ej)
+                    for turn in [(d + 1) % 4, (d + 3) % 4] {
+                        let (ti, tj) = steps[turn];
+                        let mut p = product;
+                        let mut ci = ei + ti;
+                        let mut cj = ej + tj;
+                        best = best.max(trailing(p));
+                        while ci >= 0 and ci < m and cj >= 0 and cj < n {
+                            p *= grid[ci][cj];
+                            best = best.max(trailing(p));
+                            ci += ti;
+                            cj += tj;
+                        }
+                    }
+                    k += 1;
+                    ei = i + di * k;
+                    ej = j + dj * k;
+                    if ei < 0 or ei >= m or ej < 0 or ej >= n {
+                        break;
+                    }
+                    product *= grid[ei][ej];
+                }
+            }
+        }
+    }
+    best
+}
+
+fn trailing(product: i64) -> i64 {
+    let mut p = product;
+    let mut zeros = 0;
+    while p % 10 == 0 {
+        p /= 10;
+        zeros += 1;
+    }
+    zeros
+}
+
+// the trailing zeros of the product of some cells, by their factors
+fn zeros_of(values: Vec[i64]) -> i64 {
+    let mut twos = 0;
+    let mut fives = 0;
+    for value in values.iter() {
+        let mut v = value;
+        while v % 2 == 0 {
+            v /= 2;
+            twos += 1;
+        }
+        while v % 5 == 0 {
+            v /= 5;
+            fives += 1;
+        }
+    }
+    twos.min(fives)
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_max_trailing_zeros(grid),
+        1 => sweep_max_trailing_zeros(grid),
+        2 => struct_max_trailing_zeros(grid),
+        3 => flat_max_trailing_zeros(grid),
+        4 => iter_max_trailing_zeros(grid),
+        _ => solution_max_trailing_zeros(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sweep", "struct", "flat", "iter", "solution"];
+    let rich = [2, 4, 5, 8, 10, 16, 20, 25, 40, 50];
+    let mut seed = 2245;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let (rows, cols) = if c < 330 {
+            (next_random(mut seed) % 5 + 1, next_random(mut seed) % 5 + 1)
+        } else if c % 2 == 0 {
+            (1, next_random(mut seed) % 9 + 1)
+        } else {
+            (next_random(mut seed) % 9 + 1, 1)
+        };
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..rows {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..cols {
+                let v = if c >= 300 and c < 330 { rich[next_random(mut seed) % 10] } else { next_random(mut seed) % 50 + 1 };
+                row.push(v);
+            }
+            grid.push(row);
+        }
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in cases.iter() {
+        let m = grid.len();
+        let n = grid[0].len();
+        let truth = literal(grid);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..m).map(|i| grid[i][j]).collect()).collect();
+        let turned: Vec[Vec[i64]] = (0..m).map(|i| (0..n).map(|j| grid[m - 1 - i][n - 1 - j]).collect()).collect();
+        let mut tenfold = grid.clone();
+        tenfold[0][0] *= 10;
+        let mut floor = 0;
+        for i in 0..m {
+            floor = floor.max(zeros_of(grid[i].clone()));
+            for j in 0..n {
+                floor = floor.max(zeros_of([grid[i][j]].to_vec()));
+            }
+        }
+        for j in 0..n {
+            floor = floor.max(zeros_of((0..m).map(|i| grid[i][j]).collect()));
+        }
+        let ceiling = zeros_of(grid.iter().flat_map(|row| row.iter()).collect());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let up = answer(arm, tenfold);
+            let verdicts = [
+                value == truth,
+                answer(arm, transposed) == value,
+                answer(arm, turned) == value,
+                up == value or up == value + 1,
+                value >= floor and value <= ceiling,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

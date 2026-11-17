@@ -1,0 +1,100 @@
+// LeetCode #2245: Maximum Trailing Zeros in a Cornered Path -- LeetCode's
+// Rust template: `Vec<Vec<i32>>` in, `i32` out, the prefix sums of the
+// twos and fives kept as `[i32; 2]` pairs in `vec![vec![[0i32; 2]; n +
+// 1]; m]`, and every corner's two sides and two ends taken from `&[(0,
+// j + 1), (j, n)]` and `&[(0, i), (i + 1, m)]` by `for &(a, b) in`.
+// Carried by `karac fix`. The adapter below hands the harness's values
+// to it.
+
+impl Solution {
+    pub fn max_trailing_zeros(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut row = Vec.filled(m, Vec.filled(n + 1, [0i32; 2]));
+        let mut col = Vec.filled(m + 1, Vec.filled(n, [0i32; 2]));
+        for i in 0..m {
+            for j in 0..n {
+                let mut x = grid[i][j];
+                let mut c = [0i32; 2];
+                while x % 2 == 0 {
+                    x /= 2;
+                    c[0] += 1;
+                }
+                while x % 5 == 0 {
+                    x /= 5;
+                    c[1] += 1;
+                }
+                for k in 0..2 {
+                    row[i][j + 1][k] = row[i][j][k] + c[k];
+                    col[i + 1][j][k] = col[i][j][k] + c[k];
+                }
+            }
+        }
+        let mut ans: i32 = 0;
+        for i in 0..m {
+            for j in 0..n {
+                for (h0, h1) in [(0, j + 1), (j, n)] {
+                    for (v0, v1) in [(0, i), (i + 1, m)] {
+                        let t = row[i][h1][0] - row[i][h0][0] + col[v1][j][0] - col[v0][j][0];
+                        let f = row[i][h1][1] - row[i][h0][1] + col[v1][j][1] - col[v0][j][1];
+                        ans = ans.max(t.min(f));
+                    }
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn max_trailing_zeros(grid: Vec[Vec[i64]]) -> i64 {
+    let grid: Vec[Vec[i32]] = grid.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    Solution.max_trailing_zeros(grid)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn random_grid(seed: mut ref i64, rows: i64, cols: i64, top: i64) -> Vec[Vec[i64]] {
+    (0..rows).map(|_| (0..cols).map(|_| next_random(mut seed) % top + 1).collect()).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one cell, one row, one
+    // column, and a 125 and an 8 joined only through a turn
+    let examples = [
+        [[23, 17, 15, 3, 20].to_vec(), [8, 1, 20, 27, 11].to_vec(), [9, 4, 6, 2, 21].to_vec(), [40, 9, 1, 10, 6].to_vec(), [22, 7, 4, 5, 3].to_vec()].to_vec(),
+        [[4, 3, 2].to_vec(), [7, 6, 1].to_vec(), [8, 8, 8].to_vec()].to_vec(),
+        [[10].to_vec()].to_vec(),
+        [[2, 5, 10, 1000].to_vec()].to_vec(),
+        [[25].to_vec(), [4].to_vec(), [1].to_vec()].to_vec(),
+        [[1, 125, 1].to_vec(), [1, 1, 1].to_vec(), [8, 1, 1].to_vec()].to_vec(),
+    ];
+    for grid in examples.iter() {
+        println(f"{grid} -> {max_trailing_zeros(grid)}");
+    }
+    // 2000 grids of 1 to 8 rows and 1 to 8 columns, values 1 to 50
+    let mut seed = 2245;
+    let mut check = 0;
+    let mut most = 0;
+    for _ in 0..2000 {
+        let rows = next_random(mut seed) % 8 + 1;
+        let cols = next_random(mut seed) % 8 + 1;
+        let grid = random_grid(mut seed, rows, cols, 50);
+        let zeros = max_trailing_zeros(grid);
+        most = most.max(zeros);
+        check = (check * 31 + zeros + 1) % 1000000007;
+    }
+    println(f"2000 grids: most {most}, checksum {check}");
+    // the constraints' largest: 250 * 400 cells, values up to 1000; then
+    // one row of 10^5 cells
+    let grid = random_grid(mut seed, 250, 400, 1000);
+    println(f"250 x 400: {max_trailing_zeros(grid)}");
+    let grid = random_grid(mut seed, 1, 100000, 1000);
+    println(f"1 x 100000: {max_trailing_zeros(grid)}");
+}
