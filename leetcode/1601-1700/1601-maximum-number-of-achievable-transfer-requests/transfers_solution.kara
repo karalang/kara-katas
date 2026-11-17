@@ -1,0 +1,76 @@
+// LeetCode #1601: Maximum Number of Achievable Transfer Requests -- a
+// Rust solution as LeetCode's Rust users write it (`impl Solution`, an
+// associated `fn dfs` over `&Vec<Vec<i32>>` with a `&mut Vec<i32>` of
+// net changes and a `&mut i32` best, `usize` indices), carried to Kāra by
+// `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_requests(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+        let mut degree = Vec.filled(n, 0);
+        let mut ans: i32 = 0;
+        Solution.dfs(requests, 0, 0, mut degree, mut ans);
+        ans
+    }
+
+    fn dfs(requests: Vec[Vec[i32]], idx: i64, cnt: i32, degree: mut ref Vec[i32], ans: mut ref i32) {
+        if idx == requests.len() {
+            if degree.iter().all(|x| x == 0) {
+                *ans = (*ans).max(cnt);
+            }
+            return;
+        }
+        let (from, to) = (requests[idx][0] as i64, requests[idx][1] as i64);
+        degree[from] -= 1;
+        degree[to] += 1;
+        Solution.dfs(requests, idx + 1, cnt + 1, mut degree, mut ans);
+        degree[from] += 1;
+        degree[to] -= 1;
+        Solution.dfs(requests, idx + 1, cnt, mut degree, mut ans);
+    }
+}
+
+fn maximum_requests(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    Solution.maximum_requests(n, requests)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn batch(count: i64, most_buildings: i64, most_requests: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most_buildings + 1;
+        let r = next_random(mut seed) % most_requests + 1;
+        let requests: Vec[Vec[i32]] = (0..r).map(|_| [(next_random(mut seed) % n) as i32, (next_random(mut seed) % n) as i32]).collect();
+        let answer = maximum_requests(n as i32, requests);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} problems of up to {most_buildings} buildings and {most_requests} requests: total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(i32, Vec[Vec[i32]])] = [
+        (5, [[0, 1], [1, 0], [0, 1], [1, 2], [2, 0], [3, 4]]),
+        (3, [[0, 0], [1, 2], [2, 1]]),
+        (4, [[0, 3], [3, 1], [1, 2], [2, 0]]),
+        (1, [[0, 0]]),
+        (2, [[0, 1]]),
+        (20, (0..16).map(|i| [i as i32, ((i + 1) % 16) as i32]).collect()),
+    ];
+    for (n, requests) in examples.iter() {
+        let shown = if requests.len() > 6 { f"{requests.len()} requests in a ring" } else { f"{requests}" };
+        println(f"{n}, {shown} -> {maximum_requests(n, requests)}");
+    }
+    let mut seed = 1601;
+    batch(3000, 4, 5, mut seed);
+    batch(300, 8, 10, mut seed);
+    batch(10, 20, 16, mut seed);
+}

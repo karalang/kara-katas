@@ -1,0 +1,247 @@
+// LeetCode #1601: Maximum Number of Achievable Transfer Requests
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of
+// 1 to 4 buildings and 1 to 7 requests, with six properties. Every random
+// choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the requests in reverse order leave the answer
+// P3  every request turned round leaves the answer
+// P4  a request from a building to itself added raises the answer by one
+// P5  the buildings renumbered back to front leave the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- transfers.kara: the ★ arm: every mask
+
+fn star_arm(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    let r = requests.len();
+    let mut best = 0;
+    for mask in 0..1 << r {
+        let size = mask.count_ones() as i32;
+        if size <= best {
+            continue;
+        }
+        let mut net = Vec.filled(n, 0);
+        for i in 0..r {
+            if mask >> i & 1 == 1 {
+                net[requests[i][0]] -= 1;
+                net[requests[i][1]] += 1;
+            }
+        }
+        if net.iter().all(|d| *d == 0) {
+            best = size;
+        }
+    }
+    best
+}
+
+// ---- transfers_backtrack.kara: backtracking with a bound
+
+fn backtrack_choose(requests: Vec[Vec[i32]], at: i64, granted: i32, net: mut ref Vec[i32], best: mut ref i32) {
+    if granted + (requests.len() - at) as i32 <= *best {
+        return;
+    }
+    if at == requests.len() {
+        if net.iter().all(|d| *d == 0) {
+            *best = granted;
+        }
+        return;
+    }
+    let from = requests[at][0];
+    let to = requests[at][1];
+    net[from] -= 1;
+    net[to] += 1;
+    backtrack_choose(requests, at + 1, granted + 1, mut net, mut best);
+    net[from] += 1;
+    net[to] -= 1;
+    backtrack_choose(requests, at + 1, granted, mut net, mut best);
+}
+
+fn backtrack_arm(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    let mut net = Vec.filled(n, 0);
+    let mut best: i32 = 0;
+    backtrack_choose(requests, 0, 0, mut net, mut best);
+    best
+}
+
+// ---- transfers_largest.kara: the masks sorted largest first
+
+fn largest_balanced(n: i32, requests: Vec[Vec[i32]], mask: i64) -> bool {
+    let mut net = Vec.filled(n, 0);
+    for (i, request) in requests.iter().enumerate() {
+        if mask >> i & 1 == 1 {
+            net[request[0]] -= 1;
+            net[request[1]] += 1;
+        }
+    }
+    net.iter().all(|d| *d == 0)
+}
+
+fn largest_arm(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    let mut masks: Vec[i64] = (0..1 << requests.len()).collect();
+    masks.sort_by(|a, b| b.count_ones().cmp(a.count_ones()));
+    let found = masks.iter().find(|m| largest_balanced(n, requests, *m)).unwrap();
+    found.count_ones() as i32
+}
+
+// ---- transfers_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn maximum_requests(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+        let mut degree = Vec.filled(n, 0);
+        let mut ans: i32 = 0;
+        SolutionArm.dfs(requests, 0, 0, mut degree, mut ans);
+        ans
+    }
+
+    fn dfs(requests: Vec[Vec[i32]], idx: i64, cnt: i32, degree: mut ref Vec[i32], ans: mut ref i32) {
+        if idx == requests.len() {
+            if degree.iter().all(|x| x == 0) {
+                *ans = (*ans).max(cnt);
+            }
+            return;
+        }
+        let (from, to) = (requests[idx][0] as i64, requests[idx][1] as i64);
+        degree[from] -= 1;
+        degree[to] += 1;
+        SolutionArm.dfs(requests, idx + 1, cnt + 1, mut degree, mut ans);
+        degree[from] += 1;
+        degree[to] -= 1;
+        SolutionArm.dfs(requests, idx + 1, cnt, mut degree, mut ans);
+    }
+}
+
+fn solution_arm(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    SolutionArm.maximum_requests(n, requests)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    match a {
+        0 => star_arm(n, requests),
+        1 => backtrack_arm(n, requests),
+        2 => largest_arm(n, requests),
+        _ => solution_arm(n, requests),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["transfers", "backtrack", "largest", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every list of the requests kept in
+// order, built by taking or leaving each in turn; a list is achievable
+// when, sorted, the buildings its employees leave are the buildings they
+// move to, so each building loses as many as it gains
+
+fn all_lists(requests: Vec[Vec[i32]], at: i64) -> Vec[Vec[Vec[i32]]] {
+    if at == requests.len() {
+        return [Vec.new()];
+    }
+    let mut out = Vec.new();
+    for rest in all_lists(requests, at + 1).iter() {
+        out.push(rest.clone());
+        let mut with = [requests[at].clone()];
+        with.extend(rest.iter().cloned());
+        out.push(with);
+    }
+    out
+}
+
+fn literal(requests: Vec[Vec[i32]]) -> i32 {
+    let mut best = 0;
+    for list in all_lists(requests, 0).iter() {
+        let mut leaving: Vec[i32] = list.iter().map(|r| r[0]).collect();
+        let mut arriving: Vec[i32] = list.iter().map(|r| r[1]).collect();
+        leaving.sort();
+        arriving.sort();
+        if leaving == arriving {
+            best = best.max(list.len());
+        }
+    }
+    best as i32
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16010;
+    let mut cases: Vec[(i32, Vec[Vec[i32]])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 4 + 1;
+        let r = next_random(mut seed) % 7 + 1;
+        let requests: Vec[Vec[i32]] = (0..r).map(|_| [(next_random(mut seed) % n) as i32, (next_random(mut seed) % n) as i32]).collect();
+        cases.push((n as i32, requests));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, case) in cases.iter().enumerate() {
+        let (n, requests) = case;
+        let truth = literal(requests);
+        let reversed: Vec[Vec[i32]] = requests.iter().rev().cloned().collect();
+        let turned: Vec[Vec[i32]] = requests.iter().map(|r| [r[1], r[0]]).collect();
+        let mut with_stay = requests.clone();
+        with_stay.push([0, 0]);
+        let renumbered: Vec[Vec[i32]] = requests.iter().map(|r| [*n - 1 - r[0], *n - 1 - r[1]]).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, *n, requests);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, *n, reversed) != answer,
+                arm(a, *n, turned) != answer,
+                arm(a, *n, with_stay) != answer + 1,
+                arm(a, *n, renumbered) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

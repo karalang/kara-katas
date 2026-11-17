@@ -1,0 +1,65 @@
+// LeetCode #1601: Maximum Number of Achievable Transfer Requests -- the
+// largest subsets first.
+//
+// The masks sorted by how many requests they hold, most first, by
+// `sort_by` comparing `count_ones` the other way round; the first whose
+// requests balance every building is the answer, found by `find`.
+// O(2^r (r + n)).
+
+fn balanced(n: i32, requests: Vec[Vec[i32]], mask: i64) -> bool {
+    let mut net = Vec.filled(n, 0);
+    for (i, request) in requests.iter().enumerate() {
+        if mask >> i & 1 == 1 {
+            net[request[0]] -= 1;
+            net[request[1]] += 1;
+        }
+    }
+    net.iter().all(|d| *d == 0)
+}
+
+fn maximum_requests(n: i32, requests: Vec[Vec[i32]]) -> i32 {
+    let mut masks: Vec[i64] = (0..1 << requests.len()).collect();
+    masks.sort_by(|a, b| b.count_ones().cmp(a.count_ones()));
+    let found = masks.iter().find(|m| balanced(n, requests, *m)).unwrap();
+    found.count_ones() as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn batch(count: i64, most_buildings: i64, most_requests: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most_buildings + 1;
+        let r = next_random(mut seed) % most_requests + 1;
+        let requests: Vec[Vec[i32]] = (0..r).map(|_| [(next_random(mut seed) % n) as i32, (next_random(mut seed) % n) as i32]).collect();
+        let answer = maximum_requests(n as i32, requests);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} problems of up to {most_buildings} buildings and {most_requests} requests: total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[(i32, Vec[Vec[i32]])] = [
+        (5, [[0, 1], [1, 0], [0, 1], [1, 2], [2, 0], [3, 4]]),
+        (3, [[0, 0], [1, 2], [2, 1]]),
+        (4, [[0, 3], [3, 1], [1, 2], [2, 0]]),
+        (1, [[0, 0]]),
+        (2, [[0, 1]]),
+        (20, (0..16).map(|i| [i as i32, ((i + 1) % 16) as i32]).collect()),
+    ];
+    for (n, requests) in examples.iter() {
+        let shown = if requests.len() > 6 { f"{requests.len()} requests in a ring" } else { f"{requests}" };
+        println(f"{n}, {shown} -> {maximum_requests(n, requests)}");
+    }
+    let mut seed = 1601;
+    batch(3000, 4, 5, mut seed);
+    batch(300, 8, 10, mut seed);
+    batch(10, 20, 16, mut seed);
+}
