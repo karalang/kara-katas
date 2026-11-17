@@ -1,0 +1,96 @@
+// LeetCode #2219: Maximum Sum Score of Array -- a `struct Ledger` of the
+// total and the sum taken so far, with `take` (`mut ref self`) moving
+// one number across and returning the score at it, and `left`
+// (`ref self`) the sum not yet taken. O(n).
+
+struct Ledger {
+    total: i64,
+    taken: i64,
+}
+
+impl Ledger {
+    fn of(nums: Vec[i64]) -> Ledger {
+        let mut total = 0;
+        for x in nums.iter() {
+            total += x;
+        }
+        Ledger { total: total, taken: 0 }
+    }
+
+    fn left(ref self) -> i64 {
+        self.total - self.taken
+    }
+
+    // the score at the next index: the sum through it or the sum from it
+    fn take(mut ref self, x: i64) -> i64 {
+        let from_here = self.left();
+        self.taken += x;
+        self.taken.max(from_here)
+    }
+}
+
+fn maximum_sum_score(nums: Vec[i64]) -> i64 {
+    let mut ledger = Ledger.of(nums);
+    let mut best: Option[i64] = None;
+    for x in nums.iter() {
+        let score = ledger.take(x);
+        best = match best {
+            None => Some(score),
+            Some(b) if score > b => Some(score),
+            other => other,
+        };
+    }
+    best.unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// n numbers from -top to top
+fn draw_nums(seed: mut ref i64, n: i64, top: i64) -> Vec[i64] {
+    let mut nums: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        nums.push(wide_random(mut seed) % (2 * top + 1) - top);
+    }
+    nums
+}
+
+fn show(nums: Vec[i64]) {
+    println(f"{nums} -> {maximum_sum_score(nums)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one number, all
+    // negative, the best a suffix, and a zero sum
+    show([4, 3, -2, 5]);
+    show([-3, -5]);
+    show([7]);
+    show([-4, -1, -9]);
+    show([-10, 1, 2, 3]);
+    show([5, -5, 5, -5]);
+    // 3000 random arrays of 1 to 30 numbers from -3, -100 and -10^5 to
+    // 3, 100 and 10^5 in turn
+    let mut seed = 2219;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let nums = draw_nums(mut seed, n, [3, 100, 100000][c % 3]);
+        check = (check * 31 + maximum_sum_score(nums) + 3000000) % 1000000007;
+    }
+    println(f"3000 arrays: checksum {check}");
+    // the constraints' largest: 10^5 numbers from -10^5 to 10^5, 10^5 of
+    // -10^5 and 10^5 of 10^5
+    let wide = draw_nums(mut seed, 100000, 100000);
+    let low: Vec[i64] = Vec.filled(100000, -100000);
+    let high: Vec[i64] = Vec.filled(100000, 100000);
+    println(f"10^5 random: {maximum_sum_score(wide)}; 10^5 of -10^5: {maximum_sum_score(low)}; 10^5 of 10^5: {maximum_sum_score(high)}");
+}
