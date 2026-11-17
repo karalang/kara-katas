@@ -130,8 +130,9 @@ lists no `eq`); it reads `zip(..).all(..)`.
 
 The Rust arm was written as LeetCode's Rust template. `karac fix` carries
 it in two rounds (twelve edits, then six) to one error it has no fix for:
-`let mut best = 0;` takes `i64` on the spot, so `best.max(x * y)` over
-`i32` lengths and the `i32` return are refused. Rust types that literal
+`let mut best = 0;` takes `i64` on the spot, so the `i32` return is
+refused (and `best.max(x * y)` over `i32` lengths was too, until a
+method's argument widened in kara B-2026-11-17-90). Rust types that literal
 `i32` from its later uses; design.md §8 says Kāra's literals default last
 too, and B-2026-11-07-3 tracks that the checker does not yet. The `&str`
 wrapper had no working fix before this kata: the `&T` edit made it `ref
