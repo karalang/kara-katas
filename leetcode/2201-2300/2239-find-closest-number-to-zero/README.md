@@ -118,7 +118,7 @@ greatest distance in the twice, struct and template arms (M14, M17,
 M31) as the sort arm's farthest first (M8); and the template's distance
 handed back (M30) as the twice arm's always positive (M16). The
 template's sixth edit, distances capped at 3 (M32), was added because
-its first five all fail as edits kept elsewhere.
+four of its first five fail as edits kept elsewhere.
 
 ## Verification
 
