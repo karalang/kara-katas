@@ -1,0 +1,340 @@
+// LeetCode #2250: Count Number of Rectangles Containing Each Point --
+// the differential. The six arms, against the statement read literally:
+// for every point, every rectangle tried, counted when 0 <= x <= l and
+// 0 <= y <= h; no buckets, sorting or searching. 300 random cases of 1
+// to 8 rectangles and 1 to 8 points with values 1 to 10; then 30 with
+// lengths and x up to 5 * 10^8, so that doubled they stay in bounds, and
+// heights and y up to 100; then 30 of one rectangle of height 100 many
+// times. Every case is drawn before any arm answers.
+//
+// P1  each count is the rectangles holding the point, read literally
+// P2  the rectangles and the points both reversed: the counts reversed
+// P3  the first rectangle added again: each count one more where that
+//     rectangle holds the point, the same elsewhere
+// P4  every length and every x doubled: the same counts
+// P5  the point (1, 1) added last: every rectangle counted for it, the
+//     other counts the same
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- rectangles.kara: the ★ arm, buckets by height and `partition_point`
+fn star_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut by_height: Vec[Vec[i64]] = Vec.filled(101, Vec.new());
+    for r in rectangles.iter() {
+        by_height[r[1]].push(r[0]);
+    }
+    for lengths in by_height.iter_mut() {
+        lengths.sort();
+    }
+    let mut counts: Vec[i64] = Vec.new();
+    for p in points.iter() {
+        let mut count = 0;
+        for h in p[1]..101 {
+            let lengths = ref by_height[h];
+            count += lengths.len() - lengths.partition_point(|l| l < p[0]);
+        }
+        counts.push(count);
+    }
+    counts
+}
+
+// ---- rectangles_suffix.kara: one sorted list per height threshold
+fn suffix_merge_sorted(a: Vec[i64], b: Vec[i64]) -> Vec[i64] {
+    let mut out: Vec[i64] = Vec.new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() or j < b.len() {
+        if j == b.len() or (i < a.len() and a[i] <= b[j]) {
+            out.push(a[i]);
+            i += 1;
+        } else {
+            out.push(b[j]);
+            j += 1;
+        }
+    }
+    out
+}
+
+fn suffix_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut own: Vec[Vec[i64]] = Vec.filled(102, Vec.new());
+    for r in rectangles.iter() {
+        own[r[1]].push(r[0]);
+    }
+    // at_least[y]: the lengths of every rectangle of height y or more
+    let mut at_least: Vec[Vec[i64]] = Vec.filled(102, Vec.new());
+    for y in (1..101).rev() {
+        let mut here = own[y].clone();
+        here.sort();
+        at_least[y] = suffix_merge_sorted(at_least[y + 1].clone(), here);
+    }
+    points
+        .iter()
+        .map(|p| {
+            let lengths = ref at_least[p[1]];
+            lengths.len() - lengths.partition_point(|l| l < p[0])
+        })
+        .collect()
+}
+
+// ---- rectangles_sweep.kara: points longest first, counts by height
+fn sweep_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut rects: Vec[(i64, i64)] = rectangles.iter().map(|r| (r[0], r[1])).collect();
+    rects.sort();
+    rects.reverse();
+    let mut order: Vec[i64] = (0..points.len()).collect();
+    order.sort_by_key(|i| -points[i][0]);
+    let mut tall: Vec[i64] = Vec.filled(101, 0);
+    let mut next = 0;
+    let mut counts: Vec[i64] = Vec.filled(points.len(), 0);
+    for i in order.iter() {
+        let (x, y) = (points[i][0], points[i][1]);
+        while next < rects.len() and rects[next].0 >= x {
+            tall[rects[next].1] += 1;
+            next += 1;
+        }
+        let mut count = 0;
+        for h in y..101 {
+            count += tall[h];
+        }
+        counts[i] = count;
+    }
+    counts
+}
+
+// ---- rectangles_struct.kara: `Shelf` and `Board`, a hand-written search
+struct StructShelf {
+    lengths: Vec[i64],
+}
+
+impl StructShelf {
+    // how many lengths are at least x: the first index whose length
+    // reaches x, by halving [low, high)
+    fn at_least(ref self, x: i64) -> i64 {
+        let mut low = 0;
+        let mut high = self.lengths.len();
+        while low < high {
+            let mid = (low + high) / 2;
+            if self.lengths[mid] < x {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        self.lengths.len() - low
+    }
+}
+
+struct StructBoard {
+    shelves: Vec[StructShelf],
+}
+
+impl StructBoard {
+    fn build(rectangles: Vec[Vec[i64]]) -> StructBoard {
+        let mut lists: Vec[Vec[i64]] = Vec.filled(101, Vec.new());
+        for r in rectangles.iter() {
+            lists[r[1]].push(r[0]);
+        }
+        let shelves: Vec[StructShelf] = lists
+            .into_iter()
+            .map(|lengths| {
+                let mut lengths = lengths;
+                lengths.sort();
+                StructShelf { lengths }
+            })
+            .collect();
+        StructBoard { shelves }
+    }
+
+    fn containing(ref self, x: i64, y: i64) -> i64 {
+        let mut count = 0;
+        for h in y..101 {
+            count += self.shelves[h].at_least(x);
+        }
+        count
+    }
+}
+
+fn struct_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let board = StructBoard.build(rectangles);
+    points.iter().map(|p| board.containing(p[0], p[1])).collect()
+}
+
+// ---- rectangles_iter.kara: `fold`, `map`, `partition_point` and `sum`
+fn iter_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let by_height: Vec[Vec[i64]] = rectangles
+        .iter()
+        .fold(Vec.filled(101, Vec.new()), |lists: own Vec[Vec[i64]], r| {
+            let mut lists = lists;
+            lists[r[1]].push(r[0]);
+            lists
+        })
+        .into_iter()
+        .map(|lengths| {
+            let mut lengths = lengths;
+            lengths.sort();
+            lengths
+        })
+        .collect();
+    points
+        .iter()
+        .map(|p| (p[1]..101).map(|h| by_height[h].len() - by_height[h].partition_point(|l| l < p[0])).sum())
+        .collect()
+}
+
+// ---- rectangles_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn count_rectangles(rectangles: Vec[Vec[i32]], points: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut g: Vec[Vec[i32]] = Vec.filled(101, Vec.new());
+        for r in ref rectangles {
+            g[r[1] as usize].push(r[0]);
+        }
+        for v in g.iter_mut() {
+            v.sort();
+        }
+        points
+            .iter()
+            .map(|p| {
+                let mut cnt = 0;
+                for h in p[1] as usize..=100 {
+                    let v = ref g[h];
+                    cnt += v.len() - v.partition_point(|l| l < p[0]);
+                }
+                cnt as i32
+            })
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn solution_count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let rectangles: Vec[Vec[i32]] = rectangles.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    let points: Vec[Vec[i32]] = points.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.count_rectangles(rectangles, points).iter().map(|c| c as i64).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut counts: Vec[i64] = Vec.new();
+    for p in points.iter() {
+        let mut count = 0;
+        for r in rectangles.iter() {
+            if 0 <= p[0] and p[0] <= r[0] and 0 <= p[1] and p[1] <= r[1] {
+                count += 1;
+            }
+        }
+        counts.push(count);
+    }
+    counts
+}
+
+fn answer(arm: i64, rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    match arm {
+        0 => star_count_rectangles(rectangles, points),
+        1 => suffix_count_rectangles(rectangles, points),
+        2 => sweep_count_rectangles(rectangles, points),
+        3 => struct_count_rectangles(rectangles, points),
+        4 => iter_count_rectangles(rectangles, points),
+        _ => solution_count_rectangles(rectangles, points),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn random_pairs(seed: mut ref i64, count: i64, wide: i64, high: i64) -> Vec[Vec[i64]] {
+    (0..count).map(|_| {
+        let a = wide_random(mut seed) % wide + 1;
+        let b = next_random(mut seed) % high + 1;
+        [a, b].to_vec()
+    }).collect()
+}
+
+fn fold_list(values: Vec[i64]) -> i64 {
+    values.iter().fold(values.len(), |acc, v| (acc * 1009 + v) % 1000000007)
+}
+
+fn main() {
+    let names = ["star", "suffix", "sweep", "struct", "iter", "solution"];
+    let mut seed = 2250;
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let r = next_random(mut seed) % 8 + 1;
+        let p = next_random(mut seed) % 8 + 1;
+        let (wide, high) = if c >= 300 and c < 330 { (500000000, 100) } else { (10, 10) };
+        let mut rectangles = random_pairs(mut seed, r, wide, high);
+        if c >= 330 {
+            let one = [rectangles[0][0], 100].to_vec();
+            rectangles = (0..r).map(|_| one.clone()).collect();
+        }
+        let points = random_pairs(mut seed, p, wide, high);
+        cases.push((rectangles, points));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (rectangles, points) in cases.iter() {
+        let truth = literal(rectangles, points);
+        check = (check * 31 + fold_list(truth)) % 1000000007;
+        let rev_rects: Vec[Vec[i64]] = rectangles.iter().rev().map(|r| r.clone()).collect();
+        let rev_points: Vec[Vec[i64]] = points.iter().rev().map(|p| p.clone()).collect();
+        let mut again = rectangles.clone();
+        again.push(rectangles[0].clone());
+        let first_holds: Vec[i64] = points.iter().map(|p| if p[0] <= rectangles[0][0] and p[1] <= rectangles[0][1] { 1 } else { 0 }).collect();
+        let wide_rects: Vec[Vec[i64]] = rectangles.iter().map(|r| [r[0] * 2, r[1]].to_vec()).collect();
+        let wide_points: Vec[Vec[i64]] = points.iter().map(|p| [p[0] * 2, p[1]].to_vec()).collect();
+        let mut with_corner = points.clone();
+        with_corner.push([1, 1].to_vec());
+        let got: Vec[Vec[i64]] = (0..6).map(|arm| answer(arm, rectangles, points)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let reversed: Vec[i64] = value.iter().rev().collect();
+            let raised: Vec[i64] = (0..value.len()).map(|i| value[i] + first_holds[i]).collect();
+            let mut cornered = value.clone();
+            cornered.push(rectangles.len());
+            let verdicts = [
+                value == truth,
+                answer(arm, rev_rects, rev_points) == reversed,
+                answer(arm, again, points) == raised,
+                answer(arm, wide_rects, wide_points) == value,
+                answer(arm, rectangles, with_corner) == cornered,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{rectangles} {points} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

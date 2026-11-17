@@ -1,0 +1,57 @@
+// LeetCode #2250: Count Number of Rectangles Containing Each Point -- the
+// benchmark copy of rectangles.kara:
+// heights are at most 100, so the rectangles are bucketed by height and
+// each bucket's lengths sorted. A rectangle holds (x, y) when its length
+// is at least x and its height at least y, so a point sums, over the
+// buckets of height y to 100, how many lengths are at least x, found by
+// `partition_point`. O(r log r + p * 100 log r).
+
+fn count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let mut by_height: Vec[Vec[i64]] = Vec.filled(101, Vec.new());
+    for r in rectangles.iter() {
+        by_height[r[1]].push(r[0]);
+    }
+    for lengths in by_height.iter_mut() {
+        lengths.sort();
+    }
+    let mut counts: Vec[i64] = Vec.new();
+    for p in points.iter() {
+        let mut count = 0;
+        for h in p[1]..101 {
+            let lengths = ref by_height[h];
+            count += lengths.len() - lengths.partition_point(|l| l < p[0]);
+        }
+        counts.push(count);
+    }
+    counts
+}
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // 4 cases of 5 * 10^4 rectangles and 5 * 10^4 points, lengths 1 to
+    // 10^9 and heights 1 to 100
+    let mut seed = 2250;
+    let mut check = 0;
+    for _ in 0..4 {
+        let rectangles: Vec[Vec[i64]] = (0..50000).map(|_| {
+            let l = wide_random(mut seed) % 1000000000 + 1;
+            let h = next_random(mut seed) % 100 + 1;
+            [l, h].to_vec()
+        }).collect();
+        let points: Vec[Vec[i64]] = (0..50000).map(|_| {
+            let x = wide_random(mut seed) % 1000000000 + 1;
+            let y = next_random(mut seed) % 100 + 1;
+            [x, y].to_vec()
+        }).collect();
+        let counts = count_rectangles(rectangles, points);
+        check = counts.iter().fold(check, |acc, c| (acc * 31 + c) % 1000000007);
+    }
+    println(f"4 cases of 5 * 10^4 rectangles and points: checksum {check}");
+}

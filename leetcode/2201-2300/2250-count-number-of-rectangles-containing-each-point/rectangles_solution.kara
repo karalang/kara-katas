@@ -1,0 +1,98 @@
+// LeetCode #2250: Count Number of Rectangles Containing Each Point --
+// LeetCode's Rust template: two `Vec<Vec<i32>>` in, `Vec<i32>` out, the
+// lengths in `vec![vec![]; 101]` by height, each sorted by
+// `sort_unstable` through `iter_mut`, and every point a closure summing
+// `v.len() - v.partition_point(|&l| l < p[0])` over `p[1] as
+// usize..=100`. Carried by `karac fix`. The adapter below hands the
+// harness's values to it.
+
+impl Solution {
+    pub fn count_rectangles(rectangles: Vec[Vec[i32]], points: Vec[Vec[i32]]) -> Vec[i32] {
+        let mut g: Vec[Vec[i32]] = Vec.filled(101, Vec.new());
+        for r in ref rectangles {
+            g[r[1] as usize].push(r[0]);
+        }
+        for v in g.iter_mut() {
+            v.sort();
+        }
+        points
+            .iter()
+            .map(|p| {
+                let mut cnt = 0;
+                for h in p[1] as usize..=100 {
+                    let v = ref g[h];
+                    cnt += v.len() - v.partition_point(|l| l < p[0]);
+                }
+                cnt as i32
+            })
+            .collect()
+    }
+}
+
+struct Solution {}
+
+fn count_rectangles(rectangles: Vec[Vec[i64]], points: Vec[Vec[i64]]) -> Vec[i64] {
+    let rectangles: Vec[Vec[i32]] = rectangles.iter().map(|r| r.iter().map(|v| v as i32).collect()).collect();
+    let points: Vec[Vec[i32]] = points.iter().map(|p| p.iter().map(|v| v as i32).collect()).collect();
+    Solution.count_rectangles(rectangles, points).iter().map(|c| c as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` pairs, the first from 1 to `wide`, the second from 1 to `high`
+fn random_pairs(seed: mut ref i64, count: i64, wide: i64, high: i64) -> Vec[Vec[i64]] {
+    (0..count).map(|_| {
+        let a = wide_random(mut seed) % wide + 1;
+        let b = next_random(mut seed) % high + 1;
+        [a, b].to_vec()
+    }).collect()
+}
+
+fn fold_list(values: Vec[i64]) -> i64 {
+    values.iter().fold(values.len(), |acc, v| (acc * 1009 + v) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: a point on a corner, one
+    // just past it, the largest values, and one rectangle many times
+    let examples = [
+        ([[1, 2].to_vec(), [2, 3].to_vec(), [2, 5].to_vec()].to_vec(), [[2, 1].to_vec(), [1, 4].to_vec()].to_vec()),
+        ([[1, 1].to_vec(), [2, 2].to_vec(), [3, 3].to_vec()].to_vec(), [[1, 3].to_vec(), [1, 1].to_vec()].to_vec()),
+        ([[5, 5].to_vec()].to_vec(), [[5, 5].to_vec()].to_vec()),
+        ([[5, 5].to_vec()].to_vec(), [[6, 5].to_vec(), [5, 6].to_vec()].to_vec()),
+        ([[1000000000, 100].to_vec(), [1, 1].to_vec()].to_vec(), [[1000000000, 100].to_vec(), [1, 1].to_vec()].to_vec()),
+        ([[3, 4].to_vec(), [3, 4].to_vec(), [3, 4].to_vec()].to_vec(), [[3, 4].to_vec(), [1, 1].to_vec(), [4, 3].to_vec()].to_vec()),
+    ];
+    for (rectangles, points) in examples.iter() {
+        println(f"{rectangles} {points} -> {count_rectangles(rectangles, points)}");
+    }
+    // 2000 cases of 1 to 8 rectangles and 1 to 8 points, values 1 to 10
+    let mut seed = 2250;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let r = next_random(mut seed) % 8 + 1;
+        let p = next_random(mut seed) % 8 + 1;
+        let rectangles = random_pairs(mut seed, r, 10, 10);
+        let points = random_pairs(mut seed, p, 10, 10);
+        let counts = count_rectangles(rectangles, points);
+        total += counts.iter().sum();
+        check = (check * 31 + fold_list(counts)) % 1000000007;
+    }
+    println(f"2000 cases: {total} in all, checksum {check}");
+    // the constraints' most rectangles, 5 * 10^4, lengths up to 10^9 and
+    // heights up to 100, and 10^4 points
+    let rectangles = random_pairs(mut seed, 50000, 1000000000, 100);
+    let points = random_pairs(mut seed, 10000, 1000000000, 100);
+    let counts = count_rectangles(rectangles, points);
+    println(f"5 * 10^4 rectangles, 10^4 points: {counts.iter().sum()} in all, checksum {fold_list(counts)}");
+}
