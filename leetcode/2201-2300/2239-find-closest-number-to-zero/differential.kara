@@ -1,0 +1,200 @@
+// LeetCode #2239: Find Closest Number to Zero -- the differential. The
+// six arms, against the statement read literally: the numbers with no
+// other number strictly closer to zero, and the largest of them; no
+// running best and no key. 300 random arrays of 1 to 8 numbers from
+// -10 to 10; then 30 of negative numbers only; then 30 in which every
+// number comes with its negation. Every case is drawn before any arm
+// answers.
+//
+// P1  the answer is the largest of the closest, read literally
+// P2  the numbers reversed: the same answer
+// P3  the answer is one of the numbers, and none is closer to zero
+// P4  a 0 appended: 0
+// P5  the answer's negation appended: its distance from zero, positive
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- closest.kara: the ★ arm, one scan
+fn star_find_closest_number(nums: Vec[i64]) -> i64 {
+    let mut closest = nums[0];
+    for x in nums.iter() {
+        if x.abs() < closest.abs() or (x.abs() == closest.abs() and x > closest) {
+            closest = x;
+        }
+    }
+    closest
+}
+
+// ---- closest_sort.kara: `sort_by` distance, the larger first
+fn sort_find_closest_number(nums: Vec[i64]) -> i64 {
+    let mut sorted = nums.clone();
+    sorted.sort_by(|a, b| {
+        if a.abs() != b.abs() {
+            a.abs().cmp(b.abs())
+        } else {
+            b.cmp(a)
+        }
+    });
+    sorted[0]
+}
+
+// ---- closest_twice.kara: the least distance, then `contains`
+fn twice_find_closest_number(nums: Vec[i64]) -> i64 {
+    let mut least = nums[0].abs();
+    for x in nums.iter() {
+        least = least.min(x.abs());
+    }
+    if nums.contains(least) { least } else { -least }
+}
+
+// ---- closest_struct.kara: `Nearest`, `beats` and `offer`
+struct Nearest {
+    best: i64,
+}
+
+impl Nearest {
+    fn beats(ref self, x: i64) -> bool {
+        x.abs() < self.best.abs() or (x.abs() == self.best.abs() and x > self.best)
+    }
+
+    fn offer(mut ref self, x: i64) {
+        if self.beats(x) {
+            self.best = x;
+        }
+    }
+}
+
+fn struct_find_closest_number(nums: Vec[i64]) -> i64 {
+    let mut nearest = Nearest { best: nums[0] };
+    for x in nums.iter() {
+        nearest.offer(x);
+    }
+    nearest.best
+}
+
+// ---- closest_iter.kara: `min_by_key` on a pair
+fn iter_find_closest_number(nums: Vec[i64]) -> i64 {
+    nums.iter().min_by_key(|x| (x.abs(), -x)).unwrap()
+}
+
+// ---- closest_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn find_closest_number(nums: Vec[i32]) -> i32 {
+        nums.clone().into_iter().min_by_key(|x| (x.abs(), -x)).unwrap()
+    }
+}
+
+struct Solution {}
+
+fn solution_find_closest_number(nums: Vec[i64]) -> i64 {
+    let nums: Vec[i32] = nums.iter().map(|x| x as i32).collect();
+    Solution.find_closest_number(nums)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let mut answer = i64.MIN;
+    for x in nums.iter() {
+        let mut closer = 0;
+        for y in nums.iter() {
+            if y.abs() < x.abs() {
+                closer += 1;
+            }
+        }
+        if closer == 0 and x > answer {
+            answer = x;
+        }
+    }
+    answer
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_find_closest_number(nums),
+        1 => sort_find_closest_number(nums),
+        2 => twice_find_closest_number(nums),
+        3 => struct_find_closest_number(nums),
+        4 => iter_find_closest_number(nums),
+        _ => solution_find_closest_number(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "sort", "twice", "struct", "iter", "solution"];
+    let mut seed = 2239;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 8 + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let x = next_random(mut seed) % 21 - 10;
+            if c < 300 {
+                nums.push(x);
+            } else if c < 330 {
+                nums.push(-(x.abs()) - 1);
+            } else {
+                nums.push(x);
+                nums.push(-x);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth + 100) % 1000000007;
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut with_zero = nums.clone();
+        with_zero.push(0);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut with_negation = nums.clone();
+            with_negation.push(-value);
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                nums.contains(value) and nums.iter().all(|y| y.abs() >= value.abs()),
+                answer(arm, with_zero) == 0,
+                answer(arm, with_negation) == value.abs(),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
