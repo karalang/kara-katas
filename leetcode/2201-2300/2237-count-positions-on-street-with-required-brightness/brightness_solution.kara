@@ -1,0 +1,104 @@
+// LeetCode #2237: Count Positions on Street With Required Brightness --
+// LeetCode's Rust template: `i32`, `Vec<Vec<i32>>` and `Vec<i32>` in,
+// `i32` out; a difference array `vec![0i32; n + 1]` indexed by `usize`
+// casts, each light's span clamped with `max(0)` and `min(n - 1)`, and
+// the brightness a running sum. Carried by `karac fix`. The adapter
+// below hands the harness's values to it.
+
+impl Solution {
+    pub fn meet_requirement(n: i32, lights: Vec[Vec[i32]], requirement: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut diff = Vec.filled(n + 1, 0i32);
+        for l in ref lights {
+            let (p, r) = (l[0], l[1]);
+            let lo = (p - r).max(0) as i64;
+            let hi = ((p + r) as i64).min(n - 1);
+            diff[lo] += 1;
+            diff[hi + 1] -= 1;
+        }
+        let mut cur = 0;
+        let mut ans = 0;
+        for i in 0..n {
+            cur += diff[i];
+            if cur >= requirement[i] {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let lights: Vec[Vec[i32]] = lights.iter().map(|l| [l[0] as i32, l[1] as i32]).collect();
+    let requirement: Vec[i32] = requirement.iter().map(|r| r as i32).collect();
+    Solution.meet_requirement(n as i32, lights, requirement)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) {
+    println(f"n = {n}, lights {lights}, requirement {requirement} -> {meet_requirement(n, lights, requirement)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: no requirement anywhere,
+    // a range far past both ends, two lights at one position, a light
+    // of range 0 at each end, and every position asking for one more
+    // than it gets
+    show(5, [[0, 1], [2, 1], [3, 2]], [0, 2, 1, 4, 1]);
+    show(1, [[0, 1]], [2]);
+    show(4, [[1, 0]], [0, 0, 0, 0]);
+    show(3, [[1, 100000]], [1, 1, 1]);
+    show(3, [[1, 1], [1, 1]], [2, 2, 2]);
+    show(4, [[0, 0], [3, 0]], [1, 0, 0, 1]);
+    show(3, [[0, 2], [2, 0]], [2, 2, 3]);
+    // 3000 random streets of 1 to 30 positions and 1 to 30 lights, the
+    // ranges up to the street's length (one in ten up to 10^5), each
+    // requirement up to the number of lights
+    let mut seed = 2237;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let m = next_random(mut seed) % 30 + 1;
+        let mut lights: Vec[Array[i64, 2]] = Vec.new();
+        for _ in 0..m {
+            let position = next_random(mut seed) % n;
+            let range = if c % 10 == 0 { wide_random(mut seed) % 100001 } else { next_random(mut seed) % (n + 1) };
+            lights.push([position, range]);
+        }
+        let mut requirement: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            requirement.push(next_random(mut seed) % (m + 1));
+        }
+        check = (check * 31 + meet_requirement(n, lights, requirement)) % 1000000007;
+    }
+    println(f"3000 streets: checksum {check}");
+    // the constraints' largest: 10^5 positions and 10^5 lights, ranges
+    // up to 10^5, then up to 100; the requirements up to 10^5, then up
+    // to 100
+    for top in [100000, 100] {
+        let n = 100000;
+        let mut lights: Vec[Array[i64, 2]] = Vec.new();
+        for _ in 0..100000 {
+            let position = wide_random(mut seed) % n;
+            lights.push([position, wide_random(mut seed) % (top + 1)]);
+        }
+        let mut requirement: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            requirement.push(wide_random(mut seed) % (top + 1));
+        }
+        println(f"10^5 positions and lights, ranges and requirements up to {top}: {meet_requirement(n, lights, requirement)}");
+    }
+}

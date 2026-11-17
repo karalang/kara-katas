@@ -1,0 +1,105 @@
+// LeetCode #2237: Count Positions on Street With Required Brightness --
+// a Fenwick tree over the street's differences: each light adds one at
+// the start of its span and takes one back past its end, and each
+// position's brightness is the prefix sum up to it, read off the tree.
+// O((n + m) log n).
+
+fn add(tree: mut ref Vec[i64], at: i64, delta: i64) {
+    let mut i = at + 1;
+    while i < tree.len() {
+        tree[i] += delta;
+        i += i & -i;
+    }
+}
+
+fn prefix(tree: Vec[i64], at: i64) -> i64 {
+    let mut total = 0;
+    let mut i = at + 1;
+    while i > 0 {
+        total += tree[i];
+        i -= i & -i;
+    }
+    total
+}
+
+fn meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut tree = Vec.filled(n + 2, 0);
+    for light in lights.iter() {
+        add(mut tree, (light[0] - light[1]).max(0), 1);
+        add(mut tree, (light[0] + light[1]).min(n - 1) + 1, -1);
+    }
+    let mut count = 0;
+    for i in 0..n {
+        if prefix(tree, i) >= requirement[i] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn show(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) {
+    println(f"n = {n}, lights {lights}, requirement {requirement} -> {meet_requirement(n, lights, requirement)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: no requirement anywhere,
+    // a range far past both ends, two lights at one position, a light
+    // of range 0 at each end, and every position asking for one more
+    // than it gets
+    show(5, [[0, 1], [2, 1], [3, 2]], [0, 2, 1, 4, 1]);
+    show(1, [[0, 1]], [2]);
+    show(4, [[1, 0]], [0, 0, 0, 0]);
+    show(3, [[1, 100000]], [1, 1, 1]);
+    show(3, [[1, 1], [1, 1]], [2, 2, 2]);
+    show(4, [[0, 0], [3, 0]], [1, 0, 0, 1]);
+    show(3, [[0, 2], [2, 0]], [2, 2, 3]);
+    // 3000 random streets of 1 to 30 positions and 1 to 30 lights, the
+    // ranges up to the street's length (one in ten up to 10^5), each
+    // requirement up to the number of lights
+    let mut seed = 2237;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let m = next_random(mut seed) % 30 + 1;
+        let mut lights: Vec[Array[i64, 2]] = Vec.new();
+        for _ in 0..m {
+            let position = next_random(mut seed) % n;
+            let range = if c % 10 == 0 { wide_random(mut seed) % 100001 } else { next_random(mut seed) % (n + 1) };
+            lights.push([position, range]);
+        }
+        let mut requirement: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            requirement.push(next_random(mut seed) % (m + 1));
+        }
+        check = (check * 31 + meet_requirement(n, lights, requirement)) % 1000000007;
+    }
+    println(f"3000 streets: checksum {check}");
+    // the constraints' largest: 10^5 positions and 10^5 lights, ranges
+    // up to 10^5, then up to 100; the requirements up to 10^5, then up
+    // to 100
+    for top in [100000, 100] {
+        let n = 100000;
+        let mut lights: Vec[Array[i64, 2]] = Vec.new();
+        for _ in 0..100000 {
+            let position = wide_random(mut seed) % n;
+            lights.push([position, wide_random(mut seed) % (top + 1)]);
+        }
+        let mut requirement: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            requirement.push(wide_random(mut seed) % (top + 1));
+        }
+        println(f"10^5 positions and lights, ranges and requirements up to {top}: {meet_requirement(n, lights, requirement)}");
+    }
+}

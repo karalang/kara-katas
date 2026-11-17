@@ -1,0 +1,57 @@
+// LeetCode #2237: Count Positions on Street With Required Brightness --
+// a difference array over the street, a running sum for each position's
+// brightness, and the positions meeting their requirement counted.
+// O(n + m).
+
+fn meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut change = Vec.filled(n + 1, 0);
+    for light in lights.iter() {
+        let from = (light[0] - light[1]).max(0);
+        let to = (light[0] + light[1]).min(n - 1);
+        change[from] += 1;
+        change[to + 1] -= 1;
+    }
+    let mut brightness = 0;
+    let mut count = 0;
+    for i in 0..n {
+        brightness += change[i];
+        if brightness >= requirement[i] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    let mut seed = 2237;
+    let n = 100000;
+    let mut lights: Vec[Array[i64, 2]] = Vec.new();
+    for _ in 0..100000 {
+        let position = wide_random(mut seed) % n;
+        lights.push([position, wide_random(mut seed) % 1001]);
+    }
+    let mut requirement: Vec[i64] = Vec.new();
+    for _ in 0..n {
+        requirement.push(wide_random(mut seed) % 2001);
+    }
+    let mut check = 0;
+    for _ in 0..100 {
+        // punch: one light and one requirement drawn again before each pass
+        let at = wide_random(mut seed) % 100000;
+        lights[at] = [wide_random(mut seed) % n, wide_random(mut seed) % 1001];
+        requirement[wide_random(mut seed) % n] = wide_random(mut seed) % 2001;
+        check = (check * 31 + meet_requirement(n, lights, requirement)) % 1000000007;
+    }
+    println(f"100 passes over 10^5 positions and lights: checksum {check}");
+}

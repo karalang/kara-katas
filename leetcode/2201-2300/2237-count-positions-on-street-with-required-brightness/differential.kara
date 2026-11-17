@@ -1,0 +1,320 @@
+// LeetCode #2237: Count Positions on Street With Required Brightness --
+// the differential. The six arms, against the statement read literally:
+// for each position, the lights whose position is within their range
+// of it counted, no clamping and no differences, and the positions
+// whose count meets their requirement. 300 random streets of 1 to 12
+// positions and 1 to 8 lights, the ranges up to the street's length,
+// each requirement up to the number of lights; then 30 with ranges up
+// to 10^5; then 30 with every light at one position. Every case is
+// drawn before any arm answers.
+//
+// P1  the answer is the statement's count
+// P2  the lights in the other order: the same answer
+// P3  no requirement anywhere: every position; every requirement one
+//     more than the lights: none
+// P4  one more light, of range 0 at position 0: no smaller answer
+// P5  the street mirrored, each position p at n - 1 - p and the
+//     requirements reversed: the same answer
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- brightness.kara: the ★ arm, a difference array and a running sum
+fn star_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut change = Vec.filled(n + 1, 0);
+    for light in lights.iter() {
+        let from = (light[0] - light[1]).max(0);
+        let to = (light[0] + light[1]).min(n - 1);
+        change[from] += 1;
+        change[to + 1] -= 1;
+    }
+    let mut brightness = 0;
+    let mut count = 0;
+    for i in 0..n {
+        brightness += change[i];
+        if brightness >= requirement[i] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- brightness_heap.kara: a sweep with a min-first queue of ends
+fn heap_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut spans: Vec[(i64, i64)] = lights.iter().map(|l| ((l[0] - l[1]).max(0), (l[0] + l[1]).min(n - 1))).collect();
+    spans.sort();
+    let mut ends: PriorityQueue[i64] = PriorityQueue.new();
+    let mut next = 0;
+    let mut count = 0;
+    for i in 0..n {
+        while next < spans.len() and spans[next].0 == i {
+            ends.push(spans[next].1);
+            next += 1;
+        }
+        while let Some(end) = ends.peek() {
+            if end >= i {
+                break;
+            }
+            ends.pop();
+        }
+        if ends.len() >= requirement[i] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- brightness_fenwick.kara: a Fenwick tree of differences
+fn fenwick_add(tree: mut ref Vec[i64], at: i64, delta: i64) {
+    let mut i = at + 1;
+    while i < tree.len() {
+        tree[i] += delta;
+        i += i & -i;
+    }
+}
+
+fn fenwick_prefix(tree: Vec[i64], at: i64) -> i64 {
+    let mut total = 0;
+    let mut i = at + 1;
+    while i > 0 {
+        total += tree[i];
+        i -= i & -i;
+    }
+    total
+}
+
+fn fenwick_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut tree = Vec.filled(n + 2, 0);
+    for light in lights.iter() {
+        fenwick_add(mut tree, (light[0] - light[1]).max(0), 1);
+        fenwick_add(mut tree, (light[0] + light[1]).min(n - 1) + 1, -1);
+    }
+    let mut count = 0;
+    for i in 0..n {
+        if fenwick_prefix(tree, i) >= requirement[i] {
+            count += 1;
+        }
+    }
+    count
+}
+
+// ---- brightness_struct.kara: `Street`, `light`, `brightness` and `meeting`
+struct Street {
+    length: i64,
+    change: Vec[i64],
+}
+
+impl Street {
+    fn new(length: i64) -> Street {
+        Street { length: length, change: Vec.filled(length + 1, 0) }
+    }
+
+    fn light(mut ref self, position: i64, range: i64) {
+        self.change[(position - range).max(0)] += 1;
+        self.change[(position + range).min(self.length - 1) + 1] -= 1;
+    }
+
+    fn brightness(ref self) -> Vec[i64] {
+        let mut levels: Vec[i64] = Vec.new();
+        let mut running = 0;
+        for i in 0..self.length {
+            running += self.change[i];
+            levels.push(running);
+        }
+        levels
+    }
+
+    fn meeting(ref self, requirement: Vec[i64]) -> i64 {
+        let levels = self.brightness();
+        let mut count = 0;
+        for i in 0..self.length {
+            if levels[i] >= requirement[i] {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+fn struct_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut street = Street.new(n);
+    for light in lights.iter() {
+        street.light(light[0], light[1]);
+    }
+    street.meeting(requirement)
+}
+
+// ---- brightness_iter.kara: `map`, `fold`, `zip`, `filter` and `count`
+fn iter_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let change = lights
+        .iter()
+        .map(|l| ((l[0] - l[1]).max(0), (l[0] + l[1]).min(n - 1)))
+        .fold(Vec.filled(n + 1, 0), |change, span| iter_marked(change, span));
+    let mut running = 0;
+    let brightness: Vec[i64] = change.iter().take(n).map(|d| {
+        running += d;
+        running
+    }).collect();
+    brightness.iter().zip(requirement.iter()).filter(|pair| pair.0 >= pair.1).count()
+}
+
+fn iter_marked(change: own Vec[i64], span: (i64, i64)) -> Vec[i64] {
+    let mut change = change;
+    change[span.0] += 1;
+    change[span.1 + 1] -= 1;
+    change
+}
+
+// ---- brightness_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn meet_requirement(n: i32, lights: Vec[Vec[i32]], requirement: Vec[i32]) -> i32 {
+        let n = n as i64;
+        let mut diff = Vec.filled(n + 1, 0i32);
+        for l in ref lights {
+            let (p, r) = (l[0], l[1]);
+            let lo = (p - r).max(0) as i64;
+            let hi = ((p + r) as i64).min(n - 1);
+            diff[lo] += 1;
+            diff[hi + 1] -= 1;
+        }
+        let mut cur = 0;
+        let mut ans = 0;
+        for i in 0..n {
+            cur += diff[i];
+            if cur >= requirement[i] {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_meet_requirement(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let lights: Vec[Vec[i32]] = lights.iter().map(|l| [l[0] as i32, l[1] as i32]).collect();
+    let requirement: Vec[i32] = requirement.iter().map(|r| r as i32).collect();
+    Solution.meet_requirement(n as i32, lights, requirement)
+}
+
+// ---- the statement read literally
+
+fn literal(n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    let mut count = 0;
+    for p in 0..n {
+        let mut lit = 0;
+        for light in lights.iter() {
+            if (p - light[0]).abs() <= light[1] {
+                lit += 1;
+            }
+        }
+        if lit >= requirement[p] {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, n: i64, lights: Vec[Array[i64, 2]], requirement: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_meet_requirement(n, lights, requirement),
+        1 => heap_meet_requirement(n, lights, requirement),
+        2 => fenwick_meet_requirement(n, lights, requirement),
+        3 => struct_meet_requirement(n, lights, requirement),
+        4 => iter_meet_requirement(n, lights, requirement),
+        _ => solution_meet_requirement(n, lights, requirement),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    n: i64,
+    lights: Vec[Array[i64, 2]],
+    requirement: Vec[i64],
+}
+
+fn main() {
+    let names = ["star", "heap", "fenwick", "struct", "iter", "solution"];
+    let mut seed = 2237;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 12 + 1;
+        let m = next_random(mut seed) % 8 + 1;
+        let shared = next_random(mut seed) % n;
+        let mut lights: Vec[Array[i64, 2]] = Vec.new();
+        for _ in 0..m {
+            let position = if c >= 330 { shared } else { next_random(mut seed) % n };
+            let range = if c >= 300 and c < 330 {
+                (next_random(mut seed) * 32768 + next_random(mut seed)) % 100001
+            } else {
+                next_random(mut seed) % (n + 1)
+            };
+            lights.push([position, range]);
+        }
+        let mut requirement: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            requirement.push(next_random(mut seed) % (m + 1));
+        }
+        cases.push(Case { n: n, lights: lights, requirement: requirement });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let n = case.n;
+        let lights = case.lights.clone();
+        let requirement = case.requirement.clone();
+        let truth = literal(n, lights, requirement);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: Vec[Array[i64, 2]] = lights.iter().rev().collect();
+        let none: Vec[i64] = Vec.filled(n, 0);
+        let too_many: Vec[i64] = Vec.filled(n, lights.len() + 1);
+        let mut more = lights.clone();
+        more.push([0, 0]);
+        let mirrored: Vec[Array[i64, 2]] = lights.iter().map(|l| [n - 1 - l[0], l[1]]).collect();
+        let mirrored_requirement: Vec[i64] = requirement.iter().rev().collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, lights, requirement)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, n, reversed, requirement) == value,
+                answer(arm, n, lights, none) == n and answer(arm, n, lights, too_many) == 0,
+                answer(arm, n, more, requirement) >= value,
+                answer(arm, n, mirrored, mirrored_requirement) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n = {n}, lights {lights}, requirement {requirement} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
