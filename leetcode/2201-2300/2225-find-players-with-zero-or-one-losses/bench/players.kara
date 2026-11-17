@@ -1,0 +1,77 @@
+// LeetCode #2225: Find Players With Zero or One Losses -- a `Map` from
+// player to losses, a winner entered with 0 if new and a loser's count
+// raised; then the players with 0 and with 1 collected and sorted, since
+// a `Map` walks in no set order. O(m log m).
+
+fn find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut losses: Map[i64, i64] = Map.new();
+    for game in matches.iter() {
+        if not losses.contains_key(game[0]) {
+            losses.insert(game[0], 0);
+        }
+        let before = losses.get(game[1]).unwrap_or(0);
+        losses.insert(game[1], before + 1);
+    }
+    let mut unbeaten: Vec[i64] = Vec.new();
+    let mut once: Vec[i64] = Vec.new();
+    for (player, count) in losses.iter() {
+        if count == 0 {
+            unbeaten.push(player);
+        } else if count == 1 {
+            once.push(player);
+        }
+    }
+    unbeaten.sort();
+    once.sort();
+    [unbeaten, once].to_vec()
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a match between two players of 1 to 10^5, never one against itself
+fn draw_match(seed: mut ref i64) -> Vec[i64] {
+    let winner = wide_random(mut seed) % 100000 + 1;
+    let mut loser = wide_random(mut seed) % 100000 + 1;
+    if loser == winner {
+        loser = winner % 100000 + 1;
+    }
+    [winner, loser].to_vec()
+}
+
+fn main() {
+    let mut seed = 2225;
+    let mut tournaments: Vec[Vec[Vec[i64]]] = Vec.new();
+    for _ in 0..4 {
+        let mut matches: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..100000 {
+            matches.push(draw_match(mut seed));
+        }
+        tournaments.push(matches);
+    }
+    let mut listed = 0;
+    let mut check = 0;
+    for _ in 0..25 {
+        for t in 0..4 {
+            // punch: one match is drawn again before each answer
+            let at = wide_random(mut seed) % 100000;
+            tournaments[t][at] = draw_match(mut seed);
+            for list in find_winners(tournaments[t]).iter() {
+                listed += list.len();
+                check = (check * 31 + list.len()) % 1000000007;
+                for p in list.iter() {
+                    check = (check * 31 + p) % 1000000007;
+                }
+            }
+        }
+    }
+    println(f"100 tournaments: {listed} players listed in all, checksum {check}");
+}

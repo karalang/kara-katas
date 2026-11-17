@@ -1,0 +1,118 @@
+// LeetCode #2225: Find Players With Zero or One Losses -- a `Tournament`
+// that records each match as it is played: a `Set` of everyone seen and a
+// `Map` of losses; `unbeaten` and `beaten_once` read it afterwards, each
+// sorted. O(m log m).
+
+struct Tournament {
+    players: Set[i64],
+    losses: Map[i64, i64],
+}
+
+impl Tournament {
+    fn new() -> Tournament {
+        Tournament { players: Set.new(), losses: Map.new() }
+    }
+
+    fn record(mut ref self, winner: i64, loser: i64) {
+        self.players.insert(winner);
+        self.players.insert(loser);
+        let before = self.losses.get(loser).unwrap_or(0);
+        self.losses.insert(loser, before + 1);
+    }
+
+    fn with_losses(ref self, count: i64) -> Vec[i64] {
+        let mut found: Vec[i64] = Vec.new();
+        for player in self.players.iter() {
+            if self.losses.get(player).unwrap_or(0) == count {
+                found.push(player);
+            }
+        }
+        found.sort();
+        found
+    }
+
+    fn unbeaten(ref self) -> Vec[i64] {
+        self.with_losses(0)
+    }
+
+    fn beaten_once(ref self) -> Vec[i64] {
+        self.with_losses(1)
+    }
+}
+
+fn find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut tournament = Tournament.new();
+    for game in matches.iter() {
+        tournament.record(game[0], game[1]);
+    }
+    [tournament.unbeaten(), tournament.beaten_once()].to_vec()
+}
+
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a draw of 30 bits, since one draw stops at 32767
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// m matches among players 1 to players, no player against itself and
+// no match twice
+fn draw_matches(seed: mut ref i64, m: i64, players: i64) -> Vec[Vec[i64]] {
+    let mut seen: Set[i64] = Set.new();
+    let mut matches: Vec[Vec[i64]] = Vec.new();
+    let mut tries = 0;
+    while matches.len() < m and tries < 4 * m {
+        tries += 1;
+        let winner = wide_random(mut seed) % players + 1;
+        let loser = wide_random(mut seed) % players + 1;
+        if winner != loser and not seen.contains(winner * 200003 + loser) {
+            seen.insert(winner * 200003 + loser);
+            matches.push([winner, loser].to_vec());
+        }
+    }
+    matches
+}
+
+fn show(matches: Vec[Vec[i64]]) {
+    println(f"{matches} -> {find_winners(matches)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one match, a cycle of
+    // three, a player losing twice, and a chain
+    show([[1, 3], [2, 3], [3, 6], [5, 6], [5, 7], [4, 5], [4, 8], [4, 9], [10, 4], [10, 9]]);
+    show([[2, 3], [1, 3], [5, 4], [6, 4]]);
+    show([[7, 2]]);
+    show([[1, 2], [2, 3], [3, 1]]);
+    show([[4, 9], [5, 9], [9, 6]]);
+    show([[1, 2], [2, 3], [3, 4], [4, 5]]);
+    // 3000 random tournaments of 1 to 30 matches among 5, 30 and 10^5
+    // players in turn
+    let mut seed = 2225;
+    let mut check = 0;
+    for c in 0..3000 {
+        let m = next_random(mut seed) % 30 + 1;
+        let matches = draw_matches(mut seed, m, [5, 30, 100000][c % 3]);
+        for list in find_winners(matches).iter() {
+            check = (check * 31 + list.len()) % 1000000007;
+            for p in list.iter() {
+                check = (check * 31 + p) % 1000000007;
+            }
+        }
+    }
+    println(f"3000 tournaments: checksum {check}");
+    // the constraints' largest: 10^5 matches among 10^5 players
+    let wide = draw_matches(mut seed, 100000, 100000);
+    let answer = find_winners(wide);
+    let mut sum = 0;
+    for p in answer[1].iter() {
+        sum = (sum * 31 + p) % 1000000007;
+    }
+    println(f"10^5 matches: {answer[0].len()} unbeaten, {answer[1].len()} beaten once, checksum {sum}");
+}

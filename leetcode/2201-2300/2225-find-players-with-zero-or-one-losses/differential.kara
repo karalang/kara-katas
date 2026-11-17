@@ -1,0 +1,376 @@
+// LeetCode #2225: Find Players With Zero or One Losses -- the
+// differential. The six arms, against the statement read literally: each
+// number from 1 to the largest player tried in order, kept if it played
+// at all, and its losses counted by a walk over every match; no table.
+// 300 random tournaments of 1 to 20 matches among 5, 10 and 40 players
+// in turn; then 30 where player 1 beats every other; then 30 cycles,
+// each player beating the next and the last beating the first. Every
+// case is drawn before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  two lists, each strictly increasing, sharing no player, and every
+//     player in them one who played
+// P3  the matches in reverse order: the same answers
+// P4  every player numbered 7 higher: every answer 7 higher
+// P5  one more match, a new player above all the others beating a
+//     random one who played: the new player last among the unbeaten,
+//     and the beaten one moved from unbeaten to once, or from once out
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- players.kara: the ★ arm, a `Map` of losses, both lists sorted
+fn star_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut losses: Map[i64, i64] = Map.new();
+    for game in matches.iter() {
+        if not losses.contains_key(game[0]) {
+            losses.insert(game[0], 0);
+        }
+        let before = losses.get(game[1]).unwrap_or(0);
+        losses.insert(game[1], before + 1);
+    }
+    let mut unbeaten: Vec[i64] = Vec.new();
+    let mut once: Vec[i64] = Vec.new();
+    for (player, count) in losses.iter() {
+        if count == 0 {
+            unbeaten.push(player);
+        } else if count == 1 {
+            once.push(player);
+        }
+    }
+    unbeaten.sort();
+    once.sort();
+    [unbeaten, once].to_vec()
+}
+
+// ---- players_array.kara: a count per player number, no sort
+fn array_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut largest = 0;
+    for game in matches.iter() {
+        largest = largest.max(game[0]).max(game[1]);
+    }
+    let mut losses = Vec.filled(largest + 1, -1);
+    for game in matches.iter() {
+        if losses[game[0]] < 0 {
+            losses[game[0]] = 0;
+        }
+        if losses[game[1]] < 0 {
+            losses[game[1]] = 0;
+        }
+        losses[game[1]] += 1;
+    }
+    let mut unbeaten: Vec[i64] = Vec.new();
+    let mut once: Vec[i64] = Vec.new();
+    for player in 1..=largest {
+        if losses[player] == 0 {
+            unbeaten.push(player);
+        } else if losses[player] == 1 {
+            once.push(player);
+        }
+    }
+    [unbeaten, once].to_vec()
+}
+
+// ---- players_sorted.kara: a `SortedMap` of losses, walked in order
+fn sorted_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut losses: SortedMap[i64, i64] = SortedMap.new();
+    for game in matches.iter() {
+        let won = losses.get(game[0]).unwrap_or(0);
+        losses.insert(game[0], won);
+        let lost = losses.get(game[1]).unwrap_or(0);
+        losses.insert(game[1], lost + 1);
+    }
+    let mut unbeaten: Vec[i64] = Vec.new();
+    let mut once: Vec[i64] = Vec.new();
+    for (player, count) in losses.iter() {
+        match count {
+            0 => unbeaten.push(player),
+            1 => once.push(player),
+            _ => {}
+        }
+    }
+    [unbeaten, once].to_vec()
+}
+
+// ---- players_struct.kara: `Tournament`, `record`, `unbeaten` and `beaten_once`
+struct Tournament {
+    players: Set[i64],
+    losses: Map[i64, i64],
+}
+
+impl Tournament {
+    fn new() -> Tournament {
+        Tournament { players: Set.new(), losses: Map.new() }
+    }
+
+    fn record(mut ref self, winner: i64, loser: i64) {
+        self.players.insert(winner);
+        self.players.insert(loser);
+        let before = self.losses.get(loser).unwrap_or(0);
+        self.losses.insert(loser, before + 1);
+    }
+
+    fn with_losses(ref self, count: i64) -> Vec[i64] {
+        let mut found: Vec[i64] = Vec.new();
+        for player in self.players.iter() {
+            if self.losses.get(player).unwrap_or(0) == count {
+                found.push(player);
+            }
+        }
+        found.sort();
+        found
+    }
+
+    fn unbeaten(ref self) -> Vec[i64] {
+        self.with_losses(0)
+    }
+
+    fn beaten_once(ref self) -> Vec[i64] {
+        self.with_losses(1)
+    }
+}
+
+fn struct_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut tournament = Tournament.new();
+    for game in matches.iter() {
+        tournament.record(game[0], game[1]);
+    }
+    [tournament.unbeaten(), tournament.beaten_once()].to_vec()
+}
+
+// ---- players_iter.kara: `fold` into a `Map`, then `filter` and `map`
+fn iter_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let losses = matches.iter().fold(Map.new(), |table: own Map[i64, i64], game: Vec[i64]| {
+        let mut table = table;
+        let won = table.get(game[0]).unwrap_or(0);
+        table.insert(game[0], won);
+        let lost = table.get(game[1]).unwrap_or(0);
+        table.insert(game[1], lost + 1);
+        table
+    });
+    let with_losses = |count: i64| {
+        let mut found: Vec[i64] = losses.iter().filter(|e| e.1 == count).map(|e| e.0).collect();
+        found.sort();
+        found
+    };
+    [with_losses(0), with_losses(1)].to_vec()
+}
+
+// ---- players_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn find_winners(matches: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let mut losses: Map[i32, i32] = Map.new();
+        for m in ref matches {
+            losses.entry(m[0]).or_insert(0);
+            *losses.entry(m[1]).or_insert(0) += 1;
+        }
+        let mut zero = Vec.new();
+        let mut one = Vec.new();
+        for (player, count) in ref losses {
+            if count == 0 {
+                zero.push(player);
+            } else if count == 1 {
+                one.push(player);
+            }
+        }
+        zero.sort();
+        one.sort();
+        [zero, one]
+    }
+}
+
+struct Solution {}
+
+fn solution_find_winners(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let matches: Vec[Vec[i32]] = matches.iter().map(|m| m.iter().map(|x| x as i32).collect()).collect();
+    Solution.find_winners(matches).iter().map(|l| l.iter().map(|x| x as i64).collect()).collect()
+}
+
+// ---- the statement read literally
+
+fn literal(matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let mut largest = 0;
+    for game in matches.iter() {
+        largest = largest.max(game[0]).max(game[1]);
+    }
+    let mut unbeaten: Vec[i64] = Vec.new();
+    let mut once: Vec[i64] = Vec.new();
+    for player in 1..=largest {
+        let mut played = false;
+        let mut lost = 0;
+        for game in matches.iter() {
+            if game[0] == player or game[1] == player {
+                played = true;
+            }
+            if game[1] == player {
+                lost += 1;
+            }
+        }
+        if played and lost == 0 {
+            unbeaten.push(player);
+        } else if played and lost == 1 {
+            once.push(player);
+        }
+    }
+    [unbeaten, once].to_vec()
+}
+
+fn answer(arm: i64, matches: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_find_winners(matches),
+        1 => array_find_winners(matches),
+        2 => sorted_find_winners(matches),
+        3 => struct_find_winners(matches),
+        4 => iter_find_winners(matches),
+        _ => solution_find_winners(matches),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn increasing(list: Vec[i64]) -> bool {
+    for i in 1..list.len() {
+        if list[i - 1] >= list[i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn shifted(list: Vec[i64], by: i64) -> Vec[i64] {
+    list.iter().map(|p| p + by).collect()
+}
+
+// the answers after `newcomer` beats `beaten`
+fn after_upset(lists: Vec[Vec[i64]], newcomer: i64, beaten: i64) -> Vec[Vec[i64]] {
+    let mut unbeaten: Vec[i64] = lists[0].iter().filter(|p| p != beaten).collect();
+    unbeaten.push(newcomer);
+    let mut once: Vec[i64] = lists[1].iter().filter(|p| p != beaten).collect();
+    if lists[0].contains(beaten) {
+        once.push(beaten);
+        once.sort();
+    }
+    [unbeaten, once].to_vec()
+}
+
+struct Case {
+    matches: Vec[Vec[i64]],
+    beaten: i64,
+}
+
+fn main() {
+    let names = ["star", "array", "sorted", "struct", "iter", "solution"];
+    let mut seed = 2225;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let mut matches: Vec[Vec[i64]] = Vec.new();
+        if c < 300 {
+            let m = next_random(mut seed) % 20 + 1;
+            let players = [5, 10, 40][c % 3];
+            let mut seen: Set[i64] = Set.new();
+            let mut tries = 0;
+            while matches.len() < m and tries < 4 * m {
+                tries += 1;
+                let winner = next_random(mut seed) % players + 1;
+                let loser = next_random(mut seed) % players + 1;
+                if winner != loser and not seen.contains(winner * 1000 + loser) {
+                    seen.insert(winner * 1000 + loser);
+                    matches.push([winner, loser].to_vec());
+                }
+            }
+        } else {
+            let n = next_random(mut seed) % 12 + 2;
+            for p in 2..=n {
+                if c < 330 {
+                    matches.push([1, p].to_vec());
+                } else {
+                    matches.push([p - 1, p].to_vec());
+                }
+            }
+            if c >= 330 {
+                matches.push([n, 1].to_vec());
+            }
+        }
+        let pick = next_random(mut seed) % matches.len();
+        let side = next_random(mut seed) % 2;
+        let beaten = matches[pick][side];
+        cases.push(Case { matches: matches, beaten: beaten });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let matches = ref case.matches;
+        let truth = literal(matches);
+        for list in truth.iter() {
+            check = (check * 31 + list.len()) % 1000000007;
+            for p in list.iter() {
+                check = (check * 31 + p) % 1000000007;
+            }
+        }
+        let mut played: Set[i64] = Set.new();
+        let mut largest = 0;
+        for game in matches.iter() {
+            played.insert(game[0]);
+            played.insert(game[1]);
+            largest = largest.max(game[0]).max(game[1]);
+        }
+        let reversed: Vec[Vec[i64]] = matches.iter().rev().cloned().collect();
+        let renumbered: Vec[Vec[i64]] = matches.iter().map(|g| shifted(g, 7)).collect();
+        let mut upset = matches.clone();
+        upset.push([largest + 1, case.beaten].to_vec());
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, matches)).collect();
+        for arm in 0..6 {
+            let lists = ref got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == lists {
+                    same += 1;
+                }
+            }
+            let shaped = lists.len() == 2
+                and increasing(lists[0])
+                and increasing(lists[1])
+                and lists[0].iter().all(|p| not lists[1].contains(p))
+                and lists.iter().all(|l| l.iter().all(|p| played.contains(p)));
+            let up = if lists.len() == 2 {
+                answer(arm, upset) == after_upset(lists, largest + 1, case.beaten)
+            } else {
+                false
+            };
+            let moved: Vec[Vec[i64]] = lists.iter().map(|l| shifted(l, 7)).collect();
+            let verdicts = [
+                lists == truth,
+                shaped,
+                answer(arm, reversed) == lists,
+                answer(arm, renumbered) == moved,
+                up,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{matches} arm {names[arm]}: P{q + 1} fails, gave {lists}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
