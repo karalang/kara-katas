@@ -1,0 +1,215 @@
+// LeetCode #1598: Crawler Log Folder
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 logs of 1 to
+// 10 operations, with six properties. Every random choice is drawn before
+// any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  a `./` put in anywhere leaves the answer
+// P3  a move into a folder and a `../` added at the end leave the answer
+// P4  the folders renamed leave the answer
+// P5  a `../` put before every log leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- crawler.kara: the ★ arm: the depth alone
+
+fn star_arm(logs: Vec[String]) -> i32 {
+    let mut depth: i32 = 0;
+    for log in logs.iter() {
+        match log.as_str() {
+            "../" => depth = (depth - 1).max(0),
+            "./" => {}
+            _ => depth += 1,
+        }
+    }
+    depth
+}
+
+// ---- crawler_stack.kara: the path kept on a Vec of Str
+
+fn stack_arm(logs: Vec[String]) -> i32 {
+    let mut path: Vec[Str] = Vec.new();
+    for log in logs.iter() {
+        if log == "../" {
+            path.pop();
+        } else if log != "./" {
+            path.push(log.strip_suffix("/").unwrap());
+        }
+    }
+    path.len() as i32
+}
+
+// ---- crawler_fold.kara: one fold
+
+fn fold_arm(logs: Vec[String]) -> i32 {
+    logs.iter().fold(0, |depth, log| {
+        if log == "../" {
+            (depth - 1).max(0)
+        } else if log == "./" {
+            depth
+        } else {
+            depth + 1
+        }
+    })
+}
+
+// ---- crawler_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn min_operations(logs: Vec[String]) -> i32 {
+        let mut depth = 0;
+        for log in logs {
+            match log.as_str() {
+                "../" => {
+                    if depth > 0 {
+                        depth -= 1;
+                    }
+                }
+                "./" => {}
+                _ => depth += 1,
+            }
+        }
+        depth
+    }
+}
+
+fn solution_arm(logs: Vec[String]) -> i32 {
+    SolutionArm.min_operations(logs)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, logs: Vec[String]) -> i32 {
+    match a {
+        0 => star_arm(logs),
+        1 => stack_arm(logs),
+        2 => fold_arm(logs),
+        _ => solution_arm(logs),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["crawler", "stack", "fold", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the folder the file system is in,
+// as the list of folders from the main one, changed by each operation as
+// the statement says; then the fewest `../` after them that bring it back
+// to the main folder, found by trying 0, 1, 2, ... of them
+
+fn run(logs: Vec[String]) -> Vec[String] {
+    let mut path: Vec[String] = Vec.new();
+    for log in logs.iter() {
+        if log == "../" {
+            if not path.is_empty() {
+                path.pop();
+            }
+        } else if log != "./" {
+            path.push(log.clone());
+        }
+    }
+    path
+}
+
+fn literal(logs: Vec[String]) -> i32 {
+    let mut k: i32 = 0;
+    loop {
+        let mut tried = logs.clone();
+        for _ in 0..k {
+            tried.push("../");
+        }
+        if run(tried).is_empty() {
+            return k;
+        }
+        k += 1;
+    }
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15980;
+    let mut cases: Vec[(Vec[String], i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let logs: Vec[String] = (0..n).map(|_| {
+            let r = next_random(mut seed) % 8;
+            if r < 2 { "../" } else if r < 4 { "./" } else { f"d{r - 3}/" }
+        }).collect();
+        let at = next_random(mut seed) % (n + 1);
+        cases.push((logs, at));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, case) in cases.iter().enumerate() {
+        let (logs, at) = case;
+        let truth = literal(logs);
+        let mut stayed = logs.clone();
+        stayed.insert(*at, "./");
+        let mut there_and_back = logs.clone();
+        there_and_back.push("x/");
+        there_and_back.push("../");
+        let renamed: Vec[String] = logs.iter().map(|log| if log.starts_with("d") { f"e{log}" } else { log.clone() }).collect();
+        let mut up_first: Vec[String] = ["../"];
+        up_first.extend(logs.iter().cloned());
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, logs);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, stayed) != answer,
+                arm(a, there_and_back) != answer,
+                arm(a, renamed) != answer,
+                arm(a, up_first) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

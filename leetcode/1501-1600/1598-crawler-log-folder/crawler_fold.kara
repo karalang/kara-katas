@@ -1,0 +1,64 @@
+// LeetCode #1598: Crawler Log Folder -- one fold.
+//
+// The depth carried through the logs by `fold`: each log moves it down,
+// up but never above the main folder, or not at all. O(n).
+
+fn min_operations(logs: Vec[String]) -> i32 {
+    logs.iter().fold(0, |depth, log| {
+        if log == "../" {
+            (depth - 1).max(0)
+        } else if log == "./" {
+            depth
+        } else {
+            depth + 1
+        }
+    })
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random log of `n` operations: a quarter `../`, a quarter `./`, and
+// half a move into one of five folders.
+fn random_logs(n: i64, seed: mut ref i64) -> Vec[String] {
+    (0..n).map(|_| {
+        let r = next_random(mut seed) % 8;
+        if r < 2 { "../" } else if r < 4 { "./" } else { f"d{r - 3}/" }
+    }).collect()
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..count {
+        let n = next_random(mut seed) % most + 1;
+        let logs = random_logs(n, mut seed);
+        let answer = min_operations(logs);
+        total += answer;
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"{count} logs of up to {most} operations: total {total}, checksum {check}");
+}
+
+fn main() {
+    let examples: Vec[Vec[String]] = [
+        ["d1/", "d2/", "../", "d21/", "./"],
+        ["d1/", "d2/", "./", "d3/", "../", "d31/"],
+        ["d1/", "../", "../", "../"],
+        ["./"],
+        ["../", "../", "x/"],
+        Vec.filled(1000, "a/"),
+    ];
+    for logs in examples.iter() {
+        let shown = if logs.len() > 6 { f"[\"a/\"; {logs.len()}]" } else { f"{logs}" };
+        println(f"{shown} -> {min_operations(logs)}");
+    }
+    let mut seed = 1598;
+    batch(3000, 8, mut seed);
+    batch(300, 100, mut seed);
+    batch(30, 1000, mut seed);
+}
