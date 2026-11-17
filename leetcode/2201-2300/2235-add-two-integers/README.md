@@ -95,10 +95,9 @@ kept ones fail the same checks.
 
 P1 and P6 kill all seventeen, P3 sixteen, P4 fourteen, P5 twelve and
 P2 five. Over every pair each property sees almost every case, so the
-counts tell the edits apart where the words do not: the ★ arm's `|`
-and the bits arm's `|` for `^` both compute `num1 | num2`, but the bits
-arm then adds a carry of `a & b` that is never nonzero, and they part
-only in P5, at `-x | -y` against `-(x | y)`. P2, the swap, catches only
+counts tell apart even edits that fail alike: the ★ arm's `|` and the
+bits arm's `|` for `^` fail P1 to P4 on exactly the same counts and
+part only in P5, the negated pairs. P2, the swap, catches only
 the edits that treat the two numbers differently (M5, M14, M18, M20,
 M28); the only kept edit P3 misses is the difference (M28), which taken
 back with `-num2` returns `num1`.
