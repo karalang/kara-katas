@@ -1,0 +1,249 @@
+// LeetCode #1590: Make Sum Divisible by P -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1
+// to 8 values from 1 to 9 and p from 1 to 12, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the array reversed leaves the answer
+// P3  every value raised by p leaves the answer
+// P4  every value and p multiplied by 3 leave the answer
+// P5  every value made its remainder (0 made p) leaves the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- divisible.kara: the ★ arm: the latest prefix with each remainder in a Map
+
+fn star_arm(nums: Vec[i32], p: i32) -> i32 {
+    let p = p as i64;
+    let need = nums.iter().map(|v| *v as i64).sum() % p;
+    if need == 0 {
+        return 0;
+    }
+    let mut last: Map[i64, i64] = Map.new();
+    last.insert(0, -1);
+    let mut prefix = 0;
+    let mut best = nums.len();
+    for (j, v) in nums.iter().enumerate() {
+        prefix = (prefix + *v) % p;
+        if let Some(i) = last.get((prefix - need + p) % p) {
+            best = best.min(j - *i);
+        }
+        last.insert(prefix, j);
+    }
+    if best == nums.len() { -1 } else { best as i32 }
+}
+
+// ---- divisible_sorted.kara: prefix remainders sorted, each end a binary search
+
+fn sorted_arm(nums: Vec[i32], p: i32) -> i32 {
+    let p = p as i64;
+    let n = nums.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = (prefix[i] + nums[i]) % p;
+    }
+    let need = prefix[n];
+    if need == 0 {
+        return 0;
+    }
+    let mut pairs: Vec[(i64, i64)] = (0..n + 1).map(|i| (prefix[i], i)).collect();
+    pairs.sort();
+    let mut best = n;
+    for j in 1..n + 1 {
+        let want = (prefix[j] - need + p) % p;
+        // the first pair at or past (want, j): the one before it is the
+        // last prefix before j with that remainder, if any
+        let mut lo = 0;
+        let mut hi = pairs.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if pairs[mid] < (want, j) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo > 0 and pairs[lo - 1].0 == want {
+            best = best.min(j - pairs[lo - 1].1);
+        }
+    }
+    if best == n { -1 } else { best as i32 }
+}
+
+// ---- divisible_kept.kara: prefix and suffix kept, suffix starts in a SortedMap
+
+fn kept_arm(nums: Vec[i32], p: i32) -> i32 {
+    let p = p as i64;
+    let n = nums.len();
+    let mut before = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        before[i + 1] = (before[i] + nums[i]) % p;
+    }
+    if before[n] == 0 {
+        return 0;
+    }
+    let mut nearest: SortedMap[i64, i64] = SortedMap.new();
+    let mut after = 0;
+    nearest.insert(0, n);
+    let mut best = n;
+    let mut i = n;
+    while i > 0 {
+        i -= 1;
+        after = (after + nums[i]) % p;
+        // the suffix from j keeps before[i] + after(j); it needs
+        // after(j) = -before[i]
+        if let Some(j) = nearest.get((p - before[i]) % p) {
+            best = best.min(*j - i);
+        }
+        nearest.insert(after, i);
+    }
+    if best == n { -1 } else { best as i32 }
+}
+
+// ---- divisible_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn min_subarray(nums: Vec[i32], p: i32) -> i32 {
+        let p = p as i64;
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        let need = total % p;
+        if need == 0 {
+            return 0;
+        }
+        let n = nums.len() as i32;
+        let mut seen: Map[i64, i32] = Map.new();
+        seen.insert(0, -1);
+        let mut cur = 0;
+        let mut ans = n;
+        for (i, x) in nums.iter().enumerate() {
+            cur = (cur + x as i64) % p;
+            let target = (cur - need).rem_euclid(p);
+            if let Some(j) = seen.get(target).cloned() {
+                ans = ans.min(i as i32 - j);
+            }
+            seen.insert(cur, i as i32);
+        }
+        if ans == n { -1 } else { ans }
+    }
+}
+
+fn solution_arm(nums: Vec[i32], p: i32) -> i32 {
+    Solution.min_subarray(nums, p)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Vec[i32], p: i32) -> i32 {
+    match a {
+        0 => star_arm(nums, p),
+        1 => sorted_arm(nums, p),
+        2 => kept_arm(nums, p),
+        _ => solution_arm(nums, p),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["divisible", "sorted", "kept", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: every subarray shorter than the
+// whole array, the empty one too, removed in turn and what is left summed
+
+fn literal(nums: Vec[i32], p: i32) -> i32 {
+    let n = nums.len();
+    let mut best = -1;
+    for len in 0..n {
+        for start in 0..n - len + 1 {
+            let mut left = 0;
+            for k in 0..n {
+                if k < start or k >= start + len {
+                    left += nums[k];
+                }
+            }
+            if left % p == 0 and best == -1 {
+                best = len;
+            }
+        }
+    }
+    best as i32
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 15900;
+    let mut cases: Vec[(Vec[i32], i32)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let nums: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 9 + 1) as i32).collect();
+        let p = (next_random(mut seed) % 12 + 1) as i32;
+        cases.push((nums, p));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (pr, (nums, p)) in cases.iter().enumerate() {
+        let truth = literal(nums, p);
+        let reversed: Vec[i32] = nums.iter().rev().map(|v| *v).collect();
+        let raised: Vec[i32] = nums.iter().map(|v| *v + p).collect();
+        let tripled: Vec[i32] = nums.iter().map(|v| *v * 3).collect();
+        let reduced: Vec[i32] = nums.iter().map(|v| if *v % p == 0 { p } else { *v % p }).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, nums, p);
+            answers.push(answer);
+            check = (check * 31 + answer + 1) % 1000000007;
+            let failed = [
+                answer != truth,
+                arm(a, reversed, p) != answer,
+                arm(a, raised, p) != answer,
+                arm(a, tripled, p * 3) != answer,
+                arm(a, reduced, p) != answer,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {pr}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {pr}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
