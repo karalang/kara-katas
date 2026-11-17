@@ -1,0 +1,466 @@
+// LeetCode #2246: Longest Path With Different Adjacent Characters -- the
+// differential. The six arms, against the statement read literally:
+// every pair of nodes joined by the one path between them, found through
+// their ancestors, kept when no two neighbours on it share a letter, and
+// the most nodes taken; no chains. 300 random trees of 1 to 10 nodes
+// and 1 to 4 letters; then 30 paths of up to 12 nodes and two letters;
+// then 30 trees lettered by depth, so that every edge changes letter.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the longest such path, read literally
+// P2  the nodes other than the root renumbered in reverse: the same answer
+// P3  the tree rooted at another node, renumbered so that it is 0: the
+//     same answer
+// P4  a new leaf with a letter no node has: the same answer or one more
+// P5  every letter made the same: 1; and the answer is 1 to n
+// P6  each arm agrees with at least three of the other five
+
+
+// ---- path.kara: the ★ arm, breadth-first order taken back to front
+fn star_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for v in 1..n {
+        children[parent[v]].push(v);
+    }
+    let mut order: Vec[i64] = [0].to_vec();
+    let mut next = 0;
+    while next < order.len() {
+        let v = order[next];
+        next += 1;
+        for c in children[v].iter() {
+            order.push(c);
+        }
+    }
+    let mut down: Vec[i64] = Vec.filled(n, 1);
+    let mut best = 1;
+    for v in order.iter().rev() {
+        let mut first = 0;
+        let mut second = 0;
+        for c in children[v].iter() {
+            if letters[c] == letters[v] {
+                continue;
+            }
+            if down[c] > first {
+                second = first;
+                first = down[c];
+            } else if down[c] > second {
+                second = down[c];
+            }
+        }
+        down[v] = first + 1;
+        best = best.max(first + second + 1);
+    }
+    best
+}
+
+// ---- path_recursive.kara: a recursive depth-first search
+fn recursive_chain(v: i64, children: Vec[Vec[i64]], letters: Vec[char], best: mut ref i64) -> i64 {
+    let mut first = 0;
+    let mut second = 0;
+    for c in children[v].iter() {
+        let below = recursive_chain(c, children, letters, mut best);
+        if letters[c] == letters[v] {
+            continue;
+        }
+        if below > first {
+            second = first;
+            first = below;
+        } else if below > second {
+            second = below;
+        }
+    }
+    *best = (*best).max(first + second + 1);
+    first + 1
+}
+
+fn recursive_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut children: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for v in 1..n {
+        children[parent[v]].push(v);
+    }
+    let mut best = 0;
+    recursive_chain(0, children, letters, mut best);
+    best
+}
+
+// ---- path_peel.kara: the leaves peeled off, no child lists
+fn peel_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut waiting: Vec[i64] = Vec.filled(n, 0);
+    for v in 1..n {
+        waiting[parent[v]] += 1;
+    }
+    let mut first: Vec[i64] = Vec.filled(n, 0);
+    let mut second: Vec[i64] = Vec.filled(n, 0);
+    let mut ready: VecDeque[i64] = VecDeque.new();
+    for v in 0..n {
+        if waiting[v] == 0 {
+            ready.push_back(v);
+        }
+    }
+    let mut best = 1;
+    while let Some(v) = ready.pop_front() {
+        best = best.max(first[v] + second[v] + 1);
+        if v == 0 {
+            continue;
+        }
+        let p = parent[v];
+        let up = first[v] + 1;
+        if letters[p] != letters[v] {
+            if up > first[p] {
+                second[p] = first[p];
+                first[p] = up;
+            } else if up > second[p] {
+                second[p] = up;
+            }
+        }
+        waiting[p] -= 1;
+        if waiting[p] == 0 {
+            ready.push_back(p);
+        }
+    }
+    best
+}
+
+// ---- path_struct.kara: `Tree` and `TopTwo`
+#[derive(Copy, Clone)]
+struct StructTopTwo {
+    first: i64,
+    second: i64,
+}
+
+impl StructTopTwo {
+    fn offer(mut ref self, length: i64) {
+        if length > self.first {
+            self.second = self.first;
+            self.first = length;
+        } else if length > self.second {
+            self.second = length;
+        }
+    }
+
+    fn path(ref self) -> i64 {
+        self.first + self.second + 1
+    }
+
+    fn chain(ref self) -> i64 {
+        self.first + 1
+    }
+}
+
+struct StructTree {
+    letters: Vec[char],
+    children: Vec[Vec[i64]],
+}
+
+impl StructTree {
+    fn build(parent: Vec[i64], s: String) -> StructTree {
+        let mut children: Vec[Vec[i64]] = Vec.filled(parent.len(), Vec.new());
+        for v in 1..parent.len() {
+            children[parent[v]].push(v);
+        }
+        StructTree { letters: s.chars().collect(), children }
+    }
+
+    // every node after all of its children, from an explicit stack:
+    // reversed preorder with each node's children pushed in turn
+    fn post_order(ref self) -> Vec[i64] {
+        let mut out: Vec[i64] = Vec.new();
+        let mut stack: Vec[i64] = [0].to_vec();
+        while let Some(v) = stack.pop() {
+            out.push(v);
+            for c in self.children[v].iter() {
+                stack.push(c);
+            }
+        }
+        out.reverse();
+        out
+    }
+}
+
+fn struct_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let tree = StructTree.build(parent, s);
+    let mut top: Vec[StructTopTwo] = Vec.filled(tree.letters.len(), StructTopTwo { first: 0, second: 0 });
+    let mut best = 1;
+    for v in tree.post_order().iter() {
+        for c in tree.children[v].iter() {
+            if tree.letters[c] != tree.letters[v] {
+                let up = top[c].chain();
+                top[v].offer(up);
+            }
+        }
+        best = best.max(top[v].path());
+    }
+    best
+}
+
+// ---- path_iter.kara: `fold`, `successors`, `flat_map` and `filter`
+fn iter_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let children: Vec[Vec[i64]] = (1..n).fold(Vec.filled(n, Vec.new()), |lists: own Vec[Vec[i64]], v| {
+        let mut lists = lists;
+        lists[parent[v]].push(v);
+        lists
+    });
+    let levels: Vec[Vec[i64]] = successors(Some([0].to_vec()), |level| {
+        let below: Vec[i64] = level.iter().flat_map(|v| children[v].iter()).collect();
+        if below.is_empty() { None } else { Some(below) }
+    })
+    .collect();
+    let mut down: Vec[i64] = Vec.filled(n, 1);
+    let mut best = 1;
+    for level in levels.iter().rev() {
+        let found: Vec[(i64, i64, i64)] = level
+            .iter()
+            .map(|v| {
+                let (first, second) = children[v]
+                    .iter()
+                    .filter(|c| letters[c] != letters[v])
+                    .map(|c| down[c])
+                    .fold((0, 0), |(a, b), d| if d > a { (d, a) } else if d > b { (a, d) } else { (a, b) });
+                (v, first, second)
+            })
+            .collect();
+        best = best.max(found.iter().map(|(_, first, second)| first + second + 1).max().unwrap_or(1));
+        for (v, first, _) in found.iter() {
+            down[v] = first + 1;
+        }
+    }
+    best
+}
+
+// ---- path_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn longest_path(parent: Vec[i32], s: String) -> i32 {
+        let n = parent.len();
+        let s = s.bytes();
+        let mut g = Vec.filled(n, Vec.new());
+        for i in 1..n {
+            g[parent[i]].push(i);
+        }
+        let mut ans: i32 = 0;
+        Solution.dfs(0, g, s, mut ans);
+        ans + 1
+    }
+
+    fn dfs(u: i64, g: Vec[Vec[i64]], s: Slice[u8], ans: mut ref i32) -> i32 {
+        let mut max_len: i32 = 0;
+        for v in ref g[u] {
+            let len = Solution.dfs(v, g, s, mut ans) + 1;
+            if s[v] != s[u] {
+                *ans = (*ans).max(max_len + len);
+                max_len = max_len.max(len);
+            }
+        }
+        max_len
+    }
+}
+
+struct Solution {}
+
+fn solution_longest_path(parent: Vec[i64], s: String) -> i64 {
+    let parent: Vec[i32] = parent.iter().map(|p| p as i32).collect();
+    Solution.longest_path(parent, s)
+}
+
+// ---- the statement read literally
+
+fn literal(parent: Vec[i64], s: String) -> i64 {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut best = 0;
+    for a in 0..n {
+        for b in 0..n {
+            // a's ancestors, a first, then b's up to the first shared one
+            let mut up_a: Vec[i64] = [a].to_vec();
+            while up_a[up_a.len() - 1] != 0 {
+                up_a.push(parent[up_a[up_a.len() - 1]]);
+            }
+            let mut up_b: Vec[i64] = [b].to_vec();
+            while not up_a.contains(up_b[up_b.len() - 1]) {
+                up_b.push(parent[up_b[up_b.len() - 1]]);
+            }
+            let meet = up_b[up_b.len() - 1];
+            let mut path: Vec[i64] = Vec.new();
+            for v in up_a.iter() {
+                path.push(v);
+                if v == meet {
+                    break;
+                }
+            }
+            for k in (0..up_b.len() - 1).rev() {
+                path.push(up_b[k]);
+            }
+            let mut changing = true;
+            for k in 1..path.len() {
+                if letters[path[k]] == letters[path[k - 1]] {
+                    changing = false;
+                }
+            }
+            if changing {
+                best = best.max(path.len());
+            }
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, parent: Vec[i64], s: String) -> i64 {
+    match arm {
+        0 => star_longest_path(parent, s),
+        1 => recursive_longest_path(parent, s),
+        2 => peel_longest_path(parent, s),
+        3 => struct_longest_path(parent, s),
+        4 => iter_longest_path(parent, s),
+        _ => solution_longest_path(parent, s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// the same tree with node v renamed name[v]
+fn renamed(parent: Vec[i64], s: String, name: Vec[i64]) -> (Vec[i64], String) {
+    let n = parent.len();
+    let letters: Vec[char] = s.chars().collect();
+    let mut new_parent: Vec[i64] = Vec.filled(n, -1);
+    let mut new_letters: Vec[char] = Vec.filled(n, 'a');
+    for v in 0..n {
+        new_parent[name[v]] = if parent[v] < 0 { -1 } else { name[parent[v]] };
+        new_letters[name[v]] = letters[v];
+    }
+    let mut out = String.new();
+    for c in new_letters.iter() {
+        out.push(c);
+    }
+    (new_parent, out)
+}
+
+// the same tree hung from r, then r and 0 swapping names
+fn rerooted(parent: Vec[i64], s: String, r: i64) -> (Vec[i64], String) {
+    let n = parent.len();
+    let mut next: Vec[Vec[i64]] = Vec.filled(n, Vec.new());
+    for v in 1..n {
+        next[v].push(parent[v]);
+        next[parent[v]].push(v);
+    }
+    let mut hung: Vec[i64] = Vec.filled(n, -2);
+    hung[r] = -1;
+    let mut queue: Vec[i64] = [r].to_vec();
+    let mut at = 0;
+    while at < queue.len() {
+        let v = queue[at];
+        at += 1;
+        for w in next[v].iter() {
+            if hung[w] == -2 {
+                hung[w] = v;
+                queue.push(w);
+            }
+        }
+    }
+    let name: Vec[i64] = (0..n).map(|v| if v == r { 0 } else if v == 0 { r } else { v }).collect();
+    renamed(hung, s, name)
+}
+
+fn main() {
+    let names = ["star", "recursive", "peel", "struct", "iter", "solution"];
+    let alphabet: Vec[char] = "abcd".chars().collect();
+    let mut seed = 2246;
+    // (parent, letters, the root to move to, the new leaf's parent)
+    let mut cases: Vec[(Vec[i64], String, i64, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 300 { next_random(mut seed) % 10 + 1 } else { next_random(mut seed) % 12 + 1 };
+        let letters = if c < 300 { next_random(mut seed) % 4 + 1 } else { 2 };
+        let mut order: Vec[i64] = (0..n).collect();
+        for i in (2..n).rev() {
+            let j = next_random(mut seed) % i + 1;
+            order.swap(i, j);
+        }
+        let mut parent: Vec[i64] = Vec.filled(n, -1);
+        let mut depth: Vec[i64] = Vec.filled(n, 0);
+        for i in 1..n {
+            let above = if c >= 300 and c < 330 { order[i - 1] } else { order[next_random(mut seed) % i] };
+            parent[order[i]] = above;
+            depth[order[i]] = depth[above] + 1;
+        }
+        let mut s = String.new();
+        for v in 0..n {
+            if c >= 330 {
+                s.push(alphabet[depth[v] % 3]);
+            } else {
+                s.push(alphabet[next_random(mut seed) % letters]);
+            }
+        }
+        let root = next_random(mut seed) % n;
+        let leaf_parent = next_random(mut seed) % n;
+        cases.push((parent, s, root, leaf_parent));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (parent, s, root, leaf_parent) in cases.iter() {
+        let n = parent.len();
+        let truth = literal(parent, s);
+        check = (check * 31 + truth) % 1000000007;
+        let reverse_names: Vec[i64] = (0..n).map(|v| if v == 0 { 0 } else { n - v }).collect();
+        let (p2, s2) = renamed(parent, s, reverse_names);
+        let (p3, s3) = rerooted(parent, s, root);
+        let mut p4 = parent.clone();
+        p4.push(leaf_parent);
+        let mut s4 = s.clone();
+        s4.push('z');
+        let mut same_letter = String.new();
+        for _ in 0..n {
+            same_letter.push('a');
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, parent, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = answer(arm, p4, s4);
+            let verdicts = [
+                value == truth,
+                answer(arm, p2, s2) == value,
+                answer(arm, p3, s3) == value,
+                grown == value or grown == value + 1,
+                answer(arm, parent, same_letter) == 1 and value >= 1 and value <= n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{parent} {s} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

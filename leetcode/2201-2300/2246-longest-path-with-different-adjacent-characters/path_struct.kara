@@ -1,0 +1,147 @@
+// LeetCode #2246: Longest Path With Different Adjacent Characters -- a
+// `struct Tree` of the letters and the child lists (`Tree.build`, and
+// `post_order` from an explicit stack), and a `#[derive(Copy, Clone)]
+// struct TopTwo` that `offer` (`mut ref self`) keeps the two longest
+// chains in, with `path` and `chain` (`ref self`) answering the path
+// that bends at the node and the chain it hands up. O(n).
+
+#[derive(Copy, Clone)]
+struct TopTwo {
+    first: i64,
+    second: i64,
+}
+
+impl TopTwo {
+    fn offer(mut ref self, length: i64) {
+        if length > self.first {
+            self.second = self.first;
+            self.first = length;
+        } else if length > self.second {
+            self.second = length;
+        }
+    }
+
+    fn path(ref self) -> i64 {
+        self.first + self.second + 1
+    }
+
+    fn chain(ref self) -> i64 {
+        self.first + 1
+    }
+}
+
+struct Tree {
+    letters: Vec[char],
+    children: Vec[Vec[i64]],
+}
+
+impl Tree {
+    fn build(parent: Vec[i64], s: String) -> Tree {
+        let mut children: Vec[Vec[i64]] = Vec.filled(parent.len(), Vec.new());
+        for v in 1..parent.len() {
+            children[parent[v]].push(v);
+        }
+        Tree { letters: s.chars().collect(), children }
+    }
+
+    // every node after all of its children, from an explicit stack:
+    // reversed preorder with each node's children pushed in turn
+    fn post_order(ref self) -> Vec[i64] {
+        let mut out: Vec[i64] = Vec.new();
+        let mut stack: Vec[i64] = [0].to_vec();
+        while let Some(v) = stack.pop() {
+            out.push(v);
+            for c in self.children[v].iter() {
+                stack.push(c);
+            }
+        }
+        out.reverse();
+        out
+    }
+}
+
+fn longest_path(parent: Vec[i64], s: String) -> i64 {
+    let tree = Tree.build(parent, s);
+    let mut top: Vec[TopTwo] = Vec.filled(tree.letters.len(), TopTwo { first: 0, second: 0 });
+    let mut best = 1;
+    for v in tree.post_order().iter() {
+        for c in tree.children[v].iter() {
+            if tree.letters[c] != tree.letters[v] {
+                let up = top[c].chain();
+                top[v].offer(up);
+            }
+        }
+        best = best.max(top[v].path());
+    }
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// a random tree of n nodes rooted at 0: the nodes in a shuffled order,
+// node 0 first, each one's parent drawn from those before it
+fn random_tree(seed: mut ref i64, n: i64, letters: i64) -> (Vec[i64], String) {
+    let alphabet: Vec[char] = "abcdefghijklmnopqrstuvwxyz".chars().collect();
+    let mut order: Vec[i64] = (0..n).collect();
+    for i in (2..n).rev() {
+        let j = wide_random(mut seed) % i + 1;
+        order.swap(i, j);
+    }
+    let mut parent: Vec[i64] = Vec.filled(n, -1);
+    for i in 1..n {
+        parent[order[i]] = order[wide_random(mut seed) % i];
+    }
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(alphabet[next_random(mut seed) % letters]);
+    }
+    (parent, s)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one node, a path of one
+    // letter, a path of two letters in turn, and a star
+    let examples = [
+        ([-1, 0, 0, 1, 1, 2].to_vec(), "abacbe"),
+        ([-1, 0, 0, 0].to_vec(), "aabc"),
+        ([-1].to_vec(), "z"),
+        ([-1, 0, 1, 2].to_vec(), "aaaa"),
+        ([-1, 0, 1, 2].to_vec(), "abab"),
+        ([-1, 0, 0, 0, 0].to_vec(), "abcde"),
+    ];
+    for (parent, s) in examples.iter() {
+        println(f"{parent} {s} -> {longest_path(parent, s.to_string())}");
+    }
+    // 2000 trees of 1 to 30 nodes and 1 to 4 letters
+    let mut seed = 2246;
+    let mut check = 0;
+    let mut most = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 30 + 1;
+        let letters = next_random(mut seed) % 4 + 1;
+        let (parent, s) = random_tree(mut seed, n, letters);
+        let longest = longest_path(parent, s);
+        most = most.max(longest);
+        check = (check * 31 + longest) % 1000000007;
+    }
+    println(f"2000 trees: longest {most}, checksum {check}");
+    // the constraints' largest: 10^5 nodes, 26 letters; then a path of
+    // 10^5 nodes, two letters in turn
+    let (parent, s) = random_tree(mut seed, 100000, 26);
+    println(f"10^5 nodes: {longest_path(parent, s)}");
+    let parent: Vec[i64] = (0..100000).map(|i| i - 1).collect();
+    let mut s = String.new();
+    for i in 0..100000 {
+        s.push(if i % 2 == 0 { 'a' } else { 'b' });
+    }
+    println(f"a path of 10^5: {longest_path(parent, s)}");
+}
