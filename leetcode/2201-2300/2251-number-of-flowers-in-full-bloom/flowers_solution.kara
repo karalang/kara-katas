@@ -1,0 +1,109 @@
+// LeetCode #2251: Number of Flowers in Full Bloom -- LeetCode's Rust
+// template: `Vec<Vec<i32>>` and `Vec<i32>` in, `Vec<i32>` out. The
+// flowers sorted by `sort_unstable`, the people's indices by
+// `sort_unstable_by_key(|&i| people[i])`, and a `BinaryHeap` of
+// `Reverse(end)`: each person pushes the ends of the flowers begun by
+// then, pops those over before then while `let Some(&Reverse(e)) =
+// heap.peek()`, and is answered by `heap.len()`. Carried by `karac fix`.
+// The adapter below hands the harness's values to it.
+
+impl Solution {
+    pub fn full_bloom_flowers(flowers: own Vec[Vec[i32]], people: Vec[i32]) -> Vec[i32] {
+        let mut flowers = flowers;
+        flowers.sort();
+        let mut order: Vec[i64] = (0..people.len()).collect();
+        order.sort_by_key(|i| people[i]);
+        let mut heap = PriorityQueue.new();
+        let mut ans = Vec.filled(people.len(), 0);
+        let mut j = 0;
+        for i in order {
+            let t = people[i];
+            while j < flowers.len() and flowers[j][0] <= t {
+                heap.push(flowers[j][1]);
+                j += 1;
+            }
+            while let Some(e) = heap.peek().cloned() {
+                if e < t {
+                    heap.pop();
+                } else {
+                    break;
+                }
+            }
+            ans[i] = heap.len() as i32;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn full_bloom_flowers(flowers: Vec[Vec[i64]], people: Vec[i64]) -> Vec[i64] {
+    let flowers: Vec[Vec[i32]] = flowers.iter().map(|f| f.iter().map(|v| v as i32).collect()).collect();
+    let people: Vec[i32] = people.iter().map(|t| t as i32).collect();
+    Solution.full_bloom_flowers(flowers, people).iter().map(|c| c as i64).collect()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// `count` flowers, each from one value to another of 1 to `top`
+fn random_flowers(seed: mut ref i64, count: i64, top: i64) -> Vec[Vec[i64]] {
+    (0..count).map(|_| {
+        let a = wide_random(mut seed) % top + 1;
+        let b = wide_random(mut seed) % top + 1;
+        [a.min(b), a.max(b)].to_vec()
+    }).collect()
+}
+
+fn random_people(seed: mut ref i64, count: i64, top: i64) -> Vec[i64] {
+    (0..count).map(|_| wide_random(mut seed) % top + 1).collect()
+}
+
+fn fold_list(values: Vec[i64]) -> i64 {
+    values.iter().fold(values.len(), |acc, v| (acc * 1009 + v) % 1000000007)
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: people at a flower's first
+    // and last day and just outside it, one flower over every day, the
+    // same flower three times, and flowers of a single day
+    let examples = [
+        ([[1, 6].to_vec(), [3, 7].to_vec(), [9, 12].to_vec(), [4, 13].to_vec()].to_vec(), [2, 3, 7, 11].to_vec()),
+        ([[1, 10].to_vec(), [3, 3].to_vec()].to_vec(), [3, 3, 2].to_vec()),
+        ([[4, 8].to_vec()].to_vec(), [3, 4, 8, 9].to_vec()),
+        ([[1, 1000000000].to_vec()].to_vec(), [1, 500000000, 1000000000].to_vec()),
+        ([[2, 5].to_vec(), [2, 5].to_vec(), [2, 5].to_vec()].to_vec(), [1, 2, 5, 6].to_vec()),
+        ([[3, 3].to_vec(), [5, 5].to_vec(), [3, 3].to_vec()].to_vec(), [3, 4, 5].to_vec()),
+    ];
+    for (flowers, people) in examples.iter() {
+        println(f"{flowers} {people} -> {full_bloom_flowers(flowers, people)}");
+    }
+    // 2000 cases of 1 to 8 flowers and 1 to 8 people, days 1 to 10
+    let mut seed = 2251;
+    let mut total = 0;
+    let mut check = 0;
+    for _ in 0..2000 {
+        let f = next_random(mut seed) % 8 + 1;
+        let p = next_random(mut seed) % 8 + 1;
+        let flowers = random_flowers(mut seed, f, 10);
+        let people = random_people(mut seed, p, 10);
+        let counts = full_bloom_flowers(flowers, people);
+        total += counts.iter().sum();
+        check = (check * 31 + fold_list(counts)) % 1000000007;
+    }
+    println(f"2000 cases: {total} in all, checksum {check}");
+    // the constraints' largest: 5 * 10^4 flowers and 5 * 10^4 people,
+    // days up to 10^9
+    let flowers = random_flowers(mut seed, 50000, 1000000000);
+    let people = random_people(mut seed, 50000, 1000000000);
+    let counts = full_bloom_flowers(flowers, people);
+    println(f"5 * 10^4 flowers, 5 * 10^4 people: {counts.iter().sum()} in all, checksum {fold_list(counts)}");
+}
