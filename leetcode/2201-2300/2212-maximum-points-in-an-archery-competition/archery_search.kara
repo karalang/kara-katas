@@ -1,0 +1,90 @@
+// LeetCode #2212: Maximum Points in an Archery Competition -- the search
+// arm: a depth-first search from section 11 down, each section won or
+// given up, the arrows left carried down and the best plan so far kept in
+// a `mut ref`; a branch is cut when even every section below it could
+// not beat the best. O(2^12).
+
+fn search(k: i64, left: i64, points: i64, alice: Vec[i64], plan: mut ref Vec[i64], best: mut ref Vec[i64], best_points: mut ref i64) {
+    if points + k * (k + 1) / 2 <= *best_points {
+        return;
+    }
+    if k == 0 {
+        *best_points = points;
+        *best = plan.clone();
+        best[0] += left;
+        return;
+    }
+    let s = k;
+    if left > alice[s] {
+        plan[s] = alice[s] + 1;
+        search(k - 1, left - plan[s], points + s, alice, mut plan, mut best, mut best_points);
+        plan[s] = 0;
+    }
+    search(k - 1, left, points, alice, mut plan, mut best, mut best_points);
+}
+
+fn maximum_bob_points(num_arrows: i64, alice_arrows: Vec[i64]) -> Vec[i64] {
+    let mut plan: Vec[i64] = Vec.filled(12, 0);
+    let mut best: Vec[i64] = Vec.filled(12, 0);
+    let mut best_points = -1;
+    search(11, num_arrows, 0, alice_arrows, mut plan, mut best, mut best_points);
+    best
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// the points Bob's arrows win against Alice's, or -1 when they are not 12
+// counts of at least 0 adding up to the arrows he has
+fn score(num_arrows: i64, alice: Vec[i64], bob: Vec[i64]) -> i64 {
+    if bob.len() != 12 or bob.iter().any(|b| b < 0) or bob.iter().sum() != num_arrows {
+        return -1;
+    }
+    (0..12).filter(|k| bob[k] > alice[k]).sum()
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// Alice's arrows: `n` shot at sections drawn from 0 to 11
+fn random_alice(n: i64, seed: mut ref i64) -> Vec[i64] {
+    let mut alice: Vec[i64] = Vec.filled(12, 0);
+    for _ in 0..n {
+        alice[next_random(mut seed) % 12] += 1;
+    }
+    alice
+}
+
+fn show(num_arrows: i64, alice: Vec[i64]) {
+    let bob = maximum_bob_points(num_arrows, alice);
+    println(f"{num_arrows} vs {alice} -> {score(num_arrows, alice, bob)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one arrow, Alice's arrows
+    // all in section 11, all in section 0, and spread one to a section
+    show(9, [1, 1, 0, 1, 0, 0, 2, 1, 0, 1, 2, 0]);
+    show(3, [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2]);
+    show(1, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    show(5, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5]);
+    show(7, [7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    show(12, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    // 3000 random contests of 1 to 30 arrows, then of 1 to 10^5
+    let mut seed = 2212;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = if c < 2000 { next_random(mut seed) % 30 + 1 } else { next_random(mut seed) * 4 % 100000 + 1 };
+        let alice = random_alice(n, mut seed);
+        let bob = maximum_bob_points(n, alice);
+        check = (check * 31 + score(n, alice, bob)) % 1000000007;
+    }
+    println(f"3000 contests: checksum {check}");
+    // the constraints' largest: 10^5 arrows, Alice's spread evenly, and
+    // all but 11 in section 11
+    let mut even: Vec[i64] = Vec.filled(12, 8333);
+    even[0] += 4;
+    let mut heavy: Vec[i64] = Vec.filled(12, 1);
+    heavy[11] = 100000 - 11;
+    println(f"10^5 even -> {score(100000, even, maximum_bob_points(100000, even))}, 10^5 heavy -> {score(100000, heavy, maximum_bob_points(100000, heavy))}");
+}
