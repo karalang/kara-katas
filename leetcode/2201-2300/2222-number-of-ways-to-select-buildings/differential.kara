@@ -1,0 +1,278 @@
+// LeetCode #2222: Number of Ways to Select Buildings -- the
+// differential. The six arms, against the statement read literally:
+// every three buildings i < j < k tried, and kept when no two adjacent
+// in the selection are of the same type; no running counts. 300 random
+// streets of 1 to 20 buildings, ones with chance 1, 5 and 9 in 10 in
+// turn; then 30 of one type; then 30 alternating. Every case is drawn
+// before any arm answers.
+//
+// P1  the ways are the statement read literally
+// P2  they are at least 0 and at most C(zeros, 2) * ones + C(ones, 2) *
+//     zeros
+// P3  the street reversed: the same ways
+// P4  every building's type swapped: the same ways
+// P5  the street cut in two at a random point: at least the two
+//     halves' ways together
+// P6  each arm agrees with at least three of the other five
+
+// ---- buildings.kara: the ★ arm, singles and pairs behind
+fn star_number_of_ways(s: String) -> i64 {
+    let mut zeros = 0;
+    let mut ones = 0;
+    let mut zero_ones = 0;
+    let mut one_zeros = 0;
+    let mut ways = 0;
+    for c in s.chars() {
+        if c == '0' {
+            ways += zero_ones;
+            one_zeros += ones;
+            zeros += 1;
+        } else {
+            ways += one_zeros;
+            zero_ones += zeros;
+            ones += 1;
+        }
+    }
+    ways
+}
+
+// ---- buildings_middle.kara: each building as the middle
+fn middle_number_of_ways(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let mut total_zeros = 0;
+    for c in chars.iter() {
+        if c == '0' {
+            total_zeros += 1;
+        }
+    }
+    let total_ones = chars.len() - total_zeros;
+    let mut zeros_before = 0;
+    let mut ones_before = 0;
+    let mut ways = 0;
+    for c in chars.iter() {
+        if c == '0' {
+            ways += ones_before * (total_ones - ones_before);
+            zeros_before += 1;
+        } else {
+            ways += zeros_before * (total_zeros - zeros_before);
+            ones_before += 1;
+        }
+    }
+    ways
+}
+
+// ---- buildings_table.kara: alternating subsequences by length and last type
+fn table_number_of_ways(s: String) -> i64 {
+    let mut ending: Vec[Vec[i64]] = Vec.filled(4, Vec.filled(2, 0));
+    for c in s.chars() {
+        let d = if c == '1' { 1 } else { 0 };
+        for k in (2..4).rev() {
+            ending[k][d] += ending[k - 1][1 - d];
+        }
+        ending[1][d] += 1;
+    }
+    ending[3][0] + ending[3][1]
+}
+
+// ---- buildings_struct.kara: `Surveyor`, `Tally` and `see`
+struct Tally {
+    seen: i64,
+    pairs: i64,
+}
+
+struct Surveyor {
+    zero: Tally,
+    one: Tally,
+    ways: i64,
+}
+
+impl Surveyor {
+    fn new() -> Surveyor {
+        Surveyor { zero: Tally { seen: 0, pairs: 0 }, one: Tally { seen: 0, pairs: 0 }, ways: 0 }
+    }
+
+    fn see(mut ref self, c: char) {
+        if c == '0' {
+            self.ways += self.one.pairs;
+            self.zero.pairs += self.one.seen;
+            self.zero.seen += 1;
+        } else {
+            self.ways += self.zero.pairs;
+            self.one.pairs += self.zero.seen;
+            self.one.seen += 1;
+        }
+    }
+
+    fn ways(ref self) -> i64 {
+        self.ways
+    }
+}
+
+fn struct_number_of_ways(s: String) -> i64 {
+    let mut surveyor = Surveyor.new();
+    for c in s.chars() {
+        surveyor.see(c);
+    }
+    surveyor.ways()
+}
+
+// ---- buildings_iter.kara: `fold` over a tuple, `match` on the character
+fn iter_number_of_ways(s: String) -> i64 {
+    let (_, _, _, _, ways) = s.chars().fold((0, 0, 0, 0, 0), |(zeros, ones, zero_ones, one_zeros, ways), c| match c {
+        '0' => (zeros + 1, ones, zero_ones, one_zeros + ones, ways + zero_ones),
+        _ => (zeros, ones + 1, zero_ones + zeros, one_zeros, ways + one_zeros),
+    });
+    ways
+}
+
+// ---- buildings_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn number_of_ways(s: String) -> i64 {
+        let bytes = s.bytes();
+        let n = bytes.len();
+        let total0 = bytes.iter().filter(|b| b == b'0').count();
+        let total1 = n - total0;
+        let mut (c0, c1) = (0, 0);
+        let mut ans = 0;
+        for b in bytes {
+            if b == b'0' {
+                ans += c1 * (total1 - c1);
+                c0 += 1;
+            } else {
+                ans += c0 * (total0 - c0);
+                c1 += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_number_of_ways(s: String) -> i64 {
+    Solution.number_of_ways(s)
+}
+
+// ---- the statement read literally
+
+fn literal(s: String) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let n = chars.len();
+    let mut ways = 0;
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                if chars[i] != chars[j] and chars[j] != chars[k] {
+                    ways += 1;
+                }
+            }
+        }
+    }
+    ways
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_number_of_ways(s),
+        1 => middle_number_of_ways(s),
+        2 => table_number_of_ways(s),
+        3 => struct_number_of_ways(s),
+        4 => iter_number_of_ways(s),
+        _ => solution_number_of_ways(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+struct Case {
+    street: String,
+    cut: i64,
+}
+
+fn main() {
+    let names = ["star", "middle", "table", "struct", "iter", "solution"];
+    let mut seed = 2222;
+    let mut cases: Vec[Case] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 20 + 1;
+        let first = next_random(mut seed) % 2;
+        let ones = [1, 5, 9][c % 3];
+        let mut street = String.new();
+        for i in 0..n {
+            let one = if c < 300 {
+                next_random(mut seed) % 10 < ones
+            } else if c < 330 {
+                first == 1
+            } else {
+                (i + first) % 2 == 1
+            };
+            street.push(if one { '1' } else { '0' });
+        }
+        let cut = next_random(mut seed) % (n + 1);
+        cases.push(Case { street: street, cut: cut });
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for case in cases.iter() {
+        let s = ref case.street;
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let chars: Vec[char] = s.chars().collect();
+        let mut zeros = 0;
+        for c in chars.iter() {
+            if c == '0' {
+                zeros += 1;
+            }
+        }
+        let ones = chars.len() - zeros;
+        let high = zeros * (zeros - 1) / 2 * ones + ones * (ones - 1) / 2 * zeros;
+        let reversed: String = chars.iter().rev().collect();
+        let swapped: String = chars.iter().map(|c| if c == '0' { '1' } else { '0' }).collect();
+        let front: String = chars.iter().take(case.cut).collect();
+        let back: String = chars.iter().skip(case.cut).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let ways = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == ways {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                ways == truth,
+                ways >= 0 and ways <= high,
+                answer(arm, reversed) == ways,
+                answer(arm, swapped) == ways,
+                ways >= answer(arm, front) + answer(arm, back),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"\"{s}\" arm {names[arm]}: P{q + 1} fails, gave {ways}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

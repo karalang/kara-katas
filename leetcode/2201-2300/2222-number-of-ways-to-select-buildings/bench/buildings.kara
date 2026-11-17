@@ -1,0 +1,55 @@
+// LeetCode #2222: Number of Ways to Select Buildings -- the selections
+// are the subsequences "010" and "101". One pass keeps how many 0s and
+// 1s are behind, and how many pairs "01" and "10": a 0 extends every 1
+// behind into a "10" and closes every "01" into a "010", and a 1 the
+// other way round. O(n).
+
+fn number_of_ways(s: String) -> i64 {
+    let mut zeros = 0;
+    let mut ones = 0;
+    let mut zero_ones = 0;
+    let mut one_zeros = 0;
+    let mut ways = 0;
+    for c in s.chars() {
+        if c == '0' {
+            ways += zero_ones;
+            one_zeros += ones;
+            zeros += 1;
+        } else {
+            ways += one_zeros;
+            zero_ones += zeros;
+            ones += 1;
+        }
+    }
+    ways
+}
+
+// ---- bench ------------------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let mut seed = 2222;
+    let mut streets: Vec[Vec[char]] = Vec.new();
+    for _ in 0..30 {
+        // 10^5 buildings, each a 1 with chance one half
+        let mut street: Vec[char] = Vec.new();
+        for _ in 0..100000 {
+            street.push(if next_random(mut seed) % 2 == 1 { '1' } else { '0' });
+        }
+        streets.push(street);
+    }
+    let mut check = 0;
+    for a in 0..30 {
+        for r in 0..10 {
+            // punch: one building is drawn again before each answer
+            streets[a][r * 9999] = if next_random(mut seed) % 2 == 1 { '1' } else { '0' };
+            let s: String = streets[a].iter().collect();
+            check = (check * 31 + number_of_ways(s)) % 1000000007;
+        }
+    }
+    println(f"30 streets of 10^5, 10 punches: checksum {check}");
+}

@@ -1,0 +1,74 @@
+// LeetCode #2222: Number of Ways to Select Buildings -- the selections
+// are the subsequences "010" and "101". One pass keeps how many 0s and
+// 1s are behind, and how many pairs "01" and "10": a 0 extends every 1
+// behind into a "10" and closes every "01" into a "010", and a 1 the
+// other way round. O(n).
+
+fn number_of_ways(s: String) -> i64 {
+    let mut zeros = 0;
+    let mut ones = 0;
+    let mut zero_ones = 0;
+    let mut one_zeros = 0;
+    let mut ways = 0;
+    for c in s.chars() {
+        if c == '0' {
+            ways += zero_ones;
+            one_zeros += ones;
+            zeros += 1;
+        } else {
+            ways += one_zeros;
+            zero_ones += zeros;
+            ones += 1;
+        }
+    }
+    ways
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n characters, each '1' with chance ones in 10
+fn draw_street(seed: mut ref i64, n: i64, ones: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+fn show(s: String) {
+    println(f"\"{s}\" -> {number_of_ways(s)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: too short, one pattern,
+    // the other, and all alike
+    show("001101");
+    show("11100");
+    show("01");
+    show("010");
+    show("101");
+    show("0000");
+    // 3000 random streets of 1 to 40 buildings, ones with chance 1, 5
+    // and 9 in 10 in turn
+    let mut seed = 2222;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let s = draw_street(mut seed, n, [1, 5, 9][c % 3]);
+        check = (check * 31 + number_of_ways(s)) % 1000000007;
+    }
+    println(f"3000 streets: checksum {check}");
+    // the constraints' largest: 10^5 random, and 10^5 alternating, whose
+    // count passes i32
+    let wide = draw_street(mut seed, 100000, 5);
+    let mut alternating = String.new();
+    for i in 0..100000 {
+        alternating.push(if i % 2 == 0 { '0' } else { '1' });
+    }
+    println(f"10^5 random: {number_of_ways(wide)}; 10^5 alternating: {number_of_ways(alternating)}");
+}

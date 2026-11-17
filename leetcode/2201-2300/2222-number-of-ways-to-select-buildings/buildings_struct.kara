@@ -1,0 +1,95 @@
+// LeetCode #2222: Number of Ways to Select Buildings -- a `struct
+// Surveyor` walking the street, with a `Tally` for each type of the
+// buildings seen and the pairs ending in that type; `see` (`mut ref
+// self`) takes the next building, and `ways` (`ref self`) is the
+// selections closed so far. O(n).
+
+struct Tally {
+    seen: i64,
+    pairs: i64,
+}
+
+struct Surveyor {
+    zero: Tally,
+    one: Tally,
+    ways: i64,
+}
+
+impl Surveyor {
+    fn new() -> Surveyor {
+        Surveyor { zero: Tally { seen: 0, pairs: 0 }, one: Tally { seen: 0, pairs: 0 }, ways: 0 }
+    }
+
+    fn see(mut ref self, c: char) {
+        if c == '0' {
+            self.ways += self.one.pairs;
+            self.zero.pairs += self.one.seen;
+            self.zero.seen += 1;
+        } else {
+            self.ways += self.zero.pairs;
+            self.one.pairs += self.zero.seen;
+            self.one.seen += 1;
+        }
+    }
+
+    fn ways(ref self) -> i64 {
+        self.ways
+    }
+}
+
+fn number_of_ways(s: String) -> i64 {
+    let mut surveyor = Surveyor.new();
+    for c in s.chars() {
+        surveyor.see(c);
+    }
+    surveyor.ways()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// n characters, each '1' with chance ones in 10
+fn draw_street(seed: mut ref i64, n: i64, ones: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % 10 < ones { '1' } else { '0' });
+    }
+    s
+}
+
+fn show(s: String) {
+    println(f"\"{s}\" -> {number_of_ways(s)}");
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: too short, one pattern,
+    // the other, and all alike
+    show("001101");
+    show("11100");
+    show("01");
+    show("010");
+    show("101");
+    show("0000");
+    // 3000 random streets of 1 to 40 buildings, ones with chance 1, 5
+    // and 9 in 10 in turn
+    let mut seed = 2222;
+    let mut check = 0;
+    for c in 0..3000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let s = draw_street(mut seed, n, [1, 5, 9][c % 3]);
+        check = (check * 31 + number_of_ways(s)) % 1000000007;
+    }
+    println(f"3000 streets: checksum {check}");
+    // the constraints' largest: 10^5 random, and 10^5 alternating, whose
+    // count passes i32
+    let wide = draw_street(mut seed, 100000, 5);
+    let mut alternating = String.new();
+    for i in 0..100000 {
+        alternating.push(if i % 2 == 0 { '0' } else { '1' });
+    }
+    println(f"10^5 random: {number_of_ways(wide)}; 10^5 alternating: {number_of_ways(alternating)}");
+}
