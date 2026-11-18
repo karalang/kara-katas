@@ -1,0 +1,406 @@
+// LeetCode #2290: Minimum Obstacle Removal to Reach Corner -- the
+// differential. The six arms, against the statement read literally: for
+// k = 0, 1, 2, .., is there a way from the top-left to the bottom-right
+// corner that passes through at most k obstacles? A breadth-first search
+// over (cell, obstacles passed so far) answers each k, with no costs and
+// no ordering of the queue. 300 random grids of 1 to 20 by 1 to 20; then
+// 30 of walls across the grid, each with one gap or none; then 30 of
+// obstacles everywhere but the corners. Every case is drawn before any
+// arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  0 <= answer <= the obstacles along the top row and right column
+// P3  the grid transposed: the same answer
+// P4  the grid turned half round, so the corners swap: the same answer
+// P5  the first obstacle cleared: the answer the same or one less
+// P6  each arm agrees with at least three of the other five
+
+// ---- obstacles.kara: the ★ arm, a 0-1 breadth-first search
+fn star_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cost: Vec[i64] = Vec.filled(m * n, -1);
+    let mut best: Vec[i64] = Vec.filled(m * n, i64.MAX);
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    best[0] = 0;
+    queue.push_back((0, 0));
+    let moves = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+    while let Some((r, c)) = queue.pop_front() {
+        if cost[r * n + c] >= 0 {
+            continue;
+        }
+        let here = best[r * n + c];
+        cost[r * n + c] = here;
+        if r == m - 1 and c == n - 1 {
+            return here;
+        }
+        for (dr, dc) in moves.iter() {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nc < 0 or nr >= m or nc >= n {
+                continue;
+            }
+            let step = grid[nr][nc];
+            if here + step < best[nr * n + nc] {
+                best[nr * n + nc] = here + step;
+                if step == 0 {
+                    queue.push_front((nr, nc));
+                } else {
+                    queue.push_back((nr, nc));
+                }
+            }
+        }
+    }
+    best[m * n - 1]
+}
+
+// ---- obstacles_naive.kara: sweeps until nothing changes
+fn naive_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let far = m * n + 1;
+    let mut cost: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, far));
+    cost[0][0] = 0;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for r in 0..m {
+            for c in 0..n {
+                let mut least = cost[r][c] - grid[r][c];
+                if r > 0 {
+                    least = least.min(cost[r - 1][c]);
+                }
+                if c > 0 {
+                    least = least.min(cost[r][c - 1]);
+                }
+                if r + 1 < m {
+                    least = least.min(cost[r + 1][c]);
+                }
+                if c + 1 < n {
+                    least = least.min(cost[r][c + 1]);
+                }
+                if least + grid[r][c] < cost[r][c] {
+                    cost[r][c] = least + grid[r][c];
+                    changed = true;
+                }
+            }
+        }
+    }
+    cost[m - 1][n - 1]
+}
+
+// ---- obstacles_heap.kara: Dijkstra over a `PriorityQueue`
+fn heap_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut done: Set[(i64, i64)] = Set.new();
+    let mut heap: PriorityQueue[(i64, i64, i64)] = PriorityQueue.new();
+    heap.push((0, 0, 0));
+    while let Some((cost, r, c)) = heap.pop() {
+        if not done.insert((r, c)) {
+            continue;
+        }
+        if r == m - 1 and c == n - 1 {
+            return cost;
+        }
+        for (nr, nc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)].iter() {
+            if nr >= 0 and nc >= 0 and nr < m and nc < n and not done.contains((nr, nc)) {
+                heap.push((cost + grid[nr][nc], nr, nc));
+            }
+        }
+    }
+    -1
+}
+
+// ---- obstacles_struct.kara: `struct Field`, flooded level by level
+struct StructField {
+    grid: Vec[Vec[i64]],
+    level: Vec[Vec[i64]],
+}
+
+impl StructField {
+    fn neighbours(self, r: i64, c: i64) -> Vec[(i64, i64)] {
+        let mut out: Vec[(i64, i64)] = Vec.new();
+        if r > 0 {
+            out.push((r - 1, c));
+        }
+        if c > 0 {
+            out.push((r, c - 1));
+        }
+        if r + 1 < self.grid.len() {
+            out.push((r + 1, c));
+        }
+        if c + 1 < self.grid[0].len() {
+            out.push((r, c + 1));
+        }
+        out
+    }
+
+    // floods from `start` through empty cells at `cost`; returns the
+    // obstacles on its edge, not yet reached
+    fn flood(mut ref self, start: Vec[(i64, i64)], cost: i64) -> Vec[(i64, i64)] {
+        let mut stack: Vec[(i64, i64)] = Vec.new();
+        for (r, c) in start.iter() {
+            if self.level[r][c] < 0 {
+                self.level[r][c] = cost;
+                stack.push((r, c));
+            }
+        }
+        let mut edge: Vec[(i64, i64)] = Vec.new();
+        while let Some((r, c)) = stack.pop() {
+            for (nr, nc) in self.neighbours(r, c).iter() {
+                if self.level[nr][nc] >= 0 {
+                    continue;
+                }
+                if self.grid[nr][nc] == 0 {
+                    self.level[nr][nc] = cost;
+                    stack.push((nr, nc));
+                } else {
+                    edge.push((nr, nc));
+                }
+            }
+        }
+        edge
+    }
+}
+
+fn struct_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut field = StructField { grid: grid.clone(), level: Vec.filled(m, Vec.filled(n, -1)) };
+    let mut start: Vec[(i64, i64)] = [(0, 0)];
+    let mut cost = 0;
+    loop {
+        start = field.flood(start, cost);
+        if field.level[m - 1][n - 1] >= 0 {
+            return field.level[m - 1][n - 1];
+        }
+        cost += 1;
+    }
+}
+
+// ---- obstacles_iter.kara: a queue of the cells whose cost fell, `map` and `filter`
+fn iter_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cost: Vec[i64] = Vec.filled(m * n, i64.MAX);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    cost[0] = 0;
+    queue.push_back(0);
+    while let Some(at) = queue.pop_front() {
+        let (r, c) = (at / n, at % n);
+        let next: Vec[i64] = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            .iter()
+            .map(|(dr, dc)| (r + dr, c + dc))
+            .filter(|(nr, nc)| nr >= 0 and nc >= 0 and nr < m and nc < n)
+            .map(|(nr, nc)| nr * n + nc)
+            .filter(|to| cost[at] + grid[to / n][to % n] < cost[to])
+            .collect();
+        for to in next.iter() {
+            cost[to] = cost[at] + grid[to / n][to % n];
+            queue.push_back(to);
+        }
+    }
+    cost[m * n - 1]
+}
+
+// ---- obstacles_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn minimum_obstacles(grid: Vec[Vec[i32]]) -> i32 {
+        let (m, n) = (grid.len(), grid[0].len());
+        let mut dist = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut dq = VecDeque.new();
+        dist[0][0] = 0;
+        dq.push_back((0usize, 0usize));
+        let dirs = [(0i32, 1i32), (1, 0), (0, -1), (-1, 0)];
+        while let Some((i, j)) = dq.pop_front() {
+            for (di, dj) in dirs.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as usize, nj as usize);
+                let w = grid[ni][nj];
+                if dist[i][j] + w < dist[ni][nj] {
+                    dist[ni][nj] = dist[i][j] + w;
+                    if w == 0 {
+                        dq.push_front((ni, nj));
+                    } else {
+                        dq.push_back((ni, nj));
+                    }
+                }
+            }
+        }
+        dist[m - 1][n - 1]
+    }
+}
+
+fn solution_minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|x| x as i32).collect()).collect();
+    Solution.minimum_obstacles(g)
+}
+
+// ---- the statement read literally
+
+// whether a way passes through at most `k` obstacles: a breadth-first
+// search over (row, column, obstacles passed), each state seen once
+fn within(grid: Vec[Vec[i64]], k: i64) -> bool {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut seen: Vec[bool] = Vec.filled(m * n * (k + 1), false);
+    let mut queue: Vec[(i64, i64, i64)] = [(0, 0, 0)];
+    seen[0] = true;
+    let mut at = 0;
+    while at < queue.len() {
+        let (r, c, used) = queue[at];
+        at += 1;
+        if r == m - 1 and c == n - 1 {
+            return true;
+        }
+        for (nr, nc) in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)].iter() {
+            if nr < 0 or nc < 0 or nr >= m or nc >= n {
+                continue;
+            }
+            let now = used + grid[nr][nc];
+            if now <= k and not seen[(nr * n + nc) * (k + 1) + now] {
+                seen[(nr * n + nc) * (k + 1) + now] = true;
+                queue.push((nr, nc, now));
+            }
+        }
+    }
+    false
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let mut k = 0;
+    while not within(grid, k) {
+        k += 1;
+    }
+    k
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_minimum_obstacles(grid),
+        1 => naive_minimum_obstacles(grid),
+        2 => heap_minimum_obstacles(grid),
+        3 => struct_minimum_obstacles(grid),
+        4 => iter_minimum_obstacles(grid),
+        _ => solution_minimum_obstacles(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "heap", "struct", "iter", "solution"];
+    let mut seed = 2290;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let m = next_random(mut seed) % 20 + 1;
+        let n = next_random(mut seed) % 20 + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+        if c < 300 {
+            let tenths = next_random(mut seed) % 9 + 1;
+            for r in 0..m {
+                for col in 0..n {
+                    if next_random(mut seed) % 10 < tenths {
+                        grid[r][col] = 1;
+                    }
+                }
+            }
+        } else if c < 330 {
+            // every other row a wall, each with one gap or, one time in
+            // three, none
+            for r in (1..m).step_by(2) {
+                let gap = if next_random(mut seed) % 3 == 0 { -1 } else { next_random(mut seed) % n };
+                for col in 0..n {
+                    if col != gap {
+                        grid[r][col] = 1;
+                    }
+                }
+            }
+        } else {
+            grid = Vec.filled(m, Vec.filled(n, 1));
+        }
+        grid[0][0] = 0;
+        grid[m - 1][n - 1] = 0;
+        cases.push(grid);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in cases.iter() {
+        let truth = literal(grid);
+        check = (check * 31 + truth) % 1000000007;
+        let m = grid.len();
+        let n = grid[0].len();
+        let mut along = 0;
+        for col in 0..n {
+            along += grid[0][col];
+        }
+        for r in 1..m {
+            along += grid[r][n - 1];
+        }
+        let mut turned: Vec[Vec[i64]] = Vec.filled(n, Vec.filled(m, 0));
+        let mut round: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+        let mut cleared = grid.clone();
+        let mut done = false;
+        for r in 0..m {
+            for col in 0..n {
+                turned[col][r] = grid[r][col];
+                round[m - 1 - r][n - 1 - col] = grid[r][col];
+                if not done and grid[r][col] == 1 {
+                    cleared[r][col] = 0;
+                    done = true;
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let less = answer(arm, cleared);
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= along,
+                answer(arm, turned) == value,
+                answer(arm, round) == value,
+                less == value or less == value - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

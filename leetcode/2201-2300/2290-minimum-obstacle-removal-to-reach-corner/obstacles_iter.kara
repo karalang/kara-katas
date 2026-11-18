@@ -1,0 +1,76 @@
+// LeetCode #2290: Minimum Obstacle Removal to Reach Corner -- the
+// iterator arm. Breadth-first over cells, but with each cell's cost
+// lowered whenever a cheaper way reaches it, and cells revisited when
+// lowered: SPFA, a queue of the cells whose cost just fell. Neighbours
+// come from `map` and `filter` over the four moves. O(m n * waves).
+
+fn minimum_obstacles(grid: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut cost: Vec[i64] = Vec.filled(m * n, i64.MAX);
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    cost[0] = 0;
+    queue.push_back(0);
+    while let Some(at) = queue.pop_front() {
+        let (r, c) = (at / n, at % n);
+        let next: Vec[i64] = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            .iter()
+            .map(|(dr, dc)| (r + dr, c + dc))
+            .filter(|(nr, nc)| nr >= 0 and nc >= 0 and nr < m and nc < n)
+            .map(|(nr, nc)| nr * n + nc)
+            .filter(|to| cost[at] + grid[to / n][to % n] < cost[to])
+            .collect();
+        for to in next.iter() {
+            cost[to] = cost[at] + grid[to / n][to % n];
+            queue.push_back(to);
+        }
+    }
+    cost[m * n - 1]
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then one cell, one row, one column, a
+    // wall to break through, and a winding path of zeros through ones
+    let cases: Vec[Vec[Vec[i64]]] = [
+        [[0, 1, 1], [1, 1, 0], [1, 1, 0]],
+        [[0, 1, 0, 0, 0], [0, 1, 0, 1, 0], [0, 0, 0, 1, 0]],
+        [[0]],
+        [[0, 1, 1, 0, 1, 0]],
+        [[0], [1], [1], [0]],
+        [[0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0], [1, 1, 1, 0]],
+        [[0, 1, 0, 0, 0], [0, 1, 0, 1, 0], [0, 1, 0, 1, 0], [0, 0, 0, 1, 0]],
+    ];
+    for grid in cases.iter() {
+        println(f"{grid.len()}x{grid[0].len()}: {minimum_obstacles(grid)}");
+    }
+    // 2000 random grids of 1 to 20 by 1 to 20, each cell an obstacle with
+    // chance 1 in 2 to 9 in 10, the corners empty
+    let mut seed = 2290;
+    let mut check = 0;
+    let mut sum = 0;
+    for _ in 0..2000 {
+        let m = next_random(mut seed) % 20 + 1;
+        let n = next_random(mut seed) % 20 + 1;
+        let tenths = next_random(mut seed) % 9 + 1;
+        let mut grid: Vec[Vec[i64]] = Vec.new();
+        for r in 0..m {
+            let mut row: Vec[i64] = Vec.new();
+            for c in 0..n {
+                let wall = next_random(mut seed) % 10 < tenths;
+                row.push(if wall and not (r == 0 and c == 0) and not (r == m - 1 and c == n - 1) { 1 } else { 0 });
+            }
+            grid.push(row);
+        }
+        let removed = minimum_obstacles(grid);
+        check = (check * 31 + removed) % 1000000007;
+        sum += removed;
+    }
+    println(f"2000 grids: checksum {check}, {sum} removed");
+}
