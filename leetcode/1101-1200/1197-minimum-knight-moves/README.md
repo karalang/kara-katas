@@ -154,7 +154,13 @@ the sequential lane. A plain `karac build` parallelizes nothing here and
 gives the same binary, byte for byte, so its two rows differ by noise
 alone. C is about 2.1x faster than Kāra (0.219 s against 0.462 s), and
 Rust with overflow checks on about 1.7x (0.277 s); both sit well outside
-Kāra's range. No profile was taken, so where Kāra spends the difference
-on this search is not yet known. Go takes about 7x Kāra's time, its
+Kāra's range. Under Callgrind Kāra executes 7.34G instructions to
+checked Rust's 4.94G. Two edits to the Kāra source, each giving the same
+output, account for about two thirds of that: the queue as a `Vec` with
+a head index in place of `VecDeque`'s `push_back` and `pop_front` saves
+0.82G, and `for m in 0..8 { let (dx, dy) = MOVES[m]; .. }` in place of
+`for (dx, dy) in MOVES` over the constant `Array` saves 0.53G; with both,
+6.00G, still 1.21x Rust's. The gap is filed in the kara ledger as
+B-2026-11-18-39. Go takes about 7x Kāra's time, its
 queue grown from one entry and its grid freed by the collector in every
 call (inferred, not profiled). Python takes about 90x Kāra's time.
