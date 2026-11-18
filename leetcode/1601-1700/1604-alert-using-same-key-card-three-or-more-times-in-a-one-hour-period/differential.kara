@@ -1,0 +1,247 @@
+// LeetCode #1604: Alert Using Same Key-Card Three or More Times in a One
+// Hour Period -- the differential.
+//
+// Four arms against the statement read literally, on 3000 days of 1 to 8
+// swipes by three names, within 150 minutes of a random start, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the swipes in reverse order leave the answer
+// P3  every swipe moved later by the same minutes, the last to 23:59,
+//     leaves the answer
+// P4  a swipe by a new name leaves the answer
+// P5  every swipe given twice alerts every name the swipes once did
+// P6  each arm agrees with at least two of the other three
+
+// ---- alert.kara: the ★ arm: a sorted map of each name's minutes
+
+fn star_minutes(t: Str) -> i32 {
+    let (h, m) = t.split_once(":").unwrap();
+    i32.parse(h).unwrap() * 60 + i32.parse(m).unwrap()
+}
+
+fn star_arm(key_name: Slice[String], key_time: Slice[String]) -> Vec[String] {
+    let mut uses: SortedMap[String, Vec[i32]] = SortedMap.new();
+    for (name, time) in key_name.iter().zip(key_time.iter()) {
+        uses.entry(name.clone()).or_insert(Vec.new()).push(star_minutes(time));
+    }
+    let mut out = Vec.new();
+    for (name, times) in uses.iter_mut() {
+        times.sort();
+        if (2..times.len()).any(|i| times[i] - times[i - 2] <= 60) {
+            out.push(name.clone());
+        }
+    }
+    out
+}
+
+// ---- alert_sorted.kara: one sort of every (name, minute) swipe
+
+fn sorted_arm(key_name: Slice[String], key_time: Slice[String]) -> Vec[String] {
+    let mut swipes: Vec[(String, i32)] = key_name
+        .iter()
+        .zip(key_time.iter())
+        .map(|(name, time)| (name.clone(), i32.parse(time[..2]).unwrap() * 60 + i32.parse(time[3..]).unwrap()))
+        .collect();
+    swipes.sort();
+    let mut out: Vec[String] = Vec.new();
+    for i in 2..swipes.len() {
+        let (name, t) = swipes[i].clone();
+        let (before, s) = ref swipes[i - 2];
+        if name == before and t - s <= 60 and out.last() != Some(ref name) {
+            out.push(name.clone());
+        }
+    }
+    out
+}
+
+// ---- alert_minutes.kara: a running count for every minute of the day
+
+fn minutes_arm(key_name: Slice[String], key_time: Slice[String]) -> Vec[String] {
+    let mut counts: Map[String, Vec[i32]] = Map.new();
+    for (name, time) in key_name.iter().zip(key_time.iter()) {
+        let (h, m) = time.split_once(":").unwrap();
+        let minute = i32.parse(h).unwrap() * 60 + i32.parse(m).unwrap();
+        counts.entry(name.clone()).or_insert(Vec.filled(1441, 0))[minute + 1] += 1;
+    }
+    let mut out = Vec.new();
+    for (name, count) in counts.iter_mut() {
+        for m in 1..1441 {
+            count[m] += count[m - 1];
+        }
+        if (0..1440).any(|m| count[(m + 61).min(1440)] - count[m] >= 3) {
+            out.push(name.clone());
+        }
+    }
+    out.sort();
+    out
+}
+
+// ---- alert_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct Solution {}
+
+impl Solution {
+    pub fn alert_names(key_name: Vec[String], key_time: Vec[String]) -> Vec[String] {
+        let mut map: Map[String, Vec[i32]] = Map.new();
+        for i in 0..key_name.len() {
+            let t = ref key_time[i];
+            let minutes = i32.parse(t[..2]).unwrap() * 60 + i32.parse(t[3..]).unwrap();
+            map.entry(key_name[i].clone()).or_insert_with(Vec.new).push(minutes);
+        }
+        let mut res = Vec.new();
+        for (name, times) in map.iter_mut() {
+            times.sort();
+            if times.windows(3).into_iter().any(|w| w[2] - w[0] <= 60) {
+                res.push(name.clone());
+            }
+        }
+        res.sort();
+        res
+    }
+}
+
+fn solution_arm(key_name: Slice[String], key_time: Slice[String]) -> Vec[String] {
+    Solution.alert_names(key_name.to_vec(), key_time.to_vec())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, names: Slice[String], minutes: Slice[i64]) -> Vec[String] {
+    let times: Vec[String] = minutes.iter().map(|t| f"{t / 60:02}:{t % 60:02}").collect();
+    match a {
+        0 => star_arm(names, times),
+        1 => sorted_arm(names, times),
+        2 => minutes_arm(names, times),
+        _ => solution_arm(names, times),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["alert", "sorted", "minutes", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: a name alerts when three of its
+// swipes, any three, lie within one hour of each other
+
+fn literal(names: Slice[String], minutes: Slice[i64]) -> Vec[String] {
+    let n = names.len();
+    let mut out: Vec[String] = Vec.new();
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                if names[i] == names[j] and names[j] == names[k] {
+                    let hi = minutes[i].max(minutes[j]).max(minutes[k]);
+                    let lo = minutes[i].min(minutes[j]).min(minutes[k]);
+                    if hi - lo <= 60 and not out.contains(names[i]) {
+                        out.push(names[i].clone());
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16040;
+    let pool = ["ann", "bo", "cy"];
+    let mut cases: Vec[(Vec[String], Vec[i64])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let start = next_random(mut seed) % 1290;
+        let mut names = Vec.new();
+        let mut minutes = Vec.new();
+        for _ in 0..n {
+            names.push(pool[next_random(mut seed) % 3].to_string());
+            minutes.push(start + next_random(mut seed) % 150);
+        }
+        cases.push((names, minutes));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (names, minutes)) in cases.iter().enumerate() {
+        let truth = literal(names, minutes);
+        let rev_names: Vec[String] = names.iter().rev().cloned().collect();
+        let rev_minutes: Vec[i64] = minutes.iter().rev().cloned().collect();
+        let shift = 1439 - minutes.iter().max().unwrap();
+        let shifted: Vec[i64] = minutes.iter().map(|t| t + shift).collect();
+        let mut more_names = names.clone();
+        more_names.push("zed");
+        let mut more_minutes = minutes.clone();
+        more_minutes.push(minutes[0]);
+        let mut twice_names = Vec.new();
+        let mut twice_minutes = Vec.new();
+        for (name, t) in names.iter().zip(minutes.iter()) {
+            for _ in 0..2 {
+                twice_names.push(name.clone());
+                twice_minutes.push(*t);
+            }
+        }
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let answer = arm(a, names, minutes);
+            for name in answer.iter() {
+                for b in name.bytes() {
+                    check = (check * 31 + b + 1) % 1000000007;
+                }
+            }
+            check = (check * 31 + 1) % 1000000007;
+            let twice = arm(a, twice_names, twice_minutes);
+            let failed = [
+                answer != truth,
+                arm(a, rev_names, rev_minutes) != answer,
+                arm(a, names, shifted) != answer,
+                arm(a, more_names, more_minutes) != answer,
+                answer.iter().any(|name| not twice.contains(name)),
+            ];
+            answers.push(answer);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
