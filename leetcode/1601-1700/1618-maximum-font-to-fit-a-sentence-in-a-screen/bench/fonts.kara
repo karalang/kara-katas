@@ -1,0 +1,71 @@
+// LeetCode #1618: Maximum Font to Fit a Sentence in a Screen -- the bench,
+// on the ★ arm: a binary search for the last size that fits.
+//
+// Build once, then punch: 200 texts of 5000 letters, each asked about 40
+// screens against 60 sizes, every probe adding up the text's widths.
+
+trait FontInfo {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32;
+    fn get_height(ref self, font_size: i32) -> i32;
+}
+
+fn fits(text: Str, w: i32, h: i32, size: i32, info: impl FontInfo) -> bool {
+    info.get_height(size) <= h and text.chars().map(|c| info.get_width(size, c) as i64).sum() <= w
+}
+
+fn max_font(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    let mut (lo, hi) = (0, fonts.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if fits(text.as_str(), w, h, fonts[mid], info) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo == 0 { -1 } else { fonts[lo - 1] }
+}
+struct Font {
+    base: Vec[i32],
+}
+
+impl FontInfo for Font {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32 {
+        (font_size * self.base[ch as u32 - 'a' as u32] + 3) / 4
+    }
+
+    fn get_height(ref self, font_size: i32) -> i32 {
+        font_size + font_size / 4
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    let mut seed = 1618;
+    let mut texts: Vec[String] = Vec.new();
+    for _ in 0..200 {
+        texts.push((0..5000).map(|_| (b'a' + (next_random(mut seed) % 26) as u8) as char).collect());
+    }
+    let font = Font { base: (0..26).map(|_| (next_random(mut seed) % 8 + 1) as i32).collect() };
+    let fonts: Vec[i32] = (1..61).map(|k| k * 3).collect();
+    let mut check = 0;
+    let mut total = 0;
+    for text in texts.iter() {
+        for _ in 0..40 {
+            let w = (next_random(mut seed) * 8 + 1) as i32;
+            let h = (next_random(mut seed) % 240 + 1) as i32;
+            let answer = max_font(text, w, h, fonts, font);
+            check = mix(check, answer);
+            total += answer;
+        }
+    }
+    println(f"8000 screens of 5000 letters: sizes total {total}, checksum {check}");
+}

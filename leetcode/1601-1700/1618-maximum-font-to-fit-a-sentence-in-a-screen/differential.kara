@@ -1,0 +1,273 @@
+// LeetCode #1618: Maximum Font to Fit a Sentence in a Screen -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random screens
+// of 1 to 40 letters, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the letters shuffled leave the answer
+// P3  the sizes above the answer dropped leave the answer
+// P4  a screen exactly as wide as the text at the answer keeps it; one
+//     unit narrower takes a smaller size or none
+// P5  a screen twice as wide, or twice as tall, never lowers the answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- fonts.kara: the ★ arm: a binary search
+
+fn star_fits(text: Str, w: i32, h: i32, size: i32, info: impl FontInfo) -> bool {
+    info.get_height(size) <= h and text.chars().map(|c| info.get_width(size, c) as i64).sum() <= w
+}
+
+fn star_arm(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    let mut (lo, hi) = (0, fonts.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if star_fits(text.as_str(), w, h, fonts[mid], info) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo == 0 { -1 } else { fonts[lo - 1] }
+}
+
+// ---- fonts_scan.kara: the largest size down
+
+fn scan_arm(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    for size in fonts.iter().rev() {
+        if info.get_height(size) > h {
+            continue;
+        }
+        let mut width = 0;
+        let mut fits = true;
+        for c in text.chars() {
+            width += info.get_width(size, c);
+            if width > w {
+                fits = false;
+                break;
+            }
+        }
+        if fits {
+            return size;
+        }
+    }
+    -1
+}
+
+// ---- fonts_partition.kara: a partition point over letter counts
+
+fn partition_arm(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    let mut counts = [0; 26];
+    for b in text.bytes() {
+        counts[b - b'a'] += 1;
+    }
+    let fit = fonts.partition_point(|size| {
+        if info.get_height(size) > h {
+            return false;
+        }
+        let mut width = 0;
+        for k in 0..26 {
+            width += counts[k] * info.get_width(size, (b'a' + k as u8) as char);
+        }
+        width <= w
+    });
+    if fit == 0 { -1 } else { fonts[fit - 1] }
+}
+
+// ---- fonts_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_font(text: String, w: i32, h: i32, fonts: Vec[i32], font_info: impl FontInfo) -> i32 {
+        let fits = |size: i32| {
+            if font_info.get_height(size) > h {
+                return false;
+            }
+            let mut width = 0;
+            for c in text.chars() {
+                width += font_info.get_width(size, c);
+            }
+            width <= w
+        };
+        let mut (lo, hi) = (0, fonts.len());
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if fits(fonts[mid]) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo == 0 { -1 } else { fonts[lo - 1] }
+    }
+}
+
+fn solution_arm(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    SolutionArm.max_font(text, w, h, fonts.to_vec(), info)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+trait FontInfo {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32;
+    fn get_height(ref self, font_size: i32) -> i32;
+}
+
+struct Font {
+    base: Vec[i32],
+    tall: i32,
+}
+
+impl FontInfo for Font {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32 {
+        (font_size * self.base[ch as u32 - 'a' as u32] + 3) / 4
+    }
+
+    fn get_height(ref self, font_size: i32) -> i32 {
+        font_size + font_size * self.tall / 4
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, text: String, w: i32, h: i32, fonts: Slice[i32], font: Font) -> i32 {
+    match a {
+        0 => star_arm(text, w, h, fonts, font),
+        1 => scan_arm(text, w, h, fonts, font),
+        2 => partition_arm(text, w, h, fonts, font),
+        _ => solution_arm(text, w, h, fonts, font),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["fonts", "scan", "partition", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: of the sizes on offer, the largest at
+// which a line is no higher than the screen and the letters' widths, added
+// up, no wider; -1 when there is none
+
+fn width_at(text: Str, size: i32, font: Font) -> i64 {
+    let mut total = 0;
+    for c in text.chars() {
+        total += font.get_width(size, c);
+    }
+    total
+}
+
+fn literal(text: Str, w: i32, h: i32, fonts: Slice[i32], font: Font) -> i32 {
+    let mut best = -1;
+    for size in fonts.iter() {
+        if font.get_height(size) <= h and width_at(text, size, font) <= w {
+            best = max(best, size);
+        }
+    }
+    best
+}
+
+fn main() {
+    let mut seed = 1618;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    for p in 0..problems {
+        let font = Font {
+            base: (0..26).map(|_| (next_random(mut seed) % 8 + 1) as i32).collect(),
+            tall: (next_random(mut seed) % 3) as i32,
+        };
+        let n = next_random(mut seed) % 40 + 1;
+        let alphabet = next_random(mut seed) % 26 + 1;
+        let text: String = (0..n).map(|_| (b'a' + (next_random(mut seed) % alphabet) as u8) as char).collect();
+        let mut fonts: Vec[i32] = Vec.new();
+        let mut size: i32 = 0;
+        for _ in 0..next_random(mut seed) % 12 + 1 {
+            size += (next_random(mut seed) % 6 + 1) as i32;
+            fonts.push(size);
+        }
+        let w = (next_random(mut seed) % (n * 30) + 1) as i32;
+        let h = (next_random(mut seed) % 120 + 1) as i32;
+        // a shuffle of the letters, drawn before any arm answers
+        let mut letters: Vec[char] = text.chars().collect();
+        let mut i = letters.len() - 1;
+        while i > 0 {
+            let j = next_random(mut seed) % (i + 1);
+            letters.swap(i, j);
+            i -= 1;
+        }
+        let shuffled: String = letters.iter().collect();
+
+        let truth = literal(text.as_str(), w, h, fonts, font);
+        check = (check * 31 + truth + 1) % 1000000007;
+        let mut answers: Vec[i32] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, text, w, h, fonts, font);
+            answers.push(got);
+            let mut fail = |q: i64, what: Str| {
+                failures += 1;
+                by_property[q] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: {what}");
+                }
+            };
+            // P1
+            checks += 1;
+            if got != truth {
+                fail(1, "P1 not the statement read literally");
+            }
+            // P2
+            checks += 1;
+            if arm(a, shuffled, w, h, fonts, font) != truth {
+                fail(2, "P2 the letters shuffled changed the answer");
+            }
+            // P3
+            checks += 1;
+            let upto: Vec[i32] = fonts.iter().filter(|s| s <= truth).collect();
+            if arm(a, text, w, h, upto, font) != truth {
+                fail(3, "P3 the sizes above the answer dropped changed it");
+            }
+            // P4
+            checks += 1;
+            if truth > 0 {
+                let exact = width_at(text.as_str(), truth, font) as i32;
+                let narrower = arm(a, text, exact - 1, h, fonts, font);
+                if arm(a, text, exact, h, fonts, font) != truth or narrower >= truth {
+                    fail(4, "P4 the screen cut to the answer's width did not keep it, or one less did");
+                }
+            }
+            // P5
+            checks += 1;
+            if arm(a, text, w * 2, h, fonts, font) < truth or arm(a, text, w, h * 2, fonts, font) < truth {
+                fail(5, "P5 a wider or taller screen lowered the answer");
+            }
+        }
+        // P6
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6 agrees with fewer than two arms");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

@@ -1,0 +1,114 @@
+// LeetCode #1618: Maximum Font to Fit a Sentence in a Screen -- LeetCode's
+// Rust template, as written there, carried over by `karac fix`.
+//
+// LeetCode hands the solution a `&FontInfo` whose `getWidth` / `getHeight`
+// it may not see; here FontInfo is the harness's trait, so the parameter
+// is `&impl FontInfo`. A binary search over the sorted sizes.
+
+trait FontInfo {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32;
+    fn get_height(ref self, font_size: i32) -> i32;
+}
+
+struct Solution {}
+
+impl Solution {
+    pub fn max_font(text: String, w: i32, h: i32, fonts: Vec[i32], font_info: impl FontInfo) -> i32 {
+        let fits = |size: i32| {
+            if font_info.get_height(size) > h {
+                return false;
+            }
+            let mut width = 0;
+            for c in text.chars() {
+                width += font_info.get_width(size, c);
+            }
+            width <= w
+        };
+        let mut (lo, hi) = (0, fonts.len());
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if fits(fonts[mid]) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo == 0 { -1 } else { fonts[lo - 1] }
+    }
+}
+
+fn max_font(text: String, w: i32, h: i32, fonts: Slice[i32], info: impl FontInfo) -> i32 {
+    Solution.max_font(text, w, h, fonts.to_vec(), info)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+// A font whose letters each have a base width: at size `f` a letter is
+// `(f * base + 3) / 4` wide and a line is `f + f / 4` high, both rising
+// with the size, as the problem promises.
+struct Font {
+    base: Vec[i32],
+}
+
+impl FontInfo for Font {
+    fn get_width(ref self, font_size: i32, ch: char) -> i32 {
+        (font_size * self.base[ch as u32 - 'a' as u32] + 3) / 4
+    }
+
+    fn get_height(ref self, font_size: i32) -> i32 {
+        font_size + font_size / 4
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A draw below `bound`, from two draws so that it can pass 32768.
+fn wide_random(seed: mut ref i64, bound: i64) -> i64 {
+    (next_random(mut seed) * 32768 + next_random(mut seed)) % bound
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn batch(count: i64, most: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut fits = 0;
+    let mut letters = 0;
+    for _ in 0..count {
+        let font = Font { base: (0..26).map(|_| (next_random(mut seed) % 8 + 1) as i32).collect() };
+        let n = wide_random(mut seed, most) + 1;
+        let text: String = (0..n).map(|_| (b'a' + (next_random(mut seed) % 26) as u8) as char).collect();
+        let mut fonts: Vec[i32] = Vec.new();
+        let mut size: i32 = 0;
+        for _ in 0..next_random(mut seed) % 20 + 1 {
+            size += (next_random(mut seed) % 30 + 1) as i32;
+            fonts.push(size);
+        }
+        let w = (wide_random(mut seed, n * 40) + 1) as i32;
+        let h = (next_random(mut seed) % 400 + 1) as i32;
+        let answer = max_font(text, w, h, fonts, font);
+        if answer >= 0 {
+            fits += 1;
+        }
+        check = mix(check, answer);
+        letters += n;
+    }
+    println(f"{count} screens for up to {most} letters: {letters} letters, {fits} fit, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, on a font where every letter is as wide
+    // as the size and a line as high as it
+    let plain = Font { base: Vec.filled(26, 4) };
+    println(max_font("helloworld", 80, 20, [6, 8, 10, 12, 14, 16, 18, 24, 36], plain));
+    println(max_font("leetcode", 1000, 50, [1, 2, 4], plain));
+    println(max_font("easyquestion", 100, 100, [10, 15, 20, 25], plain));
+    let mut seed = 1618;
+    batch(3000, 10, mut seed);
+    batch(300, 1000, mut seed);
+    batch(30, 50000, mut seed);
+}
