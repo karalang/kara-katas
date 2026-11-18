@@ -1,0 +1,239 @@
+// LeetCode #1614: Maximum Nesting Depth of the Parentheses -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random
+// expressions of 1 to 8 terms, with six properties. Every random choice
+// is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string in one more pair of parentheses is one deeper
+// P3  the string twice, joined by `+`, leaves the answer
+// P4  every character but the parentheses removed leaves the answer
+// P5  the string reversed, each parenthesis turned round, leaves the
+//     answer
+// P6  each arm agrees with at least two of the other three
+
+// ---- depth.kara: the ★ arm: one pass counting the parentheses open
+
+fn star_arm(s: String) -> i32 {
+    let mut open = 0;
+    let mut most: i32 = 0;
+    for c in s.chars() {
+        if c == '(' {
+            open += 1;
+            most = max(most, open);
+        } else if c == ')' {
+            open -= 1;
+        }
+    }
+    most
+}
+
+// ---- depth_scan.kara: an iterator chain, a running sum by scan
+
+fn scan_arm(s: String) -> i32 {
+    s.bytes().iter()
+        .map(|b| match b {
+            b'(' => 1,
+            b')' => -1,
+            _ => 0,
+        })
+        .scan(0, |open, step| { let open = open + step; Some((open, open)) })
+        .max()
+        .unwrap_or(0)
+}
+
+// ---- depth_stack.kara: a stack, as a parser would keep
+
+fn stack_arm(s: String) -> i32 {
+    let mut stack: Vec[i64] = Vec.new();
+    let mut most = 0;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => {
+                stack.push(i);
+                most = max(most, stack.len());
+            }
+            ')' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    most as i32
+}
+
+// ---- depth_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_depth(s: String) -> i32 {
+        s.chars()
+            // `(0, 0)` is refused as `i64` with no fix, the `max` on the
+            // accumulator settling it (B-2026-11-17-129)
+            .fold((0i32, 0i32), |(d, m), c| match c {
+                '(' => (d + 1, m.max(d + 1)),
+                ')' => (d - 1, m),
+                _ => (d, m),
+            })
+            .1
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    SolutionArm.max_depth(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: Str) -> i32 {
+    let s = s.to_string();
+    match a {
+        0 => star_arm(s),
+        1 => scan_arm(s),
+        2 => stack_arm(s),
+        _ => solution_arm(s),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["depth", "scan", "stack", "solution"][a].to_string()
+}
+
+fn expression(size: i64, out: mut ref String, seed: mut ref i64) {
+    let mut left = size;
+    loop {
+        if left > 1 and next_random(mut seed) % 3 == 0 {
+            let inner = next_random(mut seed) % left + 1;
+            out.push('(');
+            expression(inner, mut out, mut seed);
+            out.push(')');
+            left -= inner;
+        } else {
+            out.push((b'0' + (next_random(mut seed) % 10) as u8) as char);
+            left -= 1;
+        }
+        if left <= 0 {
+            break;
+        }
+        out.push(['+', '-', '*', '/'][next_random(mut seed) % 4]);
+    }
+}
+
+// ---- the statement read literally: depth("") = 0, depth(C) = 0 for a
+// single character, depth(A + B) = max(depth(A), depth(B)) for two
+// strings side by side, and depth("(" + A + ")") = 1 + depth(A); the
+// string split at the end of its first character or first parenthesized
+// group
+
+// where the group opened at `i` closes
+fn closing(s: Slice[u8], i: i64) -> i64 {
+    let mut open = 0;
+    let mut j = i;
+    loop {
+        if s[j] == b'(' {
+            open += 1;
+        } else if s[j] == b')' {
+            open -= 1;
+            if open == 0 {
+                return j;
+            }
+        }
+        j += 1;
+    }
+}
+
+fn literal(s: Slice[u8]) -> i32 {
+    if s.len() == 0 {
+        return 0;
+    }
+    let first_end = if s[0] == b'(' { closing(s, 0) + 1 } else { 1 };
+    if first_end == s.len() {
+        if s[0] == b'(' {
+            return 1 + literal(s[1..s.len() - 1]);
+        }
+        return 0;
+    }
+    max(literal(s[..first_end]), literal(s[first_end..]))
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16140;
+    let mut cases: Vec[String] = Vec.new();
+    for _ in 0..problems {
+        let mut s = String.new();
+        expression(next_random(mut seed) % 8 + 1, mut s, mut seed);
+        cases.push(s);
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, s) in cases.iter().enumerate() {
+        let wrapped = f"({s})";
+        let twice = f"{s}+{s}";
+        let bare: String = s.chars().filter(|c| c == '(' or c == ')').collect();
+        let mirrored: String = s.chars().rev().map(|c| match c {
+            '(' => ')',
+            ')' => '(',
+            other => other,
+        }).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, s);
+            check = (check * 31 + x + 1) % 1000000007;
+            let failed = [
+                x != literal(s.bytes()),
+                arm(a, wrapped) != x + 1,
+                arm(a, twice) != x,
+                arm(a, bare) != x,
+                arm(a, mirrored) != x,
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
