@@ -1,0 +1,65 @@
+// LeetCode #2276: Percentage of Letter in String -- the ★ arm. The
+// letter's occurrences counted in one pass over the characters, then
+// `count * 100 / len`, which integer division rounds down as asked.
+// O(n).
+
+fn percentage_letter(s: String, letter: char) -> i64 {
+    let mut count = 0;
+    for c in s.chars() {
+        if c == letter {
+            count += 1;
+        }
+    }
+    count * 100 / s.len()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` letters from the first `k`
+fn letters(seed: mut ref i64, n: i64, k: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one letter, a half, a
+    // third rounded down, two thirds rounded down, and a tenth
+    let examples = [
+        ("foobar", 'o'),
+        ("jjjj", 'k'),
+        ("a", 'a'),
+        ("ab", 'a'),
+        ("abc", 'a'),
+        ("aab", 'a'),
+        ("zzzzzzzzzy", 'y'),
+    ];
+    for (s, letter) in examples.iter() {
+        println(f"{s} {letter} -> {percentage_letter(s.to_string(), letter)}");
+    }
+    // 3000 strings of 1 to 100 letters from the first 2, 3 or 26, the
+    // letter one of the first 3
+    let mut seed = 2276;
+    let mut check = 0;
+    for t in 0..3000 {
+        let n = next_random(mut seed) % 100 + 1;
+        let s = letters(mut seed, n, [2, 3, 26][t % 3]);
+        let letter = (b'a' + (next_random(mut seed) % 3) as u8) as char;
+        check = (check * 31 + percentage_letter(s, letter)) % 1000000007;
+    }
+    println(f"3000 strings: checksum {check}");
+    // the constraints' longest, 100 letters: random from the first 4,
+    // all the letter, and the letter once
+    let random = letters(mut seed, 100, 4);
+    let all = "q".repeat(100);
+    let once = "x".repeat(99) + "q";
+    let answers = [percentage_letter(random, 'a'), percentage_letter(all, 'q'), percentage_letter(once, 'q')];
+    println(f"100 letters: {answers}");
+}

@@ -1,0 +1,204 @@
+// LeetCode #2276: Percentage of Letter in String -- the differential.
+// The six arms, against the statement read literally: the percentage
+// rounded down is the largest whole `p` from 0 to 100 with `p` percent
+// of the length at most the letter's count, found by trying each `p` in
+// turn, and the count taken by indexing every character. No division.
+// 300 random strings of 1 to 100 letters from the first 1, 2, 3 or 26,
+// the letter one of the first 3; then 30 with the letter only at the
+// end; then 30 of lengths 3, 7 and 9, where the rounding bites. Every
+// case is drawn before any arm answers.
+//
+// P1  the percentage is the literal reading's
+// P2  the string reversed: the same percentage
+// P3  the letters relabelled, the alphabet turned by seven, the letter
+//     too: the same percentage
+// P4  from 0 to 100, 0 exactly when the letter is absent and 100
+//     exactly when every character is the letter
+// P5  the string twice over: the same percentage
+// P6  each arm agrees with at least three of the other five
+
+// ---- percent.kara: the ★ arm, one pass over the characters
+fn star_percentage_letter(s: String, letter: char) -> i64 {
+    let mut count = 0;
+    for c in s.chars() {
+        if c == letter {
+            count += 1;
+        }
+    }
+    count * 100 / s.len()
+}
+
+// ---- percent_split.kara: the pieces left by `split`, less one
+fn split_percentage_letter(s: String, letter: char) -> i64 {
+    let count = s.split(letter.to_string()).count() - 1;
+    count * 100 / s.len()
+}
+
+// ---- percent_bytes.kara: a `fold` over the bytes
+fn bytes_percentage_letter(s: String, letter: char) -> i64 {
+    let target = letter as u32 as u8;
+    let count = s.bytes().iter().fold(0, |acc, b| if b == target { acc + 1 } else { acc });
+    count * 100 / s.len()
+}
+
+// ---- percent_struct.kara: `struct Tally` shown a character at a time
+struct StructTally {
+    letter: char,
+    seen: i64,
+    hits: i64,
+}
+
+impl StructTally {
+    fn see(mut ref self, c: char) {
+        self.seen += 1;
+        if c == self.letter {
+            self.hits += 1;
+        }
+    }
+
+    fn percent(self) -> i64 {
+        self.hits * 100 / self.seen
+    }
+}
+
+fn struct_percentage_letter(s: String, letter: char) -> i64 {
+    let mut tally = StructTally { letter: letter, seen: 0, hits: 0 };
+    for c in s.chars() {
+        tally.see(c);
+    }
+    tally.percent()
+}
+
+// ---- percent_iter.kara: `filter` and `count`
+fn iter_percentage_letter(s: String, letter: char) -> i64 {
+    s.chars().filter(|c| c == letter).count() * 100 / s.chars().count()
+}
+
+// ---- percent_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn percentage_letter(s: String, letter: char) -> i32 {
+        (s.chars().filter(|c| c == letter).count() * 100 / s.len()) as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_percentage_letter(s: String, letter: char) -> i64 {
+    Solution.percentage_letter(s, letter)
+}
+
+
+// ---- the statement read literally
+
+fn literal(s: String, letter: char) -> i64 {
+    let chars: Vec[char] = s.chars().collect();
+    let mut count = 0;
+    for i in 0..chars.len() {
+        if chars[i] == letter {
+            count += 1;
+        }
+    }
+    let mut p = 0;
+    while p < 100 and (p + 1) * chars.len() <= 100 * count {
+        p += 1;
+    }
+    p
+}
+
+fn relabel(c: char) -> char {
+    (((c as u32 - 'a' as u32 + 7) % 26) as u8 + b'a') as char
+}
+
+fn answer(arm: i64, s: String, letter: char) -> i64 {
+    match arm {
+        0 => star_percentage_letter(s, letter),
+        1 => split_percentage_letter(s, letter),
+        2 => bytes_percentage_letter(s, letter),
+        3 => struct_percentage_letter(s, letter),
+        4 => iter_percentage_letter(s, letter),
+        _ => solution_percentage_letter(s, letter),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letters(seed: mut ref i64, n: i64, k: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    let names = ["star", "split", "bytes", "struct", "iter", "solution"];
+    let mut seed = 2276;
+    let mut cases: Vec[(String, char)] = Vec.new();
+    for c in 0..360 {
+        let letter = (b'a' + (next_random(mut seed) % 3) as u8) as char;
+        if c < 300 {
+            let n = next_random(mut seed) % 100 + 1;
+            cases.push((letters(mut seed, n, [1, 2, 3, 26][c % 4]), letter));
+        } else if c < 330 {
+            let n = next_random(mut seed) % 20;
+            cases.push(("z".repeat(n) + letter.to_string(), letter));
+        } else {
+            let n = [3, 7, 9][c % 3];
+            cases.push((letters(mut seed, n, 2), letter));
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, letter) in cases.iter() {
+        let truth = literal(s, letter);
+        check = (check * 31 + truth) % 1000000007;
+        let back: String = s.chars().rev().collect();
+        let turned: String = s.chars().map(|c| relabel(c)).collect();
+        let twice = s.repeat(2);
+        let count = s.chars().filter(|c| c == letter).count();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, letter)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, back, letter) == value,
+                answer(arm, turned, relabel(letter)) == value,
+                value >= 0 and value <= 100 and (value == 0) == (count == 0) and (value == 100) == (count == s.len()),
+                answer(arm, twice, letter) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} {letter} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
