@@ -1,0 +1,180 @@
+// LeetCode #2258: Escape the Spreading Fire -- frontiers as iterator
+// chains. The grid flattened by `flat_map`; fire spreads one frontier at
+// a time, each next frontier the `flat_map` of the cells beside the last
+// `filter`ed to grass not yet burning; the person spreads the same way,
+// a cell kept only while the person is strictly ahead of the fire there,
+// and the safehouse reached when it is in a frontier no later than the
+// fire. The wait is not bisected: `take_while` counts the waits that
+// escape from 1 up, which is the answer since one that fails fails for
+// every longer wait. O(mn) per wait, O(mn * answer) in all.
+
+const NEVER: i64 = 1000000000000;
+
+fn around(at: i64, m: i64, n: i64) -> Vec[i64] {
+    let (r, c) = (at / n, at % n);
+    [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)]
+        .iter()
+        .filter(|(a, b)| a >= 0 and a < m and b >= 0 and b < n)
+        .map(|(a, b)| a * n + b)
+        .collect()
+}
+
+fn fire_times(cells: Vec[i64], m: i64, n: i64) -> Vec[i64] {
+    let mut at: Vec[i64] = cells.iter().map(|v| if v == 1 { 0 } else { NEVER }).collect();
+    let mut frontier: Vec[i64] = (0..m * n).filter(|i| cells[i] == 1).collect();
+    let mut minute = 0;
+    while not frontier.is_empty() {
+        minute += 1;
+        let next: Vec[i64] = frontier
+            .iter()
+            .flat_map(|i| around(i, m, n).into_iter())
+            .filter(|j| cells[j] == 0 and at[j] == NEVER)
+            .collect();
+        frontier = Vec.new();
+        for j in next {
+            if at[j] == NEVER {
+                at[j] = minute;
+                frontier.push(j);
+            }
+        }
+    }
+    at
+}
+
+fn escapes(cells: Vec[i64], m: i64, n: i64, fire: Vec[i64], wait: i64) -> bool {
+    let home = m * n - 1;
+    if wait >= fire[0] {
+        return false;
+    }
+    let mut seen: Vec[bool] = Vec.filled(m * n, false);
+    seen[0] = true;
+    let mut frontier: Vec[i64] = [0].to_vec();
+    let mut t = wait;
+    while not frontier.is_empty() {
+        t += 1;
+        let next: Vec[i64] = frontier
+            .iter()
+            .flat_map(|i| around(i, m, n).into_iter())
+            .filter(|j| cells[j] == 0 and not seen[j])
+            .collect();
+        if next.iter().any(|j| j == home) and t <= fire[home] {
+            return true;
+        }
+        frontier = Vec.new();
+        for j in next {
+            if not seen[j] and t < fire[j] {
+                seen[j] = true;
+                frontier.push(j);
+            }
+        }
+    }
+    false
+}
+
+fn maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let cells: Vec[i64] = grid.iter().flat_map(|row| row.iter()).collect();
+    let fire = fire_times(cells, m, n);
+    if not escapes(cells, m, n, fire, 0) {
+        return -1;
+    }
+    if escapes(cells, m, n, fire, m * n) {
+        return 1000000000;
+    }
+    (1..m * n).take_while(|w| escapes(cells, m, n, fire, w)).count()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid: each cell a wall one time in `walls` hundred, else
+// grass; the two corners grass, and one fire on a cell between them
+fn grid_of(seed: mut ref i64, m: i64, n: i64, walls: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let roll = next_random(mut seed) % 100;
+            row.push(if roll < walls { 2 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid[0][0] = 0;
+    grid[m - 1][n - 1] = 0;
+    let k = next_random(mut seed) % (m * n - 2) + 1;
+    grid[k / n][k % n] = 1;
+    grid
+}
+
+fn open_grid(m: i64, n: i64) -> Vec[Vec[i64]] {
+    Vec.filled(m, Vec.filled(n, 0))
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: fire beside the start,
+    // fire held back by a wall, fire that runs along the far side to the
+    // safehouse first, and fire that comes from behind
+    let examples: Vec[Vec[Vec[i64]]] = [
+        [[0, 2, 0, 0, 0, 0, 0].to_vec(), [0, 0, 0, 2, 2, 1, 0].to_vec(), [0, 2, 0, 0, 1, 2, 0].to_vec(), [0, 0, 2, 2, 2, 0, 2].to_vec(), [0, 0, 0, 0, 0, 0, 0].to_vec()].to_vec(),
+        [[0, 0, 0, 0].to_vec(), [0, 1, 2, 0].to_vec(), [0, 2, 0, 0].to_vec()].to_vec(),
+        [[0, 0, 0].to_vec(), [2, 2, 0].to_vec(), [1, 2, 0].to_vec()].to_vec(),
+        [[0, 1].to_vec(), [0, 0].to_vec()].to_vec(),
+        [[0, 0, 0, 0].to_vec(), [0, 2, 0, 0].to_vec(), [0, 1, 2, 0].to_vec()].to_vec(),
+        [[0, 0, 0, 0, 0].to_vec(), [2, 2, 2, 2, 0].to_vec(), [1, 0, 0, 0, 0].to_vec()].to_vec(),
+        [[0, 0, 0, 0, 0, 0].to_vec(), [1, 2, 2, 2, 2, 0].to_vec()].to_vec(),
+    ].to_vec();
+    for grid in examples.iter() {
+        println(f"{grid} -> {maximum_minutes(grid)}");
+    }
+    // 5000 grids of 2 to 11 by 2 to 11, a wall in 4 cells and one fire
+    let mut seed = 2258;
+    let mut counts = [0, 0, 0];
+    let mut check = 0;
+    for _ in 0..5000 {
+        let m = next_random(mut seed) % 10 + 2;
+        let n = next_random(mut seed) % 10 + 2;
+        let grid = grid_of(mut seed, m, n, 25);
+        let answer = maximum_minutes(grid);
+        if answer == -1 {
+            counts[0] += 1;
+        } else if answer == 1000000000 {
+            counts[2] += 1;
+        } else {
+            counts[1] += 1;
+        }
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"5000 grids: {counts[0]} trapped, {counts[1]} with a wait, {counts[2]} never reached, checksum {check}");
+    // the constraints' most cells, 2 * 10^4: 100 by 200 with the fire
+    // in the bottom-left corner behind a wall that opens only beside the
+    // start, so it chases the person; 2 by 10^4 with the fire under the
+    // start; 300 by 66 as a winding corridor, the fire sealed in a pocket
+    let mut answers: Vec[i64] = Vec.new();
+    let mut chase = open_grid(100, 200);
+    for r in 1..100 {
+        chase[r][1] = 2;
+    }
+    chase[99][0] = 1;
+    answers.push(maximum_minutes(chase));
+    let mut strip = open_grid(2, 10000);
+    strip[1][0] = 1;
+    strip[1][1] = 2;
+    answers.push(maximum_minutes(strip));
+    let mut winding = open_grid(300, 66);
+    let mut r = 1;
+    while r < 299 {
+        for c in 0..66 {
+            winding[r][c] = 2;
+        }
+        winding[r][if (r / 2) % 2 == 0 { 63 } else { 0 }] = 0;
+        r += 2;
+    }
+    winding[0][65] = 1;
+    winding[0][64] = 2;
+    answers.push(maximum_minutes(winding));
+    println(f"2 * 10^4 cells: {answers}");
+}

@@ -1,0 +1,132 @@
+// LeetCode #2258: Escape the Spreading Fire -- the ★ arm. One
+// breadth-first search from every fire at once gives the minute fire
+// reaches each cell; then a binary search over the wait, each wait tried
+// by a breadth-first search of the person, who may step onto a cell only
+// before the fire, or onto the safehouse no later than it. A wait of
+// m * n that still escapes means the fire never cuts the way: 10^9.
+// O(mn log mn).
+
+const NEVER: i64 = 1000000000000;
+
+const STEPS: Array[(i64, i64), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+fn fire_times(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut at: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, NEVER));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                at[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in STEPS {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] == 0 and at[nr][nc] == NEVER {
+                at[nr][nc] = at[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    at
+}
+
+fn escapes(grid: Vec[Vec[i64]], fire: Vec[Vec[i64]], wait: i64) -> bool {
+    let (m, n) = (grid.len(), grid[0].len());
+    if wait >= fire[0][0] {
+        return false;
+    }
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[0][0] = true;
+    let mut queue: VecDeque[(i64, i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0, wait));
+    while let Some((r, c, t)) = queue.pop_front() {
+        for (dr, dc) in STEPS {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != 0 or seen[nr][nc] {
+                continue;
+            }
+            if nr == m - 1 and nc == n - 1 {
+                if t + 1 <= fire[nr][nc] {
+                    return true;
+                }
+                continue;
+            }
+            if t + 1 < fire[nr][nc] {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc, t + 1));
+            }
+        }
+    }
+    false
+}
+
+fn maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let fire = fire_times(grid);
+    let cells = grid.len() * grid[0].len();
+    if not escapes(grid, fire, 0) {
+        return -1;
+    }
+    if escapes(grid, fire, cells) {
+        return 1000000000;
+    }
+    // escapes at lo, not at hi
+    let mut (lo, hi) = (0, cells);
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if escapes(grid, fire, mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid with a wall one time in `walls` hundred past the second
+// column, a wall down the second column below the first row, and the
+// fire on a random row of the first column: it comes round behind the
+// person through the gap at the top
+fn chase(seed: mut ref i64, m: i64, n: i64, walls: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for r in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for c in 0..n {
+            let roll = next_random(mut seed) % 100;
+            row.push(if c == 1 and r > 0 { 2 } else if c >= 2 and roll < walls { 2 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid[0][2] = 0;
+    grid[m - 1][n - 1] = 0;
+    grid[next_random(mut seed) % (m - 1) + 1][0] = 1;
+    grid
+}
+
+fn main() {
+    // 300 grids of 2 * 10^4 cells, as 100 by 200, 200 by 100 and 125 by
+    // 160 in turn
+    let mut seed = 2258;
+    let mut check = 0;
+    let mut waits = 0;
+    let shapes = [(100, 200), (200, 100), (125, 160)];
+    for t in 0..300 {
+        let (m, n) = shapes[t % 3];
+        let answer = maximum_minutes(chase(mut seed, m, n, 8));
+        if answer >= 0 and answer < 1000000000 {
+            waits += 1;
+        }
+        check = (check * 31 + answer + 1) % 1000000007;
+    }
+    println(f"300 grids of 2 * 10^4 cells: {waits} with a wait, checksum {check}");
+}

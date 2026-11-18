@@ -1,0 +1,742 @@
+// LeetCode #2258: Escape the Spreading Fire -- the differential. The
+// six arms, against the statement read literally: for every wait from 0
+// to m * n the minutes are played out, the fire's cells and the cells
+// the person may be on kept as two sets of grid flags, the person moving
+// first each minute and the fire spreading after, a person's cell lost
+// once it burns; no fire times and no search. 210 random grids of 2 to
+// 6 by 2 to 6, a wall in about 1 cell in 5, 3 or 2.5, and one fire;
+// then 30 of 7 to 9 by 4 to 9 where the fire winds through walled rows
+// on the right and the person comes down the left, the two ways meeting
+// only at the safehouse, so that the best wait arrives with the fire;
+// then 30 strips of 2 by up to 12 or up to 12 by 2 with one or two
+// fires; then 30 grids of 3 to 6 by 3 to 7 where a wall down the second
+// column keeps the fire in the first until it comes round behind the
+// person; then 60 of 2 to 6 by 2 to 6 with the fire walled in on every
+// side but a corner. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the grid transposed: the same answer
+// P3  a fire put on the first grass cell after the start, if it is not
+//     the safehouse: no later an answer (-1 < any wait < 10^9)
+// P4  every fire made grass: -1 or 10^9, and 10^9 if the answer was not
+//     -1
+// P5  every fire made a wall: -1 or 10^9, 10^9 if the answer was not -1,
+//     and never above P4's
+// P6  each arm agrees with at least three of the other five
+
+// ---- escape.kara: the ★ arm, fire times and a binary search over the wait
+const STAR_NEVER: i64 = 1000000000000;
+
+const STAR_STEPS: Array[(i64, i64), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+fn star_fire_times(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut at: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, STAR_NEVER));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                at[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (dr, dc) in STAR_STEPS {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] == 0 and at[nr][nc] == STAR_NEVER {
+                at[nr][nc] = at[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    at
+}
+
+fn star_escapes(grid: Vec[Vec[i64]], fire: Vec[Vec[i64]], wait: i64) -> bool {
+    let (m, n) = (grid.len(), grid[0].len());
+    if wait >= fire[0][0] {
+        return false;
+    }
+    let mut seen: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    seen[0][0] = true;
+    let mut queue: VecDeque[(i64, i64, i64)] = VecDeque.new();
+    queue.push_back((0, 0, wait));
+    while let Some((r, c, t)) = queue.pop_front() {
+        for (dr, dc) in STAR_STEPS {
+            let (nr, nc) = (r + dr, c + dc);
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != 0 or seen[nr][nc] {
+                continue;
+            }
+            if nr == m - 1 and nc == n - 1 {
+                if t + 1 <= fire[nr][nc] {
+                    return true;
+                }
+                continue;
+            }
+            if t + 1 < fire[nr][nc] {
+                seen[nr][nc] = true;
+                queue.push_back((nr, nc, t + 1));
+            }
+        }
+    }
+    false
+}
+
+fn star_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let fire = star_fire_times(grid);
+    let cells = grid.len() * grid[0].len();
+    if not star_escapes(grid, fire, 0) {
+        return -1;
+    }
+    if star_escapes(grid, fire, cells) {
+        return 1000000000;
+    }
+    // star_escapes at lo, not at hi
+    let mut (lo, hi) = (0, cells);
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if star_escapes(grid, fire, mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+// ---- escape_formula.kara: two searches and the lead at the safehouse
+const FORMULA_NEVER: i64 = 1000000000000;
+
+fn formula_minutes_from(grid: Vec[Vec[i64]], starts: Vec[(i64, i64)]) -> Vec[Vec[i64]] {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut at: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, FORMULA_NEVER));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for (r, c) in starts {
+        at[r][c] = 0;
+        queue.push_back((r, c));
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        let next = [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)];
+        for (nr, nc) in next {
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] == 0 and at[nr][nc] == FORMULA_NEVER {
+                at[nr][nc] = at[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    at
+}
+
+fn formula_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut fires: Vec[(i64, i64)] = Vec.new();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                fires.push((r, c));
+            }
+        }
+    }
+    let fire = formula_minutes_from(grid, fires);
+    let person = formula_minutes_from(grid, [(0, 0)].to_vec());
+    let (fr, pr) = (fire[m - 1][n - 1], person[m - 1][n - 1]);
+    if pr == FORMULA_NEVER {
+        return -1;
+    }
+    if fr == FORMULA_NEVER {
+        return 1000000000;
+    }
+    let slack = fr - pr;
+    if slack < 0 {
+        return -1;
+    }
+    let roomy = |r: i64, c: i64| {
+        r >= 0 and c >= 0 and person[r][c] != FORMULA_NEVER and fire[r][c] - person[r][c] > slack
+    };
+    if roomy(m - 2, n - 1) or roomy(m - 1, n - 2) {
+        slack
+    } else {
+        slack - 1
+    }
+}
+
+// ---- escape_struct.kara: `enum Cell` in a `struct Field`
+const STRUCT_NEVER: i64 = 1000000000000;
+
+enum StructCell {
+    Grass,
+    Fire,
+    Wall,
+}
+
+struct StructField {
+    cells: Vec[StructCell],
+    m: i64,
+    n: i64,
+}
+
+impl StructField {
+    fn from(grid: Vec[Vec[i64]]) -> StructField {
+        let mut cells: Vec[StructCell] = Vec.new();
+        for row in grid.iter() {
+            for v in row.iter() {
+                cells.push(match v {
+                    0 => StructCell.Grass,
+                    1 => StructCell.Fire,
+                    _ => StructCell.Wall,
+                });
+            }
+        }
+        StructField { cells, m: grid.len(), n: grid[0].len() }
+    }
+
+    fn is_grass(ref self, at: i64) -> bool {
+        match self.cells[at] {
+            StructCell.Grass => true,
+            _ => false,
+        }
+    }
+
+    fn neighbours(ref self, at: i64) -> Vec[i64] {
+        let (r, c) = (at / self.n, at % self.n);
+        let mut out: Vec[i64] = Vec.new();
+        if r > 0 and self.is_grass(at - self.n) {
+            out.push(at - self.n);
+        }
+        if r + 1 < self.m and self.is_grass(at + self.n) {
+            out.push(at + self.n);
+        }
+        if c > 0 and self.is_grass(at - 1) {
+            out.push(at - 1);
+        }
+        if c + 1 < self.n and self.is_grass(at + 1) {
+            out.push(at + 1);
+        }
+        out
+    }
+
+    fn burn(ref self) -> Vec[i64] {
+        let mut at: Vec[i64] = Vec.filled(self.cells.len(), STRUCT_NEVER);
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        for i in 0..self.cells.len() {
+            if let StructCell.Fire = self.cells[i] {
+                at[i] = 0;
+                queue.push_back(i);
+            }
+        }
+        while let Some(i) = queue.pop_front() {
+            for j in self.neighbours(i) {
+                if at[j] == STRUCT_NEVER {
+                    at[j] = at[i] + 1;
+                    queue.push_back(j);
+                }
+            }
+        }
+        at
+    }
+
+    fn escapes(ref self, fire: Vec[i64], wait: i64) -> bool {
+        let home = self.cells.len() - 1;
+        if wait >= fire[0] {
+            return false;
+        }
+        let mut when: Vec[i64] = Vec.filled(self.cells.len(), -1);
+        when[0] = wait;
+        let mut queue: VecDeque[i64] = VecDeque.new();
+        queue.push_back(0);
+        while let Some(i) = queue.pop_front() {
+            let t = when[i] + 1;
+            for j in self.neighbours(i) {
+                if j == home and t <= fire[j] {
+                    return true;
+                }
+                if j != home and when[j] < 0 and t < fire[j] {
+                    when[j] = t;
+                    queue.push_back(j);
+                }
+            }
+        }
+        false
+    }
+}
+
+fn struct_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let field = StructField.from(grid);
+    let fire = field.burn();
+    let cells = field.cells.len();
+    if not field.escapes(fire, 0) {
+        return -1;
+    }
+    if field.escapes(fire, cells) {
+        return 1000000000;
+    }
+    let mut (lo, hi) = (0, cells - 1);
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        if field.escapes(fire, mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+// ---- escape_iter.kara: frontiers by `flat_map`, waits by `take_while`
+const ITER_NEVER: i64 = 1000000000000;
+
+fn iter_around(at: i64, m: i64, n: i64) -> Vec[i64] {
+    let (r, c) = (at / n, at % n);
+    [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)]
+        .iter()
+        .filter(|(a, b)| a >= 0 and a < m and b >= 0 and b < n)
+        .map(|(a, b)| a * n + b)
+        .collect()
+}
+
+fn iter_fire_times(cells: Vec[i64], m: i64, n: i64) -> Vec[i64] {
+    let mut at: Vec[i64] = cells.iter().map(|v| if v == 1 { 0 } else { ITER_NEVER }).collect();
+    let mut frontier: Vec[i64] = (0..m * n).filter(|i| cells[i] == 1).collect();
+    let mut minute = 0;
+    while not frontier.is_empty() {
+        minute += 1;
+        let next: Vec[i64] = frontier
+            .iter()
+            .flat_map(|i| iter_around(i, m, n).into_iter())
+            .filter(|j| cells[j] == 0 and at[j] == ITER_NEVER)
+            .collect();
+        frontier = Vec.new();
+        for j in next {
+            if at[j] == ITER_NEVER {
+                at[j] = minute;
+                frontier.push(j);
+            }
+        }
+    }
+    at
+}
+
+fn iter_escapes(cells: Vec[i64], m: i64, n: i64, fire: Vec[i64], wait: i64) -> bool {
+    let home = m * n - 1;
+    if wait >= fire[0] {
+        return false;
+    }
+    let mut seen: Vec[bool] = Vec.filled(m * n, false);
+    seen[0] = true;
+    let mut frontier: Vec[i64] = [0].to_vec();
+    let mut t = wait;
+    while not frontier.is_empty() {
+        t += 1;
+        let next: Vec[i64] = frontier
+            .iter()
+            .flat_map(|i| iter_around(i, m, n).into_iter())
+            .filter(|j| cells[j] == 0 and not seen[j])
+            .collect();
+        if next.iter().any(|j| j == home) and t <= fire[home] {
+            return true;
+        }
+        frontier = Vec.new();
+        for j in next {
+            if not seen[j] and t < fire[j] {
+                seen[j] = true;
+                frontier.push(j);
+            }
+        }
+    }
+    false
+}
+
+fn iter_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let cells: Vec[i64] = grid.iter().flat_map(|row| row.iter()).collect();
+    let fire = iter_fire_times(cells, m, n);
+    if not iter_escapes(cells, m, n, fire, 0) {
+        return -1;
+    }
+    if iter_escapes(cells, m, n, fire, m * n) {
+        return 1000000000;
+    }
+    (1..m * n).take_while(|w| iter_escapes(cells, m, n, fire, w)).count()
+}
+
+// ---- escape_latest.kara: the latest minute per cell, from the safehouse
+const LATEST_NEVER: i64 = 1000000000000;
+
+fn latest_fire_times(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut at: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, LATEST_NEVER));
+    let mut queue: VecDeque[(i64, i64)] = VecDeque.new();
+    for r in 0..m {
+        for c in 0..n {
+            if grid[r][c] == 1 {
+                at[r][c] = 0;
+                queue.push_back((r, c));
+            }
+        }
+    }
+    while let Some((r, c)) = queue.pop_front() {
+        for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+            if nr >= 0 and nr < m and nc >= 0 and nc < n and grid[nr][nc] == 0 and at[nr][nc] == LATEST_NEVER {
+                at[nr][nc] = at[r][c] + 1;
+                queue.push_back((nr, nc));
+            }
+        }
+    }
+    at
+}
+
+fn latest_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let (m, n) = (grid.len(), grid[0].len());
+    let fire = latest_fire_times(grid);
+    let mut latest: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, -1));
+    let mut done: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    let mut heap: PriorityQueue[(i64, i64, i64)] = PriorityQueue.max_first();
+    latest[m - 1][n - 1] = fire[m - 1][n - 1];
+    heap.push((latest[m - 1][n - 1], m - 1, n - 1));
+    while let Some((minute, r, c)) = heap.pop() {
+        if done[r][c] {
+            continue;
+        }
+        done[r][c] = true;
+        for (nr, nc) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+            if nr < 0 or nr >= m or nc < 0 or nc >= n or grid[nr][nc] != 0 or done[nr][nc] {
+                continue;
+            }
+            let can = (minute - 1).min(fire[nr][nc] - 1);
+            if can > latest[nr][nc] {
+                latest[nr][nc] = can;
+                heap.push((can, nr, nc));
+            }
+        }
+    }
+    let wait = latest[0][0];
+    if wait < 0 {
+        -1
+    } else if wait > m * n {
+        1000000000
+    } else {
+        wait
+    }
+}
+
+// ---- escape_solution.kara: LeetCode's Rust template, carried by `karac fix`
+struct Solution {}
+
+impl Solution {
+    pub fn maximum_minutes(grid: Vec[Vec[i32]]) -> i32 {
+        let m = grid.len();
+        let n = grid[0].len();
+        let dirs: Array[(i32, i32), 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        let mut fire = Vec.filled(m, Vec.filled(n, i32.MAX));
+        let mut q = VecDeque.new();
+        for i in 0..m {
+            for j in 0..n {
+                if grid[i][j] == 1 {
+                    fire[i][j] = 0;
+                    q.push_back((i, j));
+                }
+            }
+        }
+        while let Some((i, j)) = q.pop_front() {
+            for (di, dj) in dirs.iter() {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+                if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                    continue;
+                }
+                let (ni, nj) = (ni as i64, nj as i64);
+                if grid[ni][nj] == 0 and fire[ni][nj] == i32.MAX {
+                    fire[ni][nj] = fire[i][j] + 1;
+                    q.push_back((ni, nj));
+                }
+            }
+        }
+        let check = |wait: i32| {
+            if wait >= fire[0][0] {
+                return false;
+            }
+            let mut seen = Vec.filled(m, Vec.filled(n, false));
+            seen[0][0] = true;
+            let mut q = VecDeque.new();
+            q.push_back((0, 0, wait));
+            while let Some((i, j, t)) = q.pop_front() {
+                for (di, dj) in dirs.iter() {
+                    let ni = i as i32 + di;
+                    let nj = j as i32 + dj;
+                    if ni < 0 or nj < 0 or ni >= m as i32 or nj >= n as i32 {
+                        continue;
+                    }
+                    let (ni, nj) = (ni as i64, nj as i64);
+                    if grid[ni][nj] != 0 or seen[ni][nj] {
+                        continue;
+                    }
+                    if ni == m - 1 and nj == n - 1 {
+                        if t + 1 <= fire[ni][nj] {
+                            return true;
+                        }
+                        continue;
+                    }
+                    if t + 1 < fire[ni][nj] {
+                        seen[ni][nj] = true;
+                        q.push_back((ni, nj, t + 1));
+                    }
+                }
+            }
+            false
+        };
+        let cells = (m * n) as i32;
+        if not check(0) {
+            return -1;
+        }
+        if check(cells) {
+            return 1_000_000_000;
+        }
+        let mut (lo, hi) = (0i32, cells);
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2;
+            if check(mid) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+}
+
+fn solution_maximum_minutes(grid: Vec[Vec[i64]]) -> i64 {
+    let rows: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.maximum_minutes(rows)
+}
+
+// ---- the statement read literally
+
+fn spread(grid: Vec[Vec[i64]], on: Vec[Vec[bool]], keep: bool) -> Vec[Vec[bool]] {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut out: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    for r in 0..m {
+        for c in 0..n {
+            if on[r][c] {
+                if keep {
+                    out[r][c] = true;
+                }
+                for (a, b) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+                    if a >= 0 and a < m and b >= 0 and b < n and grid[a][b] == 0 {
+                        out[a][b] = true;
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn literal_escapes(grid: Vec[Vec[i64]], wait: i64) -> bool {
+    let (m, n) = (grid.len(), grid[0].len());
+    let mut fire: Vec[Vec[bool]] = grid.iter().map(|row| row.iter().map(|v| v == 1).collect()).collect();
+    for _ in 0..wait {
+        fire = spread(grid, fire, true);
+    }
+    if fire[0][0] {
+        return false;
+    }
+    let mut person: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    person[0][0] = true;
+    for _ in 0..2 * m * n + 2 {
+        // the person moves, or stays, onto grass the fire has not reached
+        let mut moved = spread(grid, person, true);
+        if moved[m - 1][n - 1] and not fire[m - 1][n - 1] {
+            return true;
+        }
+        // then the fire spreads, and takes every cell it reaches
+        fire = spread(grid, fire, true);
+        let mut alive = false;
+        for r in 0..m {
+            for c in 0..n {
+                if fire[r][c] {
+                    moved[r][c] = false;
+                }
+                alive = alive or moved[r][c];
+            }
+        }
+        if not alive {
+            return false;
+        }
+        person = moved;
+    }
+    false
+}
+
+fn literal(grid: Vec[Vec[i64]]) -> i64 {
+    let cells = grid.len() * grid[0].len();
+    let mut best = -1;
+    for wait in 0..cells + 1 {
+        if literal_escapes(grid, wait) {
+            best = wait;
+        }
+    }
+    if best == cells { 1000000000 } else { best }
+}
+
+fn transpose(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    (0..grid[0].len()).map(|c| grid.iter().map(|row| row[c]).collect()).collect()
+}
+
+fn recolour(grid: Vec[Vec[i64]], from: i64, to: i64) -> Vec[Vec[i64]] {
+    grid.iter().map(|row| row.iter().map(|v| if v == from { to } else { v }).collect()).collect()
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_maximum_minutes(grid),
+        1 => formula_maximum_minutes(grid),
+        2 => struct_maximum_minutes(grid),
+        3 => iter_maximum_minutes(grid),
+        4 => latest_maximum_minutes(grid),
+        _ => solution_maximum_minutes(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid, a wall one time in `walls` hundred, grass otherwise,
+// the corners grass, and `fires` fires on cells between them
+fn grid_of(seed: mut ref i64, m: i64, n: i64, walls: i64, fires: i64) -> Vec[Vec[i64]] {
+    let mut grid: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(if next_random(mut seed) % 100 < walls { 2 } else { 0 });
+        }
+        grid.push(row);
+    }
+    grid[0][0] = 0;
+    grid[m - 1][n - 1] = 0;
+    for _ in 0..fires {
+        let k = next_random(mut seed) % (m * n - 2) + 1;
+        grid[k / n][k % n] = 1;
+    }
+    grid
+}
+
+fn main() {
+    let names = ["star", "formula", "struct", "iter", "latest", "solution"];
+    let mut seed = 2258;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        if c < 210 {
+            let m = next_random(mut seed) % 5 + 2;
+            let n = next_random(mut seed) % 5 + 2;
+            cases.push(grid_of(mut seed, m, n, 20 + c % 3 * 10, 1));
+        } else if c < 240 {
+            let m = next_random(mut seed) % 3 + 7;
+            let n = next_random(mut seed) % 6 + 4;
+            let mut grid = grid_of(mut seed, m, n, 0, 0);
+            for r in 0..m - 1 {
+                grid[r][1] = 2;
+            }
+            for k in 2..n - 1 {
+                grid[m - 2][k] = 2;
+            }
+            let mut r = 1;
+            while r < m - 3 {
+                for k in 2..n {
+                    grid[r][k] = 2;
+                }
+                grid[r][if (r / 2) % 2 == 0 { n - 1 } else { 2 }] = 0;
+                r += 2;
+            }
+            grid[0][2 + next_random(mut seed) % 2] = 1;
+            cases.push(grid);
+        } else if c < 270 {
+            let long = next_random(mut seed) % 11 + 2;
+            let fires = next_random(mut seed) % 2 + 1;
+            cases.push(if c % 2 == 0 { grid_of(mut seed, 2, long, 15, fires) } else { grid_of(mut seed, long, 2, 15, fires) });
+        } else if c < 300 {
+            let m = next_random(mut seed) % 4 + 3;
+            let n = next_random(mut seed) % 5 + 3;
+            let mut grid = grid_of(mut seed, m, n, 10, 0);
+            for r in 0..m {
+                grid[r][0] = 0;
+                grid[r][1] = if r == 0 { 0 } else { 2 };
+            }
+            grid[0][2] = 0;
+            grid[next_random(mut seed) % (m - 1) + 1][0] = 1;
+            cases.push(grid);
+        } else {
+            let m = next_random(mut seed) % 5 + 2;
+            let n = next_random(mut seed) % 5 + 2;
+            let mut grid = grid_of(mut seed, m, n, 15, 0);
+            let k = next_random(mut seed) % (m * n - 2) + 1;
+            let (r, c) = (k / n, k % n);
+            grid[r][c] = 1;
+            for (a, b) in [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)] {
+                if a >= 0 and a < m and b >= 0 and b < n and a + b > 0 and a * n + b != m * n - 1 {
+                    grid[a][b] = 2;
+                }
+            }
+            cases.push(grid);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut kinds = [0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for grid in cases.iter() {
+        let (m, n) = (grid.len(), grid[0].len());
+        let truth = literal(grid);
+        check = (check * 31 + truth + 1) % 1000000007;
+        kinds[if truth == -1 { 0 } else if truth == 1000000000 { 2 } else { 1 }] += 1;
+        let mut lit = grid.clone();
+        let first = (1..m * n - 1).find(|k| grid[k / n][k % n] == 0);
+        if let Some(k) = first {
+            lit[k / n][k % n] = 1;
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let unlit = answer(arm, recolour(grid, 1, 0));
+            let walled = answer(arm, recolour(grid, 1, 2));
+            let verdicts = [
+                value == truth,
+                answer(arm, transpose(grid)) == value,
+                first.is_none() or answer(arm, lit) <= value,
+                (unlit == -1 or unlit == 1000000000) and (value == -1 or unlit == 1000000000),
+                (walled == -1 or walled == 1000000000) and (value == -1 or walled == 1000000000) and walled <= unlit,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases ({kinds[0]} trapped, {kinds[1]} with a wait, {kinds[2]} never reached): checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
