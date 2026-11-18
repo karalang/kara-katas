@@ -1,0 +1,433 @@
+// LeetCode #2282: Number of People That Can Be Seen in a Grid -- the
+// differential. The six arms, against the statement read literally:
+// for each person, every person to the right in its row and below in
+// its column, seen when everyone in between is shorter than both. No
+// stacks and no early stops. 300 random grids of 1 to 6 by 1 to 6 with
+// heights up to 2, 4 or 100; then 30 single rows falling to a valley and
+// rising again; then 30 grids of people all alike. Every case is drawn
+// before any arm answers.
+//
+// P1  the answers are the literal reading's
+// P2  the grid transposed: the answers transposed
+// P3  every height tripled and raised by 10^4: the same answers
+// P4  each answer at least one for each neighbour to the right and below
+//     and at most the people to the right and below
+// P5  a column of people taller than all added at the right: each answer
+//     one more exactly when the person is taller than everyone to its
+//     right, and the new column's 1 for each but the last, 0
+// P6  each arm agrees with at least three of the other five
+
+// ---- seen.kara: the ★ arm, a stack from the far end of each line
+// how many each person in `line` sees farther along it
+fn star_sightings(line: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.filled(line.len(), 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in (0..line.len()).rev() {
+        let h = line[i];
+        while stack.len() > 0 and stack[stack.len() - 1] < h {
+            stack.pop();
+            seen[i] += 1;
+        }
+        if stack.len() > 0 {
+            seen[i] += 1;
+            if stack[stack.len() - 1] == h {
+                stack.pop();
+            }
+        }
+        stack.push(h);
+    }
+    seen
+}
+
+fn star_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        answer.push(star_sightings(heights[i].clone()));
+    }
+    for j in 0..n {
+        let column: Vec[i64] = (0..m).map(|i| heights[i][j]).collect();
+        let down = star_sightings(column);
+        for i in 0..m {
+            answer[i][j] += down[i];
+        }
+    }
+    answer
+}
+
+// ---- seen_naive.kara: each person walking its row and column
+fn naive_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for i in 0..m {
+        for j in 0..n {
+            let h = heights[i][j];
+            let mut tallest = 0;
+            for k in j + 1..n {
+                let x = heights[i][k];
+                if tallest < x.min(h) {
+                    answer[i][j] += 1;
+                }
+                tallest = tallest.max(x);
+                if x >= h {
+                    break;
+                }
+            }
+            tallest = 0;
+            for k in i + 1..m {
+                let x = heights[k][j];
+                if tallest < x.min(h) {
+                    answer[i][j] += 1;
+                }
+                tallest = tallest.max(x);
+                if x >= h {
+                    break;
+                }
+            }
+        }
+    }
+    answer
+}
+
+// ---- seen_forward.kara: a stack from the near end, crediting the one looking
+// credits each person in `line` once for everyone it sees farther along
+fn forward_credit(line: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.filled(line.len(), 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for k in 0..line.len() {
+        while stack.len() > 0 and line[stack[stack.len() - 1]] < line[k] {
+            seen[stack.pop().unwrap()] += 1;
+        }
+        if stack.len() > 0 {
+            let top = stack[stack.len() - 1];
+            seen[top] += 1;
+            if line[top] == line[k] {
+                stack.pop();
+            }
+        }
+        stack.push(k);
+    }
+    seen
+}
+
+fn forward_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        answer.push(forward_credit(heights[i].clone()));
+    }
+    for j in 0..n {
+        let column: Vec[i64] = (0..m).map(|i| heights[i][j]).collect();
+        let down = forward_credit(column);
+        for i in 0..m {
+            answer[i][j] += down[i];
+        }
+    }
+    answer
+}
+
+// ---- seen_struct.kara: `struct Lookout` taking a person at a time
+struct StructLookout {
+    view: Vec[i64],
+}
+
+impl StructLookout {
+    fn new() -> StructLookout {
+        StructLookout { view: Vec.new() }
+    }
+
+    fn look(mut ref self, h: i64) -> i64 {
+        let mut seen = 0;
+        while self.view.len() > 0 and self.view[self.view.len() - 1] < h {
+            self.view.pop();
+            seen += 1;
+        }
+        if self.view.len() > 0 {
+            seen += 1;
+            if self.view[self.view.len() - 1] == h {
+                self.view.pop();
+            }
+        }
+        self.view.push(h);
+        seen
+    }
+}
+
+fn struct_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for i in 0..m {
+        let mut lookout = StructLookout.new();
+        for j in (0..n).rev() {
+            answer[i][j] += lookout.look(heights[i][j]);
+        }
+    }
+    for j in 0..n {
+        let mut lookout = StructLookout.new();
+        for i in (0..m).rev() {
+            answer[i][j] += lookout.look(heights[i][j]);
+        }
+    }
+    answer
+}
+
+// ---- seen_iter.kara: `scan`, `take_while`, `filter` and `count`
+fn iter_sightings(line: Vec[i64]) -> Vec[i64] {
+    (0..line.len())
+        .map(|i| {
+            let h = line[i];
+            line.iter()
+                .skip(i + 1)
+                .scan(0, |tallest, x| Some((tallest.max(x), (tallest, x))))
+                .take_while(|(between, _)| between < h)
+                .filter(|(between, x)| between < x)
+                .count()
+        })
+        .collect()
+}
+
+fn iter_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let n = heights[0].len();
+    let across: Vec[Vec[i64]] = heights.iter().map(|row| iter_sightings(row)).collect();
+    let down: Vec[Vec[i64]] = (0..n)
+        .map(|j| iter_sightings(heights.iter().map(|row| row[j]).collect()))
+        .collect();
+    across
+        .iter()
+        .enumerate()
+        .map(|(i, row)| row.iter().zip(down.iter()).map(|(a, column)| a + column[i]).collect())
+        .collect()
+}
+
+// ---- seen_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn see_people(heights: Vec[Vec[i32]]) -> Vec[Vec[i32]] {
+        let m = heights.len();
+        let n = heights[0].len();
+        let mut ans = Vec.filled(m, Vec.filled(n, 0));
+        for i in 0..m {
+            let mut st: Vec[i32] = Vec.new();
+            for j in (0..n).rev() {
+                while let Some(top) = st.last().cloned() {
+                    if top < heights[i][j] {
+                        st.pop();
+                        ans[i][j] += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if let Some(top) = st.last().cloned() {
+                    ans[i][j] += 1;
+                    if top == heights[i][j] {
+                        st.pop();
+                    }
+                }
+                st.push(heights[i][j]);
+            }
+        }
+        for j in 0..n {
+            let mut st: Vec[i32] = Vec.new();
+            for i in (0..m).rev() {
+                while let Some(top) = st.last().cloned() {
+                    if top < heights[i][j] {
+                        st.pop();
+                        ans[i][j] += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if let Some(top) = st.last().cloned() {
+                    ans[i][j] += 1;
+                    if top == heights[i][j] {
+                        st.pop();
+                    }
+                }
+                st.push(heights[i][j]);
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    Solution.see_people(heights.iter().map(|r| r.iter().map(|x| x as i32).collect()).collect())
+        .into_iter()
+        .map(|r| r.into_iter().map(|x| x as i64).collect())
+        .collect()
+}
+
+
+// ---- the statement read literally
+
+fn literal(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, 0));
+    for i in 0..m {
+        for j in 0..n {
+            for k in j + 1..n {
+                let mut clear = true;
+                for t in j + 1..k {
+                    if heights[i][t] >= heights[i][j] or heights[i][t] >= heights[i][k] {
+                        clear = false;
+                    }
+                }
+                if clear {
+                    answer[i][j] += 1;
+                }
+            }
+            for k in i + 1..m {
+                let mut clear = true;
+                for t in i + 1..k {
+                    if heights[t][j] >= heights[i][j] or heights[t][j] >= heights[k][j] {
+                        clear = false;
+                    }
+                }
+                if clear {
+                    answer[i][j] += 1;
+                }
+            }
+        }
+    }
+    answer
+}
+
+fn answer(arm: i64, heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    match arm {
+        0 => star_see_people(heights),
+        1 => naive_see_people(heights),
+        2 => forward_see_people(heights),
+        3 => struct_see_people(heights),
+        4 => iter_see_people(heights),
+        _ => solution_see_people(heights),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn transpose(grid: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    (0..grid[0].len()).map(|j| grid.iter().map(|row| row[j]).collect()).collect()
+}
+
+fn main() {
+    let names = ["star", "naive", "forward", "struct", "iter", "solution"];
+    let mut seed = 2282;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let mut heights: Vec[Vec[i64]] = Vec.new();
+        if c < 300 {
+            let m = next_random(mut seed) % 6 + 1;
+            let n = next_random(mut seed) % 6 + 1;
+            let high = [2, 4, 100][c % 3];
+            for _ in 0..m {
+                heights.push((0..n).map(|_| next_random(mut seed) % high + 1).collect());
+            }
+        } else if c < 330 {
+            let n = next_random(mut seed) % 10 + 1;
+            let bottom = next_random(mut seed) % n;
+            let mut row: Vec[i64] = Vec.new();
+            for k in 0..n {
+                row.push(if k < bottom { 2 * (bottom - k) + 1 } else { 2 * (k - bottom) + 1 + next_random(mut seed) % 2 });
+            }
+            heights.push(row);
+        } else {
+            let m = next_random(mut seed) % 5 + 1;
+            let n = next_random(mut seed) % 5 + 1;
+            let h = next_random(mut seed) % 9 + 1;
+            heights = Vec.filled(m, Vec.filled(n, h));
+        }
+        cases.push(heights);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for heights in cases.iter() {
+        let truth = literal(heights);
+        for row in truth.iter() {
+            for a in row.iter() {
+                check = (check * 31 + a) % 1000000007;
+            }
+        }
+        let (m, n) = (heights.len(), heights[0].len());
+        let across = transpose(heights);
+        let raised: Vec[Vec[i64]] = heights.iter().map(|row| row.iter().map(|h| 3 * h + 10000).collect()).collect();
+        let tall = 1000;
+        let wider: Vec[Vec[i64]] = heights.iter().map(|row| {
+            let mut r = row.clone();
+            r.push(tall);
+            r
+        }).collect();
+        let got: Vec[Vec[Vec[i64]]] = (0..6).map(|arm| answer(arm, heights)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let mut bounded = value.len() == m;
+            for i in 0..m {
+                if value[i].len() != n {
+                    bounded = false;
+                } else {
+                    for j in 0..n {
+                        let least = (if j + 1 < n { 1 } else { 0 }) + (if i + 1 < m { 1 } else { 0 });
+                        let most = (n - 1 - j) + (m - 1 - i);
+                        if value[i][j] < least or value[i][j] > most {
+                            bounded = false;
+                        }
+                    }
+                }
+            }
+            let mut grown = true;
+            let more = answer(arm, wider);
+            for i in 0..m {
+                for j in 0..n {
+                    let tallest_right = heights[i].iter().skip(j + 1).fold(0, |a, h| a.max(h));
+                    let extra = if heights[i][j] > tallest_right { 1 } else { 0 };
+                    if more[i][j] != value[i][j] + extra {
+                        grown = false;
+                    }
+                }
+                if more[i][n] != (if i + 1 < m { 1 } else { 0 }) {
+                    grown = false;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, across) == transpose(value),
+                answer(arm, raised) == value,
+                bounded,
+                grown,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{heights} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

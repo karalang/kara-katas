@@ -1,0 +1,105 @@
+// LeetCode #2282: Number of People That Can Be Seen in a Grid -- seen
+// from behind. Along each row from the left and each column from the
+// top, a stack keeps the people who may still see someone farther on,
+// falling toward its top. Each person arriving is seen by everyone
+// shorter it pops and by the first not shorter, which it also pops when
+// equal: that one can see no farther past it. The credit goes to the
+// one looking, not the one arriving. O(m n).
+
+// credits each person in `line` once for everyone it sees farther along
+fn credit(line: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.filled(line.len(), 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for k in 0..line.len() {
+        while stack.len() > 0 and line[stack[stack.len() - 1]] < line[k] {
+            seen[stack.pop().unwrap()] += 1;
+        }
+        if stack.len() > 0 {
+            let top = stack[stack.len() - 1];
+            seen[top] += 1;
+            if line[top] == line[k] {
+                stack.pop();
+            }
+        }
+        stack.push(k);
+    }
+    seen
+}
+
+fn see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        answer.push(credit(heights[i].clone()));
+    }
+    for j in 0..n {
+        let column: Vec[i64] = (0..m).map(|i| heights[i][j]).collect();
+        let down = credit(column);
+        for i in 0..m {
+            answer[i][j] += down[i];
+        }
+    }
+    answer
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn grid(seed: mut ref i64, m: i64, n: i64, high: i64) -> Vec[Vec[i64]] {
+    let mut heights: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            let top = next_random(mut seed);
+            row.push((top * 32768 + next_random(mut seed)) % high + 1);
+        }
+        heights.push(row);
+    }
+    heights
+}
+
+fn total(answer: Vec[Vec[i64]]) -> i64 {
+    answer.iter().map(|row| row.iter().sum()).sum()
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one person, three alike,
+    // a falling column, a rising row, and a valley seen across
+    let examples = [
+        [[3, 1, 4, 2, 5].to_vec()].to_vec(),
+        [[5, 1].to_vec(), [3, 1].to_vec(), [4, 1].to_vec()].to_vec(),
+        [[7].to_vec()].to_vec(),
+        [[2, 2, 2].to_vec()].to_vec(),
+        [[5].to_vec(), [4].to_vec(), [3].to_vec()].to_vec(),
+        [[1, 2, 3].to_vec()].to_vec(),
+        [[5, 1, 1, 5].to_vec()].to_vec(),
+    ];
+    for heights in examples.iter() {
+        println(f"{heights} -> {see_people(heights)}");
+    }
+    // 1000 grids of 1 to 8 by 1 to 8, heights up to 3, 10 or 10^5
+    let mut seed = 2282;
+    let mut check = 0;
+    for t in 0..1000 {
+        let m = next_random(mut seed) % 8 + 1;
+        let n = next_random(mut seed) % 8 + 1;
+        let heights = grid(mut seed, m, n, [3, 10, 100000][t % 3]);
+        for row in see_people(heights).iter() {
+            for a in row.iter() {
+                check = (check * 31 + a) % 1000000007;
+            }
+        }
+    }
+    println(f"1000 grids: checksum {check}");
+    // the constraints' largest, 400 by 400: random heights up to 10^5,
+    // everyone alike, and each row rising
+    let random = grid(mut seed, 400, 400, 100000);
+    let alike: Vec[Vec[i64]] = Vec.filled(400, Vec.filled(400, 7));
+    let rising: Vec[Vec[i64]] = (0..400).map(|_| (1..401).collect()).collect();
+    let totals = [total(see_people(random)), total(see_people(alike)), total(see_people(rising))];
+    println(f"400 by 400, people seen: {totals}");
+}

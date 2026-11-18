@@ -1,0 +1,74 @@
+// LeetCode #2282: Number of People That Can Be Seen in a Grid -- the
+// bench, the ★ arm. A stack along each row from the right and each
+// column from the bottom. O(m n).
+
+// how many each person in `line` sees farther along it
+fn sightings(line: Vec[i64]) -> Vec[i64] {
+    let mut seen: Vec[i64] = Vec.filled(line.len(), 0);
+    let mut stack: Vec[i64] = Vec.new();
+    for i in (0..line.len()).rev() {
+        let h = line[i];
+        while stack.len() > 0 and stack[stack.len() - 1] < h {
+            stack.pop();
+            seen[i] += 1;
+        }
+        if stack.len() > 0 {
+            seen[i] += 1;
+            if stack[stack.len() - 1] == h {
+                stack.pop();
+            }
+        }
+        stack.push(h);
+    }
+    seen
+}
+
+fn see_people(heights: Vec[Vec[i64]]) -> Vec[Vec[i64]] {
+    let (m, n) = (heights.len(), heights[0].len());
+    let mut answer: Vec[Vec[i64]] = Vec.new();
+    for i in 0..m {
+        answer.push(sightings(heights[i].clone()));
+    }
+    for j in 0..n {
+        let column: Vec[i64] = (0..m).map(|i| heights[i][j]).collect();
+        let down = sightings(column);
+        for i in 0..m {
+            answer[i][j] += down[i];
+        }
+    }
+    answer
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 40 grids of the constraints' largest, 400 by 400, heights 1 to
+    // 10^5, the people seen summed
+    let mut seed = 2282;
+    let mut check = 0;
+    for _ in 0..40 {
+        let mut heights: Vec[Vec[i64]] = Vec.new();
+        for _ in 0..400 {
+            let mut row: Vec[i64] = Vec.new();
+            for _ in 0..400 {
+                let top = next_random(mut seed);
+                row.push((top * 32768 + next_random(mut seed)) % 100000 + 1);
+            }
+            heights.push(row);
+        }
+        let answer = see_people(heights);
+        let mut seen = 0;
+        for row in answer.iter() {
+            for a in row.iter() {
+                seen += a;
+            }
+        }
+        check = (check * 31 + seen) % 1000000007;
+    }
+    println(f"40 grids of 400 by 400: checksum {check}");
+}
