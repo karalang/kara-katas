@@ -1,0 +1,204 @@
+// LeetCode #1608: Special Array With X Elements Greater Than or Equal X
+// -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1
+// to 8 numbers from 0 to a top of 1 to 10, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  the numbers reversed leave the answer
+// P3  a 0 added leaves the answer
+// P4  every number capped at n leaves the answer
+// P5  a special x stays special with every number below it made 0
+// P6  each arm agrees with at least two of the other three
+
+// ---- special.kara: the ★ arm: sorted largest first
+
+fn star_arm(nums: own Vec[i32]) -> i32 {
+    let mut nums = nums;
+    nums.sort_by(|a, b| b.cmp(a));
+    let n = nums.len();
+    for x in 1..=n {
+        if nums[x - 1] >= x and (x == n or nums[x] < x) {
+            return x as i32;
+        }
+    }
+    -1
+}
+
+// ---- special_counts.kara: counting, then a running count down from n
+
+fn counts_arm(nums: own Vec[i32]) -> i32 {
+    let n = nums.len();
+    let mut counts = Vec.filled(n + 1, 0);
+    for v in nums.iter() {
+        counts[min(*v as i64, n)] += 1;
+    }
+    let mut at_least = 0;
+    for x in (0..=n).rev() {
+        at_least += counts[x];
+        if at_least == x {
+            return x as i32;
+        }
+    }
+    -1
+}
+
+// ---- special_search.kara: a binary search on x
+
+fn search_at_least(nums: Slice[i32], x: i32) -> i32 {
+    nums.iter().filter(|v| *v >= x).count() as i32
+}
+
+fn search_arm(nums: own Vec[i32]) -> i32 {
+    let mut lo: i32 = 0;
+    let mut hi = nums.len() as i32;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        let c = search_at_least(nums, mid);
+        if c == mid {
+            return mid;
+        } else if c > mid {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    -1
+}
+
+// ---- special_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn special_array(nums: own Vec[i32]) -> i32 {
+        let mut nums = nums;
+        nums.sort();
+        let n = nums.len();
+        for x in 0..=n {
+            let cnt = n - nums.partition_point(|v| (v as i64) < x);
+            if cnt == x {
+                return x as i32;
+            }
+        }
+        -1
+    }
+}
+
+fn solution_arm(nums: own Vec[i32]) -> i32 {
+    SolutionArm.special_array(nums)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, nums: Slice[i32]) -> i32 {
+    let v = nums.to_vec();
+    match a {
+        0 => star_arm(v),
+        1 => counts_arm(v),
+        2 => search_arm(v),
+        _ => solution_arm(v),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["special", "counts", "search", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the x, from 0 to n, for which
+// exactly x numbers are greater than or equal to x, or -1
+
+fn literal(nums: Slice[i32]) -> i32 {
+    for x in 0..=nums.len() {
+        let mut count = 0;
+        for v in nums.iter() {
+            if *v >= x {
+                count += 1;
+            }
+        }
+        if count == x {
+            return x as i32;
+        }
+    }
+    -1
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16080;
+    let mut cases: Vec[Vec[i32]] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let top = next_random(mut seed) % 10 + 1;
+        cases.push((0..n).map(|_| (next_random(mut seed) % (top + 1)) as i32).collect());
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, nums) in cases.iter().enumerate() {
+        let n = nums.len();
+        let reversed: Vec[i32] = nums.iter().rev().cloned().collect();
+        let mut with_zero = nums.clone();
+        with_zero.push(0);
+        let capped: Vec[i32] = nums.iter().map(|v| min(*v, n as i32)).collect();
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, nums);
+            check = (check * 31 + x + 1) % 1000000007;
+            // P5: with the numbers below x zeroed, x still special
+            let zeroed: Vec[i32] = nums.iter().map(|v| if *v < x { 0 } else { *v }).collect();
+            let failed = [
+                x != literal(nums),
+                arm(a, reversed) != x,
+                arm(a, with_zero) != x,
+                arm(a, capped) != x,
+                x >= 0 and arm(a, zeroed) != x,
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
