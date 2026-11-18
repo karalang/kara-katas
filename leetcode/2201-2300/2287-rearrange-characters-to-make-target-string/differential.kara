@@ -1,0 +1,297 @@
+// LeetCode #2287: Rearrange Characters to Make Target String -- the
+// differential. The six arms, against the statement read literally: the
+// most copies k such that the letters of `target` written k times,
+// sorted, can be picked in order out of the letters of `s`, sorted. No
+// counts. 300 random cases of `s` of 1 to 100 letters and `target` of 1
+// to 10 from the first 1 to 26 letters; then 30 where `s` is `target`
+// several times over, shuffled, with a letter more or less; then 30
+// where `target` holds a letter `s` lacks, half of them a `z`. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  answer * |target| <= |s|
+// P3  `s` reversed: the same answer
+// P4  `target` written twice: half the answer, rounded down
+// P5  `target` appended to `s`: one copy more
+// P6  each arm agrees with at least three of the other five
+
+// ---- copies.kara: the ★ arm, two arrays of 26 counts
+fn star_rearrange_characters(s: Str, target: Str) -> i64 {
+    let mut have = [0; 26];
+    let mut need = [0; 26];
+    for b in s.bytes() {
+        have[b - b'a'] += 1;
+    }
+    for b in target.bytes() {
+        need[b - b'a'] += 1;
+    }
+    let mut copies = s.len();
+    for i in 0..26 {
+        if need[i] > 0 {
+            copies = copies.min(have[i] / need[i]);
+        }
+    }
+    copies
+}
+
+// ---- copies_naive.kara: the target spelled out again and again
+fn naive_rearrange_characters(s: Str, target: Str) -> i64 {
+    let mut left: Vec[char] = s.chars().collect();
+    let mut copies = 0;
+    loop {
+        for c in target.chars() {
+            match left.iter().position(|x| x == c) {
+                Some(at) => {
+                    left.remove(at);
+                }
+                None => return copies,
+            }
+        }
+        copies += 1;
+    }
+}
+
+// ---- copies_map.kara: a `Map[char, i64]` of what the target needs
+fn map_rearrange_characters(s: Str, target: Str) -> i64 {
+    let mut need: Map[char, i64] = Map.new();
+    for c in target.chars() {
+        need[c] = need.get(c).unwrap_or(0) + 1;
+    }
+    let mut have: Map[char, i64] = Map.new();
+    for c in s.chars() {
+        if need.contains_key(c) {
+            have[c] = have.get(c).unwrap_or(0) + 1;
+        }
+    }
+    let mut copies = s.len();
+    for (c, n) in need.iter() {
+        copies = copies.min(have.get(c).unwrap_or(0) / n);
+    }
+    copies
+}
+
+// ---- copies_struct.kara: `struct Tally` and `copies_of`
+struct StructTally {
+    counts: Array[i64, 26],
+}
+
+impl StructTally {
+    fn of(text: Str) -> StructTally {
+        let mut counts = [0; 26];
+        for c in text.chars() {
+            counts[c as i64 - 'a' as i64] += 1;
+        }
+        StructTally { counts: counts }
+    }
+
+    fn copies_of(self, part: StructTally) -> i64 {
+        let mut copies = -1;
+        for i in 0..26 {
+            if part.counts[i] > 0 {
+                let here = self.counts[i] / part.counts[i];
+                if copies < 0 or here < copies {
+                    copies = here;
+                }
+            }
+        }
+        copies
+    }
+}
+
+fn struct_rearrange_characters(s: Str, target: Str) -> i64 {
+    StructTally.of(s).copies_of(StructTally.of(target))
+}
+
+// ---- copies_iter.kara: `filter`, `count` and `min`
+fn iter_rearrange_characters(s: Str, target: Str) -> i64 {
+    target
+        .chars()
+        .map(|c| s.chars().filter(|x| x == c).count() / target.chars().filter(|x| x == c).count())
+        .min()
+        .unwrap()
+}
+
+// ---- copies_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn rearrange_characters(s: String, target: String) -> i32 {
+        let mut a = [0i32; 26];
+        let mut b = [0i32; 26];
+        for c in s.bytes() {
+            a[(c - b'a') as usize] += 1;
+        }
+        for c in target.bytes() {
+            b[(c - b'a') as usize] += 1;
+        }
+        (0..26).filter(|i| b[i] > 0).map(|i| a[i] / b[i]).min().unwrap()
+    }
+}
+
+struct Solution {}
+
+fn solution_rearrange_characters(s: Str, target: Str) -> i64 {
+    Solution.rearrange_characters(s.to_string(), target.to_string())
+}
+
+
+// ---- the statement read literally
+
+fn sorted_letters(text: Str) -> Vec[char] {
+    let mut letters: Vec[char] = text.chars().collect();
+    letters.sort();
+    letters
+}
+
+// whether `part` can be picked, in order, out of `whole`
+fn picks(whole: Vec[char], part: Vec[char]) -> bool {
+    let mut at = 0;
+    for c in whole.iter() {
+        if at < part.len() and part[at] == c {
+            at += 1;
+        }
+    }
+    at == part.len()
+}
+
+fn literal(s: Str, target: Str) -> i64 {
+    let whole = sorted_letters(s);
+    let mut k = 0;
+    loop {
+        let mut copies = String.new();
+        for _ in 0..k + 1 {
+            copies.push_str(target);
+        }
+        if not picks(whole, sorted_letters(copies)) {
+            return k;
+        }
+        k += 1;
+    }
+}
+
+fn answer(arm: i64, s: Str, target: Str) -> i64 {
+    match arm {
+        0 => star_rearrange_characters(s, target),
+        1 => naive_rearrange_characters(s, target),
+        2 => map_rearrange_characters(s, target),
+        3 => struct_rearrange_characters(s, target),
+        4 => iter_rearrange_characters(s, target),
+        _ => solution_rearrange_characters(s, target),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn word(len: i64, letters: i64, seed: mut ref i64) -> String {
+    let mut w = String.new();
+    for _ in 0..len {
+        w.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    w
+}
+
+fn main() {
+    let names = ["star", "naive", "map", "struct", "iter", "solution"];
+    let mut seed = 2287;
+    let mut cases: Vec[(String, String)] = Vec.new();
+    for c in 0..360 {
+        let letters = next_random(mut seed) % 26 + 1;
+        let t_len = next_random(mut seed) % 10 + 1;
+        let mut target = word(t_len, letters, mut seed);
+        if c >= 330 and c % 2 == 0 {
+            // the last letter of the alphabet the one missing
+            target.push('z');
+        }
+        let s = if c < 300 {
+            let s_len = next_random(mut seed) % 100 + 1;
+            word(s_len, letters, mut seed)
+        } else if c < 330 {
+            // `target` 1 to 8 times, a letter added or dropped, shuffled
+            let mut chars: Vec[char] = Vec.new();
+            for _ in 0..next_random(mut seed) % 8 + 1 {
+                for ch in target.chars() {
+                    chars.push(ch);
+                }
+            }
+            let change = next_random(mut seed) % 3;
+            if change == 1 {
+                chars.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+            } else if change == 2 {
+                let at = next_random(mut seed) % chars.len();
+                chars.remove(at);
+            }
+            for i in (1..chars.len()).rev() {
+                let j = next_random(mut seed) % (i + 1);
+                chars.swap(i, j);
+            }
+            let mut text = String.new();
+            for ch in chars.iter() {
+                text.push(ch);
+            }
+            if text.len() == 0 { target.clone() } else { text }
+        } else {
+            // every letter but one the target holds
+            let missing = if c % 2 == 0 { 'z' } else { target.chars().nth(next_random(mut seed) % t_len).unwrap() };
+            let mut text = String.new();
+            for ch in word(next_random(mut seed) % 100 + 1, 26, mut seed).chars() {
+                text.push(if ch == missing { 'z' } else { ch });
+            }
+            if missing == 'z' {
+                text = text.replace("z", "y");
+            }
+            text
+        };
+        cases.push((s, target));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, target) in cases.iter() {
+        let truth = literal(s, target);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let twice = f"{target}{target}";
+        let more = f"{s}{target}";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, target)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value * target.len() <= s.len(),
+                answer(arm, reversed, target) == value,
+                answer(arm, s, twice) == value / 2,
+                answer(arm, more, target) == value + 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} {target} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
