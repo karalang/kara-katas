@@ -1,0 +1,62 @@
+// LeetCode #2270: Number of Ways to Split Array -- the ★ arm. The total
+// once, then the left part's sum as it grows; a split after index `i` is
+// valid when the left sum is at least the rest, `total - left`. The sums
+// reach 10^10, past an `i32`. O(n).
+
+fn ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let total: i64 = nums.iter().sum();
+    let mut left = 0;
+    let mut ways = 0;
+    for i in 0..nums.len() - 1 {
+        left += nums[i];
+        if left >= total - left {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` values from `-spread` to `spread`
+fn values(seed: mut ref i64, n: i64, spread: i64) -> Vec[i64] {
+    (0..n).map(|_| next_random(mut seed) % (2 * spread + 1) - spread).collect()
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: two values, a tie, all
+    // negative, rising, and a large first value
+    let examples = [
+        [10, 4, -8, 7].to_vec(),
+        [2, 3, 1, 0].to_vec(),
+        [1, 2].to_vec(),
+        [5, 5].to_vec(),
+        [-1, -2, -3, -4].to_vec(),
+        [1, 2, 3, 4, 5, 6].to_vec(),
+        [100000, -1, -1, -1, 99999].to_vec(),
+    ];
+    for nums in examples.iter() {
+        println(f"{nums} -> {ways_to_split_array(nums)}");
+    }
+    // 2000 arrays of 2 to 40 values, within 1, 10, 1000 or 10^5 of 0
+    let mut seed = 2270;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 39 + 2;
+        let nums = values(mut seed, n, [1, 10, 1000, 100000][t % 4]);
+        check = (check * 31 + ways_to_split_array(nums)) % 1000000007;
+    }
+    println(f"2000 arrays: checksum {check}");
+    // the constraints' longest, 10^5 values: random within 10^5, all
+    // 10^5, and -10^5 then 10^5 alternating
+    let random = values(mut seed, 100000, 100000);
+    let high: Vec[i64] = Vec.filled(100000, 100000);
+    let swing: Vec[i64] = (0..100000).map(|i| if i % 2 == 0 { -100000 } else { 100000 }).collect();
+    let answers = [ways_to_split_array(random), ways_to_split_array(high), ways_to_split_array(swing)];
+    println(f"10^5 values: {answers}");
+}

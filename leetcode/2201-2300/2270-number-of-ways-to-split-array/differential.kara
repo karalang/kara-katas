@@ -1,0 +1,253 @@
+// LeetCode #2270: Number of Ways to Split Array -- the differential. The
+// six arms, against the statement read literally: for every place to
+// cut, the left part and the right part each summed afresh by a loop,
+// and the cut counted when the left is no smaller. No running sum and no
+// total. 300 random arrays of 2 to 12 values within 1, 3, 10 or 10^5 of
+// 0; then 30 of one value repeated; then 30 that rise or fall by a step.
+// Every case is drawn before any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the array reversed and every value negated: the same count
+// P3  every value times 3: the same count
+// P4  at least 0 and at most the number of cuts, n - 1
+// P5  a 0 put at the end: the count, plus one when the whole sum is not
+//     negative
+// P6  each arm agrees with at least three of the other five
+
+// ---- split.kara: the ★ arm, the left sum against the total
+fn star_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let total: i64 = nums.iter().sum();
+    let mut left = 0;
+    let mut ways = 0;
+    for i in 0..nums.len() - 1 {
+        left += nums[i];
+        if left >= total - left {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- split_prefix.kara: a table of prefix sums
+fn prefix_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut prefix = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + nums[i];
+    }
+    let mut ways = 0;
+    for i in 0..n - 1 {
+        if prefix[i + 1] >= prefix[n] - prefix[i + 1] {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- split_two.kara: two running sums, left and right
+fn two_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let mut right = 0;
+    for x in nums.iter() {
+        right += x;
+    }
+    let mut left = 0;
+    let mut ways = 0;
+    for x in nums[..nums.len() - 1].iter() {
+        left += x;
+        right -= x;
+        if left >= right {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- split_struct.kara: `struct Cut` shifted a value at a time
+struct StructCut {
+    left: i64,
+    right: i64,
+}
+
+impl StructCut {
+    fn new(nums: Vec[i64]) -> StructCut {
+        StructCut { left: 0, right: nums.iter().sum() }
+    }
+
+    fn shift(mut ref self, x: i64) {
+        self.left += x;
+        self.right -= x;
+    }
+
+    fn valid(self) -> bool {
+        self.left >= self.right
+    }
+}
+
+fn struct_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let mut cut = StructCut.new(nums);
+    let mut ways = 0;
+    for i in 0..nums.len() - 1 {
+        cut.shift(nums[i]);
+        if cut.valid() {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+// ---- split_iter.kara: the left sums by `scan`, filtered, counted
+fn iter_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    let total: i64 = nums.iter().sum();
+    nums.iter()
+        .take(nums.len() - 1)
+        .scan(0, |left, x| {
+            let left = left + x;
+            Some((left, left))
+        })
+        .filter(|left| 2 * left >= total)
+        .count()
+}
+
+// ---- split_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn ways_to_split_array(nums: Vec[i32]) -> i32 {
+        let total: i64 = nums.iter().map(|x| x as i64).sum();
+        let mut left = 0;
+        let mut ans = 0;
+        for i in 0..nums.len() - 1 {
+            left += nums[i];
+            if left >= total - left {
+                ans += 1;
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_ways_to_split_array(nums: Vec[i64]) -> i64 {
+    Solution.ways_to_split_array(nums.iter().map(|x| x as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64]) -> i64 {
+    let n = nums.len();
+    let mut ways = 0;
+    for cut in 1..n {
+        let mut left = 0;
+        for i in 0..cut {
+            left += nums[i];
+        }
+        let mut right = 0;
+        for i in cut..n {
+            right += nums[i];
+        }
+        if left >= right {
+            ways += 1;
+        }
+    }
+    ways
+}
+
+fn answer(arm: i64, nums: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_ways_to_split_array(nums),
+        1 => prefix_ways_to_split_array(nums),
+        2 => two_ways_to_split_array(nums),
+        3 => struct_ways_to_split_array(nums),
+        4 => iter_ways_to_split_array(nums),
+        _ => solution_ways_to_split_array(nums),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "prefix", "two", "struct", "iter", "solution"];
+    let mut seed = 2270;
+    let mut cases: Vec[Vec[i64]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 11 + 2;
+        let mut nums: Vec[i64] = Vec.new();
+        if c < 300 {
+            let spread = [1, 3, 10, 100000][c % 4];
+            for _ in 0..n {
+                nums.push(next_random(mut seed) % (2 * spread + 1) - spread);
+            }
+        } else if c < 330 {
+            let v = next_random(mut seed) % 21 - 10;
+            for _ in 0..n {
+                nums.push(v);
+            }
+        } else {
+            let start = next_random(mut seed) % 21 - 10;
+            let step = if c % 2 == 0 { 1 } else { -1 };
+            for i in 0..n {
+                nums.push(start + step * i);
+            }
+        }
+        cases.push(nums);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for nums in cases.iter() {
+        let truth = literal(nums);
+        check = (check * 31 + truth) % 1000000007;
+        let n = nums.len();
+        let mut total = 0;
+        for x in nums.iter() {
+            total += x;
+        }
+        let turned: Vec[i64] = nums.iter().rev().map(|x| -x).collect();
+        let tripled: Vec[i64] = nums.iter().map(|x| 3 * x).collect();
+        let mut longer = nums.clone();
+        longer.push(0);
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, turned) == value,
+                answer(arm, tripled) == value,
+                value >= 0 and value <= n - 1,
+                answer(arm, longer) == value + if total >= 0 { 1 } else { 0 },
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
