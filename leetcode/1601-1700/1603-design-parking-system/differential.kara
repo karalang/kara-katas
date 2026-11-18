@@ -1,0 +1,262 @@
+// LeetCode #1603: Design Parking System -- the differential.
+//
+// Four arms against the statement read literally, on 3000 lots of 0 to 3
+// spaces a size, each met by 1 to 10 cars, with six properties. Every
+// random choice is drawn before any arm answers.
+//
+// P1  the answers are the statement read literally
+// P2  the sizes renamed (big, medium, small made medium, small, big, the
+//     cars' types with them) leave the answers
+// P3  one more space of each size never turns a car away that parked
+// P4  the cars of each size parked are the fewer of its spaces and its cars
+// P5  the cars in reverse order park as many
+// P6  each arm agrees with at least two of the other three
+
+// ---- parking.kara: the ★ arm: a list of counts
+
+struct StarLot {
+    left: Vec[i32],
+}
+
+impl StarLot {
+    fn new(big: i32, medium: i32, small: i32) -> StarLot {
+        StarLot { left: [big, medium, small] }
+    }
+
+    fn add_car(mut ref self, car_type: i32) -> bool {
+        let slot = car_type - 1;
+        if self.left[slot] == 0 {
+            return false;
+        }
+        self.left[slot] -= 1;
+        true
+    }
+}
+
+// ---- parking_fields.kara: a field for each size, picked by match
+
+struct FieldsLot {
+    big: i32,
+    medium: i32,
+    small: i32,
+}
+
+impl FieldsLot {
+    fn new(big: i32, medium: i32, small: i32) -> FieldsLot {
+        FieldsLot { big: big, medium: medium, small: small }
+    }
+
+    fn add_car(mut ref self, car_type: i32) -> bool {
+        let count = match car_type {
+            1 => mut ref self.big,
+            2 => mut ref self.medium,
+            _ => mut ref self.small,
+        };
+        if *count > 0 {
+            *count -= 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// ---- parking_map.kara: a map from car type to count
+
+struct MapLot {
+    spaces: Map[i32, i32],
+}
+
+impl MapLot {
+    fn new(big: i32, medium: i32, small: i32) -> MapLot {
+        let mut spaces = Map.new();
+        spaces.insert(1, big);
+        spaces.insert(2, medium);
+        spaces.insert(3, small);
+        MapLot { spaces: spaces }
+    }
+
+    fn add_car(mut ref self, car_type: i32) -> bool {
+        let left = *self.spaces.get(car_type).unwrap();
+        if left == 0 {
+            return false;
+        }
+        self.spaces[car_type] = left - 1;
+        true
+    }
+}
+
+// ---- parking_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionLot {
+    slots: Array[i32, 3],
+}
+
+/**
+ * `&self` means the method takes an immutable reference.
+ * If you need a mutable reference, change it to `&mut self` instead.
+ */
+impl SolutionLot {
+    fn new(big: i32, medium: i32, small: i32) -> Self {
+        SolutionLot {
+            slots: [big, medium, small],
+        }
+    }
+
+    fn add_car(mut ref self, car_type: i32) -> bool {
+        let idx = (car_type - 1) as usize;
+        if self.slots[idx] > 0 {
+            self.slots[idx] -= 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, sizes: Slice[i32], cars: Slice[i32]) -> Vec[bool] {
+    let mut out = Vec.new();
+    match a {
+        0 => {
+            let mut lot = StarLot.new(sizes[0], sizes[1], sizes[2]);
+            for c in cars.iter() {
+                out.push(lot.add_car(*c));
+            }
+        }
+        1 => {
+            let mut lot = FieldsLot.new(sizes[0], sizes[1], sizes[2]);
+            for c in cars.iter() {
+                out.push(lot.add_car(*c));
+            }
+        }
+        2 => {
+            let mut lot = MapLot.new(sizes[0], sizes[1], sizes[2]);
+            for c in cars.iter() {
+                out.push(lot.add_car(*c));
+            }
+        }
+        _ => {
+            let mut lot = SolutionLot.new(sizes[0], sizes[1], sizes[2]);
+            for c in cars.iter() {
+                out.push(lot.add_car(*c));
+            }
+        }
+    }
+    out
+}
+
+fn arm_name(a: i64) -> String {
+    ["parking", "fields", "map", "solution"][a].to_string()
+}
+
+fn parked(answers: Slice[bool]) -> i64 {
+    answers.iter().filter(|ok| *ok).count()
+}
+
+// ---- the statement read literally: a car parks when the cars of its
+// size already parked are fewer than the spaces of its size
+
+fn literal(sizes: Slice[i32], cars: Slice[i32]) -> Vec[bool] {
+    let mut parked_types: Vec[i32] = Vec.new();
+    let mut out = Vec.new();
+    for c in cars.iter() {
+        let taken = parked_types.iter().filter(|t| *t == *c).count();
+        let ok = taken < sizes[*c - 1];
+        if ok {
+            parked_types.push(*c);
+        }
+        out.push(ok);
+    }
+    out
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16030;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let sizes: Vec[i32] = (0..3).map(|_| (next_random(mut seed) % 4) as i32).collect();
+        let n = next_random(mut seed) % 10 + 1;
+        let cars: Vec[i32] = (0..n).map(|_| (next_random(mut seed) % 3 + 1) as i32).collect();
+        cases.push((sizes, cars));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (sizes, cars)) in cases.iter().enumerate() {
+        let truth = literal(sizes, cars);
+        let renamed_sizes = [sizes[1], sizes[2], sizes[0]];
+        let renamed_cars: Vec[i32] = cars.iter().map(|c| (*c + 1) % 3 + 1).collect();
+        let roomier: Vec[i32] = sizes.iter().map(|s| *s + 1).collect();
+        let reversed: Vec[i32] = cars.iter().rev().cloned().collect();
+        let mut all = Vec.new();
+        for a in 0..arms {
+            let answers = arm(a, sizes, cars);
+            for ok in answers.iter() {
+                check = (check * 31 + if *ok { 2 } else { 1 }) % 1000000007;
+            }
+            let roomy = arm(a, roomier, cars);
+            let mut fits = true;
+            for t in 1..4 {
+                let of_t = cars.iter().filter(|c| *c == t).count();
+                let parked_t = (0..cars.len()).filter(|i| cars[i] == t and answers[i]).count();
+                if parked_t != of_t.min(sizes[t - 1]) {
+                    fits = false;
+                }
+            }
+            let failed = [
+                answers != truth,
+                arm(a, renamed_sizes, renamed_cars) != answers,
+                (0..cars.len()).any(|i| answers[i] and not roomy[i]),
+                not fits,
+                parked(arm(a, sizes, reversed)) != parked(answers),
+            ];
+            all.push(answers);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and all[other] == all[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
