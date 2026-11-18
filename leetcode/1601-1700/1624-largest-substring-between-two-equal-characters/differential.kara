@@ -1,0 +1,199 @@
+// LeetCode #1624: Largest Substring Between Two Equal Characters -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 random strings
+// of 1 to 40 letters: every third from two letters, so pairs are dense,
+// the rest from 3 to 26. Every random choice is drawn before any arm
+// answers.
+//
+// P1  the answer is the statement read literally
+// P2  the string reversed has the same answer
+// P3  the letters mirrored (a <-> z, b <-> y, ..) leave the answer
+// P4  the string with its first letter written again at the end answers
+//     n - 1, the whole of it
+// P5  the answer is in -1..=n - 2, and -1 exactly when no letter repeats
+// P6  each arm agrees with at least two of the other three
+
+// ---- gap.kara: the ★ arm: the first index of each letter
+
+fn star_arm(s: String) -> i32 {
+    let mut first = [-1; 26];
+    let mut best = -1;
+    for (i, c) in s.chars().enumerate() {
+        let letter = c as i64 - 'a' as i64;
+        if first[letter] == -1 {
+            first[letter] = i;
+        } else {
+            best = max(best, i - first[letter] - 1);
+        }
+    }
+    best as i32
+}
+
+// ---- gap_pairs.kara: every pair
+
+fn pairs_arm(s: String) -> i32 {
+    let letters: Vec[char] = s.chars().collect();
+    let mut best = -1;
+    for i in 0..letters.len() {
+        for j in i + 1..letters.len() {
+            if letters[i] == letters[j] {
+                best = max(best, j - i - 1);
+            }
+        }
+    }
+    best as i32
+}
+
+// ---- gap_ends.kara: the two ends of each letter
+
+fn ends_arm(s: String) -> i32 {
+    let mut ends: Map[char, (i64, i64)] = [:];
+    for (i, c) in s.chars().enumerate() {
+        match ends.get(c) {
+            Some((first, _)) => ends[c] = (first, i),
+            None => ends[c] = (i, i),
+        }
+    }
+    ends.values().map(|(first, last)| last - first - 1).max().unwrap() as i32
+}
+
+// ---- gap_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn max_length_between_equal_characters(s: String) -> i32 {
+        let bytes = s.bytes();
+        let mut last = [0; 26];
+        for (i, b) in bytes.iter().enumerate() {
+            last[b - b'a'] = i;
+        }
+        let mut ans: i32 = -1;
+        for (i, b) in bytes.iter().enumerate() {
+            let j = last[b - b'a'];
+            if j > i {
+                ans = ans.max((j - i - 1) as i32);
+            }
+        }
+        ans
+    }
+}
+
+fn solution_arm(s: String) -> i32 {
+    SolutionArm.max_length_between_equal_characters(s)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, s: String) -> i64 {
+    let got = match a {
+        0 => star_arm(s),
+        1 => pairs_arm(s),
+        2 => ends_arm(s),
+        _ => solution_arm(s),
+    };
+    got
+}
+
+fn arm_name(a: i64) -> String {
+    ["gap", "pairs", "ends", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the substrings from longest down, the
+// first whose two neighbours are one letter
+
+fn literal(s: String) -> i64 {
+    let n = s.len();
+    for length in (0..=n - 2).rev() {
+        for start in 1..=n - 1 - length {
+            if s[start - 1..start] == s[start + length..start + length + 1] {
+                return length;
+            }
+        }
+    }
+    -1
+}
+
+fn all_distinct(s: String) -> bool {
+    let seen: Set[char] = s.chars().collect();
+    seen.len() == s.chars().count()
+}
+
+fn main() {
+    let mut seed = 1624;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 3000;
+    let mut strings: Vec[String] = [];
+    for p in 0..problems {
+        // every third string from two letters, so pairs are dense; the
+        // rest from 3 to 26
+        let letters = if p % 3 == 0 { 2 } else { next_random(mut seed) % 24 + 3 };
+        let n = next_random(mut seed) % 40 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+        }
+        strings.push(s);
+    }
+    for p in 0..problems {
+        let s = strings[p].clone();
+        let n = s.len();
+        let reversed: String = s.chars().rev().collect();
+        let mirrored: String = s.chars().map(|c| (b'z' - (c as u32 as u8 - b'a')) as char).collect();
+        let closed = f"{s}{s[0..1]}";
+        let mut answers: Vec[i64] = [];
+        for a in 0..4 {
+            let got = arm(a, s);
+            answers.push(got);
+            check = (check * 31 + got + 1) % 1000000007;
+            let failed = [
+                got != literal(s),
+                arm(a, reversed) != got,
+                arm(a, mirrored) != got,
+                arm(a, closed) != n - 1,
+                got < -1 or got > n - 2 or (got == -1) != all_distinct(s),
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} ({s}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}
