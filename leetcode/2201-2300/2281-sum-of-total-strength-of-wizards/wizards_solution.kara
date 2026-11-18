@@ -1,0 +1,108 @@
+// LeetCode #2281: Sum of Total Strength of Wizards -- LeetCode's Rust
+// template: `Vec<i32>` in, `i32` out, `i64` and `usize` inside; the two
+// stack passes by `while let Some(&t) = st.last()`, each end read back
+// by `map_or`, the prefix sums' prefix sums in `pre`, and the remainder
+// made positive at the end. Carried by `karac fix`. The adapter below
+// hands the harness's values to it.
+
+impl Solution {
+    pub fn total_strength(strength: Vec[i32]) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = strength.len();
+        let s: Vec[i64] = strength.iter().map(|x| x as i64).collect();
+        let mut left = Vec.filled(n, -1);
+        let mut right = Vec.filled(n, n);
+        let mut st: Vec[i64] = Vec.new();
+        for i in 0..n {
+            while let Some(t) = st.last().cloned() {
+                if s[t] >= s[i] {
+                    st.pop();
+                } else {
+                    break;
+                }
+            }
+            left[i] = st.last().map_or(-1, |t| t);
+            st.push(i);
+        }
+        st.clear();
+        for i in (0..n).rev() {
+            while let Some(t) = st.last().cloned() {
+                if s[t] > s[i] {
+                    st.pop();
+                } else {
+                    break;
+                }
+            }
+            right[i] = st.last().map_or(n, |t| t);
+            st.push(i);
+        }
+        let mut pre = Vec.filled(n + 2, 0);
+        let mut acc = 0;
+        for i in 0..n {
+            acc = (acc + s[i]) % MOD;
+            pre[i + 2] = (pre[i + 1] + acc) % MOD;
+        }
+        let mut ans = 0;
+        for i in 0..n {
+            let l = left[i] + 1;
+            let r = right[i] - 1;
+            let tot = ((i - l + 1) * (pre[r + 2] - pre[i + 1]) % MOD
+                - (r - i + 1) * (pre[i + 1] - pre[l]) % MOD)
+                % MOD;
+            ans = (ans + s[i] * tot) % MOD;
+        }
+        ((ans + MOD) % MOD) as i32
+    }
+}
+
+struct Solution {}
+
+fn total_strength(strength: Vec[i64]) -> i64 {
+    Solution.total_strength(strength.iter().map(|x| x as i32).collect())
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one wizard, the strongest
+    // alone, three alike, rising and falling
+    let examples = [
+        [1, 3, 1, 2].to_vec(),
+        [5, 4, 6].to_vec(),
+        [7].to_vec(),
+        [1000000000].to_vec(),
+        [2, 2, 2].to_vec(),
+        [1, 2, 3, 4, 5].to_vec(),
+        [5, 4, 3, 2, 1].to_vec(),
+    ];
+    for strength in examples.iter() {
+        println(f"{strength} -> {total_strength(strength)}");
+    }
+    // 2000 armies of 1 to 40 wizards of strength up to 3, 100 or 10^9
+    let mut seed = 2281;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let high = [3, 100, 1000000000][t % 3];
+        let strength: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % high + 1).collect();
+        check = (check * 31 + total_strength(strength)) % 1000000007;
+    }
+    println(f"2000 armies: checksum {check}");
+    // the constraints' largest, 10^5 wizards: random up to 10^9, all of
+    // strength 10^9, and rising from 1
+    let random: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 1000000000 + 1).collect();
+    let alike: Vec[i64] = Vec.filled(100000, 1000000000);
+    let rising: Vec[i64] = (1..100001).collect();
+    let answers = [total_strength(random), total_strength(alike), total_strength(rising)];
+    println(f"10^5 wizards: {answers}");
+}

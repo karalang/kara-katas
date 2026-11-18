@@ -1,0 +1,80 @@
+// LeetCode #2281: Sum of Total Strength of Wizards -- one pass. A
+// single monotonic stack of rising strengths, closed by a wizard of
+// strength 0 past the end: when a wizard is popped, the one arriving is
+// the nearest no stronger on its right and the new top the nearest
+// weaker on its left, so its groups are summed then, by the same
+// differences of prefix sums of prefix sums as the ★ arm. O(n).
+
+const MOD: i64 = 1000000007;
+
+fn total_strength(strength: Vec[i64]) -> i64 {
+    let n = strength.len();
+    let mut prefix: Vec[i64] = Vec.filled(n + 1, 0);
+    for i in 0..n {
+        prefix[i + 1] = (prefix[i] + strength[i]) % MOD;
+    }
+    let mut twice: Vec[i64] = Vec.filled(n + 2, 0);
+    for i in 0..n + 1 {
+        twice[i + 1] = (twice[i] + prefix[i]) % MOD;
+    }
+    let mut total = 0;
+    let mut stack: Vec[i64] = Vec.new();
+    for r in 0..n + 1 {
+        let arriving = if r < n { strength[r] } else { 0 };
+        while stack.len() > 0 and strength[stack[stack.len() - 1]] >= arriving {
+            let i = stack.pop().unwrap();
+            let l = if stack.len() > 0 { stack[stack.len() - 1] } else { -1 };
+            let ends = (i - l) * ((twice[r + 1] - twice[i + 1] + MOD) % MOD) % MOD;
+            let starts = (r - i) * ((twice[i + 1] - twice[l + 1] + MOD) % MOD) % MOD;
+            total = (total + strength[i] % MOD * ((ends - starts + MOD) % MOD)) % MOD;
+        }
+        stack.push(r);
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    let high = next_random(mut seed);
+    high * 32768 + next_random(mut seed)
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one wizard, the strongest
+    // alone, three alike, rising and falling
+    let examples = [
+        [1, 3, 1, 2].to_vec(),
+        [5, 4, 6].to_vec(),
+        [7].to_vec(),
+        [1000000000].to_vec(),
+        [2, 2, 2].to_vec(),
+        [1, 2, 3, 4, 5].to_vec(),
+        [5, 4, 3, 2, 1].to_vec(),
+    ];
+    for strength in examples.iter() {
+        println(f"{strength} -> {total_strength(strength)}");
+    }
+    // 2000 armies of 1 to 40 wizards of strength up to 3, 100 or 10^9
+    let mut seed = 2281;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let high = [3, 100, 1000000000][t % 3];
+        let strength: Vec[i64] = (0..n).map(|_| wide_random(mut seed) % high + 1).collect();
+        check = (check * 31 + total_strength(strength)) % 1000000007;
+    }
+    println(f"2000 armies: checksum {check}");
+    // the constraints' largest, 10^5 wizards: random up to 10^9, all of
+    // strength 10^9, and rising from 1
+    let random: Vec[i64] = (0..100000).map(|_| wide_random(mut seed) % 1000000000 + 1).collect();
+    let alike: Vec[i64] = Vec.filled(100000, 1000000000);
+    let rising: Vec[i64] = (1..100001).collect();
+    let answers = [total_strength(random), total_strength(alike), total_strength(rising)];
+    println(f"10^5 wizards: {answers}");
+}
