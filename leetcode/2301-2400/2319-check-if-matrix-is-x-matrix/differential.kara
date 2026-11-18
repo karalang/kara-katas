@@ -1,0 +1,247 @@
+// LeetCode #2319: Check if Matrix Is X-Matrix -- the differential. The
+// six arms, against the statement read literally: the cells of both
+// diagonals are gathered into a set, and the matrix is an X when every
+// cell in the set is nonzero and every cell outside it is zero. 300
+// random grids of 3 to 8 by as many, each cell wrong one time in 2 to
+// 40; then 30 true X's; then 30 X's with one cell wrong. Every case is
+// drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  an X holds `2 n` nonzero cells, or `2 n - 1` when `n` is odd
+// P3  the grid transposed: the same answer
+// P4  every row reversed: the same answer
+// P5  every nonzero value made 1: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- xmatrix.kara
+fn star_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    for i in 0..n {
+        for j in 0..n {
+            let on = i == j or i + j == n - 1;
+            if on != (grid[i][j] != 0) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---- xmatrix_mask.kara
+fn mask_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    let mut diagonal: Vec[Vec[bool]] = Vec.filled(n, Vec.filled(n, false));
+    for i in 0..n {
+        diagonal[i][i] = true;
+        diagonal[i][n - 1 - i] = true;
+    }
+    let mut fits = true;
+    for i in 0..n {
+        for j in 0..n {
+            if diagonal[i][j] != (grid[i][j] != 0) {
+                fits = false;
+            }
+        }
+    }
+    fits
+}
+
+// ---- xmatrix_count.kara
+fn count_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    let cells = if n % 2 == 1 { 2 * n - 1 } else { 2 * n };
+    let mut on = 0;
+    let mut nonzero = 0;
+    for i in 0..n {
+        for j in 0..n {
+            if grid[i][j] != 0 {
+                nonzero += 1;
+                if i == j or i + j == n - 1 {
+                    on += 1;
+                }
+            }
+        }
+    }
+    on == cells and nonzero == on
+}
+
+// ---- xmatrix_rows.kara
+fn rows_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    for i in 0..n {
+        let places: Vec[i64] = (0..n).filter(|j| grid[i][j] != 0).collect();
+        let (low, high) = (i.min(n - 1 - i), i.max(n - 1 - i));
+        let wanted: Vec[i64] = if low == high { [low].to_vec() } else { [low, high].to_vec() };
+        if places != wanted {
+            return false;
+        }
+    }
+    true
+}
+
+// ---- xmatrix_iter.kara
+fn iter_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    grid.iter().enumerate().all(|(i, row)| row.iter().enumerate().all(|(j, v)| (i == j or i + j == n - 1) == (v != 0)))
+}
+
+// ---- xmatrix_solution.kara
+struct Solution {}
+
+impl Solution {
+    pub fn check_x_matrix(grid: Vec[Vec[i32]]) -> bool {
+        let n = grid.len();
+        for i in 0..n {
+            for j in 0..n {
+                if i == j or i + j == n - 1 {
+                    if grid[i][j] == 0 {
+                        return false;
+                    }
+                } else if grid[i][j] != 0 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+fn solution_check_x_matrix(grid: Vec[Vec[i64]]) -> bool {
+    let rows: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.check_x_matrix(rows)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(grid: Vec[Vec[i64]]) -> bool {
+    let n = grid.len();
+    let mut diagonals: Set[(i64, i64)] = Set.new();
+    for i in 0..n {
+        diagonals.insert((i, i));
+        diagonals.insert((i, n - 1 - i));
+    }
+    let mut all_nonzero = true;
+    let mut others_zero = true;
+    for i in 0..n {
+        for j in 0..n {
+            if diagonals.contains((i, j)) {
+                if grid[i][j] == 0 {
+                    all_nonzero = false;
+                }
+            } else if grid[i][j] != 0 {
+                others_zero = false;
+            }
+        }
+    }
+    all_nonzero and others_zero
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]]) -> bool {
+    match arm {
+        0 => star_check_x_matrix(grid),
+        1 => mask_check_x_matrix(grid),
+        2 => count_check_x_matrix(grid),
+        3 => rows_check_x_matrix(grid),
+        4 => iter_check_x_matrix(grid),
+        _ => solution_check_x_matrix(grid),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an `n` by `n` X of values 1 to 10^5, then one cell in `slips` of the
+// rest given the wrong kind of value: zero on a diagonal, a value off it
+fn grid(seed: mut ref i64, n: i64, slips: i64) -> Vec[Vec[i64]] {
+    let mut g: Vec[Vec[i64]] = Vec.new();
+    for i in 0..n {
+        let mut row: Vec[i64] = Vec.new();
+        for j in 0..n {
+            let on = i == j or i + j == n - 1;
+            let slip = next_random(mut seed) % slips == 0;
+            let value = next_random(mut seed) % 100000 + 1;
+            row.push(if on != slip { value } else { 0 });
+        }
+        g.push(row);
+    }
+    g
+}
+
+fn main() {
+    let names = ["star", "mask", "count", "rows", "iter", "solution"];
+    let mut seed = 2319;
+    let mut cases: Vec[Vec[Vec[i64]]] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 6 + 3;
+        if c < 300 {
+            let slips = next_random(mut seed) % 39 + 2;
+            cases.push(grid(mut seed, n, slips));
+        } else {
+            let mut g = grid(mut seed, n, 1000000);
+            if c >= 330 {
+                let i = next_random(mut seed) % n;
+                let j = next_random(mut seed) % n;
+                g[i][j] = if i == j or i + j == n - 1 { 0 } else { 7 };
+            }
+            cases.push(g);
+        }
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    let mut xs = 0;
+    for g in cases.iter() {
+        let n = g.len();
+        let truth = literal(g);
+        check = (check * 31 + if truth { 2 } else { 1 }) % 1000000007;
+        if truth {
+            xs += 1;
+        }
+        let nonzero = g.iter().map(|row| row.iter().filter(|v| v != 0).count()).sum();
+        let transposed: Vec[Vec[i64]] = (0..n).map(|j| (0..n).map(|i| g[i][j]).collect()).collect();
+        let mirrored: Vec[Vec[i64]] = g.iter().map(|row| row.iter().rev().collect()).collect();
+        let ones: Vec[Vec[i64]] = g.iter().map(|row| row.iter().map(|v| if v != 0 { 1 } else { 0 }).collect()).collect();
+        let got: Vec[bool] = (0..6).map(|arm| answer(arm, g)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                not value or nonzero == if n % 2 == 1 { 2 * n - 1 } else { 2 * n },
+                answer(arm, transposed) == value,
+                answer(arm, mirrored) == value,
+                answer(arm, ones) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{n} by {n}, arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases, {xs} X's: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
