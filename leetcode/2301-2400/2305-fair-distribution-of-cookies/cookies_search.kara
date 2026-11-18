@@ -1,0 +1,78 @@
+// LeetCode #2305: Fair Distribution of Cookies -- a binary search on the
+// answer: `fits(limit)` asks whether the bags, largest first, can be
+// shared out with no child over `limit`, by backtracking with the same
+// one-empty-child rule as the ★ arm. The least limit that fits lies
+// between the largest bag and all the cookies.
+
+fn fits(bags: Vec[i64], i: i64, loads: mut ref Vec[i64], limit: i64) -> bool {
+    if i == bags.len() {
+        return true;
+    }
+    for c in 0..loads.len() {
+        if loads[c] + bags[i] <= limit {
+            loads[c] += bags[i];
+            let done = fits(bags, i + 1, mut loads, limit);
+            loads[c] -= bags[i];
+            if done {
+                return true;
+            }
+        }
+        if loads[c] == 0 {
+            break;
+        }
+    }
+    false
+}
+
+fn distribute_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let mut bags = cookies.clone();
+    bags.sort();
+    bags.reverse();
+    let mut low = bags[0];
+    let mut high = bags.iter().sum();
+    while low < high {
+        let middle = (low + high) / 2;
+        let mut loads = Vec.filled(k, 0);
+        if fits(bags, 0, mut loads, middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples; then a child for every bag, two children
+    // and eight equal bags of 10^5, and three children and bags that
+    // split evenly only one way
+    println(distribute_cookies([8, 15, 10, 20, 8].to_vec(), 2));
+    println(distribute_cookies([6, 1, 3, 2, 2, 4, 1, 2].to_vec(), 3));
+    println(distribute_cookies([5, 9, 1, 7].to_vec(), 4));
+    println(distribute_cookies([100000, 100000, 100000, 100000, 100000, 100000, 100000, 100000].to_vec(), 2));
+    println(distribute_cookies([9, 7, 5, 4, 3, 2, 1, 1].to_vec(), 3));
+    // 500 random cases of 2 to 6 bags of 1 to 10^5 cookies, and 2 to as
+    // many children as bags
+    let mut seed = 2305;
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..500 {
+        let n = next_random(mut seed) % 5 + 2;
+        let k = next_random(mut seed) % (n - 1) + 2;
+        let mut cookies: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            cookies.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+        }
+        let unfairness = distribute_cookies(cookies, k);
+        check = (check * 31 + unfairness) % 1000000007;
+        total += unfairness;
+    }
+    println(f"500 cases: checksum {check}, {total} in all");
+}

@@ -1,0 +1,286 @@
+// LeetCode #2305: Fair Distribution of Cookies -- the differential. The
+// six arms, against the statement read literally: every distribution,
+// each bag given to each child in turn by recursion, its unfairness the
+// most any child holds, and the least of those the answer. 300 random
+// cases of 2 to 6 bags of 1 to 20 cookies; then 30 whose bags are all
+// equal; then 30 of bags of up to 10^5. Every case has 2 to as many
+// children as bags, and is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least the largest bag and all the cookies over k,
+//     rounded up, and at most all the cookies
+// P3  the bags in reverse order: the same answer
+// P4  one child more, where there are fewer children than bags: no
+//     larger an answer; as many children as bags: the largest bag
+// P5  every bag doubled: the answer doubled
+// P6  each arm agrees with at least three of the other five
+
+// ---- cookies.kara: the ★ arm, backtracking
+fn star_place(cookies: Vec[i64], i: i64, loads: mut ref Vec[i64], best: mut ref i64) {
+    if i == cookies.len() {
+        *best = (*best).min(loads.iter().max().unwrap());
+        return;
+    }
+    for c in 0..loads.len() {
+        if loads[c] + cookies[i] < *best {
+            loads[c] += cookies[i];
+            star_place(cookies, i + 1, mut loads, mut best);
+            loads[c] -= cookies[i];
+        }
+        if loads[c] == 0 {
+            break;
+        }
+    }
+}
+
+fn star_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let mut loads = Vec.filled(k, 0);
+    let mut best = i64.MAX;
+    star_place(cookies, 0, mut loads, mut best);
+    best
+}
+
+// ---- cookies_naive.kara: every distribution
+fn naive_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let n = cookies.len();
+    let mut ways = 1;
+    for _ in 0..n {
+        ways *= k;
+    }
+    let mut best = i64.MAX;
+    for way in 0..ways {
+        let mut loads = Vec.filled(k, 0);
+        let mut digits = way;
+        for i in 0..n {
+            loads[digits % k] += cookies[i];
+            digits /= k;
+        }
+        best = best.min(loads.iter().max().unwrap());
+    }
+    best
+}
+
+// ---- cookies_subsets.kara: over subsets of the bags
+fn subsets_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let n = cookies.len();
+    let full = (1 << n) - 1;
+    let mut sum = Vec.filled(full + 1, 0);
+    for mask in 1..=full {
+        let low = mask & (0 - mask);
+        let mut i = 0;
+        while (1 << i) != low {
+            i += 1;
+        }
+        sum[mask] = sum[mask ^ low] + cookies[i];
+    }
+    let mut dp = sum.clone();
+    for _ in 1..k {
+        let mut next = dp.clone();
+        for mask in 1..=full {
+            let mut sub = mask;
+            while sub > 0 {
+                next[mask] = next[mask].min(sum[sub].max(dp[mask ^ sub]));
+                sub = (sub - 1) & mask;
+            }
+        }
+        dp = next;
+    }
+    dp[full]
+}
+
+// ---- cookies_search.kara: a binary search on the answer
+fn search_fits(bags: Vec[i64], i: i64, loads: mut ref Vec[i64], limit: i64) -> bool {
+    if i == bags.len() {
+        return true;
+    }
+    for c in 0..loads.len() {
+        if loads[c] + bags[i] <= limit {
+            loads[c] += bags[i];
+            let done = search_fits(bags, i + 1, mut loads, limit);
+            loads[c] -= bags[i];
+            if done {
+                return true;
+            }
+        }
+        if loads[c] == 0 {
+            break;
+        }
+    }
+    false
+}
+
+fn search_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let mut bags = cookies.clone();
+    bags.sort();
+    bags.reverse();
+    let mut low = bags[0];
+    let mut high = bags.iter().sum();
+    while low < high {
+        let middle = (low + high) / 2;
+        let mut loads = Vec.filled(k, 0);
+        if search_fits(bags, 0, mut loads, middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+// ---- cookies_iter.kara: iterators over subsets
+fn iter_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let n = cookies.len();
+    let size = 1 << n;
+    let sum: Vec[i64] = (0..size).map(|mask| (0..n).filter(|i| (mask >> i) & 1 == 1).map(|i| cookies[i]).sum()).collect();
+    let dp: Vec[i64] = (1..k).fold(sum.clone(), |dp, _| {
+        (0..size)
+            .map(|mask| (0..=mask).filter(|sub| sub & mask == sub).map(|sub| sum[sub].max(dp[mask ^ sub])).min().unwrap())
+            .collect()
+    });
+    dp[size - 1]
+}
+
+// ---- cookies_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+fn solution_dfs(i: i64, cookies: Vec[i32], loads: mut ref Vec[i32], best: mut ref i32) {
+    if i == cookies.len() {
+        *best = (*best).min(*loads.iter().max().unwrap());
+        return;
+    }
+    for c in 0..loads.len() {
+        if loads[c] + cookies[i] < *best {
+            loads[c] += cookies[i];
+            solution_dfs(i + 1, cookies, mut loads, mut best);
+            loads[c] -= cookies[i];
+        }
+        if loads[c] == 0 {
+            break;
+        }
+    }
+}
+
+impl Solution {
+    pub fn distribute_cookies(cookies: Vec[i32], k: i32) -> i32 {
+        let mut loads = Vec.filled(k, 0);
+        let mut best = i32.MAX;
+        solution_dfs(0, cookies, mut loads, mut best);
+        best
+    }
+}
+
+fn solution_cookies(cookies: Vec[i64], k: i64) -> i64 {
+    let c: Vec[i32] = cookies.iter().map(|v| v as i32).collect();
+    Solution.distribute_cookies(c, k as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal_give(cookies: Vec[i64], i: i64, loads: Vec[i64]) -> i64 {
+    if i == cookies.len() {
+        return loads.iter().max().unwrap();
+    }
+    let mut least = i64.MAX;
+    for c in 0..loads.len() {
+        let mut given = loads.clone();
+        given[c] += cookies[i];
+        least = least.min(literal_give(cookies, i + 1, given));
+    }
+    least
+}
+
+fn literal(cookies: Vec[i64], k: i64) -> i64 {
+    literal_give(cookies, 0, Vec.filled(k, 0))
+}
+
+fn answer(arm: i64, cookies: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_cookies(cookies, k),
+        1 => naive_cookies(cookies, k),
+        2 => subsets_cookies(cookies, k),
+        3 => search_cookies(cookies, k),
+        4 => iter_cookies(cookies, k),
+        _ => solution_cookies(cookies, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "subsets", "search", "iter", "solution"];
+    let mut seed = 2305;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let n = next_random(mut seed) % 5 + 2;
+        let k = next_random(mut seed) % (n - 1) + 2;
+        let mut cookies: Vec[i64] = Vec.new();
+        let same = next_random(mut seed) % 20 + 1;
+        for _ in 0..n {
+            cookies.push(if c < 300 {
+                next_random(mut seed) % 20 + 1
+            } else if c < 330 {
+                same
+            } else {
+                (next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1
+            });
+        }
+        cases.push((cookies, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (cookies, k) in cases.iter() {
+        let n = cookies.len();
+        let truth = literal(cookies, k);
+        check = (check * 31 + truth) % 1000000007;
+        let total: i64 = cookies.iter().sum();
+        let largest = cookies.iter().max().unwrap();
+        let low = largest.max((total + k - 1) / k);
+        let reversed: Vec[i64] = cookies.iter().rev().collect();
+        let doubled: Vec[i64] = cookies.iter().map(|x| x * 2).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, cookies, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let more = if k < n { answer(arm, cookies, k + 1) <= value } else { value == largest };
+            let verdicts = [
+                value == truth,
+                value >= low and value <= total,
+                answer(arm, reversed, k) == value,
+                more,
+                answer(arm, doubled, k) == value * 2,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{cookies} k {k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
