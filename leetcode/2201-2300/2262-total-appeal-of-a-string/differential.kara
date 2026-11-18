@@ -1,0 +1,282 @@
+// LeetCode #2262: Total Appeal of A String -- the differential. The six
+// arms, against the statement read literally: every substring
+// `s[i..=j]` in turn, its appeal counted as the letters that differ from
+// every earlier letter of that substring, and the appeals summed; no
+// last positions, no running totals. 300 random strings of 1 to 12
+// letters from the first 1, 2, 3, 5 or 26 of the alphabet; then 30
+// palindromes of up to 13 letters; then 30 strings of up to 12 different
+// letters. Every case is drawn before any arm answers.
+//
+// P1  the total is the literal reading's
+// P2  the string reversed: the same total
+// P3  every letter moved 7 on round the alphabet: the same total
+// P4  no less than n (n + 1) / 2 and no more than that times the number
+//     of different letters
+// P5  the last letter put on the end again: the total plus one plus the
+//     different letters of every suffix
+// P6  each arm agrees with at least three of the other five
+
+// ---- appeal.kara: the ★ arm, (i - last) * (n - i) per position
+fn star_appeal_sum(s: String) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut last: Array[i64, 26] = [-1; 26];
+    let mut total = 0;
+    for i in 0..n {
+        let c = (bytes[i] - b'a') as i64;
+        total += (i - last[c]) * (n - i);
+        last[c] = i;
+    }
+    total
+}
+
+// ---- appeal_dp.kara: the appeal of the substrings ending at each position
+fn dp_appeal_sum(s: String) -> i64 {
+    let mut last: Map[char, i64] = Map.new();
+    let mut ending = 0;
+    let mut total = 0;
+    let mut i = 0;
+    for c in s.chars() {
+        let before = last.get(c).unwrap_or(-1);
+        ending += i - before;
+        total += ending;
+        last.insert(c, i);
+        i += 1;
+    }
+    total
+}
+
+// ---- appeal_gaps.kara: per letter, all substrings less those in its gaps
+fn gaps_inside(g: i64) -> i64 {
+    g * (g + 1) / 2
+}
+
+fn gaps_appeal_sum(s: String) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut total = 0;
+    for letter in b'a'..=b'z' {
+        let mut avoiding = 0;
+        let mut gap = 0;
+        for b in bytes.iter() {
+            if b == letter {
+                avoiding += gaps_inside(gap);
+                gap = 0;
+            } else {
+                gap += 1;
+            }
+        }
+        avoiding += gaps_inside(gap);
+        total += gaps_inside(n) - avoiding;
+    }
+    total
+}
+
+// ---- appeal_struct.kara: `struct Reader` fed one letter at a time
+struct StructReader {
+    last: Vec[i64],
+    at: i64,
+    ending: i64,
+    total: i64,
+}
+
+impl StructReader {
+    fn new() -> StructReader {
+        StructReader { last: Vec.filled(26, -1), at: 0, ending: 0, total: 0 }
+    }
+
+    fn read(mut ref self, letter: u8) {
+        let c = (letter - b'a') as i64;
+        self.ending += self.at - self.last[c];
+        self.total += self.ending;
+        self.last[c] = self.at;
+        self.at += 1;
+    }
+}
+
+fn struct_appeal_sum(s: String) -> i64 {
+    let mut reader = StructReader.new();
+    for b in s.bytes() {
+        reader.read(b);
+    }
+    reader.total
+}
+
+// ---- appeal_iter.kara: one `fold` over `char_indices`
+fn iter_appeal_sum(s: String) -> i64 {
+    let n = s.len();
+    let (_, total) = s.char_indices().fold((Vec.filled(26, -1), 0), |(last, total), (i, c)| {
+        let k = (c as u32 - 'a' as u32) as i64;
+        let mut last = last;
+        let gained = (i - last[k]) * (n - i);
+        last[k] = i;
+        (last, total + gained)
+    });
+    total
+}
+
+// ---- appeal_solution.kara: LeetCode's Rust template, carried by `karac fix`
+impl Solution {
+    pub fn appeal_sum(s: String) -> i64 {
+        let s = s.bytes();
+        let mut last = [-1; 26];
+        let mut ans: i64 = 0;
+        let mut cur: i64 = 0;
+        for (i, b) in s.iter().enumerate() {
+            let c = (b - b'a') as usize;
+            cur += i - last[c];
+            ans += cur;
+            last[c] = i;
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_appeal_sum(s: String) -> i64 {
+    Solution.appeal_sum(s)
+}
+
+// ---- the statement read literally
+
+fn literal(s: String) -> i64 {
+    let b = s.bytes();
+    let n = b.len();
+    let mut total = 0;
+    for i in 0..n {
+        for j in i..n {
+            for t in i..j + 1 {
+                let mut first = true;
+                for u in i..t {
+                    if b[u] == b[t] {
+                        first = false;
+                    }
+                }
+                if first {
+                    total += 1;
+                }
+            }
+        }
+    }
+    total
+}
+
+fn different(s: String) -> i64 {
+    let mut seen: Vec[u8] = Vec.new();
+    for b in s.bytes() {
+        if not seen.contains(b) {
+            seen.push(b);
+        }
+    }
+    seen.len()
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_appeal_sum(s),
+        1 => dp_appeal_sum(s),
+        2 => gaps_appeal_sum(s),
+        3 => struct_appeal_sum(s),
+        4 => iter_appeal_sum(s),
+        _ => solution_appeal_sum(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn letter(v: i64) -> char {
+    (b'a' + v as u8) as char
+}
+
+fn main() {
+    let names = ["star", "dp", "gaps", "struct", "iter", "solution"];
+    let mut seed = 2262;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let mut s = String.new();
+        if c < 300 {
+            let len = next_random(mut seed) % 12 + 1;
+            let letters = [1, 2, 3, 5, 26][c % 5];
+            for _ in 0..len {
+                s.push(letter(next_random(mut seed) % letters));
+            }
+        } else if c < 330 {
+            let half = next_random(mut seed) % 6 + 1;
+            let mut left = String.new();
+            for _ in 0..half {
+                left.push(letter(next_random(mut seed) % 4));
+            }
+            let middle = if next_random(mut seed) % 2 == 0 { String.new() } else { letter(next_random(mut seed) % 4).to_string() };
+            let right: String = left.chars().rev().collect();
+            s = left + middle + right;
+        } else {
+            let len = next_random(mut seed) % 12 + 1;
+            let start = next_random(mut seed) % 14;
+            for k in 0..len {
+                s.push(letter((start + k * 5) % 26));
+            }
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let n = s.len();
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let reversed: String = s.chars().rev().collect();
+        let moved: String = s.chars().map(|c| letter(((c as u32 - 'a' as u32) as i64 + 7) % 26)).collect();
+        let lowest = n * (n + 1) / 2;
+        let highest = lowest * different(s);
+        let again = f"{s}{s.chars().last().unwrap()}";
+        let mut grows = 1;
+        for i in 0..n {
+            grows += different(s.substring(i));
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, moved) == value,
+                value >= lowest and value <= highest,
+                answer(arm, again) == value + grows,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

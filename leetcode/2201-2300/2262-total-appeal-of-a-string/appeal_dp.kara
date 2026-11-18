@@ -1,0 +1,62 @@
+// LeetCode #2262: Total Appeal of A String -- by the substrings that end
+// at each position. `ending` is the total appeal of the substrings that
+// end at `i`: extending each one ending at `i - 1` by `s[i]` adds one to
+// those that did not already hold that letter, the `i - last` of them
+// that start after its last position, and the new one-letter substring
+// is among them. The answer is the sum of `ending` over every `i`, with
+// the last positions in a `Map[char, i64]`. O(n).
+
+fn appeal_sum(s: String) -> i64 {
+    let mut last: Map[char, i64] = Map.new();
+    let mut ending = 0;
+    let mut total = 0;
+    let mut i = 0;
+    for c in s.chars() {
+        let before = last.get(c).unwrap_or(-1);
+        ending += i - before;
+        total += ending;
+        last.insert(c, i);
+        i += 1;
+    }
+    total
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` letters from the first `letters` of the alphabet
+fn word(seed: mut ref i64, len: i64, letters: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..len {
+        s.push((b'a' + (next_random(mut seed) % letters) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then four more: one letter, one letter
+    // three times, every letter once, and a palindrome
+    for s in ["abbca", "code", "z", "aaa", "abcdefghijklmnopqrstuvwxyz", "racecar"] {
+        println(f"{s} -> {appeal_sum(s.to_string())}");
+    }
+    // 3000 strings of 1 to 40 letters from the first 1, 2, 3, 5 or 26
+    let mut seed = 2262;
+    let mut check = 0;
+    for t in 0..3000 {
+        let len = next_random(mut seed) % 40 + 1;
+        let s = word(mut seed, len, [1, 2, 3, 5, 26][t % 5]);
+        check = (check * 31 + appeal_sum(s)) % 1000000007;
+    }
+    println(f"3000 strings: checksum {check}");
+    // the constraints' longest, 10^5 letters: all `a`, `abc` repeated,
+    // and random from all 26
+    let all_a = "a".repeat(100000);
+    let cycle = "abc".repeat(33334).substring(0, 100000);
+    let random = word(mut seed, 100000, 26);
+    let answers = [appeal_sum(all_a), appeal_sum(cycle), appeal_sum(random)];
+    println(f"10^5 letters: {answers}");
+}
