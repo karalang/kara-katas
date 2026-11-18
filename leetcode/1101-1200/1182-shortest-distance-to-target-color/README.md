@@ -49,11 +49,11 @@ The solution arm takes one round of 34 (among them `Vec<usize>` to
 rewritten through `partition_point`) and its output matches. The chain arm
 takes one round of 41 (among them `Vec<[Option<usize>; 4]>` to
 `Vec[Array[Option[i64], 4]]` and each `scan` closure rewritten to Kāra's
-shape) and its output matches. Both took more before the six fixes below.
+shape) and its output matches. Both took more before the seven fixes below.
 
 ## Gaps
 
-The two Rust arms found six gaps, all fixed in kara.
+The two Rust arms found seven gaps, all fixed in kara.
 
 - **A tuple `let` of an element got a copy.** `let (i, spots) = (q[0],
   at[q[1] - 1]);` was refused with a `.clone()` fix, a copy of the whole
@@ -82,12 +82,12 @@ The two Rust arms found six gaps, all fixed in kara.
 - **The `binary_search` rewrite was misindented.** `let k = match
   p.binary_search(i) { .. };` became a block whose later lines lined up
   with the `match`, not the `let`. kara B-2026-11-17-108.
-
-One remains: the chain arm's `scan` closures hand the state out as
-`Some((last.clone(), last))`. The `[None; 4]` state is a `Copy` array, but
-the ownership pass reads it as not `Copy`, so `Some((last, last))` is
-refused as a use after a move and `karac fix` adds the `.clone()`. kara
-B-2026-11-17-109.
+- **A `Copy` scan state read as not `Copy`.** The chain arm's `scan`
+  closures hand the state out as `Some((last, last))`. The `[None; 4]`
+  state is a `Copy` array once its `Option[i64]` is solved, but the
+  ownership pass read the unsolved `Option[T]` and refused the second use
+  as a use after a move, so `karac fix` added a `.clone()`. Fixed at kara
+  5ac5b1ffda, and the `.clone()` is gone. kara B-2026-11-17-109.
 
 ## Differential
 
