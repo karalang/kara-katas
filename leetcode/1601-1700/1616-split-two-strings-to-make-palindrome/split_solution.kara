@@ -1,0 +1,111 @@
+// LeetCode #1616: Split Two Strings to Make Palindrome -- a Rust solution
+// as LeetCode's Rust users write it (`as_bytes()`, closures for the two
+// checks, `usize` indices), carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn check_palindrome_formation(a: String, b: String) -> bool {
+        let (a, b) = (a.bytes(), b.bytes());
+        let pal = |s: Slice[u8], l: i64, r: i64| {
+            let mut l = l;
+            let mut r = r;
+            while l < r {
+                if s[l] != s[r] {
+                    return false;
+                }
+                l += 1;
+                r -= 1;
+            }
+            true
+        };
+        let check = |x: Slice[u8], y: Slice[u8]| {
+            let mut (l, r) = (0, x.len() - 1);
+            while l < r and x[l] == y[r] {
+                l += 1;
+                r -= 1;
+            }
+            pal(x, l, r) or pal(y, l, r)
+        };
+        check(a, b) or check(b, a)
+    }
+}
+
+fn check_palindrome_formation(a: String, b: String) -> bool {
+    Solution.check_palindrome_formation(a, b)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a string of `n` letters from the first `letters`
+fn random_word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    (0..n).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect()
+}
+
+// `count` pairs of up to `most` letters: half drawn at random, half made
+// to split (a prefix of `a`, mirrored at the end of `b`, around a middle
+// of `b` that is a palindrome) and then, one time in four, spoiled by a
+// letter of `a` changed at random
+fn batch(count: i64, most: i64, letters: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut chars = 0;
+    let mut yes = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let mut a = random_word(n, letters, mut seed);
+        let mut b = random_word(n, letters, mut seed);
+        if next_random(mut seed) % 2 == 0 {
+            let k = next_random(mut seed) % (n / 2 + 1);
+            let head: String = a.chars().take(k).collect();
+            let tail: String = head.chars().rev().collect();
+            let m = n - 2 * k;
+            let half: String = b.chars().skip(k).take((m + 1) / 2).collect();
+            let back: String = half.chars().rev().skip(m % 2).collect();
+            let middle = f"{half}{back}";
+            let front: String = b.chars().take(k).collect();
+            b = f"{front}{middle}{tail}";
+            if next_random(mut seed) % 4 == 0 {
+                let i = next_random(mut seed) % n;
+                let mut letters_a: Vec[char] = a.chars().collect();
+                letters_a[i] = (b'a' + (next_random(mut seed) % letters) as u8) as char;
+                a = letters_a.iter().collect();
+            }
+        }
+        let answer = check_palindrome_formation(a, b);
+        if answer {
+            yes += 1;
+        }
+        check = mix(check, if answer { 1 } else { 0 });
+        chars += n;
+    }
+    println(f"{count} pairs of up to {most} letters from {letters}: {chars} letters each side, {yes} can split, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then one letter each, a palindrome
+    // already, and a split that must be taken from b's side
+    let examples: Vec[(Str, Str)] = [
+        ("x", "y"),
+        ("xbdef", "xecab"),
+        ("ulacfd", "jizalu"),
+        ("ab", "cd"),
+        ("aba", "xyz"),
+        ("pqrcd", "abcqp"),
+    ];
+    for (a, b) in examples.iter() {
+        println(f"{check_palindrome_formation(a.to_string(), b.to_string())}");
+    }
+    let mut seed = 1616;
+    batch(3000, 6, 2, mut seed);
+    batch(300, 1000, 3, mut seed);
+    batch(30, 20000, 26, mut seed);
+}

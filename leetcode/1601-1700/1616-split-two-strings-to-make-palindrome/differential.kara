@@ -1,0 +1,262 @@
+// LeetCode #1616: Split Two Strings to Make Palindrome -- the differential.
+//
+// Four arms against the statement read literally, on 3000 pairs of 1 to
+// 10 letters from 2 to 4, half of them built to split, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  a and b swapped leave the answer
+// P3  a and b each reversed, then swapped, leave the answer
+// P4  every letter renamed (a to b, b to c, ..., the last to a) leaves
+//     the answer
+// P5  when a or b is a palindrome already, the answer is true
+// P6  each arm agrees with at least two of the other three
+
+// ---- split.kara: the ★ arm: two pointers, then the middle left over
+
+fn star_is_palindrome(s: Slice[u8], lo: i64, hi: i64) -> bool {
+    let mut i = lo;
+    let mut j = hi;
+    while i < j {
+        if s[i] != s[j] {
+            return false;
+        }
+        i += 1;
+        j -= 1;
+    }
+    true
+}
+
+fn star_joins(a: Slice[u8], b: Slice[u8]) -> bool {
+    let mut i = 0;
+    let mut j = a.len() - 1;
+    while i < j and a[i] == b[j] {
+        i += 1;
+        j -= 1;
+    }
+    star_is_palindrome(a, i, j) or star_is_palindrome(b, i, j)
+}
+
+fn star_arm(a: String, b: String) -> bool {
+    star_joins(a.bytes(), b.bytes()) or star_joins(b.bytes(), a.bytes())
+}
+
+// ---- split_center.kara: each string's palindromic centre, then the mirrored ends
+
+fn center_reach(s: Slice[u8]) -> i64 {
+    let n = s.len();
+    let mut lo = (n - 1) / 2;
+    let mut hi = n / 2;
+    while lo >= 0 and s[lo] == s[hi] {
+        lo -= 1;
+        hi += 1;
+    }
+    lo + 1
+}
+
+fn center_mirrors(front: Slice[u8], back: Slice[u8], depth: i64) -> bool {
+    let n = front.len();
+    (0..depth).all(|i| front[i] == back[n - 1 - i])
+}
+
+fn center_arm(a: String, b: String) -> bool {
+    let (x, y) = (a.bytes(), b.bytes());
+    let reach = min(center_reach(x), center_reach(y));
+    center_mirrors(x, y, reach) or center_mirrors(y, x, reach)
+}
+
+// ---- split_every.kara: every split tried
+
+fn every_arm(a: String, b: String) -> bool {
+    let n = a.len();
+    for i in 0..=n {
+        let ab = f"{a[..i]}{b[i..]}";
+        let ba = f"{b[..i]}{a[i..]}";
+        if ab.chars().eq(ab.chars().rev()) or ba.chars().eq(ba.chars().rev()) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- split_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn check_palindrome_formation(a: String, b: String) -> bool {
+        let (a, b) = (a.bytes(), b.bytes());
+        let pal = |s: Slice[u8], l: i64, r: i64| {
+            let mut l = l;
+            let mut r = r;
+            while l < r {
+                if s[l] != s[r] {
+                    return false;
+                }
+                l += 1;
+                r -= 1;
+            }
+            true
+        };
+        let check = |x: Slice[u8], y: Slice[u8]| {
+            let mut (l, r) = (0, x.len() - 1);
+            while l < r and x[l] == y[r] {
+                l += 1;
+                r -= 1;
+            }
+            pal(x, l, r) or pal(y, l, r)
+        };
+        check(a, b) or check(b, a)
+    }
+}
+
+fn solution_arm(a: String, b: String) -> bool {
+    SolutionArm.check_palindrome_formation(a, b)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(k: i64, a: String, b: String) -> bool {
+    match k {
+        0 => star_arm(a, b),
+        1 => center_arm(a, b),
+        2 => every_arm(a, b),
+        _ => solution_arm(a, b),
+    }
+}
+
+fn arm_name(k: i64) -> String {
+    ["split", "center", "every", "solution"][k].to_string()
+}
+
+fn reversed(s: String) -> String {
+    s.chars().rev().collect()
+}
+
+fn renamed(s: String, letters: i64) -> String {
+    s.chars().map(|c| ((((c as u32 as u8 - b'a') as i64 + 1) % letters) as u8 + b'a') as char).collect()
+}
+
+fn palindrome(s: String) -> bool {
+    s == reversed(s)
+}
+
+// ---- the statement read literally: some index splits a into a prefix
+// and a suffix and b at the same index into a prefix and a suffix, and
+// a's prefix followed by b's suffix, or b's prefix followed by a's
+// suffix, reads the same both ways
+
+fn literal(a: String, b: String) -> bool {
+    let x: Vec[char] = a.chars().collect();
+    let y: Vec[char] = b.chars().collect();
+    let n = x.len();
+    for i in 0..=n {
+        let mut ab: Vec[char] = Vec.new();
+        let mut ba: Vec[char] = Vec.new();
+        for j in 0..n {
+            ab.push(if j < i { x[j] } else { y[j] });
+            ba.push(if j < i { y[j] } else { x[j] });
+        }
+        let mut ab_back = ab.clone();
+        ab_back.reverse();
+        let mut ba_back = ba.clone();
+        ba_back.reverse();
+        if ab == ab_back or ba == ba_back {
+            return true;
+        }
+    }
+    false
+}
+
+fn word(n: i64, letters: i64, seed: mut ref i64) -> String {
+    (0..n).map(|_| (b'a' + (next_random(mut seed) % letters) as u8) as char).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16160;
+    let mut cases: Vec[(String, String, i64)] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 10 + 1;
+        let letters = next_random(mut seed) % 3 + 2;
+        let a = word(n, letters, mut seed);
+        let mut b = word(n, letters, mut seed);
+        if next_random(mut seed) % 2 == 0 {
+            let k = next_random(mut seed) % (n / 2 + 1);
+            let head: String = a.chars().take(k).collect();
+            let m = n - 2 * k;
+            let half: String = b.chars().skip(k).take((m + 1) / 2).collect();
+            let back: String = half.chars().rev().skip(m % 2).collect();
+            let front: String = b.chars().take(k).collect();
+            b = f"{front}{half}{back}{reversed(head)}";
+        }
+        cases.push((a, b, letters));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut yes = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (a, b, letters)) in cases.iter().enumerate() {
+        let truth = literal(a, b);
+        if truth {
+            yes += 1;
+        }
+        let either = palindrome(a) or palindrome(b);
+        let mut answers = Vec.new();
+        for k in 0..arms {
+            let x = arm(k, a, b);
+            check = (check * 31 + (if x { 1 } else { 0 }) + 1) % 1000000007;
+            let failed = [
+                x != truth,
+                arm(k, b, a) != x,
+                arm(k, reversed(b), reversed(a)) != x,
+                arm(k, renamed(a, letters), renamed(b, letters)) != x,
+                either and not x,
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(k)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for k in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != k and answers[other] == answers[k] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(k)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems, {yes} can split: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}
