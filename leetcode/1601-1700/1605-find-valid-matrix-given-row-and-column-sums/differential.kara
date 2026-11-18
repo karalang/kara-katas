@@ -1,0 +1,251 @@
+// LeetCode #1605: Find Valid Matrix Given Row and Column Sums -- the
+// differential.
+//
+// Four arms against the statement read literally, on 3000 problems made
+// from matrices of 1 to 4 by 1 to 4 cells from 0 to 9, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer meets the statement read literally
+// P2  the problem transposed is answered with the answer transposed
+// P3  every sum tripled is answered with every cell tripled
+// P4  a row of sum zero added is answered with a row of zeros added
+// P5  the answer has at most rows + cols - 1 cells that are not zero
+// P6  each arm agrees with at least two of the other three
+
+// ---- restore.kara: the ★ arm: greedy, cell by cell in reading order
+
+fn star_arm(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+    let mut rows = row_sum;
+    let mut cols = col_sum;
+    let mut m = Vec.new();
+    for i in 0..rows.len() {
+        let mut row = Vec.filled(cols.len(), 0);
+        for j in 0..cols.len() {
+            let x = rows[i].min(cols[j]);
+            row[j] = x;
+            rows[i] -= x;
+            cols[j] -= x;
+        }
+        m.push(row);
+    }
+    m
+}
+
+// ---- restore_walk.kara: the northwest corner walk
+
+fn walk_arm(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+    let mut rows = row_sum;
+    let mut cols = col_sum;
+    let mut m = Vec.filled(rows.len(), Vec.filled(cols.len(), 0));
+    let mut (i, j) = (0, 0);
+    while i < rows.len() and j < cols.len() {
+        let x = rows[i].min(cols[j]);
+        m[i][j] = x;
+        rows[i] -= x;
+        cols[j] -= x;
+        if rows[i] == 0 {
+            i += 1;
+        }
+        if cols[j] == 0 {
+            j += 1;
+        }
+    }
+    m
+}
+
+// ---- restore_columns.kara: column by column, the columns turned into rows
+
+fn columns_arm(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+    let mut need = row_sum;
+    let mut columns: Vec[Vec[i32]] = Vec.new();
+    for c in col_sum.iter() {
+        let mut left = *c;
+        let column: Vec[i32] = need
+            .iter_mut()
+            .map(|r| {
+                let x = (*r).min(left);
+                *r -= x;
+                left -= x;
+                x
+            })
+            .collect();
+        columns.push(column);
+    }
+    (0..need.len()).map(|i| columns.iter().map(|col| col[i]).collect()).collect()
+}
+
+// ---- restore_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn restore_matrix(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+        let mut row_sum = row_sum;
+        let mut col_sum = col_sum;
+        let m = row_sum.len();
+        let n = col_sum.len();
+        let mut res = Vec.filled(m, Vec.filled(n, 0));
+        for i in 0..m {
+            for j in 0..n {
+                let v = min(row_sum[i], col_sum[j]);
+                res[i][j] = v;
+                row_sum[i] -= v;
+                col_sum[j] -= v;
+            }
+        }
+        res
+    }
+}
+
+fn solution_arm(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+    SolutionArm.restore_matrix(row_sum, col_sum)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, row_sum: Slice[i32], col_sum: Slice[i32]) -> Vec[Vec[i32]] {
+    let (r, c) = (row_sum.to_vec(), col_sum.to_vec());
+    match a {
+        0 => star_arm(r, c),
+        1 => walk_arm(r, c),
+        2 => columns_arm(r, c),
+        _ => solution_arm(r, c),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["restore", "walk", "columns", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: a matrix of the right shape, every
+// entry a non-negative integer, the i-th row adding to row_sum[i] and the
+// j-th column to col_sum[j]
+
+fn literal(m: Slice[Vec[i32]], row_sum: Slice[i32], col_sum: Slice[i32]) -> bool {
+    if m.len() != row_sum.len() {
+        return false;
+    }
+    for i in 0..row_sum.len() {
+        if m[i].len() != col_sum.len() {
+            return false;
+        }
+        let mut total = 0;
+        for j in 0..col_sum.len() {
+            if m[i][j] < 0 {
+                return false;
+            }
+            total += m[i][j];
+        }
+        if total != row_sum[i] {
+            return false;
+        }
+    }
+    for j in 0..col_sum.len() {
+        let mut total = 0;
+        for i in 0..row_sum.len() {
+            total += m[i][j];
+        }
+        if total != col_sum[j] {
+            return false;
+        }
+    }
+    true
+}
+
+fn transpose(m: Slice[Vec[i32]], cols: i64) -> Vec[Vec[i32]] {
+    (0..cols).map(|j| m.iter().map(|row| row[j]).collect()).collect()
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16050;
+    let mut cases: Vec[(Vec[i32], Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let rows = next_random(mut seed) % 4 + 1;
+        let cols = next_random(mut seed) % 4 + 1;
+        let mut row_sum: Vec[i32] = Vec.filled(rows, 0);
+        let mut col_sum: Vec[i32] = Vec.filled(cols, 0);
+        for i in 0..rows {
+            for j in 0..cols {
+                let x = (next_random(mut seed) % 10) as i32;
+                row_sum[i] += x;
+                col_sum[j] += x;
+            }
+        }
+        cases.push((row_sum, col_sum));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (row_sum, col_sum)) in cases.iter().enumerate() {
+        let (rows, cols) = (row_sum.len(), col_sum.len());
+        let tripled_rows: Vec[i32] = row_sum.iter().map(|x| *x * 3).collect();
+        let tripled_cols: Vec[i32] = col_sum.iter().map(|x| *x * 3).collect();
+        let mut longer = row_sum.clone();
+        longer.push(0);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let m = arm(a, row_sum, col_sum);
+            for row in m.iter() {
+                for x in row.iter() {
+                    check = (check * 31 + *x + 1) % 1000000007;
+                }
+            }
+            let tripled: Vec[Vec[i32]] = m.iter().map(|row| row.iter().map(|x| *x * 3).collect()).collect();
+            let mut zero_row = m.clone();
+            zero_row.push(Vec.filled(cols, 0));
+            let nonzero = m.iter().map(|row| row.iter().filter(|x| *x != 0).count()).sum();
+            let failed = [
+                not literal(m, row_sum, col_sum),
+                arm(a, col_sum, row_sum) != transpose(m, cols),
+                arm(a, tripled_rows, tripled_cols) != tripled,
+                arm(a, longer, col_sum) != zero_row,
+                nonzero > rows + cols - 1,
+            ];
+            answers.push(m);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

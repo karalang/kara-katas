@@ -1,0 +1,116 @@
+// LeetCode #1605: Find Valid Matrix Given Row and Column Sums -- the
+// northwest corner walk.
+//
+// One walk from the top left: the cell under the walk takes the smaller
+// of what its row and its column still need, and the walk steps down when
+// the row is met and right when the column is (both when both are). Every
+// cell it never visits stays zero. O(rows + cols) steps after the zeroed
+// matrix.
+
+fn restore_matrix(row_sum: own Vec[i32], col_sum: own Vec[i32]) -> Vec[Vec[i32]] {
+    let mut rows = row_sum;
+    let mut cols = col_sum;
+    let mut m = Vec.filled(rows.len(), Vec.filled(cols.len(), 0));
+    let mut (i, j) = (0, 0);
+    while i < rows.len() and j < cols.len() {
+        let x = rows[i].min(cols[j]);
+        m[i][j] = x;
+        rows[i] -= x;
+        cols[j] -= x;
+        if rows[i] == 0 {
+            i += 1;
+        }
+        if cols[j] == 0 {
+            j += 1;
+        }
+    }
+    m
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// whether `m` is `rows` by `cols`, holds no negative number, and adds up
+// to `row_sum` along each row and `col_sum` down each column
+fn valid(m: Slice[Vec[i32]], row_sum: Slice[i32], col_sum: Slice[i32]) -> bool {
+    if m.len() != row_sum.len() {
+        return false;
+    }
+    let mut down = Vec.filled(col_sum.len(), 0);
+    for (row, want) in m.iter().zip(row_sum.iter()) {
+        if row.len() != col_sum.len() or row.iter().any(|x| *x < 0) {
+            return false;
+        }
+        let mut across = 0;
+        for (j, x) in row.iter().enumerate() {
+            across += *x;
+            down[j] += *x;
+        }
+        if across != *want {
+            return false;
+        }
+    }
+    down.iter().zip(col_sum.iter()).all(|(d, c)| *d == *c)
+}
+
+// `count` matrices of up to `most` by `most` cells, each cell from 0 to
+// `top`; the sums are the problem, the matrix forgotten
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut cells = 0;
+    let mut ok = 0;
+    for _ in 0..count {
+        let rows = next_random(mut seed) % most + 1;
+        let cols = next_random(mut seed) % most + 1;
+        let mut row_sum: Vec[i32] = Vec.filled(rows, 0);
+        let mut col_sum: Vec[i32] = Vec.filled(cols, 0);
+        for i in 0..rows {
+            for j in 0..cols {
+                let x = (next_random(mut seed) % (top + 1)) as i32;
+                row_sum[i] += x;
+                col_sum[j] += x;
+            }
+        }
+        let m = restore_matrix(row_sum.clone(), col_sum.clone());
+        if valid(m, row_sum, col_sum) {
+            ok += 1;
+        }
+        for row in m.iter() {
+            for x in row.iter() {
+                check = mix(check, *x);
+            }
+        }
+        cells += rows * cols;
+    }
+    println(f"{count} problems of up to {most} by {most}: {cells} cells, {ok} valid, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one cell, a row of zeros, and a
+    // single row and a single column
+    let examples: Vec[(Vec[i32], Vec[i32])] = [
+        ([3, 8], [4, 7]),
+        ([5, 7, 10], [8, 6, 8]),
+        ([9], [9]),
+        ([0, 4], [1, 3]),
+        ([6], [1, 2, 3]),
+        ([1, 2, 3], [6]),
+    ];
+    for (row_sum, col_sum) in examples.iter() {
+        let m = restore_matrix(row_sum.clone(), col_sum.clone());
+        let shown: Vec[String] = m.iter().map(|row| f"[{Vec[String].from_iter(row.iter().map(|x| x.to_string())).join(",")}]").collect();
+        println(f"[{shown.join(",")}] {if valid(m, row_sum, col_sum) { "valid" } else { "INVALID" }}");
+    }
+    let mut seed = 1605;
+    batch(3000, 4, 9, mut seed);
+    batch(300, 100, 1000, mut seed);
+    batch(3, 500, 100000, mut seed);
+}
