@@ -117,8 +117,8 @@ P1 and P6 kill all seventeen, P2 fourteen, P5 ten, P4 nine and P3 six.
 P2 fails for more pairs apart than the pairs no edge joins, which most
 overcounts reach. P5, a node more on its own, fails where a component's
 size or its pairing is miscounted, since the new node pairs with all
-`n`; it misses the edits that only lose an edge or a union, whose new
-node still pairs rightly. P4, the edges reversed and turned, fails where
+`n`; it misses the edits whose error leaves the new node's own pairs
+right, as an edge taken one way, a sweep cut short or node 0 left out. P4, the edges reversed and turned, fails where
 the order of the unions or the direction of an edge matters: a set
 grown by one, a root not found, an edge one way in the search, a sweep
 cut short. P3, the nodes renamed, fails where node 0 or the order in
