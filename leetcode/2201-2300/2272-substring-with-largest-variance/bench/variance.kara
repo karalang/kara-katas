@@ -1,0 +1,58 @@
+// LeetCode #2272: Substring With Largest Variance -- the ★ arm. For each
+// ordered pair of letters in the string, `a` counted up and `b` down,
+// the variance is the largest sum of a substring holding at least one
+// `b`. Kadane's scan carries two sums ending at each letter: `diff`, the
+// best with or without a `b`, never below 0, and `with_b`, the best
+// holding a `b`. O(k^2 n) for k letters used.
+
+fn largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let mut seen = [false; 26];
+    for c in bytes.iter() {
+        seen[c - b'a'] = true;
+    }
+    let mut best = 0;
+    for a in b'a'..=b'z' {
+        for b in b'a'..=b'z' {
+            if a == b or not seen[a - b'a'] or not seen[b - b'a'] {
+                continue;
+            }
+            let mut diff = 0;
+            let mut with_b = i64.MIN / 2;
+            for c in bytes.iter() {
+                if c == a {
+                    diff += 1;
+                    with_b += 1;
+                } else if c == b {
+                    with_b = diff - 1;
+                    diff = (diff - 1).max(0);
+                }
+                best = best.max(with_b);
+            }
+        }
+    }
+    best
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 40 strings of the constraints' longest, 10^4 letters, from the first
+    // 3, 5, 10 and 26 letters in turn
+    let mut seed = 2272;
+    let mut check = 0;
+    for t in 0..40 {
+        let k = [3, 5, 10, 26][t % 4];
+        let mut s = String.new();
+        for _ in 0..10000 {
+            s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+        }
+        check = (check * 31 + largest_variance(s)) % 1000000007;
+    }
+    println(f"40 strings of 10^4: checksum {check}");
+}

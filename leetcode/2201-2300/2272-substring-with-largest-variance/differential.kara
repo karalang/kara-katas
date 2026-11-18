@@ -1,0 +1,358 @@
+// LeetCode #2272: Substring With Largest Variance -- the differential.
+// The six arms, against the statement read literally: every substring,
+// its letters counted, and the largest count less the smallest among the
+// letters it holds. No pairs and no running sums. 300 random strings of
+// 1 to 12 letters from the first 2, 3, 4 or 26; then 30 of one letter
+// with another put in once; then 30 of runs of two letters. Every case
+// is drawn before any arm answers.
+//
+// P1  the variance is the literal reading's
+// P2  the string reversed: the same variance
+// P3  the letters relabelled, the alphabet turned by seven: the same
+//     variance
+// P4  at least 0 and at most the length less 2, and 0 for fewer than two
+//     letters
+// P5  the string twice over: at least the same variance
+// P6  each arm agrees with at least three of the other five
+
+// ---- variance.kara: the ★ arm, two Kadane sums per pair
+fn star_largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let mut seen = [false; 26];
+    for c in bytes.iter() {
+        seen[c - b'a'] = true;
+    }
+    let mut best = 0;
+    for a in b'a'..=b'z' {
+        for b in b'a'..=b'z' {
+            if a == b or not seen[a - b'a'] or not seen[b - b'a'] {
+                continue;
+            }
+            let mut diff = 0;
+            let mut with_b = i64.MIN / 2;
+            for c in bytes.iter() {
+                if c == a {
+                    diff += 1;
+                    with_b += 1;
+                } else if c == b {
+                    with_b = diff - 1;
+                    diff = (diff - 1).max(0);
+                }
+                best = best.max(with_b);
+            }
+        }
+    }
+    best
+}
+
+// ---- variance_firstb.kara: the editorial's `first_b` scan
+fn firstb_largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let mut seen = [false; 26];
+    for c in bytes.iter() {
+        seen[c - b'a'] = true;
+    }
+    let mut best = 0;
+    for a in b'a'..=b'z' {
+        for b in b'a'..=b'z' {
+            if a == b or not seen[a - b'a'] or not seen[b - b'a'] {
+                continue;
+            }
+            let mut variance = 0;
+            let mut has_b = false;
+            let mut first_b = false;
+            for c in bytes.iter() {
+                if c == a {
+                    variance += 1;
+                } else if c == b {
+                    has_b = true;
+                    if first_b and variance >= 0 {
+                        first_b = false;
+                    } else if variance - 1 < 0 {
+                        first_b = true;
+                        variance = -1;
+                    } else {
+                        variance -= 1;
+                    }
+                }
+                if has_b {
+                    best = best.max(variance);
+                }
+            }
+        }
+    }
+    best
+}
+
+// ---- variance_positions.kara: each pair over its own letters
+fn positions_largest_variance(s: String) -> i64 {
+    let mut places: Vec[Vec[i64]] = (0..26).map(|_| Vec.new()).collect();
+    for (i, c) in s.bytes().iter().enumerate() {
+        places[c - b'a'].push(i);
+    }
+    let mut best = 0;
+    for a in 0..26 {
+        for b in 0..26 {
+            if a == b or places[a].is_empty() or places[b].is_empty() {
+                continue;
+            }
+            let pa = ref places[a];
+            let pb = ref places[b];
+            let mut i = 0;
+            let mut j = 0;
+            let mut diff = 0;
+            let mut with_b = i64.MIN / 2;
+            while i < pa.len() or j < pb.len() {
+                if j == pb.len() or (i < pa.len() and pa[i] < pb[j]) {
+                    diff += 1;
+                    with_b += 1;
+                    i += 1;
+                } else {
+                    with_b = diff - 1;
+                    diff = (diff - 1).max(0);
+                    j += 1;
+                }
+                best = best.max(with_b);
+            }
+        }
+    }
+    best
+}
+
+// ---- variance_struct.kara: `struct Kadane` per pair, fed together
+struct StructKadane {
+    a: u8,
+    b: u8,
+    diff: i64,
+    with_b: i64,
+    best: i64,
+}
+
+impl StructKadane {
+    fn new(a: u8, b: u8) -> StructKadane {
+        StructKadane { a: a, b: b, diff: 0, with_b: i64.MIN / 2, best: 0 }
+    }
+
+    fn feed(mut ref self, c: u8) {
+        if c == self.a {
+            self.diff += 1;
+            self.with_b += 1;
+        } else if c == self.b {
+            self.with_b = self.diff - 1;
+            self.diff = (self.diff - 1).max(0);
+        }
+        self.best = self.best.max(self.with_b);
+    }
+}
+
+fn struct_largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let mut seen = [false; 26];
+    for c in bytes.iter() {
+        seen[c - b'a'] = true;
+    }
+    let mut pairs: Vec[StructKadane] = Vec.new();
+    for a in b'a'..=b'z' {
+        for b in b'a'..=b'z' {
+            if a != b and seen[a - b'a'] and seen[b - b'a'] {
+                pairs.push(StructKadane.new(a, b));
+            }
+        }
+    }
+    for c in bytes.iter() {
+        for p in pairs.iter_mut() {
+            p.feed(c);
+        }
+    }
+    pairs.iter().map(|p| p.best).max().unwrap_or(0)
+}
+
+// ---- variance_iter.kara: pairs by `flat_map`, each a `fold`
+fn iter_largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let present: Vec[u8] = (b'a'..=b'z').filter(|c| bytes.contains(c)).collect();
+    present
+        .iter()
+        .flat_map(|a| present.iter().filter(|b| b != a).map(|b| (a, b)))
+        .map(|(a, b)| {
+            let (_, _, best) = bytes.iter().fold((0, i64.MIN / 2, 0), |(diff, with_b, best), c| {
+                if c == a {
+                    (diff + 1, with_b + 1, best.max(with_b + 1))
+                } else if c == b {
+                    ((diff - 1).max(0), diff - 1, best.max(diff - 1))
+                } else {
+                    (diff, with_b, best.max(with_b))
+                }
+            });
+            best
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+// ---- variance_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn largest_variance(s: String) -> i32 {
+        let s = s.bytes();
+        let mut ans: i32 = 0;
+        for a in b'a'..=b'z' {
+            for b in b'a'..=b'z' {
+                if a == b or not s.contains(a) or not s.contains(b) {
+                    continue;
+                }
+                let mut diff: i32 = 0;
+                let mut diff_with_b = -(s.len() as i32);
+                for c in s {
+                    if c == a {
+                        diff += 1;
+                        diff_with_b += 1;
+                    } else if c == b {
+                        diff_with_b = diff - 1;
+                        diff = (diff - 1).max(0);
+                    }
+                    ans = ans.max(diff_with_b);
+                }
+            }
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_largest_variance(s: String) -> i64 {
+    Solution.largest_variance(s)
+}
+
+
+// ---- the statement read literally
+
+fn literal(s: String) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut best = 0;
+    for i in 0..n {
+        for j in i + 1..=n {
+            let mut count = [0; 26];
+            for k in i..j {
+                count[bytes[k] - b'a'] += 1;
+            }
+            let mut most = 0;
+            let mut least = n + 1;
+            for c in count.iter() {
+                if c > 0 {
+                    most = most.max(c);
+                    least = least.min(c);
+                }
+            }
+            best = best.max(most - least);
+        }
+    }
+    best
+}
+
+fn relabel(s: String) -> String {
+    s.chars().map(|c| (((c as i64 - 'a' as i64 + 7) % 26) as u8 + b'a') as char).collect()
+}
+
+fn answer(arm: i64, s: String) -> i64 {
+    match arm {
+        0 => star_largest_variance(s),
+        1 => firstb_largest_variance(s),
+        2 => positions_largest_variance(s),
+        3 => struct_largest_variance(s),
+        4 => iter_largest_variance(s),
+        _ => solution_largest_variance(s),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "firstb", "positions", "struct", "iter", "solution"];
+    let mut seed = 2272;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let len = next_random(mut seed) % 12 + 1;
+        let mut s = String.new();
+        if c < 300 {
+            let k = [2, 3, 4, 26][c % 4];
+            for _ in 0..len {
+                s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+            }
+        } else if c < 330 {
+            let at = next_random(mut seed) % len;
+            for i in 0..len {
+                s.push(if i == at { 'q' } else { 'e' });
+            }
+        } else {
+            let mut letter = 'x';
+            while s.len() < len {
+                let run = next_random(mut seed) % 4 + 1;
+                for _ in 0..run {
+                    s.push(letter);
+                }
+                letter = if letter == 'x' { 'y' } else { 'x' };
+            }
+        }
+        cases.push(s);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for s in cases.iter() {
+        let truth = literal(s);
+        check = (check * 31 + truth) % 1000000007;
+        let n = s.len();
+        let mut seen = [false; 26];
+        for c in s.bytes().iter() {
+            seen[c - b'a'] = true;
+        }
+        let kinds = seen.iter().filter(|b| *b).count();
+        let reversed: String = s.chars().rev().collect();
+        let twice = f"{s}{s}";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, relabel(s)) == value,
+                value >= 0 and value <= (n - 2).max(0) and (kinds >= 2 or value == 0),
+                answer(arm, twice) >= value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

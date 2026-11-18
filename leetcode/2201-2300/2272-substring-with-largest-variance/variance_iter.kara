@@ -1,0 +1,67 @@
+// LeetCode #2272: Substring With Largest Variance -- in chains. The
+// letters present by `filter`, their ordered pairs by `flat_map`, and
+// each pair's best by a `fold` over the bytes carrying `(diff, with_b,
+// best)`; a `max` over all. O(k^2 n) for k letters used.
+
+fn largest_variance(s: String) -> i64 {
+    let bytes = s.bytes();
+    let present: Vec[u8] = (b'a'..=b'z').filter(|c| bytes.contains(c)).collect();
+    present
+        .iter()
+        .flat_map(|a| present.iter().filter(|b| b != a).map(|b| (a, b)))
+        .map(|(a, b)| {
+            let (_, _, best) = bytes.iter().fold((0, i64.MIN / 2, 0), |(diff, with_b, best), c| {
+                if c == a {
+                    (diff + 1, with_b + 1, best.max(with_b + 1))
+                } else if c == b {
+                    ((diff - 1).max(0), diff - 1, best.max(diff - 1))
+                } else {
+                    (diff, with_b, best.max(with_b))
+                }
+            });
+            best
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` letters from the first `k` of the alphabet
+fn letters(seed: mut ref i64, len: i64, k: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..len {
+        s.push((b'a' + (next_random(mut seed) % k) as u8) as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: two letters, one letter
+    // with a single other, a run interrupted, a b at either end, and two
+    // letters alternating
+    for s in ["aababbb", "abcde", "ab", "aaaab", "aaabaaa", "baaaab", "abababab"] {
+        println(f"{s} -> {largest_variance(s.to_string())}");
+    }
+    // 2000 strings of 1 to 40 letters from the first 2, 3, 5 or 26
+    let mut seed = 2272;
+    let mut check = 0;
+    for t in 0..2000 {
+        let len = next_random(mut seed) % 40 + 1;
+        let s = letters(mut seed, len, [2, 3, 5, 26][t % 4]);
+        check = (check * 31 + largest_variance(s)) % 1000000007;
+    }
+    println(f"2000 strings: checksum {check}");
+    // the constraints' longest, 10^4 letters: random from the first 5, `a`
+    // with one `b` in the middle, and random from the first 3
+    let random = letters(mut seed, 10000, 5);
+    let lone = f"{"a".repeat(5000)}b{"a".repeat(4999)}";
+    let three = letters(mut seed, 10000, 3);
+    let answers = [largest_variance(random), largest_variance(lone), largest_variance(three)];
+    println(f"10^4 letters: {answers}");
+}
