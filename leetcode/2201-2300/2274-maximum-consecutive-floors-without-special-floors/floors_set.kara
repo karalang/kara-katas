@@ -1,0 +1,84 @@
+// LeetCode #2274: Maximum Consecutive Floors Without Special Floors --
+// a `SortedSet`. The special floors go into an ordered set, and a walk
+// up it from the floor below the bottom measures each run as it passes,
+// the last run ending at the top. O(n log n).
+
+fn max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut set: SortedSet[i64] = SortedSet.new();
+    for f in special.iter() {
+        set.insert(f);
+    }
+    let mut below = bottom - 1;
+    let mut best = 0;
+    for f in set.iter() {
+        best = best.max(f - below - 1);
+        below = f;
+    }
+    best.max(top - below)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// up to `k` distinct special floors from `bottom` to `top`, at least
+// one, each 1 to `gap` above the one before, then shuffled
+fn floors(seed: mut ref i64, bottom: i64, top: i64, k: i64, gap: i64) -> Vec[i64] {
+    let mut special: Vec[i64] = Vec.new();
+    let mut f = bottom + next_random(mut seed) % gap.min(top - bottom + 1);
+    while f <= top and special.len() < k {
+        special.push(f);
+        f += 1 + next_random(mut seed) % gap;
+    }
+    for j in (1..special.len()).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        special.swap(j, r);
+    }
+    special
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one floor, one special in
+    // the middle, specials at both ends, one at the top, and the widest
+    // gap between two specials
+    let examples = [
+        (2, 9, [4, 6].to_vec()),
+        (6, 8, [7, 6, 8].to_vec()),
+        (1, 1, [1].to_vec()),
+        (1, 10, [5].to_vec()),
+        (1, 10, [1, 10].to_vec()),
+        (1, 10, [10].to_vec()),
+        (3, 20, [15, 3, 5, 4].to_vec()),
+    ];
+    for (bottom, top, special) in examples.iter() {
+        println(f"{bottom}..{top} {special} -> {max_consecutive(bottom, top, special)}");
+    }
+    // 2000 buildings of 1 to 10, 100, 10^4 or 10^9 floors, up to 20
+    // specials 1 to 3, 50 or 10^6 apart
+    let mut seed = 2274;
+    let mut check = 0;
+    for t in 0..2000 {
+        let bottom = next_random(mut seed) % 100 + 1;
+        let span = [10, 100, 10000, 1000000000][t % 4];
+        let top = (bottom + next_random(mut seed) % span).min(1000000000);
+        let k = next_random(mut seed) % 20 + 1;
+        let special = floors(mut seed, bottom, top, k, [3, 50, 1000000][t / 4 % 3]);
+        check = (check * 31 + max_consecutive(bottom, top, special)) % 1000000007;
+    }
+    println(f"2000 buildings: checksum {check}");
+    // the constraints' largest, 10^5 specials: random up to 2 * 10^4
+    // apart under 10^9 floors, every floor from 1 to 10^5, and every
+    // third floor from 3 to 3 * 10^5
+    let random = floors(mut seed, 1, 1000000000, 100000, 20000);
+    let every: Vec[i64] = (1..=100000).collect();
+    let third: Vec[i64] = (1..=100000).map(|i| 3 * i).collect();
+    let answers = [
+        max_consecutive(1, 1000000000, random),
+        max_consecutive(1, 100000, every),
+        max_consecutive(1, 300000, third),
+    ];
+    println(f"10^5 specials: {answers}");
+}

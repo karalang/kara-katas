@@ -1,0 +1,239 @@
+// LeetCode #2274: Maximum Consecutive Floors Without Special Floors --
+// the differential. The six arms, against the statement read literally:
+// every floor from the bottom to the top visited in turn, each looked for
+// among the special floors, and the longest run of floors not found. No
+// sort and no gaps. 300 random buildings of 1 to 40 floors from the
+// first 20, with up to 8 special floors 1 to 1, 3 or 10 apart; then 30
+// with every floor special; then 30 with one. Every case is drawn before
+// any arm answers.
+//
+// P1  the run is the literal reading's
+// P2  the building turned upside down, each floor `f` made `bottom + top
+//     - f`: the same run
+// P3  every floor moved 10^8 up: the same run
+// P4  at least 0 and at most the free floors, and at least those floors
+//     shared out over the runs between and beyond the special ones
+// P5  one floor more at the top: the run, or the run above the highest
+//     special floor grown by one when that is longer
+// P6  each arm agrees with at least three of the other five
+
+// ---- floors.kara: the ★ arm, sorted, the two ends and each gap
+fn star_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut floors = special.clone();
+    floors.sort();
+    let mut best = (floors[0] - bottom).max(top - floors[floors.len() - 1]);
+    for i in 1..floors.len() {
+        best = best.max(floors[i] - floors[i - 1] - 1);
+    }
+    best
+}
+
+// ---- floors_sentinel.kara: the floors past each end put in, `windows(2)`
+fn sentinel_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut floors = special.clone();
+    floors.push(bottom - 1);
+    floors.push(top + 1);
+    floors.sort();
+    let mut best = 0;
+    for w in floors.windows(2) {
+        best = best.max(w[1] - w[0] - 1);
+    }
+    best
+}
+
+// ---- floors_set.kara: a walk up a `SortedSet`
+fn set_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut set: SortedSet[i64] = SortedSet.new();
+    for f in special.iter() {
+        set.insert(f);
+    }
+    let mut below = bottom - 1;
+    let mut best = 0;
+    for f in set.iter() {
+        best = best.max(f - below - 1);
+        below = f;
+    }
+    best.max(top - below)
+}
+
+// ---- floors_struct.kara: `struct Climb` passed a floor at a time
+struct StructClimb {
+    last: i64,
+    best: i64,
+}
+
+impl StructClimb {
+    fn pass(mut ref self, floor: i64) {
+        self.best = self.best.max(floor - self.last - 1);
+        self.last = floor;
+    }
+
+    fn reach(self, top: i64) -> i64 {
+        self.best.max(top - self.last)
+    }
+}
+
+fn struct_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut floors = special.clone();
+    floors.sort();
+    let mut climb = StructClimb { last: bottom - 1, best: 0 };
+    for f in floors.iter() {
+        climb.pass(f);
+    }
+    climb.reach(top)
+}
+
+// ---- floors_iter.kara: `zip` with itself one along, then `fold`
+fn iter_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut floors = special.clone();
+    floors.sort();
+    let ends = (floors[0] - bottom).max(top - floors[floors.len() - 1]);
+    floors
+        .iter()
+        .zip(floors.iter().skip(1))
+        .map(|(a, b)| b - a - 1)
+        .fold(ends, |best, run| best.max(run))
+}
+
+// ---- floors_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn max_consecutive(bottom: i32, top: i32, special: own Vec[i32]) -> i32 {
+        let mut special = special;
+        special.sort();
+        let mut ans = (special[0] - bottom).max(top - special[special.len() - 1]);
+        for w in special.windows(2) {
+            ans = ans.max(w[1] - w[0] - 1);
+        }
+        ans
+    }
+}
+
+struct Solution {}
+
+fn solution_max_consecutive(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    Solution.max_consecutive(bottom as i32, top as i32, special.iter().map(|x| x as i32).collect())
+}
+
+
+// ---- the statement read literally
+
+fn literal(bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    let mut best = 0;
+    let mut run = 0;
+    for floor in bottom..=top {
+        let mut found = false;
+        for s in special.iter() {
+            if s == floor {
+                found = true;
+            }
+        }
+        if found {
+            run = 0;
+        } else {
+            run += 1;
+            best = best.max(run);
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, bottom: i64, top: i64, special: Vec[i64]) -> i64 {
+    match arm {
+        0 => star_max_consecutive(bottom, top, special),
+        1 => sentinel_max_consecutive(bottom, top, special),
+        2 => set_max_consecutive(bottom, top, special),
+        3 => struct_max_consecutive(bottom, top, special),
+        4 => iter_max_consecutive(bottom, top, special),
+        _ => solution_max_consecutive(bottom, top, special),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn shuffle(seed: mut ref i64, floors: mut ref Vec[i64]) {
+    for j in (1..floors.len()).rev() {
+        let r = next_random(mut seed) % (j + 1);
+        floors.swap(j, r);
+    }
+}
+
+fn main() {
+    let names = ["star", "sentinel", "set", "struct", "iter", "solution"];
+    let mut seed = 2274;
+    let mut cases: Vec[(i64, i64, Vec[i64])] = Vec.new();
+    for c in 0..360 {
+        let bottom = next_random(mut seed) % 20 + 1;
+        let top = bottom + next_random(mut seed) % [5, 15, 40][c % 3];
+        let mut special: Vec[i64] = Vec.new();
+        if c < 300 {
+            let k = next_random(mut seed) % 8 + 1;
+            let gap = [1, 3, 10][c / 3 % 3];
+            let mut f = bottom + next_random(mut seed) % gap.min(top - bottom + 1);
+            while f <= top and special.len() < k {
+                special.push(f);
+                f += 1 + next_random(mut seed) % gap;
+            }
+        } else if c < 330 {
+            special = (bottom..=top).collect();
+        } else {
+            special.push(bottom + next_random(mut seed) % (top - bottom + 1));
+        }
+        shuffle(mut seed, mut special);
+        cases.push((bottom, top, special));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (bottom, top, special) in cases.iter() {
+        let truth = literal(bottom, top, special);
+        check = (check * 31 + truth) % 1000000007;
+        let turned: Vec[i64] = special.iter().map(|f| bottom + top - f).collect();
+        let moved: Vec[i64] = special.iter().map(|f| f + 100000000).collect();
+        let free = top - bottom + 1 - special.len();
+        let shared = (free + special.len()) / (special.len() + 1);
+        let highest = special.iter().max().unwrap();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, bottom, top, special)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, bottom, top, turned) == value,
+                answer(arm, bottom + 100000000, top + 100000000, moved) == value,
+                value >= 0 and value <= free and value >= shared,
+                answer(arm, bottom, top + 1, special) == value.max(top + 1 - highest),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{bottom}..{top} {special} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
