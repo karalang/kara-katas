@@ -1,0 +1,188 @@
+// LeetCode #2286: Booking Concert Tickets in Groups -- LeetCode's Rust
+// template: `struct BookMyShow` with `new(n: i32, m: i32) -> Self`,
+// `gather(&mut self, k: i32, max_row: i32) -> Vec<i32>` and
+// `scatter(&mut self, k: i32, max_row: i32) -> bool`; a recursive
+// segment tree of each range's largest free run and its free total, in
+// `Vec<i64>`s indexed by `usize`. Carried by `karac fix`. The `Show`
+// adapter below hands the harness's values to it.
+
+struct BookMyShow {
+    n: i64,
+    m: i64,
+    mx: Vec[i64],
+    sm: Vec[i64],
+}
+
+impl BookMyShow {
+    fn new(n: i32, m: i32) -> Self {
+        let n = n as i64;
+        let mut s = BookMyShow { n, m: m, mx: Vec.filled(4 * n, 0), sm: Vec.filled(4 * n, 0) };
+        s.build(1, 0, n - 1);
+        s
+    }
+
+    fn build(mut ref self, node: i64, l: i64, r: i64) {
+        if l == r {
+            self.mx[node] = self.m;
+            self.sm[node] = self.m;
+            return;
+        }
+        let mid = (l + r) / 2;
+        self.build(node * 2, l, mid);
+        self.build(node * 2 + 1, mid + 1, r);
+        self.mx[node] = self.mx[node * 2].max(self.mx[node * 2 + 1]);
+        self.sm[node] = self.sm[node * 2] + self.sm[node * 2 + 1];
+    }
+
+    fn update(mut ref self, node: i64, l: i64, r: i64, i: i64, v: i64) {
+        if l == r {
+            self.mx[node] -= v;
+            self.sm[node] -= v;
+            return;
+        }
+        let mid = (l + r) / 2;
+        if i <= mid {
+            self.update(node * 2, l, mid, i, v);
+        } else {
+            self.update(node * 2 + 1, mid + 1, r, i, v);
+        }
+        self.mx[node] = self.mx[node * 2].max(self.mx[node * 2 + 1]);
+        self.sm[node] = self.sm[node * 2] + self.sm[node * 2 + 1];
+    }
+
+    fn first(self, node: i64, l: i64, r: i64, k: i64, max_row: i64) -> Option[i64] {
+        if self.mx[node] < k or l > max_row {
+            return None;
+        }
+        if l == r {
+            return Some(l);
+        }
+        let mid = (l + r) / 2;
+        if let Some(i) = self.first(node * 2, l, mid, k, max_row) {
+            return Some(i);
+        }
+        self.first(node * 2 + 1, mid + 1, r, k, max_row)
+    }
+
+    fn sum(self, node: i64, l: i64, r: i64, max_row: i64) -> i64 {
+        if l > max_row {
+            return 0;
+        }
+        if r <= max_row {
+            return self.sm[node];
+        }
+        let mid = (l + r) / 2;
+        self.sum(node * 2, l, mid, max_row) + self.sum(node * 2 + 1, mid + 1, r, max_row)
+    }
+
+    fn gather(mut ref self, k: i32, max_row: i32) -> Vec[i32] {
+        let k = k as i64;
+        match self.first(1, 0, self.n - 1, k, max_row) {
+            Some(i) => {
+                let used = self.m - (self.sum(1, 0, self.n - 1, i) - if i > 0 { self.sum(1, 0, self.n - 1, i - 1) } else { 0 });
+                self.update(1, 0, self.n - 1, i, k);
+                [i as i32, used as i32]
+            }
+            None => Vec.new(),
+        }
+    }
+
+    fn scatter(mut ref self, k: i32, max_row: i32) -> bool {
+        let mut k = k as i64;
+        if self.sum(1, 0, self.n - 1, max_row) < k {
+            return false;
+        }
+        while k > 0 {
+            let i = self.first(1, 0, self.n - 1, 1, max_row).unwrap();
+            let free = self.sum(1, 0, self.n - 1, i) - if i > 0 { self.sum(1, 0, self.n - 1, i - 1) } else { 0 };
+            let take = free.min(k);
+            self.update(1, 0, self.n - 1, i, take);
+            k -= take;
+        }
+        true
+    }
+}
+
+struct Show {
+    inner: BookMyShow,
+}
+
+impl Show {
+    fn new(n: i64, m: i64) -> Show {
+        Show { inner: BookMyShow.new(n as i32, m as i32) }
+    }
+
+    fn gather(mut ref self, k: i64, max_row: i64) -> Vec[i64] {
+        self.inner.gather(k as i32, max_row as i32).iter().map(|x| x as i64).collect()
+    }
+
+    fn scatter(mut ref self, k: i64, max_row: i64) -> bool {
+        self.inner.scatter(k as i32, max_row as i32)
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: mut ref i64) -> i64 {
+    next_random(mut seed) * 32768 + next_random(mut seed)
+}
+
+// one call's answer folded into a checksum: a gather's row and seat, or
+// 0 for none; a scatter's 1 or 2
+fn run(n: i64, m: i64, calls: i64, high: i64, seed: mut ref i64) -> (i64, i64) {
+    let mut show = Show.new(n, m);
+    let mut check = 0;
+    let mut booked = 0;
+    for _ in 0..calls {
+        let k = wide_random(mut seed) % high + 1;
+        let max_row = next_random(mut seed) % n;
+        let mark = if next_random(mut seed) % 2 == 0 {
+            let got = show.gather(k, max_row);
+            if got.len() == 2 {
+                booked += k;
+                (got[0] * 1000003 + got[1]) % 1000000007 + 3
+            } else {
+                0
+            }
+        } else if show.scatter(k, max_row) {
+            booked += k;
+            1
+        } else {
+            2
+        };
+        check = (check * 31 + mark) % 1000000007;
+    }
+    (check, booked)
+}
+
+fn main() {
+    // LeetCode's example
+    let mut show = Show.new(2, 5);
+    println(f"{show.gather(4, 0)} {show.gather(2, 0)} {show.scatter(5, 1)} {show.scatter(5, 1)}");
+    // a row filled exactly, then a gather past `max_row`, then a scatter
+    // that takes every seat left
+    let mut show = Show.new(3, 4);
+    println(f"{show.gather(4, 0)} {show.gather(1, 0)} {show.gather(3, 2)} {show.scatter(5, 2)} {show.scatter(1, 2)}");
+    // 400 small shows of 1 to 20 rows of 1 to 20 seats, 1 to 60 calls
+    // asking for up to twice a row
+    let mut seed = 2286;
+    let mut check = 0;
+    let mut booked = 0;
+    for _ in 0..400 {
+        let n = next_random(mut seed) % 20 + 1;
+        let m = next_random(mut seed) % 20 + 1;
+        let calls = next_random(mut seed) % 60 + 1;
+        let (c, b) = run(n, m, calls, 2 * m, mut seed);
+        check = (check * 31 + c) % 1000000007;
+        booked += b;
+    }
+    println(f"400 shows: checksum {check}, {booked} seats booked");
+    // one show of 2000 rows of 10^9 seats and 5000 calls of up to 2 * 10^9
+    let (c, b) = run(2000, 1000000000, 5000, 2000000000, mut seed);
+    println(f"2000 rows of 10^9: checksum {c}, {b} seats booked");
+}

@@ -1,0 +1,293 @@
+// LeetCode #2285: Maximum Total Importance of Roads -- the differential.
+// The six arms, against the statement read literally: every assignment
+// of the values 1 to n to the cities tried, and the largest total of
+// its roads kept. No degrees. 300 random graphs of 2 to 7 cities and 1
+// to all the roads; then 30 of 2 to 7 cities where every city has the
+// same number of roads or one city has them all; then 30 of 20 to 60
+// cities, too many to try, judged by P2 to P6 only. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's (7 cities or fewer)
+// P2  m * (n + 1) <= answer <= m * (2n - 1) for m roads
+// P3  the roads in reverse order, each turned round: the same answer
+// P4  the cities renamed, c to (c + 1) % n: the same answer
+// P5  a new road between two cities not yet joined: the answer grows by
+//     3 to 2n - 1
+// P6  each arm agrees with at least three of the other five
+
+// ---- importance.kara: the ★ arm, the degrees sorted
+fn star_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut degree = Vec.filled(n, 0);
+    for (a, b) in roads.iter() {
+        degree[a] += 1;
+        degree[b] += 1;
+    }
+    degree.sort();
+    let mut total = 0;
+    for (i, d) in degree.iter().enumerate() {
+        total += d * (i + 1);
+    }
+    total
+}
+
+// ---- importance_naive.kara: the most-roads city picked for each value
+fn naive_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut degree: Vec[i64] = Vec.new();
+    for city in 0..n {
+        let mut d = 0;
+        for (a, b) in roads.iter() {
+            if a == city or b == city {
+                d += 1;
+            }
+        }
+        degree.push(d);
+    }
+    let mut value = Vec.filled(n, 0);
+    for v in (1..n + 1).rev() {
+        let mut pick = -1;
+        for city in 0..n {
+            if value[city] == 0 and (pick < 0 or degree[city] > degree[pick]) {
+                pick = city;
+            }
+        }
+        value[pick] = v;
+    }
+    let mut total = 0;
+    for (a, b) in roads.iter() {
+        total += value[a] + value[b];
+    }
+    total
+}
+
+// ---- importance_heap.kara: a largest-first `PriorityQueue` of degrees
+fn heap_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut degree = Vec.filled(n, 0);
+    for (a, b) in roads.iter() {
+        degree[a] += 1;
+        degree[b] += 1;
+    }
+    let mut heap: PriorityQueue[i64] = PriorityQueue.max_first();
+    for d in degree.iter() {
+        heap.push(d);
+    }
+    let mut total = 0;
+    let mut value = n;
+    while let Some(d) = heap.pop() {
+        total += d * value;
+        value -= 1;
+    }
+    total
+}
+
+// ---- importance_struct.kara: `struct City` sorted by roads
+struct StructCity {
+    id: i64,
+    roads: i64,
+}
+
+fn struct_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut cities: Vec[StructCity] = Vec.new();
+    for id in 0..n {
+        cities.push(StructCity { id: id, roads: 0 });
+    }
+    for (a, b) in roads.iter() {
+        cities[a].roads += 1;
+        cities[b].roads += 1;
+    }
+    cities.sort_by_key(|c| c.roads);
+    let mut value = Vec.filled(n, 0);
+    for (i, c) in cities.iter().enumerate() {
+        value[c.id] = i + 1;
+    }
+    let mut total = 0;
+    for (a, b) in roads.iter() {
+        total += value[a] + value[b];
+    }
+    total
+}
+
+// ---- importance_iter.kara: `fold`, `sort`, `zip`, `map` and `sum`
+fn iter_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut degree = roads.iter().fold(Vec.filled(n, 0), |acc, (a, b)| {
+        let mut acc = acc;
+        acc[a] += 1;
+        acc[b] += 1;
+        acc
+    });
+    degree.sort();
+    degree.iter().zip(1..).map(|(d, v)| d * v).sum()
+}
+
+// ---- importance_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn maximum_importance(n: i32, roads: Vec[Vec[i32]]) -> i64 {
+        let mut deg = Vec.filled(n, 0);
+        for r in roads.iter() {
+            deg[r[0] as usize] += 1;
+            deg[r[1] as usize] += 1;
+        }
+        deg.sort();
+        deg.iter().enumerate().map(|(i, d)| d * (i + 1)).sum()
+    }
+}
+
+struct Solution {}
+
+fn solution_maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let rows: Vec[Vec[i32]] = roads.iter().map(|(a, b)| [a as i32, b as i32]).collect();
+    Solution.maximum_importance(n as i32, rows)
+}
+
+
+// ---- the statement read literally
+
+fn try_all(values: mut ref Vec[i64], k: i64, roads: Vec[(i64, i64)]) -> i64 {
+    if k == values.len() {
+        let mut total = 0;
+        for (a, b) in roads.iter() {
+            total += values[a] + values[b];
+        }
+        return total;
+    }
+    let mut best = 0;
+    for i in k..values.len() {
+        values.swap(k, i);
+        best = best.max(try_all(mut values, k + 1, roads));
+        values.swap(k, i);
+    }
+    best
+}
+
+fn literal(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut values: Vec[i64] = (1..n + 1).collect();
+    try_all(mut values, 0, roads)
+}
+
+fn answer(arm: i64, n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let r = roads.clone();
+    match arm {
+        0 => star_maximum_importance(n, r),
+        1 => naive_maximum_importance(n, r),
+        2 => heap_maximum_importance(n, r),
+        3 => struct_maximum_importance(n, r),
+        4 => iter_maximum_importance(n, r),
+        _ => solution_maximum_importance(n, r),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "heap", "struct", "iter", "solution"];
+    let mut seed = 2285;
+    let mut cases: Vec[(i64, Vec[(i64, i64)])] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 330 { next_random(mut seed) % 6 + 2 } else { next_random(mut seed) % 41 + 20 };
+        let mut roads: Vec[(i64, i64)] = Vec.new();
+        if c >= 300 and c < 330 {
+            if c % 2 == 0 {
+                // a ring, every city two roads (one road for two cities)
+                for a in 0..n {
+                    let b = (a + 1) % n;
+                    if n > 2 or a == 0 {
+                        roads.push((a, b));
+                    }
+                }
+            } else {
+                // a star: one city joined to every other
+                let hub = next_random(mut seed) % n;
+                for a in 0..n {
+                    if a != hub {
+                        roads.push((hub, a));
+                    }
+                }
+            }
+        } else {
+            let all = n * (n - 1) / 2;
+            let m = next_random(mut seed) % all.min(80) + 1;
+            let mut taken = Vec.filled(n * n, false);
+            while roads.len() < m {
+                let a = next_random(mut seed) % n;
+                let b = next_random(mut seed) % n;
+                if a != b and not taken[a * n + b] {
+                    taken[a * n + b] = true;
+                    taken[b * n + a] = true;
+                    roads.push((a, b));
+                }
+            }
+        }
+        cases.push((n, roads));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (n, roads) in cases.iter() {
+        let m = roads.len();
+        let truth = if n <= 7 { literal(n, roads) } else { -1 };
+        check = (check * 31 + truth + 1) % 1000000007;
+        let mut turned: Vec[(i64, i64)] = Vec.new();
+        for (a, b) in roads.iter().rev() {
+            turned.push((b, a));
+        }
+        let renamed: Vec[(i64, i64)] = roads.iter().map(|(a, b)| ((a + 1) % n, (b + 1) % n)).collect();
+        let mut joined = Vec.filled(n * n, false);
+        for (a, b) in roads.iter() {
+            joined[a * n + b] = true;
+            joined[b * n + a] = true;
+        }
+        let mut more = roads.clone();
+        let mut found = false;
+        for a in 0..n {
+            for b in a + 1..n {
+                if not found and not joined[a * n + b] {
+                    more.push((a, b));
+                    found = true;
+                }
+            }
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, n, roads)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let grown = if found { answer(arm, n, more) - value } else { 3 };
+            let verdicts = [
+                truth < 0 or value == truth,
+                m * (n + 1) <= value and value <= m * (2 * n - 1),
+                answer(arm, n, turned) == value,
+                answer(arm, n, renamed) == value,
+                3 <= grown and grown <= 2 * n - 1,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"n {n} {roads} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

@@ -1,0 +1,140 @@
+// LeetCode #2286: Booking Concert Tickets in Groups -- the bench, the ★
+// arm's Rust twin. A segment tree of each range's largest free run and
+// free total.
+
+struct BookMyShow {
+    seats: i64,
+    size: usize,
+    most: Vec<i64>,
+    free: Vec<i64>,
+}
+
+impl BookMyShow {
+    fn new(n: usize, m: i64) -> BookMyShow {
+        let mut size = 1;
+        while size < n {
+            size *= 2;
+        }
+        let mut most = vec![0i64; 2 * size];
+        let mut free = vec![0i64; 2 * size];
+        for r in 0..n {
+            most[size + r] = m;
+            free[size + r] = m;
+        }
+        for p in (1..size).rev() {
+            most[p] = most[2 * p].max(most[2 * p + 1]);
+            free[p] = free[2 * p] + free[2 * p + 1];
+        }
+        BookMyShow { seats: m, size, most, free }
+    }
+
+    fn set(&mut self, row: usize, left: i64) {
+        let mut p = self.size + row;
+        self.most[p] = left;
+        self.free[p] = left;
+        p /= 2;
+        while p >= 1 {
+            self.most[p] = self.most[2 * p].max(self.most[2 * p + 1]);
+            self.free[p] = self.free[2 * p] + self.free[2 * p + 1];
+            p /= 2;
+        }
+    }
+
+    fn leftmost(&self, k: i64) -> Option<usize> {
+        if self.most[1] < k {
+            return None;
+        }
+        let mut p = 1;
+        while p < self.size {
+            p = if self.most[2 * p] >= k { 2 * p } else { 2 * p + 1 };
+        }
+        Some(p - self.size)
+    }
+
+    fn free_through(&self, row: usize) -> i64 {
+        let mut total = 0;
+        let mut lo = self.size;
+        let mut hi = self.size + row + 1;
+        while lo < hi {
+            if lo % 2 == 1 {
+                total += self.free[lo];
+                lo += 1;
+            }
+            if hi % 2 == 1 {
+                hi -= 1;
+                total += self.free[hi];
+            }
+            lo /= 2;
+            hi /= 2;
+        }
+        total
+    }
+
+    fn gather(&mut self, k: i64, max_row: usize) -> Vec<i64> {
+        match self.leftmost(k) {
+            Some(row) if row <= max_row => {
+                let left = self.free[self.size + row];
+                self.set(row, left - k);
+                vec![row as i64, self.seats - left]
+            }
+            _ => vec![],
+        }
+    }
+
+    fn scatter(&mut self, k: i64, max_row: usize) -> bool {
+        if self.free_through(max_row) < k {
+            return false;
+        }
+        let mut need = k;
+        while need > 0 {
+            let row = self.leftmost(1).unwrap();
+            let left = self.free[self.size + row];
+            let take = left.min(need);
+            self.set(row, left - take);
+            need -= take;
+        }
+        true
+    }
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: &mut i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn wide_random(seed: &mut i64) -> i64 {
+    let a = next_random(seed);
+    a * 32768 + next_random(seed)
+}
+
+fn main() {
+    let mut seed: i64 = 2286;
+    let mut calls: Vec<(bool, i64, usize)> = Vec::new();
+    for _ in 0..50000 {
+        let k = wide_random(&mut seed) % 1000000000 + 1;
+        let max_row = (wide_random(&mut seed) % 50000) as usize;
+        calls.push((next_random(&mut seed) % 2 == 0, k, max_row));
+    }
+    let mut check: i64 = 0;
+    for _ in 0..40 {
+        let mut show = BookMyShow::new(50000, 1000000000);
+        for &(gather, k, max_row) in calls.iter() {
+            let mark = if gather {
+                let got = show.gather(k, max_row);
+                if got.len() == 2 {
+                    (got[0] * 1000003 + got[1]) % 1000000007 + 3
+                } else {
+                    0
+                }
+            } else if show.scatter(k, max_row) {
+                1
+            } else {
+                2
+            };
+            check = (check * 31 + mark) % 1000000007;
+        }
+    }
+    println!("40 shows of 50000 calls: checksum {}", check);
+}

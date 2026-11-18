@@ -1,0 +1,64 @@
+// LeetCode #2285: Maximum Total Importance of Roads -- the iterator arm.
+// The degrees by `fold` over the roads, sorted, then `zip` with the
+// values from 1 and `map` and `sum`. O(n log n + m).
+
+fn maximum_importance(n: i64, roads: Vec[(i64, i64)]) -> i64 {
+    let mut degree = roads.iter().fold(Vec.filled(n, 0), |acc, (a, b)| {
+        let mut acc = acc;
+        acc[a] += 1;
+        acc[b] += 1;
+        acc
+    });
+    degree.sort();
+    degree.iter().zip(1..).map(|(d, v)| d * v).sum()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // LeetCode's two examples, then one road, a complete graph on 50
+    // cities, and a path through 5000 cities
+    println(maximum_importance(5, [(0, 1), (1, 2), (2, 3), (0, 2), (1, 3), (2, 4)]));
+    println(maximum_importance(5, [(0, 3), (2, 4), (1, 3)]));
+    println(maximum_importance(2, [(0, 1)]));
+    let mut complete: Vec[(i64, i64)] = Vec.new();
+    for a in 0..50 {
+        for b in a + 1..50 {
+            complete.push((a, b));
+        }
+    }
+    println(maximum_importance(50, complete));
+    let mut path: Vec[(i64, i64)] = Vec.new();
+    for a in 0..4999 {
+        path.push((a, a + 1));
+    }
+    println(maximum_importance(5000, path));
+    // 2000 graphs of 2 to 30 cities and 1 to 60 distinct roads
+    let mut seed = 2285;
+    let mut check = 0;
+    let mut largest = 0;
+    for _ in 0..2000 {
+        let n = next_random(mut seed) % 29 + 2;
+        let m = (next_random(mut seed) % 60 + 1).min(n * (n - 1) / 2);
+        let mut taken = Vec.filled(n * n, false);
+        let mut roads: Vec[(i64, i64)] = Vec.new();
+        while roads.len() < m {
+            let a = next_random(mut seed) % n;
+            let b = next_random(mut seed) % n;
+            if a != b and not taken[a * n + b] {
+                taken[a * n + b] = true;
+                taken[b * n + a] = true;
+                roads.push((a, b));
+            }
+        }
+        let answer = maximum_importance(n, roads);
+        check = (check * 31 + answer) % 1000000007;
+        largest = largest.max(answer);
+    }
+    println(f"2000 graphs: checksum {check}, largest {largest}");
+}
