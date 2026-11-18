@@ -1,0 +1,73 @@
+// LeetCode #2266: Count Number of Texts -- LeetCode's Rust template:
+// `String` in, `i32` out. A `const MOD` inside the method, the bytes by
+// `as_bytes`, a `vec![0i64; n + 1]` table, and for each press an inner
+// `for k in 1..=max` that breaks at the first different key. Carried by
+// `karac fix`. The adapter below hands the harness's values to it.
+
+impl Solution {
+    pub fn count_texts(pressed_keys: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let s = pressed_keys.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[0] = 1;
+        for i in 1..=n {
+            let max = if s[i - 1] == b'7' or s[i - 1] == b'9' { 4 } else { 3 };
+            for k in 1..=max {
+                if k > i or s[i - k] != s[i - 1] {
+                    break;
+                }
+                dp[i] = (dp[i] + dp[i - k]) % MOD;
+            }
+        }
+        dp[n] as i32
+    }
+}
+
+struct Solution {}
+
+fn count_texts(pressed_keys: String) -> i64 {
+    Solution.count_texts(pressed_keys)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` presses from the keys in `keys`
+fn presses(seed: mut ref i64, len: i64, keys: Str) -> String {
+    let k = keys.bytes();
+    let mut s = String.new();
+    for _ in 0..len {
+        s.push(k[next_random(mut seed) % k.len()] as char);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: one press, a run of four on
+    // a three-letter key and on a four-letter key, two keys alternating,
+    // and a run of five sevens
+    for keys in ["22233", "222222222222222222222222222222222222", "8", "2222", "7777", "232323", "77777"] {
+        println(f"{keys} -> {count_texts(keys.to_string())}");
+    }
+    // 2000 presses of 1 to 40 keys from "2", "79", "27", "234" or all eight
+    let mut seed = 2266;
+    let mut check = 0;
+    for t in 0..2000 {
+        let len = next_random(mut seed) % 40 + 1;
+        let pressed = presses(mut seed, len, ["2", "79", "27", "234", "23456789"][t % 5]);
+        check = (check * 31 + count_texts(pressed)) % 1000000007;
+    }
+    println(f"2000 presses: checksum {check}");
+    // the constraints' longest, 10^5 presses: all `7`, all `2`, and random
+    // from `7` and `9`
+    let sevens = "7".repeat(100000);
+    let twos = "2".repeat(100000);
+    let mixed = presses(mut seed, 100000, "79");
+    let answers = [count_texts(sevens), count_texts(twos), count_texts(mixed)];
+    println(f"10^5 presses: {answers}");
+}

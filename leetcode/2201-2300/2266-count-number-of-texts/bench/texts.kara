@@ -1,0 +1,48 @@
+// LeetCode #2266: Count Number of Texts -- the ★ arm. `ways[i]` counts
+// the messages the first `i` presses can mean: the last letter took the
+// last 1, 2 or 3 presses of one key, or 4 on `7` and `9`, so `ways[i]`
+// adds `ways[i - j]` for each run of `j` equal presses ending at `i`.
+// Modulo 10^9 + 7. O(n).
+
+const MOD: i64 = 1000000007;
+
+fn count_texts(pressed_keys: String) -> i64 {
+    let keys = pressed_keys.bytes();
+    let n = keys.len();
+    let mut ways = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    for i in 1..n + 1 {
+        let key = keys[i - 1];
+        let most = if key == b'7' or key == b'9' { 4 } else { 3 };
+        let mut j = 1;
+        while j <= most and j <= i and keys[i - j] == key {
+            ways[i] = (ways[i] + ways[i - j]) % MOD;
+            j += 1;
+        }
+    }
+    ways[n]
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 40 strings of the constraints' longest, 10^5 presses, from "2",
+    // "79", "234" and all eight keys in turn
+    let sets = ["2", "79", "234", "23456789"];
+    let mut seed = 2266;
+    let mut check = 0;
+    for t in 0..40 {
+        let keys = sets[t % 4].bytes();
+        let mut pressed = String.new();
+        for _ in 0..100000 {
+            pressed.push(keys[next_random(mut seed) % keys.len()] as char);
+        }
+        check = (check * 31 + count_texts(pressed)) % 1000000007;
+    }
+    println(f"40 strings of 10^5: checksum {check}");
+}

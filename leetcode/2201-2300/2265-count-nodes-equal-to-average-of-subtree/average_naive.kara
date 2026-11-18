@@ -1,0 +1,143 @@
+// LeetCode #2265: Count Nodes Equal to Average of Subtree -- node by node.
+// Every node is visited by a walk of the tree, and for each one its own
+// subtree is walked again for the sum and the size. O(n^2) at worst, a
+// chain; n <= 1000.
+
+fn total(node: Option[TreeNode]) -> (i64, i64) {
+    match node {
+        None => (0, 0),
+        Some(n) => {
+            let (ls, lc) = total(n.left);
+            let (rs, rc) = total(n.right);
+            (ls + rs + n.val, lc + rc + 1)
+        }
+    }
+}
+
+fn count_matching(node: Option[TreeNode]) -> i64 {
+    match node {
+        None => 0,
+        Some(n) => {
+            let (sum, size) = total(Some(n));
+            let here = if sum / size == n.val { 1 } else { 0 };
+            here + count_matching(n.left) + count_matching(n.right)
+        }
+    }
+}
+
+fn average_of_subtree(root: Option[TreeNode]) -> i64 {
+    count_matching(root)
+}
+
+// ---- test harness ---------------------------------------------------------
+
+// LeetCode's own node: an `i32` value
+shared struct TreeNode {
+    val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i64) -> TreeNode {
+    TreeNode { val: v as i32, left: None, right: None }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// LeetCode's level-order form, "[1,2,null,3]": each node's two children
+// come next, in the order the nodes were met, "null" for none.
+fn parse(text: Str) -> Option[TreeNode] {
+    let inner = text.strip_prefix("[").unwrap().strip_suffix("]").unwrap();
+    let items: Vec[Option[i64]] = inner.split(",").map(|s| if s == "null" { None } else { Some(i64.parse(s).unwrap()) }).collect();
+    let root = leaf(items[0].unwrap());
+    let mut queue: Vec[TreeNode] = [root].to_vec();
+    let mut head = 0;
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue[head];
+        head += 1;
+        if let Some(v) = items[i] {
+            let child = leaf(v);
+            node.left = Some(child);
+            queue.push(child);
+        }
+        i += 1;
+        if i < items.len() {
+            if let Some(v) = items[i] {
+                let child = leaf(v);
+                node.right = Some(child);
+                queue.push(child);
+            }
+            i += 1;
+        }
+    }
+    Some(root)
+}
+
+// `n` nodes of values from 0 to `top`, each after the first hung below a
+// random earlier one: from it, a random side is taken down until a free
+// one is found
+fn random_tree(n: i64, top: i64, seed: mut ref i64) -> Option[TreeNode] {
+    let nodes: Vec[TreeNode] = (0..n).map(|_| leaf(next_random(mut seed) % (top + 1))).collect();
+    for k in 1..n {
+        let mut at = nodes[next_random(mut seed) % k];
+        loop {
+            if next_random(mut seed) % 2 == 0 {
+                match at.left {
+                    Some(c) => at = c,
+                    None => {
+                        at.left = Some(nodes[k]);
+                        break;
+                    }
+                }
+            } else {
+                match at.right {
+                    Some(c) => at = c,
+                    None => {
+                        at.right = Some(nodes[k]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    Some(nodes[0])
+}
+
+fn main() {
+    // LeetCode's two examples, then five more: a leaf under a smaller
+    // root, all equal, a floor that rounds down to the root, a chain, and
+    // zeros
+    for text in ["[4,8,5,0,1,null,6]", "[1]", "[1,2]", "[3,3,3,3,3]", "[2,1,4]", "[5,null,4,null,3,null,2]", "[0,0,null,0]"] {
+        println(f"{text} -> {average_of_subtree(parse(text))}");
+    }
+    // 2000 random trees of 1 to 60 nodes of values from 0 to 1, 3, 10 or
+    // 1000
+    let mut seed = 2265;
+    let mut total = 0;
+    let mut check = 0;
+    for t in 0..2000 {
+        let n = next_random(mut seed) % 60 + 1;
+        let count = average_of_subtree(random_tree(n, [1, 3, 10, 1000][t % 4], mut seed));
+        total += count;
+        check = (check * 31 + count) % 1000000007;
+    }
+    println(f"2000 trees: {total} nodes, checksum {check}");
+    // the constraints' largest, 1000 nodes: a random tree of values to
+    // 1000, a chain of left children all 7, and a chain counting down
+    // from 999 to 0 by right children
+    let random = average_of_subtree(random_tree(1000, 1000, mut seed));
+    let sevens: Vec[TreeNode] = (0..1000).map(|_| leaf(7)).collect();
+    for i in 1..1000 {
+        sevens[i - 1].left = Some(sevens[i]);
+    }
+    let down: Vec[TreeNode] = (0..1000).map(|i| leaf(999 - i)).collect();
+    for i in 1..1000 {
+        down[i - 1].right = Some(down[i]);
+    }
+    let answers = [random, average_of_subtree(Some(sevens[0])), average_of_subtree(Some(down[0]))];
+    println(f"1000 nodes: {answers}");
+}

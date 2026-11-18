@@ -1,0 +1,353 @@
+// LeetCode #2266: Count Number of Texts -- the differential. The six
+// arms, against the statement read literally: every way to cut the
+// presses into letters, each letter one to three presses of one key, or
+// four on `7` and `9`, counted one by one by recursion; no table, no
+// runs. 300 random presses of 1 to 12 keys from "2", "7", "79", "27",
+// "234" or all eight; then 30 runs of one key; then 30 that alternate
+// two keys. Every case is drawn before any arm answers.
+//
+// P1  the count is the literal reading's
+// P2  the presses reversed: the same count
+// P3  the keys relabelled, 2 3 4 5 6 8 in a ring and 7 with 9: the same
+//     count
+// P4  one more press of a key unlike the last: the same count
+// P5  the presses twice over with a key unlike both ends between: the
+//     count squared, modulo 10^9 + 7
+// P6  each arm agrees with at least three of the other five
+
+// ---- texts.kara: the ★ arm, a table over the prefixes
+const STAR_MOD: i64 = 1000000007;
+
+fn star_count_texts(pressed_keys: String) -> i64 {
+    let keys = pressed_keys.bytes();
+    let n = keys.len();
+    let mut ways = Vec.filled(n + 1, 0);
+    ways[0] = 1;
+    for i in 1..n + 1 {
+        let key = keys[i - 1];
+        let most = if key == b'7' or key == b'9' { 4 } else { 3 };
+        let mut j = 1;
+        while j <= most and j <= i and keys[i - j] == key {
+            ways[i] = (ways[i] + ways[i - j]) % STAR_MOD;
+            j += 1;
+        }
+    }
+    ways[n]
+}
+
+// ---- texts_runs.kara: the product over runs of one key
+const RUNS_MOD: i64 = 1000000007;
+
+fn runs_table(parts: i64, upto: i64) -> Vec[i64] {
+    let mut t = Vec.filled(upto + 1, 0);
+    t[0] = 1;
+    for n in 1..upto + 1 {
+        for p in 1..parts + 1 {
+            if p <= n {
+                t[n] = (t[n] + t[n - p]) % RUNS_MOD;
+            }
+        }
+    }
+    t
+}
+
+fn runs_count_texts(pressed_keys: String) -> i64 {
+    let keys: Vec[char] = pressed_keys.chars().collect();
+    let three = runs_table(3, keys.len());
+    let four = runs_table(4, keys.len());
+    let mut total = 1;
+    let mut start = 0;
+    while start < keys.len() {
+        let mut end = start;
+        while end < keys.len() and keys[end] == keys[start] {
+            end += 1;
+        }
+        let run = end - start;
+        let ways = if keys[start] == '7' or keys[start] == '9' { four[run] } else { three[run] };
+        total = total * ways % RUNS_MOD;
+        start = end;
+    }
+    total
+}
+
+// ---- texts_rolling.kara: the last four counts in four bindings
+const ROLLING_MOD: i64 = 1000000007;
+
+fn rolling_count_texts(pressed_keys: String) -> i64 {
+    let mut (a, b, c, d) = (1, 0, 0, 0);
+    let mut run = 0;
+    let mut last = 0u8;
+    for key in pressed_keys.bytes() {
+        run = if key == last { run + 1 } else { 1 };
+        last = key;
+        let most = if key == b'7' or key == b'9' { 4 } else { 3 };
+        let reach = run.min(most);
+        let mut now = a;
+        if reach >= 2 {
+            now += b;
+        }
+        if reach >= 3 {
+            now += c;
+        }
+        if reach >= 4 {
+            now += d;
+        }
+        d = c;
+        c = b;
+        b = a;
+        a = now % ROLLING_MOD;
+    }
+    a
+}
+
+// ---- texts_struct.kara: `struct Keypad` pressed one key at a time
+const STRUCT_MOD: i64 = 1000000007;
+
+struct StructKeypad {
+    recent: Array[i64, 4],
+    key: u8,
+    run: i64,
+}
+
+impl StructKeypad {
+    fn new() -> StructKeypad {
+        StructKeypad { recent: [1, 0, 0, 0], key: 0, run: 0 }
+    }
+
+    fn letters(key: u8) -> i64 {
+        match key {
+            b'7' | b'9' => 4,
+            _ => 3,
+        }
+    }
+
+    fn press(mut ref self, key: u8) {
+        if key == self.key {
+            self.run += 1;
+        } else {
+            self.key = key;
+            self.run = 1;
+        }
+        let reach = self.run.min(StructKeypad.letters(key));
+        let mut now = 0;
+        for back in 0..reach {
+            now = (now + self.recent[back]) % STRUCT_MOD;
+        }
+        for i in (1..4).rev() {
+            self.recent[i] = self.recent[i - 1];
+        }
+        self.recent[0] = now;
+    }
+}
+
+fn struct_count_texts(pressed_keys: String) -> i64 {
+    let mut pad = StructKeypad.new();
+    for key in pressed_keys.bytes() {
+        pad.press(key);
+    }
+    pad.recent[0]
+}
+
+// ---- texts_iter.kara: runs by `fold`, each counted by `fold`
+const ITER_MOD: i64 = 1000000007;
+
+fn iter_run_ways(length: i64, parts: i64) -> i64 {
+    let (now, _, _, _) = (0..length).fold((1, 0, 0, 0), |(a, b, c, d), _| {
+        let next = [a, b, c, d].iter().take(parts).sum() % ITER_MOD;
+        (next, a, b, c)
+    });
+    now
+}
+
+fn iter_count_texts(pressed_keys: String) -> i64 {
+    let runs: Vec[(char, i64)] = pressed_keys.chars().fold(Vec.new(), |runs, c| {
+        let mut runs = runs;
+        match runs.last() {
+            Some((k, n)) if k == c => {
+                let at = runs.len() - 1;
+                runs[at] = (k, n + 1);
+            }
+            _ => runs.push((c, 1)),
+        }
+        runs
+    });
+    runs.iter()
+        .map(|(k, n)| iter_run_ways(n, if k == '7' or k == '9' { 4 } else { 3 }))
+        .fold(1, |total, ways| total * ways % ITER_MOD)
+}
+
+// ---- texts_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn count_texts(pressed_keys: String) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let s = pressed_keys.bytes();
+        let n = s.len();
+        let mut dp = Vec.filled(n + 1, 0);
+        dp[0] = 1;
+        for i in 1..=n {
+            let max = if s[i - 1] == b'7' or s[i - 1] == b'9' { 4 } else { 3 };
+            for k in 1..=max {
+                if k > i or s[i - k] != s[i - 1] {
+                    break;
+                }
+                dp[i] = (dp[i] + dp[i - k]) % MOD;
+            }
+        }
+        dp[n] as i32
+    }
+}
+
+struct Solution {}
+
+fn solution_count_texts(pressed_keys: String) -> i64 {
+    Solution.count_texts(pressed_keys)
+}
+
+
+// ---- the statement read literally
+
+// the messages the presses from `at` on can mean, one by one
+fn cuts(keys: Slice[u8], at: i64) -> i64 {
+    if at == keys.len() {
+        return 1;
+    }
+    let most = if keys[at] == b'7' or keys[at] == b'9' { 4 } else { 3 };
+    let mut total = 0;
+    let mut length = 1;
+    while length <= most and at + length <= keys.len() {
+        let mut one_key = true;
+        for i in at..at + length {
+            if keys[i] != keys[at] {
+                one_key = false;
+            }
+        }
+        if one_key {
+            total += cuts(keys, at + length);
+        }
+        length += 1;
+    }
+    total
+}
+
+fn literal(pressed: String) -> i64 {
+    cuts(pressed.bytes(), 0) % 1000000007
+}
+
+fn relabel(pressed: String) -> String {
+    pressed.chars().map(|c| match c {
+        '2' => '3',
+        '3' => '4',
+        '4' => '5',
+        '5' => '6',
+        '6' => '8',
+        '8' => '2',
+        '7' => '9',
+        _ => '7',
+    }).collect()
+}
+
+// a key unlike both `a` and `b`
+fn unlike(a: char, b: char) -> char {
+    for k in "23456789".chars() {
+        if k != a and k != b {
+            return k;
+        }
+    }
+    '2'
+}
+
+fn answer(arm: i64, pressed: String) -> i64 {
+    match arm {
+        0 => star_count_texts(pressed),
+        1 => runs_count_texts(pressed),
+        2 => rolling_count_texts(pressed),
+        3 => struct_count_texts(pressed),
+        4 => iter_count_texts(pressed),
+        _ => solution_count_texts(pressed),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "runs", "rolling", "struct", "iter", "solution"];
+    let mut seed = 2266;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let len = next_random(mut seed) % 12 + 1;
+        let mut pressed = String.new();
+        if c < 300 {
+            let keys: Vec[char] = ["2", "7", "79", "27", "234", "23456789"][c % 6].chars().collect();
+            for _ in 0..len {
+                pressed.push(keys[next_random(mut seed) % keys.len()]);
+            }
+        } else if c < 330 {
+            let key = ['2', '7', '9', '5'][c % 4];
+            for _ in 0..len {
+                pressed.push(key);
+            }
+        } else {
+            let a = "23456789".chars().nth(next_random(mut seed) % 8).unwrap();
+            let b = unlike(a, a);
+            for k in 0..len {
+                pressed.push(if k % 2 == 0 { a } else { b });
+            }
+        }
+        cases.push(pressed);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for pressed in cases.iter() {
+        let truth = literal(pressed);
+        check = (check * 31 + truth) % 1000000007;
+        let first = pressed.chars().next().unwrap();
+        let last = pressed.chars().last().unwrap();
+        let reversed: String = pressed.chars().rev().collect();
+        let one_more = f"{pressed}{unlike(last, last)}";
+        let twice = f"{pressed}{unlike(first, last)}{pressed}";
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, pressed)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, relabel(pressed)) == value,
+                answer(arm, one_more) == value,
+                answer(arm, twice) == value * value % 1000000007,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{pressed} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
