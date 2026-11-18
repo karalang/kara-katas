@@ -1,0 +1,227 @@
+// LeetCode #1621: Number of Sets of K Non-Overlapping Line Segments --
+// the differential.
+//
+// Four arms against the statement read literally, on 300 random pairs:
+// every other one of 2 to 9 points, small enough to count literally, the
+// rest of 2 to 60, with six properties. Every random choice is drawn
+// before any arm answers.
+//
+// P1  the answer is the statement read literally (up to 9 points)
+// P2  n - 1 segments on n points can be placed one way
+// P3  one segment on n points can be placed n (n - 1) / 2 ways
+// P4  one more than the sum over every k is the Fibonacci number
+//     F(2n - 1), mod 10^9 + 7
+// P5  f(n, k) - 2 f(n - 1, k) + f(n - 2, k) = f(n - 1, k - 1), mod
+//     10^9 + 7, with f(m, 0) = 1 and f(m, k) = 0 for m <= k
+// P6  each arm agrees with at least two of the other three
+
+// ---- segments.kara: the ★ arm: C(n + k - 1, 2k) by factorials
+
+const STAR_MOD: i64 = 1000000007;
+
+fn star_power(base: i64, exp: i64) -> i64 {
+    let mut (result, b, e) = (1, base % STAR_MOD, exp);
+    while e > 0 {
+        if e & 1 == 1 {
+            result = result * b % STAR_MOD;
+        }
+        b = b * b % STAR_MOD;
+        e >>= 1;
+    }
+    result
+}
+
+fn star_arm(n: i32, k: i32) -> i32 {
+    let top = (n + k - 1) as i64;
+    let pick = 2 * k as i64;
+    let mut fact = Vec.filled(top + 1, 1);
+    for i in 1..=top {
+        fact[i] = fact[i - 1] * i % STAR_MOD;
+    }
+    let below = fact[pick] * fact[top - pick] % STAR_MOD;
+    (fact[top] * star_power(below, STAR_MOD - 2) % STAR_MOD) as i32
+}
+
+// ---- segments_prefix.kara: counting with prefix sums
+
+const PREFIX_MOD: i64 = 1000000007;
+
+fn prefix_arm(n: i32, k: i32) -> i32 {
+    let (n, k) = (n as i64, k as i64);
+    // the row for no segments: one way, whatever the points
+    let mut prev: Vec[i64] = Vec.filled(n, 1);
+    for _ in 1..=k {
+        let mut row: Vec[i64] = Vec.filled(n, 0);
+        let mut starts = 0;
+        for i in 1..n {
+            starts = (starts + prev[i - 1]) % PREFIX_MOD;
+            row[i] = (row[i - 1] + starts) % PREFIX_MOD;
+        }
+        prev = row;
+    }
+    prev[n - 1] as i32
+}
+
+// ---- segments_pascal.kara: Pascal's triangle
+
+fn pascal_arm(n: i32, k: i32) -> i32 {
+    let top = (n + k - 1) as i64;
+    let pick = 2 * k as i64;
+    let mut row: Vec[i64] = Vec.filled(pick + 1, 0);
+    row[0] = 1;
+    for r in 1..=top {
+        // right to left, so each entry still sees the row above
+        for c in (1..=min(r, pick)).rev() {
+            row[c] = (row[c] + row[c - 1]) % 1000000007;
+        }
+    }
+    row[pick] as i32
+}
+
+// ---- segments_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn number_of_sets(n: i32, k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let k = k as i64;
+        let mut dp = Vec.filled(n, Vec.filled(k + 1, [0; 2]));
+        dp[0][0][0] = 1;
+        for i in 1..n {
+            for j in 0..=k {
+                dp[i][j][0] = (dp[i - 1][j][0] + dp[i - 1][j][1]) % MOD;
+                dp[i][j][1] = dp[i - 1][j][1];
+                if j > 0 {
+                    dp[i][j][1] = (dp[i][j][1] + dp[i - 1][j - 1][0] + dp[i - 1][j - 1][1]) % MOD;
+                }
+            }
+        }
+        ((dp[n - 1][k][0] + dp[n - 1][k][1]) % MOD) as i32
+    }
+}
+
+fn solution_arm(n: i32, k: i32) -> i32 {
+    SolutionArm.number_of_sets(n, k)
+}
+
+// ---- the harness ----------------------------------------------------------
+
+const PRIME: i64 = 1000000007;
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, n: i32, k: i32) -> i64 {
+    let got = match a {
+        0 => star_arm(n, k),
+        1 => prefix_arm(n, k),
+        2 => pascal_arm(n, k),
+        _ => solution_arm(n, k),
+    };
+    got
+}
+
+fn arm_name(a: i64) -> String {
+    ["segments", "prefix", "pascal", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: k segments, each from one point to a
+// later one, in order along the line, each starting no earlier than the
+// one before it ends; every such choice counted once
+
+fn place(n: i64, k: i64, from: i64) -> i64 {
+    if k == 0 {
+        return 1;
+    }
+    let mut ways = 0;
+    for a in from..n {
+        for b in a + 1..n {
+            ways += place(n, k - 1, b);
+        }
+    }
+    ways
+}
+
+fn literal(n: i32, k: i32) -> i64 {
+    place(n, k, 0)
+}
+
+// The Fibonacci number F(m) mod 10^9 + 7, F(1) = F(2) = 1.
+fn fibonacci(m: i64) -> i64 {
+    let mut (a, b) = (0, 1);
+    for _ in 0..m {
+        let next = (a + b) % PRIME;
+        a = b;
+        b = next;
+    }
+    a
+}
+
+fn main() {
+    let mut seed = 1621;
+    let mut failures = 0;
+    let mut checks = 0;
+    let mut check = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    let problems = 300;
+    for p in 0..problems {
+        // every other case small enough to count literally
+        let n = if p % 2 == 0 {
+            next_random(mut seed) % 8 + 2
+        } else {
+            next_random(mut seed) % 59 + 2
+        } as i32;
+        let k = (next_random(mut seed) % (n as i64 - 1) + 1) as i32;
+        let mut answers: Vec[i64] = Vec.new();
+        for a in 0..4 {
+            let got = arm(a, n, k);
+            answers.push(got);
+            check = (check * 31 + got + 1) % PRIME;
+            let below = |m: i32, j: i32| if j == 0 { 1 } else if m <= j { 0 } else { arm(a, m, j) };
+            let all: i64 = (1..n).map(|j| arm(a, n, j)).sum();
+            let failed = [
+                n <= 9 and got != literal(n, k),
+                arm(a, n, n - 1) != 1,
+                arm(a, n, 1) != n * (n as i64 - 1) / 2 % PRIME,
+                (1 + all) % PRIME != fibonacci(2 * n as i64 - 1),
+                n >= 3 and (got - 2 * below(n - 1, k) + below(n - 2, k) - below(n - 1, k - 1)) % PRIME != 0,
+            ];
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p} (n {n}, k {k}), {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        // P6
+        for a in 0..4 {
+            checks += 1;
+            let agree = answers.iter().filter(|x| x == answers[a]).count() - 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over 4 arms: {failures} failures");
+}

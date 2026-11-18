@@ -1,0 +1,57 @@
+// LeetCode #1621: Number of Sets of K Non-Overlapping Line Segments -- the
+// bench, on the ★ arm: C(n + k - 1, 2k) by factorials and Fermat's
+// inverse, the factorials made afresh for every query as the arm does.
+//
+// Build once, then punch: 400000 random pairs of up to 1000 points, all
+// drawn first, then each one's count.
+
+const MOD: i64 = 1000000007;
+
+fn power(base: i64, exp: i64) -> i64 {
+    let mut (result, b, e) = (1, base % MOD, exp);
+    while e > 0 {
+        if e & 1 == 1 {
+            result = result * b % MOD;
+        }
+        b = b * b % MOD;
+        e >>= 1;
+    }
+    result
+}
+
+fn number_of_sets(n: i32, k: i32) -> i32 {
+    let top = (n + k - 1) as i64;
+    let pick = 2 * k as i64;
+    let mut fact = Vec.filled(top + 1, 1);
+    for i in 1..=top {
+        fact[i] = fact[i - 1] * i % MOD;
+    }
+    let below = fact[pick] * fact[top - pick] % MOD;
+    (fact[top] * power(below, MOD - 2) % MOD) as i32
+}
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    let mut seed = 1621;
+    let mut pairs: Vec[(i32, i32)] = Vec.new();
+    for _ in 0..400000 {
+        let n = (next_random(mut seed) % 999 + 2) as i32;
+        let k = (next_random(mut seed) % (n as i64 - 1) + 1) as i32;
+        pairs.push((n, k));
+    }
+    let mut check = 0;
+    let mut total = 0;
+    for (n, k) in pairs.iter() {
+        let ways = number_of_sets(n, k);
+        total = (total + ways) % MOD;
+        check = mix(check, ways);
+    }
+    println(f"400000 random pairs: counts sum to {total} mod 10^9 + 7, checksum {check}");
+}

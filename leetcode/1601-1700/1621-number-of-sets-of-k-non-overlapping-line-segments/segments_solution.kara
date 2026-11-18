@@ -1,0 +1,72 @@
+// LeetCode #1621: Number of Sets of K Non-Overlapping Line Segments --
+// LeetCode's Rust template, as written there, carried over by `karac fix`.
+//
+// `dp[i][j][0]`: j segments on points 0..=i with no segment still able to
+// grow past i; `dp[i][j][1]`: with one ending at i that may grow. O(n k).
+
+struct Solution {}
+
+impl Solution {
+    pub fn number_of_sets(n: i32, k: i32) -> i32 {
+        const MOD: i64 = 1_000_000_007;
+        let n = n as i64;
+        let k = k as i64;
+        let mut dp = Vec.filled(n, Vec.filled(k + 1, [0; 2]));
+        dp[0][0][0] = 1;
+        for i in 1..n {
+            for j in 0..=k {
+                dp[i][j][0] = (dp[i - 1][j][0] + dp[i - 1][j][1]) % MOD;
+                dp[i][j][1] = dp[i - 1][j][1];
+                if j > 0 {
+                    dp[i][j][1] = (dp[i][j][1] + dp[i - 1][j - 1][0] + dp[i - 1][j - 1][1]) % MOD;
+                }
+            }
+        }
+        ((dp[n - 1][k][0] + dp[n - 1][k][1]) % MOD) as i32
+    }
+}
+
+fn number_of_sets(n: i32, k: i32) -> i32 {
+    Solution.number_of_sets(n, k)
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+fn main() {
+    // LeetCode's three examples, then the smallest case and two at the
+    // ends of the range of k
+    println(number_of_sets(4, 2));
+    println(number_of_sets(3, 1));
+    println(number_of_sets(30, 7));
+    println(number_of_sets(2, 1));
+    println(number_of_sets(1000, 1));
+    println(number_of_sets(1000, 999));
+    // every pair up to 40 points
+    let mut check = 0;
+    let mut pairs = 0;
+    for n in 2..=40 {
+        for k in 1..n {
+            check = mix(check, number_of_sets(n, k));
+            pairs += 1;
+        }
+    }
+    println(f"all {pairs} pairs up to 40 points: checksum {check}");
+    // random pairs up to 1000 points
+    let mut seed = 1621;
+    let mut check = 0;
+    for _ in 0..30 {
+        let n = (next_random(mut seed) % 999 + 2) as i32;
+        let k = (next_random(mut seed) % (n as i64 - 1) + 1) as i32;
+        check = mix(check, number_of_sets(n, k));
+    }
+    println(f"30 random pairs up to 1000 points: checksum {check}");
+}
