@@ -1,0 +1,293 @@
+// LeetCode #2304: Minimum Path Cost in a Grid -- the differential. The
+// six arms, against the statement read literally: every path, one column
+// for each row, is walked from the first row to the last and its cost
+// taken as the values of its cells plus the cost of each move, and the
+// least is the answer. 300 random grids of 2 to 4 rows and columns; then
+// 30 whose move costs are all 1; then 30 of up to 6 rows and 5 columns.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least each row's least value plus 1 for each move,
+//     and at most the path straight down the first column
+// P3  the columns reversed, in the grid and in the move costs: the same
+//     answer
+// P4  every move cost 1 more: the answer grows by the number of moves
+// P5  the move costs from the last row's values redrawn: the same answer
+// P6  each arm agrees with at least three of the other five
+
+// ---- path.kara: the ★ arm, row by row
+fn star_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let n = grid[0].len();
+    let mut best = grid[0].clone();
+    for r in 1..grid.len() {
+        let mut next = Vec.filled(n, i64.MAX);
+        for j in 0..n {
+            for k in 0..n {
+                next[j] = next[j].min(best[k] + move_cost[grid[r - 1][k]][j]);
+            }
+            next[j] += grid[r][j];
+        }
+        best = next;
+    }
+    best.iter().min().unwrap()
+}
+
+// ---- path_memo.kara: top down, memoized
+fn memo_cost_from(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]], memo: mut ref Vec[Vec[i64]], r: i64, c: i64) -> i64 {
+    if memo[r][c] >= 0 {
+        return memo[r][c];
+    }
+    let value = grid[r][c];
+    let mut cost = value;
+    if r + 1 < grid.len() {
+        let mut least = i64.MAX;
+        for j in 0..grid[0].len() {
+            least = least.min(move_cost[value][j] + memo_cost_from(grid, move_cost, mut memo, r + 1, j));
+        }
+        cost += least;
+    }
+    memo[r][c] = cost;
+    cost
+}
+
+fn memo_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let n = grid[0].len();
+    let mut memo: Vec[Vec[i64]] = Vec.filled(grid.len(), Vec.filled(n, -1));
+    let mut best = i64.MAX;
+    for c in 0..n {
+        best = best.min(memo_cost_from(grid, move_cost, mut memo, 0, c));
+    }
+    best
+}
+
+// ---- path_dijkstra.kara: Dijkstra over the cells
+fn dijkstra_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut done: Vec[Vec[bool]] = Vec.filled(m, Vec.filled(n, false));
+    let mut queue = PriorityQueue.new();
+    for c in 0..n {
+        queue.push((grid[0][c], 0, c));
+    }
+    while let Some((cost, r, c)) = queue.pop() {
+        if done[r][c] {
+            continue;
+        }
+        done[r][c] = true;
+        if r == m - 1 {
+            return cost;
+        }
+        for j in 0..n {
+            if not done[r + 1][j] {
+                queue.push((cost + move_cost[grid[r][c]][j] + grid[r + 1][j], r + 1, j));
+            }
+        }
+    }
+    -1
+}
+
+// ---- path_iter.kara: `windows`, `fold`, `map` and `min`
+fn iter_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    grid.windows(2)
+        .into_iter()
+        .fold(grid[0].clone(), |best, rows| {
+            (0..rows[1].len())
+                .map(|j| rows[1][j] + rows[0].iter().zip(best.iter()).map(|(v, b)| b + move_cost[v][j]).min().unwrap())
+                .collect()
+        })
+        .into_iter()
+        .min()
+        .unwrap()
+}
+
+// ---- path_push.kara: pushed forward over the table
+fn push_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut dist: Vec[Vec[i64]] = Vec.filled(m, Vec.filled(n, i64.MAX));
+    dist[0] = grid[0].clone();
+    for r in 0..m - 1 {
+        for c in 0..n {
+            let from = dist[r][c];
+            let value = grid[r][c];
+            for j in 0..n {
+                let offer = from + move_cost[value][j] + grid[r + 1][j];
+                if offer < dist[r + 1][j] {
+                    dist[r + 1][j] = offer;
+                }
+            }
+        }
+    }
+    let mut best = i64.MAX;
+    for c in 0..n {
+        best = best.min(dist[m - 1][c]);
+    }
+    best
+}
+
+// ---- path_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn min_path_cost(grid: Vec[Vec[i32]], move_cost: Vec[Vec[i32]]) -> i32 {
+        let n = grid[0].len();
+        let mut dp = grid[0].clone();
+        for r in 1..grid.len() {
+            let mut next = Vec.filled(n, i32.MAX);
+            for j in 0..n {
+                for k in 0..n {
+                    next[j] = next[j].min(dp[k] + move_cost[grid[r - 1][k] as usize][j]);
+                }
+                next[j] += grid[r][j];
+            }
+            dp = next;
+        }
+        *dp.iter().min().unwrap()
+    }
+}
+
+fn solution_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let g: Vec[Vec[i32]] = grid.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    let mc: Vec[Vec[i32]] = move_cost.iter().map(|row| row.iter().map(|v| v as i32).collect()).collect();
+    Solution.min_path_cost(g, mc)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal_from(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]], r: i64, c: i64, so_far: i64) -> i64 {
+    let value = grid[r][c];
+    if r == grid.len() - 1 {
+        return so_far + value;
+    }
+    let mut least = i64.MAX;
+    for j in 0..grid[0].len() {
+        least = least.min(literal_from(grid, move_cost, r + 1, j, so_far + value + move_cost[value][j]));
+    }
+    least
+}
+
+fn literal(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    let mut least = i64.MAX;
+    for c in 0..grid[0].len() {
+        least = least.min(literal_from(grid, move_cost, 0, c, 0));
+    }
+    least
+}
+
+fn answer(arm: i64, grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    match arm {
+        0 => star_cost(grid, move_cost),
+        1 => memo_cost(grid, move_cost),
+        2 => dijkstra_cost(grid, move_cost),
+        3 => iter_cost(grid, move_cost),
+        4 => push_cost(grid, move_cost),
+        _ => solution_cost(grid, move_cost),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn make(seed: mut ref i64, m: i64, n: i64, most: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut values: Vec[i64] = (0..m * n).collect();
+    for i in (1..m * n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let grid: Vec[Vec[i64]] = (0..m).map(|r| values[r * n..(r + 1) * n].to_vec()).collect();
+    let mut move_cost: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m * n {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut seed) % most + 1);
+        }
+        move_cost.push(row);
+    }
+    (grid, move_cost)
+}
+
+fn main() {
+    let names = ["star", "memo", "dijkstra", "iter", "push", "solution"];
+    let mut seed = 2304;
+    let mut cases: Vec[(Vec[Vec[i64]], Vec[Vec[i64]], Vec[Vec[i64]])] = Vec.new();
+    for c in 0..360 {
+        let (m, n, most) = if c < 300 {
+            (next_random(mut seed) % 3 + 2, next_random(mut seed) % 3 + 2, 100)
+        } else if c < 330 {
+            (next_random(mut seed) % 3 + 2, next_random(mut seed) % 3 + 2, 1)
+        } else {
+            (next_random(mut seed) % 5 + 2, next_random(mut seed) % 4 + 2, 100)
+        };
+        let (grid, move_cost) = make(mut seed, m, n, most);
+        // the same move costs, those from the last row's values redrawn
+        let mut redrawn = move_cost.clone();
+        for v in grid[m - 1].iter() {
+            for j in 0..n {
+                redrawn[v][j] = next_random(mut seed) % 100 + 1;
+            }
+        }
+        cases.push((grid, move_cost, redrawn));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (grid, move_cost, redrawn) in cases.iter() {
+        let m = grid.len();
+        let truth = literal(grid, move_cost);
+        check = (check * 31 + truth) % 1000000007;
+        let mut low = m - 1;
+        let mut straight = 0;
+        for r in 0..m {
+            low += grid[r].iter().min().unwrap();
+            straight += grid[r][0];
+            if r + 1 < m {
+                straight += move_cost[grid[r][0]][0];
+            }
+        }
+        let reversed: Vec[Vec[i64]] = grid.iter().map(|row| row.iter().rev().collect()).collect();
+        let reversed_cost: Vec[Vec[i64]] = move_cost.iter().map(|row| row.iter().rev().collect()).collect();
+        let dearer: Vec[Vec[i64]] = move_cost.iter().map(|row| row.iter().map(|x| x + 1).collect()).collect();
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, grid, move_cost)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= low and value <= straight,
+                answer(arm, reversed, reversed_cost) == value,
+                answer(arm, grid, dearer) == value + m - 1,
+                answer(arm, grid, redrawn) == value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{grid} {move_cost} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

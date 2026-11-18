@@ -1,0 +1,70 @@
+// LeetCode #2304: Minimum Path Cost in a Grid -- iterators: the rows
+// paired by `windows(2)` and `fold`ed from the first row's values, each
+// step `map`ping every column of the lower row to its value plus the
+// `min` over the upper row's columns of their cost so far and the move.
+// O(m n^2).
+
+fn min_path_cost(grid: Vec[Vec[i64]], move_cost: Vec[Vec[i64]]) -> i64 {
+    grid.windows(2)
+        .into_iter()
+        .fold(grid[0].clone(), |best, rows| {
+            (0..rows[1].len())
+                .map(|j| rows[1][j] + rows[0].iter().zip(best.iter()).map(|(v, b)| b + move_cost[v][j]).min().unwrap())
+                .collect()
+        })
+        .into_iter()
+        .min()
+        .unwrap()
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// an m by n grid of the numbers 0 to m n - 1 shuffled, and a move cost
+// from 1 to `most` for each number and column
+fn make(seed: mut ref i64, m: i64, n: i64, most: i64) -> (Vec[Vec[i64]], Vec[Vec[i64]]) {
+    let mut values: Vec[i64] = (0..m * n).collect();
+    for i in (1..m * n).rev() {
+        let j = next_random(mut seed) % (i + 1);
+        values.swap(i, j);
+    }
+    let grid: Vec[Vec[i64]] = (0..m).map(|r| values[r * n..(r + 1) * n].to_vec()).collect();
+    let mut move_cost: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..m * n {
+        let mut row: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            row.push(next_random(mut seed) % most + 1);
+        }
+        move_cost.push(row);
+    }
+    (grid, move_cost)
+}
+
+fn main() {
+    // LeetCode's two examples; then the smallest grid, and a column
+    // whose moves cost 1 under move costs of 100
+    println(min_path_cost([[5, 3], [4, 0], [2, 1]].to_vec(), [[9, 8], [1, 5], [10, 12], [18, 6], [2, 4], [14, 3]].to_vec()));
+    println(min_path_cost([[5, 1, 2], [4, 0, 3]].to_vec(), [[12, 10, 15], [20, 23, 8], [21, 7, 1], [8, 1, 13], [9, 10, 25], [5, 3, 2]].to_vec()));
+    println(min_path_cost([[0, 1], [2, 3]].to_vec(), [[1, 1], [1, 1], [1, 1], [1, 1]].to_vec()));
+    println(min_path_cost([[3, 0, 1], [2, 4, 5]].to_vec(), [[100, 100, 100], [100, 100, 100], [100, 100, 100], [100, 100, 1], [100, 100, 100], [100, 100, 100]].to_vec()));
+    // the largest grid, 50 by 50, with move costs up to 100
+    let mut seed = 2304;
+    let (grid, move_cost) = make(mut seed, 50, 50, 100);
+    println(min_path_cost(grid, move_cost));
+    // 1000 random grids of 2 to 8 rows and columns
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..1000 {
+        let m = next_random(mut seed) % 7 + 2;
+        let n = next_random(mut seed) % 7 + 2;
+        let (grid, move_cost) = make(mut seed, m, n, 100);
+        let cost = min_path_cost(grid, move_cost);
+        check = (check * 31 + cost) % 1000000007;
+        total += cost;
+    }
+    println(f"1000 grids: checksum {check}, {total} in all");
+}
