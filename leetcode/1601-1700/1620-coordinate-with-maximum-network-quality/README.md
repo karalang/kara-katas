@@ -143,7 +143,8 @@ All four arms print the same output as `network.py` under
 error. `karac run` and a `karac build` binary print the same output for
 them, the differential and the bench. `karac check` reports nothing on
 any of them, and `karac fix` has nothing left to change. Checked at kara
-`9691a6290e`.
+`9691a6290e`, and again at `eb32a1ff0` after the ★ arm was restored to
+its natural form.
 
 ## Writing it
 
@@ -151,9 +152,11 @@ The ★ arm was first written with `for x in 0..=50` and `best = [x, y]`
 returned as a `Vec[i32]`. Kāra does not let an operator fix a literal's
 type (design.md §8), so `t[0] - x` beside an `i32` leaves the range's
 literals at the default `i64`, and `best.to_vec()` was refused as a
-`Vec[i64]` with no machine fix (B-2026-11-18-52). The ranges are written
-`0i32..=50`. The exact arm's `best` is annotated `Vec[i32]`; the scatter
-arm works in `i64` and narrows the answer once.
+`Vec[i64]`, at first with no machine fix (B-2026-11-18-52). Since kara
+c52d43047e, `karac fix` carries it in three edits: `[0, 0]` to
+`[0i32, 0]`, then both ranges to `0i32..=50`, and the arm is what it
+left. The exact arm's `best` is annotated `Vec[i32]`; the scatter arm
+works in `i64` and narrows the answer once.
 
 LeetCode's Rust template met the same rule: `ans = vec![x, y]` into a
 `Vec<i32>` with `x` from `0..=50`, refused as an `i64` element with only
