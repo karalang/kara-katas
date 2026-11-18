@@ -1,0 +1,68 @@
+// LeetCode #2299: Strong Password Checker II -- the bench, the ★ arm.
+// One pass over the letters: a `match` sets one of four flags, and the
+// letter before must differ from each one.
+
+fn strong_password_checker_ii(password: Str) -> bool {
+    if password.len() < 8 {
+        return false;
+    }
+    let mut lower = false;
+    let mut upper = false;
+    let mut digit = false;
+    let mut special = false;
+    let mut prev = ' ';
+    for c in password.chars() {
+        if c == prev {
+            return false;
+        }
+        match c {
+            'a'..='z' => lower = true,
+            'A'..='Z' => upper = true,
+            '0'..='9' => digit = true,
+            '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '(' | ')' | '-' | '+' => special = true,
+            _ => {}
+        }
+        prev = c;
+    }
+    lower and upper and digit and special
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 2 * 10^5 random passwords of 8 to 20 letters built once, each kind's
+    // letters drawn from its first 1 to 12; then 20 passes over all of
+    // them, pass `p` starting at password 7p
+    let kinds: Vec[Vec[char]] = [
+        "abcdefghijklmnopqrstuvwxyz".chars().collect(),
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect(),
+        "0123456789".chars().collect(),
+        "!@#$%^&*()-+".chars().collect(),
+    ];
+    let mut seed = 2299;
+    let mut passwords: Vec[String] = Vec.new();
+    for _ in 0..200000 {
+        let n = next_random(mut seed) % 13 + 8;
+        let width = next_random(mut seed) % 12 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            let kind = ref kinds[next_random(mut seed) % 4];
+            s.push(kind[next_random(mut seed) % width.min(kind.len())]);
+        }
+        passwords.push(s);
+    }
+    let count = passwords.len();
+    let mut check = 0;
+    for pass in 0..20 {
+        for i in 0..count {
+            let p = ref passwords[(i + 7 * pass) % count];
+            check = (check * 31 + if strong_password_checker_ii(p) { p.len() } else { 1 }) % 1000000007;
+        }
+    }
+    println(f"20 passes over 2 * 10^5 passwords: checksum {check}");
+}

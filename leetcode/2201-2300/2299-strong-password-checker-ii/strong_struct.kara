@@ -1,0 +1,102 @@
+// LeetCode #2299: Strong Password Checker II -- the kinds as an enum:
+// `kind_of` names each letter's `Kind`, `Option` for none, and the
+// kinds seen go into a `Set[Kind]`, which a strong password fills with
+// all four. A repeat of the letter before stops the walk. O(n).
+
+#[derive(PartialEq, Eq, Hash)]
+enum Kind {
+    Lower,
+    Upper,
+    Digit,
+    Special,
+}
+
+fn kind_of(c: char) -> Option[Kind] {
+    if c.is_ascii_lowercase() {
+        Some(Kind.Lower)
+    } else if c.is_ascii_uppercase() {
+        Some(Kind.Upper)
+    } else if c.is_ascii_digit() {
+        Some(Kind.Digit)
+    } else if "!@#$%^&*()-+".chars().any(|s| s == c) {
+        Some(Kind.Special)
+    } else {
+        None
+    }
+}
+
+fn strong_password_checker_ii(password: Str) -> bool {
+    if password.len() < 8 {
+        return false;
+    }
+    let mut seen: Set[Kind] = Set.new();
+    let mut prev: Option[char] = None;
+    for c in password.chars() {
+        if prev == Some(c) {
+            return false;
+        }
+        if let Some(k) = kind_of(c) {
+            seen.insert(k);
+        }
+        prev = Some(c);
+    }
+    seen.len() == 4
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// A random password of `n` letters: each one of the four kinds, picked
+// at random, and within its kind one of `width` letters in a row from
+// letter `from` on, wrapping round, so that a narrow width repeats
+// letters often.
+fn random_password(seed: mut ref i64, n: i64, from: i64, width: i64) -> String {
+    let kinds: Vec[Vec[char]] = [
+        "abcdefghijklmnopqrstuvwxyz".chars().collect(),
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect(),
+        "0123456789".chars().collect(),
+        "!@#$%^&*()-+".chars().collect(),
+    ];
+    let mut s = String.new();
+    for _ in 0..n {
+        let kind = ref kinds[next_random(mut seed) % 4];
+        s.push(kind[(from + next_random(mut seed) % width.min(kind.len())) % kind.len()]);
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's three examples; then the shortest strong password, one
+    // a letter short, a repeat at the very end, each kind missing in turn,
+    // and 100 letters that alternate
+    let cases = [
+        "IloveLe3tcode!", "Me+You--IsMyDream", "1aB!",
+        "aA1!aA1!", "aA1!aA1", "aA1!aA1!!",
+        "AB1!AB1!", "ab1!ab1!", "aBc!aBc!", "aB1caB1c",
+        "a", "aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!aA1!",
+    ];
+    for p in cases.iter() {
+        println(f"{p.len()} {strong_password_checker_ii(p)}");
+    }
+    // 20000 random passwords of 1 to 16 letters, the letters of each kind
+    // drawn from 1 to 12 of its letters in a row, from a random one on
+    let mut seed = 2299;
+    let mut strong = 0;
+    let mut check = 0;
+    for _ in 0..20000 {
+        let n = next_random(mut seed) % 16 + 1;
+        let width = next_random(mut seed) % 12 + 1;
+        let from = next_random(mut seed) % 26;
+        let p = random_password(mut seed, n, from, width);
+        let ok = strong_password_checker_ii(p);
+        if ok {
+            strong += 1;
+        }
+        check = (check * 31 + if ok { n } else { 100 + n }) % 1000000007;
+    }
+    println(f"20000 passwords: {strong} strong, checksum {check}");
+}
