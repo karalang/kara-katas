@@ -1,0 +1,249 @@
+// LeetCode #2311: Longest Binary Subsequence Less Than or Equal to K --
+// the differential. The six arms, against the statement read literally:
+// every subsequence, one for each subset of the places, is read as a
+// binary number, leading zeros and all, and the longest whose value is
+// at most `k` gives the answer. 300 random strings of 1 to 14 bits with
+// `k` from 1 to 2^29; then 30 of ones alone; then 30 of 16 bits. Every
+// case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is at least the number of zeros and at most the length
+// P3  a `0` appended and `k` made `2 k + 1`: one more
+// P4  a `0` put in front: one more
+// P5  `k` raised to at least the string's own value: the whole length
+// P6  each arm agrees with at least three of the other five
+
+// ---- subsequence.kara: the ★ arm, greedy from the right
+fn star_longest(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let mut value = 0;
+    let mut taken = 0;
+    for i in (0..bytes.len()).rev() {
+        if bytes[i] == b'0' {
+            taken += 1;
+        } else if taken < 31 and value + (1 << taken) <= k {
+            value += 1 << taken;
+            taken += 1;
+        }
+    }
+    taken
+}
+
+// ---- subsequence_naive.kara: the smallest subsequence of each length
+fn naive_smallest_value(bits: Vec[u8], length: i64, cap: i64) -> i64 {
+    let mut stack: Vec[u8] = Vec.new();
+    for i in 0..bits.len() {
+        while stack.len() > 0 and stack[stack.len() - 1] > bits[i] and stack.len() - 1 + bits.len() - i >= length {
+            stack.pop();
+        }
+        if stack.len() < length {
+            stack.push(bits[i]);
+        }
+    }
+    let mut value = 0;
+    for b in stack.iter() {
+        value = (value * 2 + (b - b'0')).min(cap);
+    }
+    value
+}
+
+fn naive_longest(s: String, k: i64) -> i64 {
+    let bits = s.bytes().to_vec();
+    let mut length = bits.len();
+    while length > 0 and naive_smallest_value(bits, length, k + 1) > k {
+        length -= 1;
+    }
+    length
+}
+
+// ---- subsequence_dp.kara: a table over lengths
+fn dp_longest(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut least = Vec.filled(n + 1, k + 1);
+    least[0] = 0;
+    for i in 0..n {
+        let bit = (bytes[i] - b'0') as i64;
+        for l in (1..=i + 1).rev() {
+            if least[l - 1] <= k {
+                least[l] = least[l].min((least[l - 1] * 2 + bit).min(k + 1));
+            }
+        }
+    }
+    let mut best = 0;
+    for l in 0..=n {
+        if least[l] <= k {
+            best = l;
+        }
+    }
+    best
+}
+
+// ---- subsequence_suffix.kara: counted from the last bits
+fn suffix_longest(s: String, k: i64) -> i64 {
+    let bytes = s.bytes();
+    let n = bytes.len();
+    let mut width = 0;
+    while (k >> width) > 0 {
+        width += 1;
+    }
+    if n < width {
+        return n;
+    }
+    let mut zeros = 0;
+    for i in 0..n - width {
+        if bytes[i] == b'0' {
+            zeros += 1;
+        }
+    }
+    let mut tail = 0;
+    for i in n - width..n {
+        tail = tail * 2 + (bytes[i] - b'0');
+    }
+    if tail <= k { zeros + width } else { zeros + width - 1 }
+}
+
+// ---- subsequence_iter.kara: `rev` and `fold`
+fn iter_longest(s: String, k: i64) -> i64 {
+    let (_, taken) = s.bytes().iter().rev().fold((0, 0), |(value, taken), b| {
+        if b == b'0' {
+            (value, taken + 1)
+        } else if taken < 31 and value + (1 << taken) <= k {
+            (value + (1 << taken), taken + 1)
+        } else {
+            (value, taken)
+        }
+    });
+    taken
+}
+
+// ---- subsequence_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn longest_subsequence(s: String, k: i32) -> i32 {
+        let bytes = s.bytes();
+        let mut value: i64 = 0;
+        let mut taken: i32 = 0;
+        for b in bytes.iter().rev() {
+            if b == b'0' {
+                taken += 1;
+            } else if taken < 31 and value + (1 << taken) <= k {
+                value += 1 << taken;
+                taken += 1;
+            }
+        }
+        taken
+    }
+}
+
+fn solution_longest(s: String, k: i64) -> i64 {
+    Solution.longest_subsequence(s, k as i32)
+}
+
+// ---- the statement read literally ------------------------------------------
+
+fn literal(s: String, k: i64) -> i64 {
+    let bits: Vec[char] = s.chars().collect();
+    let n = bits.len();
+    let mut best = 0;
+    for subset in 0..(1 << n) {
+        let mut value = 0;
+        let mut length = 0;
+        for i in 0..n {
+            if (subset >> i) & 1 == 1 {
+                value = value * 2 + if bits[i] == '1' { 1 } else { 0 };
+                length += 1;
+            }
+        }
+        if value <= k and length > best {
+            best = length;
+        }
+    }
+    best
+}
+
+fn answer(arm: i64, s: String, k: i64) -> i64 {
+    match arm {
+        0 => star_longest(s, k),
+        1 => naive_longest(s, k),
+        2 => dp_longest(s, k),
+        3 => suffix_longest(s, k),
+        4 => iter_longest(s, k),
+        _ => solution_longest(s, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "dp", "suffix", "iter", "solution"];
+    let mut seed = 2311;
+    let mut cases: Vec[(String, i64)] = Vec.new();
+    for c in 0..360 {
+        let n = if c < 330 { next_random(mut seed) % 14 + 1 } else { 16 };
+        let odds = next_random(mut seed) % 4 + 1;
+        let mut s = String.new();
+        for _ in 0..n {
+            s.push(if c >= 300 and c < 330 or next_random(mut seed) % odds == 0 { '1' } else { '0' });
+        }
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % (1 << (next_random(mut seed) % 29 + 1)) + 1;
+        cases.push((s, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (s, k) in cases.iter() {
+        let n = s.len();
+        let truth = literal(s, k);
+        check = (check * 31 + truth) % 1000000007;
+        let zeros = s.chars().filter(|c| c == '0').count();
+        let mut whole = 0;
+        for c in s.chars() {
+            whole = whole * 2 + if c == '1' { 1 } else { 0 };
+        }
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, s, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= zeros and value <= n,
+                answer(arm, f"{s}0", 2 * k + 1) == value + 1,
+                answer(arm, f"0{s}", k) == value + 1,
+                answer(arm, s, k.max(whole)) == n,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{s}, {k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

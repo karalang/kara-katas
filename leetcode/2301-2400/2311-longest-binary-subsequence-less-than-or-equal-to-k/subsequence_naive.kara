@@ -1,0 +1,74 @@
+// LeetCode #2311: Longest Binary Subsequence Less Than or Equal to K --
+// each length from the longest down: of all subsequences of a length the
+// smallest in value is the least in dictionary order, built with a
+// stack that lets a larger bit go while enough bits remain to refill
+// it; the first length whose smallest is at most `k` is the answer.
+// O(n^2).
+
+fn smallest_value(bits: Vec[u8], length: i64, cap: i64) -> i64 {
+    let mut stack: Vec[u8] = Vec.new();
+    for i in 0..bits.len() {
+        while stack.len() > 0 and stack[stack.len() - 1] > bits[i] and stack.len() - 1 + bits.len() - i >= length {
+            stack.pop();
+        }
+        if stack.len() < length {
+            stack.push(bits[i]);
+        }
+    }
+    let mut value = 0;
+    for b in stack.iter() {
+        value = (value * 2 + (b - b'0')).min(cap);
+    }
+    value
+}
+
+fn longest_subsequence(s: String, k: i64) -> i64 {
+    let bits = s.bytes().to_vec();
+    let mut length = bits.len();
+    while length > 0 and smallest_value(bits, length, k + 1) > k {
+        length -= 1;
+    }
+    length
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `n` random bits, each a 1 one time in `odds`
+fn bits(seed: mut ref i64, n: i64, odds: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..n {
+        s.push(if next_random(mut seed) % odds == 0 { '1' } else { '0' });
+    }
+    s
+}
+
+fn main() {
+    // LeetCode's two examples; then all ones, all zeros, one bit, a
+    // string whose whole value is exactly k, and the largest k
+    let cases = [("1001010", 5), ("00101001", 1), ("1111", 1), ("0000", 1), ("1", 1), ("110", 6), ("111111111111111111111111111111111111", 1000000000)];
+    for (s, k) in cases {
+        println(f"{s}, {k}: {longest_subsequence(s.to_string(), k)}");
+    }
+    // 1000 bits, half of them ones, under the largest k
+    let mut seed = 2311;
+    println(f"1000 bits: {longest_subsequence(bits(mut seed, 1000, 2), 1000000000)}");
+    // 1000 random strings of 1 to 40 bits, ones one time in 1 to 4,
+    // with k from 1 to 2^30
+    let mut check = 0;
+    let mut total = 0;
+    for _ in 0..1000 {
+        let n = next_random(mut seed) % 40 + 1;
+        let odds = next_random(mut seed) % 4 + 1;
+        let s = bits(mut seed, n, odds);
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % (1 << (next_random(mut seed) % 30 + 1)) + 1;
+        let length = longest_subsequence(s, k);
+        check = (check * 31 + length) % 1000000007;
+        total += length;
+    }
+    println(f"1000 strings: checksum {check}, {total} bits in all");
+}
