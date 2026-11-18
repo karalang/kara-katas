@@ -1,0 +1,170 @@
+// LeetCode #1602: Find Nearest Right Node in Binary Tree -- a Rust
+// solution as LeetCode's Rust users write it (`Rc<RefCell<TreeNode>>`,
+// `u` as an `Option` unwrapped, a `VecDeque` drained a level at a time,
+// `Rc::ptr_eq` for the node itself, `node.borrow().left.clone()`),
+// carried to Kāra by `karac fix`.
+
+struct Solution {}
+
+impl Solution {
+    pub fn find_nearest_right_node(
+        root: Option[TreeNode],
+        u: Option[TreeNode],
+    ) -> Option[TreeNode] {
+        let u = u.unwrap();
+        let mut q = VecDeque.new();
+        if let Some(r) = root {
+            q.push_back(r);
+        }
+        while not q.is_empty() {
+            let n = q.len();
+            for i in 0..n {
+                let node = q.pop_front().unwrap();
+                if node.ref_eq(u) {
+                    return if i + 1 < n { q.pop_front() } else { None };
+                }
+                if let Some(l) = node.left.clone() {
+                    q.push_back(l);
+                }
+                if let Some(r) = node.right.clone() {
+                    q.push_back(r);
+                }
+            }
+        }
+        None
+    }
+}
+
+fn find_nearest_right_node(root: Option[TreeNode], u: TreeNode) -> Option[TreeNode] {
+    Solution.find_nearest_right_node(root, Some(u))
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+shared struct TreeNode {
+    mut val: i32,
+    mut left: Option[TreeNode],
+    mut right: Option[TreeNode],
+}
+
+fn leaf(v: i32) -> TreeNode {
+    TreeNode { val: v, left: None, right: None }
+}
+
+// the tree LeetCode's level-order list describes, `None` for null, and
+// the node holding `u`
+fn from_level_order(items: Slice[Option[i32]], u: i32) -> (Option[TreeNode], TreeNode) {
+    let root = leaf(items[0].unwrap());
+    let mut found = root;
+    let mut queue = VecDeque.new();
+    queue.push_back(root);
+    let mut i = 1;
+    while i < items.len() {
+        let node = queue.pop_front().unwrap();
+        for side in 0..2 {
+            if i < items.len() {
+                if let Some(v) = items[i] {
+                    let child = leaf(v);
+                    if v == u {
+                        found = child;
+                    }
+                    if side == 0 {
+                        node.left = Some(child);
+                    } else {
+                        node.right = Some(child);
+                    }
+                    queue.push_back(child);
+                }
+                i += 1;
+            }
+        }
+    }
+    (Some(root), found)
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// a tree of `n` nodes holding 1 to `n` in a random order, each node hung
+// on a random free child slot of the nodes before it; every node, in the
+// order they were made
+fn random_tree(n: i64, seed: mut ref i64) -> Vec[TreeNode] {
+    let mut values: Vec[i32] = (1..n + 1).map(|v| v as i32).collect();
+    for i in (1..n).rev() {
+        let j = (next_random(mut seed) * 32768 + next_random(mut seed)) % (i + 1);
+        values.swap(i, j);
+    }
+    let mut nodes = [leaf(values[0])];
+    let mut free = [(nodes[0], true), (nodes[0], false)];
+    for v in values[1..].iter() {
+        let k = (next_random(mut seed) * 32768 + next_random(mut seed)) % free.len();
+        let (parent, left) = free.swap_remove(k);
+        let child = leaf(*v);
+        if left {
+            parent.left = Some(child);
+        } else {
+            parent.right = Some(child);
+        }
+        free.push((child, true));
+        free.push((child, false));
+        nodes.push(child);
+    }
+    nodes
+}
+
+fn answer(node: Option[TreeNode]) -> i64 {
+    match node {
+        Some(n) => n.val,
+        None => 0,
+    }
+}
+
+fn batch(count: i64, most: i64, queries: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut nodes = 0;
+    let mut found = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let tree = random_tree(n, mut seed);
+        for _ in 0..queries {
+            let u = tree[(next_random(mut seed) * 32768 + next_random(mut seed)) % n];
+            let a = answer(find_nearest_right_node(Some(tree[0]), u));
+            if a > 0 {
+                found += 1;
+            }
+            check = mix(check, a);
+        }
+        nodes += n;
+    }
+    println(f"{count} trees of up to {most} nodes: {nodes} nodes, {count * queries} queries, {found} found, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's two examples, then one node, a far cousin, a node with
+    // nothing to its right on a full level, and a chain
+    let examples: Vec[(Vec[Option[i32]], i32)] = [
+        ([Some(1), Some(2), Some(3), None, Some(4), Some(5), Some(6)], 4),
+        ([Some(3), None, Some(4), Some(2)], 2),
+        ([Some(1)], 1),
+        ([Some(1), Some(2), Some(3), Some(4), None, None, Some(5)], 4),
+        ([Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), Some(7)], 7),
+        ([Some(1), Some(2), None, Some(3)], 3),
+    ];
+    for (items, u) in examples.iter() {
+        let (root, node) = from_level_order(items, u);
+        match find_nearest_right_node(root, node) {
+            Some(n) => println(f"{n.val}"),
+            None => println("null"),
+        }
+    }
+    let mut seed = 1602;
+    batch(3000, 8, 5, mut seed);
+    batch(300, 1000, 20, mut seed);
+    batch(3, 100000, 20, mut seed);
+}
