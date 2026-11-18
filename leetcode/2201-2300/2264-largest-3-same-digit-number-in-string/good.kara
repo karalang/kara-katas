@@ -1,0 +1,76 @@
+// LeetCode #2264: Largest 3-Same-Digit Number in String -- the ★ arm.
+// One pass over the bytes: wherever three running are the same digit,
+// that digit is a candidate, and the largest is kept. The answer is it
+// three times, or "" when there is none. O(n).
+
+fn largest_good_integer(num: String) -> String {
+    let b = num.bytes();
+    let mut best: Option[u8] = None;
+    for i in 2..b.len() {
+        if b[i - 2] == b[i] and b[i - 1] == b[i] {
+            if best.is_none() or b[i] > best.unwrap() {
+                best = Some(b[i]);
+            }
+        }
+    }
+    match best {
+        Some(d) => (d as char).to_string().repeat(3),
+        None => String.new(),
+    }
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// `len` digits from the first `digits` of 0 to 9
+fn number(seed: mut ref i64, len: i64, digits: i64) -> String {
+    let mut s = String.new();
+    for _ in 0..len {
+        s.push((b'0' + (next_random(mut seed) % digits) as u8) as char);
+    }
+    s
+}
+
+// the answer as a number for the checksum, 1000 for none
+fn score(good: String) -> i64 {
+    if good.is_empty() {
+        1000
+    } else {
+        i64.parse(good).unwrap()
+    }
+}
+
+fn main() {
+    // LeetCode's three examples, then four more: the run at the very
+    // end, a run of four, `000` the only one, and none in three digits
+    for num in ["6777133339", "2300019", "42352338", "1222", "55559", "1000", "123"] {
+        println(f"{num} -> \"{largest_good_integer(num.to_string())}\"");
+    }
+    // 2000 numbers of 3 to 40 digits from the first 2, 3, 4 or 10
+    let mut seed = 2264;
+    let mut check = 0;
+    let mut none = 0;
+    for t in 0..2000 {
+        let len = next_random(mut seed) % 38 + 3;
+        let good = largest_good_integer(number(mut seed, len, [2, 3, 4, 10][t % 4]));
+        if good.is_empty() {
+            none += 1;
+        }
+        check = (check * 31 + score(good)) % 1000000007;
+    }
+    println(f"2000 numbers ({none} with none): checksum {check}");
+    // the constraints' longest, 1000 digits: random from all ten, no digit
+    // three times running, and a single 999 at the very end
+    let random = number(mut seed, 1000, 10);
+    let pairs = "1100".repeat(250);
+    let last = f"{"12".repeat(498)}9999";
+    let answers: Vec[String] = [random, pairs, last]
+        .iter()
+        .map(|num| f"\"{largest_good_integer(num)}\"")
+        .collect();
+    println(f"1000 digits: {answers.join(", ")}");
+}

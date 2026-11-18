@@ -1,0 +1,294 @@
+// LeetCode #2264: Largest 3-Same-Digit Number in String -- the
+// differential. The six arms, against the statement read literally:
+// every substring of length 3, kept when the set of its digits has one
+// member, the largest kept by comparing the substrings themselves; no
+// running counts, no candidates. 300 random numbers of 3 to 12 digits
+// from the first 2, 3, 4 or 10; then 30 that alternate two digits, with
+// no good integer; then 30 with a run of three to five of one digit put
+// in. Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the number reversed: the same answer
+// P3  every digit d made 9 - d: 9 - d of the SMALLEST digit seen three
+//     times running, or "" for none
+// P4  "" or one digit three times, and found in the number
+// P5  `000` put in front: the same answer, or `000` for none
+// P6  each arm agrees with at least three of the other five
+
+// ---- good.kara: the ★ arm, one pass over the bytes
+fn star_largest_good_integer(num: String) -> String {
+    let b = num.bytes();
+    let mut best: Option[u8] = None;
+    for i in 2..b.len() {
+        if b[i - 2] == b[i] and b[i - 1] == b[i] {
+            if best.is_none() or b[i] > best.unwrap() {
+                best = Some(b[i]);
+            }
+        }
+    }
+    match best {
+        Some(d) => (d as char).to_string().repeat(3),
+        None => String.new(),
+    }
+}
+
+// ---- good_digits.kara: `999` down to `000` by `contains`
+fn digits_largest_good_integer(num: String) -> String {
+    for d in (0..10).rev() {
+        let good = d.to_string().repeat(3);
+        if num.contains(good) {
+            return good;
+        }
+    }
+    String.new()
+}
+
+// ---- good_runs.kara: the length of the current run
+fn runs_largest_good_integer(num: String) -> String {
+    let mut best = ' ';
+    let mut run = 0;
+    let mut previous = ' ';
+    for c in num.chars() {
+        if c == previous {
+            run += 1;
+        } else {
+            run = 1;
+            previous = c;
+        }
+        if run == 3 and (best == ' ' or c > best) {
+            best = c;
+        }
+    }
+    if best == ' ' {
+        String.new()
+    } else {
+        f"{best}{best}{best}"
+    }
+}
+
+// ---- good_struct.kara: `struct Window` of the last two digits
+struct StructWindow {
+    older: Option[u8],
+    newer: Option[u8],
+    best: Option[u8],
+}
+
+impl StructWindow {
+    fn new() -> StructWindow {
+        StructWindow { older: None, newer: None, best: None }
+    }
+
+    fn take(mut ref self, digit: u8) {
+        if self.older == Some(digit) and self.newer == Some(digit) {
+            self.best = match self.best {
+                Some(b) if b >= digit => Some(b),
+                _ => Some(digit),
+            };
+        }
+        self.older = self.newer;
+        self.newer = Some(digit);
+    }
+
+    fn answer(self) -> String {
+        match self.best {
+            Some(d) => {
+                let mut s = String.new();
+                for _ in 0..3 {
+                    s.push(d as char);
+                }
+                s
+            }
+            None => String.new(),
+        }
+    }
+}
+
+fn struct_largest_good_integer(num: String) -> String {
+    let mut window = StructWindow.new();
+    for b in num.bytes() {
+        window.take(b);
+    }
+    window.answer()
+}
+
+// ---- good_iter.kara: `windows(3)`, `filter`, `max`
+fn iter_largest_good_integer(num: String) -> String {
+    num.bytes()
+        .windows(3)
+        .into_iter()
+        .filter(|w| w[0] == w[1] and w[1] == w[2])
+        .map(|w| w[0])
+        .max()
+        .map(|d| (d as char).to_string().repeat(3))
+        .unwrap_or(String.new())
+}
+
+// ---- good_solution.kara: LeetCode's Rust template
+impl Solution {
+    pub fn largest_good_integer(num: String) -> String {
+        let b = num.bytes();
+        let mut best: Option[u8] = None;
+        for w in b.windows(3) {
+            if w[0] == w[1] and w[1] == w[2] {
+                best = Some(best.map_or(w[0], |x| x.max(w[0])));
+            }
+        }
+        match best {
+            Some(c) => String.from_utf8(Vec.filled(3, c)).unwrap(),
+            None => String.new(),
+        }
+    }
+}
+
+struct Solution {}
+
+fn solution_largest_good_integer(num: String) -> String {
+    Solution.largest_good_integer(num)
+}
+
+
+// ---- the statement read literally
+
+fn good_ones(num: String) -> Vec[String] {
+    let mut found: Vec[String] = Vec.new();
+    let n = num.len();
+    if n >= 3 {
+        for i in 0..n - 2 {
+            let part = num.substring(i, i + 3);
+            let digits: Set[char] = part.chars().collect();
+            if digits.len() == 1 {
+                found.push(part);
+            }
+        }
+    }
+    found
+}
+
+fn literal(num: String) -> String {
+    let mut best = String.new();
+    for part in good_ones(num).iter() {
+        if best.is_empty() or part > best {
+            best = part.clone();
+        }
+    }
+    best
+}
+
+fn smallest(num: String) -> String {
+    let mut least = String.new();
+    for part in good_ones(num).iter() {
+        if least.is_empty() or part < least {
+            least = part.clone();
+        }
+    }
+    least
+}
+
+fn flipped(num: String) -> String {
+    num.chars().map(|c| ((b'9' - c as u32 as u8) + b'0') as char).collect()
+}
+
+fn answer(arm: i64, num: String) -> String {
+    match arm {
+        0 => star_largest_good_integer(num),
+        1 => digits_largest_good_integer(num),
+        2 => runs_largest_good_integer(num),
+        3 => struct_largest_good_integer(num),
+        4 => iter_largest_good_integer(num),
+        _ => solution_largest_good_integer(num),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn digit(v: i64) -> char {
+    (b'0' + v as u8) as char
+}
+
+fn main() {
+    let names = ["star", "digits", "runs", "struct", "iter", "solution"];
+    let mut seed = 2264;
+    let mut cases: Vec[String] = Vec.new();
+    for c in 0..360 {
+        let len = next_random(mut seed) % 10 + 3;
+        let mut num = String.new();
+        if c < 300 {
+            let digits = [2, 3, 4, 10][c % 4];
+            for _ in 0..len {
+                num.push(digit(next_random(mut seed) % digits));
+            }
+        } else if c < 330 {
+            let a = next_random(mut seed) % 10;
+            let b = (a + 1 + next_random(mut seed) % 9) % 10;
+            for k in 0..len {
+                num.push(digit(if k % 2 == 0 { a } else { b }));
+            }
+        } else {
+            for _ in 0..len {
+                num.push(digit(next_random(mut seed) % 10));
+            }
+            let run = digit(next_random(mut seed) % 10).to_string().repeat(next_random(mut seed) % 3 + 3);
+            let at = next_random(mut seed) % (len + 1);
+            num = num.substring(0, at) + run + num.substring(at);
+        }
+        cases.push(num);
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for num in cases.iter() {
+        let truth = literal(num);
+        let score = if truth.is_empty() { 1000 } else { i64.parse(truth).unwrap() };
+        check = (check * 31 + score) % 1000000007;
+        let reversed: String = num.chars().rev().collect();
+        let least = smallest(num);
+        let mirror = if least.is_empty() { String.new() } else { flipped(least) };
+        let fronted = f"000{num}";
+        let got: Vec[String] = (0..6).map(|arm| answer(arm, num)).collect();
+        for arm in 0..6 {
+            let value = got[arm].clone();
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let shaped = value.is_empty()
+                or (value.len() == 3 and smallest(value) == value and num.contains(value));
+            let after = answer(arm, fronted);
+            let verdicts = [
+                value == truth,
+                answer(arm, reversed) == value,
+                answer(arm, flipped(num)) == mirror,
+                shaped,
+                after == (if value.is_empty() { "000" } else { value.clone() }),
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{num} arm {names[arm]}: P{q + 1} fails, gave \"{value}\", literal \"{truth}\"");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
