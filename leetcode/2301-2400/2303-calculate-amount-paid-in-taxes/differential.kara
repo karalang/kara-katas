@@ -1,0 +1,270 @@
+// LeetCode #2303: Calculate Amount Paid in Taxes -- the differential.
+// The six arms, against the statement read literally: the income not yet
+// taxed is taken bracket by bracket, the first `upper0` dollars, then the
+// next `upper1 - upper0`, and so on, each part taxed at its bracket's
+// percent, in whole hundredths. Answers are compared in hundredths,
+// rounded, and must lie within 10^-5 of them. 300 random cases of 1 to 10
+// brackets; then 30 whose income is one of their own upper bounds; then
+// 30 of 100 brackets, the most the constraints allow, rising to 1000.
+// Every case is drawn before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the tax is from 0 to the income
+// P3  every percent 100: the tax is the income
+// P4  the widest bracket split in two at its middle, the same percent in
+//     both halves: the same answer
+// P5  one dollar more of income, where the brackets reach it: the tax
+//     grows by that dollar's percent, in hundredths
+// P6  each arm agrees with at least three of the other five
+
+// ---- tax.kara: the ★ arm, exact hundredths
+fn star_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let mut hundredths = 0;
+    let mut below = 0;
+    for (upper, percent) in brackets.iter() {
+        if below >= income {
+            break;
+        }
+        hundredths += (upper.min(income) - below) * percent;
+        below = upper;
+    }
+    (hundredths as f64) / 100.0
+}
+
+// ---- tax_naive.kara: dollar by dollar
+fn naive_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let mut hundredths = 0;
+    for dollar in 1..=income {
+        let mut i = 0;
+        while brackets[i].0 < dollar {
+            i += 1;
+        }
+        hundredths += brackets[i].1;
+    }
+    (hundredths as f64) / 100.0
+}
+
+// ---- tax_float.kara: in `f64` throughout
+fn float_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let mut tax = 0.0;
+    let mut left = income;
+    let mut below = 0;
+    for (upper, percent) in brackets.iter() {
+        let part = left.min(upper - below);
+        tax += (part as f64) * (percent as f64) / 100.0;
+        left -= part;
+        below = upper;
+        if left == 0 {
+            break;
+        }
+    }
+    tax
+}
+
+// ---- tax_iter.kara: `zip`, `map` and `sum` over the bands
+fn iter_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let lows = [0].into_iter().chain(brackets.iter().map(|(upper, _)| upper));
+    let hundredths: i64 = brackets
+        .iter()
+        .zip(lows)
+        .map(|((upper, percent), low)| (upper.min(income) - low).max(0) * percent)
+        .sum();
+    (hundredths as f64) / 100.0
+}
+
+// ---- tax_struct.kara: `struct Band`
+struct StructBand {
+    low: i64,
+    high: i64,
+    percent: i64,
+}
+
+impl StructBand {
+    fn hundredths(self, income: i64) -> i64 {
+        if income <= self.low {
+            0
+        } else {
+            (income.min(self.high) - self.low) * self.percent
+        }
+    }
+}
+
+fn struct_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let mut bands: Vec[StructBand] = Vec.new();
+    let mut low = 0;
+    for (upper, percent) in brackets.iter() {
+        bands.push(StructBand { low, high: upper, percent });
+        low = upper;
+    }
+    let mut hundredths = 0;
+    for band in bands.iter() {
+        hundredths += band.hundredths(income);
+    }
+    (hundredths as f64) / 100.0
+}
+
+// ---- tax_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn calculate_tax(brackets: Vec[Vec[i32]], income: i32) -> f64 {
+        let mut ans = 0.0;
+        let mut prev = 0;
+        for b in brackets.iter() {
+            let (upper, percent) = (b[0], b[1]);
+            let taxed = income.min(upper) - prev;
+            if taxed <= 0 {
+                break;
+            }
+            ans += taxed as f64 * percent as f64 / 100.0;
+            prev = upper;
+        }
+        ans
+    }
+}
+
+fn solution_tax(brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    let b: Vec[Vec[i32]] = brackets.iter().map(|(u, p)| [u as i32, p as i32].to_vec()).collect();
+    Solution.calculate_tax(b, income as i32)
+}
+
+// ---- the statement read literally
+
+fn literal(brackets: Vec[(i64, i64)], income: i64) -> i64 {
+    let mut untaxed = income;
+    let mut hundredths = 0;
+    for i in 0..brackets.len() {
+        let width = if i == 0 { brackets[0].0 } else { brackets[i].0 - brackets[i - 1].0 };
+        let taken = if untaxed < width { untaxed } else { width };
+        hundredths += taken * brackets[i].1;
+        untaxed -= taken;
+    }
+    hundredths
+}
+
+fn answer(arm: i64, brackets: Vec[(i64, i64)], income: i64) -> f64 {
+    match arm {
+        0 => star_tax(brackets, income),
+        1 => naive_tax(brackets, income),
+        2 => float_tax(brackets, income),
+        3 => iter_tax(brackets, income),
+        4 => struct_tax(brackets, income),
+        _ => solution_tax(brackets, income),
+    }
+}
+
+// an answer in hundredths, or -1 when it is not within 10^-5 of a whole
+// number of them
+fn cents(tax: f64) -> i64 {
+    let c = (tax * 100.0).round();
+    if (tax - c / 100.0).abs() < 0.00001 { c as i64 } else { -1 }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    let names = ["star", "naive", "float", "iter", "struct", "solution"];
+    let mut seed = 2303;
+    let mut cases: Vec[(Vec[(i64, i64)], i64)] = Vec.new();
+    for c in 0..360 {
+        let mut brackets: Vec[(i64, i64)] = Vec.new();
+        let mut upper = 0;
+        if c < 330 {
+            for _ in 0..next_random(mut seed) % 10 + 1 {
+                if upper < 1000 {
+                    upper = (upper + next_random(mut seed) % 150 + 1).min(1000);
+                    brackets.push((upper, next_random(mut seed) % 101));
+                }
+            }
+        } else {
+            // 100 brackets of 1 to 10 dollars, the last stretched to 1000
+            for i in 0..100 {
+                upper = if i == 99 { 1000 } else { upper + next_random(mut seed) % 10 + 1 };
+                brackets.push((upper, next_random(mut seed) % 101));
+            }
+        }
+        let income = if c >= 300 and c < 330 {
+            brackets[next_random(mut seed) % brackets.len()].0
+        } else {
+            next_random(mut seed) % (upper + 1)
+        };
+        cases.push((brackets, income));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (brackets, income) in cases.iter() {
+        let truth = literal(brackets, income);
+        check = (check * 31 + truth) % 1000000007;
+        let full: Vec[(i64, i64)] = brackets.iter().map(|(upper, _)| (upper, 100)).collect();
+        // the widest bracket split at its middle
+        let mut widest = 0;
+        let mut low_of_widest = 0;
+        let mut low = 0;
+        for i in 0..brackets.len() {
+            if brackets[i].0 - low > brackets[widest].0 - low_of_widest {
+                widest = i;
+                low_of_widest = low;
+            }
+            low = brackets[i].0;
+        }
+        let mut split = brackets.clone();
+        let (high, percent) = brackets[widest];
+        if high - low_of_widest >= 2 {
+            split.insert(widest, ((low_of_widest + high) / 2, percent));
+        }
+        // the percent of the dollar after the income, if the brackets reach it
+        let last = brackets[brackets.len() - 1].0;
+        let mut next_percent = -1;
+        if income < last {
+            let mut i = 0;
+            while brackets[i].0 < income + 1 {
+                i += 1;
+            }
+            next_percent = brackets[i].1;
+        }
+        let got: Vec[i64] = (0..6).map(|arm| cents(answer(arm, brackets, income))).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= income * 100,
+                cents(answer(arm, full, income)) == income * 100,
+                cents(answer(arm, split, income)) == value,
+                next_percent < 0 or cents(answer(arm, brackets, income + 1)) == value + next_percent,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{brackets} {income} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}
