@@ -1,0 +1,49 @@
+// LeetCode #2310: Sum of Numbers With Units Digit K -- breadth first over
+// the sums: from 0, each step adds one number ending in `k`, and the
+// first step to reach `num` gives the size. A `VecDeque[i64]` holds the
+// sums still to grow, each seen once. O(num^2 / 10).
+
+fn minimum_numbers(num: i64, k: i64) -> i64 {
+    let mut steps = Vec.filled(num + 1, -1);
+    steps[0] = 0;
+    let mut queue: VecDeque[i64] = VecDeque.new();
+    queue.push_back(0);
+    while let Some(s) = queue.pop_front() {
+        if s == num {
+            return steps[s];
+        }
+        let mut add = if k == 0 { 10 } else { k };
+        while s + add <= num {
+            if steps[s + add] < 0 {
+                steps[s + add] = steps[s] + 1;
+                queue.push_back(s + add);
+            }
+            add += 10;
+        }
+    }
+    -1
+}
+
+// ---- test harness ---------------------------------------------------------
+
+fn main() {
+    // LeetCode's three examples; then 10 made of one 10, 0 that needs no
+    // number at all, and the largest sum with each units digit
+    let cases = [(58, 9), (37, 2), (0, 7), (10, 0), (0, 0), (3000, 9), (2999, 1), (3000, 3), (2998, 5)];
+    for (num, k) in cases {
+        println(f"{num}, {k}: {minimum_numbers(num, k)}");
+    }
+    // every sum from 0 to 200 with every units digit
+    let mut check = 0;
+    let mut impossible = 0;
+    for num in 0..=200 {
+        for k in 0..10 {
+            let size = minimum_numbers(num, k);
+            check = (check * 31 + size + 1) % 1000000007;
+            if size < 0 {
+                impossible += 1;
+            }
+        }
+    }
+    println(f"2010 cases: checksum {check}, {impossible} impossible");
+}
