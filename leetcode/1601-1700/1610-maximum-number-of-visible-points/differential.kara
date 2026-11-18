@@ -1,0 +1,286 @@
+// LeetCode #1610: Maximum Number of Visible Points -- the differential.
+//
+// Four arms against the statement read literally, on 3000 problems of 1
+// to 8 points and a location with coordinates from 0 to 4, and an angle
+// that half the time is one of 0, 45, 90, 180 and 270, with six
+// properties. Every random choice is drawn before any arm answers.
+//
+// P1  the answer is the statement read literally
+// P2  every point and the location moved by (7, 3) leave the answer
+// P3  the points reversed leave the answer
+// P4  an angle one degree wider (at most 359) sees at least as many
+// P5  one more point at the location is seen as one more
+// P6  each arm agrees with at least two of the other three
+
+// ---- visible.kara: the ★ arm: a window slid along the doubled directions
+
+fn star_arm(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    let mut here: i32 = 0;
+    let mut dirs: Vec[f64] = Vec.new();
+    for p in points.iter() {
+        let (dx, dy) = (p[0] - location[0], p[1] - location[1]);
+        if dx == 0 and dy == 0 {
+            here += 1;
+        } else {
+            dirs.push((dy as f64).atan2(dx as f64).to_degrees());
+        }
+    }
+    dirs.sort_by(f64.total_cmp);
+    let m = dirs.len();
+    for i in 0..m {
+        dirs.push(dirs[i] + 360.0);
+    }
+    let reach = angle as f64 + 1e-9;
+    let mut best = 0;
+    let mut j = 0;
+    for i in 0..dirs.len() {
+        while dirs[i] - dirs[j] > reach {
+            j += 1;
+        }
+        best = max(best, i - j + 1);
+    }
+    best as i32 + here
+}
+
+// ---- visible_search.kara: a binary search for each first edge
+
+fn search_arm(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    let here = points.iter().filter(|p| p[0] == location[0] and p[1] == location[1]).count();
+    let mut dirs: Vec[f64] = points
+        .iter()
+        .filter(|p| p[0] != location[0] or p[1] != location[1])
+        .map(|p| ((p[1] - location[1]) as f64).atan2((p[0] - location[0]) as f64).to_degrees())
+        .collect();
+    dirs.sort_by(|a, b| a.total_cmp(b));
+    let m = dirs.len();
+    let wrapped: Vec[f64] = dirs.iter().map(|d| d + 360.0).collect();
+    dirs.extend(wrapped);
+    let reach = angle as f64 + 1e-9;
+    let mut best = 0;
+    for i in 0..m {
+        let past = dirs.partition_point(|d| d - dirs[i] <= reach);
+        best = max(best, past - i);
+    }
+    (best + here) as i32
+}
+
+// ---- visible_scan.kara: every first edge scanned
+
+struct ScanView {
+    here: i32,
+    dirs: Vec[f64],
+}
+
+impl ScanView {
+    fn new(points: Slice[Vec[i32]], location: Slice[i32]) -> ScanView {
+        let mut view = ScanView { here: 0, dirs: Vec.new() };
+        for p in points.iter() {
+            let dx = p[0] - location[0];
+            let dy = p[1] - location[1];
+            match (dx, dy) {
+                (0, 0) => view.here += 1,
+                _ => view.dirs.push((dy as f64).atan2(dx as f64).to_degrees()),
+            }
+        }
+        view.dirs.sort_by(f64.total_cmp);
+        let m = view.dirs.len();
+        for i in 0..m {
+            let d = view.dirs[i];
+            view.dirs.push(d + 360.0);
+        }
+        view
+    }
+
+    fn widest(self, angle: f64) -> i64 {
+        let m = self.dirs.len() / 2;
+        let mut best = 0;
+        for i in 0..m {
+            let mut k = i;
+            while k < self.dirs.len() and self.dirs[k] - self.dirs[i] <= angle {
+                k += 1;
+            }
+            best = max(best, k - i);
+        }
+        best
+    }
+}
+
+fn scan_arm(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    let view = ScanView.new(points, location);
+    view.widest(angle as f64 + 1e-9) as i32 + view.here
+}
+
+// ---- visible_solution.kara: LeetCode's Rust template as karac fix left it
+
+struct SolutionArm {}
+
+impl SolutionArm {
+    pub fn visible_points(points: Vec[Vec[i32]], angle: i32, location: Vec[i32]) -> i32 {
+        let (x0, y0) = (location[0], location[1]);
+        let mut same: i32 = 0;
+        let mut angles: Vec[f64] = Vec.new();
+        for p in ref points {
+            let (dx, dy) = (p[0] - x0, p[1] - y0);
+            if dx == 0 and dy == 0 {
+                same += 1;
+                continue;
+            }
+            angles.push((dy as f64).atan2(dx as f64).to_degrees());
+        }
+        angles.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = angles.len();
+        for i in 0..n {
+            angles.push(angles[i] + 360.0);
+        }
+        let angle = angle as f64 + 1e-9;
+        let mut ans = 0;
+        let mut l = 0;
+        for r in 0..angles.len() {
+            while angles[r] - angles[l] > angle {
+                l += 1;
+            }
+            ans = ans.max(r - l + 1);
+        }
+        ans as i32 + same
+    }
+}
+
+fn solution_arm(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    SolutionArm.visible_points(points.to_vec(), angle, location.to_vec())
+}
+
+// ---- the harness ----------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn arm(a: i64, points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    match a {
+        0 => star_arm(points, angle, location),
+        1 => search_arm(points, angle, location),
+        2 => scan_arm(points, angle, location),
+        _ => solution_arm(points, angle, location),
+    }
+}
+
+fn arm_name(a: i64) -> String {
+    ["visible", "search", "scan", "solution"][a].to_string()
+}
+
+// ---- the statement read literally: the view's first edge turned to each
+// point's direction in turn, every point counted whose direction is at
+// most `angle` further round, counterclockwise, and every point at the
+// location counted too. Directions are degrees by `atan2` and
+// `to_degrees`, and one that is behind the first edge is taken 360
+// further round, as `(d + 360) - first`, so the sums round as the arms'
+// do. Both reach `1e-9` past `angle`, as the arms do.
+
+fn literal(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    let mut here: i32 = 0;
+    let mut dirs = Vec.new();
+    for p in points.iter() {
+        let dx = p[0] - location[0];
+        let dy = p[1] - location[1];
+        if dx == 0 and dy == 0 {
+            here += 1;
+        } else {
+            dirs.push((dy as f64).atan2(dx as f64).to_degrees());
+        }
+    }
+    let mut best: i32 = 0;
+    for first in dirs.iter() {
+        let mut seen = 0;
+        for d in dirs.iter() {
+            let round = if *d >= *first { *d - *first } else { (*d + 360.0) - *first };
+            if round <= angle as f64 + 1e-9 {
+                seen += 1;
+            }
+        }
+        best = max(best, seen);
+    }
+    best + here
+}
+
+fn main() {
+    let arms = 4;
+    let problems = 3000;
+    let mut seed = 16100;
+    // `[0, 45, 90, 180, 270][k]` inline beside an `i32` branch is refused
+    // as an `i64` (B-2026-11-18-12), so the angles are bound first
+    let edges: Vec[i32] = [0, 45, 90, 180, 270];
+    let mut cases: Vec[(Vec[Vec[i32]], i32, Vec[i32])] = Vec.new();
+    for _ in 0..problems {
+        let n = next_random(mut seed) % 8 + 1;
+        let points: Vec[Vec[i32]] = (0..n).map(|_| [(next_random(mut seed) % 5) as i32, (next_random(mut seed) % 5) as i32]).collect();
+        let location = [(next_random(mut seed) % 5) as i32, (next_random(mut seed) % 5) as i32];
+        let angle = if next_random(mut seed) % 2 == 0 {
+            edges[next_random(mut seed) % 5]
+        } else {
+            (next_random(mut seed) % 360) as i32
+        };
+        cases.push((points, angle, location));
+    }
+    let mut check = 0;
+    let mut checks = 0;
+    let mut failures = 0;
+    let mut by_property = [0, 0, 0, 0, 0, 0, 0];
+    for (p, (points, angle, location)) in cases.iter().enumerate() {
+        let moved: Vec[Vec[i32]] = points.iter().map(|q| [q[0] + 7, q[1] + 3]).collect();
+        let moved_location = [location[0] + 7, location[1] + 3];
+        let reversed: Vec[Vec[i32]] = points.iter().rev().cloned().collect();
+        let mut with_here = points.clone();
+        with_here.push(location.clone());
+        let wider = min(angle + 1, 359);
+        let mut answers = Vec.new();
+        for a in 0..arms {
+            let x = arm(a, points, angle, location);
+            check = (check * 31 + x + 1) % 1000000007;
+            let failed = [
+                x != literal(points, angle, location),
+                arm(a, moved, angle, moved_location) != x,
+                arm(a, reversed, angle, location) != x,
+                arm(a, points, wider, location) < x,
+                arm(a, with_here, angle, location) != x + 1,
+            ];
+            answers.push(x);
+            for q in 0..5 {
+                checks += 1;
+                if failed[q] {
+                    failures += 1;
+                    by_property[q + 1] += 1;
+                    if failures <= 10 {
+                        println(f"problem {p}, {arm_name(a)}: P{q + 1}");
+                    }
+                }
+            }
+        }
+        for a in 0..arms {
+            let mut agree = 0;
+            for other in 0..arms {
+                if other != a and answers[other] == answers[a] {
+                    agree += 1;
+                }
+            }
+            checks += 1;
+            if agree < 2 {
+                failures += 1;
+                by_property[6] += 1;
+                if failures <= 10 {
+                    println(f"problem {p}, {arm_name(a)}: P6");
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        let mut counts = Vec.new();
+        for q in 1..7 {
+            if by_property[q] > 0 {
+                counts.push(f"P{q}: {by_property[q]}");
+            }
+        }
+        println(counts.join(" "));
+    }
+    println(f"{problems} problems: checksum {check}, {checks} checks over {arms} arms: {failures} failures");
+}

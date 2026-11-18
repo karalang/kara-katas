@@ -1,0 +1,80 @@
+// LeetCode #1610: Maximum Number of Visible Points -- a binary search.
+//
+// The directions sorted and doubled as in the ★ arm; then for each
+// direction as the view's first edge, `partition_point` finds the first
+// direction past `angle` more, with `1e-9` to spare as the ★ arm has.
+// O(n log n).
+
+fn visible_points(points: Slice[Vec[i32]], angle: i32, location: Slice[i32]) -> i32 {
+    let here = points.iter().filter(|p| p[0] == location[0] and p[1] == location[1]).count();
+    let mut dirs: Vec[f64] = points
+        .iter()
+        .filter(|p| p[0] != location[0] or p[1] != location[1])
+        .map(|p| ((p[1] - location[1]) as f64).atan2((p[0] - location[0]) as f64).to_degrees())
+        .collect();
+    dirs.sort_by(|a, b| a.total_cmp(b));
+    let m = dirs.len();
+    let wrapped: Vec[f64] = dirs.iter().map(|d| d + 360.0).collect();
+    dirs.extend(wrapped);
+    let reach = angle as f64 + 1e-9;
+    let mut best = 0;
+    for i in 0..m {
+        let past = dirs.partition_point(|d| d - dirs[i] <= reach);
+        best = max(best, past - i);
+    }
+    (best + here) as i32
+}
+
+// ---- the harness: the same in every arm --------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn mix(check: i64, x: i64) -> i64 {
+    (check * 31 + x + 1) % 1000000007
+}
+
+// `count` problems of up to `most` points with coordinates from 0 to
+// `top`, the location among them, and an angle from 0 to 359
+fn batch(count: i64, most: i64, top: i64, seed: mut ref i64) {
+    let mut check = 0;
+    let mut points_seen = 0;
+    let mut visible = 0;
+    for _ in 0..count {
+        let n = (next_random(mut seed) * 32768 + next_random(mut seed)) % most + 1;
+        let points: Vec[Vec[i32]] = (0..n).map(|_| {
+            let x = (next_random(mut seed) % (top + 1)) as i32;
+            let y = (next_random(mut seed) % (top + 1)) as i32;
+            [x, y]
+        }).collect();
+        let angle = (next_random(mut seed) % 360) as i32;
+        let location = [(next_random(mut seed) % (top + 1)) as i32, (next_random(mut seed) % (top + 1)) as i32];
+        let v = visible_points(points, angle, location);
+        check = mix(check, v);
+        visible += v;
+        points_seen += n;
+    }
+    println(f"{count} problems of up to {most} points from 0 to {top}: {points_seen} points, {visible} visible, checksum {check}");
+}
+
+fn main() {
+    // LeetCode's three examples, then a view of 0 degrees down a line of
+    // points, every point at the location, and points all round
+    let examples: Vec[(Vec[Vec[i32]], i32, Vec[i32])] = [
+        ([[2, 1], [2, 2], [3, 3]], 90, [1, 1]),
+        ([[2, 1], [2, 2], [3, 4], [1, 1]], 90, [1, 1]),
+        ([[1, 0], [2, 1]], 13, [1, 1]),
+        ([[1, 1], [2, 2], [3, 3], [1, 2]], 0, [0, 0]),
+        ([[5, 5], [5, 5]], 10, [5, 5]),
+        ([[1, 0], [0, 1], [-1, 0], [0, -1], [0, 0]], 180, [0, 0]),
+    ];
+    for (points, angle, location) in examples.iter() {
+        println(f"{visible_points(points, angle, location)}");
+    }
+    let mut seed = 1610;
+    batch(3000, 6, 4, mut seed);
+    batch(300, 1000, 100, mut seed);
+    batch(3, 10000, 100, mut seed);
+}
