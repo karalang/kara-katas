@@ -1,0 +1,247 @@
+// LeetCode #2302: Count Subarrays With Score Less Than K -- the
+// differential. The six arms, against the statement read literally:
+// every subarray, by its start and end, has its sum taken afresh from
+// its elements and its score as that sum times its length, and those
+// under `k` are counted. No window, no prefix sums. 300 random arrays
+// of 1 to 30 elements from 1 to 20 with `k` from 1 to 3000; then 30
+// whose `k` is the score of one of their own subarrays; then 30 of up to
+// 300 elements up to 10^5 with `k` up to 10^15. Every case is drawn
+// before any arm answers.
+//
+// P1  the answer is the literal reading's
+// P2  the answer is from 0 to n (n + 1) / 2
+// P3  the array reversed: the same answer
+// P4  `k` doubled: at least as many
+// P5  the array, then `k` itself, then the array again: twice the
+//     answer, where `k` is an element the constraints allow, 10^5 or less
+// P6  each arm agrees with at least three of the other five
+
+// ---- count.kara: the ★ arm, a sliding window
+fn star_count(nums: Vec[i64], k: i64) -> i64 {
+    let mut count = 0;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..nums.len() {
+        sum += nums[right];
+        while sum * (right - left + 1) >= k {
+            sum -= nums[left];
+            left += 1;
+        }
+        count += right - left + 1;
+    }
+    count
+}
+
+// ---- count_naive.kara: every subarray scored
+fn naive_count(nums: Vec[i64], k: i64) -> i64 {
+    let mut count = 0;
+    for start in 0..nums.len() {
+        let mut sum = 0;
+        for end in start..nums.len() {
+            sum += nums[end];
+            if sum * (end - start + 1) < k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+// ---- count_search.kara: prefix sums and a binary search
+fn search_count(nums: Vec[i64], k: i64) -> i64 {
+    let mut prefix: Vec[i64] = [0].to_vec();
+    for x in nums.iter() {
+        prefix.push(prefix[prefix.len() - 1] + x);
+    }
+    let mut count = 0;
+    for end in 1..=nums.len() {
+        // the first start in 0..end whose score is under k, or end
+        let mut lo = 0;
+        let mut hi = end;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if (prefix[end] - prefix[mid]) * (end - mid) < k {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        count += end - lo;
+    }
+    count
+}
+
+// ---- count_deque.kara: the window as a `VecDeque`
+fn deque_count(nums: Vec[i64], k: i64) -> i64 {
+    let mut window: VecDeque[i64] = VecDeque.new();
+    let mut sum = 0;
+    let mut count = 0;
+    for x in nums.iter() {
+        window.push_back(x);
+        sum += x;
+        while sum * window.len() >= k {
+            sum -= window.pop_front().unwrap();
+        }
+        count += window.len();
+    }
+    count
+}
+
+// ---- count_iter.kara: a `fold` of the window
+fn iter_count(nums: Vec[i64], k: i64) -> i64 {
+    let (_, _, count) = (0..nums.len()).fold((0, 0, 0), |(left, sum, count), right| {
+        let mut left = left;
+        let mut sum = sum + nums[right];
+        while sum * (right - left + 1) >= k {
+            sum -= nums[left];
+            left += 1;
+        }
+        (left, sum, count + right - left + 1)
+    });
+    count
+}
+
+// ---- count_solution.kara: LeetCode's Rust template
+struct Solution {}
+
+impl Solution {
+    pub fn count_subarrays(nums: Vec[i32], k: i64) -> i64 {
+        let mut (ans, sum, l) = (0, 0, 0);
+        for r in 0..nums.len() {
+            sum += nums[r];
+            while sum * ((r - l + 1)) >= k {
+                sum -= nums[l];
+                l += 1;
+            }
+            ans += (r - l + 1);
+        }
+        ans
+    }
+}
+
+fn solution_count(nums: Vec[i64], k: i64) -> i64 {
+    Solution.count_subarrays(nums.iter().map(|x| x as i32).collect(), k)
+}
+
+// ---- the statement read literally
+
+fn literal(nums: Vec[i64], k: i64) -> i64 {
+    let mut count = 0;
+    for start in 0..nums.len() {
+        for end in start..nums.len() {
+            let mut sum = 0;
+            for i in start..=end {
+                sum += nums[i];
+            }
+            if sum * (end - start + 1) < k {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn answer(arm: i64, nums: Vec[i64], k: i64) -> i64 {
+    match arm {
+        0 => star_count(nums, k),
+        1 => naive_count(nums, k),
+        2 => search_count(nums, k),
+        3 => deque_count(nums, k),
+        4 => iter_count(nums, k),
+        _ => solution_count(nums, k),
+    }
+}
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+// a number from 0 to 2^62 - 1, from four draws
+fn wide_random(seed: mut ref i64) -> i64 {
+    let mut x = 0;
+    for _ in 0..4 {
+        x = x * 32768 + next_random(mut seed);
+    }
+    x / 8
+}
+
+fn main() {
+    let names = ["star", "naive", "search", "deque", "iter", "solution"];
+    let mut seed = 2302;
+    let mut cases: Vec[(Vec[i64], i64)] = Vec.new();
+    for c in 0..360 {
+        let (most, top) = if c < 330 { (30, 20) } else { (300, 100000) };
+        let n = next_random(mut seed) % most + 1;
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..n {
+            nums.push(wide_random(mut seed) % top + 1);
+        }
+        let k = if c < 300 {
+            next_random(mut seed) % 3000 + 1
+        } else if c < 330 {
+            let start = next_random(mut seed) % n;
+            let end = start + next_random(mut seed) % (n - start);
+            let mut sum = 0;
+            for i in start..=end {
+                sum += nums[i];
+            }
+            sum * (end - start + 1)
+        } else {
+            wide_random(mut seed) % 1000000000000000 + 1
+        };
+        cases.push((nums, k));
+    }
+    let mut failures: Vec[String] = Vec.new();
+    let mut by_property = [0, 0, 0, 0, 0, 0];
+    let mut checks = 0;
+    let mut check = 0;
+    for (nums, k) in cases.iter() {
+        let truth = literal(nums, k);
+        check = (check * 31 + truth) % 1000000007;
+        let n = nums.len();
+        let reversed: Vec[i64] = nums.iter().rev().collect();
+        let mut twice = nums.clone();
+        twice.push(k);
+        twice.extend(nums.iter());
+        let got: Vec[i64] = (0..6).map(|arm| answer(arm, nums, k)).collect();
+        for arm in 0..6 {
+            let value = got[arm];
+            let mut same = 0;
+            for o in 0..6 {
+                if o != arm and got[o] == value {
+                    same += 1;
+                }
+            }
+            let verdicts = [
+                value == truth,
+                value >= 0 and value <= n * (n + 1) / 2,
+                answer(arm, reversed, k) == value,
+                answer(arm, nums, 2 * k) >= value,
+                k > 100000 or answer(arm, twice, k) == 2 * value,
+                same >= 3,
+            ];
+            for q in 0..6 {
+                checks += 1;
+                if not verdicts[q] {
+                    by_property[q] += 1;
+                    if failures.len() < 10 {
+                        failures.push(f"{nums} {k} arm {names[arm]}: P{q + 1} fails, gave {value}, literal {truth}");
+                    }
+                }
+            }
+        }
+    }
+    let total = by_property.iter().sum();
+    println(f"{cases.len()} cases: checksum {check}, {checks} checks over 6 arms: {total} failures");
+    if total > 0 {
+        for f in failures.iter() {
+            println(f);
+        }
+        for q in 0..6 {
+            if by_property[q] > 0 {
+                println(f"P{q + 1} {by_property[q]}");
+            }
+        }
+    }
+}

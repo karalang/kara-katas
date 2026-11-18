@@ -1,0 +1,48 @@
+// LeetCode #2302: Count Subarrays With Score Less Than K -- the bench,
+// the ★ arm. Slide a window: each element joins at the right, elements
+// leave at the left while the score is `k` or more, and every subarray
+// ending at the right inside the window counts.
+
+fn count_subarrays(nums: Vec[i64], k: i64) -> i64 {
+    let mut count = 0;
+    let mut sum = 0;
+    let mut left = 0;
+    for right in 0..nums.len() {
+        sum += nums[right];
+        while sum * (right - left + 1) >= k {
+            sum -= nums[left];
+            left += 1;
+        }
+        count += right - left + 1;
+    }
+    count
+}
+
+// ---- bench harness ---------------------------------------------------------
+
+fn next_random(seed: mut ref i64) -> i64 {
+    *seed = (*seed * 1103515245 + 12345) % 2147483648;
+    *seed / 65536
+}
+
+fn main() {
+    // 20 arrays of 10^5 numbers from 1 to 10^5 built once; then 30 passes
+    // over all of them, array `a` in pass `p` with k = 10^9 (a + 1) + p,
+    // which holds a window of about 140 to 630 elements
+    let mut seed = 2302;
+    let mut arrays: Vec[Vec[i64]] = Vec.new();
+    for _ in 0..20 {
+        let mut nums: Vec[i64] = Vec.new();
+        for _ in 0..100000 {
+            nums.push((next_random(mut seed) * 32768 + next_random(mut seed)) % 100000 + 1);
+        }
+        arrays.push(nums);
+    }
+    let mut check = 0;
+    for pass in 0..30 {
+        for a in 0..20 {
+            check = (check * 31 + count_subarrays(arrays[a], 1000000000 * (a + 1) + pass)) % 1000000007;
+        }
+    }
+    println(f"30 passes over 20 arrays of 10^5: checksum {check}");
+}
